@@ -29,6 +29,15 @@ try:
 except ImportError:
     converge = None  # type: ignore[assignment]
 
+# coordination_bridge ships under skills/coordination-bridge/scripts/. Make
+# sure that directory is on sys.path so the lazy import inside
+# _resolve_phase_archetype_for_state_only resolves it. The actual import
+# is lazy (inside the function) to avoid mypy strict-mode complications
+# with cross-package import-not-found warnings.
+_BRIDGE_SCRIPTS = _SCRIPTS_DIR.parent.parent / "coordination-bridge" / "scripts"
+if str(_BRIDGE_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_BRIDGE_SCRIPTS))
+
 try:
     from complexity_gate import assess_complexity  # type: ignore[import-untyped]
 except ImportError:
@@ -46,9 +55,16 @@ except ImportError:
 
 @dataclass
 class LoopState:
-    """Persistent state for the autopilot loop."""
+    """Persistent state for the autopilot loop.
 
-    schema_version: int = 1
+    Schema versions:
+        1 — initial
+        2 — adds last_handoff_id (phase-record-compaction)
+        3 — adds phase_archetype (per OpenSpec
+            add-per-phase-archetype-resolution; design decision D7)
+    """
+
+    schema_version: int = 3
     change_id: str = ""
     current_phase: str = "INIT"
     iteration: int = 0
@@ -62,12 +78,21 @@ class LoopState:
     implementation_strategy: dict[str, str] = field(default_factory=dict)
     memory_ids: list[str] = field(default_factory=list)
     handoff_ids: list[str] = field(default_factory=list)
+    last_handoff_id: str | None = None
     started_at: str = ""
     phase_started_at: str = ""
     previous_phase: str | None = None
     escalation_reason: str | None = None
     val_review_enabled: bool = False
+    cli_review_enabled: bool = True
     error: str | None = None
+    # NEW (v3): name of the archetype resolved for the current phase. Set by
+    # phase_agent._build_options after a successful coordinator resolution;
+    # remains None when resolution falls back to the harness default (D9) or
+    # for phases where archetype injection is bypassed (operator override
+    # path per D8). Persisted in loop-state.json and emitted in
+    # POST /status/report payloads alongside `phase`.
+    phase_archetype: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -82,9 +107,22 @@ def save_state(state: LoopState, path: str | Path) -> None:
 
 
 def load_state(path: str | Path) -> LoopState:
-    """Deserialize a LoopState from the JSON file at *path*."""
+    """Deserialize a LoopState from the JSON file at *path*.
+
+    Migrates older snapshots forward (D7): v2 files load with
+    ``phase_archetype = None`` and ``schema_version = 3``; the migration is
+    persisted on the next ``save_state`` call.
+    """
     data = json.loads(Path(path).read_text())
-    return LoopState(**{k: v for k, v in data.items() if k in LoopState.__dataclass_fields__})
+    state = LoopState(
+        **{k: v for k, v in data.items() if k in LoopState.__dataclass_fields__}
+    )
+    # v2 → v3 forward migration: bump schema_version on load so callers see
+    # the current shape immediately. phase_archetype defaults to None via the
+    # dataclass default. The new schema_version is persisted on next save.
+    if state.schema_version < 3:
+        state.schema_version = 3
+    return state
 
 
 # ---------------------------------------------------------------------------
@@ -93,10 +131,12 @@ def load_state(path: str | Path) -> LoopState:
 
 TRANSITIONS: dict[str, dict[str, str]] = {
     "INIT": {"next": "PLAN"},
-    "PLAN": {"exists": "PLAN_REVIEW", "created": "PLAN_REVIEW", "failed": "ESCALATE"},
+    "PLAN": {"exists": "PLAN_ITERATE", "created": "PLAN_ITERATE", "failed": "ESCALATE"},
+    "PLAN_ITERATE": {"complete": "PLAN_REVIEW_OR_IMPLEMENT", "failed": "ESCALATE"},
     "PLAN_REVIEW": {"converged": "IMPLEMENT", "not_converged": "PLAN_FIX", "max_iter": "ESCALATE"},
     "PLAN_FIX": {"fixed": "PLAN_REVIEW", "stuck": "ESCALATE"},
-    "IMPLEMENT": {"complete": "IMPL_REVIEW", "failed": "ESCALATE"},
+    "IMPLEMENT": {"complete": "IMPL_ITERATE", "failed": "ESCALATE"},
+    "IMPL_ITERATE": {"complete": "IMPL_REVIEW_OR_VALIDATE", "failed": "ESCALATE"},
     "IMPL_REVIEW": {"converged": "VALIDATE", "not_converged": "IMPL_FIX", "max_iter": "ESCALATE"},
     "IMPL_FIX": {"fixed": "IMPL_REVIEW", "stuck": "ESCALATE"},
     "VALIDATE": {"passed": "VAL_REVIEW_OR_SUBMIT", "failed": "VAL_FIX"},
@@ -121,6 +161,10 @@ def transition(state: LoopState, outcome: str) -> str:
         raise ValueError(f"Invalid outcome {outcome!r} for phase {phase!r}")
 
     # Dynamic resolution
+    if target == "PLAN_REVIEW_OR_IMPLEMENT":
+        return "PLAN_REVIEW" if state.cli_review_enabled else "IMPLEMENT"
+    if target == "IMPL_REVIEW_OR_VALIDATE":
+        return "IMPL_REVIEW" if state.cli_review_enabled else "VALIDATE"
     if target == "VAL_REVIEW_OR_SUBMIT":
         return "VAL_REVIEW" if state.val_review_enabled else "SUBMIT_PR"
     if target == "_previous_phase":
@@ -178,6 +222,61 @@ class PhaseFn(Protocol):
 
 
 # ---------------------------------------------------------------------------
+# State-only archetype resolver (D7 — wire-autopilot-phase-subagents)
+# ---------------------------------------------------------------------------
+
+# Phases that record `phase_archetype` on the state machine itself rather
+# than via a sub-agent dispatch. Per D7 these are INIT and SUBMIT_PR.
+_STATE_ONLY_PHASES: frozenset[str] = frozenset({"INIT", "SUBMIT_PR"})
+
+
+def _resolve_phase_archetype_for_state_only(
+    state: LoopState,
+    phase: str,
+) -> None:
+    """Resolve and record the archetype for a state-only phase.
+
+    State-only phases (INIT, SUBMIT_PR) do not dispatch a sub-agent — they
+    are state transitions executed inline by the loop driver. The spec
+    requires `LoopState.phase_archetype` to be populated for these phases
+    too, so observability dashboards can correlate every non-terminal
+    phase with its archetype.
+
+    The resolution path mirrors `phase_agent._build_options`'s archetype
+    branch: it queries the coordinator via
+    ``coordination_bridge.try_resolve_archetype_for_phase(phase, signals)``
+    and records the resolved archetype name on `state.phase_archetype`.
+
+    On any failure (bridge unavailable, coordinator returns None,
+    malformed response), `state.phase_archetype` is left as None — this
+    matches the bridge-failure fallback semantics from
+    `add-per-phase-archetype-resolution` D9.
+    """
+    if phase not in _STATE_ONLY_PHASES:
+        # Defensive — caller is expected to gate on _STATE_ONLY_PHASES, but
+        # keep the function tolerant rather than raising.
+        return
+    try:
+        # Lazy import keeps the cross-package dependency out of module-load
+        # type checking and gracefully degrades if the bridge module is
+        # missing (e.g., minimal harness environments).
+        import coordination_bridge  # type: ignore[import-not-found]
+        resolved = coordination_bridge.try_resolve_archetype_for_phase(phase, {})
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "_resolve_phase_archetype_for_state_only(%s) bridge raised: %s; "
+            "leaving phase_archetype=None",
+            phase, exc,
+        )
+        return
+    if not isinstance(resolved, dict):
+        return
+    archetype = resolved.get("archetype")
+    if isinstance(archetype, str) and archetype:
+        state.phase_archetype = archetype
+
+
+# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
@@ -205,6 +304,10 @@ def _apply_transition(
 
 def _is_review_phase(phase: str) -> bool:
     return phase in ("PLAN_REVIEW", "IMPL_REVIEW", "VAL_REVIEW")
+
+
+def _is_iterate_phase(phase: str) -> bool:
+    return phase in ("PLAN_ITERATE", "IMPL_ITERATE")
 
 
 def _safe_status_call(
@@ -254,15 +357,20 @@ def run_loop(
     *,
     state_path: str | Path | None = None,
     plan_fn: Callable[[LoopState], str] | None = None,
+    iterate_plan_fn: Callable[[LoopState], str] | None = None,
+    iterate_impl_fn: Callable[[LoopState], str] | None = None,
     implement_fn: Callable[[LoopState], str] | None = None,
     validate_fn: Callable[[LoopState], str] | None = None,
     submit_pr_fn: Callable[[LoopState], str] | None = None,
-    handoff_fn: Callable[[LoopState, str], None] | None = None,
+    handoff_fn: Callable[[LoopState, Any], str | None] | None = None,
+    token_meter_fn: Callable[[LoopState, str, str, str], None] | None = None,
     memory_fn: Callable[[LoopState, str], str | None] | None = None,
     gate_check_fn: Callable[[LoopState], bool] | None = None,
     converge_fn: Callable[..., Any] | None = None,
     assess_complexity_fn: Callable[..., Any] | None = None,
+    post_fix_validator_fn: Callable[[Path], list[str]] | None = None,
     status_fn: Callable[[LoopState, str, str, bool], None] | None = None,
+    cli_review_enabled: bool = True,
     max_global_iterations: int = 50,
 ) -> LoopState:
     """Drive the autopilot loop from the current phase to DONE or ESCALATE.
@@ -281,6 +389,12 @@ def run_loop(
     plan_fn / implement_fn / validate_fn / submit_pr_fn:
         Callbacks for phases that require external tool invocations.
         Each receives the current state and returns an outcome string.
+    iterate_plan_fn:
+        Callback for PLAN_ITERATE phase (self-review of plan artifacts).
+        Receives state, returns outcome ("complete" or "failed").
+    iterate_impl_fn:
+        Callback for IMPL_ITERATE phase (self-review of implementation).
+        Receives state, returns outcome ("complete" or "failed").
     handoff_fn:
         Called at major transition boundaries with a description.
     memory_fn:
@@ -291,10 +405,18 @@ def run_loop(
         Override for the convergence loop (defaults to sibling module).
     assess_complexity_fn:
         Override for complexity assessment (defaults to sibling module).
+    post_fix_validator_fn:
+        Passed through to convergence loop as ``post_fix_validator``.
+        Called after fixes are applied during review phases to catch
+        regressions (e.g. test failures on changed files).
     status_fn:
         Called on phase transitions and escalations to report status.
         Signature: ``(state, event_type, message, urgent) -> None``.
         Wrapped in try/except with 5s timeout — never crashes the loop.
+    cli_review_enabled:
+        Whether multi-vendor review phases (PLAN_REVIEW, IMPL_REVIEW)
+        should run.  True when vendor CLIs are available (CLI mode),
+        False for headless/cloud/API execution.  Defaults to True.
     max_global_iterations:
         Safety cap on total loop iterations.
     """
@@ -312,6 +434,8 @@ def run_loop(
     # ---- Load or create state ----
     if state_path.exists():
         state = load_state(state_path)
+        # Update cli_review_enabled from caller (may change between resumes)
+        state.cli_review_enabled = cli_review_enabled
         logger.info(
             "Resumed loop state at phase=%s iteration=%d",
             state.current_phase, state.total_iterations,
@@ -321,6 +445,7 @@ def run_loop(
             change_id=change_id,
             started_at=_now_iso(),
             phase_started_at=_now_iso(),
+            cli_review_enabled=cli_review_enabled,
         )
         logger.info("Created new loop state for %s", change_id)
 
@@ -335,6 +460,8 @@ def run_loop(
                 change_dir=change_dir,
                 worktree_path=worktree_path,
                 plan_fn=plan_fn,
+                iterate_plan_fn=iterate_plan_fn,
+                iterate_impl_fn=iterate_impl_fn,
                 implement_fn=implement_fn,
                 validate_fn=validate_fn,
                 submit_pr_fn=submit_pr_fn,
@@ -343,6 +470,7 @@ def run_loop(
                 gate_check_fn=gate_check_fn,
                 converge_fn=_converge,
                 assess_complexity_fn=_assess,
+                post_fix_validator_fn=post_fix_validator_fn,
             )
         except Exception as exc:
             logger.error("Phase %s raised: %s", phase, exc)
@@ -365,8 +493,11 @@ def run_loop(
         prev_phase = state.current_phase
         _apply_transition(state, outcome, status_fn=status_fn)
 
-        # Write handoff at major boundaries
-        _maybe_handoff(prev_phase, state.current_phase, state, handoff_fn)
+        # Write handoff at major boundaries (with optional token instrumentation)
+        _maybe_handoff(
+            prev_phase, state.current_phase, state, handoff_fn,
+            token_meter_fn=token_meter_fn,
+        )
 
         save_state(state, state_path)
 
@@ -397,14 +528,17 @@ def _run_phase(
     change_dir: Path,
     worktree_path: Path,
     plan_fn: Callable[[LoopState], str] | None,
+    iterate_plan_fn: Callable[[LoopState], str] | None,
+    iterate_impl_fn: Callable[[LoopState], str] | None,
     implement_fn: Callable[[LoopState], str] | None,
     validate_fn: Callable[[LoopState], str] | None,
     submit_pr_fn: Callable[[LoopState], str] | None,
-    handoff_fn: Callable[[LoopState, str], None] | None,
+    handoff_fn: Callable[[LoopState, Any], str | None] | None,
     memory_fn: Callable[[LoopState, str], str | None] | None,
     gate_check_fn: Callable[[LoopState], bool] | None,
     converge_fn: Callable[..., Any] | None,
     assess_complexity_fn: Callable[..., Any] | None,
+    post_fix_validator_fn: Callable[[Path], list[str]] | None,
 ) -> str | None:
     """Run a single phase and return the outcome string, or None to pause."""
     phase = state.current_phase
@@ -415,8 +549,14 @@ def _run_phase(
     if phase == "PLAN":
         return _phase_plan(state, change_dir, plan_fn)
 
+    if phase == "PLAN_ITERATE":
+        return _phase_iterate(state, iterate_plan_fn)
+
     if phase == "PLAN_REVIEW":
-        return _phase_review(state, change_dir, worktree_path, converge_fn, fix_mode="inline")
+        return _phase_review(
+            state, change_dir, worktree_path, converge_fn,
+            fix_mode="inline", post_fix_validator_fn=post_fix_validator_fn,
+        )
 
     if phase == "PLAN_FIX":
         # Plan fixes are handled inline by the convergence loop; if we land
@@ -426,8 +566,14 @@ def _run_phase(
     if phase == "IMPLEMENT":
         return _phase_implement(state, implement_fn)
 
+    if phase == "IMPL_ITERATE":
+        return _phase_iterate(state, iterate_impl_fn)
+
     if phase == "IMPL_REVIEW":
-        return _phase_review(state, change_dir, worktree_path, converge_fn, fix_mode="targeted")
+        return _phase_review(
+            state, change_dir, worktree_path, converge_fn,
+            fix_mode="targeted", post_fix_validator_fn=post_fix_validator_fn,
+        )
 
     if phase == "IMPL_FIX":
         return "fixed"
@@ -436,7 +582,10 @@ def _run_phase(
         return _phase_validate(state, validate_fn)
 
     if phase == "VAL_REVIEW":
-        return _phase_review(state, change_dir, worktree_path, converge_fn, fix_mode="targeted")
+        return _phase_review(
+            state, change_dir, worktree_path, converge_fn,
+            fix_mode="targeted", post_fix_validator_fn=post_fix_validator_fn,
+        )
 
     if phase == "VAL_FIX":
         return "fixed"
@@ -464,6 +613,9 @@ def _phase_init(
 ) -> str:
     """Run complexity assessment and configure the loop accordingly."""
     state.phase_started_at = _now_iso()
+    # D7: state-only phases must still record phase_archetype so observability
+    # surfaces are uniform across the 13 non-terminal phases.
+    _resolve_phase_archetype_for_state_only(state, "INIT")
 
     if assess_complexity_fn is not None:
         wp_path = change_dir / "work-packages.yaml"
@@ -510,6 +662,18 @@ def _phase_plan(
     return "created"
 
 
+def _phase_iterate(
+    state: LoopState,
+    iterate_fn: Callable[[LoopState], str] | None,
+) -> str:
+    """Delegate to iterate callback (self-review loop). Always runs."""
+    state.phase_started_at = _now_iso()
+    if iterate_fn is not None:
+        return iterate_fn(state)
+    # No callback — stub returns "complete" (iterate is a no-op without a callback)
+    return "complete"
+
+
 _PHASE_TO_REVIEW_TYPE: dict[str, str] = {
     "PLAN_REVIEW": "plan",
     "IMPL_REVIEW": "implementation",
@@ -523,6 +687,7 @@ def _phase_review(
     worktree_path: Path,
     converge_fn: Callable[..., Any] | None,
     fix_mode: str,
+    post_fix_validator_fn: Callable[[Path], list[str]] | None = None,
 ) -> str:
     """Run a convergence review loop for the current review phase."""
     state.iteration += 1
@@ -534,13 +699,16 @@ def _phase_review(
 
     if converge_fn is not None:
         review_type = _PHASE_TO_REVIEW_TYPE.get(state.current_phase, "plan")
-        result = converge_fn(
-            change_id=state.change_id,
-            review_type=review_type,
-            artifacts_dir=change_dir,
-            worktree_path=worktree_path,
-            fix_mode=fix_mode,
-        )
+        converge_kwargs: dict[str, Any] = {
+            "change_id": state.change_id,
+            "review_type": review_type,
+            "artifacts_dir": change_dir,
+            "worktree_path": worktree_path,
+            "fix_mode": fix_mode,
+        }
+        if post_fix_validator_fn is not None:
+            converge_kwargs["post_fix_validator"] = post_fix_validator_fn
+        result = converge_fn(**converge_kwargs)
         # Support both ConvergenceResult dataclass and dict
         converged = getattr(result, "converged", None)
         if converged is None and isinstance(result, dict):
@@ -597,6 +765,8 @@ def _phase_submit_pr(
 ) -> str:
     """Delegate to PR submission callback (stub if absent)."""
     state.phase_started_at = _now_iso()
+    # D7: state-only phases must still record phase_archetype.
+    _resolve_phase_archetype_for_state_only(state, "SUBMIT_PR")
     if submit_pr_fn is not None:
         return submit_pr_fn(state)
     return "created"
@@ -618,7 +788,11 @@ def _phase_escalate(
 # ---------------------------------------------------------------------------
 
 _HANDOFF_BOUNDARIES: set[tuple[str, str]] = {
+    ("PLAN_ITERATE", "PLAN_REVIEW"),
+    ("PLAN_ITERATE", "IMPLEMENT"),
     ("PLAN_REVIEW", "IMPLEMENT"),
+    ("IMPL_ITERATE", "IMPL_REVIEW"),
+    ("IMPL_ITERATE", "VALIDATE"),
     ("IMPL_REVIEW", "VALIDATE"),
     ("VALIDATE", "VAL_REVIEW"),
     ("VAL_REVIEW", "SUBMIT_PR"),
@@ -630,10 +804,55 @@ def _maybe_handoff(
     prev_phase: str,
     next_phase: str,
     state: LoopState,
-    handoff_fn: Callable[[LoopState, str], None] | None,
+    handoff_fn: Callable[[LoopState, Any], str | None] | None,
+    token_meter_fn: Callable[[LoopState, str, str, str], None] | None = None,
 ) -> None:
+    """Dispatch a structured PhaseRecord handoff at known boundaries.
+
+    Builds a PhaseRecord summarizing the just-completed prev_phase via
+    handoff_builder.build_phase_record, calls handoff_fn(state, record),
+    and records the returned handoff_id (if any) on the state.
+
+    handoff_fn signature: ``Callable[[LoopState, PhaseRecord], str | None]``
+    where the return is the coordinator-issued handoff_id (or local
+    fallback marker), or None if no id could be recorded.
+
+    token_meter_fn signature:
+        ``Callable[[LoopState, event_type, prev_phase, next_phase], None]``
+    The driver calls it twice per boundary: once with event_type=
+    "phase_token_pre" before the handoff, and once with "phase_token_post"
+    after. Implementations typically call ``phase_token_meter.measure_context``
+    against the current driver context and emit an audit entry to the
+    coordinator. Failures inside token_meter_fn are caught and logged
+    (token instrumentation must never crash the loop — D9).
+    """
     if handoff_fn is None:
         return
-    if (prev_phase, next_phase) in _HANDOFF_BOUNDARIES:
-        desc = f"Transition {prev_phase} -> {next_phase} for {state.change_id}"
-        handoff_fn(state, desc)
+    if (prev_phase, next_phase) not in _HANDOFF_BOUNDARIES:
+        return
+
+    if token_meter_fn is not None:
+        try:
+            token_meter_fn(state, "phase_token_pre", prev_phase, next_phase)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("token_meter_fn (pre) failed: %s", exc)
+
+    try:
+        from handoff_builder import build_phase_record  # type: ignore[import-not-found]
+    except ImportError:
+        logger.warning(
+            "handoff_builder not importable; skipping structured handoff at %s -> %s",
+            prev_phase, next_phase,
+        )
+        return
+    record = build_phase_record(state, prev_phase, next_phase)
+    handoff_id = handoff_fn(state, record)
+    if isinstance(handoff_id, str) and handoff_id:
+        state.handoff_ids.append(handoff_id)
+        state.last_handoff_id = handoff_id
+
+    if token_meter_fn is not None:
+        try:
+            token_meter_fn(state, "phase_token_post", prev_phase, next_phase)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("token_meter_fn (post) failed: %s", exc)

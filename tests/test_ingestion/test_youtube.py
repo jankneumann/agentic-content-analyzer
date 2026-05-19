@@ -212,15 +212,23 @@ class TestCLI:
     @patch("src.ingestion.youtube.asyncio")
     @patch("src.ingestion.youtube.YouTubeContentIngestionService")
     def test_main_with_playlist_id(self, mock_service_class: Mock, mock_asyncio: Mock) -> None:
-        """Test CLI with specific playlist ID."""
+        """Test CLI with specific playlist ID.
+
+        ``ingest_playlist`` returns a ``SourceFetchResult`` post option-A
+        refactor; main() unwraps ``.items_fetched`` for printing, so the
+        asyncio.run mock must return a fetch_result, not an int.
+        """
         import sys
 
-        from src.ingestion.youtube import main
+        from src.ingestion.youtube import SourceFetchResult, main
 
+        fetch_result = SourceFetchResult(
+            url="https://www.youtube.com/playlist?list=PLtest", items_fetched=5
+        )
         mock_service = Mock()
-        mock_service.ingest_playlist = AsyncMock(return_value=5)
+        mock_service.ingest_playlist = AsyncMock(return_value=fetch_result)
         mock_service_class.return_value = mock_service
-        mock_asyncio.run.return_value = 5
+        mock_asyncio.run.return_value = fetch_result
 
         with patch.object(
             sys, "argv", ["youtube", "--playlist-id", "PLtest", "--max-videos", "20"]
@@ -233,15 +241,28 @@ class TestCLI:
     @patch("src.ingestion.youtube.asyncio")
     @patch("src.ingestion.youtube.YouTubeContentIngestionService")
     def test_main_public_only(self, mock_service_class: Mock, mock_asyncio: Mock) -> None:
-        """Test CLI with public-only flag."""
+        """Test CLI with public-only flag.
+
+        Post-harmonization, ``ingest_all_playlists`` returns an
+        ``IngestionResponse`` envelope. The legacy ``main()`` unwraps
+        ``response.items_ingested`` to print, so the asyncio.run mock must
+        return an envelope (not 0) or the unwrap raises AttributeError.
+        """
         import sys
 
+        from src.ingestion.result import IngestionResponse
         from src.ingestion.youtube import main
 
+        envelope = IngestionResponse(
+            command="ingest.youtube-playlist",
+            source="youtube-playlist",
+            status="ok",
+            items_ingested=0,
+        )
         mock_service = Mock()
-        mock_service.ingest_all_playlists = AsyncMock(return_value=0)
+        mock_service.ingest_all_playlists = AsyncMock(return_value=envelope)
         mock_service_class.return_value = mock_service
-        mock_asyncio.run.return_value = 0
+        mock_asyncio.run.return_value = envelope
 
         with patch.object(sys, "argv", ["youtube", "--public-only"]):
             main()
@@ -265,19 +286,21 @@ class TestAsyncYouTubeIngestion:
         mock_to_thread: AsyncMock,
         mock_settings: Mock,
     ) -> None:
-        """Verify 0 returned when no videos in playlist."""
+        """Verify SourceFetchResult with 0 items returned when playlist is empty."""
         mock_to_thread.return_value = []
         mock_settings.youtube_max_concurrent_videos = 5
 
         service = YouTubeContentIngestionService.__new__(YouTubeContentIngestionService)
         service.client = Mock()
 
-        count = await service.ingest_playlist(
+        result = await service.ingest_playlist(
             playlist_id="PLempty",
             max_videos=10,
         )
 
-        assert count == 0
+        assert result.items_fetched == 0
+        assert result.success is True
+        assert result.url == "https://www.youtube.com/playlist?list=PLempty"
 
     @pytest.mark.asyncio
     @patch("src.ingestion.youtube.settings")
@@ -299,6 +322,8 @@ class TestAsyncYouTubeIngestion:
         current_concurrent = 0
         lock = asyncio.Lock()
 
+        from src.ingestion.youtube import SourceFetchResult
+
         async def mock_ingest_playlist(**kwargs):
             nonlocal max_concurrent, current_concurrent
             async with lock:
@@ -307,7 +332,11 @@ class TestAsyncYouTubeIngestion:
             await asyncio.sleep(0.01)  # Simulate work
             async with lock:
                 current_concurrent -= 1
-            return 1
+            playlist_id = kwargs.get("playlist_id", "PL_test")
+            return SourceFetchResult(
+                url=f"https://www.youtube.com/playlist?list={playlist_id}",
+                items_fetched=1,
+            )
 
         service.ingest_playlist = mock_ingest_playlist
 
@@ -316,12 +345,13 @@ class TestAsyncYouTubeIngestion:
 
         sources = [YouTubePlaylistSource(id=f"PL{i}", name=f"Playlist {i}") for i in range(4)]
 
-        total = await service.ingest_all_playlists(
+        response = await service.ingest_all_playlists(
             sources=sources,
             max_videos_per_playlist=5,
         )
 
-        assert total == 4
+        assert response.items_ingested == 4
+        assert response.command == "ingest.youtube-playlist"
         # Semaphore should limit to 2 concurrent playlists
         assert max_concurrent <= 2
 
@@ -372,13 +402,18 @@ class TestAsyncYouTubeIngestion:
         ]
 
         with patch("src.ingestion.youtube.asyncio.to_thread", return_value=videos):
-            count = await service.ingest_playlist(
+            result = await service.ingest_playlist(
                 playlist_id="PLtest",
                 max_videos=10,
             )
 
-        # Only vid1 and vid3 succeed; vid2 raised an exception
-        assert count == 2
+        # Only vid1 and vid3 succeed; vid2 raised an exception which is now
+        # surfaced as items_failed=1 + an item_error pointing at vid2's URL.
+        assert result.items_fetched == 2
+        assert result.items_failed == 1
+        assert len(result.item_errors) == 1
+        assert result.item_errors[0].code == "video_processing_error"
+        assert result.item_errors[0].url == "https://www.youtube.com/watch?v=vid2"
 
 
 class TestAsyncYouTubeRSSIngestion:
@@ -401,6 +436,8 @@ class TestAsyncYouTubeRSSIngestion:
         current_concurrent = 0
         lock = asyncio.Lock()
 
+        from src.ingestion.youtube import SourceFetchResult
+
         async def mock_ingest_feed(**kwargs):
             nonlocal max_concurrent, current_concurrent
             async with lock:
@@ -409,7 +446,10 @@ class TestAsyncYouTubeRSSIngestion:
             await asyncio.sleep(0.01)
             async with lock:
                 current_concurrent -= 1
-            return 2
+            return SourceFetchResult(
+                url=kwargs.get("feed_url", "https://example.com"),
+                items_fetched=2,
+            )
 
         service.ingest_feed = mock_ingest_feed
 
@@ -423,9 +463,10 @@ class TestAsyncYouTubeRSSIngestion:
             for i in range(4)
         ]
 
-        total = await service.ingest_all_feeds(sources=sources, max_entries_per_feed=5)
+        response = await service.ingest_all_feeds(sources=sources, max_entries_per_feed=5)
 
-        assert total == 8  # 4 feeds * 2 each
+        assert response.items_ingested == 8  # 4 feeds * 2 each
+        assert response.command == "ingest.youtube-rss"
         # Semaphore should limit to 2 concurrent feeds
         assert max_concurrent <= 2
 

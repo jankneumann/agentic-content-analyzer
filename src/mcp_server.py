@@ -145,13 +145,15 @@ def ingest_gmail(
     """
     from src.ingestion.orchestrator import ingest_gmail as _ingest
 
-    count = _ingest(
+    response = _ingest(
         query=query,
         max_results=max_results,
         after_date=_parse_date(after_date),
         force_reprocess=force_reprocess,
     )
-    return _serialize({"items_ingested": count, "source": "gmail"})
+    # ingest_gmail returns IngestionResponse post round-4 harmonization;
+    # extract the int count to keep the legacy MCP shape stable.
+    return _serialize({"items_ingested": response.items_ingested, "source": "gmail"})
 
 
 @mcp.tool()
@@ -174,12 +176,15 @@ def ingest_rss(
     """
     from src.ingestion.orchestrator import ingest_rss as _ingest
 
-    count = _ingest(
+    response = _ingest(
         max_entries_per_feed=max_entries_per_feed,
         after_date=_parse_date(after_date),
         force_reprocess=force_reprocess,
     )
-    return _serialize({"items_ingested": count, "source": "rss"})
+    # ingest_rss returns IngestionResponse post-commit 4ee2c7f. Extract the int
+    # count to keep the legacy MCP shape stable; envelope-level migration of
+    # MCP wrappers is tracked in the cross-transport pass.
+    return _serialize({"items_ingested": response.items_ingested, "source": "rss"})
 
 
 @mcp.tool()
@@ -205,13 +210,16 @@ def ingest_youtube(
     """
     from src.ingestion.orchestrator import ingest_youtube as _ingest
 
-    count = _ingest(
+    response = _ingest(
         max_videos=max_videos,
         after_date=_parse_date(after_date),
         force_reprocess=force_reprocess,
         use_oauth=use_oauth,
     )
-    return _serialize({"items_ingested": count, "source": "youtube"})
+    # ingest_youtube returns IngestionResponse post-harmonization; extract the
+    # int count to keep the legacy MCP shape stable. Envelope-level migration
+    # of MCP wrappers is tracked in the cross-transport pass.
+    return _serialize({"items_ingested": response.items_ingested, "source": "youtube"})
 
 
 @mcp.tool()
@@ -234,12 +242,12 @@ def ingest_podcast(
     """
     from src.ingestion.orchestrator import ingest_podcast as _ingest
 
-    count = _ingest(
+    response = _ingest(
         max_entries_per_feed=max_entries_per_feed,
         after_date=_parse_date(after_date),
         force_reprocess=force_reprocess,
     )
-    return _serialize({"items_ingested": count, "source": "podcast"})
+    return _serialize({"items_ingested": response.items_ingested, "source": "podcast"})
 
 
 @mcp.tool()
@@ -362,13 +370,15 @@ def ingest_arxiv(
     if days is not None:
         after_date = datetime.now(UTC) - timedelta(days=days)
 
-    count = _ingest(
+    response = _ingest(
         max_results=max_results,
         after_date=after_date,
         force_reprocess=force_reprocess,
         no_pdf=no_pdf,
     )
-    return _serialize({"items_ingested": count, "source": "arxiv"})
+    # ingest_arxiv returns IngestionResponse post-harmonization round 3.
+    # Extract the int count to keep the legacy MCP shape stable.
+    return _serialize({"items_ingested": response.items_ingested, "source": "arxiv"})
 
 
 @mcp.tool()
@@ -399,12 +409,14 @@ def ingest_huggingface_papers(
     if days is not None:
         after_date = datetime.now(UTC) - timedelta(days=days)
 
-    count = _ingest(
+    response = _ingest(
         max_papers=max_papers,
         after_date=after_date,
         force_reprocess=force_reprocess,
     )
-    return _serialize({"items_ingested": count, "source": "huggingface_papers"})
+    # ingest_huggingface_papers returns IngestionResponse post-commit 4ee2c7f.
+    # Extract the int count to keep the legacy MCP shape stable.
+    return _serialize({"items_ingested": response.items_ingested, "source": "huggingface_papers"})
 
 
 @mcp.tool()
@@ -429,15 +441,17 @@ def ingest_arxiv_paper(
     """
     from src.ingestion.orchestrator import ingest_arxiv_paper as _ingest
 
-    count = _ingest(
+    response = _ingest(
         identifier=identifier,
         pdf_extraction=not no_pdf,
         force_reprocess=force_reprocess,
     )
+    # ingest_arxiv_paper returns IngestionResponse post-harmonization round 3.
+    # Extract the int count to keep the legacy MCP shape stable.
     return _serialize(
         {
             "identifier": identifier,
-            "items_ingested": count,
+            "items_ingested": response.items_ingested,
             "source": "arxiv-paper",
         }
     )
@@ -467,8 +481,21 @@ def ingest_url(
     from src.ingestion.orchestrator import ingest_url as _ingest
 
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
-    result = _ingest(url=url, title=title, tags=tag_list, notes=notes)
-    return _serialize(result)
+    response = _ingest(url=url, title=title, tags=tag_list, notes=notes)
+    # ingest_url returns IngestionResponse post round-4 harmonization;
+    # the legacy MCP shape (content_id/status/duplicate flat keys) lives
+    # in ``response.details``. Keeping the flat shape stable for the
+    # agentic-assistant consumer until the cross-transport pass migrates
+    # MCP wrappers to the canonical envelope.
+    details = response.details
+    return _serialize(
+        {
+            "content_id": details.get("content_id"),
+            "status": details.get("status"),
+            "duplicate": details.get("duplicate"),
+            "source": "url",
+        }
+    )
 
 
 # ===========================================================================
@@ -772,8 +799,11 @@ def run_pipeline(digest_type: str = "daily") -> str:
 
     for name, func in sources.items():
         try:
-            count = func()
-            ingestion_results[name] = count
+            # All five orchestrator entry points return IngestionResponse
+            # post round-4 harmonization; extract the int count to keep
+            # the legacy MCP run_pipeline aggregation stable.
+            result = func()
+            ingestion_results[name] = result.items_ingested
         except Exception as e:
             ingestion_results[name] = 0
             results.setdefault("errors", {})[f"ingest_{name}"] = str(e)

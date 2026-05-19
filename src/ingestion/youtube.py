@@ -26,6 +26,12 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import NoTranscriptFound, TranscriptsDisabled
 
 from src.config import settings
+from src.ingestion.result import (
+    IngestionError,
+    IngestionResponse,
+    SourceFetchResult,
+    build_response_from_source_results,
+)
 from src.models.content import Content, ContentSource, ContentStatus
 from src.models.youtube import TranscriptSegment, YouTubeTranscript
 from src.storage.database import get_db
@@ -34,6 +40,16 @@ from src.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from src.config.sources import YouTubeChannelSource, YouTubePlaylistSource, YouTubeRSSSource
+
+
+# Note on YouTube per-item failure tracking:
+# YouTube's source-level errors (stale OAuth, channel-not-resolvable, feed 5xx)
+# populate ``error``/``error_type`` and flip ``success`` to False. Per-item
+# failures inside a source (transcript fetch errors, etc.) are NOT tracked on
+# ``items_failed`` today — ``_process_video`` returns False for both transient
+# errors and intentional skips (no transcript, dedup, force=False), and we
+# intentionally don't conflate skips with failures. Future work could promote
+# raised exceptions inside ``_process_video`` to ``items_failed``.
 
 logger = get_logger(__name__)
 
@@ -839,7 +855,7 @@ class YouTubeContentIngestionService:
         gemini_resolution: str = "default",
         proofread: bool = True,
         hint_terms: list[str] | None = None,
-    ) -> int:
+    ) -> SourceFetchResult:
         """Ingest content from a YouTube playlist as Content records.
 
         Supports two content extraction paths:
@@ -861,9 +877,15 @@ class YouTubeContentIngestionService:
             hint_terms: Per-playlist hint terms for proofreading.
 
         Returns:
-            Number of content items ingested
+            SourceFetchResult tracking items_fetched (videos persisted),
+            items_failed (videos that raised exceptions during processing),
+            and item_errors (one IngestionError per failed video). Aggregators
+            override ``name`` (and for channels, ``url``) before consuming.
         """
         logger.info(f"Starting YouTube content ingestion for playlist {playlist_id}...")
+
+        playlist_url = f"https://www.youtube.com/playlist?list={playlist_id}"
+        fetch_result = SourceFetchResult(url=playlist_url)
 
         if languages is None:
             languages = DEFAULT_LANGUAGES
@@ -878,7 +900,7 @@ class YouTubeContentIngestionService:
 
         if not videos:
             logger.info("No videos found in playlist")
-            return 0
+            return fetch_result
 
         # Process videos in parallel with concurrency limit
         semaphore = asyncio.Semaphore(settings.youtube_max_concurrent_videos)
@@ -899,15 +921,37 @@ class YouTubeContentIngestionService:
         tasks = [process_with_limit(v) for v in videos]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        count = sum(1 for r in results if r is True)
+        fetch_result.items_fetched = sum(1 for r in results if r is True)
 
-        # Log exceptions
-        for r in results:
+        # Surface per-video exceptions as item-level errors. _process_video
+        # itself catches its own exceptions and returns False (logged + not
+        # surfaced) — exceptions reaching gather are unhandled (programming
+        # errors, transport failures inside the thread call). Both cases get
+        # logged; only the latter promote to items_failed/item_errors so the
+        # envelope reports honest signal rather than conflating skips/dedupes
+        # with real failures.
+        for video, r in zip(videos, results, strict=False):
             if isinstance(r, Exception):
                 logger.error(f"Unexpected error in video processing: {r}")
+                fetch_result.items_failed += 1
+                video_url = (
+                    f"https://www.youtube.com/watch?v={video.get('video_id')}"
+                    if video.get("video_id")
+                    else playlist_url
+                )
+                fetch_result.item_errors.append(
+                    IngestionError(
+                        code="video_processing_error",
+                        message=str(r),
+                        url=video_url,
+                    )
+                )
 
-        logger.info(f"Successfully ingested {count} content items")
-        return count
+        logger.info(
+            f"Successfully ingested {fetch_result.items_fetched} content items "
+            f"({fetch_result.items_failed} failed)"
+        )
+        return fetch_result
 
     async def ingest_all_playlists(
         self,
@@ -916,7 +960,7 @@ class YouTubeContentIngestionService:
         max_videos_per_playlist: int = 10,
         after_date: datetime | None = None,
         force_reprocess: bool = False,
-    ) -> int:
+    ) -> IngestionResponse:
         """Ingest transcripts from multiple playlists as Content records.
 
         Source resolution (in priority order):
@@ -925,8 +969,16 @@ class YouTubeContentIngestionService:
         3. SourcesConfig (YAML files)
         4. Legacy settings (youtube_playlists.txt)
 
-        Sources with visibility='private' are skipped when OAuth is unavailable.
+        Sources with visibility='private' are skipped when OAuth is unavailable
+        and emit an IngestionError(code='oauth_unavailable') on the envelope.
+
+        Returns:
+            Canonical IngestionResponse envelope (command='ingest.youtube-playlist',
+            source='youtube-playlist'). Per-playlist failures populate ``errors``;
+            total ingested videos populate ``items_ingested``.
         """
+        source_results: list[SourceFetchResult] = []
+
         # --- Source resolution ---
         resolved_sources: list[YouTubePlaylistSource] = []
 
@@ -954,16 +1006,29 @@ class YouTubeContentIngestionService:
 
         if not resolved_sources:
             logger.warning("No YouTube playlists configured")
-            return 0
+            return build_response_from_source_results(
+                command="ingest.youtube-playlist",
+                source="youtube-playlist",
+                items_ingested=0,
+                source_results=source_results,
+            )
 
         # --- Visibility filtering ---
-        skipped_private = 0
         eligible_sources: list[YouTubePlaylistSource] = []
         for source in resolved_sources:
+            playlist_url = f"https://www.youtube.com/playlist?list={source.id}"
             if source.visibility == "private" and not self.client.oauth_available:
-                skipped_private += 1
                 logger.warning(
                     f"Skipping private playlist '{source.name or source.id}' (OAuth not available)"
+                )
+                source_results.append(
+                    SourceFetchResult(
+                        url=playlist_url,
+                        name=source.name,
+                        success=False,
+                        error="OAuth not available for private playlist",
+                        error_type="oauth_unavailable",
+                    )
                 )
                 continue
             eligible_sources.append(source)
@@ -971,11 +1036,11 @@ class YouTubeContentIngestionService:
         # --- Parallel playlist processing ---
         semaphore = asyncio.Semaphore(settings.youtube_max_concurrent_playlists)
 
-        async def ingest_one(source: YouTubePlaylistSource) -> int:
+        async def ingest_one(source: YouTubePlaylistSource) -> SourceFetchResult:
             async with semaphore:
                 try:
                     max_videos = source.max_entries or max_videos_per_playlist
-                    return await self.ingest_playlist(
+                    fetch_result = await self.ingest_playlist(
                         playlist_id=source.id,
                         max_videos=max_videos,
                         after_date=after_date,
@@ -985,24 +1050,50 @@ class YouTubeContentIngestionService:
                         proofread=source.proofread,
                         hint_terms=source.hint_terms if source.hint_terms else None,
                     )
+                    # Inner method built fetch_result with the playlist URL but
+                    # doesn't know the configured display name — set it here.
+                    fetch_result.name = source.name
+                    return fetch_result
                 except Exception as e:
                     logger.error(f"Error ingesting playlist {source.name or source.id}: {e}")
-                    return 0
+                    return SourceFetchResult(
+                        url=f"https://www.youtube.com/playlist?list={source.id}",
+                        name=source.name,
+                        success=False,
+                        error=str(e),
+                        error_type="playlist_ingest_error",
+                    )
 
         tasks = [ingest_one(s) for s in eligible_sources]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        gathered = await asyncio.gather(*tasks, return_exceptions=True)
 
         total = 0
-        for r in results:
-            if isinstance(r, int):
-                total += r
+        for r in gathered:
+            if isinstance(r, SourceFetchResult):
+                source_results.append(r)
+                if r.success:
+                    total += r.items_fetched
             elif isinstance(r, Exception):
                 logger.error(f"Unexpected error in playlist processing: {r}")
+                source_results.append(
+                    SourceFetchResult(
+                        url="(unknown)",
+                        success=False,
+                        error=str(r),
+                        error_type="unexpected_error",
+                    )
+                )
 
+        skipped_private = sum(1 for r in source_results if r.error_type == "oauth_unavailable")
         if skipped_private:
             logger.info(f"Skipped {skipped_private} private playlist(s) due to missing OAuth")
 
-        return total
+        return build_response_from_source_results(
+            command="ingest.youtube-playlist",
+            source="youtube-playlist",
+            items_ingested=total,
+            source_results=source_results,
+        )
 
     async def ingest_channels(
         self,
@@ -1010,7 +1101,7 @@ class YouTubeContentIngestionService:
         max_videos_per_channel: int = 10,
         after_date: datetime | None = None,
         force_reprocess: bool = False,
-    ) -> int:
+    ) -> IngestionResponse:
         """Ingest transcripts from YouTube channels by resolving to uploads playlists.
 
         Each channel is resolved to its uploads playlist via the YouTube Data API,
@@ -1020,8 +1111,18 @@ class YouTubeContentIngestionService:
         1. sources parameter (YouTubeChannelSource objects)
         2. SourcesConfig (YAML files)
 
-        Sources with visibility='private' are skipped when OAuth is unavailable.
+        Sources with visibility='private' are skipped when OAuth is unavailable
+        and emit an IngestionError(code='oauth_unavailable') on the envelope.
+        Channels that don't resolve to an uploads playlist emit
+        IngestionError(code='channel_unresolvable').
+
+        Returns:
+            Canonical IngestionResponse envelope (command='ingest.youtube-playlist',
+            source='youtube-playlist' — channels are aggregated under the playlist
+            command since the orchestrator combines both).
         """
+        source_results: list[SourceFetchResult] = []
+
         # --- Source resolution ---
         resolved_sources: list[YouTubeChannelSource] = []
 
@@ -1033,17 +1134,30 @@ class YouTubeContentIngestionService:
 
         if not resolved_sources:
             logger.info("No YouTube channels configured")
-            return 0
+            return build_response_from_source_results(
+                command="ingest.youtube-playlist",
+                source="youtube-playlist",
+                items_ingested=0,
+                source_results=source_results,
+            )
 
         # --- Visibility filtering ---
-        skipped_private = 0
         eligible_sources: list[YouTubeChannelSource] = []
         for source in resolved_sources:
+            channel_url = f"https://www.youtube.com/channel/{source.channel_id}"
             if source.visibility == "private" and not self.client.oauth_available:
-                skipped_private += 1
                 logger.warning(
                     f"Skipping private channel '{source.name or source.channel_id}' "
                     "(OAuth not available)"
+                )
+                source_results.append(
+                    SourceFetchResult(
+                        url=channel_url,
+                        name=source.name,
+                        success=False,
+                        error="OAuth not available for private channel",
+                        error_type="oauth_unavailable",
+                    )
                 )
                 continue
             eligible_sources.append(source)
@@ -1051,7 +1165,8 @@ class YouTubeContentIngestionService:
         # --- Parallel channel processing ---
         semaphore = asyncio.Semaphore(settings.youtube_max_concurrent_playlists)
 
-        async def ingest_one(source: YouTubeChannelSource) -> int:
+        async def ingest_one(source: YouTubeChannelSource) -> SourceFetchResult:
+            channel_url = f"https://www.youtube.com/channel/{source.channel_id}"
             async with semaphore:
                 # Resolve channel to uploads playlist (sync API call)
                 playlist_id = await asyncio.to_thread(
@@ -1062,11 +1177,17 @@ class YouTubeContentIngestionService:
                         f"Could not resolve channel '{source.name or source.channel_id}' "
                         "to uploads playlist, skipping"
                     )
-                    return 0
+                    return SourceFetchResult(
+                        url=channel_url,
+                        name=source.name,
+                        success=False,
+                        error="Could not resolve channel to uploads playlist",
+                        error_type="channel_unresolvable",
+                    )
 
                 try:
                     max_videos = source.max_entries or max_videos_per_channel
-                    return await self.ingest_playlist(
+                    fetch_result = await self.ingest_playlist(
                         playlist_id=playlist_id,
                         max_videos=max_videos,
                         after_date=after_date,
@@ -1077,24 +1198,52 @@ class YouTubeContentIngestionService:
                         proofread=source.proofread,
                         hint_terms=source.hint_terms if source.hint_terms else None,
                     )
+                    # Override URL/name so the envelope reports the channel
+                    # the user configured (not the resolved uploads playlist).
+                    # Per-video item_errors retain their original watch?v= URLs.
+                    fetch_result.url = channel_url
+                    fetch_result.name = source.name
+                    return fetch_result
                 except Exception as e:
                     logger.error(f"Error ingesting channel {source.name or source.channel_id}: {e}")
-                    return 0
+                    return SourceFetchResult(
+                        url=channel_url,
+                        name=source.name,
+                        success=False,
+                        error=str(e),
+                        error_type="channel_ingest_error",
+                    )
 
         tasks = [ingest_one(s) for s in eligible_sources]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        gathered = await asyncio.gather(*tasks, return_exceptions=True)
 
         total = 0
-        for r in results:
-            if isinstance(r, int):
-                total += r
+        for r in gathered:
+            if isinstance(r, SourceFetchResult):
+                source_results.append(r)
+                if r.success:
+                    total += r.items_fetched
             elif isinstance(r, Exception):
                 logger.error(f"Unexpected error in channel processing: {r}")
+                source_results.append(
+                    SourceFetchResult(
+                        url="(unknown)",
+                        success=False,
+                        error=str(r),
+                        error_type="unexpected_error",
+                    )
+                )
 
+        skipped_private = sum(1 for r in source_results if r.error_type == "oauth_unavailable")
         if skipped_private:
             logger.info(f"Skipped {skipped_private} private channel(s) due to missing OAuth")
 
-        return total
+        return build_response_from_source_results(
+            command="ingest.youtube-playlist",
+            source="youtube-playlist",
+            items_ingested=total,
+            source_results=source_results,
+        )
 
     async def _extract_keyframes(
         self,
@@ -1239,7 +1388,7 @@ class YouTubeRSSIngestionService:
         *,
         gemini_summary: bool = True,
         gemini_resolution: str = "low",
-    ) -> int:
+    ) -> SourceFetchResult:
         """Ingest videos from a single YouTube RSS feed.
 
         Supports Gemini native video extraction (with low resolution by default
@@ -1256,14 +1405,19 @@ class YouTubeRSSIngestionService:
             gemini_resolution: Resolution for Gemini (default: low for RSS).
 
         Returns:
-            Number of content items ingested
+            SourceFetchResult tracking items_fetched (videos persisted),
+            items_failed (videos that raised exceptions during processing),
+            and item_errors. The aggregator collects these without further
+            wrapping.
         """
+        fetch_result = SourceFetchResult(url=feed_url, name=source_name)
+
         # feedparser is sync — run in thread
         videos = await asyncio.to_thread(self._parse_feed, feed_url, max_entries)
 
         if not videos:
             logger.info(f"No videos found in RSS feed: {feed_url}")
-            return 0
+            return fetch_result
 
         # Process videos in parallel with concurrency limit
         semaphore = asyncio.Semaphore(settings.youtube_max_concurrent_videos)
@@ -1284,14 +1438,29 @@ class YouTubeRSSIngestionService:
         tasks = [process_one(v) for v in videos]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        count = sum(1 for r in results if r is True)
+        fetch_result.items_fetched = sum(1 for r in results if r is True)
 
-        # Log exceptions
-        for r in results:
+        # Promote exceptions reaching gather to item-level errors. Per-video
+        # internal failures inside _process_rss_video are caught + logged
+        # there and don't surface here — only unhandled exceptions do.
+        for video, r in zip(videos, results, strict=False):
             if isinstance(r, Exception):
                 logger.error(f"Unexpected error in RSS video processing: {r}")
+                fetch_result.items_failed += 1
+                video_url = (
+                    f"https://www.youtube.com/watch?v={video.get('video_id')}"
+                    if video.get("video_id")
+                    else feed_url
+                )
+                fetch_result.item_errors.append(
+                    IngestionError(
+                        code="video_processing_error",
+                        message=str(r),
+                        url=video_url,
+                    )
+                )
 
-        return count
+        return fetch_result
 
     async def _process_rss_video(
         self,
@@ -1429,13 +1598,20 @@ class YouTubeRSSIngestionService:
         max_entries_per_feed: int = 10,
         after_date: datetime | None = None,
         force_reprocess: bool = False,
-    ) -> int:
+    ) -> IngestionResponse:
         """Ingest videos from multiple YouTube RSS feeds.
 
         Source resolution:
         1. sources parameter (YouTubeRSSSource objects)
         2. SourcesConfig (YAML files)
+
+        Returns:
+            Canonical IngestionResponse envelope (command='ingest.youtube-rss',
+            source='youtube-rss'). Per-feed failures populate ``errors`` with
+            code='feed_ingest_error'.
         """
+        source_results: list[SourceFetchResult] = []
+
         resolved_sources: list[YouTubeRSSSource] = []
 
         if sources is not None:
@@ -1446,14 +1622,19 @@ class YouTubeRSSIngestionService:
 
         if not resolved_sources:
             logger.info("No YouTube RSS feeds configured")
-            return 0
+            return build_response_from_source_results(
+                command="ingest.youtube-rss",
+                source="youtube-rss",
+                items_ingested=0,
+                source_results=source_results,
+            )
 
         logger.info(f"Processing {len(resolved_sources)} YouTube RSS feed(s)")
 
         # Process feeds in parallel with concurrency limit
         semaphore = asyncio.Semaphore(settings.youtube_max_concurrent_playlists)
 
-        async def ingest_one(source: YouTubeRSSSource) -> int:
+        async def ingest_one(source: YouTubeRSSSource) -> SourceFetchResult:
             async with semaphore:
                 feed_label = source.name or source.url
                 logger.debug(f"Fetching RSS feed: {feed_label}")
@@ -1471,22 +1652,44 @@ class YouTubeRSSIngestionService:
                     )
                 except Exception as e:
                     logger.error(f"Error ingesting YouTube RSS feed {feed_label}: {e}")
-                    return 0
+                    return SourceFetchResult(
+                        url=source.url,
+                        name=source.name,
+                        success=False,
+                        error=str(e),
+                        error_type="feed_ingest_error",
+                    )
 
         tasks = [ingest_one(s) for s in resolved_sources]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        gathered = await asyncio.gather(*tasks, return_exceptions=True)
 
         total = 0
-        for r in results:
-            if isinstance(r, int):
-                total += r
+        for r in gathered:
+            if isinstance(r, SourceFetchResult):
+                source_results.append(r)
+                if r.success:
+                    total += r.items_fetched
             elif isinstance(r, Exception):
                 logger.error(f"Unexpected error in RSS feed processing: {r}")
+                source_results.append(
+                    SourceFetchResult(
+                        url="(unknown)",
+                        success=False,
+                        error=str(r),
+                        error_type="unexpected_error",
+                    )
+                )
 
         logger.info(
-            f"YouTube RSS feed ingestion complete: {total} item(s) from {len(resolved_sources)} feed(s)"
+            f"YouTube RSS feed ingestion complete: {total} item(s) from "
+            f"{len(resolved_sources)} feed(s)"
         )
-        return total
+        return build_response_from_source_results(
+            command="ingest.youtube-rss",
+            source="youtube-rss",
+            items_ingested=total,
+            source_results=source_results,
+        )
 
 
 def main() -> None:
@@ -1543,9 +1746,12 @@ def main() -> None:
     # Create service (uses unified Content model)
     service = YouTubeContentIngestionService(use_oauth=not args.public_only)
 
-    # Ingest using asyncio.run() for the async service methods
+    # Ingest using asyncio.run() for the async service methods. After the
+    # option-A refactor, ingest_playlist returns SourceFetchResult and
+    # ingest_all_playlists returns IngestionResponse — both expose an
+    # items count under different field names.
     if args.playlist_id:
-        count = asyncio.run(
+        fetch_result = asyncio.run(
             service.ingest_playlist(
                 playlist_id=args.playlist_id,
                 max_videos=args.max_videos,
@@ -1553,14 +1759,16 @@ def main() -> None:
                 force_reprocess=args.force,
             )
         )
+        count = fetch_result.items_fetched
     else:
-        count = asyncio.run(
+        response = asyncio.run(
             service.ingest_all_playlists(
                 max_videos_per_playlist=args.max_videos,
                 after_date=after_date,
                 force_reprocess=args.force,
             )
         )
+        count = response.items_ingested
 
     print(f"Ingested {count} content items")
 

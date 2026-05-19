@@ -248,6 +248,7 @@ web/.vite/
 
 # Claude Code local settings
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 # Gemini AI local settings (settings only, skills are tracked)
 .gemini/settings.json

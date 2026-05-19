@@ -107,20 +107,32 @@ class TestSetupOtelLogBridge:
 
     @pytest.mark.usefixtures("otel_log_bridge_cleanup")
     def test_logging_handler_attached_to_root(self, _enabled_settings, test_resource):
-        """A LoggingHandler should be added to the root logger."""
-        root_handlers_before = len(logging.getLogger().handlers)
+        """A LoggingHandler should be added to the root logger.
+
+        We check the *count of LoggingHandlers specifically* rather than
+        the total handler count. CI runs the rest shard in a single
+        pytest session and earlier tests may have added or removed
+        StreamHandlers (logging.basicConfig, caplog, etc.); the strict
+        "handlers_after == handlers_before + 1" assertion was tripping on
+        that. The invariant we actually care about is "a LoggingHandler
+        is attached" — which is exactly what we verify below.
+        """
+        from opentelemetry.sdk._logs import LoggingHandler
 
         import src.telemetry.log_setup as log_setup_module
         from src.telemetry.log_setup import setup_otel_log_bridge
 
+        logging_handlers_before = [
+            h for h in logging.getLogger().handlers if isinstance(h, LoggingHandler)
+        ]
         setup_otel_log_bridge(resource=test_resource)
+        logging_handlers_after = [
+            h for h in logging.getLogger().handlers if isinstance(h, LoggingHandler)
+        ]
 
-        root_handlers_after = len(logging.getLogger().handlers)
-        assert root_handlers_after == root_handlers_before + 1
+        assert len(logging_handlers_after) == len(logging_handlers_before) + 1
 
-        from opentelemetry.sdk._logs import LoggingHandler
-
-        new_handler = logging.getLogger().handlers[-1]
+        new_handler = logging_handlers_after[-1]
         assert isinstance(new_handler, LoggingHandler)
 
         # Verify module-level handler reference is set

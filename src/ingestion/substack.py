@@ -20,6 +20,12 @@ from substack_api import Newsletter, Post, SubstackAuth
 from src.config import settings
 from src.config.sources import SourceFileConfig, SubstackSource
 from src.ingestion.gmail import ContentData
+from src.ingestion.result import (
+    IngestionError,
+    IngestionResponse,
+    SourceFetchResult,
+    build_response_from_source_results,
+)
 from src.models.content import Content, ContentSource, ContentStatus
 from src.parsers.html_markdown import convert_html_to_markdown
 from src.storage.database import get_db
@@ -238,8 +244,9 @@ class SubstackContentIngestionService:
         max_entries_per_source: int = 10,
         after_date: datetime | None = None,
         force_reprocess: bool = False,
-    ) -> int:
+    ) -> IngestionResponse:
         logger.info("Starting Substack content ingestion...")
+        source_results: list[SourceFetchResult] = []
 
         if sources is None:
             sources_config = settings.get_sources_config()
@@ -247,7 +254,12 @@ class SubstackContentIngestionService:
 
         if not sources:
             logger.warning("No Substack sources configured. Add sources to sources.d/substack.yaml")
-            return 0
+            return build_response_from_source_results(
+                command="ingest.substack",
+                source="substack",
+                items_ingested=0,
+                source_results=source_results,
+            )
 
         enabled_sources = [s for s in sources if s.enabled]
         logger.info(
@@ -255,25 +267,45 @@ class SubstackContentIngestionService:
             f"({len(sources) - len(enabled_sources)} disabled)"
         )
 
-        contents: list[ContentData] = []
+        # Track contents alongside the source they came from so per-source
+        # diagnostics survive the flat persistence loop below.
+        contents: list[tuple[ContentData, SourceFetchResult]] = []
         for source in enabled_sources:
+            fetch_result = SourceFetchResult(url=source.url, name=source.name)
+            source_results.append(fetch_result)
             max_entries = source.max_entries or max_entries_per_source
             posts = self.client.fetch_posts(source.url, max_entries=max_entries)
             for post in posts:
-                content = self._post_to_content(self._coerce_post(post), source)
+                coerced = self._coerce_post(post)
+                content = self._post_to_content(coerced, source)
                 if content is None:
+                    fetch_result.items_failed += 1
+                    post_url = coerced.get("canonical_url") or coerced.get("url") or source.url
+                    fetch_result.item_errors.append(
+                        IngestionError(
+                            code="extraction_failed",
+                            message="Empty or paywalled post body",
+                            url=post_url,
+                        )
+                    )
                     continue
                 if after_date and content.published_date and content.published_date < after_date:
                     continue
-                contents.append(content)
+                contents.append((content, fetch_result))
 
         if not contents:
             logger.info("No Substack content found")
-            return 0
+            return build_response_from_source_results(
+                command="ingest.substack",
+                source="substack",
+                items_ingested=0,
+                source_results=source_results,
+            )
 
         count = 0
+        persistence_errors: list[IngestionError] = []
         with get_db() as db:
-            for content_data in contents:
+            for content_data, _source_result in contents:
                 try:
                     existing = (
                         db.query(Content)
@@ -400,10 +432,24 @@ class SubstackContentIngestionService:
                 except Exception as exc:
                     logger.error(f"Error storing content: {exc}")
                     db.rollback()
+                    persistence_errors.append(
+                        IngestionError(
+                            code="persistence_error",
+                            message=str(exc),
+                            url=content_data.source_url,
+                        )
+                    )
                     continue
 
         logger.info(f"Successfully ingested {count} Substack items")
-        return count
+        return build_response_from_source_results(
+            command="ingest.substack",
+            source="substack",
+            items_ingested=count,
+            source_results=source_results,
+            extra_item_errors=persistence_errors,
+            extra_items_failed=len(persistence_errors),
+        )
 
     def _post_to_content(self, post: dict[str, Any], source: SubstackSource) -> ContentData | None:
         title = post.get("title") or post.get("subject") or "Untitled"

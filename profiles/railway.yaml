@@ -1,7 +1,25 @@
-# Railway Deployment Profile
-# ===========================
-# Extends base profile for Railway.app deployment.
-# Uses Railway PostgreSQL, MinIO for storage, and Neo4j AuraDB.
+# Railway Deployment Profile — Shared Base
+# =========================================
+# Railway.app deployment settings with sensible defaults. Compose with
+# overlay profiles to pick the graph backend; this profile defaults to
+# ParadeDB-on-Railway for the relational DB.
+#
+# Two orthogonal choice axes:
+#
+#   Relational DB (Postgres):
+#     - Default (this profile):           ParadeDB on Railway
+#                                         (image: ghcr.io/jankneumann/aca-postgres:17-railway)
+#     - PROFILE=railway-neon              Neon (with branching for agent workflows)
+#     - PROFILE=railway-supabase          Supabase (currently no sibling — extend supabase-cloud)
+#
+#   Graph DB:
+#     - PROFILE=railway-falkordb          FalkorDB (current production default)
+#     - PROFILE=railway-neo4j             Neo4j AuraDB (legacy/alternative)
+#
+# Pick one overlay per axis. Profile inheritance only supports a single
+# parent; if you need a non-default combination on both axes (e.g. Neon
+# RDB + FalkorDB graph), create a dedicated leaf profile that extends
+# one and overrides the other.
 #
 # Railway auto-injects these environment variables:
 #   - RAILWAY_DATABASE_URL (or DATABASE_URL)
@@ -13,24 +31,18 @@
 #   See railway/postgres/README.md for deployment instructions
 #
 # Required secrets in .secrets.yaml or environment:
-#   - NEO4J_AURADB_URI
-#   - NEO4J_AURADB_PASSWORD
 #   - LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY (for observability)
 #   - ANTHROPIC_API_KEY
+#   - graph-backend credentials (see sibling profile)
 #
 # Override to Braintrust: set OBSERVABILITY_PROVIDER=braintrust and BRAINTRUST_API_KEY
-#
-# Usage:
-#   Set PROFILE=railway in Railway service variables
 
 name: railway
 extends: base
-description: Railway.app production deployment
+description: Shared Railway deployment base — pick railway-falkordb or railway-neo4j sibling
 
 providers:
   database: railway
-  graphdb: neo4j       # top-level graph backend
-  neo4j: auradb        # kept for backward compat
   storage: railway
   observability: langfuse
 
@@ -58,13 +70,9 @@ settings:
     railway_pool_timeout: 30
 
   graphdb:
+    # Both Railway variants run their graph DB in cloud mode
+    # (AuraDB managed service or FalkorDB Railway service)
     graphdb_mode: cloud
-
-  neo4j:
-    # Neo4j AuraDB (free tier available)
-    neo4j_auradb_uri: "${NEO4J_AURADB_URI:-}"
-    neo4j_auradb_user: neo4j
-    neo4j_auradb_password: "${NEO4J_AURADB_PASSWORD:-}"
 
   storage:
     # Railway MinIO (auto-injected credentials)

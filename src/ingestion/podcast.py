@@ -18,6 +18,12 @@ import feedparser
 import httpx
 
 from src.config import settings
+from src.ingestion.result import (
+    IngestionError,
+    IngestionResponse,
+    SourceFetchResult,
+    build_response_from_source_results,
+)
 from src.models.content import Content, ContentSource, ContentStatus
 from src.storage.database import get_db
 from src.utils.content_hash import generate_markdown_hash
@@ -178,7 +184,7 @@ class PodcastContentIngestionService:
         transcribe: bool = True,
         stt_provider: str = "openai",
         languages: list[str] | None = None,
-    ) -> int:
+    ) -> SourceFetchResult:
         """Ingest episodes from a single podcast feed.
 
         For each episode, tries the 3-tier transcript strategy:
@@ -187,15 +193,20 @@ class PodcastContentIngestionService:
         3. Audio transcription (if transcribe=True and audio_url available)
 
         Returns:
-            Number of episodes ingested
+            SourceFetchResult with ``items_fetched`` (persisted episodes),
+            ``items_failed`` (persistence errors), and ``item_errors``
+            (per-episode error entries). Source-level success is always
+            True at this layer; the aggregator (``ingest_all_feeds``)
+            promotes outer exceptions to ``success=False``.
         """
+        result = SourceFetchResult(url=feed_url, name=source_name)
+
         episodes = self.client.fetch_feed(feed_url, max_entries=max_entries)
 
         if not episodes:
             logger.info(f"No episodes found in podcast feed: {feed_url}")
-            return 0
+            return result
 
-        count = 0
         with get_db() as db:
             # Filter by date first to reduce processing set
             if after_date:
@@ -206,7 +217,7 @@ class PodcastContentIngestionService:
                 ]
 
             if not episodes:
-                return 0
+                return result
 
             # OPTIMIZATION: Bulk check for existing episodes to avoid N+1 queries
             existing_source_ids = set()
@@ -299,13 +310,21 @@ class PodcastContentIngestionService:
                     db.add(content)
                     db.commit()
                     existing_source_ids.add(source_id)
-                    count += 1
+                    result.items_fetched += 1
                 except Exception as e:
                     logger.error(f"Error creating content for episode '{episode['title']}': {e}")
                     db.rollback()
+                    result.items_failed += 1
+                    result.item_errors.append(
+                        IngestionError(
+                            code="persistence_error",
+                            message=str(e),
+                            url=episode.get("link"),
+                        )
+                    )
                     continue
 
-        return count
+        return result
 
     def ingest_all_feeds(
         self,
@@ -313,12 +332,18 @@ class PodcastContentIngestionService:
         max_entries_per_feed: int = 10,
         after_date: datetime | None = None,
         force_reprocess: bool = False,
-    ) -> int:
+    ) -> IngestionResponse:
         """Ingest episodes from multiple podcast feeds.
 
         Source resolution:
         1. sources parameter (PodcastSource objects)
         2. SourcesConfig (YAML files)
+
+        Returns:
+            Canonical ``IngestionResponse`` envelope. Per-feed outcomes
+            (including outer-level fetch exceptions promoted to
+            ``success=False``) are aggregated via
+            ``build_response_from_source_results``.
         """
         resolved_sources: list[PodcastSource] = []
 
@@ -328,15 +353,22 @@ class PodcastContentIngestionService:
             config = settings.get_sources_config()
             resolved_sources = config.get_podcast_sources()
 
+        source_results: list[SourceFetchResult] = []
+
         if not resolved_sources:
             logger.info("No podcast sources configured")
-            return 0
+            return build_response_from_source_results(
+                command="ingest.podcast",
+                source="podcast",
+                items_ingested=0,
+                source_results=source_results,
+            )
 
         total = 0
         for source in resolved_sources:
             try:
                 max_entries = source.max_entries or max_entries_per_feed
-                count = self.ingest_feed(
+                fetch_result = self.ingest_feed(
                     feed_url=source.url,
                     max_entries=max_entries,
                     after_date=after_date,
@@ -347,12 +379,27 @@ class PodcastContentIngestionService:
                     stt_provider=source.stt_provider,
                     languages=source.languages if source.languages else None,
                 )
-                total += count
+                source_results.append(fetch_result)
+                total += fetch_result.items_fetched
             except Exception as e:
                 logger.error(f"Error ingesting podcast feed {source.name or source.url}: {e}")
+                source_results.append(
+                    SourceFetchResult(
+                        url=source.url,
+                        name=source.name,
+                        success=False,
+                        error=str(e),
+                        error_type="feed_ingest_error",
+                    )
+                )
                 continue
 
-        return total
+        return build_response_from_source_results(
+            command="ingest.podcast",
+            source="podcast",
+            items_ingested=total,
+            source_results=source_results,
+        )
 
     def _to_markdown(self, episode: dict[str, Any], transcript_text: str) -> str:
         """Convert episode transcript to markdown format."""

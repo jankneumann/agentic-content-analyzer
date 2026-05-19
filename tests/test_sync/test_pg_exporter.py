@@ -44,6 +44,36 @@ class TestRowToDict:
         result = _row_to_dict(mapping, MagicMock())
         assert result["data"] == "010203"
 
+    def test_strenum_serialized_as_value(self) -> None:
+        from src.models.digest import DigestType
+
+        mapping = {"digest_type": DigestType.DAILY}
+        result = _row_to_dict(mapping, MagicMock())
+        assert result["digest_type"] == "daily"
+        assert result["digest_type"] != "DAILY"
+
+    def test_plain_enum_serialized_as_value(self) -> None:
+        from enum import Enum
+
+        class Color(Enum):
+            RED = "red"
+            BLUE = "blue"
+
+        mapping = {"color": Color.RED}
+        result = _row_to_dict(mapping, MagicMock())
+        assert result["color"] == "red"
+
+    def test_enum_round_trips_through_json(self) -> None:
+        import json
+
+        from src.models.digest import DigestStatus, DigestType
+
+        mapping = {"digest_type": DigestType.WEEKLY, "status": DigestStatus.PENDING}
+        result = _row_to_dict(mapping, MagicMock())
+        parsed = json.loads(json.dumps(result))
+        assert parsed["digest_type"] == "weekly"
+        assert parsed["status"] == "PENDING"
+
 
 class TestPGExporterResolveTable:
     """Test table resolution and validation."""

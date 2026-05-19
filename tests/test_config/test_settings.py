@@ -149,6 +149,82 @@ class TestDatabaseProviderValidation:
         assert "***" in error_str
 
 
+class TestNeo4jProviderValidation:
+    """Tests for the validate_neo4j_provider_config validator.
+
+    The validator must require NEO4J_AURADB_URI / NEO4J_AURADB_PASSWORD only
+    when graphdb_provider=neo4j is the active backend. Profiles that pin
+    neo4j_provider=auradb for back-compat while running on FalkorDB
+    (graphdb_provider=falkordb) must NOT trip the AuraDB credential check.
+    """
+
+    @pytest.fixture(autouse=True)
+    def clear_env(self):
+        from src.config.settings import get_settings
+
+        get_settings.cache_clear()
+        env_vars = [
+            "GRAPHDB_PROVIDER",
+            "NEO4J_PROVIDER",
+            "NEO4J_AURADB_URI",
+            "NEO4J_AURADB_PASSWORD",
+            "DATABASE_PROVIDER",
+            "DATABASE_URL",
+        ]
+        original = {k: os.environ.get(k) for k in env_vars}
+        for k in env_vars:
+            os.environ.pop(k, None)
+        os.environ["ANTHROPIC_API_KEY"] = "test-key"
+        os.environ["DATABASE_PROVIDER"] = "local"
+        os.environ["DATABASE_URL"] = "postgresql://u:p@localhost/db"
+        yield
+        for k, v in original.items():
+            if v is not None:
+                os.environ[k] = v
+            else:
+                os.environ.pop(k, None)
+        get_settings.cache_clear()
+
+    def test_falkordb_with_auradb_neo4j_provider_skips_auradb_credentials(self):
+        """graphdb_provider=falkordb means the auradb credential check is skipped.
+
+        Regression: railway profile pins neo4j_provider=auradb for legacy
+        compat but runs FalkorDB in production. The validator previously
+        required NEO4J_AURADB_URI even though Neo4j is not the backend.
+        """
+        os.environ["GRAPHDB_PROVIDER"] = "falkordb"
+        os.environ["NEO4J_PROVIDER"] = "auradb"
+
+        from src.config.settings import Settings
+
+        settings = Settings(_env_file=None)
+        assert settings.graphdb_provider == "falkordb"
+        assert settings.neo4j_provider == "auradb"
+
+    def test_neo4j_with_auradb_provider_without_uri_still_fails(self):
+        """When graphdb_provider=neo4j the existing AuraDB credential check stands."""
+        os.environ["GRAPHDB_PROVIDER"] = "neo4j"
+        os.environ["NEO4J_PROVIDER"] = "auradb"
+
+        from src.config.settings import Settings
+
+        with pytest.raises(ValidationError) as exc_info:
+            Settings(_env_file=None)
+        assert "NEO4J_AURADB_URI" in str(exc_info.value)
+
+    def test_neo4j_with_auradb_provider_without_password_still_fails(self):
+        """When graphdb_provider=neo4j a missing password is still rejected."""
+        os.environ["GRAPHDB_PROVIDER"] = "neo4j"
+        os.environ["NEO4J_PROVIDER"] = "auradb"
+        os.environ["NEO4J_AURADB_URI"] = "neo4j+s://abc123.databases.neo4j.io"
+
+        from src.config.settings import Settings
+
+        with pytest.raises(ValidationError) as exc_info:
+            Settings(_env_file=None)
+        assert "NEO4J_AURADB_PASSWORD" in str(exc_info.value)
+
+
 class TestDatabaseUrlMethods:
     """Tests for get_effective_database_url and get_migration_database_url."""
 
