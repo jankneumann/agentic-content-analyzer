@@ -369,14 +369,23 @@ class TestTriggerIngestion:
             assert data["source"] == "rss"
             mock_enqueue.assert_called_once()
 
-    def test_trigger_ingestion_invalid_source(self, client):
-        """Returns 422 for invalid source type."""
+    def test_trigger_ingestion_unknown_source_passes_through(self, client):
+        """Unknown source strings are accepted and queued; validation happens at the worker."""
+        # IngestRequest.source is a plain `str` (see content_routes.py:147)
+        # so Pydantic does not reject unknown values. The handler enqueues
+        # whatever is supplied; the worker rejects it if no orchestrator
+        # function exists. Keeps the endpoint permissive for new sources.
         payload = {
-            "source": "invalid",
+            "source": "totally-made-up",
             "max_results": 10,
         }
-        response = client.post("/api/v1/contents/ingest", json=payload)
-        assert response.status_code == 422
+        with patch(
+            "src.api.content_routes._enqueue_ingestion_job", new_callable=AsyncMock
+        ) as mock_enqueue:
+            mock_enqueue.return_value = 999
+            response = client.post("/api/v1/contents/ingest", json=payload)
+        assert response.status_code == 200
+        assert response.json()["source"] == "totally-made-up"
 
 
 class TestTriggerSummarization:

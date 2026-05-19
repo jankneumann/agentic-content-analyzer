@@ -45,7 +45,7 @@ from tests.factories.content import ContentFactory
 from tests.factories.digest import DigestFactory
 from tests.factories.podcast import PodcastFactory, PodcastScriptRecordFactory
 from tests.factories.summary import SummaryFactory
-from tests.helpers.test_db import create_test_engine, get_test_database_url
+from tests.helpers.test_db import create_test_engine, get_test_database_url, reset_test_schema
 
 # =============================================================================
 # Environment Isolation
@@ -126,37 +126,23 @@ def test_engine():
     """Create test database engine (session-scoped).
 
     Uses shared helper for worktree-aware DB naming and auto-creation.
-    Tables are created fresh at the start and dropped at the end.
+    Schema is built by running ``alembic upgrade head`` against the test DB
+    so tests see the same DDL that production migrations produce.
     """
-    from src.models.audio_digest import AudioDigest  # noqa: F401
-    from src.models.base import Base
-    from src.models.content import Content  # noqa: F401
-    from src.models.digest import Digest  # noqa: F401
-    from src.models.evaluation import (  # noqa: F401
-        EvaluationConsensus,
-        EvaluationDataset,
-        EvaluationResult,
-        EvaluationSample,
-        RoutingConfig,
-        RoutingDecision,
-    )
-    from src.models.podcast import Podcast, PodcastScriptRecord  # noqa: F401
-    from src.models.settings import PromptOverride  # noqa: F401
-    from src.models.summary import Summary  # noqa: F401
-    from src.models.theme import ThemeAnalysis  # noqa: F401
-    from src.models.topic import KBIndex, Topic, TopicNote  # noqa: F401
-
     engine = create_test_engine(TEST_DATABASE_URL)
 
-    # Drop all tables for clean state (handles interrupted runs)
-    Base.metadata.drop_all(engine)
-    # Create all tables fresh
-    Base.metadata.create_all(engine)
+    # Build schema via alembic — drops/recreates the public schema first.
+    reset_test_schema(engine)
 
     yield engine
 
-    # Cleanup after all tests
-    Base.metadata.drop_all(engine)
+    # Cleanup: drop the public schema so the next session starts fresh.
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+        conn.execute(text("CREATE SCHEMA public"))
+        conn.commit()
     engine.dispose()
 
 

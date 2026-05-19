@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from enum import Enum
 from pathlib import Path
 from typing import IO, Any
 
@@ -233,6 +234,7 @@ def _row_to_dict(mapping: Any, table: Table) -> dict[str, Any]:
     Handles special types:
     - datetime → ISO 8601 string
     - bytes → hex string
+    - Enum → .value (matches enum catalog in src/sync/constants.py)
     - None → null (preserved)
     """
     result: dict[str, Any] = {}
@@ -241,6 +243,8 @@ def _row_to_dict(mapping: Any, table: Table) -> dict[str, Any]:
             result[key] = value.isoformat()
         elif isinstance(value, bytes):
             result[key] = value.hex()
+        elif isinstance(value, Enum):
+            result[key] = value.value
         else:
             result[key] = value
     return result

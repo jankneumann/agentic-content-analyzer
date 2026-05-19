@@ -77,16 +77,16 @@ class AutoIngestTrigger:
     def _ingest_doi(self, doi: str, depth: int) -> Content | None:
         """Auto-ingest via Scholar for DOI references.
 
-        Calls the synchronous orchestrator function which returns an int
-        (number of papers ingested). Since the orchestrator manages its own
-        DB session internally, we cannot directly get the Content object back.
-        We query for the newly ingested content by DOI after ingestion.
+        Calls the synchronous orchestrator function which returns an
+        ``IngestionResponse``. Since the orchestrator manages its own DB
+        session internally, we cannot directly get the Content object back —
+        we query for the newly ingested content by DOI after ingestion.
         """
         try:
             from src.ingestion.orchestrator import ingest_scholar_paper
 
-            count = ingest_scholar_paper(identifier=f"DOI:{doi}")
-            if count > 0:
+            response = ingest_scholar_paper(identifier=f"DOI:{doi}")
+            if response.items_ingested > 0:
                 return self._find_and_tag_by_doi(doi, depth)
             return None
         except Exception:
@@ -96,14 +96,15 @@ class AutoIngestTrigger:
     def _ingest_arxiv(self, arxiv_id: str, depth: int) -> Content | None:
         """Auto-ingest via arXiv for arXiv ID references.
 
-        Calls the synchronous orchestrator function which returns an int.
-        Queries for the newly ingested content by arXiv ID after ingestion.
+        Calls the synchronous orchestrator function which returns an
+        ``IngestionResponse``. Queries for the newly ingested content by
+        arXiv ID after ingestion.
         """
         try:
             from src.ingestion.orchestrator import ingest_arxiv_paper
 
-            count = ingest_arxiv_paper(identifier=arxiv_id)
-            if count > 0:
+            response = ingest_arxiv_paper(identifier=arxiv_id)
+            if response.items_ingested > 0:
                 return self._find_and_tag_by_arxiv_id(arxiv_id, depth)
             return None
         except Exception:

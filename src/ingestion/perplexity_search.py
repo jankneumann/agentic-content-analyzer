@@ -14,13 +14,18 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel
 
 from src.config import settings
+from src.ingestion.result import (
+    IngestionError,
+    IngestionResponse,
+    IngestionWarning,
+    derive_status,
+)
 from src.models.content import Content, ContentSource, ContentStatus
 from src.storage.database import get_db
 from src.utils.content_hash import generate_markdown_hash
@@ -42,17 +47,6 @@ class PerplexityResponse(BaseModel):
     related_questions: list[str] = []
     model: str = ""
     usage: dict[str, int] = {}
-
-
-@dataclass
-class PerplexitySearchResult:
-    """Aggregated result of a Perplexity search ingestion run."""
-
-    items_ingested: int = 0
-    items_skipped: int = 0
-    queries_made: int = 0
-    citations_found: int = 0
-    errors: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -264,7 +258,7 @@ class PerplexityContentIngestionService:
         force_reprocess: bool = False,
         recency_filter: str | None = None,
         context_size: str | None = None,
-    ) -> PerplexitySearchResult:
+    ) -> IngestionResponse:
         """Search the web and ingest discovered content.
 
         Args:
@@ -275,9 +269,17 @@ class PerplexityContentIngestionService:
             context_size: Override search context size (low/medium/high).
 
         Returns:
-            PerplexitySearchResult with ingestion stats.
+            IngestionResponse envelope. ``details`` carries the reserved-key
+            registry entries (``citations``: list of citation/source URLs,
+            ``query_echo``: the resolved search prompt) plus perplexity-specific
+            extras (``queries_made``, ``citations_found``).
         """
-        result = PerplexitySearchResult()
+        items_ingested = 0
+        items_skipped = 0
+        item_errors: list[IngestionError] = []
+        queries_made = 0
+        citations_found = 0
+
         search_prompt = prompt or self._get_search_prompt()
         max_results = max_results or settings.perplexity_max_results
         recency = recency_filter or settings.perplexity_search_recency_filter
@@ -290,23 +292,53 @@ class PerplexityContentIngestionService:
 
         start_time = time.time()
 
-        # Run search
+        # Run search — failure produces an error envelope rather than raising.
         try:
             response = self.client.search(
                 prompt=search_prompt,
                 recency_filter=recency,
                 search_context_size=ctx_size,
             )
-            result.queries_made = 1
-            result.citations_found = len(response.citations)
+            queries_made = 1
+            citations_found = len(response.citations)
         except Exception as e:
-            result.errors.append(f"Search failed: {e}")
             logger.error(f"Perplexity search failed: {e}")
-            return result
+            return IngestionResponse(
+                command="ingest.perplexity-search",
+                source="perplexity",
+                status="error",
+                items_ingested=0,
+                errors=[
+                    IngestionError(code="search_failed", message=f"Search failed: {e}"),
+                ],
+                details={
+                    "citations": [],
+                    "query_echo": search_prompt,
+                    "queries_made": 0,
+                    "citations_found": 0,
+                },
+            )
 
         if not response.content.strip():
             logger.warning("Perplexity returned empty response")
-            return result
+            return IngestionResponse(
+                command="ingest.perplexity-search",
+                source="perplexity",
+                status="ok",
+                items_ingested=0,
+                warnings=[
+                    IngestionWarning(
+                        code="empty_response",
+                        message="Perplexity returned empty content",
+                    )
+                ],
+                details={
+                    "citations": list(response.citations),
+                    "query_echo": search_prompt,
+                    "queries_made": queries_made,
+                    "citations_found": citations_found,
+                },
+            )
 
         # Build Content record
         markdown_content = _build_markdown_content(response.content, response.citations)
@@ -322,49 +354,77 @@ class PerplexityContentIngestionService:
 
                 if not force_reprocess and self._is_duplicate(db, source_id, response.citations):
                     logger.debug(f"Skipping duplicate: {source_id}")
-                    result.items_skipped += 1
-                    return result
+                    items_skipped += 1
+                else:
+                    # Determine title from first line of content
+                    first_line = response.content.strip().split("\n")[0][:120]
+                    title = first_line if first_line else "Perplexity Web Search"
 
-                # Determine title from first line of content
-                first_line = response.content.strip().split("\n")[0][:120]
-                title = first_line if first_line else "Perplexity Web Search"
-
-                content = Content(
-                    source_type=ContentSource.PERPLEXITY,
-                    source_id=source_id,
-                    title=title,
-                    author="Perplexity AI",
-                    publication="Web Search",
-                    published_date=datetime.now(UTC),
-                    markdown_content=markdown_content,
-                    content_hash=generate_markdown_hash(markdown_content),
-                    status=ContentStatus.PENDING,
-                    metadata_json=metadata,
-                    ingested_at=datetime.now(UTC),
-                )
-                db.add(content)
-                db.flush()
-                result.items_ingested += 1
-                logger.info(
-                    f"Ingested Perplexity content: id={content.id}, "
-                    f"source_id={source_id}, citations={len(response.citations)}"
-                )
+                    content = Content(
+                        source_type=ContentSource.PERPLEXITY,
+                        source_id=source_id,
+                        title=title,
+                        author="Perplexity AI",
+                        publication="Web Search",
+                        published_date=datetime.now(UTC),
+                        markdown_content=markdown_content,
+                        content_hash=generate_markdown_hash(markdown_content),
+                        status=ContentStatus.PENDING,
+                        metadata_json=metadata,
+                        ingested_at=datetime.now(UTC),
+                    )
+                    db.add(content)
+                    db.flush()
+                    items_ingested += 1
+                    logger.info(
+                        f"Ingested Perplexity content: id={content.id}, "
+                        f"source_id={source_id}, citations={len(response.citations)}"
+                    )
             except Exception as exc:
                 db.rollback()
-                result.errors.append(f"Storage failed: {exc}")
+                item_errors.append(
+                    IngestionError(
+                        code="storage_error",
+                        message=f"Storage failed: {exc}",
+                    )
+                )
                 logger.warning(f"Failed to store Perplexity content: {exc}", exc_info=True)
 
-            if result.items_ingested > 0:
+            if items_ingested > 0:
                 db.commit()
 
         elapsed = time.time() - start_time
         logger.info(
-            f"Perplexity ingestion complete: {result.items_ingested} ingested, "
-            f"{result.items_skipped} skipped, {result.citations_found} citations, "
+            f"Perplexity ingestion complete: {items_ingested} ingested, "
+            f"{items_skipped} skipped, {citations_found} citations, "
             f"{elapsed:.1f}s elapsed"
         )
 
-        return result
+        # Service convention: 1:1 errors↔items_failed (every error already
+        # gets an entry in item_errors). The IngestionResponse contract
+        # leaves these signals independent — a service may raise items_failed
+        # without a matching IngestionError — but we couple them here for
+        # debuggability. If you change this, document it loudly.
+        items_failed = len(item_errors)
+        return IngestionResponse(
+            command="ingest.perplexity-search",
+            source="perplexity",
+            status=derive_status(
+                items_ingested=items_ingested,
+                items_failed=items_failed,
+                errors=item_errors,
+            ),
+            items_ingested=items_ingested,
+            items_skipped=items_skipped,
+            items_failed=items_failed,
+            errors=item_errors,
+            details={
+                "citations": list(response.citations),
+                "query_echo": search_prompt,
+                "queries_made": queries_made,
+                "citations_found": citations_found,
+            },
+        )
 
     def _is_duplicate(
         self,

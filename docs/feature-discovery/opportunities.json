@@ -1,0 +1,497 @@
+{
+  "generated_at": "2026-05-16T13:02:16-04:00",
+  "skill": "explore-feature",
+  "focus_area": null,
+  "score_formula": "impact*0.4 + strategic_fit*0.25 + (4-effort)*0.2 + (4-risk)*0.15",
+  "score_mapping": {
+    "impact": {
+      "low": 1,
+      "med": 2,
+      "high": 3
+    },
+    "strategic_fit": {
+      "low": 1,
+      "med": 2,
+      "high": 3
+    },
+    "effort": {
+      "S": 1,
+      "M": 2,
+      "L": 3
+    },
+    "risk": {
+      "low": 1,
+      "med": 2,
+      "high": 3
+    }
+  },
+  "state": {
+    "coordinator": {
+      "available": false,
+      "transport": "none",
+      "notes": [
+        "docs/coordination-detection-template.md was not present, so coordinated lock and memory checks were skipped."
+      ]
+    },
+    "beads": {
+      "available": false,
+      "notes": [
+        "bd ready failed because no Beads database was found in this checkout."
+      ]
+    },
+    "openspec": {
+      "active_changes": [
+        {
+          "id": "unify-mcp-ingest-envelope",
+          "tasks": "0/23"
+        },
+        {
+          "id": "use-paradedb-railway-langfuse-default",
+          "tasks": "0/17"
+        },
+        {
+          "id": "add-obsidian-vault-ingest",
+          "tasks": "0/34"
+        },
+        {
+          "id": "feynman-inspired-features",
+          "tasks": "none"
+        },
+        {
+          "id": "add-huggingface-papers-source",
+          "tasks": "11/15"
+        },
+        {
+          "id": "llm-router-evaluation",
+          "tasks": "0/34"
+        },
+        {
+          "id": "add-api-versioning",
+          "tasks": "0/42"
+        }
+      ],
+      "dense_specs": [
+        {
+          "id": "api-security",
+          "requirements": 21
+        },
+        {
+          "id": "settings-management",
+          "requirements": 19
+        },
+        {
+          "id": "cli-interface",
+          "requirements": 18
+        },
+        {
+          "id": "document-search",
+          "requirements": 17
+        },
+        {
+          "id": "source-configuration",
+          "requirements": 17
+        },
+        {
+          "id": "observability",
+          "requirements": 16
+        }
+      ]
+    },
+    "architecture_analysis": {
+      "available": false,
+      "notes": [
+        "docs/architecture-analysis/*.json were not present.",
+        "make architecture failed because this checkout has no architecture target."
+      ]
+    },
+    "code_signals": {
+      "source_file_counts_by_area": {
+        "src/api": 138,
+        "src/services": 109,
+        "src/cli": 60,
+        "src/agents": 60,
+        "src/models": 54,
+        "src/ingestion": 47
+      },
+      "test_file_counts_by_area": {
+        "tests/api": 159,
+        "tests/integration": 86,
+        "tests/cli": 78,
+        "tests/test_services": 48,
+        "tests/test_ingestion": 43,
+        "tests/security": 35
+      },
+      "markers": [
+        {
+          "path": "src/config/settings.py",
+          "line": 1474,
+          "text": "Add cloud provider fallbacks when configured"
+        },
+        {
+          "path": "src/ingestion/result.py",
+          "line": 278,
+          "text": "schema_v2: remove computed field; bump schema_version=2"
+        },
+        {
+          "path": "web/src/hooks/use-voice-input.ts",
+          "line": 223,
+          "text": "Wire to STTEngine state when hook is refactored"
+        }
+      ],
+      "bug_scrub": {
+        "report_path": "docs/bug-scrub/bug-scrub-report.md",
+        "timestamp": "2026-02-22T20:02:07.599610+00:00",
+        "total_findings": 4224,
+        "high_findings": 119,
+        "notable_clusters": [
+          "API upload/auth/security smoke failures",
+          "parallel ingestion pipeline tests",
+          "worker initialization tests",
+          "cloud provider integration tests",
+          "chunking and token counter tests"
+        ],
+        "staleness_note": "Bug-scrub data is older than current active changes, so it was treated as directional evidence rather than current test truth."
+      }
+    },
+    "gen_eval_signals": {
+      "available": false,
+      "report_path": null,
+      "failing_interfaces": [],
+      "coverage_pct": null,
+      "categories_below_threshold": [],
+      "notes": [
+        "No gen-eval-report.json files were found."
+      ]
+    },
+    "archive_intelligence": {
+      "available": false,
+      "archive_index_path": "docs/factory-intelligence/archive-index.json",
+      "exemplar_registry_path": "docs/factory-intelligence/exemplars.json",
+      "notes": [
+        "No archive intelligence files were found."
+      ]
+    },
+    "parallel_feasibility_basis": "N/A - coordinator unavailable, no active resource locks enumerated"
+  },
+  "opportunities": [
+    {
+      "id": "opp-update-mcp-ingest-envelope",
+      "rank": 1,
+      "title": "Finish canonical MCP ingest envelope unification",
+      "problem": "CLI, HTTP, queue, and pipeline ingestion now use the canonical IngestionResponse, but MCP ingest tools still expose flat ad hoc shapes. This keeps the last cross-transport consumer contract inconsistent.",
+      "impact": "high",
+      "strategic_fit": "high",
+      "effort": "S",
+      "risk": "low",
+      "score": 3.0,
+      "bucket": "quick-win",
+      "change_id_prefix": "update-",
+      "related_change_id": "unify-mcp-ingest-envelope",
+      "blocked_by": [
+        "agentic-assistant consumer migration must land in lockstep"
+      ],
+      "evidence": [
+        "Active OpenSpec change has a focused 23-task breakdown.",
+        "tests/cli/test_ingest_contract.py already documents canonical envelope expectations for CLI ingest commands.",
+        "tests/mcp/test_mcp_ingest_envelope_conformance.py is planned but absent, giving a clear next test target.",
+        "src/mcp_server.py is the primary local write surface."
+      ],
+      "likely_scope": {
+        "files": [
+          "src/mcp_server.py",
+          "tests/mcp/",
+          "docs/GOTCHAS.md",
+          "openspec/specs/mcp-ingest-envelope/spec.md"
+        ],
+        "api_endpoints": [],
+        "db_tables": [],
+        "events": []
+      },
+      "parallel_feasibility": "N/A",
+      "resource_conflicts": [],
+      "independent_zones": [],
+      "recommended_next_action": "/implement-feature unify-mcp-ingest-envelope"
+    },
+    {
+      "id": "opp-complete-huggingface-papers-source",
+      "rank": 2,
+      "title": "Complete HuggingFace Papers ingestion",
+      "problem": "The HuggingFace Papers source is nearly implemented but still open. Leaving it incomplete means the product misses curated AI research signals that complement raw arXiv ingestion.",
+      "impact": "high",
+      "strategic_fit": "high",
+      "effort": "M",
+      "risk": "med",
+      "score": 2.65,
+      "bucket": "quick-win",
+      "change_id_prefix": "add-",
+      "related_change_id": "add-huggingface-papers-source",
+      "blocked_by": [],
+      "evidence": [
+        "Active OpenSpec change is already 11/15 tasks complete.",
+        "src/ingestion/huggingface_papers.py exists.",
+        "Existing arxiv-ingestion spec and code provide deduplication and paper-ingestion foundations."
+      ],
+      "likely_scope": {
+        "files": [
+          "src/ingestion/huggingface_papers.py",
+          "src/ingestion/orchestrator.py",
+          "src/cli/ingest_commands.py",
+          "src/mcp_server.py",
+          "web/src/routes/ingest.tsx",
+          "tests/ingestion/",
+          "tests/cli/"
+        ],
+        "api_endpoints": [
+          "content ingestion dispatch"
+        ],
+        "db_tables": [
+          "contents"
+        ],
+        "events": []
+      },
+      "parallel_feasibility": "N/A",
+      "resource_conflicts": [],
+      "independent_zones": [],
+      "recommended_next_action": "/implement-feature add-huggingface-papers-source"
+    },
+    {
+      "id": "opp-fix-api-security-smoke-regressions",
+      "rank": 3,
+      "title": "Re-baseline API auth and upload security smoke failures",
+      "problem": "The last bug-scrub report recorded high-severity failures around upload auth, production auth protection, MIME/magic-byte checks, CORS, and health/readiness smoke tests. Even if some are stale, this cluster touches the highest requirement-density spec: api-security.",
+      "impact": "high",
+      "strategic_fit": "med",
+      "effort": "M",
+      "risk": "med",
+      "score": 2.4,
+      "bucket": "quick-win",
+      "change_id_prefix": "fix-",
+      "related_change_id": null,
+      "blocked_by": [
+        "Need a fresh targeted test run because the bug-scrub report is from 2026-02-22."
+      ],
+      "evidence": [
+        "api-security has 21 requirements, the densest current spec.",
+        "docs/bug-scrub/bug-scrub-report.md lists 119 high findings, including API and security smoke clusters.",
+        "tests/api and tests/security are substantial suites with 159 and 35 files respectively."
+      ],
+      "likely_scope": {
+        "files": [
+          "src/api/",
+          "src/api/middleware/",
+          "tests/api/",
+          "tests/security/",
+          "tests/smoke/test_api_security_smoke.py"
+        ],
+        "api_endpoints": [
+          "content upload",
+          "health",
+          "ready",
+          "settings/prompts",
+          "content/search/digest routes"
+        ],
+        "db_tables": [],
+        "events": [
+          "audit log entries for auth decisions"
+        ]
+      },
+      "parallel_feasibility": "N/A",
+      "resource_conflicts": [],
+      "independent_zones": [],
+      "recommended_next_action": "/plan-feature fix API auth and upload security smoke regressions"
+    },
+    {
+      "id": "opp-use-paradedb-langfuse-default",
+      "rank": 4,
+      "title": "Make ParadeDB and Langfuse the default production path",
+      "problem": "Production search and observability are not aligned with the intended stack: Railway PostgreSQL lacks ParadeDB extensions, and default observability is still not Langfuse-first.",
+      "impact": "med",
+      "strategic_fit": "high",
+      "effort": "S",
+      "risk": "med",
+      "score": 2.45,
+      "bucket": "quick-win",
+      "change_id_prefix": "update-",
+      "related_change_id": "use-paradedb-railway-langfuse-default",
+      "blocked_by": [
+        "Operator decision on Railway database migration timing",
+        "Langfuse credentials for local and Railway profiles"
+      ],
+      "evidence": [
+        "Active OpenSpec proposal says the provider code already exists.",
+        "observability has 16 requirements, and document-search has 17 requirements.",
+        "The proposal is configuration-heavy and can provide better traces before future infrastructure work."
+      ],
+      "likely_scope": {
+        "files": [
+          "profiles/*.yaml",
+          "docker-compose*.yml",
+          "railway/postgres/Dockerfile",
+          "docs/SETUP.md",
+          "docs/MOBILE_DEPLOYMENT.md"
+        ],
+        "api_endpoints": [],
+        "db_tables": [],
+        "events": [
+          "telemetry traces"
+        ]
+      },
+      "parallel_feasibility": "N/A",
+      "resource_conflicts": [],
+      "independent_zones": [],
+      "recommended_next_action": "/implement-feature use-paradedb-railway-langfuse-default"
+    },
+    {
+      "id": "opp-llm-router-evaluation",
+      "rank": 5,
+      "title": "Build the evaluation-first LLM router",
+      "problem": "The model router uses static per-step model choices, so the system cannot measure output quality or route easier tasks to cheaper models with confidence.",
+      "impact": "high",
+      "strategic_fit": "high",
+      "effort": "L",
+      "risk": "med",
+      "score": 2.45,
+      "bucket": "big-bet",
+      "change_id_prefix": "add-",
+      "related_change_id": "llm-router-evaluation",
+      "blocked_by": [
+        "Needs representative evaluation datasets and judge-model credentials before dynamic routing can be enabled."
+      ],
+      "evidence": [
+        "Active proposal defines evaluator, routing decisions, calibration, and CLI/API interfaces.",
+        "Current docs emphasize content quality and review workflows but there is no gen-eval report available.",
+        "Potential cost and quality payoff is high, but implementation breadth spans services, config, models, CLI, and persistence."
+      ],
+      "likely_scope": {
+        "files": [
+          "src/services/llm_router.py",
+          "src/evaluation/",
+          "src/config/models.py",
+          "settings/models.yaml",
+          "src/cli/",
+          "alembic/versions/",
+          "tests/evaluation/"
+        ],
+        "api_endpoints": [
+          "evaluation management endpoints"
+        ],
+        "db_tables": [
+          "evaluation_datasets",
+          "evaluation_results",
+          "routing_decisions",
+          "routing_configs"
+        ],
+        "events": [
+          "model routing decisions",
+          "judge evaluation results"
+        ]
+      },
+      "parallel_feasibility": "N/A",
+      "resource_conflicts": [],
+      "independent_zones": [],
+      "recommended_next_action": "/iterate-on-plan llm-router-evaluation"
+    },
+    {
+      "id": "opp-add-obsidian-vault-ingest",
+      "rank": 6,
+      "title": "Add Obsidian vault ingestion as a capture bridge",
+      "problem": "Cross-device capture still requires purpose-built capture clients or direct API use. A vault-backed markdown queue can reuse Obsidian Web Clipper and sync providers as the capture surface.",
+      "impact": "med",
+      "strategic_fit": "med",
+      "effort": "M",
+      "risk": "med",
+      "score": 2.0,
+      "bucket": "big-bet",
+      "change_id_prefix": "add-",
+      "related_change_id": "add-obsidian-vault-ingest",
+      "blocked_by": [
+        "Needs a clear v1 security model for vault roots and sync race handling."
+      ],
+      "evidence": [
+        "Active proposal has a 34-task plan.",
+        "Markdown pipeline and file ingestion are already established project capabilities.",
+        "Value depends on user workflow adoption, so it is less urgent than closing transport contracts or incomplete ingestion work."
+      ],
+      "likely_scope": {
+        "files": [
+          "src/ingestion/files.py",
+          "src/ingestion/orchestrator.py",
+          "src/config/sources.py",
+          "src/utils/markdown.py",
+          "docs/SETUP.md",
+          "tests/ingestion/"
+        ],
+        "api_endpoints": [],
+        "db_tables": [
+          "contents",
+          "vault note state tracking"
+        ],
+        "events": [
+          "filesystem polling results",
+          "ingestion jobs"
+        ]
+      },
+      "parallel_feasibility": "N/A",
+      "resource_conflicts": [],
+      "independent_zones": [],
+      "recommended_next_action": "/iterate-on-plan add-obsidian-vault-ingest"
+    },
+    {
+      "id": "opp-defer-api-versioning",
+      "rank": 7,
+      "title": "Defer API versioning until external API pressure increases",
+      "problem": "API versioning is valid eventually, but a full route reorganization would conflict with active ingestion and reference work while the bundled frontend remains the primary consumer.",
+      "impact": "med",
+      "strategic_fit": "low",
+      "effort": "L",
+      "risk": "high",
+      "score": 1.4,
+      "bucket": "big-bet",
+      "change_id_prefix": "add-",
+      "related_change_id": "add-api-versioning",
+      "blocked_by": [
+        "Wait for ingestion/search features to stabilize",
+        "Update stale proposal motivation before implementation"
+      ],
+      "evidence": [
+        "Active change has 0/42 tasks and broad src/api reorganization scope.",
+        "Prior prioritized-proposals report already flagged high conflict risk.",
+        "api-security work is more urgent than API version lifecycle mechanics."
+      ],
+      "likely_scope": {
+        "files": [
+          "src/api/",
+          "tests/api/",
+          "docs/api/"
+        ],
+        "api_endpoints": [
+          "all v1 routes"
+        ],
+        "db_tables": [],
+        "events": [
+          "version metadata in telemetry"
+        ]
+      },
+      "parallel_feasibility": "N/A",
+      "resource_conflicts": [],
+      "independent_zones": [],
+      "recommended_next_action": "defer"
+    }
+  ],
+  "top_recommendation": {
+    "opportunity_id": "opp-update-mcp-ingest-envelope",
+    "why_now": "It is a bounded active OpenSpec change that closes the last known ingestion envelope drift across CLI, HTTP, queue, pipeline, and MCP. The test target is explicit, the main write surface is narrow, and it reduces downstream ambiguity for agentic-assistant before broader ingestion work continues.",
+    "dependencies_or_blockers": [
+      "Coordinate lockstep consumer update in agentic-assistant.",
+      "Confirm whether ingest_files should be added to MCP as part of the same change or split if it expands scope."
+    ],
+    "starter_command": "/implement-feature unify-mcp-ingest-envelope"
+  },
+  "history_effect": {
+    "previous_history_found": false,
+    "altered_ranking": false,
+    "notes": [
+      "No prior docs/feature-discovery/history.json existed, so no historical priority discount was applied."
+    ]
+  }
+}

@@ -7,8 +7,9 @@ Tests cover:
 - RoutingDecisionInfo fields
 """
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from src.services.complexity_router import ComplexityRouter, RoutingDecisionInfo
 
@@ -45,6 +46,7 @@ class TestClassifyColdStart:
 class TestClassifyEmbeddingFailure:
     def test_embedding_exception_falls_back(self):
         """Embedding function error falls back to strong model."""
+
         def bad_embed(text):
             raise RuntimeError("API timeout")
 
@@ -148,6 +150,9 @@ class TestRoutingDecisionInfo:
 class TestModelPersistence:
     def test_save_and_load(self, tmp_path):
         """Save and load a trained classifier."""
+        # sklearn is not a runtime dep — it's only needed for this persistence
+        # round-trip test. Skip when not installed (e.g. CI without ML extras).
+        pytest.importorskip("sklearn")
         from sklearn.linear_model import LogisticRegression
 
         router = ComplexityRouter(embed_fn=lambda x: [0.1] * 10)

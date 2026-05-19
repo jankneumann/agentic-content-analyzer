@@ -12,11 +12,15 @@ class TestTriggerSummarizationLogic:
 
     @pytest.fixture
     def mock_enqueue(self):
-        """Mock the queue enqueue function to avoid DB connection."""
+        """Mock the queue enqueue function to avoid DB connection.
+
+        Production returns ``tuple[int, int]`` — (batch_job_id, queued_count) —
+        which ``trigger_content_summarization`` unpacks at the call site.
+        """
         with patch(
             "src.api.content_routes._enqueue_summarization_batch_job", new_callable=AsyncMock
         ) as mock:
-            mock.return_value = 123
+            mock.return_value = (123, 2)
             yield mock
 
     def test_identifies_correct_content(self, client, db_session, mock_enqueue):

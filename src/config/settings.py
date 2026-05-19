@@ -954,8 +954,11 @@ class Settings(BaseSettings):
         Raises:
             ValueError: If provider configuration is invalid
         """
+        # NEO4J_PROVIDER credentials are only required when graphdb_provider=neo4j —
+        # FalkorDB-backed deployments leave neo4j_provider="auradb" as a back-compat
+        # default in shared profiles but never actually connect to AuraDB.
         match self.neo4j_provider:
-            case "auradb":
+            case "auradb" if self.graphdb_provider == "neo4j":
                 if not self.neo4j_auradb_uri:
                     raise ValueError(
                         "NEO4J_PROVIDER=auradb requires NEO4J_AURADB_URI to be set. "
@@ -966,6 +969,9 @@ class Settings(BaseSettings):
                         "NEO4J_PROVIDER=auradb requires NEO4J_AURADB_PASSWORD to be set. "
                         "Get this from your AuraDB console when creating the instance."
                     )
+            case "auradb":
+                # graphdb_provider=falkordb — AuraDB credentials not required
+                pass
             case "local":
                 # Local provider uses local settings or legacy fallbacks
                 pass

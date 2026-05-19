@@ -193,6 +193,10 @@ async def test_create_digest_success(sample_themes, sample_contents, mock_llm_re
         end_date=request.period_end,
         newsletter_count=2,
         newsletter_ids=[1, 2],
+        # content_count drives the "no content found" early-return in
+        # DigestCreator; without it, the field defaults to 0 and the
+        # digest title falls back to "Daily Digest - No Content".
+        content_count=2,
         themes=sample_themes,
         total_themes=2,
         emerging_themes_count=1,
@@ -306,7 +310,23 @@ async def test_create_digest_without_historical_context(sample_themes):
         processing_time_seconds=5.0,
     )
 
-    with patch("src.processors.digest_creator.ThemeAnalyzer") as mock_analyzer_class:
+    digest_content_stub = {
+        "title": "Test Digest",
+        "executive_overview": "stub overview",
+        "strategic_insights": [],
+        "technical_developments": [],
+        "emerging_trends": [],
+        "actionable_recommendations": {},
+    }
+
+    with (
+        patch("src.processors.digest_creator.ThemeAnalyzer") as mock_analyzer_class,
+        patch.object(
+            DigestCreator,
+            "_generate_digest_content",
+            new=AsyncMock(return_value=digest_content_stub),
+        ),
+    ):
         mock_analyzer = AsyncMock()
         mock_analyzer_class.return_value = mock_analyzer
 

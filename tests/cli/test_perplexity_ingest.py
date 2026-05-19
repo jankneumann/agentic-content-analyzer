@@ -9,14 +9,32 @@ Covers:
 
 from __future__ import annotations
 
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
 from src.cli.app import app
-from src.ingestion.perplexity_search import PerplexitySearchResult
+from src.ingestion.result import IngestionResponse
 
 runner = CliRunner()
+
+
+def _response(
+    *,
+    items_ingested: int = 0,
+    items_skipped: int = 0,
+    queries_made: int = 1,
+    citations_found: int = 0,
+    status: str = "ok",
+) -> IngestionResponse:
+    return IngestionResponse(
+        command="ingest.perplexity-search",
+        source="perplexity",
+        status=status,  # type: ignore[arg-type]
+        items_ingested=items_ingested,
+        items_skipped=items_skipped,
+        details={"queries_made": queries_made, "citations_found": citations_found},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -28,22 +46,23 @@ class TestOrchestratorIngestPerplexitySearch:
     """Test `src.ingestion.orchestrator.ingest_perplexity_search()`."""
 
     @patch("src.ingestion.perplexity_search.PerplexityContentIngestionService")
-    def test_returns_items_ingested(self, mock_service_cls):
+    def test_returns_envelope_with_items_ingested(self, mock_service_cls):
         mock_service = mock_service_cls.return_value
-        mock_service.ingest_content.return_value = PerplexitySearchResult(
-            items_ingested=7,
-            queries_made=1,
-            citations_found=12,
+        mock_service.ingest_content.return_value = _response(
+            items_ingested=7, queries_made=1, citations_found=12
         )
         from src.ingestion.orchestrator import ingest_perplexity_search
 
-        count = ingest_perplexity_search()
-        assert count == 7
+        response = ingest_perplexity_search()
+        assert isinstance(response, IngestionResponse)
+        assert response.items_ingested == 7
+        assert response.command == "ingest.perplexity-search"
+        assert response.details["citations_found"] == 12
 
     @patch("src.ingestion.perplexity_search.PerplexityContentIngestionService")
     def test_passes_all_kwargs_to_service(self, mock_service_cls):
         mock_service = mock_service_cls.return_value
-        mock_service.ingest_content.return_value = PerplexitySearchResult(items_ingested=3)
+        mock_service.ingest_content.return_value = _response(items_ingested=3)
         from src.ingestion.orchestrator import ingest_perplexity_search
 
         ingest_perplexity_search(
@@ -63,7 +82,7 @@ class TestOrchestratorIngestPerplexitySearch:
 
     @patch("src.ingestion.perplexity_search.PerplexityContentIngestionService")
     def test_on_result_callback_invoked(self, mock_service_cls):
-        result_obj = PerplexitySearchResult(items_ingested=5, queries_made=2, citations_found=8)
+        result_obj = _response(items_ingested=5, queries_made=2, citations_found=8)
         mock_service = mock_service_cls.return_value
         mock_service.ingest_content.return_value = result_obj
         callback = MagicMock()
@@ -75,7 +94,7 @@ class TestOrchestratorIngestPerplexitySearch:
     @patch("src.ingestion.perplexity_search.PerplexityContentIngestionService")
     def test_close_called_on_success(self, mock_service_cls):
         mock_service = mock_service_cls.return_value
-        mock_service.ingest_content.return_value = PerplexitySearchResult(items_ingested=2)
+        mock_service.ingest_content.return_value = _response(items_ingested=2)
         from src.ingestion.orchestrator import ingest_perplexity_search
 
         ingest_perplexity_search()
@@ -96,7 +115,7 @@ class TestOrchestratorIngestPerplexitySearch:
     @patch("src.ingestion.perplexity_search.PerplexityContentIngestionService")
     def test_default_kwargs(self, mock_service_cls):
         mock_service = mock_service_cls.return_value
-        mock_service.ingest_content.return_value = PerplexitySearchResult(items_ingested=0)
+        mock_service.ingest_content.return_value = _response(items_ingested=0)
         from src.ingestion.orchestrator import ingest_perplexity_search
 
         ingest_perplexity_search()
@@ -119,7 +138,7 @@ class TestCLIPerplexitySearch:
 
     @patch("src.ingestion.orchestrator.ingest_perplexity_search")
     def test_default_success(self, mock_ingest):
-        mock_ingest.return_value = 5
+        mock_ingest.return_value = _response(items_ingested=5)
         result = runner.invoke(app, ["ingest", "perplexity-search"])
         assert result.exit_code == 0
         assert "5" in result.output
@@ -127,7 +146,7 @@ class TestCLIPerplexitySearch:
 
     @patch("src.ingestion.orchestrator.ingest_perplexity_search")
     def test_custom_prompt(self, mock_ingest):
-        mock_ingest.return_value = 3
+        mock_ingest.return_value = _response(items_ingested=3)
         result = runner.invoke(
             app, ["ingest", "perplexity-search", "--prompt", "Find latest LLM benchmarks"]
         )
@@ -138,12 +157,11 @@ class TestCLIPerplexitySearch:
             force_reprocess=False,
             recency_filter=None,
             context_size=None,
-            on_result=ANY,
         )
 
     @patch("src.ingestion.orchestrator.ingest_perplexity_search")
     def test_custom_max_results(self, mock_ingest):
-        mock_ingest.return_value = 10
+        mock_ingest.return_value = _response(items_ingested=10)
         result = runner.invoke(app, ["ingest", "perplexity-search", "--max-results", "10"])
         assert result.exit_code == 0
         mock_ingest.assert_called_once_with(
@@ -152,12 +170,11 @@ class TestCLIPerplexitySearch:
             force_reprocess=False,
             recency_filter=None,
             context_size=None,
-            on_result=ANY,
         )
 
     @patch("src.ingestion.orchestrator.ingest_perplexity_search")
     def test_force_flag(self, mock_ingest):
-        mock_ingest.return_value = 1
+        mock_ingest.return_value = _response(items_ingested=1)
         result = runner.invoke(app, ["ingest", "perplexity-search", "--force"])
         assert result.exit_code == 0
         mock_ingest.assert_called_once_with(
@@ -166,12 +183,11 @@ class TestCLIPerplexitySearch:
             force_reprocess=True,
             recency_filter=None,
             context_size=None,
-            on_result=ANY,
         )
 
     @patch("src.ingestion.orchestrator.ingest_perplexity_search")
     def test_recency_filter(self, mock_ingest):
-        mock_ingest.return_value = 4
+        mock_ingest.return_value = _response(items_ingested=4)
         result = runner.invoke(app, ["ingest", "perplexity-search", "--recency", "week"])
         assert result.exit_code == 0
         mock_ingest.assert_called_once_with(
@@ -180,12 +196,11 @@ class TestCLIPerplexitySearch:
             force_reprocess=False,
             recency_filter="week",
             context_size=None,
-            on_result=ANY,
         )
 
     @patch("src.ingestion.orchestrator.ingest_perplexity_search")
     def test_context_size(self, mock_ingest):
-        mock_ingest.return_value = 6
+        mock_ingest.return_value = _response(items_ingested=6)
         result = runner.invoke(app, ["ingest", "perplexity-search", "--context-size", "high"])
         assert result.exit_code == 0
         mock_ingest.assert_called_once_with(
@@ -194,12 +209,11 @@ class TestCLIPerplexitySearch:
             force_reprocess=False,
             recency_filter=None,
             context_size="high",
-            on_result=ANY,
         )
 
     @patch("src.ingestion.orchestrator.ingest_perplexity_search")
     def test_all_options_combined(self, mock_ingest):
-        mock_ingest.return_value = 8
+        mock_ingest.return_value = _response(items_ingested=8)
         result = runner.invoke(
             app,
             [
@@ -223,7 +237,6 @@ class TestCLIPerplexitySearch:
             force_reprocess=True,
             recency_filter="month",
             context_size="medium",
-            on_result=ANY,
         )
 
     @patch("src.ingestion.orchestrator.ingest_perplexity_search")
@@ -235,11 +248,11 @@ class TestCLIPerplexitySearch:
 
     @patch("src.ingestion.orchestrator.ingest_perplexity_search")
     def test_json_mode_success(self, mock_ingest):
-        mock_ingest.return_value = 4
+        mock_ingest.return_value = _response(items_ingested=4)
         result = runner.invoke(app, ["--json", "ingest", "perplexity-search"])
         assert result.exit_code == 0
         assert '"source": "perplexity"' in result.output
-        assert '"ingested": 4' in result.output
+        assert '"items_ingested": 4' in result.output
 
     @patch("src.ingestion.orchestrator.ingest_perplexity_search")
     def test_json_mode_failure(self, mock_ingest):
@@ -251,7 +264,7 @@ class TestCLIPerplexitySearch:
 
     @patch("src.ingestion.orchestrator.ingest_perplexity_search")
     def test_short_option_aliases(self, mock_ingest):
-        mock_ingest.return_value = 2
+        mock_ingest.return_value = _response(items_ingested=2)
         result = runner.invoke(
             app, ["ingest", "perplexity-search", "-p", "AI agents", "-m", "5", "-f"]
         )
@@ -262,7 +275,6 @@ class TestCLIPerplexitySearch:
             force_reprocess=True,
             recency_filter=None,
             context_size=None,
-            on_result=ANY,
         )
 
     def test_help_text(self):
@@ -272,7 +284,7 @@ class TestCLIPerplexitySearch:
 
     @patch("src.ingestion.orchestrator.ingest_perplexity_search")
     def test_zero_items_ingested(self, mock_ingest):
-        mock_ingest.return_value = 0
+        mock_ingest.return_value = _response(items_ingested=0)
         result = runner.invoke(app, ["ingest", "perplexity-search"])
         assert result.exit_code == 0
         assert "0" in result.output

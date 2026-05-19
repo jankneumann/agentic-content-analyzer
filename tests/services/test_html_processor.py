@@ -4,15 +4,11 @@ Tests client HTML processing including markdown extraction,
 image extraction, URL rewriting, and error handling.
 """
 
-import os
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
-from src.models.base import Base
 from src.models.content import Content, ContentSource, ContentStatus
 from src.services.html_processor import (
     _extract_markdown_and_title,
@@ -21,55 +17,12 @@ from src.services.html_processor import (
 )
 from src.utils.content_hash import generate_markdown_hash
 
-# Test database URL
-TEST_DATABASE_URL = os.getenv(
-    "TEST_DATABASE_URL",
-    "postgresql://newsletter_user:newsletter_password@localhost/newsletters_test",
-)
-
-
-@pytest.fixture(scope="module")
-def test_engine():
-    """Create test database engine."""
-    from src.models.audio_digest import AudioDigest  # noqa: F401
-    from src.models.content import Content  # noqa: F401
-    from src.models.digest import Digest  # noqa: F401
-    from src.models.image import Image  # noqa: F401
-    from src.models.podcast import Podcast, PodcastScriptRecord  # noqa: F401
-    from src.models.settings import PromptOverride  # noqa: F401
-    from src.models.summary import Summary  # noqa: F401
-    from src.models.theme import ThemeAnalysis  # noqa: F401
-
-    engine = create_engine(TEST_DATABASE_URL, echo=False)
-
-    # Safety check
-    db_name = engine.url.database
-    if not db_name or "test" not in db_name.lower():
-        raise ValueError(f"Safety check failed: '{db_name}' is not a test database")
-
-    Base.metadata.drop_all(engine)
-    Base.metadata.create_all(engine)
-
-    yield engine
-
-    Base.metadata.drop_all(engine)
-    engine.dispose()
-
-
-@pytest.fixture
-def db_session(test_engine):
-    """Create a database session with transaction rollback."""
-    connection = test_engine.connect()
-    transaction = connection.begin()
-
-    SessionLocal = sessionmaker(bind=connection)
-    session = SessionLocal()
-
-    yield session
-
-    session.close()
-    transaction.rollback()
-    connection.close()
+# NOTE: This file previously defined its own module-scoped `test_engine` that
+# did `Base.metadata.drop_all/create_all`. That fixture's teardown wiped the
+# alembic-built schema mid-session and broke every test that ran after this
+# file (e.g. tests/services/test_kb_qa_health.py — topics table gone). The
+# root conftest's `test_engine` + `db_session` already provide a properly
+# migrated, transaction-isolated session that does NOT touch schema.
 
 
 @pytest.fixture

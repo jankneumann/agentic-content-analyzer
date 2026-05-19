@@ -143,7 +143,7 @@ class GraphitiClient:
         reference_time = content.published_date or datetime.now()
 
         source_type = content.source_type.value if content.source_type else "unknown"
-        episode_id = await self.graphiti.add_episode(
+        result = await self.graphiti.add_episode(
             name=f"{content.publication or content.author}: {content.title}",
             episode_body=episode_content,
             source_description=f"Content from {source_type}",
@@ -152,8 +152,9 @@ class GraphitiClient:
             group_id=DEFAULT_GROUP_ID,
         )
 
-        logger.info(f"Added episode {episode_id} for content {content.id} ({content.title})")
-        return str(episode_id)
+        episode_uuid = result.episode.uuid
+        logger.info(f"Added episode {episode_uuid} for content {content.id} ({content.title})")
+        return episode_uuid
 
     def _create_content_episode(self, content: Content, summary: Summary) -> str:
         """Create structured episode content from Content and Summary."""
@@ -359,7 +360,7 @@ class GraphitiClient:
 
         episode_body = "\n".join(lines)
 
-        episode_id = await self.graphiti.add_episode(
+        episode_result = await self.graphiti.add_episode(
             name=f"Theme Analysis: {result.analysis_date.strftime('%Y-%m-%d')}",
             episode_body=episode_body,
             source_description="Automated theme analysis result",
@@ -368,8 +369,9 @@ class GraphitiClient:
             group_id=DEFAULT_GROUP_ID,
         )
 
-        logger.info(f"Added theme analysis episode {episode_id}")
-        return str(episode_id)
+        episode_uuid = episode_result.episode.uuid
+        logger.info(f"Added theme analysis episode {episode_uuid}")
+        return episode_uuid
 
     async def get_entity_facts(
         self,

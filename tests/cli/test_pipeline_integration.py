@@ -27,11 +27,21 @@ runner = CliRunner()
 # Helpers
 # =============================================================================
 
-# Orchestrator function names mapped to their patch targets
+# Orchestrator function names mapped to their patch targets.
+#
+# Must mirror the hard-coded source list in
+# ``src.cli.pipeline_commands._run_ingestion_stage_async`` — if the pipeline
+# adds a source the test scaffold doesn't patch, that source runs for real
+# (hitting Gmail OAuth, YouTube API, etc.) and pollutes the test with
+# integration-level failures. Dynamic websearch sources (perplexity, grok)
+# are off by default in tests because no ``sources.d/websearch.yaml`` is
+# loaded; they don't need scaffolding here.
 _ORCHESTRATOR_FUNCTIONS = {
     "gmail": "src.ingestion.orchestrator.ingest_gmail",
     "rss": "src.ingestion.orchestrator.ingest_rss",
-    "youtube": "src.ingestion.orchestrator.ingest_youtube",
+    "blog": "src.ingestion.orchestrator.ingest_blog",
+    "youtube-playlist": "src.ingestion.orchestrator.ingest_youtube_playlist",
+    "youtube-rss": "src.ingestion.orchestrator.ingest_youtube_rss",
     "podcast": "src.ingestion.orchestrator.ingest_podcast",
     "substack": "src.ingestion.orchestrator.ingest_substack",
 }
@@ -41,26 +51,29 @@ def _make_ingestion_patches(
     *,
     gmail_result: int | Exception = 2,
     rss_result: int | Exception = 3,
-    youtube_result: int | Exception = 1,
+    blog_result: int | Exception = 0,
+    youtube_playlist_result: int | Exception = 0,
+    youtube_rss_result: int | Exception = 1,
     podcast_result: int | Exception = 1,
     substack_result: int | Exception = 0,
 ) -> dict[str, patch]:
-    """Build mock patches for all 5 orchestrator functions.
+    """Build mock patches for all 7 hard-coded orchestrator functions.
 
-    Args:
-        gmail_result: Return value or exception for Gmail ingestion.
-        rss_result: Return value or exception for RSS ingestion.
-        youtube_result: Return value or exception for YouTube ingestion.
-        podcast_result: Return value or exception for Podcast ingestion.
-        substack_result: Return value or exception for Substack ingestion.
+    Each kwarg accepts either a count (int — passed via ``return_value``,
+    routed through pipeline_commands._ingest_source's int|envelope
+    normalization) or an Exception (raised via ``side_effect``).
 
-    Returns:
-        Dict of context-manager patches keyed by source name.
+    The orchestrator entry points for the harmonized sources actually
+    return ``IngestionResponse`` envelopes; ints are accepted here for
+    test brevity because ``_ingest_source`` normalizes both shapes during
+    the partial-migration window.
     """
     results = {
         "gmail": gmail_result,
         "rss": rss_result,
-        "youtube": youtube_result,
+        "blog": blog_result,
+        "youtube-playlist": youtube_playlist_result,
+        "youtube-rss": youtube_rss_result,
         "podcast": podcast_result,
         "substack": substack_result,
     }
@@ -94,7 +107,7 @@ class TestParallelIngestionPartialFailure:
     @patch("src.cli.adapters.create_digest_sync")
     @patch("src.processors.summarizer.ContentSummarizer")
     def test_pipeline_succeeds_when_one_source_fails(self, mock_summarizer, mock_digest):
-        """Pipeline continues when 1 of 5 ingestion sources fails."""
+        """Pipeline continues when 1 of 7 ingestion sources fails."""
         mock_summarizer.return_value.summarize_pending_contents.return_value = 5
         mock_result = MagicMock()
         mock_result.title = "Daily Digest"
@@ -114,7 +127,12 @@ class TestParallelIngestionPartialFailure:
     @patch("src.cli.adapters.create_digest_sync")
     @patch("src.processors.summarizer.ContentSummarizer")
     def test_pipeline_succeeds_when_two_sources_fail(self, mock_summarizer, mock_digest):
-        """Pipeline continues when 2 of 5 ingestion sources fail."""
+        """Pipeline continues when 2 of 7 ingestion sources fail (gmail + both youtube).
+
+        YouTube was originally one logical source but was split into two
+        physical orchestrator entry points (youtube-playlist + youtube-rss).
+        Failing both preserves the original "youtube fails" intent.
+        """
         mock_summarizer.return_value.summarize_pending_contents.return_value = 3
         mock_result = MagicMock()
         mock_result.title = "Daily Digest"
@@ -123,20 +141,26 @@ class TestParallelIngestionPartialFailure:
 
         patches = _make_ingestion_patches(
             gmail_result=RuntimeError("Gmail auth failed"),
-            youtube_result=RuntimeError("YouTube quota exceeded"),
+            youtube_playlist_result=RuntimeError("YouTube quota exceeded"),
+            youtube_rss_result=RuntimeError("YouTube quota exceeded"),
         )
         with _apply_ingestion_patches(patches):
             result = runner.invoke(app, ["pipeline", "daily"])
 
         assert result.exit_code == 0
         assert "completed successfully" in result.output
-        # Should show 3 completed (rss, podcast, substack), 2 failed (gmail, youtube)
-        assert "3/5 complete" in result.output
+        # 4 completed (rss, blog, podcast, substack), 3 failed (gmail + 2x youtube)
+        assert "4/7 complete" in result.output
 
     @patch("src.cli.adapters.create_digest_sync")
     @patch("src.processors.summarizer.ContentSummarizer")
     def test_pipeline_succeeds_when_three_sources_fail(self, mock_summarizer, mock_digest):
-        """Pipeline continues even when 3 of 5 sources fail — only needs 1."""
+        """Pipeline continues even when 3 of 7 sources fail — only needs 1.
+
+        Fails gmail + rss + youtube-rss (3 of 7 physical sources). The remaining
+        4 succeed, demonstrating that ``_run_ingestion_stage_async`` only raises
+        RuntimeError when ALL sources fail, not just a majority.
+        """
         mock_summarizer.return_value.summarize_pending_contents.return_value = 1
         mock_result = MagicMock()
         mock_result.title = "Daily Digest"
@@ -146,16 +170,16 @@ class TestParallelIngestionPartialFailure:
         patches = _make_ingestion_patches(
             gmail_result=RuntimeError("fail"),
             rss_result=RuntimeError("fail"),
-            youtube_result=RuntimeError("fail"),
+            youtube_rss_result=RuntimeError("fail"),
             podcast_result=1,
-            # substack succeeds with 0 items
+            # blog, youtube-playlist, substack succeed with default 0 / configured 0 items
         )
         with _apply_ingestion_patches(patches):
             result = runner.invoke(app, ["pipeline", "daily"])
 
         assert result.exit_code == 0
-        # 2 completed (podcast, substack), 3 failed (gmail, rss, youtube)
-        assert "2/5 complete" in result.output
+        # 4 completed (blog, youtube-playlist, podcast, substack), 3 failed
+        assert "4/7 complete" in result.output
 
 
 class TestParallelIngestionAllFail:
@@ -166,7 +190,9 @@ class TestParallelIngestionAllFail:
         patches = _make_ingestion_patches(
             gmail_result=RuntimeError("Gmail auth failed"),
             rss_result=RuntimeError("RSS timeout"),
-            youtube_result=RuntimeError("YouTube quota"),
+            blog_result=RuntimeError("Blog error"),
+            youtube_playlist_result=RuntimeError("YouTube playlist quota"),
+            youtube_rss_result=RuntimeError("YouTube RSS quota"),
             podcast_result=RuntimeError("Podcast DNS"),
             substack_result=RuntimeError("Substack error"),
         )
@@ -181,7 +207,9 @@ class TestParallelIngestionAllFail:
         patches = _make_ingestion_patches(
             gmail_result=RuntimeError("Gmail auth failed"),
             rss_result=RuntimeError("RSS timeout"),
-            youtube_result=RuntimeError("YouTube quota"),
+            blog_result=RuntimeError("Blog error"),
+            youtube_playlist_result=RuntimeError("YouTube playlist quota"),
+            youtube_rss_result=RuntimeError("YouTube RSS quota"),
             podcast_result=RuntimeError("Podcast DNS"),
             substack_result=RuntimeError("Substack error"),
         )
@@ -189,8 +217,8 @@ class TestParallelIngestionAllFail:
             result = runner.invoke(app, ["pipeline", "daily"])
 
         assert result.exit_code == 1
-        # All 5 failed
-        assert "0/5 complete" in result.output
+        # All 7 failed
+        assert "0/7 complete" in result.output
 
 
 # =============================================================================
@@ -245,7 +273,14 @@ class TestIngestionProgressOutput:
 
 
 class TestParallelExecution:
-    """Verify that ingestion sources actually run concurrently via orchestrator."""
+    """Verify that ingestion sources actually run concurrently via orchestrator.
+
+    These tests must patch every orchestrator entry point that
+    ``_run_ingestion_stage_async`` calls — leaving any unpatched causes the
+    real implementation to run (real Google OAuth, real RSS fetches, etc.),
+    which both makes the tests slow and produces false failures from
+    environment dependencies.
+    """
 
     @pytest.mark.asyncio
     async def test_ingestion_uses_asyncio_gather(self):
@@ -255,17 +290,21 @@ class TestParallelExecution:
         with (
             patch("src.ingestion.orchestrator.ingest_gmail", return_value=2),
             patch("src.ingestion.orchestrator.ingest_rss", return_value=3),
-            patch("src.ingestion.orchestrator.ingest_youtube", return_value=1),
+            patch("src.ingestion.orchestrator.ingest_blog", return_value=0),
+            patch("src.ingestion.orchestrator.ingest_youtube_playlist", return_value=1),
+            patch("src.ingestion.orchestrator.ingest_youtube_rss", return_value=1),
             patch("src.ingestion.orchestrator.ingest_podcast", return_value=1),
             patch("src.ingestion.orchestrator.ingest_substack", return_value=0),
         ):
             results = await _run_ingestion_stage_async()
 
-        # All 5 sources should have results
-        assert len(results) == 5
+        # All 7 hard-coded sources should have results
+        assert len(results) == 7
         assert results["gmail"] == 2
         assert results["rss"] == 3
-        assert results["youtube"] == 1
+        assert results["blog"] == 0
+        assert results["youtube-playlist"] == 1
+        assert results["youtube-rss"] == 1
         assert results["podcast"] == 1
         assert results["substack"] == 0
 
@@ -277,27 +316,32 @@ class TestParallelExecution:
         with (
             patch("src.ingestion.orchestrator.ingest_gmail", side_effect=RuntimeError("fail")),
             patch("src.ingestion.orchestrator.ingest_rss", return_value=3),
-            patch("src.ingestion.orchestrator.ingest_youtube", return_value=1),
+            patch("src.ingestion.orchestrator.ingest_blog", return_value=0),
+            patch("src.ingestion.orchestrator.ingest_youtube_playlist", return_value=1),
+            patch("src.ingestion.orchestrator.ingest_youtube_rss", return_value=1),
             patch("src.ingestion.orchestrator.ingest_podcast", return_value=1),
             patch("src.ingestion.orchestrator.ingest_substack", return_value=0),
         ):
             results = await _run_ingestion_stage_async()
 
-        # gmail failed, so only 4 sources in results
+        # gmail failed, so only 6 of 7 sources in results
         assert "gmail" not in results
-        assert len(results) == 4
+        assert len(results) == 6
 
     @pytest.mark.asyncio
     async def test_all_fail_raises_runtime_error(self):
         """Verify _run_ingestion_stage_async raises RuntimeError when all fail."""
         from src.cli.pipeline_commands import _run_ingestion_stage_async
 
+        fail = RuntimeError("fail")
         with (
-            patch("src.ingestion.orchestrator.ingest_gmail", side_effect=RuntimeError("fail")),
-            patch("src.ingestion.orchestrator.ingest_rss", side_effect=RuntimeError("fail")),
-            patch("src.ingestion.orchestrator.ingest_youtube", side_effect=RuntimeError("fail")),
-            patch("src.ingestion.orchestrator.ingest_podcast", side_effect=RuntimeError("fail")),
-            patch("src.ingestion.orchestrator.ingest_substack", side_effect=RuntimeError("fail")),
+            patch("src.ingestion.orchestrator.ingest_gmail", side_effect=fail),
+            patch("src.ingestion.orchestrator.ingest_rss", side_effect=fail),
+            patch("src.ingestion.orchestrator.ingest_blog", side_effect=fail),
+            patch("src.ingestion.orchestrator.ingest_youtube_playlist", side_effect=fail),
+            patch("src.ingestion.orchestrator.ingest_youtube_rss", side_effect=fail),
+            patch("src.ingestion.orchestrator.ingest_podcast", side_effect=fail),
+            patch("src.ingestion.orchestrator.ingest_substack", side_effect=fail),
         ):
             with pytest.raises(RuntimeError, match="All ingestion sources failed"):
                 await _run_ingestion_stage_async()
@@ -313,24 +357,20 @@ class TestWaitFlag:
 
     @patch("src.cli.adapters.create_digest_sync")
     @patch("src.processors.summarizer.ContentSummarizer")
-    @patch("src.ingestion.orchestrator.ingest_substack", return_value=0)
-    @patch("src.ingestion.orchestrator.ingest_podcast", return_value=1)
-    @patch("src.ingestion.orchestrator.ingest_youtube", return_value=1)
-    @patch("src.ingestion.orchestrator.ingest_rss", return_value=3)
-    @patch("src.ingestion.orchestrator.ingest_gmail", return_value=2)
     @patch("src.cli.pipeline_commands._wait_for_jobs")
     def test_daily_wait_flag_enqueues_and_waits(
         self,
         mock_wait,
-        mock_gmail,
-        mock_rss,
-        mock_youtube,
-        mock_podcast,
-        mock_substack,
         mock_summarizer,
         mock_digest,
     ):
-        """--wait flag enqueues summarization jobs instead of direct processing."""
+        """--wait flag enqueues summarization jobs instead of direct processing.
+
+        Uses _make_ingestion_patches to scaffold all 7 orchestrator entry
+        points. The decorator-chain approach is fragile because adding/
+        removing a source requires reordering the chain (decorators apply
+        bottom-up).
+        """
         # Mock enqueue_pending_contents async method
         mock_summarizer.return_value.enqueue_pending_contents = AsyncMock(
             return_value={"enqueued_count": 5, "skipped_count": 0, "job_ids": [1, 2, 3, 4, 5]}
@@ -344,25 +384,17 @@ class TestWaitFlag:
         mock_result.newsletter_count = 7
         mock_digest.return_value = mock_result
 
-        result = runner.invoke(app, ["pipeline", "daily", "--wait"])
+        patches = _make_ingestion_patches()
+        with _apply_ingestion_patches(patches):
+            result = runner.invoke(app, ["pipeline", "daily", "--wait"])
 
         assert result.exit_code == 0
         assert "completed successfully" in result.output
 
     @patch("src.cli.adapters.create_digest_sync")
     @patch("src.processors.summarizer.ContentSummarizer")
-    @patch("src.ingestion.orchestrator.ingest_substack", return_value=0)
-    @patch("src.ingestion.orchestrator.ingest_podcast", return_value=1)
-    @patch("src.ingestion.orchestrator.ingest_youtube", return_value=1)
-    @patch("src.ingestion.orchestrator.ingest_rss", return_value=3)
-    @patch("src.ingestion.orchestrator.ingest_gmail", return_value=2)
     def test_daily_without_wait_uses_direct_processing(
         self,
-        mock_gmail,
-        mock_rss,
-        mock_youtube,
-        mock_podcast,
-        mock_substack,
         mock_summarizer,
         mock_digest,
     ):
@@ -374,7 +406,9 @@ class TestWaitFlag:
         mock_result.newsletter_count = 7
         mock_digest.return_value = mock_result
 
-        result = runner.invoke(app, ["pipeline", "daily"])
+        patches = _make_ingestion_patches()
+        with _apply_ingestion_patches(patches):
+            result = runner.invoke(app, ["pipeline", "daily"])
 
         assert result.exit_code == 0
         # Should call direct summarize, not enqueue

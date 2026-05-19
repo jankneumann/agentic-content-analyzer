@@ -93,6 +93,28 @@ def _search_columns(test_db_engine):
             )
         )
 
+        # Conditionally create BM25 index when pg_search is available
+        # (e.g., ParadeDB in CI). Mirrors the production migration at
+        # alembic/versions/b2c3d4e5f6a7_add_document_chunks_table.py:145.
+        # Wraps in DO/EXCEPTION so it silently skips on vanilla PG.
+        conn.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pg_search') THEN
+                        CREATE EXTENSION IF NOT EXISTS pg_search;
+                        CREATE INDEX IF NOT EXISTS ix_document_chunks_bm25
+                        ON document_chunks USING bm25 (id, chunk_text) WITH (key_field='id');
+                    END IF;
+                EXCEPTION WHEN OTHERS THEN
+                    -- Vector / FTS search still works; BM25 search will return empty.
+                    NULL;
+                END $$
+                """
+            )
+        )
+
         conn.commit()
 
 
