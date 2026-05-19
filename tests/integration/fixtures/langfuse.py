@@ -29,7 +29,18 @@ LANGFUSE_OTLP_ENDPOINT = f"{LANGFUSE_BASE_URL}/api/public/otel"
 
 
 def _langfuse_is_running() -> bool:
-    """Check if Langfuse is healthy via /api/public/health."""
+    """Check Langfuse availability AND that API credentials are configured.
+
+    The default ``langfuse_base_url`` is the Langfuse Cloud URL, which
+    always responds 200 to ``/api/public/health``. Without keys, traces
+    can't be written — but a reachability-only check would let tests
+    proceed and then time out waiting for traces that never appear (this
+    happened in CI for `test_trace_llm_call_round_trip`). Require both:
+    the endpoint is reachable AND ``langfuse_public_key`` /
+    ``langfuse_secret_key`` are set.
+    """
+    if not (_settings.langfuse_public_key and _settings.langfuse_secret_key):
+        return False
     try:
         response = httpx.get(f"{LANGFUSE_BASE_URL}/api/public/health", timeout=2.0)
         return response.status_code == 200

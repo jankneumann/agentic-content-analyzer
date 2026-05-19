@@ -1,4 +1,9 @@
-"""Tests for aca ingest blog CLI command."""
+"""Tests for aca ingest blog CLI command.
+
+Post-harmonization, ``ingest_blog`` returns ``IngestionResponse``; mocks must
+mimic that shape — returning a bare int from these mocks would mask production
+bugs where the consumer treats a Pydantic model as if it were an int.
+"""
 
 from __future__ import annotations
 
@@ -7,15 +12,25 @@ from unittest.mock import patch
 from typer.testing import CliRunner
 
 from src.cli.app import app
+from src.ingestion.result import IngestionResponse
 
 runner = CliRunner()
+
+
+def _blog_response(items: int) -> IngestionResponse:
+    return IngestionResponse(
+        command="ingest.blog",
+        source="blog",
+        status="ok",
+        items_ingested=items,
+    )
 
 
 class TestBlogCommand:
     """Tests for the blog ingest CLI command."""
 
     @patch("src.cli.ingest_commands.is_direct_mode", return_value=True)
-    @patch("src.ingestion.orchestrator.ingest_blog", return_value=5)
+    @patch("src.ingestion.orchestrator.ingest_blog", return_value=_blog_response(5))
     def test_blog_direct_mode(self, mock_ingest, mock_direct):
         """Blog command works in direct mode."""
         result = runner.invoke(app, ["ingest", "blog", "--max", "10"])
@@ -25,7 +40,7 @@ class TestBlogCommand:
         assert call_kwargs["max_entries_per_source"] == 10
 
     @patch("src.cli.ingest_commands.is_direct_mode", return_value=True)
-    @patch("src.ingestion.orchestrator.ingest_blog", return_value=3)
+    @patch("src.ingestion.orchestrator.ingest_blog", return_value=_blog_response(3))
     def test_blog_with_days_filter(self, mock_ingest, mock_direct):
         """Blog command passes after_date when --days specified."""
         result = runner.invoke(app, ["ingest", "blog", "--days", "7"])
@@ -34,7 +49,7 @@ class TestBlogCommand:
         assert call_kwargs["after_date"] is not None
 
     @patch("src.cli.ingest_commands.is_direct_mode", return_value=True)
-    @patch("src.ingestion.orchestrator.ingest_blog", return_value=0)
+    @patch("src.ingestion.orchestrator.ingest_blog", return_value=_blog_response(0))
     def test_blog_with_force(self, mock_ingest, mock_direct):
         """Blog command passes force_reprocess flag."""
         result = runner.invoke(app, ["ingest", "blog", "--force"])
@@ -43,7 +58,7 @@ class TestBlogCommand:
         assert call_kwargs["force_reprocess"] is True
 
     @patch("src.cli.ingest_commands.is_direct_mode", return_value=True)
-    @patch("src.ingestion.orchestrator.ingest_blog", return_value=0)
+    @patch("src.ingestion.orchestrator.ingest_blog", return_value=_blog_response(0))
     def test_blog_defaults(self, mock_ingest, mock_direct):
         """Blog command uses sensible defaults."""
         result = runner.invoke(app, ["ingest", "blog"])

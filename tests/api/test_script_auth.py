@@ -26,7 +26,10 @@ def test_script_routes_auth(db_session):
         # 1. Test UNAUTHORIZED access (missing header)
         response = client.get("/api/v1/scripts/")
         assert response.status_code == 401, f"Expected 401 Unauthorized, got {response.status_code}"
-        assert response.json()["detail"] == "Missing authentication header X-Admin-Key"
+        # AuthMiddleware now returns "Please log in or provide X-Admin-Key header."
+        # (src/api/middleware/auth.py:144). Assert on stable substrings.
+        detail = response.json()["detail"]
+        assert "X-Admin-Key" in detail or "authentication" in detail.lower()
 
         # 2. Test FORBIDDEN access (invalid key)
         response = client.get("/api/v1/scripts/", headers={"X-Admin-Key": "wrong-key"})

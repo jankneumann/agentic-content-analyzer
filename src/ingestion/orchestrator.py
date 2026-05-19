@@ -7,35 +7,32 @@ importing, instantiating, and calling service classes.
 Each function:
 - Lazy-imports its service classes (avoids circular imports, defers heavy deps)
 - Accepts the same parameters the service expects
-- Returns int (number of items ingested) or a result dataclass
+- Returns the canonical ``IngestionResponse`` envelope. Round-4 harmonization
+  (2026-05-08) closed the last legacy shapes (``int`` for gmail, the small
+  ``URLIngestResult`` dataclass for url, and the ad-hoc per-file dict for
+  files); every command now produces the same envelope.
 
-Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity, url, scholar, arxiv, huggingface_papers
+Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity,
+url, files, scholar, arxiv, huggingface_papers
 
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from src.telemetry.decorators import observe
 from src.utils.logging import get_logger
 
 if TYPE_CHECKING:
-    from src.ingestion.rss import IngestionResult
+    from src.ingestion.arxiv import ArxivPaperResult
+    from src.ingestion.result import IngestionResponse
+    from src.ingestion.scholar import ScholarPaperResult
 
 logger = get_logger(__name__)
-
-
-@dataclass
-class URLIngestResult:
-    """Result of a direct URL ingestion."""
-
-    content_id: int
-    status: str  # "queued" or "exists"
-    duplicate: bool
 
 
 @observe()
@@ -45,11 +42,14 @@ def ingest_gmail(
     max_results: int | None = None,
     after_date: datetime | None = None,
     force_reprocess: bool = False,
-) -> int:
+) -> IngestionResponse:
     """Ingest newsletters from Gmail.
 
     When query or max_results are None, reads defaults from
-    sources.d/gmail.yaml via get_gmail_sources().
+    sources.d/gmail.yaml via get_gmail_sources(). The Gmail service still
+    returns a bare int internally (its API surface predates the envelope);
+    we wrap that count at the orchestrator boundary into the canonical
+    envelope so all transports see the same shape.
 
     Args:
         query: Gmail search query. None = use sources.d config.
@@ -58,9 +58,11 @@ def ingest_gmail(
         force_reprocess: Force reprocess existing content.
 
     Returns:
-        Number of items ingested.
+        Canonical IngestionResponse envelope (command='ingest.gmail',
+        source='gmail').
     """
     from src.ingestion.gmail import GmailContentIngestionService
+    from src.ingestion.result import IngestionResponse
 
     # Apply sources.d/gmail.yaml defaults when params not explicitly set
     if query is None or max_results is None:
@@ -83,11 +85,17 @@ def ingest_gmail(
     max_results = max_results or 50
 
     service = GmailContentIngestionService()
-    return service.ingest_content(
+    count = service.ingest_content(
         query=query,
         max_results=max_results,
         after_date=after_date,
         force_reprocess=force_reprocess,
+    )
+    return IngestionResponse(
+        command="ingest.gmail",
+        source="gmail",
+        status="ok",
+        items_ingested=count,
     )
 
 
@@ -97,19 +105,21 @@ def ingest_rss(
     max_entries_per_feed: int = 10,
     after_date: datetime | None = None,
     force_reprocess: bool = False,
-    on_result: Callable[[IngestionResult], None] | None = None,
-) -> int:
+    on_result: Callable[[IngestionResponse], None] | None = None,
+) -> IngestionResponse:
     """Ingest articles from configured RSS feeds.
 
     Args:
         max_entries_per_feed: Maximum entries per feed.
         after_date: Only fetch entries after this date.
         force_reprocess: Force reprocess existing content.
-        on_result: Optional callback that receives the full IngestionResult
-                   (for rich result reporting in CLI).
+        on_result: Optional legacy callback that receives the full IngestionResponse.
+                   Prefer using the return value directly; on_result will be removed
+                   when all CLI direct paths consume the canonical envelope.
 
     Returns:
-        Number of items ingested.
+        Canonical IngestionResponse envelope with status, items_ingested,
+        errors, and warnings populated from per-source diagnostics.
     """
     from src.ingestion.rss import RSSContentIngestionService
 
@@ -121,7 +131,7 @@ def ingest_rss(
     )
     if on_result:
         on_result(result)
-    return result.items_ingested
+    return result
 
 
 @observe()
@@ -130,8 +140,8 @@ def ingest_blog(
     max_entries_per_source: int = 10,
     after_date: datetime | None = None,
     force_reprocess: bool = False,
-    on_result: Callable[[IngestionResult], None] | None = None,
-) -> int:
+    on_result: Callable[[IngestionResponse], None] | None = None,
+) -> IngestionResponse:
     """Ingest blog posts from configured blog sources.
 
     Discovers post links from blog index pages, extracts content
@@ -141,10 +151,10 @@ def ingest_blog(
         max_entries_per_source: Maximum posts per blog source.
         after_date: Only fetch posts after this date.
         force_reprocess: Force reprocess existing content.
-        on_result: Optional callback for rich result reporting in CLI.
+        on_result: Optional legacy callback. Prefer the return value directly.
 
     Returns:
-        Number of items ingested.
+        Canonical IngestionResponse envelope.
     """
     from src.ingestion.blog_scraper import BlogContentIngestionService
 
@@ -156,7 +166,47 @@ def ingest_blog(
     )
     if on_result:
         on_result(result)
-    return result.items_ingested
+    return result
+
+
+def _merge_youtube_envelopes(
+    *,
+    command: str,
+    source: str,
+    parts: list[IngestionResponse],
+) -> IngestionResponse:
+    """Merge multiple IngestionResponse parts into a single combined envelope.
+
+    Used by ``ingest_youtube_playlist`` (playlists + channels share the
+    youtube-playlist command) and ``ingest_youtube`` (playlist + RSS).
+    Preserves all per-source errors / warnings so consumers can still see
+    which feed or playlist failed; status is recomputed from the merged
+    counts so a partial-success across the union is correctly classified.
+    """
+    from src.ingestion.result import (
+        IngestionError,
+        IngestionResponse as _Response,
+        derive_status,
+    )
+
+    items_ingested = sum(p.items_ingested for p in parts)
+    items_skipped = sum(p.items_skipped for p in parts)
+    items_failed = sum(p.items_failed for p in parts)
+    errors: list[IngestionError] = [e for p in parts for e in p.errors]
+    warnings = [w for p in parts for w in p.warnings]
+
+    return _Response(
+        command=command,  # type: ignore[arg-type]
+        source=source,  # type: ignore[arg-type]
+        status=derive_status(
+            items_ingested=items_ingested, items_failed=items_failed, errors=errors
+        ),
+        items_ingested=items_ingested,
+        items_skipped=items_skipped,
+        items_failed=items_failed,
+        errors=errors,
+        warnings=warnings,
+    )
 
 
 @observe()
@@ -166,13 +216,15 @@ def ingest_youtube_playlist(
     after_date: datetime | None = None,
     force_reprocess: bool = False,
     use_oauth: bool = True,
-) -> int:
+) -> IngestionResponse:
     """Ingest content from YouTube playlists and channels.
 
     Uses YouTubeContentIngestionService to process playlists (via YouTube
     Data API) and channels. Supports both Gemini native video extraction
     and transcript-based fallback.  Service methods are async; this function
-    bridges via asyncio.run() to keep callers synchronous.
+    bridges via asyncio.run() to keep callers synchronous. The two service
+    calls return separate envelopes which we merge into one combined envelope
+    for the youtube-playlist command.
 
     Args:
         max_videos: Maximum videos per playlist/channel.
@@ -181,27 +233,33 @@ def ingest_youtube_playlist(
         use_oauth: Use OAuth for private content (False = API key only).
 
     Returns:
-        Number of items ingested from playlists and channels.
+        Canonical IngestionResponse envelope (command='ingest.youtube-playlist',
+        source='youtube-playlist').
     """
     import asyncio
 
     from src.ingestion.youtube import YouTubeContentIngestionService
 
-    async def _run() -> int:
+    async def _run() -> tuple[IngestionResponse, IngestionResponse]:
         service = YouTubeContentIngestionService(use_oauth=use_oauth)
-        playlist_count = await service.ingest_all_playlists(
+        playlist_response = await service.ingest_all_playlists(
             max_videos_per_playlist=max_videos,
             after_date=after_date,
             force_reprocess=force_reprocess,
         )
-        channel_count = await service.ingest_channels(
+        channel_response = await service.ingest_channels(
             max_videos_per_channel=max_videos,
             after_date=after_date,
             force_reprocess=force_reprocess,
         )
-        return playlist_count + channel_count
+        return playlist_response, channel_response
 
-    return asyncio.run(_run())
+    playlist_response, channel_response = asyncio.run(_run())
+    return _merge_youtube_envelopes(
+        command="ingest.youtube-playlist",
+        source="youtube-playlist",
+        parts=[playlist_response, channel_response],
+    )
 
 
 @observe()
@@ -210,12 +268,12 @@ def ingest_youtube_rss(
     max_videos: int = 10,
     after_date: datetime | None = None,
     force_reprocess: bool = False,
-) -> int:
+) -> IngestionResponse:
     """Ingest content from YouTube RSS feeds.
 
     Uses YouTubeRSSIngestionService to process channel RSS feeds.
     Supports Gemini native video extraction (with low resolution by default)
-    and transcript-based fallback.  Service methods are async; this function
+    and transcript-based fallback. Service methods are async; this function
     bridges via asyncio.run() to keep callers synchronous.
 
     Args:
@@ -224,13 +282,14 @@ def ingest_youtube_rss(
         force_reprocess: Force reprocess existing content.
 
     Returns:
-        Number of items ingested from RSS feeds.
+        Canonical IngestionResponse envelope (command='ingest.youtube-rss',
+        source='youtube-rss').
     """
     import asyncio
 
     from src.ingestion.youtube import YouTubeRSSIngestionService
 
-    async def _run() -> int:
+    async def _run() -> IngestionResponse:
         service = YouTubeRSSIngestionService()
         return await service.ingest_all_feeds(
             max_entries_per_feed=max_videos,
@@ -248,12 +307,13 @@ def ingest_youtube(
     after_date: datetime | None = None,
     force_reprocess: bool = False,
     use_oauth: bool = True,
-) -> int:
+) -> IngestionResponse:
     """Ingest from all YouTube sources (playlists, channels, and RSS feeds).
 
     Backward-compatible combined function that runs playlists first,
     then RSS feeds. Playlists run first because they are higher priority
-    (curated content) and have fewer videos.
+    (curated content) and have fewer videos. The two sub-envelopes
+    are merged so the consumer sees one canonical youtube envelope.
 
     Args:
         max_videos: Maximum videos per playlist/channel/feed.
@@ -262,20 +322,26 @@ def ingest_youtube(
         use_oauth: Use OAuth for private content (False = API key only).
 
     Returns:
-        Total number of items ingested across all YouTube source types.
+        Canonical IngestionResponse envelope (command='ingest.youtube',
+        source='youtube'). All errors/warnings from both sub-envelopes
+        are concatenated in order (playlist first, then RSS).
     """
-    playlist_count = ingest_youtube_playlist(
+    playlist_response = ingest_youtube_playlist(
         max_videos=max_videos,
         after_date=after_date,
         force_reprocess=force_reprocess,
         use_oauth=use_oauth,
     )
-    rss_count = ingest_youtube_rss(
+    rss_response = ingest_youtube_rss(
         max_videos=max_videos,
         after_date=after_date,
         force_reprocess=force_reprocess,
     )
-    return playlist_count + rss_count
+    return _merge_youtube_envelopes(
+        command="ingest.youtube",
+        source="youtube",
+        parts=[playlist_response, rss_response],
+    )
 
 
 @observe()
@@ -284,7 +350,7 @@ def ingest_podcast(
     max_entries_per_feed: int = 10,
     after_date: datetime | None = None,
     force_reprocess: bool = False,
-) -> int:
+) -> IngestionResponse:
     """Ingest episodes from configured podcast feeds.
 
     Args:
@@ -293,7 +359,7 @@ def ingest_podcast(
         force_reprocess: Force reprocess existing content.
 
     Returns:
-        Number of episodes ingested.
+        Canonical IngestionResponse envelope.
     """
     from src.ingestion.podcast import PodcastContentIngestionService
 
@@ -312,7 +378,7 @@ def ingest_substack(
     after_date: datetime | None = None,
     force_reprocess: bool = False,
     session_cookie: str | None = None,
-) -> int:
+) -> IngestionResponse:
     """Ingest posts from Substack sources.
 
     Handles service.close() in a try/finally block to ensure cleanup.
@@ -324,7 +390,7 @@ def ingest_substack(
         session_cookie: Override SUBSTACK_SESSION_COOKIE value.
 
     Returns:
-        Number of items ingested.
+        Canonical IngestionResponse envelope.
     """
     from src.ingestion.substack import SubstackContentIngestionService
 
@@ -345,8 +411,8 @@ def ingest_xsearch(
     prompt: str | None = None,
     max_threads: int | None = None,
     force_reprocess: bool = False,
-    on_result: Callable | None = None,
-) -> int:
+    on_result: Callable[[IngestionResponse], None] | None = None,
+) -> IngestionResponse:
     """Ingest X posts/threads via Grok API search.
 
     Uses the xAI SDK with the x_search tool to discover AI-relevant
@@ -357,11 +423,12 @@ def ingest_xsearch(
         prompt: Override the default search prompt.
         max_threads: Maximum threads to ingest (default from settings).
         force_reprocess: Re-ingest threads that already exist.
-        on_result: Optional callback that receives the full XSearchResult
-                   (for rich result reporting in CLI).
+        on_result: Optional legacy callback that receives the full
+                   IngestionResponse. Prefer the return value directly.
 
     Returns:
-        Number of items ingested.
+        Canonical IngestionResponse envelope. ``details`` carries the
+        xsearch-specific ``tool_calls_made`` and ``threads_found`` extras.
     """
     from src.ingestion.xsearch import GrokXContentIngestionService
 
@@ -374,7 +441,7 @@ def ingest_xsearch(
         )
         if on_result is not None:
             on_result(result)
-        return result.items_ingested
+        return result
     finally:
         service.close()
 
@@ -387,8 +454,8 @@ def ingest_perplexity_search(
     force_reprocess: bool = False,
     recency_filter: str | None = None,
     context_size: str | None = None,
-    on_result: Callable | None = None,
-) -> int:
+    on_result: Callable[[IngestionResponse], None] | None = None,
+) -> IngestionResponse:
     """Ingest web content via Perplexity Sonar API search.
 
     Uses Perplexity's AI-powered web search to discover articles with
@@ -401,10 +468,12 @@ def ingest_perplexity_search(
         force_reprocess: Re-ingest content that already exists.
         recency_filter: Override recency filter (hour/day/week/month).
         context_size: Override context size (low/medium/high).
-        on_result: Optional callback that receives the full PerplexitySearchResult.
+        on_result: Optional legacy callback that receives the full
+                   IngestionResponse. Prefer the return value directly.
 
     Returns:
-        Number of items ingested.
+        Canonical IngestionResponse envelope. ``details`` carries the
+        perplexity-specific ``queries_made`` and ``citations_found`` extras.
     """
     from src.ingestion.perplexity_search import PerplexityContentIngestionService
 
@@ -419,7 +488,7 @@ def ingest_perplexity_search(
         )
         if on_result is not None:
             on_result(result)
-        return result.items_ingested
+        return result
     finally:
         service.close()
 
@@ -428,50 +497,86 @@ def ingest_perplexity_search(
 def ingest_scholar(
     *,
     max_entries: int = 20,
-) -> int:
+) -> IngestionResponse:
     """Ingest academic papers from configured scholar sources.
 
     Loads scholar sources from sources.d/scholar.yaml and runs search-based
     ingestion for each enabled source via the ScholarContentIngestionService.
+    Each source's ``ScholarSearchResult`` is folded into the canonical
+    envelope: ``papers_ingested`` accumulates as ``items_ingested``,
+    duplicates and filter rejections collapse into ``items_skipped``,
+    and per-paper failures populate ``items_failed``. Source-level
+    exceptions become ``IngestionError`` entries (one per source).
 
     Args:
         max_entries: Maximum papers per source.
 
     Returns:
-        Number of papers ingested.
+        Canonical IngestionResponse envelope (command='ingest.scholar',
+        source='scholar').
     """
     import asyncio
 
     from src.config.sources import load_sources_config
-    from src.ingestion.scholar import ScholarContentIngestionService
+    from src.ingestion.result import IngestionError, IngestionResponse, derive_status
 
     try:
         config = load_sources_config()
         sources = config.get_scholar_sources()
     except Exception:
         logger.debug("Could not load scholar sources config")
-        return 0
+        return IngestionResponse(
+            command="ingest.scholar", source="scholar", status="ok", items_ingested=0
+        )
 
     if not sources:
-        return 0
+        return IngestionResponse(
+            command="ingest.scholar", source="scholar", status="ok", items_ingested=0
+        )
 
-    async def _run() -> int:
+    async def _run() -> tuple[int, int, int, list[IngestionError]]:
+        from src.ingestion.scholar import ScholarContentIngestionService
+
         service = ScholarContentIngestionService()
+        ingested = 0
+        skipped = 0
+        failed = 0
+        errors: list[IngestionError] = []
         try:
-            total = 0
             for source in sources:
                 if not source.enabled:
                     continue
                 try:
-                    result = await service.ingest_from_search(source)
-                    total += result.papers_ingested
+                    result = await service.ingest_from_search(source, force_reprocess=False)
+                    ingested += result.papers_ingested
+                    skipped += result.papers_skipped_duplicate + result.papers_skipped_filter
+                    failed += result.papers_failed
                 except Exception as exc:
                     logger.error(f"Scholar source '{source.name}' failed: {exc}")
-            return total
+                    errors.append(
+                        IngestionError(
+                            code="scholar_source_error",
+                            message=str(exc),
+                            url=source.name,
+                        )
+                    )
         finally:
             await service.close()
+        return ingested, skipped, failed, errors
 
-    return asyncio.run(_run())
+    items_ingested, items_skipped, items_failed, errors = asyncio.run(_run())
+
+    return IngestionResponse(
+        command="ingest.scholar",
+        source="scholar",
+        status=derive_status(
+            items_ingested=items_ingested, items_failed=items_failed, errors=errors
+        ),
+        items_ingested=items_ingested,
+        items_skipped=items_skipped,
+        items_failed=items_failed,
+        errors=errors,
+    )
 
 
 @observe()
@@ -479,33 +584,68 @@ def ingest_scholar_paper(
     *,
     identifier: str,
     with_refs: bool = False,
-) -> int:
+) -> IngestionResponse:
     """Ingest a single academic paper by identifier.
 
     Resolves the identifier (DOI, arXiv ID, S2 paper ID, or URL) to a
     Semantic Scholar paper and ingests it. Optionally ingests referenced
-    papers as well.
+    papers as well; in that mode the seed paper plus its references are
+    counted together under ``items_ingested``.
 
     Args:
         identifier: DOI, arXiv ID, S2 paper ID, or URL.
         with_refs: Also ingest papers referenced by this paper.
 
     Returns:
-        Number of papers ingested (1 if successful, 0 if not).
+        Canonical IngestionResponse envelope (command='ingest.scholar-paper',
+        source='scholar_paper'). ``details`` carries the original identifier,
+        the resolved S2 paper id (when available), the ``with_refs`` flag,
+        and ``refs_ingested`` (subset of items_ingested that came from the
+        references walk).
     """
     import asyncio
 
-    from src.ingestion.scholar import ScholarContentIngestionService
+    from src.ingestion.result import IngestionError, IngestionResponse, derive_status
 
-    async def _run() -> int:
+    async def _run() -> ScholarPaperResult:
+        from src.ingestion.scholar import ScholarContentIngestionService
+
         service = ScholarContentIngestionService()
         try:
-            result = await service.ingest_paper(identifier, with_refs=with_refs)
-            return 1 if result.ingested else 0
+            return await service.ingest_paper(identifier, with_refs=with_refs)
         finally:
             await service.close()
 
-    return asyncio.run(_run())
+    result = asyncio.run(_run())
+
+    refs_ingested = result.refs_ingested if with_refs else 0
+    items_ingested = (1 if result.ingested else 0) + refs_ingested
+    items_skipped = 1 if result.already_exists else 0
+
+    errors: list[IngestionError] = []
+    if result.error:
+        errors.append(
+            IngestionError(
+                code="scholar_paper_error",
+                message=result.error,
+                url=identifier,
+            )
+        )
+
+    return IngestionResponse(
+        command="ingest.scholar-paper",
+        source="scholar_paper",
+        status=derive_status(items_ingested=items_ingested, items_failed=0, errors=errors),
+        items_ingested=items_ingested,
+        items_skipped=items_skipped,
+        errors=errors,
+        details={
+            "identifier": identifier,
+            "paper_id": result.paper_id,
+            "with_refs": with_refs,
+            "refs_ingested": refs_ingested,
+        },
+    )
 
 
 @observe()
@@ -516,11 +656,15 @@ def ingest_scholar_refs(
     source_types: list[str] | None = None,
     dry_run: bool = False,
     limit: int | None = None,
-) -> int:
+) -> IngestionResponse:
     """Extract and ingest academic paper references from existing content.
 
     Scans existing content records for arXiv IDs, DOIs, and Semantic Scholar
-    URLs, then resolves and ingests the referenced papers.
+    URLs, then resolves and ingests the referenced papers. Reference-extraction
+    counters from ``ReferenceExtractionResult`` (content_scanned, references_found,
+    references_resolved/unresolved) land in ``details``; ``papers_ingested`` is
+    additionally surfaced in ``details`` for backward-compatible JSON consumers
+    (per the reserved-key registry in ``result.py``).
 
     Args:
         after: Only scan content ingested after this date.
@@ -530,27 +674,45 @@ def ingest_scholar_refs(
         limit: Maximum number of references to ingest.
 
     Returns:
-        Number of papers ingested from extracted references.
+        Canonical IngestionResponse envelope (command='ingest.scholar-refs',
+        source='scholar-refs').
     """
     import asyncio
 
     from src.ingestion.reference_extractor import ReferenceExtractor
+    from src.ingestion.result import IngestionResponse
+    from src.services.reference_extractor import ReferenceExtractionResult
 
-    async def _run() -> int:
+    async def _run() -> ReferenceExtractionResult:
         extractor = ReferenceExtractor()
         try:
-            result = await extractor.ingest_extracted_references(
+            return await extractor.ingest_extracted_references(
                 after=after,
                 before=before,
                 source_types=source_types,
                 dry_run=dry_run,
                 limit=limit,
             )
-            return result.papers_ingested
         finally:
             await extractor.close()
 
-    return asyncio.run(_run())
+    result = asyncio.run(_run())
+
+    return IngestionResponse(
+        command="ingest.scholar-refs",
+        source="scholar-refs",
+        status="ok",
+        items_ingested=result.papers_ingested,
+        items_skipped=result.papers_skipped_duplicate,
+        details={
+            "papers_ingested": result.papers_ingested,
+            "content_scanned": result.content_scanned,
+            "references_found": result.references_found,
+            "references_resolved": result.references_resolved,
+            "references_unresolved": result.references_unresolved,
+            "dry_run": dry_run,
+        },
+    )
 
 
 @observe()
@@ -560,11 +722,19 @@ def ingest_arxiv(
     after_date: datetime | None = None,
     force_reprocess: bool = False,
     no_pdf: bool = False,
-) -> int:
+) -> IngestionResponse:
     """Ingest papers from configured arXiv sources.
 
     Loads sources from sources.d/arxiv.yaml and runs search-based
-    ingestion for each enabled source.
+    ingestion for each enabled source. Each source's ``ArxivIngestionResult``
+    folds into the canonical envelope:
+      - ``papers_ingested + papers_updated_version + papers_enriched_scholar``
+        all count as ``items_ingested`` (newer or richer content landed in
+        the DB)
+      - ``papers_skipped_duplicate`` becomes ``items_skipped``
+      - ``papers_failed`` becomes ``items_failed``; the per-paper messages
+        in ``ArxivIngestionResult.errors`` are flattened into structured
+        ``IngestionError`` entries
 
     Args:
         max_results: Maximum papers per source.
@@ -573,20 +743,26 @@ def ingest_arxiv(
         no_pdf: Skip PDF download, use abstract-only.
 
     Returns:
-        Number of papers ingested.
+        Canonical IngestionResponse envelope (command='ingest.arxiv',
+        source='arxiv').
     """
     from src.config.sources import load_sources_config
     from src.ingestion.arxiv import ArxivContentIngestionService
+    from src.ingestion.result import IngestionError, IngestionResponse, derive_status
 
     try:
         config = load_sources_config()
         sources = config.get_arxiv_sources()
     except Exception:
         logger.debug("Could not load arxiv sources config")
-        return 0
+        return IngestionResponse(
+            command="ingest.arxiv", source="arxiv", status="ok", items_ingested=0
+        )
 
     if not sources:
-        return 0
+        return IngestionResponse(
+            command="ingest.arxiv", source="arxiv", status="ok", items_ingested=0
+        )
 
     # Override pdf_extraction if --no-pdf
     if no_pdf:
@@ -598,15 +774,54 @@ def ingest_arxiv(
         if s.max_entries is None or max_results != 20:
             s.max_entries = max_results
 
+    items_ingested = 0
+    items_skipped = 0
+    items_failed = 0
+    errors: list[IngestionError] = []
+
     service = ArxivContentIngestionService()
     try:
-        return service.ingest_content(
-            sources=sources,
-            after_date=after_date,
-            force_reprocess=force_reprocess,
-        )
+        for source in sources:
+            if not source.enabled:
+                continue
+            try:
+                result = service.ingest_from_search(
+                    source,
+                    force_reprocess=force_reprocess,
+                    after_date=after_date,
+                )
+                items_ingested += (
+                    result.papers_ingested
+                    + result.papers_updated_version
+                    + result.papers_enriched_scholar
+                )
+                items_skipped += result.papers_skipped_duplicate
+                items_failed += result.papers_failed
+                for err_msg in result.errors:
+                    errors.append(IngestionError(code="arxiv_paper_error", message=err_msg))
+            except Exception as exc:
+                logger.error(f"arXiv source '{source.name}' failed: {exc}")
+                errors.append(
+                    IngestionError(
+                        code="arxiv_source_error",
+                        message=str(exc),
+                        url=source.name,
+                    )
+                )
     finally:
         service.close()
+
+    return IngestionResponse(
+        command="ingest.arxiv",
+        source="arxiv",
+        status=derive_status(
+            items_ingested=items_ingested, items_failed=items_failed, errors=errors
+        ),
+        items_ingested=items_ingested,
+        items_skipped=items_skipped,
+        items_failed=items_failed,
+        errors=errors,
+    )
 
 
 @observe()
@@ -615,7 +830,7 @@ def ingest_arxiv_paper(
     identifier: str,
     pdf_extraction: bool = True,
     force_reprocess: bool = False,
-) -> int:
+) -> IngestionResponse:
     """Ingest a single arXiv paper by identifier.
 
     Args:
@@ -624,20 +839,49 @@ def ingest_arxiv_paper(
         force_reprocess: Force re-ingest.
 
     Returns:
-        1 if ingested, 0 otherwise.
+        Canonical IngestionResponse envelope (command='ingest.arxiv-paper',
+        source='arxiv_paper'). ``details`` carries the original identifier,
+        the resolved base ``arxiv_id``, and the ``version_updated`` flag.
     """
     from src.ingestion.arxiv import ArxivContentIngestionService
+    from src.ingestion.result import IngestionError, IngestionResponse, derive_status
 
     service = ArxivContentIngestionService()
     try:
-        result = service.ingest_paper(
+        result: ArxivPaperResult = service.ingest_paper(
             identifier,
             pdf_extraction=pdf_extraction,
             force_reprocess=force_reprocess,
         )
-        return 1 if result.ingested else 0
     finally:
         service.close()
+
+    items_ingested = 1 if result.ingested else 0
+    items_skipped = 1 if result.already_exists else 0
+
+    errors: list[IngestionError] = []
+    if result.error:
+        errors.append(
+            IngestionError(
+                code="arxiv_paper_error",
+                message=result.error,
+                url=identifier,
+            )
+        )
+
+    return IngestionResponse(
+        command="ingest.arxiv-paper",
+        source="arxiv_paper",
+        status=derive_status(items_ingested=items_ingested, items_failed=0, errors=errors),
+        items_ingested=items_ingested,
+        items_skipped=items_skipped,
+        errors=errors,
+        details={
+            "identifier": identifier,
+            "arxiv_id": result.arxiv_id,
+            "version_updated": result.version_updated,
+        },
+    )
 
 
 @observe()
@@ -646,8 +890,8 @@ def ingest_huggingface_papers(
     max_papers: int = 30,
     after_date: datetime | None = None,
     force_reprocess: bool = False,
-    on_result: Callable[[IngestionResult], None] | None = None,
-) -> int:
+    on_result: Callable[[IngestionResponse], None] | None = None,
+) -> IngestionResponse:
     """Ingest daily papers from HuggingFace Papers.
 
     Fetches the daily papers listing page, discovers paper links, extracts
@@ -657,10 +901,10 @@ def ingest_huggingface_papers(
         max_papers: Maximum papers to ingest per source.
         after_date: Only fetch papers after this date.
         force_reprocess: Force reprocess existing content.
-        on_result: Optional callback for rich result reporting.
+        on_result: Optional legacy callback. Prefer the return value directly.
 
     Returns:
-        Number of items ingested.
+        Canonical IngestionResponse envelope.
     """
     from src.ingestion.huggingface_papers import HuggingFacePapersContentIngestionService
 
@@ -672,7 +916,7 @@ def ingest_huggingface_papers(
     )
     if on_result:
         on_result(result)
-    return result.items_ingested
+    return result
 
 
 @observe()
@@ -682,11 +926,13 @@ def ingest_url(
     title: str | None = None,
     tags: list[str] | None = None,
     notes: str | None = None,
-) -> URLIngestResult:
+) -> IngestionResponse:
     """Ingest a single URL using the save-url workflow.
 
-    Creates a Content record (source_type=WEBPAGE) and enqueues background
-    extraction via URLExtractor. Deduplicates by source_url.
+    Creates a Content record (source_type=WEBPAGE) and runs URL extraction
+    synchronously. Deduplicates by source_url; a duplicate hit returns
+    ``items_skipped=1`` (not ``items_ingested``) — the row already existed
+    so nothing new landed.
 
     Args:
         url: The URL to ingest.
@@ -695,10 +941,13 @@ def ingest_url(
         notes: Optional user notes.
 
     Returns:
-        URLIngestResult with content_id, status, and duplicate flag.
+        Canonical IngestionResponse envelope (command='ingest.url',
+        source='url'). ``details`` carries ``content_id``, ``status``
+        ('queued' or 'exists'), ``duplicate`` (bool), and the original ``url``.
     """
     from datetime import UTC, datetime
 
+    from src.ingestion.result import IngestionError, IngestionResponse, derive_status
     from src.models.content import Content, ContentSource, ContentStatus
     from src.storage.database import get_db
     from src.utils.content_hash import generate_markdown_hash
@@ -708,10 +957,17 @@ def ingest_url(
         existing = db.query(Content).filter(Content.source_url == url).first()
         if existing:
             logger.info(f"URL already exists: content_id={existing.id}, url={url}")
-            return URLIngestResult(
-                content_id=existing.id,
-                status="exists",
-                duplicate=True,
+            return IngestionResponse(
+                command="ingest.url",
+                source="url",
+                status="ok",
+                items_skipped=1,
+                details={
+                    "content_id": existing.id,
+                    "status": "exists",
+                    "duplicate": True,
+                    "url": url,
+                },
             )
 
         # Build metadata
@@ -740,17 +996,140 @@ def ingest_url(
         content_id = content.id
         logger.info(f"Created content record: id={content_id}, url={url}")
 
-    # Trigger extraction synchronously (CLI context — no event loop running)
+    # Trigger extraction synchronously (CLI context — no event loop running).
+    # The Content row is already committed at this point — if extraction
+    # raises, the row exists in PENDING state and the envelope must reflect
+    # that: items_ingested=1 (a row landed) plus an error entry, yielding
+    # status='partial'. Letting the exception propagate would have the
+    # transport boundary emit status='error', items_ingested=0 — misleading
+    # because the row IS in the DB and is resumable by re-running extraction.
     from src.services.url_extractor import URLExtractor
 
+    extraction_errors: list[IngestionError] = []
     with get_db() as db:
         extractor = URLExtractor(db)
         import asyncio
 
-        asyncio.run(extractor.extract_content(content_id))
+        try:
+            asyncio.run(extractor.extract_content(content_id))
+        except Exception as exc:
+            logger.warning(
+                f"URL extraction failed for content_id={content_id}, url={url}: {exc}",
+                exc_info=True,
+            )
+            extraction_errors.append(
+                IngestionError(
+                    code="extraction_failed",
+                    message=str(exc),
+                    url=url,
+                )
+            )
 
-    return URLIngestResult(
-        content_id=content_id,
-        status="queued",
-        duplicate=False,
+    items_ingested = 1
+    return IngestionResponse(
+        command="ingest.url",
+        source="url",
+        status=derive_status(
+            items_ingested=items_ingested, items_failed=0, errors=extraction_errors
+        ),
+        items_ingested=items_ingested,
+        errors=extraction_errors,
+        details={
+            "content_id": content_id,
+            "status": "queued",
+            "duplicate": False,
+            "url": url,
+        },
+    )
+
+
+@observe()
+def ingest_files(
+    *,
+    paths: list[Path],
+    publication: str | None = None,
+    title: str | None = None,
+) -> IngestionResponse:
+    """Ingest one or more local files into the content pipeline.
+
+    Loops over the provided paths, parsing each via the FileContentIngestionService
+    and persisting markdown content. Per-file failures (file-not-found, parse
+    errors, size-limit violations) become ``IngestionError`` entries with
+    ``url=str(path)`` so the CLI / HTTP / MCP transports can report which
+    file went wrong.
+
+    Args:
+        paths: Local file paths to ingest.
+        publication: Optional publisher/source name applied to every file.
+        title: Optional title override (used only when ``len(paths) == 1``;
+               callers should not pass title for multi-file batches —
+               the CLI emits a warning and drops the value before calling).
+
+    Returns:
+        Canonical IngestionResponse envelope (command='ingest.files',
+        source='files'). ``details.results`` carries a list of
+        ``{path, content_id, title}`` dicts for the rich-mode summary table.
+    """
+    import asyncio
+
+    from src.ingestion.files import FileContentIngestionService
+    from src.ingestion.result import IngestionError, IngestionResponse, derive_status
+    from src.parsers.markitdown_parser import MarkItDownParser
+    from src.parsers.router import ParserRouter
+    from src.storage.database import get_db
+
+    items_ingested = 0
+    items_failed = 0
+    errors: list[IngestionError] = []
+    results: list[dict] = []
+
+    for raw_path in paths:
+        path = Path(raw_path)
+        if not path.exists():
+            items_failed += 1
+            errors.append(
+                IngestionError(
+                    code="file_not_found",
+                    message=f"File not found: {path}",
+                    url=str(path),
+                )
+            )
+            continue
+
+        try:
+            with get_db() as db:
+                markitdown = MarkItDownParser()
+                router = ParserRouter(markitdown_parser=markitdown)
+                service = FileContentIngestionService(router=router, db=db)
+                content = asyncio.run(
+                    service.ingest_file(path, publication=publication, title=title)
+                )
+            items_ingested += 1
+            results.append(
+                {
+                    "path": str(path),
+                    "content_id": content.id,
+                    "title": content.title,
+                }
+            )
+        except Exception as exc:
+            items_failed += 1
+            errors.append(
+                IngestionError(
+                    code="file_ingest_error",
+                    message=str(exc),
+                    url=str(path),
+                )
+            )
+
+    return IngestionResponse(
+        command="ingest.files",
+        source="files",
+        status=derive_status(
+            items_ingested=items_ingested, items_failed=items_failed, errors=errors
+        ),
+        items_ingested=items_ingested,
+        items_failed=items_failed,
+        errors=errors,
+        details={"results": results},
     )

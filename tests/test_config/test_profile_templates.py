@@ -47,10 +47,10 @@ class TestProfileTemplatesExist:
         local_path = profiles_dir / "local.yaml"
         assert local_path.exists(), "local.yaml profile not found"
 
-    def test_railway_profile_exists(self, profiles_dir: Path) -> None:
-        """Test that railway.yaml exists."""
-        railway_path = profiles_dir / "railway.yaml"
-        assert railway_path.exists(), "railway.yaml profile not found"
+    def test_railway_profile_variants_exist(self, profiles_dir: Path) -> None:
+        """Railway has two explicit deployment variants — no implicit default."""
+        for name in ("railway-falkordb.yaml", "railway-neo4j.yaml"):
+            assert (profiles_dir / name).exists(), f"{name} profile not found"
 
     def test_supabase_cloud_profile_exists(self, profiles_dir: Path) -> None:
         """Test that supabase-cloud.yaml exists."""
@@ -87,12 +87,26 @@ class TestProfileTemplatesStructure:
         assert data["name"] == "local"
         assert data.get("extends") == "base"
 
-    def test_railway_profile_loads(self, profiles_dir: Path) -> None:
-        """Test that railway profile loads and extends base."""
+    def test_railway_base_profile_loads(self, profiles_dir: Path) -> None:
+        """`railway` is the shared base — supplies Railway compute/storage but no graphdb."""
         data = load_profile_raw("railway", profiles_dir)
 
         assert data["name"] == "railway"
         assert data.get("extends") == "base"
+
+    def test_railway_neo4j_profile_loads(self, profiles_dir: Path) -> None:
+        """railway-neo4j layers Neo4j AuraDB on top of the shared railway base."""
+        data = load_profile_raw("railway-neo4j", profiles_dir)
+
+        assert data["name"] == "railway-neo4j"
+        assert data.get("extends") == "railway"
+
+    def test_railway_falkordb_profile_loads(self, profiles_dir: Path) -> None:
+        """railway-falkordb layers FalkorDB on top of the shared railway base."""
+        data = load_profile_raw("railway-falkordb", profiles_dir)
+
+        assert data["name"] == "railway-falkordb"
+        assert data.get("extends") == "railway"
 
     def test_supabase_cloud_profile_loads(self, profiles_dir: Path) -> None:
         """Test that supabase-cloud profile loads and extends base."""
@@ -132,14 +146,28 @@ class TestProfileTemplatesValidation:
         # Should inherit providers from base
         assert profile.providers.database == "local"
 
-    def test_railway_profile_valid_structure(self, profiles_dir: Path) -> None:
-        """Test that railway profile has valid structure."""
-        profile = load_profile("railway", profiles_dir=profiles_dir, skip_interpolation=True)
+    def test_railway_neo4j_profile_valid_structure(self, profiles_dir: Path) -> None:
+        """railway-neo4j has valid structure with AuraDB graph backend."""
+        profile = load_profile("railway-neo4j", profiles_dir=profiles_dir, skip_interpolation=True)
 
         assert isinstance(profile, Profile)
-        assert profile.name == "railway"
+        assert profile.name == "railway-neo4j"
         assert profile.providers.database == "railway"
+        assert profile.providers.graphdb == "neo4j"
         assert profile.providers.neo4j == "auradb"
+        assert profile.providers.storage == "railway"
+        assert profile.providers.observability == "langfuse"
+
+    def test_railway_falkordb_profile_valid_structure(self, profiles_dir: Path) -> None:
+        """railway-falkordb inherits Railway settings, overrides graphdb to FalkorDB."""
+        profile = load_profile(
+            "railway-falkordb", profiles_dir=profiles_dir, skip_interpolation=True
+        )
+
+        assert isinstance(profile, Profile)
+        assert profile.name == "railway-falkordb"
+        assert profile.providers.database == "railway"
+        assert profile.providers.graphdb == "falkordb"
         assert profile.providers.storage == "railway"
         assert profile.providers.observability == "langfuse"
 
@@ -185,18 +213,28 @@ class TestProfileTemplatesHaveRequiredFields:
         errors = validate_profile(profile, check_secrets=False)
         assert errors == [], f"Local profile validation errors: {errors}"
 
-    def test_railway_profile_has_required_placeholders(self, profiles_dir: Path) -> None:
-        """Test that railway profile has placeholders for required settings."""
+    def test_railway_base_has_database_placeholders(self, profiles_dir: Path) -> None:
+        """The shared `railway` base supplies the Railway PG database placeholders."""
         data = load_profile_raw("railway", profiles_dir)
 
-        settings = data.get("settings", {})
-        db_settings = settings.get("database", {})
-        neo4j_settings = settings.get("neo4j", {})
-
-        # Should have placeholders for Railway and AuraDB settings
+        db_settings = data.get("settings", {}).get("database", {})
         assert "railway_database_url" in db_settings
+
+    def test_railway_neo4j_has_auradb_placeholders(self, profiles_dir: Path) -> None:
+        """railway-neo4j supplies the AuraDB credential placeholders."""
+        data = load_profile_raw("railway-neo4j", profiles_dir)
+
+        neo4j_settings = data.get("settings", {}).get("neo4j", {})
         assert "neo4j_auradb_uri" in neo4j_settings
         assert "neo4j_auradb_password" in neo4j_settings
+
+    def test_railway_falkordb_has_falkordb_placeholders(self, profiles_dir: Path) -> None:
+        """railway-falkordb supplies the FalkorDB connection placeholders."""
+        data = load_profile_raw("railway-falkordb", profiles_dir)
+
+        graphdb_settings = data.get("settings", {}).get("graphdb", {})
+        assert "falkordb_cloud_host" in graphdb_settings
+        assert "falkordb_cloud_port" in graphdb_settings
 
     def test_local_supabase_profile_has_supabase_local(self, profiles_dir: Path) -> None:
         """Test that local-supabase profile sets supabase_local: true."""

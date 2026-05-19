@@ -10,7 +10,6 @@ RSSSource objects from the unified source configuration system.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
@@ -20,6 +19,12 @@ import httpx
 
 from src.config import settings
 from src.ingestion.gmail import ContentData
+from src.ingestion.result import (
+    IngestionError,
+    IngestionResponse,
+    SourceFetchResult,
+    build_response_from_source_results,
+)
 from src.models.content import Content, ContentSource, ContentStatus
 from src.parsers.html_markdown import convert_html_to_markdown
 from src.storage.database import get_db
@@ -36,39 +41,6 @@ if TYPE_CHECKING:
     from src.config.sources import RSSSource
 
 logger = get_logger(__name__)
-
-
-@dataclass
-class SourceFetchResult:
-    """Tracks the outcome of fetching a single RSS source."""
-
-    url: str
-    name: str | None = None
-    success: bool = True
-    items_fetched: int = 0
-    error: str | None = None
-    error_type: str | None = None
-    redirected_to: str | None = None
-
-    @property
-    def is_redirect(self) -> bool:
-        return self.redirected_to is not None
-
-
-@dataclass
-class IngestionResult:
-    """Aggregated result of an RSS ingestion run."""
-
-    items_ingested: int = 0
-    source_results: list[SourceFetchResult] = field(default_factory=list)
-
-    @property
-    def failed_sources(self) -> list[SourceFetchResult]:
-        return [r for r in self.source_results if not r.success]
-
-    @property
-    def redirected_sources(self) -> list[SourceFetchResult]:
-        return [r for r in self.source_results if r.is_redirect]
 
 
 class RSSClient:
@@ -165,6 +137,14 @@ class RSSClient:
                     logger.error(
                         f"Error parsing entry '{entry.get('title', 'Unknown')}': {e}",
                         exc_info=True,
+                    )
+                    result.items_failed += 1
+                    result.item_errors.append(
+                        IngestionError(
+                            code="parse_error",
+                            message=str(e),
+                            url=entry.get("link") or feed_url,
+                        )
                     )
                     continue
 
@@ -486,7 +466,7 @@ class RSSContentIngestionService:
         max_entries_per_feed: int = 10,
         after_date: datetime | None = None,
         force_reprocess: bool = False,
-    ) -> IngestionResult:
+    ) -> IngestionResponse:
         """
         Ingest content from RSS feeds and store as Content records.
 
@@ -504,10 +484,10 @@ class RSSContentIngestionService:
             force_reprocess: If True, reprocess existing content
 
         Returns:
-            IngestionResult with item count and per-source fetch outcomes
+            IngestionResponse with item count, status, errors, and warnings.
         """
         logger.info("Starting RSS content ingestion (unified Content model)...")
-        ingestion_result = IngestionResult()
+        source_results: list[SourceFetchResult] = []
 
         # Resolve sources with fallback chain
         if sources is None and feed_urls is None:
@@ -534,7 +514,12 @@ class RSSContentIngestionService:
                 "No RSS sources configured. Add sources to sources.d/rss.yaml, "
                 "set RSS_FEEDS, or create rss_feeds.txt"
             )
-            return ingestion_result
+            return build_response_from_source_results(
+                command="ingest.rss",
+                source="rss",
+                items_ingested=0,
+                source_results=source_results,
+            )
 
         enabled_sources = [s for s in sources if s.enabled]
         logger.info(
@@ -554,14 +539,20 @@ class RSSContentIngestionService:
                 source_tags=source.tags if source.tags else None,
             )
             contents.extend(fetched)
-            ingestion_result.source_results.append(fetch_result)
+            source_results.append(fetch_result)
 
         if not contents:
             logger.info("No content found")
-            return ingestion_result
+            return build_response_from_source_results(
+                command="ingest.rss",
+                source="rss",
+                items_ingested=0,
+                source_results=source_results,
+            )
 
         # Store in database
         count = 0
+        persistence_errors: list[IngestionError] = []
         with get_db() as db:
             for content_data in contents:
                 try:
@@ -709,23 +700,36 @@ class RSSContentIngestionService:
                 except Exception as e:
                     logger.error(f"Error storing content: {e}")
                     db.rollback()
+                    persistence_errors.append(
+                        IngestionError(
+                            code="persistence_error",
+                            message=str(e),
+                            url=content_data.source_url,
+                        )
+                    )
                     continue
 
-        ingestion_result.items_ingested = count
         logger.info(f"Successfully ingested {count} content items")
 
         # Log summary of source health
-        if ingestion_result.failed_sources:
+        failed = [r for r in source_results if not r.success]
+        redirected = [r for r in source_results if r.is_redirect]
+        if failed:
+            logger.warning(f"{len(failed)} source(s) failed during ingestion")
+        if redirected:
             logger.warning(
-                f"{len(ingestion_result.failed_sources)} source(s) failed during ingestion"
-            )
-        if ingestion_result.redirected_sources:
-            logger.warning(
-                f"{len(ingestion_result.redirected_sources)} source(s) have redirected URLs "
+                f"{len(redirected)} source(s) have redirected URLs "
                 f"— consider updating sources.d/rss.yaml"
             )
 
-        return ingestion_result
+        return build_response_from_source_results(
+            command="ingest.rss",
+            source="rss",
+            items_ingested=count,
+            source_results=source_results,
+            extra_item_errors=persistence_errors,
+            extra_items_failed=len(persistence_errors),
+        )
 
     def close(self) -> None:
         """Close RSS client."""

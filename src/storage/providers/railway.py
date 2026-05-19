@@ -97,7 +97,10 @@ class RailwayProvider:
             "pool_timeout": pool_timeout,  # 30 second timeout
             "echo": False,
             "connect_args": {
-                "sslmode": "require",  # Railway enforces SSL
+                # Railway's public proxy (*.proxy.rlwy.net) requires SSL; the
+                # internal URL (*.railway.internal) does not support it. "prefer"
+                # handles both: tries SSL, falls back to plain only if rejected.
+                "sslmode": "prefer",
                 "options": "-c statement_timeout=30000",  # 30s query timeout
             },
         }
@@ -142,7 +145,7 @@ class RailwayProvider:
         Queue workers processing background jobs benefit from:
         - Larger pool for concurrent job processing
         - Longer timeouts for long-running jobs
-        - SSL required for Railway connections
+        - SSL negotiated per server (prefer mode handles internal vs public URLs)
 
         Returns:
             Engine configuration for queue workers
@@ -159,7 +162,7 @@ class RailwayProvider:
             "pool_timeout": 60,  # Longer timeout for long jobs
             "echo": False,
             "connect_args": {
-                "sslmode": "require",
+                "sslmode": "prefer",  # See get_engine_options() for rationale
                 # No statement_timeout for workers — jobs can be long-running
             },
         }

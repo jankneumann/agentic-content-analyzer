@@ -2,42 +2,77 @@
 
 After the orchestrator refactor, the pipeline delegates to orchestrator functions.
 Tests mock at `src.ingestion.orchestrator.<func>` instead of individual service classes.
+
+Post round-4 harmonization (2026-05-08), every orchestrator entry point returns
+``IngestionResponse``; mocks use ``_env(source, n)`` to build a minimal envelope
+matching the production return type. Returning a bare int from these mocks would
+mask production bugs where the consumer treats a Pydantic model as if it were
+an int — hence the helper.
 """
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
 from src.cli.app import app
+from src.ingestion.result import IngestionResponse
 
 runner = CliRunner()
+
+
+def _env(source: Any, n: int) -> IngestionResponse:
+    """Build a minimal IngestionResponse for ingest_* orchestrator mocks.
+
+    The CLI / pipeline only reads ``items_ingested`` from these mocks; we
+    keep status='ok' and skip the optional fields. ``source`` must match
+    the closed source registry in ``result.py``.
+    """
+    # Map the multi-word sources to their canonical command identifiers.
+    command_map = {
+        "youtube-playlist": "ingest.youtube-playlist",
+        "youtube-rss": "ingest.youtube-rss",
+    }
+    command = command_map.get(source, f"ingest.{source}")
+    return IngestionResponse(
+        command=command,
+        source=source,
+        status="ok",
+        items_ingested=n,
+    )
 
 
 def _mock_all_orchestrator_functions(
     *,
     gmail: int | Exception = 2,
     rss: int | Exception = 3,
+    blog: int | Exception = 0,
     youtube_playlist: int | Exception = 1,
     youtube_rss: int | Exception = 0,
     podcast: int | Exception = 1,
     substack: int | Exception = 0,
 ):
     """Create mock patches for all orchestrator functions used in pipeline."""
+    source_map = {
+        "ingest_gmail": ("gmail", gmail),
+        "ingest_rss": ("rss", rss),
+        "ingest_blog": ("blog", blog),
+        "ingest_youtube_playlist": ("youtube-playlist", youtube_playlist),
+        "ingest_youtube_rss": ("youtube-rss", youtube_rss),
+        "ingest_podcast": ("podcast", podcast),
+        "ingest_substack": ("substack", substack),
+    }
     patches = {}
-    for name, result in [
-        ("ingest_gmail", gmail),
-        ("ingest_rss", rss),
-        ("ingest_youtube_playlist", youtube_playlist),
-        ("ingest_youtube_rss", youtube_rss),
-        ("ingest_podcast", podcast),
-        ("ingest_substack", substack),
-    ]:
+    for name, (source, result) in source_map.items():
         if isinstance(result, Exception):
             patches[name] = patch(f"src.ingestion.orchestrator.{name}", side_effect=result)
         else:
-            patches[name] = patch(f"src.ingestion.orchestrator.{name}", return_value=result)
+            patches[name] = patch(
+                f"src.ingestion.orchestrator.{name}",
+                return_value=_env(source, result),
+            )
     return patches
 
 
@@ -45,16 +80,21 @@ class TestDailyPipeline:
     @patch("src.cli.adapters._emit_notification_sync")
     @patch("src.cli.adapters.create_digest_sync")
     @patch("src.processors.summarizer.ContentSummarizer")
-    @patch("src.ingestion.orchestrator.ingest_substack", return_value=0)
-    @patch("src.ingestion.orchestrator.ingest_podcast", return_value=1)
-    @patch("src.ingestion.orchestrator.ingest_youtube_rss", return_value=0)
-    @patch("src.ingestion.orchestrator.ingest_youtube_playlist", return_value=1)
-    @patch("src.ingestion.orchestrator.ingest_rss", return_value=3)
-    @patch("src.ingestion.orchestrator.ingest_gmail", return_value=2)
+    @patch("src.ingestion.orchestrator.ingest_substack", return_value=_env("substack", 0))
+    @patch("src.ingestion.orchestrator.ingest_podcast", return_value=_env("podcast", 1))
+    @patch("src.ingestion.orchestrator.ingest_youtube_rss", return_value=_env("youtube-rss", 0))
+    @patch(
+        "src.ingestion.orchestrator.ingest_youtube_playlist",
+        return_value=_env("youtube-playlist", 1),
+    )
+    @patch("src.ingestion.orchestrator.ingest_blog", return_value=_env("blog", 0))
+    @patch("src.ingestion.orchestrator.ingest_rss", return_value=_env("rss", 3))
+    @patch("src.ingestion.orchestrator.ingest_gmail", return_value=_env("gmail", 2))
     def test_daily_pipeline_success(
         self,
         mock_gmail,
         mock_rss,
+        mock_blog,
         mock_youtube_playlist,
         mock_youtube_rss,
         mock_podcast,
@@ -77,16 +117,21 @@ class TestDailyPipeline:
     @patch("src.cli.adapters._emit_notification_sync")
     @patch("src.cli.adapters.create_digest_sync")
     @patch("src.processors.summarizer.ContentSummarizer")
-    @patch("src.ingestion.orchestrator.ingest_substack", return_value=0)
-    @patch("src.ingestion.orchestrator.ingest_podcast", return_value=1)
-    @patch("src.ingestion.orchestrator.ingest_youtube_rss", return_value=0)
-    @patch("src.ingestion.orchestrator.ingest_youtube_playlist", return_value=1)
-    @patch("src.ingestion.orchestrator.ingest_rss", return_value=3)
-    @patch("src.ingestion.orchestrator.ingest_gmail", return_value=2)
+    @patch("src.ingestion.orchestrator.ingest_substack", return_value=_env("substack", 0))
+    @patch("src.ingestion.orchestrator.ingest_podcast", return_value=_env("podcast", 1))
+    @patch("src.ingestion.orchestrator.ingest_youtube_rss", return_value=_env("youtube-rss", 0))
+    @patch(
+        "src.ingestion.orchestrator.ingest_youtube_playlist",
+        return_value=_env("youtube-playlist", 1),
+    )
+    @patch("src.ingestion.orchestrator.ingest_blog", return_value=_env("blog", 0))
+    @patch("src.ingestion.orchestrator.ingest_rss", return_value=_env("rss", 3))
+    @patch("src.ingestion.orchestrator.ingest_gmail", return_value=_env("gmail", 2))
     def test_daily_pipeline_emits_pipeline_completion(
         self,
         mock_gmail,
         mock_rss,
+        mock_blog,
         mock_youtube_playlist,
         mock_youtube_rss,
         mock_podcast,
@@ -121,10 +166,18 @@ class TestDailyPipeline:
     @patch("src.ingestion.orchestrator.ingest_podcast", side_effect=RuntimeError("fail"))
     @patch("src.ingestion.orchestrator.ingest_youtube_rss", side_effect=RuntimeError("fail"))
     @patch("src.ingestion.orchestrator.ingest_youtube_playlist", side_effect=RuntimeError("fail"))
+    @patch("src.ingestion.orchestrator.ingest_blog", side_effect=RuntimeError("fail"))
     @patch("src.ingestion.orchestrator.ingest_rss", side_effect=RuntimeError("fail"))
     @patch("src.ingestion.orchestrator.ingest_gmail", side_effect=RuntimeError("fail"))
     def test_daily_pipeline_all_ingestion_fails(
-        self, mock_gmail, mock_rss, mock_yt_playlist, mock_yt_rss, mock_podcast, mock_substack
+        self,
+        mock_gmail,
+        mock_rss,
+        mock_blog,
+        mock_yt_playlist,
+        mock_yt_rss,
+        mock_podcast,
+        mock_substack,
     ):
         result = runner.invoke(app, ["pipeline", "daily"])
         assert result.exit_code == 1
@@ -144,16 +197,21 @@ class TestWeeklyPipeline:
     @patch("src.cli.adapters._emit_notification_sync")
     @patch("src.cli.adapters.create_digest_sync")
     @patch("src.processors.summarizer.ContentSummarizer")
-    @patch("src.ingestion.orchestrator.ingest_substack", return_value=0)
-    @patch("src.ingestion.orchestrator.ingest_podcast", return_value=2)
-    @patch("src.ingestion.orchestrator.ingest_youtube_rss", return_value=1)
-    @patch("src.ingestion.orchestrator.ingest_youtube_playlist", return_value=2)
-    @patch("src.ingestion.orchestrator.ingest_rss", return_value=10)
-    @patch("src.ingestion.orchestrator.ingest_gmail", return_value=5)
+    @patch("src.ingestion.orchestrator.ingest_substack", return_value=_env("substack", 0))
+    @patch("src.ingestion.orchestrator.ingest_podcast", return_value=_env("podcast", 2))
+    @patch("src.ingestion.orchestrator.ingest_youtube_rss", return_value=_env("youtube-rss", 1))
+    @patch(
+        "src.ingestion.orchestrator.ingest_youtube_playlist",
+        return_value=_env("youtube-playlist", 2),
+    )
+    @patch("src.ingestion.orchestrator.ingest_blog", return_value=_env("blog", 0))
+    @patch("src.ingestion.orchestrator.ingest_rss", return_value=_env("rss", 10))
+    @patch("src.ingestion.orchestrator.ingest_gmail", return_value=_env("gmail", 5))
     def test_weekly_pipeline_success(
         self,
         mock_gmail,
         mock_rss,
+        mock_blog,
         mock_youtube_playlist,
         mock_youtube_rss,
         mock_podcast,
@@ -176,16 +234,21 @@ class TestWeeklyPipeline:
     @patch("src.cli.adapters._emit_notification_sync")
     @patch("src.cli.adapters.create_digest_sync")
     @patch("src.processors.summarizer.ContentSummarizer")
-    @patch("src.ingestion.orchestrator.ingest_substack", return_value=0)
-    @patch("src.ingestion.orchestrator.ingest_podcast", return_value=2)
-    @patch("src.ingestion.orchestrator.ingest_youtube_rss", return_value=1)
-    @patch("src.ingestion.orchestrator.ingest_youtube_playlist", return_value=2)
-    @patch("src.ingestion.orchestrator.ingest_rss", return_value=10)
-    @patch("src.ingestion.orchestrator.ingest_gmail", return_value=5)
+    @patch("src.ingestion.orchestrator.ingest_substack", return_value=_env("substack", 0))
+    @patch("src.ingestion.orchestrator.ingest_podcast", return_value=_env("podcast", 2))
+    @patch("src.ingestion.orchestrator.ingest_youtube_rss", return_value=_env("youtube-rss", 1))
+    @patch(
+        "src.ingestion.orchestrator.ingest_youtube_playlist",
+        return_value=_env("youtube-playlist", 2),
+    )
+    @patch("src.ingestion.orchestrator.ingest_blog", return_value=_env("blog", 0))
+    @patch("src.ingestion.orchestrator.ingest_rss", return_value=_env("rss", 10))
+    @patch("src.ingestion.orchestrator.ingest_gmail", return_value=_env("gmail", 5))
     def test_weekly_pipeline_emits_pipeline_completion(
         self,
         mock_gmail,
         mock_rss,
+        mock_blog,
         mock_youtube_playlist,
         mock_youtube_rss,
         mock_podcast,

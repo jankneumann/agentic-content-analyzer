@@ -23,6 +23,7 @@ Things that will bite you if ignored. Organized by area.
 | Issue | Solution |
 |-------|----------|
 | DATABASE_PROVIDER required for cloud | Must explicitly set `DATABASE_PROVIDER=supabase` or `neon` |
+| `DATABASE_URL` doesn't override profile-resolved DB | When `DATABASE_PROVIDER` is set, the matching `<PROVIDER>_DATABASE_URL` is checked **first** and only falls through to `DATABASE_URL` if unset. To target a specific DB ad-hoc, set the prefixed form (e.g., `LOCAL_DATABASE_URL=…` for `DATABASE_PROVIDER=local`). See `Settings.get_effective_database_url()` and `docs/PROFILES.md` Database Provider Requirements. |
 | Neon first connection slow | Scale-to-zero may take 2-5s to wake up; increase timeout |
 | Supabase free tier IPv6 only | Direct connections use IPv6; use pooler if on IPv4-only network |
 | Local Supabase needs SUPABASE_LOCAL | Set `SUPABASE_LOCAL=true` for auto-configured local endpoints |
@@ -171,6 +172,9 @@ Things that will bite you if ignored. Organized by area.
 | Remote mode needs Docker running | `make crawl4ai-up` first; connection refused errors are fail-safe (returns Trafilatura result) |
 | CacheMode string must match enum names | Valid values: `bypass`, `enabled`, `disabled`, `read_only`, `write_only` |
 | Crawl4AI lazy import in converter | `get_settings()` imported inside `__init__` — patch at `src.config.settings.get_settings`, not the converter module |
+| Every `aca ingest *` returns `IngestionResponse` | Post round-4 harmonization (2026-05-08), gmail/files/url no longer return bare ints / `URLIngestResult`. Mocks targeting these orchestrator functions MUST return an `IngestionResponse` envelope; bare-int mocks pass type checks but fail at `.with_timing()` / `.items_ingested` access at the consumer site |
+| `URLIngestResult` removed | Deleted in commit `1ea74ab`. Use `IngestionResponse.details["content_id"]` + `details["duplicate"]` instead. The MCP wrapper at `src/mcp_server.py:ingest_url` preserves the legacy flat `{content_id, status, duplicate, source}` shape for the agentic-assistant consumer; CLI/HTTP/queue all read the canonical envelope |
+| `derive_status` helper for single-shot services | Services that don't aggregate `SourceFetchResult` lists (perplexity, xsearch, scholar-paper, arxiv-paper, files) call `derive_status(items_ingested, items_failed, errors)` from `src/ingestion/result.py`. `build_response_from_source_results` calls it internally — never duplicate the `if not has_failure: status="ok"; ...` block |
 
 ## Search & Embeddings
 

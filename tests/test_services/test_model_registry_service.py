@@ -17,7 +17,6 @@ from src.services.model_registry_service import (
     PricingRefreshReport,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -157,19 +156,16 @@ class TestRefreshPricing:
         mock_report.extraction_errors = []
         mock_report.applied = False
 
-        with patch(
-            "src.services.model_registry_service.ModelPricingExtractor"
-        ) as MockExtractor:
+        # Production code lazy-imports the class inside refresh_pricing(),
+        # so the patch target must be the SOURCE module — patching the
+        # consumer module's namespace doesn't intercept lazy `from X import Y`.
+        with patch("src.services.model_pricing_extractor.ModelPricingExtractor") as MockExtractor:
             instance = MockExtractor.return_value
             instance.run = AsyncMock(return_value=mock_report)
 
-            result = await service.refresh_pricing(
-                providers=["anthropic"], dry_run=True
-            )
+            result = await service.refresh_pricing(providers=["anthropic"], dry_run=True)
 
-            instance.run.assert_called_once_with(
-                providers=["anthropic"], dry_run=True
-            )
+            instance.run.assert_called_once_with(providers=["anthropic"], dry_run=True)
             assert isinstance(result, PricingRefreshReport)
             assert result.providers_fetched == ["anthropic"]
             assert result.timestamp is not None
@@ -185,9 +181,10 @@ class TestRefreshPricing:
         mock_report.extraction_errors = []
         mock_report.applied = False
 
-        with patch(
-            "src.services.model_registry_service.ModelPricingExtractor"
-        ) as MockExtractor:
+        # Production code lazy-imports the class inside refresh_pricing(),
+        # so the patch target must be the SOURCE module — patching the
+        # consumer module's namespace doesn't intercept lazy `from X import Y`.
+        with patch("src.services.model_pricing_extractor.ModelPricingExtractor") as MockExtractor:
             instance = MockExtractor.return_value
             instance.run = AsyncMock(return_value=mock_report)
 
@@ -227,7 +224,11 @@ class TestPricingRefreshReport:
         from src.services.model_registry_service import PricingDiffItem
 
         report = PricingRefreshReport(
-            diffs=[PricingDiffItem(provider_key="a.b", field="cost", current_value=1.0, extracted_value=2.0)]
+            diffs=[
+                PricingDiffItem(
+                    provider_key="a.b", field="cost", current_value=1.0, extracted_value=2.0
+                )
+            ]
         )
         assert report.has_changes is True
 
@@ -235,7 +236,14 @@ class TestPricingRefreshReport:
         from src.services.model_registry_service import NewModelItem
 
         report = PricingRefreshReport(
-            new_models=[NewModelItem(model_id="x", provider_model_id="x-v1", cost_per_mtok_input=1.0, cost_per_mtok_output=2.0)]
+            new_models=[
+                NewModelItem(
+                    model_id="x",
+                    provider_model_id="x-v1",
+                    cost_per_mtok_input=1.0,
+                    cost_per_mtok_output=2.0,
+                )
+            ]
         )
         assert report.has_changes is True
 

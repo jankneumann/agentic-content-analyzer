@@ -1,21 +1,49 @@
-"""Tests for Grok X Search ingestion."""
+"""Tests for Grok X Search ingestion.
+
+The service returns the canonical ``IngestionResponse`` envelope.
+xsearch-specific extras (``tool_calls_made``, ``threads_found``) live in
+``response.details``.
+"""
 
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.ingestion.result import IngestionResponse
 from src.ingestion.xsearch import (
     GrokXClient,
     GrokXContentIngestionService,
     XPostContent,
-    XSearchResult,
     XThreadData,
     build_metadata,
     format_thread_markdown,
     thread_to_content_data,
 )
 from src.models.content import ContentSource
+
+
+def _xsearch_response(
+    *,
+    items_ingested: int = 0,
+    items_skipped: int = 0,
+    items_failed: int = 0,
+    tool_calls_made: int = 0,
+    threads_found: int = 0,
+    status: str = "ok",
+    errors: list | None = None,
+) -> IngestionResponse:
+    return IngestionResponse(
+        command="ingest.xsearch",
+        source="xsearch",
+        status=status,  # type: ignore[arg-type]
+        items_ingested=items_ingested,
+        items_skipped=items_skipped,
+        items_failed=items_failed,
+        errors=errors or [],
+        details={"tool_calls_made": tool_calls_made, "threads_found": threads_found},
+    )
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -298,7 +326,7 @@ class TestGrokXContentIngestionService:
         service.client = mock_client
 
         result = service.ingest_threads(prompt="Custom AI search")
-        assert isinstance(result, XSearchResult)
+        assert isinstance(result, IngestionResponse)
         assert result.items_ingested == 0
         mock_client.search.assert_called_once()
         call_args = mock_client.search.call_args
@@ -316,9 +344,12 @@ class TestGrokXContentIngestionService:
         service.client = mock_client
 
         result = service.ingest_threads(prompt="test")
-        assert isinstance(result, XSearchResult)
+        assert isinstance(result, IngestionResponse)
         assert result.items_ingested == 0
-        assert result.tool_calls_made == 0
+        assert result.details["tool_calls_made"] == 0
+        # Empty Grok response surfaces as a warning, not an error
+        assert result.status == "ok"
+        assert any(w.code == "empty_response" for w in result.warnings)
 
     @patch("src.ingestion.xsearch.get_db")
     @patch("src.ingestion.xsearch.GrokXClient")
@@ -371,9 +402,12 @@ class TestGrokXContentIngestionService:
 
         # Good thread should succeed even though bad thread failed
         assert result.items_ingested == 1
-        assert result.threads_found == 2
+        assert result.items_failed == 1
+        assert result.details["threads_found"] == 2
         assert len(result.errors) == 1
-        assert "bbb" in result.errors[0]
+        assert result.errors[0].code == "storage_error"
+        assert "bbb" in result.errors[0].message
+        assert result.status == "partial"
         # rollback should have been called for the bad thread
         mock_db.rollback.assert_called_once()
         # commit for the good thread
@@ -420,13 +454,16 @@ class TestOrchestratorIntegration:
         from src.ingestion.orchestrator import ingest_xsearch
 
         mock_service = MagicMock()
-        mock_service.ingest_threads.return_value = XSearchResult(
+        mock_service.ingest_threads.return_value = _xsearch_response(
             items_ingested=3, threads_found=5, tool_calls_made=2
         )
         mock_service_cls.return_value = mock_service
 
-        count = ingest_xsearch(prompt="test", max_threads=10)
-        assert count == 3
+        response = ingest_xsearch(prompt="test", max_threads=10)
+        assert isinstance(response, IngestionResponse)
+        assert response.items_ingested == 3
+        assert response.details["threads_found"] == 5
+        assert response.details["tool_calls_made"] == 2
         mock_service.ingest_threads.assert_called_once_with(
             prompt="test",
             max_threads=10,
@@ -436,22 +473,22 @@ class TestOrchestratorIntegration:
 
     @patch("src.ingestion.xsearch.GrokXContentIngestionService")
     def test_ingest_xsearch_on_result_callback(self, mock_service_cls):
-        """Orchestrator passes XSearchResult to on_result callback."""
+        """Orchestrator passes IngestionResponse to on_result callback."""
         from src.ingestion.orchestrator import ingest_xsearch
 
         mock_service = MagicMock()
-        result_obj = XSearchResult(
+        result_obj = _xsearch_response(
             items_ingested=2, threads_found=4, tool_calls_made=3, items_skipped=1
         )
         mock_service.ingest_threads.return_value = result_obj
         mock_service_cls.return_value = mock_service
 
         captured = []
-        count = ingest_xsearch(on_result=captured.append)
-        assert count == 2
+        response = ingest_xsearch(on_result=captured.append)
+        assert response is result_obj
         assert len(captured) == 1
         assert captured[0] is result_obj
-        assert captured[0].tool_calls_made == 3
+        assert captured[0].details["tool_calls_made"] == 3
 
     @patch("src.ingestion.xsearch.GrokXContentIngestionService")
     def test_ingest_xsearch_closes_on_error(self, mock_service_cls):

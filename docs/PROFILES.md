@@ -229,12 +229,14 @@ Each provider has required settings that are validated at profile load time.
 
 ### Database Provider Requirements
 
-| Provider | Required Settings |
-|----------|-------------------|
-| `local` | `database_url` (falls back to `local_database_url`) |
-| `supabase` | `supabase_database_url` or `database_url` |
-| `neon` | `neon_database_url` |
-| `railway` | `railway_database_url` |
+| Provider | Resolution Order (env var) |
+|----------|----------------------------|
+| `local` | `LOCAL_DATABASE_URL` → `DATABASE_URL` |
+| `supabase` | constructed from `SUPABASE_*` components, else `SUPABASE_DATABASE_URL` / `DATABASE_URL` |
+| `neon` | `NEON_DATABASE_URL` → `DATABASE_URL` |
+| `railway` | `RAILWAY_DATABASE_URL` → `DATABASE_URL` |
+
+> **Gotcha — provider-specific URL wins over `DATABASE_URL`.** When `DATABASE_PROVIDER` is set to a non-default provider, the matching `<PROVIDER>_DATABASE_URL` is checked **first** and only falls through to `DATABASE_URL` if unset. This means setting `DATABASE_URL=...` with intent to "override the local DB during a one-off script" silently has no effect when `LOCAL_DATABASE_URL` is already set in your `.env` or profile. To target a specific database from the command line, set the provider-prefixed variant: `LOCAL_DATABASE_URL=postgresql://… aca sync export …`. The same applies to validation tooling running against an isolated stack — set `LOCAL_DATABASE_URL` (or whichever provider matches `DATABASE_PROVIDER`), not `DATABASE_URL`. Resolution is implemented in `Settings.get_effective_database_url()` (`src/config/settings.py`).
 
 ### Neo4j Provider Requirements
 

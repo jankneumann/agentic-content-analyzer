@@ -112,7 +112,7 @@ def _pipeline_stage_metrics(stage_name: str) -> Any:
 
 async def _ingest_source(
     source_name: str,
-    ingest_func: Callable[[], int],
+    ingest_func: Callable[[], Any],
 ) -> tuple[str, int | None, str | None]:
     """Ingest from a single source asynchronously.
 
@@ -120,11 +120,20 @@ async def _ingest_source(
     to enable parallel execution without blocking. Tracing is handled by
     the @observe() decorator on the orchestrator ingest_* functions.
 
+    Post round-4 harmonization (2026-05-08), every orchestrator entry point
+    returns the canonical ``IngestionResponse`` envelope — the per-source
+    aggregation reads ``items_ingested`` directly.
+
     Returns:
         Tuple of (source_name, count, error_message)
     """
     try:
-        count = await asyncio.to_thread(ingest_func)
+        result = await asyncio.to_thread(ingest_func)
+        # Most orchestrator entry points return IngestionResponse, but a few
+        # still return a plain int. Accept both shapes so the partial-migration
+        # window doesn't break the pipeline — and so test mocks can keep
+        # returning ints without each test rebuilding the full envelope.
+        count = result if isinstance(result, int) else result.items_ingested
         return (source_name, count, None)
     except Exception as e:
         logger.error(f"Ingestion failed for {source_name}: {e}")
@@ -188,7 +197,7 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
             source_name = f"websearch:{ws_source.name or 'perplexity'}"
 
             def _make_perplexity_func(src: WebSearchSource) -> Any:
-                def _func() -> int:
+                def _func() -> Any:
                     return ingest_perplexity_search(
                         prompt=src.prompt,
                         max_results=src.max_results,
@@ -207,7 +216,7 @@ async def _run_ingestion_stage_async() -> dict[str, int]:
             source_name = f"websearch:{ws_source.name or 'grok'}"
 
             def _make_grok_func(src: WebSearchSource) -> Any:
-                def _func() -> int:
+                def _func() -> Any:
                     return ingest_xsearch(
                         prompt=src.prompt,
                         max_threads=src.max_threads,

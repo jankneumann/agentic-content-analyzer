@@ -12,7 +12,7 @@ Task 7.3 from add-parallel-job-queue proposal.
 from __future__ import annotations
 
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -155,37 +155,35 @@ class TestWorkerStartCommand:
 
 
 class TestWorkerInitialization:
-    """Tests for worker startup behavior."""
+    """Tests for worker startup behavior.
+
+    The PGQueuer-based queue was replaced with a direct SELECT FOR UPDATE
+    SKIP LOCKED worker in src/queue/worker.py (per MEMORY.md). _run_worker
+    now calls `register_all_handlers()` and `run_worker(concurrency=...)`
+    from `src.queue.worker` — NOT the old `get_queue` / `close_queue` /
+    `register_content_tasks` triad. Tests must mock the new functions, or
+    they'll fall through to the real `run_worker` which polls Postgres
+    forever (this exact hang was responsible for cli-stack CI timeouts).
+    """
 
     @pytest.mark.asyncio
     async def test_run_worker_initializes_queue(self):
-        """_run_worker calls get_queue() to initialize the queue connection."""
+        """_run_worker calls register_all_handlers + run_worker."""
         from src.cli.worker_commands import _run_worker
 
-        mock_pgq = MagicMock()
-        # Make pgq.run() raise KeyboardInterrupt to exit the worker loop immediately
-        mock_pgq.run = AsyncMock(side_effect=KeyboardInterrupt)
-
-        # Lazy imports inside _run_worker: must patch at source module
         with (
+            patch("src.queue.worker.register_all_handlers") as mock_register,
             patch(
-                "src.queue.setup.get_queue",
+                "src.queue.worker.run_worker",
                 new_callable=AsyncMock,
-                return_value=mock_pgq,
-            ) as mock_get_queue,
-            patch(
-                "src.queue.setup.close_queue",
-                new_callable=AsyncMock,
-            ) as mock_close_queue,
-            patch("src.tasks.content.register_content_tasks") as mock_register,
+                side_effect=KeyboardInterrupt,
+            ) as mock_run,
         ):
             with pytest.raises(KeyboardInterrupt):
                 await _run_worker(5)
 
-            mock_get_queue.assert_called_once()
-            mock_register.assert_called_once_with(mock_pgq)
-            # close_queue should be called in finally block
-            mock_close_queue.assert_called_once()
+            mock_register.assert_called_once_with()
+            mock_run.assert_called_once_with(concurrency=5)
 
     @pytest.mark.asyncio
     async def test_run_worker_registers_signal_handlers(self):
@@ -194,22 +192,18 @@ class TestWorkerInitialization:
 
         from src.cli.worker_commands import _run_worker
 
-        mock_pgq = MagicMock()
-        mock_pgq.run = AsyncMock(side_effect=KeyboardInterrupt)
-
         registered_signals = []
 
         def capture_signal(signum, handler):
             registered_signals.append(signum)
 
         with (
+            patch("src.queue.worker.register_all_handlers"),
             patch(
-                "src.queue.setup.get_queue",
+                "src.queue.worker.run_worker",
                 new_callable=AsyncMock,
-                return_value=mock_pgq,
+                side_effect=KeyboardInterrupt,
             ),
-            patch("src.queue.setup.close_queue", new_callable=AsyncMock),
-            patch("src.tasks.content.register_content_tasks"),
             patch("signal.signal", side_effect=capture_signal),
         ):
             with pytest.raises(KeyboardInterrupt):
@@ -221,50 +215,44 @@ class TestWorkerInitialization:
 
     @pytest.mark.asyncio
     async def test_run_worker_passes_concurrency_to_pgq_run(self):
-        """_run_worker passes max_concurrent_tasks to pgq.run()."""
+        """_run_worker passes concurrency to run_worker()."""
         from src.cli.worker_commands import _run_worker
 
-        mock_pgq = MagicMock()
-        mock_pgq.run = AsyncMock(return_value=None)  # Normal exit
-
         with (
+            patch("src.queue.worker.register_all_handlers"),
             patch(
-                "src.queue.setup.get_queue",
+                "src.queue.worker.run_worker",
                 new_callable=AsyncMock,
-                return_value=mock_pgq,
-            ),
-            patch("src.queue.setup.close_queue", new_callable=AsyncMock),
-            patch("src.tasks.content.register_content_tasks"),
+                return_value=None,  # Normal exit
+            ) as mock_run,
         ):
             await _run_worker(10)
 
-        # Verify pgq.run was called with the correct concurrency
-        mock_pgq.run.assert_called_once()
-        call_kwargs = mock_pgq.run.call_args.kwargs
-        assert call_kwargs["max_concurrent_tasks"] == 10
+        mock_run.assert_called_once_with(concurrency=10)
 
     @pytest.mark.asyncio
     async def test_run_worker_cleans_up_on_cancelled_error(self):
-        """_run_worker calls close_queue on CancelledError (graceful shutdown)."""
+        """_run_worker exits gracefully on CancelledError without re-raising.
+
+        Post worker-refactor, there's no longer a close_queue cleanup step
+        — the new run_worker manages its own DB connections internally and
+        the finally block in _run_worker just logs shutdown. We still want
+        to verify CancelledError doesn't propagate (graceful shutdown).
+        """
         import asyncio
 
         from src.cli.worker_commands import _run_worker
 
-        mock_pgq = MagicMock()
-        mock_pgq.run = AsyncMock(side_effect=asyncio.CancelledError)
-
         with (
+            patch("src.queue.worker.register_all_handlers"),
             patch(
-                "src.queue.setup.get_queue",
+                "src.queue.worker.run_worker",
                 new_callable=AsyncMock,
-                return_value=mock_pgq,
-            ),
-            patch(
-                "src.queue.setup.close_queue",
-                new_callable=AsyncMock,
-            ) as mock_close,
-            patch("src.tasks.content.register_content_tasks"),
+                side_effect=asyncio.CancelledError,
+            ) as mock_run,
         ):
+            # Should NOT raise — _run_worker swallows CancelledError
+            # (src/cli/worker_commands.py:96).
             await _run_worker(5)
 
-        mock_close.assert_called_once()
+        mock_run.assert_called_once_with(concurrency=5)

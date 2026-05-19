@@ -1,0 +1,11 @@
+name: railway-cli
+extends: base
+description: Local CLI pointed at Railway API
+
+settings:
+  api:
+    api_base_url: "https://api.aca.rotkohl.ai"
+    api_timeout: 300
+
+  api_keys:
+    admin_api_key: "${ADMIN_API_KEY:-}"

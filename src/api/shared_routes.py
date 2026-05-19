@@ -93,9 +93,9 @@ async def get_shared_content(token: str, request: Request):
 
         if _wants_html(request):
             return templates.TemplateResponse(
+                request,
                 "shared/content.html",
                 {
-                    "request": request,
                     "title": record.title,
                     "author": record.author,
                     "publication": record.publication,
@@ -144,9 +144,9 @@ async def get_shared_summary(token: str, request: Request):
 
         if _wants_html(request):
             return templates.TemplateResponse(
+                request,
                 "shared/summary.html",
                 {
-                    "request": request,
                     "title": f"Summary: {source_title or 'Content'}",
                     "source_title": source_title,
                     "created_at": _format_date(record.created_at),
@@ -203,9 +203,9 @@ async def get_shared_digest(token: str, request: Request):
 
         if _wants_html(request):
             return templates.TemplateResponse(
+                request,
                 "shared/digest.html",
                 {
-                    "request": request,
                     "title": record.title,
                     "digest_type": record.digest_type.value if record.digest_type else "",
                     "period": period,

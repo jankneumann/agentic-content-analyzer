@@ -156,6 +156,9 @@ packages = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# Honor `exclude` even when files are passed explicitly (e.g., from pre-commit).
+# Without this, `ruff check path/to/excluded/file.py` still scans excluded paths.
+force-exclude = true
 exclude = [
     ".git",
     ".venv",
@@ -167,6 +170,7 @@ exclude = [
     ".codex/skills",
     ".claude/skills",
     ".agents/skills",
+    "openspec/changes/archive",
 ]
 
 [tool.ruff.lint]
@@ -248,6 +252,7 @@ exclude = [
     "\\.codex/skills/",
     "\\.claude/skills/",
     "\\.agents/skills/",
+    "openspec/changes/archive/",
 ]
 
 # SQLAlchemy ORM models have dynamic attributes that mypy struggles with.

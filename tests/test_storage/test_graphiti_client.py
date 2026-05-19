@@ -133,10 +133,11 @@ async def test_search_related_concepts(mock_provider, mock_graphiti, mock_databa
     client = GraphitiClient(provider=mock_provider, graphiti=mock_graphiti)
     results = await client.search_related_concepts("RAG", limit=10)
 
-    # Verify search was called
+    # Verify search was called (group_ids constant added in cloud-db-source-of-truth F2 fix)
     mock_graphiti.search.assert_called_once_with(
         query="RAG",
         num_results=10,
+        group_ids=["newsletters"],
     )
 
     # Verify results
@@ -161,7 +162,7 @@ async def test_get_temporal_context(mock_provider, mock_graphiti, mock_database)
         {"entity": "LLM", "reference_time": datetime(2025, 1, 20), "content": "LLM discussion"},
     ]
 
-    async def mock_search_side_effect(query, num_results):
+    async def mock_search_side_effect(query, num_results, group_ids=None):
         if query == "RAG":
             return mock_results_rag
         elif query == "LLM":
@@ -227,6 +228,49 @@ async def test_get_newsletters_in_range(mock_provider, mock_graphiti, mock_datab
 
 
 @pytest.mark.asyncio
+async def test_add_content_summary_returns_uuid_not_repr(
+    mock_provider, mock_graphiti, mock_database, sample_summary
+):
+    """Regression for F5: extract-entities response leaked EpisodicNode repr.
+
+    graphiti's add_episode returns AddEpisodeResults with .episode.uuid;
+    GraphitiClient.add_content_summary must extract the UUID, not str() the
+    whole result wrapper.
+    """
+    from src.models.content import Content, ContentSource, ContentStatus
+    from src.storage.graphiti_client import GraphitiClient
+
+    expected_uuid = "abc12345-6789-4def-0123-456789abcdef"
+
+    episode_node = MagicMock()
+    episode_node.uuid = expected_uuid
+    add_result = MagicMock()
+    add_result.episode = episode_node
+
+    mock_graphiti.add_episode = AsyncMock(return_value=add_result)
+
+    content = Content(
+        id=1,
+        source_id="test-source-1",
+        source_url="https://example.com/test",
+        title="Test Article",
+        author="Test Author",
+        publication="Test Pub",
+        published_date=datetime(2025, 6, 15),
+        markdown_content="Body of the test article.",
+        source_type=ContentSource.RSS,
+        status=ContentStatus.PARSED,
+    )
+
+    client = GraphitiClient(provider=mock_provider, graphiti=mock_graphiti)
+    returned = await client.add_content_summary(content, sample_summary)
+
+    assert returned == expected_uuid
+    assert "EpisodicNode" not in returned
+    assert "MagicMock" not in returned
+
+
+@pytest.mark.asyncio
 async def test_extract_themes_from_range(mock_provider, mock_graphiti, mock_database):
     """Test extracting themes from date range."""
     from src.storage.graphiti_client import GraphitiClient
@@ -260,7 +304,7 @@ async def test_get_entity_facts(mock_provider, mock_graphiti, mock_database):
     mock_facts_rag = [{"fact": "RAG improves accuracy"}]
     mock_facts_llm = [{"fact": "LLMs are getting cheaper"}]
 
-    async def mock_search_side_effect(query, num_results):
+    async def mock_search_side_effect(query, num_results, group_ids=None):
         if query == "RAG":
             return mock_facts_rag
         elif query == "LLM":
@@ -312,9 +356,7 @@ async def test_get_historical_theme_mentions(mock_provider, mock_graphiti, mock_
     mock_graphiti.search = AsyncMock(return_value=mock_semantic)
 
     client = GraphitiClient(provider=mock_provider, graphiti=mock_graphiti)
-    mentions = await client.get_historical_theme_mentions(
-        theme_name, before_date, lookback_days=90
-    )
+    mentions = await client.get_historical_theme_mentions(theme_name, before_date, lookback_days=90)
 
     # Verify provider query
     mock_provider.execute_query.assert_called_once()
@@ -418,12 +460,13 @@ async def test_create_factory(mock_provider, mock_graphiti, mock_database):
     """Test the async factory method."""
     from src.storage.graphiti_client import GraphitiClient
 
-    with patch("src.storage.graphiti_client.Graphiti") as mock_graphiti_class, \
-         patch("src.storage.graphiti_client.AnthropicClient"), \
-         patch("src.storage.graphiti_client.OpenAIEmbedder"), \
-         patch("src.storage.graphiti_client.OpenAIRerankerClient"), \
-         patch("src.storage.graphiti_client.settings") as mock_settings:
-
+    with (
+        patch("src.storage.graphiti_client.Graphiti") as mock_graphiti_class,
+        patch("src.storage.graphiti_client.AnthropicClient"),
+        patch("src.storage.graphiti_client.OpenAIEmbedder"),
+        patch("src.storage.graphiti_client.OpenAIRerankerClient"),
+        patch("src.storage.graphiti_client.settings") as mock_settings,
+    ):
         mock_graphiti_instance = AsyncMock()
         mock_graphiti_instance.build_indices_and_constraints = AsyncMock()
         mock_graphiti_class.return_value = mock_graphiti_instance

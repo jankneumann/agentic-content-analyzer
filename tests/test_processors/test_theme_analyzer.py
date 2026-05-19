@@ -182,6 +182,8 @@ async def test_analyze_themes_insufficient_newsletters():
 
     with patch("src.processors.theme_analyzer.LLMRouter"):
         with patch("src.processors.theme_analyzer.GraphitiClient") as mock_graphiti:
+            # GraphitiClient.create is an async classmethod
+            mock_graphiti.create = AsyncMock(return_value=mock_graphiti.return_value)
             mock_graphiti.return_value.close = MagicMock()
 
             with patch("src.processors.theme_analyzer.get_db") as mock_get_db:
@@ -198,7 +200,7 @@ async def test_analyze_themes_insufficient_newsletters():
                 result = await analyzer.analyze_themes(request)
 
     # Should return empty result
-    assert result.newsletter_count == 0
+    assert result.content_count == 0
     assert result.total_themes == 0
     assert len(result.themes) == 0
     assert result.model_used == analyzer.model

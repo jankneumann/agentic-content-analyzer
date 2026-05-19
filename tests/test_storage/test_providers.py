@@ -383,7 +383,9 @@ class TestRailwayProvider:
         assert options["pool_size"] == 3  # Hobby plan default
         assert options["max_overflow"] == 2  # Hobby plan default
         assert options["pool_recycle"] == 300  # 5 min recycle
-        assert options["connect_args"]["sslmode"] == "require"
+        # "prefer" works for both the internal URL (no SSL) and the public
+        # proxy URL (requires SSL). See get_engine_options() in railway.py.
+        assert options["connect_args"]["sslmode"] == "prefer"
         assert "statement_timeout" in options["connect_args"]["options"]
 
     def test_health_check_success(self):

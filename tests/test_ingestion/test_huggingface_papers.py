@@ -13,7 +13,6 @@ from src.ingestion.huggingface_papers import (
 )
 from src.models.content import ContentSource
 
-
 # --- Fixtures ---
 
 
@@ -80,9 +79,7 @@ class TestDiscoverPaperLinks:
             html += f'<a href="/papers/2401.{10000 + i}">Paper {i}</a>'
         html += "</body></html>"
 
-        papers = client.discover_paper_links(
-            html, "https://huggingface.co/papers", max_papers=5
-        )
+        papers = client.discover_paper_links(html, "https://huggingface.co/papers", max_papers=5)
         assert len(papers) == 5
 
     def test_deduplicates_same_paper(self, client: HuggingFacePapersClient):
@@ -440,9 +437,7 @@ class TestExtractPaperContent:
             arxiv_id="2401.00000",
         )
 
-        with patch.object(
-            client._client, "get", side_effect=httpx.ConnectError("Failed")
-        ):
+        with patch.object(client._client, "get", side_effect=httpx.ConnectError("Failed")):
             result = client.extract_paper_content(paper)
 
         assert result is None
@@ -483,9 +478,7 @@ class TestHuggingFacePapersContentIngestionService:
     @patch.object(HuggingFacePapersClient, "extract_paper_content")
     @patch.object(HuggingFacePapersClient, "discover_paper_links")
     @patch.object(HuggingFacePapersClient, "fetch_listing_page")
-    def test_ingest_single_source(
-        self, mock_fetch, mock_discover, mock_extract, mock_db
-    ):
+    def test_ingest_single_source(self, mock_fetch, mock_discover, mock_extract, mock_db):
         """Ingests papers from a single configured source."""
         mock_fetch.return_value = "<html></html>"
         mock_discover.return_value = [
@@ -523,8 +516,10 @@ class TestHuggingFacePapersContentIngestionService:
         result = service.ingest_content(sources=[source], max_papers=30)
 
         assert result.items_ingested >= 0
-        assert len(result.source_results) == 1
-        assert result.source_results[0].url == "https://huggingface.co/papers"
+        assert result.command == "ingest.huggingface-papers"
+        assert result.source == "huggingface_papers"
+        assert result.status == "ok"
+        assert result.errors == []
 
     @patch("src.ingestion.huggingface_papers.get_db")
     @patch.object(HuggingFacePapersClient, "fetch_listing_page")
@@ -543,16 +538,21 @@ class TestHuggingFacePapersContentIngestionService:
         service = HuggingFacePapersContentIngestionService()
         result = service.ingest_content(sources=[source])
 
-        assert len(result.source_results) == 1
-        assert result.source_results[0].success is False
-        assert result.source_results[0].error is not None
+        # Source-level failure surfaces as one error in the canonical envelope
+        assert len(result.errors) == 1
+        assert result.errors[0].url == "https://huggingface.co/papers"
+        assert result.errors[0].message
+        assert result.status == "error"
+        assert result.items_ingested == 0
 
     def test_no_sources_returns_empty_result(self):
         """Empty source list returns empty result."""
         service = HuggingFacePapersContentIngestionService()
         result = service.ingest_content(sources=[])
         assert result.items_ingested == 0
-        assert len(result.source_results) == 0
+        assert result.errors == []
+        assert result.warnings == []
+        assert result.status == "ok"
 
     @patch("src.ingestion.huggingface_papers.get_db")
     @patch.object(HuggingFacePapersClient, "discover_paper_links")
@@ -573,15 +573,14 @@ class TestHuggingFacePapersContentIngestionService:
         result = service.ingest_content(sources=[source])
 
         assert result.items_ingested == 0
-        assert result.source_results[0].items_fetched == 0
+        assert result.status == "ok"
+        assert result.errors == []
 
     @patch("src.ingestion.huggingface_papers.get_db")
     @patch.object(HuggingFacePapersClient, "extract_paper_content")
     @patch.object(HuggingFacePapersClient, "discover_paper_links")
     @patch.object(HuggingFacePapersClient, "fetch_listing_page")
-    def test_skips_disabled_sources(
-        self, mock_fetch, mock_discover, mock_extract, mock_db
-    ):
+    def test_skips_disabled_sources(self, mock_fetch, mock_discover, mock_extract, mock_db):
         """Disabled sources are skipped."""
         source = MagicMock()
         source.enabled = False

@@ -18,7 +18,7 @@ class TestAudioDigestGeneratorInitialization:
     @patch("src.processors.audio_digest_generator.settings")
     def test_default_initialization(self, mock_settings, mock_tts_service):
         """Test default initialization with OpenAI provider."""
-        mock_settings.audio_digest_default_voice = "nova"
+        mock_settings.get_effective_voice.return_value = "nova"
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
         mock_tts_service.return_value._provider = mock_provider
@@ -34,7 +34,7 @@ class TestAudioDigestGeneratorInitialization:
     @patch("src.processors.audio_digest_generator.settings")
     def test_initialization_with_custom_voice(self, mock_settings, mock_tts_service):
         """Test initialization with custom voice."""
-        mock_settings.audio_digest_default_voice = "nova"
+        mock_settings.get_effective_voice.return_value = "nova"
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
         mock_tts_service.return_value._provider = mock_provider
@@ -47,7 +47,7 @@ class TestAudioDigestGeneratorInitialization:
     @patch("src.processors.audio_digest_generator.settings")
     def test_initialization_with_elevenlabs(self, mock_settings, mock_tts_service):
         """Test initialization with ElevenLabs provider."""
-        mock_settings.audio_digest_default_voice = "nova"
+        mock_settings.get_effective_voice.return_value = "nova"
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = True
         mock_tts_service.return_value._provider = mock_provider
@@ -61,7 +61,7 @@ class TestAudioDigestGeneratorInitialization:
     @patch("src.processors.audio_digest_generator.settings")
     def test_initialization_with_custom_speed(self, mock_settings, mock_tts_service):
         """Test initialization with custom speed."""
-        mock_settings.audio_digest_default_voice = "nova"
+        mock_settings.get_effective_voice.return_value = "nova"
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
         mock_tts_service.return_value._provider = mock_provider
@@ -115,7 +115,7 @@ class TestAudioDigestGeneratorGenerate:
         self, mock_settings, mock_tts, mock_get_db, mock_get_storage
     ):
         """Test generate raises ValueError when digest not found."""
-        mock_settings.audio_digest_default_voice = "nova"
+        mock_settings.get_effective_voice.return_value = "nova"
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
         mock_tts.return_value._provider = mock_provider
@@ -139,7 +139,7 @@ class TestAudioDigestGeneratorGenerate:
         self, mock_settings, mock_tts, mock_get_db, mock_get_storage
     ):
         """Test successful generation for short text (single chunk)."""
-        mock_settings.audio_digest_default_voice = "nova"
+        mock_settings.get_effective_voice.return_value = "nova"
         mock_settings.get_audio_digest_voice_id.return_value = "nova"
 
         mock_provider = MagicMock()
@@ -184,7 +184,7 @@ class TestAudioDigestGeneratorGenerate:
         self, mock_settings, mock_tts, mock_get_db, mock_get_storage
     ):
         """Test generate calls progress callback at each stage."""
-        mock_settings.audio_digest_default_voice = "nova"
+        mock_settings.get_effective_voice.return_value = "nova"
         mock_settings.get_audio_digest_voice_id.return_value = "nova"
 
         mock_provider = MagicMock()
@@ -230,7 +230,7 @@ class TestAudioDigestGeneratorGenerate:
         self, mock_settings, mock_tts, mock_get_db, mock_get_storage
     ):
         """Test that generation failure updates AudioDigest status to FAILED."""
-        mock_settings.audio_digest_default_voice = "nova"
+        mock_settings.get_effective_voice.return_value = "nova"
         mock_settings.get_audio_digest_voice_id.return_value = "nova"
 
         mock_provider = MagicMock()
@@ -266,7 +266,7 @@ class TestAudioDigestGeneratorGenerate:
         self, mock_settings, mock_tts, mock_get_db, mock_get_storage
     ):
         """Test that generation stores correct metadata."""
-        mock_settings.audio_digest_default_voice = "nova"
+        mock_settings.get_effective_voice.return_value = "nova"
         mock_settings.get_audio_digest_voice_id.return_value = "nova"
 
         mock_provider = MagicMock()
@@ -344,7 +344,7 @@ class TestAudioDigestGeneratorLongText:
         self, mock_settings, mock_tts, mock_get_db, mock_get_storage, mock_chunker, mock_concat
     ):
         """Test that long text is properly chunked."""
-        mock_settings.audio_digest_default_voice = "nova"
+        mock_settings.get_effective_voice.return_value = "nova"
         mock_settings.get_audio_digest_voice_id.return_value = "nova"
 
         mock_provider = MagicMock()
@@ -396,7 +396,7 @@ class TestAudioDigestGeneratorLongText:
         self, mock_settings, mock_tts, mock_get_db, mock_get_storage, mock_chunker, mock_concat
     ):
         """Test that multiple audio chunks are concatenated."""
-        mock_settings.audio_digest_default_voice = "nova"
+        mock_settings.get_effective_voice.return_value = "nova"
         mock_settings.get_audio_digest_voice_id.return_value = "nova"
 
         mock_provider = MagicMock()
@@ -443,7 +443,7 @@ class TestAudioDigestGeneratorLongText:
         self, mock_settings, mock_tts, mock_get_db, mock_get_storage, mock_chunker, mock_concat
     ):
         """Test that chunk count is stored in AudioDigest."""
-        mock_settings.audio_digest_default_voice = "nova"
+        mock_settings.get_effective_voice.return_value = "nova"
         mock_settings.get_audio_digest_voice_id.return_value = "nova"
 
         mock_provider = MagicMock()
@@ -519,7 +519,7 @@ class TestAudioDigestGeneratorVoicePresets:
         self, mock_settings, mock_tts, mock_get_db, mock_get_storage
     ):
         """Test that voice presets are resolved via settings."""
-        mock_settings.audio_digest_default_voice = "nova"
+        mock_settings.get_effective_voice.return_value = "nova"
         mock_settings.get_audio_digest_voice_id.return_value = "resolved_voice_id"
 
         mock_provider = MagicMock()
@@ -562,7 +562,7 @@ class TestAudioDigestGeneratorHelperMethods:
     @patch("src.processors.audio_digest_generator.settings")
     async def test_get_audio_digest(self, mock_settings, mock_tts, mock_get_db):
         """Test get_audio_digest retrieves record."""
-        mock_settings.audio_digest_default_voice = "nova"
+        mock_settings.get_effective_voice.return_value = "nova"
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
         mock_tts.return_value._provider = mock_provider
@@ -586,7 +586,7 @@ class TestAudioDigestGeneratorHelperMethods:
     @patch("src.processors.audio_digest_generator.settings")
     async def test_get_audio_digest_not_found(self, mock_settings, mock_tts, mock_get_db):
         """Test get_audio_digest returns None when not found."""
-        mock_settings.audio_digest_default_voice = "nova"
+        mock_settings.get_effective_voice.return_value = "nova"
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
         mock_tts.return_value._provider = mock_provider
@@ -607,7 +607,7 @@ class TestAudioDigestGeneratorHelperMethods:
     @patch("src.processors.audio_digest_generator.settings")
     async def test_list_audio_digests(self, mock_settings, mock_tts, mock_get_db):
         """Test list_audio_digests with filters."""
-        mock_settings.audio_digest_default_voice = "nova"
+        mock_settings.get_effective_voice.return_value = "nova"
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
         mock_tts.return_value._provider = mock_provider
@@ -637,7 +637,7 @@ class TestAudioDigestGeneratorHelperMethods:
     @patch("src.processors.audio_digest_generator.settings")
     async def test_list_audio_digests_no_filters(self, mock_settings, mock_tts, mock_get_db):
         """Test list_audio_digests without filters."""
-        mock_settings.audio_digest_default_voice = "nova"
+        mock_settings.get_effective_voice.return_value = "nova"
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
         mock_tts.return_value._provider = mock_provider
@@ -704,7 +704,7 @@ class TestAudioDigestGeneratorStorageBucket:
         self, mock_settings, mock_tts, mock_get_db, mock_get_storage
     ):
         """Test that audio-digests bucket is used for storage."""
-        mock_settings.audio_digest_default_voice = "nova"
+        mock_settings.get_effective_voice.return_value = "nova"
         mock_settings.get_audio_digest_voice_id.return_value = "nova"
 
         mock_provider = MagicMock()
