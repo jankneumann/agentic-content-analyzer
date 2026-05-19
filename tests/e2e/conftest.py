@@ -51,7 +51,12 @@ import pytest
 logger = logging.getLogger(__name__)
 
 E2E_BASE_URL = os.getenv("E2E_BASE_URL")  # None = auto-manage server
-E2E_ADMIN_KEY = os.getenv("E2E_ADMIN_KEY", os.getenv("ADMIN_API_KEY", ""))
+# `or` chain (not `os.getenv` default) so that an explicitly-empty
+# E2E_ADMIN_KEY="" still falls back to ADMIN_API_KEY. This is the common
+# case when invoking `E2E_ADMIN_KEY=$ADMIN_API_KEY pytest ...` and
+# $ADMIN_API_KEY happens to be unset in the shell — without this, the
+# fixture returns "" silently and every authenticated request hits 401.
+E2E_ADMIN_KEY = os.getenv("E2E_ADMIN_KEY") or os.getenv("ADMIN_API_KEY") or ""
 E2E_TIMEOUT = float(os.getenv("E2E_TIMEOUT", "300"))  # 5 min default
 E2E_EVALUATOR = os.getenv("E2E_EVALUATOR", "custom")  # custom | opik | langfuse
 

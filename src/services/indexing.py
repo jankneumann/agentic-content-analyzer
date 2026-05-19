@@ -247,7 +247,7 @@ async def _summarize_tree_nodes(
                     max_tokens=256,
                     temperature=0.0,
                 )
-                chunk.chunk_text = response.content or chunk.heading_text or "Summary unavailable"
+                chunk.chunk_text = response.text or chunk.heading_text or "Summary unavailable"
             except Exception as e:
                 logger.warning(f"Failed to summarize chunk {chunk.id}: {e}")
                 raise  # Propagate to trigger tree rollback

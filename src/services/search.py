@@ -637,7 +637,7 @@ class HybridSearchService:
             max_tokens=512,
             temperature=0.0,
         )
-        response = llm_response.content
+        response = llm_response.text
 
         if not response:
             return []
