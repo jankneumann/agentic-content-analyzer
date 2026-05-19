@@ -148,7 +148,25 @@ class GmailClient:
         self._authenticate()
 
     def _authenticate(self) -> None:
-        """Authenticate with Gmail API using OAuth2."""
+        """Authenticate with Gmail API using OAuth2.
+
+        Token + credentials hydration: if ``gmail_oauth_token_json`` or
+        ``gmail_credentials_json`` is set (typically via the
+        ``GMAIL_OAUTH_TOKEN_JSON`` / ``GMAIL_CREDENTIALS_JSON`` env vars) and
+        the corresponding file does not already exist on disk, the JSON is
+        written to that file. This lets headless cloud deployments inject
+        OAuth state without filesystem access — same pattern as YouTube.
+        """
+        # Hydrate token / credentials files from env when running in cloud
+        if settings.gmail_oauth_token_json and not os.path.exists(settings.gmail_token_file):
+            logger.info("Hydrating Gmail OAuth token file from GMAIL_OAUTH_TOKEN_JSON setting")
+            with open(settings.gmail_token_file, "w") as token:
+                token.write(settings.gmail_oauth_token_json)
+        if settings.gmail_credentials_json and not os.path.exists(settings.gmail_credentials_file):
+            logger.info("Hydrating Gmail credentials file from GMAIL_CREDENTIALS_JSON setting")
+            with open(settings.gmail_credentials_file, "w") as creds_file:
+                creds_file.write(settings.gmail_credentials_json)
+
         creds = None
 
         # Load existing credentials
@@ -163,7 +181,9 @@ class GmailClient:
             else:
                 if not os.path.exists(settings.gmail_credentials_file):
                     raise FileNotFoundError(
-                        f"Gmail credentials file not found: {settings.gmail_credentials_file}"
+                        f"Gmail credentials file not found: {settings.gmail_credentials_file}. "
+                        "Run `aca auth gmail` locally to generate it, or set "
+                        "GMAIL_CREDENTIALS_JSON env var for headless deployments."
                     )
                 logger.info("Starting Gmail OAuth flow...")
                 flow = InstalledAppFlow.from_client_secrets_file(

@@ -477,6 +477,12 @@ class Settings(BaseSettings):
     # Gmail Configuration
     gmail_credentials_file: str = "credentials.json"
     gmail_token_file: str = "token.json"
+    gmail_oauth_token_json: str | None = (
+        None  # JSON string of OAuth token for headless cloud deployments
+    )
+    gmail_credentials_json: str | None = (
+        None  # JSON string of OAuth client credentials for headless cloud deployments
+    )
 
     # Unified Source Configuration
     sources_config_dir: str = "sources.d"  # Directory with per-type YAML files
@@ -499,6 +505,9 @@ class Settings(BaseSettings):
     youtube_backoff_base: float = 2.0  # Base delay in seconds for exponential backoff
     youtube_oauth_token_json: str | None = (
         None  # JSON string of OAuth token for headless cloud deployments
+    )
+    youtube_credentials_json: str | None = (
+        None  # JSON string of OAuth client credentials for headless cloud deployments
     )
 
     # Grok X Search Configuration

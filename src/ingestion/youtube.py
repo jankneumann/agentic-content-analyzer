@@ -132,11 +132,17 @@ class YouTubeClient:
         """
         creds = None
 
-        # Hydrate token file from env/settings when running in cloud
+        # Hydrate token / credentials files from env/settings when running in cloud
         if settings.youtube_oauth_token_json and not os.path.exists(settings.youtube_token_file):
             logger.info("Hydrating YouTube OAuth token file from YOUTUBE_OAUTH_TOKEN_JSON setting")
             with open(settings.youtube_token_file, "w") as token:
                 token.write(settings.youtube_oauth_token_json)
+        if settings.youtube_credentials_json and not os.path.exists(
+            settings.youtube_credentials_file
+        ):
+            logger.info("Hydrating YouTube credentials file from YOUTUBE_CREDENTIALS_JSON setting")
+            with open(settings.youtube_credentials_file, "w") as creds_file:
+                creds_file.write(settings.youtube_credentials_json)
 
         # Load existing credentials
         if os.path.exists(settings.youtube_token_file):
