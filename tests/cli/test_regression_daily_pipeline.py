@@ -19,7 +19,7 @@ Markers:
 from __future__ import annotations
 
 from contextlib import ExitStack
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -31,18 +31,45 @@ runner = CliRunner()
 pytestmark = pytest.mark.regression
 
 
+@pytest.fixture(autouse=True)
+def _force_direct_mode():
+    """Force the CLI into --direct mode for the duration of every test.
+
+    `--direct` is registered on the top-level `app` callback in
+    `src/cli/app.py`, so passing it after a subcommand
+    (e.g. `["analyze", "themes"]`) causes typer to exit
+    with code 2 (unknown option). Setting the module-level flag
+    programmatically bypasses that ordering trap and matches the
+    intent — these regression tests want the direct service path,
+    not the HTTP API path.
+    """
+    from src.cli.output import _set_direct_mode
+
+    _set_direct_mode(True)
+    yield
+    _set_direct_mode(False)
+
+
 # =============================================================================
 # Fixtures
 # =============================================================================
 
 
 def _mock_ingestion_patches() -> ExitStack:
-    """Set up all ingestion source mocks returning realistic item counts."""
+    """Set up all ingestion source mocks returning realistic item counts.
+
+    Must cover every orchestrator function the daily pipeline invokes (see
+    `src/cli/pipeline_commands.py::_run_ingestion_stage_async`). Missing a
+    mock causes the pipeline to call the real implementation, which can
+    blow out test runtime (YouTube hits real APIs and times out at ~15min).
+    """
     stack = ExitStack()
     sources = {
         "src.ingestion.orchestrator.ingest_gmail": 3,
         "src.ingestion.orchestrator.ingest_rss": 5,
-        "src.ingestion.orchestrator.ingest_youtube": 2,
+        "src.ingestion.orchestrator.ingest_blog": 0,
+        "src.ingestion.orchestrator.ingest_youtube_playlist": 1,
+        "src.ingestion.orchestrator.ingest_youtube_rss": 1,
         "src.ingestion.orchestrator.ingest_podcast": 1,
         "src.ingestion.orchestrator.ingest_substack": 0,
     }
@@ -52,11 +79,11 @@ def _mock_ingestion_patches() -> ExitStack:
 
 
 def _mock_summarizer():
-    """Create a mock ContentSummarizer that returns 8 summarized items."""
-    mock = patch("src.processors.summarizer.ContentSummarizer")
-    mock_summarizer = mock.start()
-    mock_summarizer.return_value.summarize_pending_contents.return_value = 8
-    return mock, mock_summarizer
+    """Pre-configured ContentSummarizer patcher (unstarted; caller enters via `with`)."""
+    summarizer_class_mock = MagicMock()
+    summarizer_class_mock.return_value.summarize_pending_contents.return_value = 8
+    patcher = patch("src.processors.summarizer.ContentSummarizer", new=summarizer_class_mock)
+    return patcher, summarizer_class_mock
 
 
 def _mock_digest_creation():
@@ -106,8 +133,9 @@ class TestDailyPipelineCommand:
                 result = runner.invoke(app, ["pipeline", "daily"])
 
         assert result.exit_code == 0
-        # Should show source count summary
-        assert "5/5 complete" in result.output
+        # Should show source count summary (7 sources: gmail, rss, blog,
+        # youtube-playlist, youtube-rss, podcast, substack)
+        assert "7/7 complete" in result.output
 
 
 # =============================================================================
@@ -122,7 +150,7 @@ class TestThemeAnalysisCommand:
     def test_analyze_themes_with_defaults(self, mock_analyze):
         """Theme analysis runs with default 7-day window."""
         mock_analyze.return_value = None
-        result = runner.invoke(app, ["analyze", "themes", "--direct"])
+        result = runner.invoke(app, ["analyze", "themes"])
 
         assert result.exit_code == 0
         assert "Analyzing themes" in result.output
@@ -140,7 +168,6 @@ class TestThemeAnalysisCommand:
                 "2025-01-01",
                 "--end",
                 "2025-01-15",
-                "--direct",
             ],
         )
 
@@ -150,7 +177,7 @@ class TestThemeAnalysisCommand:
 
     def test_analyze_themes_rejects_invalid_dates(self):
         """Theme analysis fails gracefully on invalid date format."""
-        result = runner.invoke(app, ["analyze", "themes", "--start", "not-a-date", "--direct"])
+        result = runner.invoke(app, ["analyze", "themes", "--start", "not-a-date"])
 
         assert result.exit_code == 1
         assert "Error" in result.output
@@ -166,7 +193,6 @@ class TestThemeAnalysisCommand:
                 "2025-01-15",
                 "--end",
                 "2025-01-01",
-                "--direct",
             ],
         )
 
@@ -186,7 +212,7 @@ class TestReviewListCommand:
     def test_review_list_shows_pending(self, mock_list):
         """Review list displays pending digest reviews."""
         mock_list.return_value = None
-        result = runner.invoke(app, ["review", "list", "--direct"])
+        result = runner.invoke(app, ["review", "list"])
 
         assert result.exit_code == 0
         mock_list.assert_called_once()
@@ -199,7 +225,7 @@ class TestReviewViewCommand:
     def test_review_view_displays_digest(self, mock_view):
         """Review view shows digest content for a given ID."""
         mock_view.return_value = None
-        result = runner.invoke(app, ["review", "view", "301", "--direct"])
+        result = runner.invoke(app, ["review", "view", "301"])
 
         assert result.exit_code == 0
         mock_view.assert_called_once_with(301)
@@ -217,7 +243,7 @@ class TestPodcastGenerateCommand:
     def test_podcast_generate_with_digest_id(self, mock_generate):
         """Podcast generation accepts digest ID and runs."""
         mock_generate.return_value = None
-        result = runner.invoke(app, ["podcast", "generate", "--digest-id", "301", "--direct"])
+        result = runner.invoke(app, ["podcast", "generate", "--digest-id", "301"])
 
         assert result.exit_code == 0
         mock_generate.assert_called_once_with(301, "standard")
@@ -235,7 +261,6 @@ class TestPodcastGenerateCommand:
                 "301",
                 "--length",
                 "brief",
-                "--direct",
             ],
         )
 
@@ -255,7 +280,7 @@ class TestDigestCreationCommand:
     def test_create_digest_daily_runs(self, mock_create):
         """Standalone digest creation for daily works."""
         mock_create.return_value = None
-        result = runner.invoke(app, ["create-digest", "daily", "--direct"])
+        result = runner.invoke(app, ["create-digest", "daily"])
 
         assert result.exit_code == 0
 
@@ -263,7 +288,7 @@ class TestDigestCreationCommand:
     def test_create_digest_weekly_runs(self, mock_create):
         """Standalone digest creation for weekly works."""
         mock_create.return_value = None
-        result = runner.invoke(app, ["create-digest", "weekly", "--direct"])
+        result = runner.invoke(app, ["create-digest", "weekly"])
 
         assert result.exit_code == 0
 
@@ -293,25 +318,25 @@ class TestSequentialWorkflow:
         # Step 2: Analyze themes
         with patch("src.cli.analyze_commands._analyze_themes_direct") as mock_analyze:
             mock_analyze.return_value = None
-            result = runner.invoke(app, ["analyze", "themes", "--direct"])
+            result = runner.invoke(app, ["analyze", "themes"])
         assert result.exit_code == 0, f"Theme analysis failed: {result.output}"
 
         # Step 3: List reviews
         with patch("src.cli.review_commands._list_reviews_direct") as mock_list:
             mock_list.return_value = None
-            result = runner.invoke(app, ["review", "list", "--direct"])
+            result = runner.invoke(app, ["review", "list"])
         assert result.exit_code == 0, f"Review list failed: {result.output}"
 
         # Step 4: View digest
         with patch("src.cli.review_commands._view_review_direct") as mock_view:
             mock_view.return_value = None
-            result = runner.invoke(app, ["review", "view", "301", "--direct"])
+            result = runner.invoke(app, ["review", "view", "301"])
         assert result.exit_code == 0, f"Review view failed: {result.output}"
 
         # Step 5: Generate podcast
         with patch("src.cli.podcast_commands._generate_direct") as mock_gen:
             mock_gen.return_value = None
-            result = runner.invoke(app, ["podcast", "generate", "--digest-id", "301", "--direct"])
+            result = runner.invoke(app, ["podcast", "generate", "--digest-id", "301"])
         assert result.exit_code == 0, f"Podcast generation failed: {result.output}"
 
 
@@ -327,7 +352,7 @@ class TestSummarizeCommand:
     def test_summarize_pending_runs(self, mock_summarize):
         """Standalone summarize pending works."""
         mock_summarize.return_value = None
-        result = runner.invoke(app, ["summarize", "pending", "--direct"])
+        result = runner.invoke(app, ["summarize", "pending"])
 
         assert result.exit_code == 0
 
@@ -335,6 +360,6 @@ class TestSummarizeCommand:
     def test_summarize_pending_with_source_filter(self, mock_summarize):
         """Summarize pending accepts --source filter."""
         mock_summarize.return_value = None
-        result = runner.invoke(app, ["summarize", "pending", "--source", "gmail,rss", "--direct"])
+        result = runner.invoke(app, ["summarize", "pending", "--source", "gmail,rss"])
 
         assert result.exit_code == 0

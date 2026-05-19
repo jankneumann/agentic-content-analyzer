@@ -1,10 +1,11 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from src.api.app import app
 from src.api.dependencies import verify_admin_key
+from src.config.settings import Settings
 from src.models.content import Content, ContentStatus
 
 
@@ -13,9 +14,13 @@ class TestUploadSecurityFix:
     @pytest.fixture
     def client(self, monkeypatch):
         """
-        Simple TestClient with admin auth bypassed via dependency override.
-        This avoids the need for a running database or complex fixtures.
-        Sets necessary environment variables to pass Settings validation.
+        Simple TestClient with admin auth bypassed.
+
+        The route declares ``Depends(verify_admin_key)`` at the router level
+        AND the app has a global ``AuthMiddleware``. dependency_overrides only
+        handles the former; without also patching the middleware's settings
+        binding, every request gets 401 from the middleware before reaching
+        the route handler.
         """
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-123")
         monkeypatch.setenv("WORKER_ENABLED", "false")
@@ -28,9 +33,17 @@ class TestUploadSecurityFix:
         except ImportError:
             pass
 
+        # Dev-mode settings mock so AuthMiddleware passes through.
+        settings_mock = MagicMock(spec=Settings)
+        settings_mock.is_development = True
+        settings_mock.is_production = False
+        settings_mock.admin_api_key = None
+        settings_mock.app_secret_key = None
+
         app.dependency_overrides[verify_admin_key] = lambda: "test-admin-key"
-        with TestClient(app) as c:
-            yield c
+        with patch("src.api.middleware.auth.get_settings", return_value=settings_mock):
+            with TestClient(app) as c:
+                yield c
         app.dependency_overrides = {}
 
     @pytest.fixture

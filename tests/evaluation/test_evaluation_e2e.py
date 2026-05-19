@@ -7,7 +7,6 @@ This test runs without a database by exercising the in-memory code paths.
 """
 
 import pytest
-from unittest.mock import MagicMock
 
 from src.config.models import ModelConfig, ModelStep, RoutingConfig, RoutingMode
 from src.evaluation.calibrator import CalibrationResult, ThresholdCalibrator
@@ -42,7 +41,8 @@ class TestEvaluationE2E:
 
     def test_complexity_router_classify_and_route(self):
         """Test complexity router classifies prompts and makes routing decisions."""
-        # Train a simple classifier
+        # sklearn is not a runtime dep — train a classifier only if installed.
+        pytest.importorskip("sklearn")
         from sklearn.linear_model import LogisticRegression
 
         router = ComplexityRouter(embed_fn=lambda x: [len(x) / 100.0, 0.5])
@@ -50,8 +50,16 @@ class TestEvaluationE2E:
         clf = LogisticRegression(max_iter=100)
         # Simple training: short prompts = simple (0), long prompts = complex (1)
         clf.fit(
-            [[0.1, 0.5], [0.2, 0.5], [0.15, 0.5], [0.25, 0.5],
-             [0.8, 0.5], [0.9, 0.5], [0.85, 0.5], [0.95, 0.5]],
+            [
+                [0.1, 0.5],
+                [0.2, 0.5],
+                [0.15, 0.5],
+                [0.25, 0.5],
+                [0.8, 0.5],
+                [0.9, 0.5],
+                [0.85, 0.5],
+                [0.95, 0.5],
+            ],
             [0, 0, 0, 0, 1, 1, 1, 1],
         )
         router._classifiers["summarization"] = clf
@@ -138,5 +146,6 @@ class TestEvaluationE2E:
 
         # Check that default criteria exist
         from src.evaluation.criteria import get_criteria_for_step
+
         criteria = get_criteria_for_step(config, "summarization")
         assert len(criteria.dimensions) > 0

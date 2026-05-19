@@ -129,7 +129,12 @@ async def _ingest_source(
     """
     try:
         result = await asyncio.to_thread(ingest_func)
-        return (source_name, result.items_ingested, None)
+        # Most orchestrator entry points return IngestionResponse, but a few
+        # still return a plain int. Accept both shapes so the partial-migration
+        # window doesn't break the pipeline — and so test mocks can keep
+        # returning ints without each test rebuilding the full envelope.
+        count = result if isinstance(result, int) else result.items_ingested
+        return (source_name, count, None)
     except Exception as e:
         logger.error(f"Ingestion failed for {source_name}: {e}")
         return (source_name, None, str(e))

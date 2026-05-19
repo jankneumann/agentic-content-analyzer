@@ -8,13 +8,32 @@ Integration tests for:
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from starlette.testclient import TestClient
 
 from src.api.app import app
+from src.config.settings import Settings
 from src.models.jobs import JobHistoryItem, JobListItem, JobStatus
+
+
+@pytest.fixture(autouse=True)
+def _bypass_auth_middleware():
+    """Patch AuthMiddleware's settings binding to dev-mode for every test.
+
+    These tests cover pagination/filter behavior, not auth — without this
+    bypass, every request gets 401 from the global AuthMiddleware before
+    reaching the route handler.
+    """
+    settings_mock = MagicMock(spec=Settings)
+    settings_mock.is_development = True
+    settings_mock.is_production = False
+    settings_mock.admin_api_key = None
+    settings_mock.app_secret_key = None
+
+    with patch("src.api.middleware.auth.get_settings", return_value=settings_mock):
+        yield
 
 
 class TestJobListPaginationEdgeCases:

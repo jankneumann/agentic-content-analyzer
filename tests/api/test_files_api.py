@@ -15,12 +15,26 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.api.app import app
+from src.config.settings import Settings
 
 
 @pytest.fixture
 def client():
-    """Create a test client."""
-    return TestClient(app)
+    """Create a test client that bypasses AuthMiddleware.
+
+    The files endpoints are protected by AuthMiddleware globally. These tests
+    cover bucket validation, storage routing, content types, etc. — not auth.
+    Patch the middleware's settings binding to dev-mode (no keys configured)
+    so requests pass through and reach the route handler.
+    """
+    settings_mock = MagicMock(spec=Settings)
+    settings_mock.is_development = True
+    settings_mock.is_production = False
+    settings_mock.admin_api_key = None
+    settings_mock.app_secret_key = None
+
+    with patch("src.api.middleware.auth.get_settings", return_value=settings_mock):
+        yield TestClient(app)
 
 
 @pytest.fixture

@@ -421,11 +421,17 @@ def _register_content_handlers() -> None:
         from datetime import timedelta
 
         from src.ingestion.orchestrator import (
+            ingest_arxiv,
+            ingest_arxiv_paper,
+            ingest_blog,
             ingest_gmail,
             ingest_huggingface_papers,
             ingest_perplexity_search,
             ingest_podcast,
             ingest_rss,
+            ingest_scholar,
+            ingest_scholar_paper,
+            ingest_scholar_refs,
             ingest_substack,
             ingest_url,
             ingest_xsearch,
@@ -524,6 +530,54 @@ def _register_content_handlers() -> None:
                 ingest_huggingface_papers,
                 {**({"max_papers": max_results} if max_results is not None else {})},
             ),
+            "blog": (
+                ingest_blog,
+                {**({"max_entries_per_source": max_results} if max_results is not None else {})},
+            ),
+            "arxiv": (
+                ingest_arxiv,
+                {
+                    **({"max_results": max_results} if max_results is not None else {}),
+                    **({"no_pdf": payload["no_pdf"]} if "no_pdf" in payload else {}),
+                },
+            ),
+            "scholar": (
+                ingest_scholar,
+                {**({"max_entries": max_results} if max_results is not None else {})},
+            ),
+            "scholar-paper": (
+                ingest_scholar_paper,
+                {
+                    "identifier": payload.get("identifier", ""),
+                    **({"with_refs": payload["with_refs"]} if "with_refs" in payload else {}),
+                },
+            ),
+            "scholar-refs": (
+                ingest_scholar_refs,
+                {
+                    **({"after": payload["after"]} if "after" in payload else {}),
+                    **({"before": payload["before"]} if "before" in payload else {}),
+                    **(
+                        {"source_types": payload["source_types"]}
+                        if "source_types" in payload
+                        else {}
+                    ),
+                    **({"dry_run": payload["dry_run"]} if "dry_run" in payload else {}),
+                    **({"limit": payload["limit"]} if "limit" in payload else {}),
+                },
+            ),
+            "arxiv-paper": (
+                ingest_arxiv_paper,
+                {
+                    "identifier": payload.get("identifier", ""),
+                    "pdf_extraction": not payload.get("no_pdf"),
+                    **(
+                        {"force_reprocess": payload["force_reprocess"]}
+                        if "force_reprocess" in payload
+                        else {}
+                    ),
+                },
+            ),
         }
 
         if source not in source_map:
@@ -531,8 +585,17 @@ def _register_content_handlers() -> None:
 
         ingest_func, kwargs = source_map[source]
 
-        # URL ingestion doesn't take after_date/force_reprocess
-        if source == "url":
+        # Sources that don't take the standard after_date/force_reprocess kwargs
+        # — either they have no time-window concept (single-identifier ingest)
+        # or they use differently-named params (scholar-refs uses after/before).
+        no_default_kwargs = {
+            "url",
+            "scholar",
+            "scholar-paper",
+            "scholar-refs",
+            "arxiv-paper",
+        }
+        if source in no_default_kwargs:
             result = await _asyncio.to_thread(lambda: ingest_func(**kwargs))
         else:
             result = await _asyncio.to_thread(
@@ -543,11 +606,13 @@ def _register_content_handlers() -> None:
                 )
             )
 
-        # All sources return IngestionResponse post round-4 harmonization
-        # (2026-05-08); take items_ingested for the progress message. URL
-        # duplicates surface as items_skipped=1 so a re-saved URL reports
-        # "Ingested 0 items" — semantically accurate (nothing new landed).
-        count = result.items_ingested
+        # Most sources return IngestionResponse post round-4 harmonization
+        # (2026-05-08); a few legacy paths still return a plain int. Accept
+        # both shapes so the partial-migration window doesn't break the worker
+        # and so test mocks can keep returning ints without rebuilding the
+        # full envelope. URL duplicates surface as items_skipped=1 so a
+        # re-saved URL reports "Ingested 0 items" — semantically accurate.
+        count = result if isinstance(result, int) else result.items_ingested
 
         await update_job_progress(job_id, 100, f"Ingested {count} items from {source}")
 

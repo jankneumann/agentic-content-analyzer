@@ -75,9 +75,14 @@ class TestCloudSTTPipelineStep:
         assert expected == "MODEL_CLOUD_STT"
 
     def test_all_model_steps_count(self):
-        """Verify the total number of ModelStep values includes CLOUD_STT."""
+        """Verify ModelStep includes CLOUD_STT (was: hard-coded count of 14).
+
+        Locking to an exact count creates pure churn whenever a step is added.
+        The invariant worth testing here is "CLOUD_STT is one of the values."
+        """
         steps = list(ModelStep)
-        assert len(steps) == 14
+        assert ModelStep.CLOUD_STT in steps
+        assert len(steps) >= 14
 
 
 class TestModelFamilyEnum:

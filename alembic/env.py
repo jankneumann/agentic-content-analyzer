@@ -21,20 +21,20 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 target_metadata = Base.metadata
 
-# Set sqlalchemy.url from settings
-# Use get_effective_database_url() which handles local, Supabase, and Neon configs
-# Note: For cloud providers (Supabase, Neon), migrations need direct (non-pooled) connections.
-# - Supabase: Use SUPABASE_DIRECT_URL
-# - Neon: Use NEON_DIRECT_URL (removes -pooler from hostname)
-if settings.neon_direct_url:
-    # Neon direct URL for migrations (bypasses connection pooler)
-    config.set_main_option("sqlalchemy.url", settings.neon_direct_url)
-elif settings.supabase_direct_url:
-    # Supabase direct URL for migrations
-    config.set_main_option("sqlalchemy.url", settings.supabase_direct_url)
-else:
-    # Use the effective database URL (pooler for cloud, direct for local)
-    config.set_main_option("sqlalchemy.url", settings.get_effective_database_url())
+# Set sqlalchemy.url from settings unless caller pre-set it programmatically.
+# Test fixtures use alembic.command.upgrade() with set_main_option("sqlalchemy.url", ...)
+# to point migrations at the worktree-aware test DB without touching env vars.
+# In normal (CLI) usage the value is empty and we fall back to settings:
+# - Neon: NEON_DIRECT_URL (bypass pooler for migrations)
+# - Supabase: SUPABASE_DIRECT_URL
+# - Otherwise: settings.get_effective_database_url() (pooler for cloud, direct for local)
+if not config.get_main_option("sqlalchemy.url"):
+    if settings.neon_direct_url:
+        config.set_main_option("sqlalchemy.url", settings.neon_direct_url)
+    elif settings.supabase_direct_url:
+        config.set_main_option("sqlalchemy.url", settings.supabase_direct_url)
+    else:
+        config.set_main_option("sqlalchemy.url", settings.get_effective_database_url())
 
 
 def run_migrations_offline() -> None:
