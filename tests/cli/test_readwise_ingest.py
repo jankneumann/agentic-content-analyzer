@@ -81,19 +81,17 @@ class TestOrchestratorIngestReadwise:
     def test_close_called_even_on_error(self, mock_service_cls):
         mock_service = mock_service_cls.return_value
         mock_service.ingest_content.side_effect = RuntimeError("boom")
-        from src.ingestion.orchestrator import ingest_readwise
-
         import pytest
+
+        from src.ingestion.orchestrator import ingest_readwise
 
         with pytest.raises(RuntimeError, match="boom"):
             ingest_readwise()
         mock_service.close.assert_called_once()
 
     @patch("src.ingestion.readwise.ReadwiseContentIngestionService")
-    @patch("src.ingestion.orchestrator.load_sources_config", create=True)
-    def test_applies_sources_d_defaults_when_missing(
-        self, mock_load, mock_service_cls
-    ):
+    @patch("src.config.sources.load_sources_config")
+    def test_applies_sources_d_defaults_when_missing(self, mock_load, mock_service_cls):
         """When source_types/include_deleted aren't passed, defaults come from sources.d."""
         cfg = MagicMock()
         rw = MagicMock()
@@ -211,10 +209,9 @@ class TestReadwiseCliDirectMode:
         assert result.exit_code == 1
         assert "Readwise ingestion failed" in result.stdout
 
-    @patch("src.cli.ingest_commands.is_json_mode", return_value=True)
     @patch("src.cli.ingest_commands.is_direct_mode", return_value=True)
     @patch("src.ingestion.orchestrator.ingest_readwise")
-    def test_json_output_shape(self, mock_orch, _direct, _json):
+    def test_json_output_shape(self, mock_orch, _direct):
         def fake_orch(**kwargs):
             cb = kwargs.get("on_result")
             if cb:
@@ -230,7 +227,9 @@ class TestReadwiseCliDirectMode:
 
         mock_orch.side_effect = fake_orch
 
-        result = runner.invoke(app, ["ingest", "readwise"])
+        # Drive the real --json flag so both the command and output_result
+        # (which lives in src.cli.output) observe json mode.
+        result = runner.invoke(app, ["--json", "ingest", "readwise"])
         assert result.exit_code == 0
         assert '"source": "readwise"' in result.stdout
         assert '"books_ingested": 2' in result.stdout
@@ -256,7 +255,7 @@ class TestReadwiseCliApiMode:
             ],
         )
         assert result.exit_code == 0
-        source_arg, params, label = mock_api.call_args.args
+        source_arg, params, _label = mock_api.call_args.args
         assert source_arg == "readwise"
         assert params["days_back"] == 7
         assert params["source_types"] == ["kindle"]
@@ -265,9 +264,7 @@ class TestReadwiseCliApiMode:
     @patch("src.cli.ingest_commands._readwise_direct")
     @patch("src.cli.ingest_commands._ingest_via_api")
     @patch("src.cli.ingest_commands.is_direct_mode", return_value=False)
-    def test_falls_back_to_direct_on_connect_error(
-        self, _direct, mock_api, mock_direct
-    ):
+    def test_falls_back_to_direct_on_connect_error(self, _direct, mock_api, mock_direct):
         mock_api.side_effect = httpx.ConnectError("conn refused")
         result = runner.invoke(app, ["ingest", "readwise"])
         assert result.exit_code == 0

@@ -166,6 +166,16 @@ class IngestRequest(BaseModel):
     title: str | None = Field(default=None, description="Content title override")
     tags: list[str] | None = Field(default=None, description="Content tags (url)")
     notes: str | None = Field(default=None, description="Content notes (url)")
+    source_types: list[str] | None = Field(
+        default=None, description="Readwise upstreams to restrict to (readwise)"
+    )
+    include_deleted: bool = Field(
+        default=False,
+        description="Include Readwise tombstones for soft-delete sync (readwise)",
+    )
+    max_books: int | None = Field(
+        default=None, ge=1, description="Cap on Readwise books per run (readwise)"
+    )
 
 
 class IngestResponse(BaseModel):
@@ -213,6 +223,8 @@ async def _enqueue_ingestion_job(request: IngestRequest) -> int:
         "title",
         "tags",
         "notes",
+        "source_types",
+        "max_books",
     ):
         value = getattr(request, field)
         if value is not None:
@@ -221,6 +233,8 @@ async def _enqueue_ingestion_job(request: IngestRequest) -> int:
         payload["transcribe"] = False
     if request.public_only:
         payload["public_only"] = True
+    if request.include_deleted:
+        payload["include_deleted"] = True
 
     job_id, _created = await enqueue_queue_job("ingest_content", payload)
     logger.info(f"Enqueued ingestion job {job_id} for source {request.source}")

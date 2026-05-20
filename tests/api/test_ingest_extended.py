@@ -83,6 +83,23 @@ class TestIngestRequestSourceFields:
         req = IngestRequest(source="podcast", transcribe=False)
         assert req.transcribe is False
 
+    def test_readwise_fields(self):
+        req = IngestRequest(
+            source="readwise",
+            source_types=["kindle", "pocket"],
+            include_deleted=True,
+            max_books=25,
+        )
+        assert req.source_types == ["kindle", "pocket"]
+        assert req.include_deleted is True
+        assert req.max_books == 25
+
+    def test_readwise_field_defaults(self):
+        req = IngestRequest(source="readwise")
+        assert req.source_types is None
+        assert req.include_deleted is False
+        assert req.max_books is None
+
 
 class TestIngestRequestValidation:
     def test_max_results_too_low(self):
@@ -229,3 +246,36 @@ class TestEnqueueIngestionJob:
         payload = mock_enqueue.call_args[0][1]
         # public_only=False is default, should NOT be in payload
         assert "public_only" not in payload
+
+    @patch("src.queue.setup.enqueue_queue_job", new_callable=AsyncMock)
+    @pytest.mark.asyncio
+    async def test_readwise_payload(self, mock_enqueue):
+        from src.api.content_routes import _enqueue_ingestion_job
+
+        mock_enqueue.return_value = (8, True)
+        req = IngestRequest(
+            source="readwise",
+            source_types=["kindle", "pocket"],
+            include_deleted=True,
+            max_books=25,
+        )
+        await _enqueue_ingestion_job(req)
+        payload = mock_enqueue.call_args[0][1]
+        assert payload["source"] == "readwise"
+        assert payload["source_types"] == ["kindle", "pocket"]
+        assert payload["include_deleted"] is True
+        assert payload["max_books"] == 25
+
+    @patch("src.queue.setup.enqueue_queue_job", new_callable=AsyncMock)
+    @pytest.mark.asyncio
+    async def test_readwise_defaults_not_in_payload(self, mock_enqueue):
+        from src.api.content_routes import _enqueue_ingestion_job
+
+        mock_enqueue.return_value = (9, True)
+        req = IngestRequest(source="readwise")
+        await _enqueue_ingestion_job(req)
+        payload = mock_enqueue.call_args[0][1]
+        # Defaults (None / False) should NOT bloat the payload
+        assert "source_types" not in payload
+        assert "max_books" not in payload
+        assert "include_deleted" not in payload

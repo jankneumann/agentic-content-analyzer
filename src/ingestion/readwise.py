@@ -328,8 +328,12 @@ class ReadwiseContentIngestionService:
         *,
         force_reprocess: bool,
     ) -> None:
-        user_book_id = book.get("user_book_id") or book.get("id")
-        if not user_book_id:
+        # Explicit None check — user_book_id can legitimately be 0, which a
+        # truthiness test would wrongly treat as a missing id.
+        user_book_id = book.get("user_book_id")
+        if user_book_id is None:
+            user_book_id = book.get("id")
+        if user_book_id is None:
             result.books_skipped += 1
             return
 
@@ -426,9 +430,7 @@ class ReadwiseContentIngestionService:
             is_deleted = bool(hl.get("is_deleted"))
 
             existing: Highlight | None = (
-                db.query(Highlight)
-                .filter(Highlight.readwise_id == readwise_id)
-                .one_or_none()
+                db.query(Highlight).filter(Highlight.readwise_id == readwise_id).one_or_none()
             )
 
             if is_deleted:
@@ -441,7 +443,7 @@ class ReadwiseContentIngestionService:
             if not text:
                 continue
 
-            note = (hl.get("note") or None)
+            note = hl.get("note") or None
             color = hl.get("color") or None
             location = hl.get("location")
             location_type = hl.get("location_type") or None
