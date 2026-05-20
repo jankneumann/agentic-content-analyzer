@@ -559,3 +559,50 @@ class TestTreeSearchHelpers:
                 results = await self.service._tree_search_single("test", 42)
                 # Only N001 and N002 should be processed (INVALID and 42 skipped)
                 assert len(results) <= 2
+
+
+class TestBM25ThreadSafety:
+    """Guards the isolated-session fix for threaded BM25 (avoids racing the
+    request-scoped session shared with the concurrent vector search)."""
+
+    @patch("src.services.search.get_bm25_strategy")
+    @patch("src.services.search.Session")
+    def test_isolated_session_when_strategy_not_injected(self, mock_session_cls, mock_get_strategy):
+        ctor_strategy = MagicMock(name="ctor_strategy")
+        threaded_strategy = MagicMock(name="threaded_strategy")
+        threaded_strategy.search.return_value = [(1, 0.9, 10)]
+        # First call: __init__ resolves self._bm25; second: threaded helper.
+        mock_get_strategy.side_effect = [ctor_strategy, threaded_strategy]
+
+        request_session = MagicMock()
+        bind = MagicMock()
+        request_session.get_bind.return_value = bind
+        isolated_session = MagicMock()
+        mock_session_cls.return_value = isolated_session
+
+        service = HybridSearchService(session=request_session, embedding_provider=MagicMock())
+        results = service._bm25_search_threadsafe("q", 10, None)
+
+        # A fresh Session bound to the request session's bind, not reused.
+        mock_session_cls.assert_called_once_with(bind=bind)
+        mock_get_strategy.assert_called_with(isolated_session)
+        threaded_strategy.search.assert_called_once_with("q", 10, None)
+        isolated_session.close.assert_called_once()
+        assert results == [(1, 0.9, 10)]
+
+    @patch("src.services.search.Session")
+    def test_injected_strategy_used_directly(self, mock_session_cls):
+        injected = MagicMock()
+        injected.search.return_value = [(2, 0.5, 20)]
+
+        service = HybridSearchService(
+            session=MagicMock(),
+            bm25_strategy=injected,
+            embedding_provider=MagicMock(),
+        )
+        results = service._bm25_search_threadsafe("q", 5, [1, 2])
+
+        injected.search.assert_called_once_with("q", 5, [1, 2])
+        # No isolated session created when a strategy is injected.
+        mock_session_cls.assert_not_called()
+        assert results == [(2, 0.5, 20)]

@@ -59,6 +59,10 @@ class HybridSearchService:
         rerank_provider: RerankProvider | None = None,
     ) -> None:
         self._session = session
+        # An injected strategy is owned by the caller (its session lifecycle is
+        # the caller's concern); one we build ourselves binds to self._session
+        # and must be re-bound to an isolated session before threaded use.
+        self._bm25_injected = bm25_strategy is not None
         self._bm25 = bm25_strategy or get_bm25_strategy(session)
         self._embedder = embedding_provider or get_embedding_provider()
         self._reranker = rerank_provider  # None = use factory (respects enabled setting)
@@ -70,6 +74,32 @@ class HybridSearchService:
             self._reranker = get_rerank_provider()
             self._reranker_resolved = True
         return self._reranker
+
+    def _bm25_search_threadsafe(
+        self,
+        query: str,
+        limit: int,
+        content_ids: list[int] | None,
+    ) -> list[tuple[int, float, int]]:
+        """Run BM25 on a worker thread without touching the request session.
+
+        The request-scoped session is not thread-safe and is used concurrently
+        by the vector search on the event-loop thread, so the threaded BM25
+        call binds a fresh Session to the same bind as ``self._session``. In
+        production that bind is the engine, yielding an independent pooled
+        connection (true isolation); under the test harness it is the shared
+        test connection, so flushed-but-uncommitted fixtures stay visible.
+
+        An injected strategy (dependency injection, e.g. tests) is used as-is —
+        the caller owns its session lifecycle.
+        """
+        if self._bm25_injected:
+            return self._bm25.search(query, limit, content_ids)
+        isolated = Session(bind=self._session.get_bind())
+        try:
+            return get_bm25_strategy(isolated).search(query, limit, content_ids)
+        finally:
+            isolated.close()
 
     async def search(self, query: SearchQuery) -> SearchResponse:
         """Execute hybrid search and return aggregated document results.
@@ -93,12 +123,13 @@ class HybridSearchService:
         # Fetch more candidates than needed for fusion quality
         search_limit = min((query.limit + query.offset) * 5, settings.search_max_limit * 5)
 
-        # Execute search based on type
-        # BM25 strategies use synchronous DB calls, so we run them in a thread
-        # to avoid blocking the async event loop.
+        # Execute search based on type. BM25 makes synchronous DB calls, so it
+        # runs on a worker thread (with its own session — see
+        # _bm25_search_threadsafe) to avoid blocking the event loop and to keep
+        # hybrid search parallel without racing the request-scoped session.
         if query.type == SearchType.BM25:
             bm25_results = await asyncio.to_thread(
-                self._bm25.search, query.query, search_limit, content_ids
+                self._bm25_search_threadsafe, query.query, search_limit, content_ids
             )
             vector_results: list[tuple[int, float, int]] = []
         elif query.type == SearchType.VECTOR:
@@ -107,9 +138,11 @@ class HybridSearchService:
                 query.query, limit=search_limit, content_ids=content_ids
             )
         else:
-            # Hybrid: run both in parallel
+            # Hybrid: run BM25 (own session, worker thread) and vector in parallel.
             bm25_results, vector_results = await asyncio.gather(
-                asyncio.to_thread(self._bm25.search, query.query, search_limit, content_ids),
+                asyncio.to_thread(
+                    self._bm25_search_threadsafe, query.query, search_limit, content_ids
+                ),
                 self._vector_search(query.query, limit=search_limit, content_ids=content_ids),
             )
 
