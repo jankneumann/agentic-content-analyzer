@@ -9,6 +9,7 @@ Covers:
 
 from __future__ import annotations
 
+import re
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -142,10 +143,13 @@ class TestReadwiseCliHelp:
     def test_help_lists_command(self):
         result = runner.invoke(app, ["ingest", "readwise", "--help"])
         assert result.exit_code == 0
-        assert "readwise" in result.stdout.lower()
-        assert "--source-types" in result.stdout
-        assert "--include-deleted" in result.stdout
-        assert "--max" in result.stdout
+        # Strip ANSI: rich colorizes option names when the runner presents a
+        # TTY-like env (CI), interleaving escape codes within "--source-types".
+        plain = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
+        assert "readwise" in plain.lower()
+        assert "--source-types" in plain
+        assert "--include-deleted" in plain
+        assert "--max" in plain
 
 
 class TestReadwiseCliDirectMode:
