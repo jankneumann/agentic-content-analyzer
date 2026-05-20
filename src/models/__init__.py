@@ -28,7 +28,6 @@ from src.models.content_reference import (
     ResolutionStatus,
 )
 from src.models.digest import Digest, DigestStatus, DigestType
-from src.models.highlight import Highlight, HighlightResponse, HighlightSource, HighlightTargetKind
 from src.models.document import DocumentContent, DocumentFormat, DocumentMetadata, TableData
 from src.models.evaluation import (
     DatasetStatus,
@@ -42,6 +41,7 @@ from src.models.evaluation import (
     RoutingDecision,
     RoutingMode,
 )
+from src.models.highlight import Highlight, HighlightResponse, HighlightSource, HighlightTargetKind
 from src.models.image import Image, ImageSource
 from src.models.notification import DeviceRegistration, NotificationEvent, NotificationEventType
 from src.models.podcast import Podcast, PodcastLength, PodcastScriptRecord, PodcastStatus

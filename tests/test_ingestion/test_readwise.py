@@ -28,7 +28,6 @@ from src.ingestion.readwise import (
     _parse_dt,
 )
 
-
 # ---------------------------------------------------------------------------
 # Pure helpers
 # ---------------------------------------------------------------------------
@@ -421,9 +420,8 @@ class TestServiceBookIdempotency:
     @patch("src.ingestion.readwise.ReadwiseClient")
     def test_unchanged_content_is_skipped(self, mock_client_cls, patched_db):
         """When content_hash matches, book is neither updated nor reingested."""
-        from src.utils.content_hash import generate_markdown_hash
-
         from src.ingestion.readwise import _book_markdown
+        from src.utils.content_hash import generate_markdown_hash
 
         book = _make_book(highlights=[])
         existing = MagicMock()
@@ -461,10 +459,9 @@ class TestServiceBookIdempotency:
 
     @patch("src.ingestion.readwise.ReadwiseClient")
     def test_force_reprocess_resets_status(self, mock_client_cls, patched_db):
+        from src.ingestion.readwise import _book_markdown
         from src.models.content import ContentStatus
         from src.utils.content_hash import generate_markdown_hash
-
-        from src.ingestion.readwise import _book_markdown
 
         book = _make_book(highlights=[])
         existing = MagicMock()
@@ -501,9 +498,7 @@ class TestServiceHighlightSync:
         ]
 
         # Make content_hash match so book is not updated either way
-        with patch(
-            "src.ingestion.readwise.generate_markdown_hash", return_value="matches"
-        ):
+        with patch("src.ingestion.readwise.generate_markdown_hash", return_value="matches"):
             mock_client = mock_client_cls.return_value
             mock_client.iter_export.return_value = iter(
                 [_make_book(highlights=[_make_highlight(1, "x", is_deleted=True)])]
@@ -538,9 +533,7 @@ class TestServiceHighlightSync:
             existing_hl,
         ]
 
-        with patch(
-            "src.ingestion.readwise.generate_markdown_hash", return_value="matches"
-        ):
+        with patch("src.ingestion.readwise.generate_markdown_hash", return_value="matches"):
             mock_client = mock_client_cls.return_value
             mock_client.iter_export.return_value = iter(
                 [_make_book(highlights=[_make_highlight(1, "NEW TEXT")])]
@@ -577,13 +570,9 @@ class TestServiceHighlightSync:
             existing_hl,
         ]
 
-        with patch(
-            "src.ingestion.readwise.generate_markdown_hash", return_value="matches"
-        ):
+        with patch("src.ingestion.readwise.generate_markdown_hash", return_value="matches"):
             mock_client = mock_client_cls.return_value
-            mock_client.iter_export.return_value = iter(
-                [_make_book(highlights=[hl_payload])]
-            )
+            mock_client.iter_export.return_value = iter([_make_book(highlights=[hl_payload])])
 
             service = ReadwiseContentIngestionService(api_key="tok")
             result = service.ingest_content()

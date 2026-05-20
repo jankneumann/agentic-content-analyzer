@@ -32,8 +32,8 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    text as sql_text,
 )
-from sqlalchemy import text as sql_text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, relationship, validates
 
@@ -151,7 +151,7 @@ class Highlight(Base):  # type: ignore[valid-type, misc]
     )
 
     # Relationships
-    content: Mapped["Content"] = relationship(
+    content: Mapped[Content] = relationship(
         "Content",
         foreign_keys=[content_id],
         back_populates="highlights",
