@@ -41,6 +41,7 @@ from src.models.evaluation import (
     RoutingDecision,
     RoutingMode,
 )
+from src.models.highlight import Highlight, HighlightResponse, HighlightSource, HighlightTargetKind
 from src.models.image import Image, ImageSource
 from src.models.notification import DeviceRegistration, NotificationEvent, NotificationEventType
 from src.models.podcast import Podcast, PodcastLength, PodcastScriptRecord, PodcastStatus
@@ -115,6 +116,11 @@ __all__ = [
     "Digest",
     "DigestType",
     "DigestStatus",
+    # Highlight
+    "Highlight",
+    "HighlightResponse",
+    "HighlightSource",
+    "HighlightTargetKind",
     # Podcast
     "PodcastScriptRecord",
     "Podcast",

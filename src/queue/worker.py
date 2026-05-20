@@ -428,6 +428,7 @@ def _register_content_handlers() -> None:
             ingest_huggingface_papers,
             ingest_perplexity_search,
             ingest_podcast,
+            ingest_readwise,
             ingest_rss,
             ingest_scholar,
             ingest_scholar_paper,
@@ -578,6 +579,27 @@ def _register_content_handlers() -> None:
                     ),
                 },
             ),
+            "readwise": (
+                ingest_readwise,
+                {
+                    "force_reprocess": force_reprocess,
+                    # Readwise uses `updated_after`, not the standard `after_date`.
+                    # Only narrow the window when the caller passed days_back;
+                    # otherwise sync everything (parity with direct mode).
+                    **({"updated_after": after_date} if "days_back" in payload else {}),
+                    **(
+                        {"source_types": payload["source_types"]}
+                        if "source_types" in payload
+                        else {}
+                    ),
+                    **(
+                        {"include_deleted": payload["include_deleted"]}
+                        if "include_deleted" in payload
+                        else {}
+                    ),
+                    **({"max_books": payload["max_books"]} if "max_books" in payload else {}),
+                },
+            ),
         }
 
         if source not in source_map:
@@ -594,6 +616,7 @@ def _register_content_handlers() -> None:
             "scholar-paper",
             "scholar-refs",
             "arxiv-paper",
+            "readwise",
         }
         if source in no_default_kwargs:
             result = await _asyncio.to_thread(lambda: ingest_func(**kwargs))

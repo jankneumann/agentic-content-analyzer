@@ -160,6 +160,46 @@ async def test_ingest_substack(mock_sub):
     assert kwargs.get("max_entries_per_source") == 15
 
 
+@patch("src.ingestion.orchestrator.ingest_readwise")
+@pytest.mark.asyncio
+async def test_ingest_readwise(mock_readwise):
+    mock_readwise.return_value = 4
+    handler = _handlers["ingest_content"]
+    await handler(
+        1,
+        {
+            "source": "readwise",
+            "days_back": 14,
+            "source_types": ["kindle", "pocket"],
+            "include_deleted": True,
+            "max_books": 25,
+            "force_reprocess": True,
+        },
+    )
+    mock_readwise.assert_called_once()
+    kwargs = mock_readwise.call_args[1]
+    assert kwargs.get("source_types") == ["kindle", "pocket"]
+    assert kwargs.get("include_deleted") is True
+    assert kwargs.get("max_books") == 25
+    assert kwargs.get("force_reprocess") is True
+    # days_back present → window applied via updated_after
+    assert kwargs.get("updated_after") is not None
+    # readwise uses updated_after, never the generic after_date kwarg
+    assert "after_date" not in kwargs
+
+
+@patch("src.ingestion.orchestrator.ingest_readwise")
+@pytest.mark.asyncio
+async def test_ingest_readwise_full_sync_without_days_back(mock_readwise):
+    mock_readwise.return_value = 0
+    handler = _handlers["ingest_content"]
+    await handler(1, {"source": "readwise"})
+    mock_readwise.assert_called_once()
+    kwargs = mock_readwise.call_args[1]
+    # No days_back → no window narrowing (parity with direct mode full sync)
+    assert "updated_after" not in kwargs
+
+
 @pytest.mark.asyncio
 async def test_ingest_unknown_source_raises():
     handler = _handlers["ingest_content"]

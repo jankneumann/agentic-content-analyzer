@@ -1,0 +1,25 @@
+version: 1
+
+# Readwise Highlights API v2 — imports books + highlights from every
+# Readwise-connected upstream (Kindle, Instapaper, Pocket, Apple Books,
+# Airr, Reader, podcast, supplemental) in one pull.
+#
+# Requires READWISE_API_KEY in .env (get one at https://readwise.io/access_token).
+#
+# Rate limit: 240 req/min per token (see https://readwise.io/api_deets).
+
+defaults:
+  enabled: true
+  tags: [readwise]
+
+sources:
+  - type: readwise
+    name: readwise-all
+    # Restrict to specific upstreams (empty list = all):
+    #   kindle | instapaper | pocket | apple_books | airr | reader |
+    #   podcast | supplemental | ibooks
+    source_types: []
+    # Set to true to receive soft-delete signals (tombstones) for highlights
+    # a user has removed upstream. When true, the ingester soft-deletes the
+    # corresponding local highlight rows (deleted_at is set).
+    include_deleted: false
