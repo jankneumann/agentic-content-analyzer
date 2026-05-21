@@ -1,8 +1,20 @@
 name: Deploy
 
+# DISABLED (manual-only). Production deploys via Railway's own GitHub
+# integration (Railway watches `main` and auto-deploys), so this workflow is
+# not the production CD path. It also targets a Railway `staging` environment
+# and a DATABASE_URL_STAGING secret that don't exist yet, so the old
+# `push: [main]` trigger produced a red ❌ on every commit to main.
+#
+# Kept as a template. To re-enable as real CD once a staging environment +
+# DATABASE_URL_STAGING / DATABASE_URL_PRODUCTION / RAILWAY_TOKEN secrets exist,
+# restore the commented `push` trigger below. Note: the migration steps run on
+# a GitHub-hosted runner, so the DATABASE_URL_* secrets must use the Postgres
+# PUBLIC host (e.g. *.proxy.rlwy.net), not *.railway.internal.
 on:
-  push:
-    branches: [main]
+  workflow_dispatch: {}
+  # push:
+  #   branches: [main]
 
 concurrency:
   group: deploy-${{ github.ref }}
