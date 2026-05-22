@@ -60,6 +60,11 @@ class ApiClient:
             base_url=base_url,
             timeout=httpx.Timeout(timeout, connect=10.0),
             headers=headers,
+            # FastAPI's redirect_slashes issues a 307 from no-slash to
+            # trailing-slash collection routes (e.g. /api/v1/digests ->
+            # /api/v1/digests/). httpx does not follow redirects by default,
+            # which would surface the 307 as an HTTPStatusError.
+            follow_redirects=True,
         )
 
     def health_check(self) -> bool:
@@ -145,12 +150,13 @@ class ApiClient:
 
     # ── Digests (read) ──────────────────────────────────────────────────
 
-    def list_digests(self, **params: Any) -> dict[str, Any]:
-        """GET /api/v1/digests — list digests."""
+    def list_digests(self, **params: Any) -> list[dict[str, Any]]:
+        """GET /api/v1/digests/ — list digests (returns a JSON array)."""
         query = {k: v for k, v in params.items() if v is not None}
-        resp = self._client.get("/api/v1/digests", params=query)
+        resp = self._client.get("/api/v1/digests/", params=query)
         resp.raise_for_status()
-        return self._resp_json(resp)
+        data: list[dict[str, Any]] = resp.json()
+        return data
 
     def get_digest(self, digest_id: int) -> dict[str, Any]:
         """GET /api/v1/digests/{digest_id} — get digest details."""
@@ -183,12 +189,13 @@ class ApiClient:
         resp.raise_for_status()
         return self._resp_json(resp)
 
-    def list_scripts(self, **params: Any) -> dict[str, Any]:
-        """GET /api/v1/scripts — list podcast scripts."""
+    def list_scripts(self, **params: Any) -> list[dict[str, Any]]:
+        """GET /api/v1/scripts/ — list podcast scripts (returns a JSON array)."""
         query = {k: v for k, v in params.items() if v is not None}
-        resp = self._client.get("/api/v1/scripts", params=query)
+        resp = self._client.get("/api/v1/scripts/", params=query)
         resp.raise_for_status()
-        return self._resp_json(resp)
+        data: list[dict[str, Any]] = resp.json()
+        return data
 
     # ── Settings ──────────────────────────────────────────────────────
 

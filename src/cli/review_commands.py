@@ -277,9 +277,10 @@ def _list_reviews_direct() -> None:
         raise typer.Exit(1)
 
     if not digests:
-        typer.echo("No digests pending review.")
         if is_json_mode():
             output_result({"digests": [], "count": 0})
+        else:
+            typer.echo("No digests pending review.")
         return
 
     if is_json_mode():
@@ -372,8 +373,7 @@ def list_reviews() -> None:
         from src.cli.api_client import get_api_client
 
         client = get_api_client()
-        resp = client.list_digests(status="pending_review")
-        digests: list[dict[str, Any]] = resp.get("digests", resp.get("items", []))
+        digests: list[dict[str, Any]] = client.list_digests(status="pending_review")
     except httpx.ConnectError:
         if not is_json_mode():
             from rich.console import Console
@@ -385,9 +385,10 @@ def list_reviews() -> None:
         return
 
     if not digests:
-        typer.echo("No digests pending review.")
         if is_json_mode():
             output_result({"digests": [], "count": 0})
+        else:
+            typer.echo("No digests pending review.")
         return
 
     if is_json_mode():

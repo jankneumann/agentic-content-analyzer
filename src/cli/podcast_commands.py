@@ -297,8 +297,8 @@ def list_scripts(
         output_result(response)
         return
 
-    # Parse API response
-    scripts = response.get("scripts", response.get("items", []))
+    # Parse API response (endpoint returns a bare JSON array)
+    scripts = response
     if not scripts:
         typer.echo("No podcast scripts found.")
         return
