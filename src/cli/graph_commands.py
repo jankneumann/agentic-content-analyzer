@@ -53,6 +53,56 @@ def _graph_results_from_response(resp: dict) -> list[dict]:
     return results
 
 
+def _extract_entities_via_api(console: Console, content_id: int) -> None:
+    """Route `graph extract-entities` through POST /api/v1/graph/extract-entities.
+
+    Maps the endpoint's 404 (content missing) and 409 (no summary yet) to the
+    same user-facing exits the direct path produces, so behavior is identical
+    regardless of which backend ran the write.
+    """
+    import httpx
+
+    from src.cli.api_client import get_api_client
+
+    client = get_api_client()
+    try:
+        resp = client.graph_extract_entities(content_id)
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        if status == 404:
+            console.print(f"[red]Error:[/red] Content with ID {content_id} not found.")
+        elif status == 409:
+            console.print(
+                f"[red]Error:[/red] No summary found for content ID {content_id}. "
+                "Run summarization first."
+            )
+        else:
+            console.print(f"[red]Error:[/red] Entity extraction failed: {exc}")
+        raise typer.Exit(1)
+    except Exception as exc:
+        console.print(f"[red]Error:[/red] Entity extraction failed: {exc}")
+        raise typer.Exit(1)
+    finally:
+        client.close()
+
+    if is_json_mode():
+        output_result(
+            {
+                "status": "success",
+                "content_id": content_id,
+                "entities_added": resp.get("entities_added", 0),
+                "relationships_added": resp.get("relationships_added", 0),
+                "graph_episode_id": resp.get("graph_episode_id", ""),
+                "message": f"Entities extracted from content {content_id}",
+            }
+        )
+    else:
+        console.print(
+            f"[green]Successfully extracted entities from content {content_id}[/green] "
+            f"(episode {resp.get('graph_episode_id', '?')})"
+        )
+
+
 @app.command("extract-entities")
 def extract_entities(
     content_id: Annotated[
@@ -69,10 +119,18 @@ def extract_entities(
     through the Graphiti client to extract entities, relationships, and
     concepts into the Neo4j knowledge graph.
     """
-    guard_remote_backend("graph extract-entities")
     console = Console()
-    console.print(f"Extracting entities from content [bold]{content_id}[/bold]...")
+    if not is_json_mode():
+        console.print(f"Extracting entities from content [bold]{content_id}[/bold]...")
 
+    if is_remote_backend() and not is_direct_mode():
+        _extract_entities_via_api(console, content_id)
+        return
+
+    guard_remote_backend(
+        "graph extract-entities",
+        http_hint="omit --direct to route entity extraction through the API",
+    )
     try:
         from src.cli.adapters import run_async
         from src.models.content import Content

@@ -292,6 +292,17 @@ class ApiClient:
             "POST", "/api/v1/graph/query", json={"query": query, "limit": limit}
         )
 
+    def graph_extract_entities(self, content_id: int) -> dict[str, Any]:
+        """POST /api/v1/graph/extract-entities — push a content summary into the graph.
+
+        Returns GraphExtractResponse shape {entities_added, relationships_added,
+        graph_episode_id}. Raises httpx.HTTPStatusError on 404 (content missing)
+        or 409 (no summary yet) — the caller maps those to user-facing messages.
+        """
+        return self._request_with_retry(
+            "POST", "/api/v1/graph/extract-entities", json={"content_id": content_id}
+        )
+
     def references_extract(self, **body: Any) -> dict[str, Any]:
         """POST /api/v1/references/extract — returns ReferencesExtractResponse shape."""
         payload = {k: v for k, v in body.items() if v is not None}

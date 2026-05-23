@@ -18,6 +18,13 @@ _json_mode = False
 # Module-level direct execution flag (bypass API, call services directly)
 _direct_mode = False
 
+# Module-level opt-in: run direct (in-process) against the REMOTE database.
+# This is the deliberate escape hatch for heavy batch jobs (manage backfills,
+# sync) where database_url has been pointed at the Railway proxy and the user
+# accepts direct execution against prod data. It turns guard_remote_backend
+# into a loud no-op instead of a refusal.
+_remote_db = False
+
 
 def _set_json_mode(enabled: bool) -> None:
     global _json_mode
@@ -35,6 +42,15 @@ def _set_direct_mode(enabled: bool) -> None:
 
 def is_direct_mode() -> bool:
     return _direct_mode
+
+
+def _set_remote_db(enabled: bool) -> None:
+    global _remote_db
+    _remote_db = enabled
+
+
+def is_remote_db() -> bool:
+    return _remote_db
 
 
 # Hosts for which direct database access is the expected, correct behavior.
@@ -73,6 +89,17 @@ def guard_remote_backend(command: str, *, http_hint: str | None = None) -> None:
     if not is_remote_backend():
         return
 
+    if is_remote_db():
+        # Explicit opt-in (--remote-db): the user has pointed database_url at the
+        # remote backend and accepts direct (in-process) execution against it.
+        # Stay loud so it can never be mistaken for the silent split-brain path.
+        typer.echo(
+            f"Warning: `aca {command}` is running DIRECTLY against the REMOTE database "
+            "(--remote-db). Confirm database_url targets the intended backend.",
+            err=True,
+        )
+        return
+
     from src.config.settings import get_active_profile_name
 
     profile = get_active_profile_name() or "the active profile"
@@ -82,7 +109,7 @@ def guard_remote_backend(command: str, *, http_hint: str | None = None) -> None:
         "  would silently use local data instead of production.",
     ]
     if http_hint:
-        lines.append(f"  Use the HTTP-backed path instead: {http_hint}")
+        lines.append(f"  Alternative: {http_hint}")
     lines.append(
         "  Or operate on local data with a local profile (unset PROFILE, or PROFILE=local)."
     )

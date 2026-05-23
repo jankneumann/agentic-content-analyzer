@@ -106,6 +106,94 @@ class TestGraphQuery:
         mock_search.assert_called_once_with("test", limit=5)
 
 
+class TestExtractEntitiesHttpRouting:
+    """Under a remote profile, `graph extract-entities` POSTs to
+    /api/v1/graph/extract-entities instead of touching the local graph/DB.
+    """
+
+    @patch("src.cli.graph_commands.is_remote_backend", return_value=True)
+    @patch("src.cli.api_client.get_api_client")
+    def test_extract_routes_to_api(self, mock_get_client, _remote):
+        client = MagicMock()
+        client.graph_extract_entities.return_value = {
+            "entities_added": 0,
+            "relationships_added": 0,
+            "graph_episode_id": "ep-123",
+        }
+        mock_get_client.return_value = client
+
+        result = runner.invoke(app, ["graph", "extract-entities", "--content-id", "42"])
+
+        assert result.exit_code == 0, result.output
+        client.graph_extract_entities.assert_called_once_with(42)
+        client.close.assert_called_once()
+        assert "ep-123" in result.output
+
+    @patch("src.cli.graph_commands.is_remote_backend", return_value=True)
+    @patch("src.cli.api_client.get_api_client")
+    def test_extract_json_routes_to_api(self, mock_get_client, _remote):
+        import json
+
+        client = MagicMock()
+        client.graph_extract_entities.return_value = {
+            "entities_added": 3,
+            "relationships_added": 1,
+            "graph_episode_id": "ep-9",
+        }
+        mock_get_client.return_value = client
+
+        result = runner.invoke(app, ["--json", "graph", "extract-entities", "--content-id", "7"])
+
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["content_id"] == 7
+        assert payload["graph_episode_id"] == "ep-9"
+
+    @patch("src.cli.graph_commands.is_remote_backend", return_value=True)
+    @patch("src.cli.api_client.get_api_client")
+    def test_extract_404_content_not_found(self, mock_get_client, _remote):
+        import httpx
+
+        req = httpx.Request("POST", "http://x/api/v1/graph/extract-entities")
+        resp = httpx.Response(404, request=req)
+        client = MagicMock()
+        client.graph_extract_entities.side_effect = httpx.HTTPStatusError(
+            "404", request=req, response=resp
+        )
+        mock_get_client.return_value = client
+
+        result = runner.invoke(app, ["graph", "extract-entities", "--content-id", "999"])
+
+        assert result.exit_code == 1
+        assert "not found" in result.output
+
+    @patch("src.cli.graph_commands.is_remote_backend", return_value=True)
+    @patch("src.cli.api_client.get_api_client")
+    def test_extract_409_no_summary(self, mock_get_client, _remote):
+        import httpx
+
+        req = httpx.Request("POST", "http://x/api/v1/graph/extract-entities")
+        resp = httpx.Response(409, request=req)
+        client = MagicMock()
+        client.graph_extract_entities.side_effect = httpx.HTTPStatusError(
+            "409", request=req, response=resp
+        )
+        mock_get_client.return_value = client
+
+        result = runner.invoke(app, ["graph", "extract-entities", "--content-id", "42"])
+
+        assert result.exit_code == 1
+        assert "No summary found" in result.output
+
+    @patch("src.config.settings.get_settings")
+    def test_direct_flag_under_remote_is_refused(self, mock_get_settings):
+        # --direct opts out of HTTP for a write; the guard then refuses.
+        mock_get_settings.return_value = MagicMock(api_base_url="https://api.aca.rotkohl.ai")
+        result = runner.invoke(app, ["--direct", "graph", "extract-entities", "--content-id", "1"])
+        assert result.exit_code == 1
+        assert "Refusing to run" in result.output
+
+
 class TestGraphQueryHttpRouting:
     """Under a remote profile, `graph query` hits POST /api/v1/graph/query and
     flattens the {entities, relationships} response into result rows.

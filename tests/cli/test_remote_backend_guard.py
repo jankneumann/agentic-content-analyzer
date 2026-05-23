@@ -75,6 +75,46 @@ class TestGuardRemoteBackend:
         assert "use --remote-db" in err
 
 
+class TestRemoteDbOptIn:
+    """`--remote-db` is the deliberate escape hatch: it turns the guard into a
+    loud no-op (warning, not refusal) and implies --direct so a batch job runs
+    in-process against the remote DB.
+    """
+
+    @patch("src.config.settings.get_settings")
+    def test_remote_db_bypasses_guard_with_warning(self, mock_get: MagicMock, capsys) -> None:
+        from src.cli.output import _set_remote_db
+
+        mock_get.return_value = _settings("https://api.aca.rotkohl.ai")
+        _set_remote_db(True)
+        try:
+            # Must NOT raise — the opt-in permits direct remote-DB execution.
+            guard_remote_backend("manage backfill-chunks")
+        finally:
+            _set_remote_db(False)
+        err = capsys.readouterr().err
+        assert "REMOTE database" in err
+
+    @patch("src.cli.adapters.search_graph_sync", return_value=[])
+    @patch("src.cli.output.is_remote_backend", return_value=True)
+    def test_flag_implies_direct_and_bypasses(
+        self, _remote: MagicMock, mock_search: MagicMock
+    ) -> None:
+        from src.cli.output import _set_direct_mode, _set_remote_db, is_direct_mode, is_remote_db
+
+        try:
+            result = runner.invoke(app, ["--remote-db", "graph", "query", "-q", "x"])
+            assert result.exit_code == 0, result.output
+            assert "Refusing to run" not in result.output
+            assert "REMOTE database" in result.output
+            assert is_remote_db() is True
+            assert is_direct_mode() is True
+            mock_search.assert_called_once()
+        finally:
+            _set_remote_db(False)
+            _set_direct_mode(False)
+
+
 class TestCommandGuardsUnderRemoteProfile:
     """Direct-only DB commands must fail loud (not silently hit local DB)."""
 
