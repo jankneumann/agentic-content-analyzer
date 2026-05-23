@@ -15,9 +15,42 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from src.cli.output import guard_remote_backend, is_json_mode, output_result
+from src.cli.output import (
+    guard_remote_backend,
+    is_direct_mode,
+    is_json_mode,
+    is_remote_backend,
+    output_result,
+)
 
 app = typer.Typer(help="Manage the knowledge graph.")
+
+
+def _graph_results_from_response(resp: dict) -> list[dict]:
+    """Flatten a GraphQueryResponse {entities, relationships} into the flat
+    result rows the table/JSON renderer expects (name / type / content).
+    """
+    results: list[dict] = []
+    for e in resp.get("entities") or []:
+        results.append(
+            {
+                "name": e.get("name", ""),
+                "type": e.get("type", "entity"),
+                "content": f"score={float(e.get('score', 0.0)):.3f}",
+            }
+        )
+    for r in resp.get("relationships") or []:
+        results.append(
+            {
+                "name": r.get("type", "RELATES_TO"),
+                "type": "relationship",
+                "content": (
+                    f"{r.get('source_id', '')} → {r.get('target_id', '')} "
+                    f"(score={float(r.get('score', 0.0)):.3f})"
+                ),
+            }
+        )
+    return results
 
 
 @app.command("extract-entities")
@@ -135,24 +168,38 @@ def query(
     Performs a semantic search across the knowledge graph to find
     entities, relationships, and facts related to the query text.
     """
-    guard_remote_backend("graph query")
     console = Console()
-    console.print(f"Querying knowledge graph for: [bold]{query_text}[/bold]...")
+    if not is_json_mode():
+        console.print(f"Querying knowledge graph for: [bold]{query_text}[/bold]...")
 
-    try:
-        from src.cli.adapters import search_graph_sync
+    if is_remote_backend() and not is_direct_mode():
+        from src.cli.api_client import get_api_client
 
-        results = search_graph_sync(query_text, limit=limit)
-    except ConnectionError as e:
-        console.print(f"[red]Error:[/red] Graph database is unavailable: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        error_msg = str(e).lower()
-        if "connection" in error_msg or "neo4j" in error_msg or "refused" in error_msg:
-            console.print("[red]Error:[/red] Graph database is unavailable.")
-        else:
+        client = get_api_client()
+        try:
+            resp = client.graph_query(query_text, limit=limit)
+        except Exception as e:
             console.print(f"[red]Error:[/red] Graph query failed: {e}")
-        raise typer.Exit(1)
+            raise typer.Exit(1)
+        finally:
+            client.close()
+        results = _graph_results_from_response(resp)
+    else:
+        guard_remote_backend("graph query")
+        try:
+            from src.cli.adapters import search_graph_sync
+
+            results = search_graph_sync(query_text, limit=limit)
+        except ConnectionError as e:
+            console.print(f"[red]Error:[/red] Graph database is unavailable: {e}")
+            raise typer.Exit(1)
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "connection" in error_msg or "neo4j" in error_msg or "refused" in error_msg:
+                console.print("[red]Error:[/red] Graph database is unavailable.")
+            else:
+                console.print(f"[red]Error:[/red] Graph query failed: {e}")
+            raise typer.Exit(1)
 
     if not results:
         console.print("[yellow]No results found for the given query.[/yellow]")

@@ -259,6 +259,33 @@ class ApiClient:
             "GET", "/api/v1/kb/search", params={"q": query, "limit": limit}
         )
 
+    def kb_list_topics(self, **params: Any) -> list[dict[str, Any]]:
+        """GET /api/v1/kb/topics — list topics (returns a JSON array of TopicSummary)."""
+        query = {k: v for k, v in params.items() if v is not None}
+        resp = self._client.get("/api/v1/kb/topics", params=query)
+        resp.raise_for_status()
+        data: list[dict[str, Any]] = resp.json()
+        return data
+
+    def kb_get_topic(self, slug: str) -> dict[str, Any]:
+        """GET /api/v1/kb/topics/{slug} — full TopicResponse (raises 404 if missing)."""
+        resp = self._client.get(f"/api/v1/kb/topics/{slug}")
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    def kb_index(self, category: str | None = None) -> dict[str, Any]:
+        """GET /api/v1/kb/index — cached KB index markdown."""
+        params = {"category": category} if category else None
+        resp = self._client.get("/api/v1/kb/index", params=params)
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    def kb_query(self, question: str, file_back: bool = False) -> dict[str, Any]:
+        """POST /api/v1/kb/query — KBQueryResponse shape (LLM-backed Q&A)."""
+        return self._request_with_retry(
+            "POST", "/api/v1/kb/query", json={"question": question, "file_back": file_back}
+        )
+
     def graph_query(self, query: str, limit: int = 20) -> dict[str, Any]:
         """POST /api/v1/graph/query — returns GraphQueryResponse shape."""
         return self._request_with_retry(
