@@ -142,6 +142,71 @@ def _railway_set_env(key: str, value: str, service: str | None = None) -> None:
     typer.echo(f"Railway env var {key} set{target}.")
 
 
+def _railway_linked_target() -> str | None:
+    """Return a short description of the currently-linked Railway target.
+
+    Reads ``railway status --json`` (project / environment / service). Returns
+    None when the railway CLI is missing, not linked, or the output can't be
+    parsed. Best-effort — never raises.
+    """
+    if not shutil.which("railway"):
+        return None
+    try:
+        result = subprocess.run(
+            ["railway", "status", "--json"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    try:
+        import json
+
+        data = json.loads(result.stdout)
+    except (ValueError, TypeError):
+        return None
+
+    def _name(value: object) -> str | None:
+        if isinstance(value, dict):
+            name = value.get("name")
+            return str(name) if name else None
+        return str(value) if value else None
+
+    project = _name(data.get("name")) or _name(data.get("project"))
+    environment = _name(data.get("environment"))
+    parts = [p for p in (project, environment) if p]
+    return " / ".join(parts) if parts else None
+
+
+def _warn_deploy_target(service: str | None) -> None:
+    """Surface the two independent sources of truth before pushing secrets.
+
+    ``--deploy`` writes to whatever Railway project ``railway link`` points at,
+    which is *independent* of the active profile's ``api_base_url``. Showing
+    both prevents pushing OAuth tokens to the wrong project/service.
+    """
+    from src.config.settings import get_active_profile_name, get_settings
+
+    profile = get_active_profile_name() or "(none)"
+    api_base_url = get_settings().api_base_url
+    linked = _railway_linked_target()
+    linked_desc = linked or "(unknown — railway not linked or CLI unavailable)"
+    target_service = service or "(default service)"
+
+    typer.echo(
+        "\nDeploy target — please confirm before secrets are pushed:\n"
+        f"  Active profile : {profile}  (api_base_url: {api_base_url})\n"
+        f"  Railway link   : {linked_desc}\n"
+        f"  Railway service: {target_service}\n"
+        "  NOTE: --deploy pushes to the *linked Railway project* above, which is\n"
+        "  independent of the profile's api_base_url. Make sure they match.\n"
+    )
+
+
 def _do_auth(
     provider: str,
     *,
@@ -157,6 +222,8 @@ def _do_auth(
             f"  aca auth {provider} --deploy"
         )
         return
+
+    _warn_deploy_target(service)
 
     cfg = PROVIDERS[provider]
     _railway_set_env(str(cfg["token_env"]), token_json, service=service)

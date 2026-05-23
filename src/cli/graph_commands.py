@@ -15,7 +15,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from src.cli.output import is_json_mode, output_result
+from src.cli.output import guard_remote_backend, is_json_mode, output_result
 
 app = typer.Typer(help="Manage the knowledge graph.")
 
@@ -36,6 +36,7 @@ def extract_entities(
     through the Graphiti client to extract entities, relationships, and
     concepts into the Neo4j knowledge graph.
     """
+    guard_remote_backend("graph extract-entities")
     console = Console()
     console.print(f"Extracting entities from content [bold]{content_id}[/bold]...")
 
@@ -134,6 +135,7 @@ def query(
     Performs a semantic search across the knowledge graph to find
     entities, relationships, and facts related to the query text.
     """
+    guard_remote_backend("graph query")
     console = Console()
     console.print(f"Querying knowledge graph for: [bold]{query_text}[/bold]...")
 

@@ -23,7 +23,12 @@ import httpx
 import typer
 
 from src.cli.adapters import run_async
-from src.cli.output import is_direct_mode, is_json_mode, output_result
+from src.cli.output import (
+    guard_remote_backend,
+    is_direct_mode,
+    is_json_mode,
+    output_result,
+)
 from src.models.jobs import TYPE_ALIASES, JobHistoryItem, JobListItem, JobRecord, JobStatus
 
 app = typer.Typer(help="Manage background jobs in the queue.")
@@ -412,6 +417,7 @@ def history(
         aca jobs history --type summarize --status completed
         aca jobs history --since 7d --type ingest
     """
+    guard_remote_backend("jobs history")
     from src.queue.setup import list_job_history
 
     # Parse time filter

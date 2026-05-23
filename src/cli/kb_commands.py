@@ -19,7 +19,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from src.cli.output import is_json_mode, output_result
+from src.cli.output import guard_remote_backend, is_json_mode, output_result
 
 app = typer.Typer(help="Knowledge base management.")
 
@@ -51,6 +51,7 @@ def compile_kb(
     ] = None,
 ) -> None:
     """Compile the knowledge base from theme analyses, summaries, and content."""
+    guard_remote_backend("kb compile")
     from src.services.knowledge_base import (
         KBCompileLockError,
         KnowledgeBaseService,
@@ -124,6 +125,7 @@ def list_topics(
     ] = 50,
 ) -> None:
     """List topics in the knowledge base."""
+    guard_remote_backend("kb list")
     from src.models.topic import Topic, TopicStatus
 
     console = Console()
@@ -200,6 +202,7 @@ def show_topic(
     slug: Annotated[str, typer.Argument(help="Topic slug.")],
 ) -> None:
     """Show a topic's compiled article and metadata."""
+    guard_remote_backend("kb show")
     from src.models.topic import Topic
 
     console = Console()
@@ -268,6 +271,7 @@ def show_index(
     ] = None,
 ) -> None:
     """Show the master KB index (or a category index)."""
+    guard_remote_backend("kb index")
     from src.models.topic import KBIndex
 
     console = Console()
@@ -316,6 +320,7 @@ def query_kb(
     ] = False,
 ) -> None:
     """Answer a question against the compiled KB."""
+    guard_remote_backend("kb query")
     console = Console()
 
     async def _run() -> dict:
@@ -370,6 +375,7 @@ def lint_kb(
     ] = False,
 ) -> None:
     """Run KB health checks and emit a markdown report."""
+    guard_remote_backend("kb lint")
     from src.services.kb_health import KBHealthService
 
     console = Console()
