@@ -86,10 +86,33 @@ class TestCommandGuardsUnderRemoteProfile:
             ["kb", "show", "some-slug"],
             ["graph", "query", "-q", "anything"],
             ["jobs", "history"],
+            # Direct-only DB commands (no HTTP path) — must refuse, not hit local DB.
+            ["agent", "status"],
+            ["agent", "insights"],
+            ["evaluate", "list-datasets"],
+            ["edit", "content", "1", "--title", "x"],
+            ["manage", "backfill-chunks"],
+            ["manage", "extract-refs"],
         ],
     )
     @patch("src.cli.output.is_remote_backend", return_value=True)
     def test_commands_fail_loud_when_remote(self, _remote: MagicMock, argv: list[str]) -> None:
+        result = runner.invoke(app, argv)
+        assert result.exit_code == 1
+        assert "Refusing to run" in result.output
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            # sync uses explicit --from/--to profiles; only the IMPLICIT path is unsafe.
+            # Guard fires before any file access, so these paths are never touched.
+            ["sync", "export", "aca-guard-test.jsonl"],
+            ["sync", "obsidian", "aca-guard-vault"],
+        ],
+    )
+    @patch("src.cli.output.is_remote_backend", return_value=True)
+    def test_sync_implicit_profile_fails_loud(self, _remote: MagicMock, argv: list[str]) -> None:
+        # No --from-profile/--to-profile: would silently use the local DB.
         result = runner.invoke(app, argv)
         assert result.exit_code == 1
         assert "Refusing to run" in result.output
@@ -104,3 +127,25 @@ class TestCommandGuardsUnderRemoteProfile:
         result = runner.invoke(app, [*argv, "--help"])
         assert result.exit_code == 0
         assert "Usage" in result.output
+
+
+class TestApiBackedDirectFlagGuard:
+    """API-backed commands run direct via `--direct` or the ConnectError
+    fallback. Both paths funnel through the guarded `_*_direct` helper, so
+    `--direct` under a remote profile must refuse rather than use local data.
+    """
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["--direct", "summarize", "pending"],
+            ["--direct", "ingest", "rss"],
+            ["--direct", "prompts", "list"],
+            ["--direct", "settings", "list"],
+        ],
+    )
+    @patch("src.cli.output.is_remote_backend", return_value=True)
+    def test_direct_flag_fails_loud_when_remote(self, _remote: MagicMock, argv: list[str]) -> None:
+        result = runner.invoke(app, argv)
+        assert result.exit_code == 1
+        assert "Refusing to run" in result.output

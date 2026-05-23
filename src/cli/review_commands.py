@@ -26,7 +26,7 @@ from src.cli.adapters import (
     process_revision_turn_sync,
     start_revision_session_sync,
 )
-from src.cli.output import is_direct_mode, is_json_mode, output_result
+from src.cli.output import guard_remote_backend, is_direct_mode, is_json_mode, output_result
 
 app = typer.Typer(help="Review and revise digests.")
 
@@ -270,6 +270,7 @@ def _display_digest_content_from_dict(digest: dict[str, Any]) -> None:
 
 def _list_reviews_direct() -> None:
     """List pending reviews via direct service calls (legacy path)."""
+    guard_remote_backend("review list")
     try:
         digests = list_pending_reviews_sync()
     except Exception as e:
@@ -335,6 +336,7 @@ def _list_reviews_direct() -> None:
 
 def _view_review_direct(digest_id: int) -> None:
     """View a digest via direct service calls (legacy path)."""
+    guard_remote_backend("review view")
     try:
         digest = get_digest_sync(digest_id)
     except Exception as e:

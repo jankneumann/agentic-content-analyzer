@@ -24,7 +24,7 @@ from typing import Annotated, Any
 import httpx
 import typer
 
-from src.cli.output import is_direct_mode, is_json_mode, output_result
+from src.cli.output import guard_remote_backend, is_direct_mode, is_json_mode, output_result
 
 app = typer.Typer(help="Ingest content from various sources.", no_args_is_help=True)
 
@@ -85,6 +85,7 @@ def _gmail_direct(query: str, max_results: int, after_date: datetime | None, for
     augments it with transport-side timing via ``with_timing``. JSON mode dumps
     the full envelope; rich mode surfaces the count and any envelope errors.
     """
+    guard_remote_backend("ingest gmail")
     import time
     from datetime import UTC, datetime as dt
 
@@ -170,6 +171,7 @@ def gmail(
 
 def _rss_direct(max_results: int, after_date: datetime | None, force: bool) -> None:
     """Direct RSS ingestion (legacy inline path)."""
+    guard_remote_backend("ingest rss")
     import time
     from datetime import UTC, datetime as dt
 
@@ -267,6 +269,7 @@ def rss(
 
 def _blog_direct(max_results: int, after_date: datetime | None, force: bool) -> None:
     """Direct blog ingestion."""
+    guard_remote_backend("ingest blog")
     import time
     from datetime import UTC, datetime as dt
 
@@ -351,6 +354,7 @@ def _substack_direct(
     max_results: int, after_date: datetime | None, force: bool, session_cookie: str | None
 ) -> None:
     """Direct Substack ingestion."""
+    guard_remote_backend("ingest substack")
     from rich.console import Console
 
     console = Console()
@@ -504,6 +508,7 @@ def _youtube_direct(
     orchestrator and surfaces ``items_ingested`` plus per-source
     errors/warnings in rich mode. JSON mode dumps the full envelope.
     """
+    guard_remote_backend("ingest youtube")
     import time
     from datetime import UTC, datetime as dt
 
@@ -698,6 +703,7 @@ def _podcast_direct(
     orchestrator and surfaces ``items_ingested`` plus per-source
     errors/warnings in rich mode. JSON mode dumps the full envelope.
     """
+    guard_remote_backend("ingest podcast")
     import time
     from datetime import UTC, datetime as dt
 
@@ -809,6 +815,7 @@ def podcast(
 
 def _xsearch_direct(prompt: str | None, max_threads: int | None, force: bool) -> None:
     """Direct X search ingestion."""
+    guard_remote_backend("ingest xsearch")
     from rich.console import Console
 
     console = Console()
@@ -889,6 +896,7 @@ def _perplexity_direct(
     context_size: str | None,
 ) -> None:
     """Direct Perplexity search ingestion."""
+    guard_remote_backend("ingest perplexity-search")
     from rich.console import Console
 
     console = Console()
@@ -1086,6 +1094,7 @@ def _url_direct(
     ``details`` carries content_id/status/duplicate. Rich mode renders a
     one-line summary with the resolved content_id.
     """
+    guard_remote_backend("ingest url")
     import time
     from datetime import UTC, datetime as dt
 
@@ -1186,6 +1195,7 @@ def _scholar_direct(max_entries: int) -> None:
     surfaces ``items_ingested`` plus per-source errors in rich mode. JSON
     mode dumps the full envelope.
     """
+    guard_remote_backend("ingest scholar")
     import time
     from datetime import UTC, datetime as dt
 
@@ -1262,6 +1272,7 @@ def _scholar_paper_direct(identifier: str, with_refs: bool) -> None:
     Reads the canonical IngestionResponse envelope; ``details`` carries
     ``identifier``, ``paper_id``, ``with_refs``, and ``refs_ingested``.
     """
+    guard_remote_backend("ingest scholar-paper")
     import time
     from datetime import UTC, datetime as dt
 
@@ -1350,6 +1361,7 @@ def _scholar_refs_direct(
     ``references_resolved``, ``references_unresolved``, ``papers_ingested``,
     ``dry_run``).
     """
+    guard_remote_backend("ingest scholar-refs")
     import time
     from datetime import UTC, datetime as dt
 
@@ -1463,6 +1475,7 @@ def _arxiv_direct(max_entries: int, days: int | None, force_reprocess: bool, no_
     Reads the canonical IngestionResponse envelope; surfaces ``items_ingested``
     plus per-source errors in rich mode. JSON mode dumps the full envelope.
     """
+    guard_remote_backend("ingest arxiv")
     import time
     from datetime import UTC, datetime as dt
 
@@ -1562,6 +1575,7 @@ def _arxiv_paper_direct(identifier: str, no_pdf: bool, force_reprocess: bool) ->
     Reads the canonical IngestionResponse envelope; ``details`` carries
     ``identifier``, ``arxiv_id``, and ``version_updated``.
     """
+    guard_remote_backend("ingest arxiv-paper")
     import time
     from datetime import UTC, datetime as dt
 
@@ -1648,6 +1662,7 @@ def arxiv_paper(
 
 def _huggingface_papers_direct(max_papers: int, after_date: datetime | None, force: bool) -> None:
     """Direct HuggingFace Papers ingestion."""
+    guard_remote_backend("ingest huggingface-papers")
     import time
     from datetime import UTC, datetime as dt
 
@@ -1737,6 +1752,7 @@ def _readwise_direct(
     force: bool,
 ) -> None:
     """Direct Readwise ingestion (legacy inline path)."""
+    guard_remote_backend("ingest readwise")
     from rich.console import Console
 
     from src.ingestion.readwise import ReadwiseIngestResult

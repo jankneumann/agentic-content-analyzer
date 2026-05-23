@@ -18,7 +18,7 @@ import httpx
 import typer
 from rich.console import Console
 
-from src.cli.output import is_direct_mode, is_json_mode, output_result
+from src.cli.output import guard_remote_backend, is_direct_mode, is_json_mode, output_result
 
 if TYPE_CHECKING:
     from src.models.query import ContentQuery
@@ -330,6 +330,7 @@ def _create_digest_direct(
     dry_run: bool = False,
 ) -> None:
     """Direct mode: create digest via local services."""
+    guard_remote_backend("create-digest")
     from src.cli.adapters import create_digest_sync
     from src.models.digest import DigestRequest, DigestType
 

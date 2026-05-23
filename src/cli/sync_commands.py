@@ -16,6 +16,8 @@ from typing import Annotated
 
 import typer
 
+from src.cli.output import guard_remote_backend
+
 app = typer.Typer(
     name="sync",
     help="Sync data between environments (PostgreSQL, graph DB, file storage)",
@@ -112,6 +114,11 @@ def export_cmd(
     Exports PostgreSQL tables and/or knowledge graph data
     to a JSONL file for later import into another environment.
     """
+    if from_profile is None:
+        guard_remote_backend(
+            "sync export",
+            http_hint="pass --from-profile to name the source DB explicitly",
+        )
     # Combine --graph-only and deprecated --neo4j-only
     export_graph = graph_only or neo4j_only
     if neo4j_only:
@@ -222,6 +229,11 @@ def import_cmd(
     - replace: Update existing rows, insert new ones
     - clean: Truncate all tables first, then insert (destructive!)
     """
+    if to_profile is None:
+        guard_remote_backend(
+            "sync import",
+            http_hint="pass --to-profile to name the target DB explicitly",
+        )
     # Combine --graph-only and deprecated --neo4j-only
     import_graph_flag = graph_only or neo4j_only
     if neo4j_only:
@@ -617,6 +629,11 @@ def obsidian_cmd(
     Creates markdown files with YAML frontmatter, wikilinks, and theme
     Maps of Content. Uses incremental sync to only write new or changed items.
     """
+    if from_profile is None:
+        guard_remote_backend(
+            "sync obsidian",
+            http_hint="pass --from-profile to name the source DB explicitly",
+        )
     import json as json_mod
     from datetime import UTC, datetime
 

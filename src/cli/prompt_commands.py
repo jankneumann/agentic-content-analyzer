@@ -23,7 +23,7 @@ from typing import Annotated
 import httpx
 import typer
 
-from src.cli.output import is_direct_mode, is_json_mode, output_result
+from src.cli.output import guard_remote_backend, is_direct_mode, is_json_mode, output_result
 
 app = typer.Typer(
     name="prompts",
@@ -39,6 +39,7 @@ app = typer.Typer(
 
 def _list_prompts_direct(category: str | None, overrides_only: bool) -> None:
     """List prompts directly via DB."""
+    guard_remote_backend("prompts list")
     from src.services.prompt_service import PromptService
     from src.storage.database import get_db
 
@@ -65,6 +66,7 @@ def _list_prompts_direct(category: str | None, overrides_only: bool) -> None:
 
 def _show_prompt_direct(key: str, default: bool) -> None:
     """Show a prompt directly via DB."""
+    guard_remote_backend("prompts show")
     from src.services.prompt_service import PromptService
     from src.storage.database import get_db
 
@@ -110,6 +112,7 @@ def _show_prompt_direct(key: str, default: bool) -> None:
 
 def _set_prompt_direct(key: str, value: str, description: str | None) -> None:
     """Set a prompt override directly via DB."""
+    guard_remote_backend("prompts set")
     from src.services.prompt_service import PromptService
     from src.storage.database import get_db
 
@@ -141,6 +144,7 @@ def _set_prompt_direct(key: str, value: str, description: str | None) -> None:
 
 def _reset_prompt_direct(key: str) -> None:
     """Reset a prompt override directly via DB."""
+    guard_remote_backend("prompts reset")
     from src.services.prompt_service import PromptService
     from src.storage.database import get_db
 

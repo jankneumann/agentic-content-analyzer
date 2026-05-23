@@ -20,7 +20,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from src.cli.output import is_direct_mode, is_json_mode, output_result
+from src.cli.output import guard_remote_backend, is_direct_mode, is_json_mode, output_result
 
 app = typer.Typer(help="Summarize ingested content.")
 
@@ -229,6 +229,7 @@ def _summarize_pending_direct(
     dry_run: bool,
 ) -> None:
     """Direct mode: summarize pending content via local services."""
+    guard_remote_backend("summarize pending")
     import asyncio
 
     has_filters = any([source, status, after, before, publication, search])
@@ -359,6 +360,7 @@ def summarize_by_id(
 
 def _summarize_by_id_direct(content_id: int, *, sync: bool = False) -> None:
     """Direct mode: summarize a specific content item."""
+    guard_remote_backend("summarize content")
     import asyncio
 
     try:

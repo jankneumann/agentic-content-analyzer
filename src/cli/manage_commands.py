@@ -15,7 +15,7 @@ from typing import Any
 
 import typer
 
-from src.cli.output import is_json_mode, output_result
+from src.cli.output import guard_remote_backend, is_json_mode, output_result
 from src.cli.restore_commands import restore_from_cloud as _restore_from_cloud
 
 app = typer.Typer(help="Setup and operational management commands.")
@@ -58,6 +58,7 @@ def backfill_chunks_cmd(
     Processes content records that have no associated chunks, generating
     chunks from markdown_content and embedding them for search indexing.
     """
+    guard_remote_backend("manage backfill-chunks")
     import asyncio
 
     from src.scripts.backfill_chunks import backfill_chunks
@@ -313,6 +314,7 @@ def cleanup_notifications_cmd(
 
     Duration format: <number>d for days (e.g. 30d, 90d, 7d).
     """
+    guard_remote_backend("manage cleanup-notifications")
     # Parse duration
     match = re.match(r"^(\d+)d$", older_than)
     if not match:
@@ -363,6 +365,7 @@ def switch_embeddings_cmd(
     WARNING: This clears ALL existing embeddings. Vector search will be
     unavailable until backfill completes. BM25 search continues working.
     """
+    guard_remote_backend("manage switch-embeddings")
     import asyncio
 
     from src.config.settings import get_settings
@@ -444,6 +447,7 @@ def extract_refs(
     batch_size: int = typer.Option(50, "--batch-size", "-b", help="Content items per batch"),
 ) -> None:
     """Extract references from existing content into content_references table."""
+    guard_remote_backend("manage extract-refs")
     from datetime import datetime as dt
 
     from src.models.content import Content
@@ -507,6 +511,7 @@ def resolve_refs(
     ),
 ) -> None:
     """Resolve unresolved content references against the database."""
+    guard_remote_backend("manage resolve-refs")
     from src.services.reference_resolver import ReferenceResolver
     from src.storage.database import get_db
 
@@ -543,6 +548,7 @@ def backfill_tree_index_cmd(
     (token count > tree_index_min_tokens AND heading depth >= tree_index_min_heading_depth).
     Preserves existing flat chunks.
     """
+    guard_remote_backend("manage backfill-tree-index")
     from src.config.settings import get_settings
     from src.services.chunking import _count_tokens, _detect_heading_depth
     from src.storage.database import get_db

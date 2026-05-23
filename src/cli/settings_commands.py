@@ -19,7 +19,7 @@ from typing import Annotated
 import httpx
 import typer
 
-from src.cli.output import is_direct_mode, is_json_mode, output_result
+from src.cli.output import guard_remote_backend, is_direct_mode, is_json_mode, output_result
 
 app = typer.Typer(
     name="settings",
@@ -35,6 +35,7 @@ app = typer.Typer(
 
 def _list_settings_direct(prefix: str) -> None:
     """List settings overrides directly via DB."""
+    guard_remote_backend("settings list")
     from src.services.settings_service import SettingsService
     from src.storage.database import get_db
 
@@ -67,6 +68,7 @@ def _list_settings_direct(prefix: str) -> None:
 
 def _get_setting_direct(key: str) -> None:
     """Get a setting override directly via DB."""
+    guard_remote_backend("settings get")
     from src.services.settings_service import SettingsService
     from src.storage.database import get_db
 
@@ -100,6 +102,7 @@ def _get_setting_direct(key: str) -> None:
 
 def _set_setting_direct(key: str, value: str, description: str | None) -> None:
     """Set a setting override directly via DB."""
+    guard_remote_backend("settings set")
     from src.services.settings_service import SettingsService
     from src.storage.database import get_db
 
@@ -124,6 +127,7 @@ def _set_setting_direct(key: str, value: str, description: str | None) -> None:
 
 def _reset_setting_direct(key: str) -> None:
     """Reset a setting override directly via DB."""
+    guard_remote_backend("settings reset")
     from src.services.settings_service import SettingsService
     from src.storage.database import get_db
 

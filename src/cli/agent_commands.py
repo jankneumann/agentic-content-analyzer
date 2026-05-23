@@ -24,7 +24,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from src.cli.output import is_json_mode, output_result
+from src.cli.output import guard_remote_backend, is_json_mode, output_result
 from src.services.agent_service import AgentInsightService, AgentTaskService, ApprovalService
 from src.storage.database import get_db
 
@@ -42,6 +42,7 @@ def submit_task(
     task_type: Annotated[str, typer.Option("--type", help="Task type")] = "research",
 ) -> None:
     """Submit an agent task."""
+    guard_remote_backend("agent task")
     params: dict = {}
     if output:
         params["output_format"] = output
@@ -95,6 +96,7 @@ def task_status(
 
     If no task_id is given, lists recent tasks.
     """
+    guard_remote_backend("agent status")
     with get_db() as db:
         svc = AgentTaskService(db)
 
@@ -209,6 +211,7 @@ def list_insights(
     persona: Annotated[str | None, typer.Option(help="Filter by persona")] = None,
 ) -> None:
     """Browse generated insights."""
+    guard_remote_backend("agent insights")
     since_dt: datetime | None = None
     if since:
         try:
@@ -369,6 +372,7 @@ def approve_request(
     request_id: Annotated[str, typer.Argument(help="Approval request ID")],
 ) -> None:
     """Approve a pending approval request."""
+    guard_remote_backend("agent approve")
     try:
         rid = uuid.UUID(request_id)
     except ValueError:
@@ -411,6 +415,7 @@ def deny_request(
     reason: str = typer.Option(..., help="Reason for denial"),
 ) -> None:
     """Deny a pending approval request with reason."""
+    guard_remote_backend("agent deny")
     try:
         rid = uuid.UUID(request_id)
     except ValueError:
