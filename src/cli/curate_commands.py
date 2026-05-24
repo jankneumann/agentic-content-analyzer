@@ -5,6 +5,8 @@ Usage:
     aca curate rss --apply         # disable dead feeds, fix Reddit URLs
     aca curate rss --disable-stale # also disable feeds idle > --stale-days
     aca curate blog                # validate blog discovery + overlap report
+    aca curate find-moved          # web-search for relocated feeds (report only)
+    aca curate find-moved --apply  # re-enable live-again feeds, rewrite moved URLs
 
 Report-only by default; mutations are gated behind --apply and preserve
 comments/ordering via line-based edits (see src/services/source_curator.py).
@@ -217,6 +219,10 @@ def curate_blog(
 
 @app.command("find-moved")
 def find_moved(
+    file: Annotated[
+        Path,
+        typer.Option("--file", help="RSS sources file to update with --apply."),
+    ] = _RSS_FILE,
     limit: Annotated[
         int,
         typer.Option("--limit", help="Max feeds to investigate (web search has per-call cost)."),
@@ -232,14 +238,23 @@ def find_moved(
         int,
         typer.Option("--stale-days", help="A candidate must have a post newer than N days."),
     ] = 180,
+    apply: Annotated[
+        bool,
+        typer.Option(
+            "--apply",
+            help="Re-enable live-again feeds and rewrite relocated URLs (default: report only).",
+        ),
+    ] = False,
 ) -> None:
-    """Search the web for relocated feeds (proposal-only — does not modify files).
+    """Search the web for relocated feeds, then optionally re-enable them.
 
     Investigates disabled feeds by default, web-searching for a live replacement
-    and verifying freshness. Review the proposals, then update rss.yaml by hand.
+    and verifying freshness AND identity. Report-only by default; with --apply,
+    re-enables live-again feeds and rewrites the URL of relocated ones in-place
+    (comment-preserving). Always review the proposals before applying.
     """
     from src.config.sources import RSSSource
-    from src.services.source_curator import find_moved_feeds
+    from src.services.source_curator import apply_relocations_to_file, find_moved_feeds
 
     # get_rss_sources() returns only enabled feeds; the recovery targets are the
     # *disabled* ones, so read config.sources directly.
@@ -261,10 +276,20 @@ def find_moved(
     candidates = find_moved_feeds(targets, provider=provider, stale_days=stale_days, limit=limit)
     found = [c for c in candidates if c.new_url]
 
+    stats = {"reenabled": 0, "rewritten": 0, "changed": False}
+    if apply and found:
+        if not file.exists():
+            output_result(f"Source file not found: {file}", success=False)
+            raise typer.Exit(1)
+        stats = apply_relocations_to_file(file, found, dry_run=False)
+
     if is_json_mode():
         output_result(
             {
+                "file": str(file),
+                "applied": apply,
                 "investigated": len(candidates),
+                "stats": stats,
                 "found": [
                     {
                         "name": c.name,
@@ -294,7 +319,14 @@ def find_moved(
             typer.echo(f"    new: {c.new_url}  ({c.detail})")
     if not found:
         typer.echo("  (none found)")
-    typer.echo("\nProposal-only — verify each candidate, then update rss.yaml by hand.")
+
+    if apply:
+        verb = "Wrote" if stats["changed"] else "No changes to"
+        typer.echo(
+            f"\n{verb} {file} (reenabled={stats['reenabled']}, rewritten={stats['rewritten']})."
+        )
+    else:
+        typer.echo("\nReport-only — verify each candidate, then re-run with --apply to write them.")
 
 
 def _resolve_search_provider() -> object:

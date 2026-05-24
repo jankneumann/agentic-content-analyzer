@@ -9,9 +9,11 @@ from src.services.source_curator import (
     CurationPlan,
     FeedHealth,
     FeedStatus,
+    MovedCandidate,
     _candidate_feed_urls,
     _identity_tokens,
     apply_plan_to_text,
+    apply_relocations_to_text,
     best_to_candidate,
     build_curation_plan,
     detect_overlaps,
@@ -211,6 +213,68 @@ def test_best_to_candidate_none_means_not_found():
     c = best_to_candidate("https://dead/feed", "Dead", None)
     assert c.new_url is None
     assert c.detail == "no fresh feed found"
+
+
+def test_relocation_reenables_and_rewrites_moved_feed():
+    text = "sources:\n- name: SemiAnalysis\n  url: https://old.semi/feed\n  enabled: false\n"
+    cands = [MovedCandidate("https://old.semi/feed", "SemiAnalysis", "https://new.semi/feed", "ok")]
+    new, stats = apply_relocations_to_text(text, cands)
+    assert stats == {"reenabled": 1, "rewritten": 1}
+    entry = yaml.safe_load(new)["sources"][0]
+    assert entry["url"] == "https://new.semi/feed"
+    assert entry["enabled"] is True
+    assert entry["name"] == "SemiAnalysis"
+
+
+def test_relocation_live_again_only_reenables():
+    # new_url == original_url -> re-enable in place, no URL rewrite
+    text = "sources:\n- url: https://x/feed\n  enabled: false\n"
+    cands = [MovedCandidate("https://x/feed", "X", "https://x/feed", "live")]
+    new, stats = apply_relocations_to_text(text, cands)
+    assert stats == {"reenabled": 1, "rewritten": 0}
+    entry = yaml.safe_load(new)["sources"][0]
+    assert entry["url"] == "https://x/feed"
+    assert entry["enabled"] is True
+
+
+def test_relocation_rewrites_enabled_stale_feed_without_recount():
+    # an enabled (not disabled) feed that relocated: rewrite URL, reenabled stays 0
+    text = "sources:\n- url: https://stale/feed\n"
+    cands = [MovedCandidate("https://stale/feed", "S", "https://fresh/feed", "moved")]
+    new, stats = apply_relocations_to_text(text, cands)
+    assert stats == {"reenabled": 0, "rewritten": 1}
+    assert yaml.safe_load(new)["sources"][0]["url"] == "https://fresh/feed"
+
+
+def test_relocation_preserves_comments():
+    text = (
+        "sources:\n# semianalysis moved to substack\n"
+        "- name: SemiAnalysis\n  url: https://old/feed\n  enabled: false\n  tags: [ai]\n"
+    )
+    cands = [MovedCandidate("https://old/feed", "SemiAnalysis", "https://new/feed", "ok")]
+    new, _ = apply_relocations_to_text(text, cands)
+    assert "# semianalysis moved to substack" in new
+    entry = yaml.safe_load(new)["sources"][0]
+    assert entry["enabled"] is True
+    assert entry["tags"] == ["ai"]
+
+
+def test_relocation_ignores_not_found_candidates():
+    text = "sources:\n- url: https://x/feed\n  enabled: false\n"
+    cands = [MovedCandidate("https://x/feed", "X", None, "no fresh feed found")]
+    new, stats = apply_relocations_to_text(text, cands)
+    assert new == text
+    assert stats == {"reenabled": 0, "rewritten": 0}
+
+
+def test_relocation_idempotent_reapply():
+    text = "sources:\n- url: https://old/feed\n  enabled: false\n"
+    cands = [MovedCandidate("https://old/feed", "X", "https://new/feed", "ok")]
+    once, _ = apply_relocations_to_text(text, cands)
+    # second pass: the original URL is gone, so nothing matches -> no-op
+    twice, stats = apply_relocations_to_text(once, cands)
+    assert twice == once
+    assert stats == {"reenabled": 0, "rewritten": 0}
 
 
 def test_identity_tokens_extract_publication_terms():

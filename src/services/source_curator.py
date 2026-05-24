@@ -269,7 +269,7 @@ def build_curation_plan(
 # leading whitespace, optional list dash, and the (possibly quoted) value.
 _URL_LINE = re.compile(r"^(?P<indent>\s*)(?P<dash>- )?url:\s*(?P<value>\S.*?)\s*$")
 _LIST_ITEM = re.compile(r"^\s*- ")
-_ENABLED_LINE = re.compile(r"^(?P<indent>\s*)enabled:\s*\S+\s*$")
+_ENABLED_LINE = re.compile(r"^(?P<indent>\s*)enabled:\s*(?P<value>\S+)\s*$")
 
 
 def _unquote(value: str) -> str:
@@ -595,6 +595,68 @@ def best_to_candidate(orig: str, name: str, best: tuple[str, str] | None) -> Mov
     if best is None:
         return MovedCandidate(orig, name, None, "no fresh feed found")
     return MovedCandidate(orig, name, best[0], best[1])
+
+
+def apply_relocations_to_text(text: str, candidates: list[MovedCandidate]) -> tuple[str, dict]:
+    """Re-enable feeds found live again, rewriting the URL when relocated.
+
+    The inverse of ``apply_plan_to_text``: for each candidate with a ``new_url``,
+    locate the entry by its ``original_url``, then
+      - rewrite the ``url:`` value when it relocated (new_url != original_url), and
+      - flip ``enabled: false`` -> ``enabled: true`` to re-enable it.
+
+    A feed with no ``enabled:`` line is already enabled, so only its URL is
+    rewritten (reenabled count unaffected). Comment/ordering-preserving and
+    idempotent, like ``apply_plan_to_text``. Returns (new_text, stats).
+    """
+    by_orig = {c.original_url: c for c in candidates if c.new_url}
+    lines = text.splitlines(keepends=True)
+
+    overwrites: dict[int, str] = {}  # line index -> replacement enabled: line
+    reenabled = 0
+    rewritten = 0
+
+    for i, line in enumerate(lines):
+        m = _URL_LINE.match(line.rstrip("\n"))
+        if not m:
+            continue
+        value = _unquote(m.group("value"))
+        cand = by_orig.get(value)
+        if cand is None:
+            continue
+
+        if cand.new_url and cand.new_url != value:
+            suffix = "\n" if line.endswith("\n") else ""
+            lines[i] = f"{line[: m.start('value')]}{cand.new_url}{suffix}"
+            rewritten += 1
+
+        start, end = _entry_bounds(lines, i)
+        existing = next(
+            (j for j in range(start, end) if _ENABLED_LINE.match(lines[j].rstrip("\n"))),
+            None,
+        )
+        if existing is not None:
+            em = _ENABLED_LINE.match(lines[existing].rstrip("\n"))
+            if em.group("value").lower() == "false":
+                reenabled += 1
+            overwrites[existing] = f"{em.group('indent')}enabled: true\n"
+
+    for idx, repl in overwrites.items():
+        lines[idx] = repl
+
+    return "".join(lines), {"reenabled": reenabled, "rewritten": rewritten}
+
+
+def apply_relocations_to_file(
+    file_path: Path, candidates: list[MovedCandidate], *, dry_run: bool = True
+) -> dict:
+    """Apply relocations to a sources file. No-op write when dry_run."""
+    text = file_path.read_text()
+    new_text, stats = apply_relocations_to_text(text, candidates)
+    stats["changed"] = new_text != text
+    if not dry_run and stats["changed"]:
+        file_path.write_text(new_text)
+    return stats
 
 
 # --- Overlap detection (rss.yaml vs blogs.yaml) ---
