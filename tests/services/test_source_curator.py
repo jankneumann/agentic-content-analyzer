@@ -1,0 +1,183 @@
+"""Tests for source curation: health classification, plan building, and the
+line-based YAML mutation that must preserve comments/ordering."""
+
+from __future__ import annotations
+
+import yaml
+
+from src.services.source_curator import (
+    CurationPlan,
+    FeedHealth,
+    FeedStatus,
+    apply_plan_to_text,
+    build_curation_plan,
+    detect_overlaps,
+)
+
+
+def _h(url, status, name="", detail=""):
+    return FeedHealth(url=url, name=name or url, status=status, detail=detail)
+
+
+# --- build_curation_plan policy ---
+
+
+def test_failing_feeds_are_disabled():
+    results = [
+        _h("https://a/feed", FeedStatus.FAIL_HTTP, detail="404"),
+        _h("https://b/feed", FeedStatus.FAIL_NET, detail="ConnectError"),
+        _h("https://c/feed", FeedStatus.OK),
+    ]
+    plan = build_curation_plan(results)
+    assert {h.url for h in plan.disable} == {"https://a/feed", "https://b/feed"}
+
+
+def test_reddit_empty_is_rewritten_not_disabled():
+    results = [_h("https://www.reddit.com/r/MachineLearning", FeedStatus.EMPTY)]
+    plan = build_curation_plan(results)
+    assert plan.disable == []
+    assert plan.rewrite == [(results[0], "https://www.reddit.com/r/MachineLearning/.rss")]
+
+
+def test_arxiv_empty_is_kept_flagged():
+    results = [_h("https://arxiv.org/rss/cs.LG", FeedStatus.EMPTY)]
+    plan = build_curation_plan(results)
+    assert plan.disable == []
+    assert [h.url for h in plan.keep_flagged] == ["https://arxiv.org/rss/cs.LG"]
+
+
+def test_generic_empty_is_disabled():
+    results = [_h("https://dead.example/feed", FeedStatus.EMPTY)]
+    assert build_curation_plan(results).disable[0].url == "https://dead.example/feed"
+
+
+def test_blocked_is_kept_flagged_by_default():
+    results = [_h("https://blocked.example/feed", FeedStatus.BLOCKED, detail="403")]
+    plan = build_curation_plan(results)
+    assert plan.disable == []
+    assert [h.url for h in plan.keep_flagged] == ["https://blocked.example/feed"]
+
+
+def test_blocked_disabled_only_when_opted_in():
+    results = [_h("https://blocked.example/feed", FeedStatus.BLOCKED, detail="403")]
+    plan = build_curation_plan(results, disable_blocked=True)
+    assert [h.url for h in plan.disable] == ["https://blocked.example/feed"]
+
+
+def test_stale_disabled_only_when_opted_in():
+    results = [_h("https://old.example/feed", FeedStatus.STALE)]
+    assert build_curation_plan(results).disable == []
+    assert build_curation_plan(results, disable_stale=True).disable[0].url == (
+        "https://old.example/feed"
+    )
+
+
+# --- apply_plan_to_text: must stay valid YAML and preserve comments ---
+
+
+def test_disable_bare_url_entry():
+    text = "sources:\n- url: https://dead/feed\n- url: https://live/feed\n"
+    plan = CurationPlan(disable=[_h("https://dead/feed", FeedStatus.FAIL_HTTP)])
+    new, stats = apply_plan_to_text(text, plan)
+    assert stats["disabled"] == 1
+    data = yaml.safe_load(new)["sources"]
+    assert {"url": "https://dead/feed", "enabled": False} in data
+    assert {"url": "https://live/feed"} in data
+
+
+def test_disable_name_url_entry_preserves_comment():
+    text = (
+        "sources:\n# keep this comment\n- name: Dead Feed\n  url: https://dead/feed\n  tags: [ai]\n"
+    )
+    plan = CurationPlan(disable=[_h("https://dead/feed", FeedStatus.FAIL_HTTP)])
+    new, _ = apply_plan_to_text(text, plan)
+    assert "# keep this comment" in new
+    entry = yaml.safe_load(new)["sources"][0]
+    assert entry["enabled"] is False
+    assert entry["name"] == "Dead Feed"
+    assert entry["tags"] == ["ai"]
+
+
+def test_disable_replaces_existing_enabled_true():
+    text = "sources:\n- name: X\n  url: https://x/feed\n  enabled: true\n"
+    plan = CurationPlan(disable=[_h("https://x/feed", FeedStatus.FAIL_HTTP)])
+    new, _ = apply_plan_to_text(text, plan)
+    # exactly one enabled key, set to false (no duplicate-key YAML error)
+    assert new.count("enabled:") == 1
+    assert yaml.safe_load(new)["sources"][0]["enabled"] is False
+
+
+def test_rewrite_reddit_url():
+    text = "sources:\n- url: https://www.reddit.com/r/ML\n"
+    plan = CurationPlan(
+        rewrite=[
+            (
+                _h("https://www.reddit.com/r/ML", FeedStatus.EMPTY),
+                "https://www.reddit.com/r/ML/.rss",
+            )
+        ]
+    )
+    new, stats = apply_plan_to_text(text, plan)
+    assert stats["rewritten"] == 1
+    assert yaml.safe_load(new)["sources"][0]["url"] == "https://www.reddit.com/r/ML/.rss"
+
+
+def test_idempotent_reapply():
+    text = "sources:\n- url: https://dead/feed\n"
+    plan = CurationPlan(disable=[_h("https://dead/feed", FeedStatus.FAIL_HTTP)])
+    once, _ = apply_plan_to_text(text, plan)
+    twice, _ = apply_plan_to_text(once, plan)
+    # url line still present so it re-inserts; guard: the loader must not crash and
+    # the second pass should not corrupt YAML.
+    assert yaml.safe_load(twice)["sources"][0]["enabled"] is False
+
+
+def test_quoted_url_value_matches():
+    text = 'sources:\n- url: "https://dead/feed"\n'
+    plan = CurationPlan(disable=[_h("https://dead/feed", FeedStatus.FAIL_HTTP)])
+    new, stats = apply_plan_to_text(text, plan)
+    assert stats["disabled"] == 1
+    assert yaml.safe_load(new)["sources"][0]["enabled"] is False
+
+
+def test_unrelated_url_untouched():
+    text = "sources:\n- url: https://keep/feed\n"
+    plan = CurationPlan(disable=[_h("https://other/feed", FeedStatus.FAIL_HTTP)])
+    new, stats = apply_plan_to_text(text, plan)
+    assert new == text
+    assert stats["disabled"] == 0
+
+
+# --- overlap detection ---
+
+
+class _S:
+    def __init__(self, url):
+        self.url = url
+        self.name = url
+
+
+def test_detect_overlaps_same_host_and_path_prefix():
+    # feed and blog index on the same site (www. and /rss stripped) -> overlap
+    rss = [_S("https://www.together.ai/blog/rss"), _S("https://other.com/feed")]
+    blogs = [_S("https://together.ai/blog"), _S("https://anthropic.com/news")]
+    overlaps = detect_overlaps(rss, blogs)
+    assert [o.domain for o in overlaps] == ["together.ai"]
+    assert overlaps[0].blog_urls == ["https://together.ai/blog"]
+
+
+def test_sibling_subblogs_on_shared_host_not_flagged():
+    # different sub-blogs on aws.amazon.com must NOT be treated as redundant
+    rss = [_S("https://aws.amazon.com/blogs/machine-learning/feed/")]
+    blogs = [
+        _S("https://aws.amazon.com/blogs/architecture/"),
+        _S("https://aws.amazon.com/blogs/aws/"),
+    ]
+    assert detect_overlaps(rss, blogs) == []
+
+
+def test_different_subdomains_not_flagged():
+    # crfm.stanford.edu (feed) vs hai.stanford.edu (blog) are distinct orgs
+    rss = [_S("https://crfm.stanford.edu/feed")]
+    blogs = [_S("https://hai.stanford.edu/news")]
+    assert detect_overlaps(rss, blogs) == []
