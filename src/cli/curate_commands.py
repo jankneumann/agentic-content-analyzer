@@ -215,6 +215,108 @@ def curate_blog(
         typer.echo("\nNo domain overlap between rss.yaml and blogs.yaml.")
 
 
+@app.command("find-moved")
+def find_moved(
+    limit: Annotated[
+        int,
+        typer.Option("--limit", help="Max feeds to investigate (web search has per-call cost)."),
+    ] = 20,
+    include_stale: Annotated[
+        bool,
+        typer.Option(
+            "--include-stale",
+            help="Also investigate enabled-but-stale feeds, not just disabled ones.",
+        ),
+    ] = False,
+    stale_days: Annotated[
+        int,
+        typer.Option("--stale-days", help="A candidate must have a post newer than N days."),
+    ] = 180,
+) -> None:
+    """Search the web for relocated feeds (proposal-only — does not modify files).
+
+    Investigates disabled feeds by default, web-searching for a live replacement
+    and verifying freshness. Review the proposals, then update rss.yaml by hand.
+    """
+    from src.config.sources import RSSSource
+    from src.services.source_curator import find_moved_feeds
+
+    # get_rss_sources() returns only enabled feeds; the recovery targets are the
+    # *disabled* ones, so read config.sources directly.
+    all_rss = [s for s in _load_sources().sources if isinstance(s, RSSSource)]
+    targets = [s for s in all_rss if not s.enabled]
+    if include_stale:
+        targets += [s for s in all_rss if s.enabled]
+
+    if not targets:
+        output_result("No disabled feeds to investigate.", success=False)
+        raise typer.Exit(1)
+
+    try:
+        provider = _resolve_search_provider()
+    except RuntimeError as exc:
+        output_result(str(exc), success=False)
+        raise typer.Exit(1)
+
+    candidates = find_moved_feeds(targets, provider=provider, stale_days=stale_days, limit=limit)
+    found = [c for c in candidates if c.new_url]
+
+    if is_json_mode():
+        output_result(
+            {
+                "investigated": len(candidates),
+                "found": [
+                    {
+                        "name": c.name,
+                        "original": c.original_url,
+                        "new_url": c.new_url,
+                        "detail": c.detail,
+                    }
+                    for c in found
+                ],
+                "not_found": [
+                    {"name": c.name, "original": c.original_url, "detail": c.detail}
+                    for c in candidates
+                    if not c.new_url
+                ],
+            }
+        )
+        return
+
+    typer.echo(f"Investigated {len(candidates)} feeds — {len(found)} live candidate(s):\n")
+    for c in found:
+        if c.new_url == c.original_url:
+            typer.echo(f"  {c.name}  [live again — re-enable]")
+            typer.echo(f"    {c.original_url}  ({c.detail})")
+        else:
+            typer.echo(f"  {c.name}  [relocated]")
+            typer.echo(f"    old: {c.original_url}")
+            typer.echo(f"    new: {c.new_url}  ({c.detail})")
+    if not found:
+        typer.echo("  (none found)")
+    typer.echo("\nProposal-only — verify each candidate, then update rss.yaml by hand.")
+
+
+def _resolve_search_provider() -> object:
+    """Return a configured web-search provider or raise with guidance."""
+    from src.config.settings import get_settings
+    from src.services.web_search import get_web_search_provider
+
+    s = get_settings()
+    provider_name = getattr(s, "web_search_provider", "tavily")
+    key_attr = {
+        "tavily": "tavily_api_key",
+        "perplexity": "perplexity_api_key",
+        "grok": "xai_api_key",
+    }.get(provider_name)
+    if key_attr and not getattr(s, key_attr, None):
+        raise RuntimeError(
+            f"No API key for web_search_provider '{provider_name}'. "
+            "Set the key in .secrets.yaml and run under a PROFILE (e.g. PROFILE=local)."
+        )
+    return get_web_search_provider()
+
+
 def _echo_group(label: str, items: list) -> None:
     if not items:
         return

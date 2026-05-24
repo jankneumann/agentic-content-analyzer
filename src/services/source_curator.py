@@ -385,6 +385,218 @@ def check_blog_sources(sources: list, *, max_links: int = 10) -> list[BlogHealth
     return out
 
 
+# --- Relocation discovery (find moved feeds via web search) ---
+
+# Result hosts that are directories/social, never the publication's own feed.
+_AGGREGATOR_HOSTS = frozenset(
+    {
+        "muckrack.com",
+        "feeder.co",
+        "feedspot.com",
+        "rss.com",
+        "x.com",
+        "twitter.com",
+        "linkedin.com",
+        "facebook.com",
+        "instagram.com",
+        "wikipedia.org",
+        "youtube.com",
+        "crunchbase.com",
+        "similarweb.com",
+        "f6s.com",
+    }
+)
+# Paths appended to a candidate host to guess its feed location.
+_FEED_CANDIDATE_PATHS = ("/feed", "/rss", "/feed.xml", "/rss.xml", "/index.xml", "/atom.xml")
+
+# Generic words/platform labels that don't identify a specific publication.
+_IDENTITY_STOPWORDS = frozenset(
+    {
+        "blog",
+        "news",
+        "feed",
+        "rss",
+        "the",
+        "ai",
+        "data",
+        "newsletter",
+        "podcast",
+        "updates",
+        "posts",
+        "medium",
+        "substack",
+        "wordpress",
+        "blogspot",
+        "github",
+        "ghost",
+        "beehiiv",
+        "com",
+        "www",
+        "tech",
+        "weekly",
+        "daily",
+    }
+)
+
+
+def _identity_tokens(name: str, url: str) -> set[str]:
+    """Significant tokens identifying a publication: domain label + name words.
+
+    Used to reject look-alive-but-unrelated feeds (a fresh feed on an unrelated
+    domain found via an ambiguous web search).
+    """
+    tokens: set[str] = set()
+    host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+    labels = host.split(".")
+    if len(labels) >= 2:
+        tokens.add(labels[-2])  # registrable label, e.g. "anaconda", "semianalysis"
+    for word in re.split(r"[^a-z0-9]+", name.lower()):
+        tokens.add(word)
+    return {t for t in tokens if len(t) >= 4 and t not in _IDENTITY_STOPWORDS}
+
+
+@dataclass
+class MovedCandidate:
+    """A proposed relocation for a dead/stale feed (proposal-only — never auto-applied)."""
+
+    original_url: str
+    name: str
+    new_url: str | None
+    detail: str
+
+
+def _candidate_feed_urls(result_urls: list[str], *, limit: int = 6) -> list[str]:
+    """Derive feed-URL guesses from web-search result URLs.
+
+    A result whose path already looks like a feed is used as-is; otherwise the
+    result's host (minus known aggregators) seeds ``host + /feed`` style guesses.
+    """
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def _add(url: str) -> None:
+        if url not in seen:
+            seen.add(url)
+            candidates.append(url)
+
+    for raw in result_urls:
+        parsed = urlparse(raw)
+        host = (parsed.hostname or "").lower()
+        if not host or host.removeprefix("www.") in _AGGREGATOR_HOSTS:
+            continue
+        path = parsed.path.lower()
+        if any(tok in path for tok in ("feed", "rss", ".xml", ".atom")):
+            _add(raw)  # already a feed-looking URL
+        else:
+            base = f"{parsed.scheme or 'https'}://{host}"
+            for suffix in _FEED_CANDIDATE_PATHS:
+                _add(base + suffix)
+    return candidates[:limit]
+
+
+def find_moved_feeds(
+    feeds: list,
+    *,
+    provider: object | None = None,
+    stale_days: int = DEFAULT_STALE_DAYS,
+    limit: int | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> list[MovedCandidate]:
+    """For each dead/stale feed, web-search for a relocated feed and verify it.
+
+    Proposal-only: returns the best fresh candidate per feed (or None). Never
+    mutates source files — web-search guesses need a human eye before applying.
+
+    Args:
+        feeds: source objects with ``url`` and ``name`` (typically the disabled ones).
+        provider: a WebSearchProvider; resolved from settings if None.
+        stale_days: a candidate must have a post newer than this to count as live.
+        limit: cap how many feeds to investigate (web search has per-call cost).
+    """
+    if provider is None:
+        from src.services.web_search import get_web_search_provider
+
+        provider = get_web_search_provider()
+
+    targets = feeds[:limit] if limit else feeds
+    out: list[MovedCandidate] = []
+
+    with httpx.Client(headers=_HEADERS, follow_redirects=True, timeout=timeout) as client:
+        for f in targets:
+            name = getattr(f, "name", None) or getattr(f, "url", "")
+            orig = getattr(f, "url", "")
+            orig_host = (urlparse(orig).hostname or "").lower().removeprefix("www.")
+            try:
+                results = provider.search(f"{name} RSS feed", max_results=5)  # type: ignore[attr-defined]
+            except Exception as exc:  # search failures shouldn't abort the batch
+                out.append(MovedCandidate(orig, name, None, f"search error: {type(exc).__name__}"))
+                continue
+
+            best = _best_live_candidate(
+                client,
+                _candidate_feed_urls([r.url for r in results if r.url]),
+                orig_host=orig_host,
+                stale_days=stale_days,
+                identity_tokens=_identity_tokens(name, orig),
+            )
+            out.append(best_to_candidate(orig, name, best))
+    return out
+
+
+def _identity_match(parsed: feedparser.FeedParserDict, cand_host: str, tokens: set[str]) -> bool:
+    """True if the candidate feed plausibly belongs to the same publication.
+
+    Requires a shared identity token in the feed title or candidate host. With
+    no tokens to match on, fall back to permissive (let the caller decide).
+    """
+    if not tokens:
+        return True
+    haystack = f"{parsed.feed.get('title', '')} {cand_host}".lower()
+    return any(tok in haystack for tok in tokens)
+
+
+def _best_live_candidate(
+    client: httpx.Client,
+    candidate_urls: list[str],
+    *,
+    orig_host: str,
+    stale_days: int,
+    identity_tokens: set[str],
+) -> tuple[str, str] | None:
+    """Probe candidate feed URLs; return (url, detail) for the freshest live one
+    that also matches the publication's identity (rejects unrelated live feeds)."""
+    best: tuple[str, str, datetime] | None = None
+    for url in candidate_urls:
+        try:
+            resp = client.get(url)
+        except Exception as exc:
+            logger.debug("probe failed for candidate %s: %s", url, type(exc).__name__)
+            continue
+        if resp.status_code >= 400:
+            continue
+        parsed = feedparser.parse(resp.text)
+        if not parsed.entries:
+            continue
+        newest = _newest_entry_date(parsed)
+        if not newest or (datetime.now(UTC) - newest) > timedelta(days=stale_days):
+            continue
+        cand_host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+        if not _identity_match(parsed, cand_host, identity_tokens):
+            continue  # fresh but unrelated publication
+        # Prefer a candidate on a different host than the (dead) original, and
+        # the freshest such one; otherwise accept the first live candidate.
+        detail = f"{len(parsed.entries)} entries, newest {newest.date()}"
+        if (cand_host != orig_host and (best is None or newest > best[2])) or best is None:
+            best = (url, detail, newest)
+    return (best[0], best[1]) if best else None
+
+
+def best_to_candidate(orig: str, name: str, best: tuple[str, str] | None) -> MovedCandidate:
+    if best is None:
+        return MovedCandidate(orig, name, None, "no fresh feed found")
+    return MovedCandidate(orig, name, best[0], best[1])
+
+
 # --- Overlap detection (rss.yaml vs blogs.yaml) ---
 
 

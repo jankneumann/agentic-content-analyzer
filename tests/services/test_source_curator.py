@@ -9,7 +9,10 @@ from src.services.source_curator import (
     CurationPlan,
     FeedHealth,
     FeedStatus,
+    _candidate_feed_urls,
+    _identity_tokens,
     apply_plan_to_text,
+    best_to_candidate,
     build_curation_plan,
     detect_overlaps,
 )
@@ -181,3 +184,44 @@ def test_different_subdomains_not_flagged():
     rss = [_S("https://crfm.stanford.edu/feed")]
     blogs = [_S("https://hai.stanford.edu/news")]
     assert detect_overlaps(rss, blogs) == []
+
+
+# --- find-moved candidate derivation ---
+
+
+def test_candidate_urls_skips_aggregators():
+    results = [
+        "https://muckrack.com/media-outlet/semianalysis",
+        "https://x.com/SemiAnalysis_",
+        "https://newsletter.semianalysis.com/about",
+    ]
+    cands = _candidate_feed_urls(results)
+    # aggregator/social hosts dropped; real host seeds feed guesses
+    assert all("muckrack" not in c and "x.com" not in c for c in cands)
+    assert "https://newsletter.semianalysis.com/feed" in cands
+
+
+def test_candidate_urls_uses_feed_looking_url_as_is():
+    results = ["https://blog.example.com/rss.xml"]
+    cands = _candidate_feed_urls(results)
+    assert cands[0] == "https://blog.example.com/rss.xml"
+
+
+def test_best_to_candidate_none_means_not_found():
+    c = best_to_candidate("https://dead/feed", "Dead", None)
+    assert c.new_url is None
+    assert c.detail == "no fresh feed found"
+
+
+def test_identity_tokens_extract_publication_terms():
+    # domain label + meaningful name words, minus generic stopwords
+    toks = _identity_tokens("SemiAnalysis", "https://www.semianalysis.com/feed")
+    assert "semianalysis" in toks
+
+    # "Artificialis - Medium": platform label "medium" is a stopword, brand kept
+    toks = _identity_tokens("Artificialis - Medium", "https://medium.com/feed/artificialis")
+    assert "artificialis" in toks
+    assert "medium" not in toks
+
+    # generic name yields no distinguishing tokens
+    assert _identity_tokens("AI News Blog", "https://medium.com/feed/foo") == set()
