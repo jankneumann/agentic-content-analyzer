@@ -29,6 +29,7 @@ from src.cli.agent_commands import app as agent_app
 from src.cli.analyze_commands import app as analyze_app
 from src.cli.auth_commands import app as auth_app
 from src.cli.curate_commands import app as curate_app
+from src.cli.deploy_commands import app as deploy_app
 from src.cli.digest_commands import app as digest_app
 from src.cli.edit_commands import app as edit_app
 from src.cli.evaluate_commands import app as evaluate_app
@@ -89,6 +90,7 @@ app.add_typer(evaluate_app, name="evaluate")
 app.add_typer(kb_app, name="kb")
 app.add_typer(auth_app, name="auth")
 app.add_typer(curate_app, name="curate")
+app.add_typer(deploy_app, name="deploy")
 
 
 def _version_callback(value: bool) -> None:
