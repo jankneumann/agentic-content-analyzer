@@ -21,6 +21,14 @@ sources:
     content_filter_strategy: none
     max_entries: 10
 
+  # stax.sh / codt management for llms
+  - name: "Stax.sh"
+    url: "https://stax.sh/news"
+    tags: [ai, llm, agents]
+    link_selector: "a[href*='/news/']"
+    content_filter_strategy: none
+    max_entries: 10
+
   # Example with heuristic mode (no link_selector) and URL pattern filter
   # - name: "Example Engineering Blog"
   #   url: "https://engineering.example.com/blog"
