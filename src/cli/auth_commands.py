@@ -31,6 +31,15 @@ from typing import Annotated
 
 import typer
 
+# The Railway CLI plumbing (set a variable, read the linked target) lives in
+# src/cli/railway.py so `aca auth` and `aca deploy sync-secrets` share one
+# implementation. Re-exported under the original private names to keep this
+# module's existing imports and patch-targets stable.
+from src.cli.railway import (
+    linked_target as _railway_linked_target,
+    set_variable as _railway_set_env,
+)
+
 app = typer.Typer(
     name="auth",
     help="Manage OAuth credentials for Gmail/YouTube ingestion.",
@@ -101,85 +110,6 @@ def _run_oauth_flow(provider: str) -> tuple[Path, str]:
     token_path.write_text(token_json)
     typer.echo(f"Token saved to {token_path}")
     return token_path, token_json
-
-
-def _railway_set_env(key: str, value: str, service: str | None = None) -> None:
-    """Set a Railway env var via ``railway variables --set KEY=VALUE``.
-
-    Requires either ``railway link`` to have been run in the current
-    directory, OR ``RAILWAY_TOKEN`` to be set in the environment. The
-    railway CLI itself must be installed.
-
-    We do not echo the value back — env vars set via this path are
-    typically multi-kilobyte JSON blobs that would flood the terminal.
-    """
-    if not shutil.which("railway"):
-        typer.echo(
-            "railway CLI not found in PATH. Install with:\n"
-            "  brew install railway     (macOS)\n"
-            "  npm install -g @railway/cli\n"
-            "Or see https://docs.railway.com/guides/cli",
-            err=True,
-        )
-        raise typer.Exit(1)
-
-    cmd = ["railway", "variables", "--set", f"{key}={value}"]
-    if service:
-        cmd.extend(["--service", service])
-
-    try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
-    except subprocess.CalledProcessError as e:
-        typer.echo(
-            f"`railway variables --set {key}=...` failed (exit {e.returncode}):\n"
-            f"  stderr: {e.stderr.strip() or '(empty)'}\n"
-            "Make sure you've run `railway link` in this directory or set RAILWAY_TOKEN.",
-            err=True,
-        )
-        raise typer.Exit(1) from e
-
-    target = f" on service {service}" if service else ""
-    typer.echo(f"Railway env var {key} set{target}.")
-
-
-def _railway_linked_target() -> str | None:
-    """Return a short description of the currently-linked Railway target.
-
-    Reads ``railway status --json`` (project / environment / service). Returns
-    None when the railway CLI is missing, not linked, or the output can't be
-    parsed. Best-effort — never raises.
-    """
-    if not shutil.which("railway"):
-        return None
-    try:
-        result = subprocess.run(
-            ["railway", "status", "--json"],  # noqa: S607
-            capture_output=True,
-            text=True,
-            timeout=15,
-            check=False,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return None
-    if result.returncode != 0 or not result.stdout.strip():
-        return None
-    try:
-        import json
-
-        data = json.loads(result.stdout)
-    except (ValueError, TypeError):
-        return None
-
-    def _name(value: object) -> str | None:
-        if isinstance(value, dict):
-            name = value.get("name")
-            return str(name) if name else None
-        return str(value) if value else None
-
-    project = _name(data.get("name")) or _name(data.get("project"))
-    environment = _name(data.get("environment"))
-    parts = [p for p in (project, environment) if p]
-    return " / ".join(parts) if parts else None
 
 
 def _warn_deploy_target(service: str | None) -> None:
