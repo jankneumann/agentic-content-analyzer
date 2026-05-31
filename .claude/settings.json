@@ -1,6 +1,6 @@
 {
   "permissions": {
-    "defaultMode": "bypassPermissions",
+    "defaultMode": "auto",
     "allow": [
       "WebFetch(domain:localhost)",
       "WebFetch(domain:127.0.0.1)",
