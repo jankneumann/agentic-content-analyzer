@@ -168,8 +168,8 @@ sources:
 - name: DEV Community
   url: https://dev.to/feed
 - name: EE Times
-  url: https://www.eetimes.com/feed
-  enabled: false
+  url: https://www.eetimes.com/feed/
+  enabled: true
 - name: Engadget
   url: https://www.engadget.com/rss.xml
 - name: Eugene Yan

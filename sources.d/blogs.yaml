@@ -53,6 +53,13 @@ sources:
     content_filter_strategy: none
     max_entries: 10
 
+  - name : "OpenAI Blog"
+    url: "https://openai.com/news/"
+    tags: [ai, openai, research, product]
+    link_selector: "a[href*='/news/']"
+    content_filter_strategy: none
+    max_entries: 10
+
   # AWS Machine Learning is covered by its RSS feed (sources.d/rss.yaml) — no scraper needed.
 
   # AWS Architecture blog — broad (not all AI/Data); listed explicitly, left unfiltered.
