@@ -23,7 +23,12 @@ import httpx
 import typer
 
 from src.cli.adapters import run_async
-from src.cli.output import is_direct_mode, is_json_mode, output_result
+from src.cli.output import (
+    guard_remote_backend,
+    is_direct_mode,
+    is_json_mode,
+    output_result,
+)
 from src.models.jobs import TYPE_ALIASES, JobHistoryItem, JobListItem, JobRecord, JobStatus
 
 app = typer.Typer(help="Manage background jobs in the queue.")
@@ -132,6 +137,7 @@ def _parse_duration(duration_str: str) -> int:
 
 def _list_jobs_direct(status: str | None, entrypoint: str | None, limit: int, offset: int) -> None:
     """Direct job listing (legacy inline path)."""
+    guard_remote_backend("jobs list")
     from src.queue.setup import list_jobs as queue_list_jobs
 
     # Parse and validate status filter
@@ -412,6 +418,7 @@ def history(
         aca jobs history --type summarize --status completed
         aca jobs history --since 7d --type ingest
     """
+    guard_remote_backend("jobs history")
     from src.queue.setup import list_job_history
 
     # Parse time filter
@@ -523,6 +530,7 @@ def history(
 
 def _show_job_direct(job_id: int) -> None:
     """Direct job detail display (legacy inline path)."""
+    guard_remote_backend("jobs show")
     from src.queue.setup import get_job_status
 
     try:
@@ -701,6 +709,7 @@ def show_job(
 
 def _retry_job_direct(job_id: int | None, failed: bool) -> None:
     """Direct job retry (legacy inline path)."""
+    guard_remote_backend("jobs retry")
     from src.queue.setup import list_jobs as queue_list_jobs, retry_failed_job
 
     if failed:

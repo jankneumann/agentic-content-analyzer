@@ -14,7 +14,7 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urldefrag, urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -58,6 +58,18 @@ _NON_ARTICLE_PATTERNS = re.compile(
 # Fragments and anchors
 _FRAGMENT_PATTERN = re.compile(r"^#")
 
+# Browser-like headers. A custom bot UA is the first thing Cloudflare/Akamai
+# "bot fight" modes reject; a realistic browser UA + Accept headers behave
+# identically on permissive sites and avoid 403s if a source enables protection.
+_DEFAULT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
 
 @dataclass
 class DiscoveredLink:
@@ -79,7 +91,7 @@ class BlogScrapingClient:
         self._client = httpx.Client(
             timeout=timeout,
             follow_redirects=True,
-            headers={"User-Agent": "ACA-BlogScraper/1.0"},
+            headers=_DEFAULT_HEADERS,
         )
 
     def close(self) -> None:
@@ -149,8 +161,9 @@ class BlogScrapingClient:
             if _FRAGMENT_PATTERN.match(link.url):
                 continue
 
-            # Resolve relative URLs
-            absolute_url = urljoin(base_url, link.url)
+            # Resolve relative URLs and drop fragments (e.g. WordPress "#Comments"
+            # anchors that would otherwise crawl the same post twice)
+            absolute_url, _ = urldefrag(urljoin(base_url, link.url))
             parsed = urlparse(absolute_url)
 
             # Must be HTTP(S)

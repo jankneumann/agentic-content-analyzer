@@ -15,9 +15,92 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from src.cli.output import is_json_mode, output_result
+from src.cli.output import (
+    guard_remote_backend,
+    is_direct_mode,
+    is_json_mode,
+    is_remote_backend,
+    output_result,
+)
 
 app = typer.Typer(help="Manage the knowledge graph.")
+
+
+def _graph_results_from_response(resp: dict) -> list[dict]:
+    """Flatten a GraphQueryResponse {entities, relationships} into the flat
+    result rows the table/JSON renderer expects (name / type / content).
+    """
+    results: list[dict] = []
+    for e in resp.get("entities") or []:
+        results.append(
+            {
+                "name": e.get("name", ""),
+                "type": e.get("type", "entity"),
+                "content": f"score={float(e.get('score', 0.0)):.3f}",
+            }
+        )
+    for r in resp.get("relationships") or []:
+        results.append(
+            {
+                "name": r.get("type", "RELATES_TO"),
+                "type": "relationship",
+                "content": (
+                    f"{r.get('source_id', '')} → {r.get('target_id', '')} "
+                    f"(score={float(r.get('score', 0.0)):.3f})"
+                ),
+            }
+        )
+    return results
+
+
+def _extract_entities_via_api(console: Console, content_id: int) -> None:
+    """Route `graph extract-entities` through POST /api/v1/graph/extract-entities.
+
+    Maps the endpoint's 404 (content missing) and 409 (no summary yet) to the
+    same user-facing exits the direct path produces, so behavior is identical
+    regardless of which backend ran the write.
+    """
+    import httpx
+
+    from src.cli.api_client import get_api_client
+
+    client = get_api_client()
+    try:
+        resp = client.graph_extract_entities(content_id)
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        if status == 404:
+            console.print(f"[red]Error:[/red] Content with ID {content_id} not found.")
+        elif status == 409:
+            console.print(
+                f"[red]Error:[/red] No summary found for content ID {content_id}. "
+                "Run summarization first."
+            )
+        else:
+            console.print(f"[red]Error:[/red] Entity extraction failed: {exc}")
+        raise typer.Exit(1)
+    except Exception as exc:
+        console.print(f"[red]Error:[/red] Entity extraction failed: {exc}")
+        raise typer.Exit(1)
+    finally:
+        client.close()
+
+    if is_json_mode():
+        output_result(
+            {
+                "status": "success",
+                "content_id": content_id,
+                "entities_added": resp.get("entities_added", 0),
+                "relationships_added": resp.get("relationships_added", 0),
+                "graph_episode_id": resp.get("graph_episode_id", ""),
+                "message": f"Entities extracted from content {content_id}",
+            }
+        )
+    else:
+        console.print(
+            f"[green]Successfully extracted entities from content {content_id}[/green] "
+            f"(episode {resp.get('graph_episode_id', '?')})"
+        )
 
 
 @app.command("extract-entities")
@@ -37,8 +120,17 @@ def extract_entities(
     concepts into the Neo4j knowledge graph.
     """
     console = Console()
-    console.print(f"Extracting entities from content [bold]{content_id}[/bold]...")
+    if not is_json_mode():
+        console.print(f"Extracting entities from content [bold]{content_id}[/bold]...")
 
+    if is_remote_backend() and not is_direct_mode():
+        _extract_entities_via_api(console, content_id)
+        return
+
+    guard_remote_backend(
+        "graph extract-entities",
+        http_hint="omit --direct to route entity extraction through the API",
+    )
     try:
         from src.cli.adapters import run_async
         from src.models.content import Content
@@ -135,22 +227,37 @@ def query(
     entities, relationships, and facts related to the query text.
     """
     console = Console()
-    console.print(f"Querying knowledge graph for: [bold]{query_text}[/bold]...")
+    if not is_json_mode():
+        console.print(f"Querying knowledge graph for: [bold]{query_text}[/bold]...")
 
-    try:
-        from src.cli.adapters import search_graph_sync
+    if is_remote_backend() and not is_direct_mode():
+        from src.cli.api_client import get_api_client
 
-        results = search_graph_sync(query_text, limit=limit)
-    except ConnectionError as e:
-        console.print(f"[red]Error:[/red] Graph database is unavailable: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        error_msg = str(e).lower()
-        if "connection" in error_msg or "neo4j" in error_msg or "refused" in error_msg:
-            console.print("[red]Error:[/red] Graph database is unavailable.")
-        else:
+        client = get_api_client()
+        try:
+            resp = client.graph_query(query_text, limit=limit)
+        except Exception as e:
             console.print(f"[red]Error:[/red] Graph query failed: {e}")
-        raise typer.Exit(1)
+            raise typer.Exit(1)
+        finally:
+            client.close()
+        results = _graph_results_from_response(resp)
+    else:
+        guard_remote_backend("graph query")
+        try:
+            from src.cli.adapters import search_graph_sync
+
+            results = search_graph_sync(query_text, limit=limit)
+        except ConnectionError as e:
+            console.print(f"[red]Error:[/red] Graph database is unavailable: {e}")
+            raise typer.Exit(1)
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "connection" in error_msg or "neo4j" in error_msg or "refused" in error_msg:
+                console.print("[red]Error:[/red] Graph database is unavailable.")
+            else:
+                console.print(f"[red]Error:[/red] Graph query failed: {e}")
+            raise typer.Exit(1)
 
     if not results:
         console.print("[yellow]No results found for the given query.[/yellow]")

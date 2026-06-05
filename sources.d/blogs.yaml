@@ -29,6 +29,102 @@ sources:
     content_filter_strategy: none
     max_entries: 10
 
+  # Anthropic engineering blog — postmortems, agent/harness design deep-dives
+  - name: "Anthropic Engineering"
+    url: "https://www.anthropic.com/engineering"
+    tags: [ai, anthropic, engineering]
+    link_selector: "a[href*='/engineering/']"
+    content_filter_strategy: none
+    max_entries: 10
+
+  # Meta AI research & product blog (ai.meta.com)
+  - name: "Meta AI"
+    url: "https://ai.meta.com/blog/"
+    tags: [ai, meta, research]
+    link_selector: "a[href*='/blog/']"
+    content_filter_strategy: none
+    max_entries: 10
+
+  # Stanford HAI — human-centered AI research, policy, and index reports
+  - name: "Stanford HAI"
+    url: "https://hai.stanford.edu/news"
+    tags: [ai, research, policy, stanford]
+    link_selector: "a[href*='/news/']"
+    content_filter_strategy: none
+    max_entries: 10
+
+  # Together AI — inference infra & model engineering (RSS feed is dead, scrape instead)
+  - name: "Together AI"
+    url: "https://www.together.ai/blog"
+    tags: [ai, infrastructure, inference]
+    link_selector: "a[href*='/blog/']"
+    content_filter_strategy: none
+    max_entries: 10
+
+  - name : "OpenAI Blog"
+    url: "https://openai.com/news/"
+    tags: [ai, openai, research, product]
+    link_selector: "a[href*='/news/']"
+    content_filter_strategy: none
+    max_entries: 10
+
+  # AWS Machine Learning is covered by its RSS feed (sources.d/rss.yaml) — no scraper needed.
+
+  # AWS Architecture blog — broad (not all AI/Data); listed explicitly, left unfiltered.
+  # Flip content_filter_strategy to llm + topics below if you want AI/Data only.
+  - name: "AWS Architecture"
+    url: "https://aws.amazon.com/blogs/architecture/"
+    tags: [aws, architecture]
+    link_selector: "a[href*='/blogs/architecture/']"
+    content_filter_strategy: none
+    max_entries: 10
+
+  # AWS News blog (general) — filtered to AI & Data via LLM relevance check.
+  # Falls back to "keep all" if the content-filtering model isn't configured.
+  - name: "AWS News (AI & Data)"
+    url: "https://aws.amazon.com/blogs/aws/"
+    tags: [aws, ai, data]
+    link_selector: "a[href*='/blogs/aws/']"
+    content_filter_strategy: llm
+    content_filter_topics:
+      - artificial intelligence
+      - machine learning
+      - generative AI
+      - large language models
+      - data engineering
+      - analytics
+      - databases
+    max_entries: 10
+
+  # Microsoft Source — AI features hub. Largely JS-rendered; static yield is thin (~2).
+  - name: "Microsoft AI News"
+    url: "https://news.microsoft.com/source/topics/ai/"
+    tags: [ai, microsoft]
+    link_selector: "a[href*='/source/features/']"
+    content_filter_strategy: none
+    max_entries: 10
+
+  # Microsoft Copilot blog — date-stamped post URLs; pattern excludes topic/category pages
+  - name: "Microsoft Copilot"
+    url: "https://www.microsoft.com/en-us/microsoft-copilot/blog/"
+    tags: [ai, microsoft, copilot]
+    link_pattern: "/blog/\\d{4}/\\d{2}/"
+    content_filter_strategy: none
+    max_entries: 10
+
+  # Google DeepMind blog (deepmind.google) — research announcements
+  - name: "Google DeepMind"
+    url: "https://deepmind.google/blog/"
+    tags: [ai, deepmind, research]
+    link_selector: "a[href*='/blog/']"
+    content_filter_strategy: none
+    max_entries: 10
+
+  # NOTE: Cohere (cohere.com/blog), Mistral (mistral.ai/news), Google Gemini blog, and
+  # the Microsoft Source AI page are client-rendered SPAs — static-HTML discovery yields
+  # ~1-2 links. Cohere/Mistral need JS rendering (Crawl4AI) to crawl; OpenAI and Gemini
+  # are served via RSS instead (see sources.d/rss.yaml). Tracked as a follow-up.
+
   # Example with heuristic mode (no link_selector) and URL pattern filter
   # - name: "Example Engineering Blog"
   #   url: "https://engineering.example.com/blog"

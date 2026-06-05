@@ -156,3 +156,126 @@ class TestKBIndex:
 
         assert result.exit_code == 0
         assert "No index found" in result.output or result.output == ""
+
+
+# ---------------------------------------------------------------------------
+# HTTP routing under a remote profile
+# ---------------------------------------------------------------------------
+
+
+class TestKBHttpRouting:
+    """Under a remote profile, read commands fetch from the prod API instead
+    of the local DB (split-brain fix). These patch is_remote_backend True and
+    a mock ApiClient.
+    """
+
+    @patch("src.cli.kb_commands.is_remote_backend", return_value=True)
+    @patch("src.cli.api_client.get_api_client")
+    def test_list_routes_to_api(self, mock_get_client, _remote, runner):
+        client = MagicMock()
+        client.kb_list_topics.return_value = [
+            {
+                "slug": "rag",
+                "name": "RAG",
+                "category": "ml",
+                "trend": "growing",
+                "status": "active",
+                "relevance_score": 0.91,
+                "mention_count": 7,
+                "last_compiled_at": None,
+            }
+        ]
+        mock_get_client.return_value = client
+
+        result = runner.invoke(app, ["--json", "kb", "list"])
+
+        assert result.exit_code == 0, result.output
+        client.kb_list_topics.assert_called_once()
+        client.close.assert_called_once()
+        payload = json.loads(result.output)
+        assert payload["count"] == 1
+        assert payload["topics"][0]["slug"] == "rag"
+
+    @patch("src.cli.kb_commands.is_remote_backend", return_value=True)
+    @patch("src.cli.api_client.get_api_client")
+    def test_show_routes_to_api(self, mock_get_client, _remote, runner):
+        client = MagicMock()
+        client.kb_get_topic.return_value = {
+            "slug": "rag",
+            "name": "RAG",
+            "category": "ml",
+            "status": "active",
+            "trend": "growing",
+            "summary": "s",
+            "article_md": "# Body",
+            "article_version": 3,
+            "relevance_score": 0.9,
+            "novelty_score": 0.4,
+            "mention_count": 7,
+            "source_content_ids": [],
+            "related_topic_ids": [],
+            "last_compiled_at": None,
+        }
+        mock_get_client.return_value = client
+
+        result = runner.invoke(app, ["--json", "kb", "show", "rag"])
+
+        assert result.exit_code == 0, result.output
+        client.kb_get_topic.assert_called_once_with("rag")
+        payload = json.loads(result.output)
+        assert payload["article_version"] == 3
+
+    @patch("src.cli.kb_commands.is_remote_backend", return_value=True)
+    @patch("src.cli.api_client.get_api_client")
+    def test_show_404_exits_1(self, mock_get_client, _remote, runner):
+        import httpx
+
+        req = httpx.Request("GET", "http://x/api/v1/kb/topics/missing")
+        resp = httpx.Response(404, request=req)
+        client = MagicMock()
+        client.kb_get_topic.side_effect = httpx.HTTPStatusError("404", request=req, response=resp)
+        mock_get_client.return_value = client
+
+        result = runner.invoke(app, ["kb", "show", "missing"])
+
+        assert result.exit_code == 1
+        assert "Topic not found" in result.output
+
+    @patch("src.cli.kb_commands.is_remote_backend", return_value=True)
+    @patch("src.cli.api_client.get_api_client")
+    def test_index_routes_to_api(self, mock_get_client, _remote, runner):
+        client = MagicMock()
+        client.kb_index.return_value = {
+            "index_type": "master",
+            "content": "# KB Index",
+            "generated_at": None,
+        }
+        mock_get_client.return_value = client
+
+        result = runner.invoke(app, ["kb", "index"])
+
+        assert result.exit_code == 0, result.output
+        client.kb_index.assert_called_once_with(None)
+        assert "# KB Index" in result.output
+
+    @patch("src.cli.kb_commands.is_remote_backend", return_value=True)
+    @patch("src.cli.api_client.get_api_client")
+    def test_query_routes_to_api(self, mock_get_client, _remote, runner):
+        client = MagicMock()
+        client.kb_query.return_value = {"answer": "42", "topics": ["rag"], "truncated": False}
+        mock_get_client.return_value = client
+
+        result = runner.invoke(app, ["kb", "query", "what is the answer?"])
+
+        assert result.exit_code == 0, result.output
+        client.kb_query.assert_called_once_with("what is the answer?", file_back=False)
+        assert "42" in result.output
+
+    @patch("src.config.settings.get_settings")
+    def test_direct_flag_under_remote_is_refused(self, mock_get_settings, runner):
+        # --direct opts out of HTTP; the guard then refuses (no silent local DB).
+        # Patch get_settings so both _route_to_api and guard_remote_backend see remote.
+        mock_get_settings.return_value = MagicMock(api_base_url="https://api.aca.rotkohl.ai")
+        result = runner.invoke(app, ["--direct", "kb", "list"])
+        assert result.exit_code == 1
+        assert "Refusing to run" in result.output

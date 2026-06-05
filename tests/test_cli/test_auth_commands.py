@@ -195,9 +195,12 @@ def test_gmail_deploy_uploads_token_to_railway(runner, monkeypatch, tmp_path):
         result = runner.invoke(app, ["gmail", "--deploy"])
 
     assert result.exit_code == 0, result.output
-    # Exactly one railway call — for the token, NOT credentials
-    assert len(railway_calls) == 1
-    assert "GMAIL_OAUTH_TOKEN_JSON" in railway_calls[0][3]
+    # Exactly one `variables --set` call — for the token, NOT credentials.
+    # `--deploy` also runs `railway status --json` to warn about the target,
+    # so filter to the variable-set calls rather than counting every railway call.
+    set_calls = [c for c in railway_calls if "--set" in c]
+    assert len(set_calls) == 1, railway_calls
+    assert "GMAIL_OAUTH_TOKEN_JSON" in set_calls[0][3]
 
 
 def test_gmail_deploy_with_include_credentials_uploads_both(runner, monkeypatch, tmp_path):
@@ -230,7 +233,10 @@ def test_gmail_deploy_with_include_credentials_uploads_both(runner, monkeypatch,
         result = runner.invoke(app, ["gmail", "--deploy", "--include-credentials"])
 
     assert result.exit_code == 0, result.output
-    assert len(railway_calls) == 2
-    env_keys = [call[3].split("=")[0] for call in railway_calls]
+    # Two `variables --set` calls (token + credentials); `--deploy` also runs
+    # `railway status --json` to warn about the target, so filter to set calls.
+    set_calls = [c for c in railway_calls if "--set" in c]
+    assert len(set_calls) == 2, railway_calls
+    env_keys = [call[3].split("=")[0] for call in set_calls]
     assert "GMAIL_OAUTH_TOKEN_JSON" in env_keys
     assert "GMAIL_CREDENTIALS_JSON" in env_keys

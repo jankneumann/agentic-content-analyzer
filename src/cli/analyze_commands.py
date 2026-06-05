@@ -21,7 +21,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from src.cli.output import is_direct_mode, is_json_mode, output_result
+from src.cli.output import guard_remote_backend, is_direct_mode, is_json_mode, output_result
 
 app = typer.Typer(help="Analyze themes across content.")
 
@@ -39,6 +39,7 @@ def _analyze_themes_direct(
     console: Console,
 ) -> None:
     """Run theme analysis via direct service calls (legacy path)."""
+    guard_remote_backend("analyze themes")
     try:
         from src.cli.adapters import analyze_themes_sync
         from src.models.theme import ThemeAnalysisRequest

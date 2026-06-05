@@ -28,6 +28,8 @@ import typer
 from src.cli.agent_commands import app as agent_app
 from src.cli.analyze_commands import app as analyze_app
 from src.cli.auth_commands import app as auth_app
+from src.cli.curate_commands import app as curate_app
+from src.cli.deploy_commands import app as deploy_app
 from src.cli.digest_commands import app as digest_app
 from src.cli.edit_commands import app as edit_app
 from src.cli.evaluate_commands import app as evaluate_app
@@ -42,8 +44,10 @@ from src.cli.neon_commands import app as neon_app
 from src.cli.output import (  # noqa: F401
     _set_direct_mode,
     _set_json_mode,
+    _set_remote_db,
     is_direct_mode,
     is_json_mode,
+    is_remote_db,
     output_result,
 )
 from src.cli.pipeline_commands import app as pipeline_app
@@ -85,6 +89,8 @@ app.add_typer(job_app, name="jobs")
 app.add_typer(evaluate_app, name="evaluate")
 app.add_typer(kb_app, name="kb")
 app.add_typer(auth_app, name="auth")
+app.add_typer(curate_app, name="curate")
+app.add_typer(deploy_app, name="deploy")
 
 
 def _version_callback(value: bool) -> None:
@@ -131,6 +137,18 @@ def main_callback(
             help="Run commands directly without backend API (offline mode).",
         ),
     ] = False,
+    remote_db: Annotated[
+        bool,
+        typer.Option(
+            "--remote-db",
+            help=(
+                "Opt in to running direct (in-process) against the REMOTE database "
+                "for heavy batch jobs (manage backfills, sync). Implies --direct and "
+                "bypasses the split-brain guard with a warning. Requires database_url "
+                "to point at the remote backend."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Agentic Content Aggregator CLI.
 
@@ -141,6 +159,13 @@ def main_callback(
         _set_json_mode(True)
 
     if direct:
+        _set_direct_mode(True)
+
+    # --remote-db is reset every invocation (prevents global-state leakage across
+    # tests) and implies direct mode: its sole purpose is in-process execution
+    # against the remote DB.
+    _set_remote_db(remote_db)
+    if remote_db:
         _set_direct_mode(True)
 
     if debug:

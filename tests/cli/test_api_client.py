@@ -91,6 +91,13 @@ class TestApiClientInit:
         assert "X-Admin-Key" not in client._client.headers
         client.close()
 
+    def test_follows_redirects(self):
+        # FastAPI's redirect_slashes 307s no-slash -> trailing-slash collection
+        # routes; the client must follow them or raise_for_status sees the 3xx.
+        client = ApiClient(base_url="http://test")
+        assert client._client.follow_redirects is True
+        client.close()
+
 
 # ── health_check ────────────────────────────────────────────────────────
 
@@ -415,12 +422,23 @@ class TestGeneratePodcast:
 
 class TestDigestRead:
     def test_list_digests(self):
+        # The endpoint is declared with a trailing slash and returns a bare
+        # JSON array (response_model=list[DigestSummary]) — not a dict envelope.
         def handler(request: httpx.Request) -> httpx.Response:
-            assert request.url.path == "/api/v1/digests"
-            return httpx.Response(200, json={"digests": []})
+            assert request.url.path == "/api/v1/digests/"
+            return httpx.Response(200, json=[{"id": 1}, {"id": 2}])
 
         api = _make_client(handler)
-        assert api.list_digests() == {"digests": []}
+        assert api.list_digests() == [{"id": 1}, {"id": 2}]
+
+    def test_list_scripts(self):
+        # Mirrors list_digests: trailing-slash route returning a bare array.
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == "/api/v1/scripts/"
+            return httpx.Response(200, json=[{"id": 5}])
+
+        api = _make_client(handler)
+        assert api.list_scripts(limit=10) == [{"id": 5}]
 
     def test_get_digest(self):
         def handler(request: httpx.Request) -> httpx.Response:

@@ -3,23 +3,35 @@
 Provides ``aca kb`` command group for compiling, listing, showing,
 querying, and linting topics in the knowledge base.
 
-These commands run in DIRECT mode only — they call the
-KnowledgeBaseService directly via a synchronous adapter rather than
-going through the HTTP API. This is consistent with how
-``aca analyze themes --direct`` and ``aca create-digest`` work for
-operations that don't have a streaming or polling story.
+Read commands (list, show, index, query) route through the HTTP API when
+the active profile targets a remote backend, so they reflect production
+data instead of the local DB. Under a local profile — or with an explicit
+``--direct`` — they call the KnowledgeBaseService directly. Write/build
+commands (compile, lint) remain direct-only and are refused under a remote
+profile by ``guard_remote_backend``.
 """
 
 from __future__ import annotations
 
 import asyncio
-from typing import Annotated, Any
+from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
-from src.cli.output import is_json_mode, output_result
+from src.cli.output import (
+    guard_remote_backend,
+    is_direct_mode,
+    is_json_mode,
+    is_remote_backend,
+    output_result,
+)
+
+if TYPE_CHECKING:
+    from src.cli.api_client import ApiClient
 
 app = typer.Typer(help="Knowledge base management.")
 
@@ -29,6 +41,29 @@ def _get_db() -> Any:
     from src.storage.database import get_db
 
     return get_db()
+
+
+def _route_to_api() -> bool:
+    """True when reads should go over HTTP to the remote backend.
+
+    Under a remote profile the local DB is the wrong data source (split-brain),
+    so read commands fetch from the prod API instead. An explicit ``--direct``
+    opts back out — and is then refused by ``guard_remote_backend`` rather than
+    silently hitting local data.
+    """
+    return is_remote_backend() and not is_direct_mode()
+
+
+@contextmanager
+def _api_client() -> Iterator[ApiClient]:
+    """Yield an ApiClient and always close it."""
+    from src.cli.api_client import get_api_client
+
+    client = get_api_client()
+    try:
+        yield client
+    finally:
+        client.close()
 
 
 # ---------------------------------------------------------------------------
@@ -51,6 +86,7 @@ def compile_kb(
     ] = None,
 ) -> None:
     """Compile the knowledge base from theme analyses, summaries, and content."""
+    guard_remote_backend("kb compile")
     from src.services.knowledge_base import (
         KBCompileLockError,
         KnowledgeBaseService,
@@ -124,40 +160,59 @@ def list_topics(
     ] = 50,
 ) -> None:
     """List topics in the knowledge base."""
-    from src.models.topic import Topic, TopicStatus
-
     console = Console()
 
-    with _get_db() as db:
-        query = db.query(Topic)
-        # Default to ACTIVE topics unless --status is given
-        if status:
-            query = query.filter(Topic.status == status)
-        else:
-            query = query.filter(Topic.status == TopicStatus.ACTIVE)
-        if category:
-            query = query.filter(Topic.category == category)
-        if trend:
-            query = query.filter(Topic.trend == trend)
-
-        topics = query.order_by(Topic.relevance_score.desc().nullslast()).limit(limit).all()
-
+    if _route_to_api():
+        with _api_client() as client:
+            rows = client.kb_list_topics(category=category, trend=trend, status=status, limit=limit)
         topic_dicts = [
             {
-                "slug": t.slug,
-                "name": t.name,
-                "category": t.category,
-                "trend": t.trend,
-                "status": str(t.status),
-                "mention_count": t.mention_count,
-                "relevance_score": t.relevance_score,
-                "article_version": t.article_version,
-                "last_compiled_at": (
-                    t.last_compiled_at.isoformat() if t.last_compiled_at else None
-                ),
+                "slug": r.get("slug"),
+                "name": r.get("name"),
+                "category": r.get("category"),
+                "trend": r.get("trend"),
+                "status": r.get("status"),
+                "mention_count": r.get("mention_count", 0),
+                "relevance_score": r.get("relevance_score", 0.0),
+                "article_version": None,
+                "last_compiled_at": r.get("last_compiled_at"),
             }
-            for t in topics
+            for r in rows
         ]
+    else:
+        guard_remote_backend("kb list")
+        from src.models.topic import Topic, TopicStatus
+
+        with _get_db() as db:
+            query = db.query(Topic)
+            # Default to ACTIVE topics unless --status is given
+            if status:
+                query = query.filter(Topic.status == status)
+            else:
+                query = query.filter(Topic.status == TopicStatus.ACTIVE)
+            if category:
+                query = query.filter(Topic.category == category)
+            if trend:
+                query = query.filter(Topic.trend == trend)
+
+            topics = query.order_by(Topic.relevance_score.desc().nullslast()).limit(limit).all()
+
+            topic_dicts = [
+                {
+                    "slug": t.slug,
+                    "name": t.name,
+                    "category": t.category,
+                    "trend": t.trend,
+                    "status": str(t.status),
+                    "mention_count": t.mention_count,
+                    "relevance_score": t.relevance_score,
+                    "article_version": t.article_version,
+                    "last_compiled_at": (
+                        t.last_compiled_at.isoformat() if t.last_compiled_at else None
+                    ),
+                }
+                for t in topics
+            ]
 
     if is_json_mode():
         output_result({"topics": topic_dicts, "count": len(topic_dicts)})
@@ -200,38 +255,54 @@ def show_topic(
     slug: Annotated[str, typer.Argument(help="Topic slug.")],
 ) -> None:
     """Show a topic's compiled article and metadata."""
-    from src.models.topic import Topic
-
     console = Console()
 
-    with _get_db() as db:
-        topic = db.query(Topic).filter_by(slug=slug).first()
-        if topic is None:
-            if is_json_mode():
-                output_result({"error": f"Topic not found: {slug}"}, success=False)
-            else:
-                console.print(f"[red]Topic not found:[/red] {slug}")
-            raise typer.Exit(1)
+    if _route_to_api():
+        import httpx
 
-        topic_dict = {
-            "slug": topic.slug,
-            "name": topic.name,
-            "category": topic.category,
-            "status": str(topic.status),
-            "trend": topic.trend,
-            "summary": topic.summary,
-            "article_md": topic.article_md,
-            "article_version": topic.article_version,
-            "relevance_score": topic.relevance_score,
-            "novelty_score": topic.novelty_score,
-            "mention_count": topic.mention_count,
-            "source_content_ids": topic.source_content_ids,
-            "related_topic_ids": topic.related_topic_ids,
-            "last_compiled_at": (
-                topic.last_compiled_at.isoformat() if topic.last_compiled_at else None
-            ),
-            "compilation_model": topic.compilation_model,
-        }
+        try:
+            with _api_client() as client:
+                topic_dict = client.kb_get_topic(slug)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                if is_json_mode():
+                    output_result({"error": f"Topic not found: {slug}"}, success=False)
+                else:
+                    console.print(f"[red]Topic not found:[/red] {slug}")
+                raise typer.Exit(1) from exc
+            raise
+    else:
+        guard_remote_backend("kb show")
+        from src.models.topic import Topic
+
+        with _get_db() as db:
+            topic = db.query(Topic).filter_by(slug=slug).first()
+            if topic is None:
+                if is_json_mode():
+                    output_result({"error": f"Topic not found: {slug}"}, success=False)
+                else:
+                    console.print(f"[red]Topic not found:[/red] {slug}")
+                raise typer.Exit(1)
+
+            topic_dict = {
+                "slug": topic.slug,
+                "name": topic.name,
+                "category": topic.category,
+                "status": str(topic.status),
+                "trend": topic.trend,
+                "summary": topic.summary,
+                "article_md": topic.article_md,
+                "article_version": topic.article_version,
+                "relevance_score": topic.relevance_score,
+                "novelty_score": topic.novelty_score,
+                "mention_count": topic.mention_count,
+                "source_content_ids": topic.source_content_ids,
+                "related_topic_ids": topic.related_topic_ids,
+                "last_compiled_at": (
+                    topic.last_compiled_at.isoformat() if topic.last_compiled_at else None
+                ),
+                "compilation_model": topic.compilation_model,
+            }
 
     if is_json_mode():
         output_result(topic_dict)
@@ -268,30 +339,57 @@ def show_index(
     ] = None,
 ) -> None:
     """Show the master KB index (or a category index)."""
-    from src.models.topic import KBIndex
-
     console = Console()
 
     index_type = f"category_{category}" if category else "master"
 
-    with _get_db() as db:
-        index = db.query(KBIndex).filter_by(index_type=index_type).first()
-        if index is None:
+    if _route_to_api():
+        with _api_client() as client:
+            data = client.kb_index(category)
+        content = data.get("content") or ""
+        if not content:
             if is_json_mode():
-                output_result({"index_type": index_type, "content": "", "exists": False})
+                output_result(
+                    {
+                        "index_type": data.get("index_type", index_type),
+                        "content": "",
+                        "exists": False,
+                    }
+                )
             else:
                 console.print(
-                    f"[yellow]No index found for type:[/yellow] {index_type}\n"
+                    f"[yellow]No index found for type:[/yellow] {data.get('index_type', index_type)}\n"
                     "Run [bold]aca kb compile[/bold] first."
                 )
             return
-
         result = {
-            "index_type": index.index_type,
-            "content": index.content,
-            "generated_at": index.generated_at.isoformat(),
+            "index_type": data.get("index_type", index_type),
+            "content": content,
+            "generated_at": data.get("generated_at"),
             "exists": True,
         }
+    else:
+        guard_remote_backend("kb index")
+        from src.models.topic import KBIndex
+
+        with _get_db() as db:
+            index = db.query(KBIndex).filter_by(index_type=index_type).first()
+            if index is None:
+                if is_json_mode():
+                    output_result({"index_type": index_type, "content": "", "exists": False})
+                else:
+                    console.print(
+                        f"[yellow]No index found for type:[/yellow] {index_type}\n"
+                        "Run [bold]aca kb compile[/bold] first."
+                    )
+                return
+
+            result = {
+                "index_type": index.index_type,
+                "content": index.content,
+                "generated_at": index.generated_at.isoformat(),
+                "exists": True,
+            }
 
     if is_json_mode():
         output_result(result)
@@ -326,7 +424,14 @@ def query_kb(
             return await service.query(question, file_back=file_back)
 
     try:
-        result = asyncio.run(_run())
+        if _route_to_api():
+            with _api_client() as client:
+                result = client.kb_query(question, file_back=file_back)
+        else:
+            guard_remote_backend("kb query")
+            result = asyncio.run(_run())
+    except typer.Exit:
+        raise
     except Exception as exc:
         if is_json_mode():
             output_result({"error": str(exc)}, success=False)
@@ -370,6 +475,7 @@ def lint_kb(
     ] = False,
 ) -> None:
     """Run KB health checks and emit a markdown report."""
+    guard_remote_backend("kb lint")
     from src.services.kb_health import KBHealthService
 
     console = Console()

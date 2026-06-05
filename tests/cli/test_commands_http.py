@@ -31,7 +31,7 @@ class TestReviewListHTTP:
         """review list calls client.list_digests with pending_review status."""
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
-        mock_client.list_digests.return_value = {"digests": [], "total": 0}
+        mock_client.list_digests.return_value = []
 
         result = runner.invoke(app, ["review", "list"])
         assert result.exit_code == 0
@@ -42,22 +42,19 @@ class TestReviewListHTTP:
         """review list renders returned digests."""
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
-        mock_client.list_digests.return_value = {
-            "digests": [
-                {
-                    "id": 1,
-                    "digest_type": "daily",
-                    "title": "Test Digest",
-                    "status": "pending_review",
-                    "period_start": "2025-01-15",
-                    "period_end": "2025-01-16",
-                    "newsletter_count": 5,
-                    "revision_count": 0,
-                    "created_at": "2025-01-15 10:00",
-                }
-            ],
-            "total": 1,
-        }
+        mock_client.list_digests.return_value = [
+            {
+                "id": 1,
+                "digest_type": "daily",
+                "title": "Test Digest",
+                "status": "pending_review",
+                "period_start": "2025-01-15",
+                "period_end": "2025-01-16",
+                "newsletter_count": 5,
+                "revision_count": 0,
+                "created_at": "2025-01-15 10:00",
+            }
+        ]
 
         result = runner.invoke(app, ["review", "list"])
         assert result.exit_code == 0
@@ -183,14 +180,35 @@ class TestPodcastListScriptsHTTP:
         """podcast list-scripts calls client.list_scripts."""
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
-        mock_client.list_scripts.return_value = {
-            "scripts": [],
-            "total": 0,
-        }
+        mock_client.list_scripts.return_value = []
 
         result = runner.invoke(app, ["podcast", "list-scripts"])
         assert result.exit_code == 0
         mock_client.list_scripts.assert_called_once()
+
+    @patch("src.cli.api_client.get_api_client")
+    def test_list_scripts_displays_rows(self, mock_get_client: MagicMock) -> None:
+        """list-scripts renders a populated bare-array response without crashing."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.list_scripts.return_value = [
+            {
+                "id": 9,
+                "digest_id": 3,
+                "title": "Weekly AI Roundup",
+                "length": "standard",
+                "word_count": 1200,
+                "status": "completed",
+                "created_at": "2025-01-15 10:00",
+            }
+        ]
+
+        result = runner.invoke(app, ["podcast", "list-scripts"])
+        # Exit 0 proves the populated bare-array path rendered without the
+        # pre-fix `'list' object has no attribute 'get'` crash. (Rich truncates
+        # cell text to terminal width, so assert on the stable header.)
+        assert result.exit_code == 0
+        assert "Podcast Scripts" in result.output
 
 
 # ---------------------------------------------------------------------------

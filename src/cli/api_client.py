@@ -60,6 +60,11 @@ class ApiClient:
             base_url=base_url,
             timeout=httpx.Timeout(timeout, connect=10.0),
             headers=headers,
+            # FastAPI's redirect_slashes issues a 307 from no-slash to
+            # trailing-slash collection routes (e.g. /api/v1/digests ->
+            # /api/v1/digests/). httpx does not follow redirects by default,
+            # which would surface the 307 as an HTTPStatusError.
+            follow_redirects=True,
         )
 
     def health_check(self) -> bool:
@@ -145,12 +150,13 @@ class ApiClient:
 
     # ── Digests (read) ──────────────────────────────────────────────────
 
-    def list_digests(self, **params: Any) -> dict[str, Any]:
-        """GET /api/v1/digests — list digests."""
+    def list_digests(self, **params: Any) -> list[dict[str, Any]]:
+        """GET /api/v1/digests/ — list digests (returns a JSON array)."""
         query = {k: v for k, v in params.items() if v is not None}
-        resp = self._client.get("/api/v1/digests", params=query)
+        resp = self._client.get("/api/v1/digests/", params=query)
         resp.raise_for_status()
-        return self._resp_json(resp)
+        data: list[dict[str, Any]] = resp.json()
+        return data
 
     def get_digest(self, digest_id: int) -> dict[str, Any]:
         """GET /api/v1/digests/{digest_id} — get digest details."""
@@ -183,12 +189,13 @@ class ApiClient:
         resp.raise_for_status()
         return self._resp_json(resp)
 
-    def list_scripts(self, **params: Any) -> dict[str, Any]:
-        """GET /api/v1/scripts — list podcast scripts."""
+    def list_scripts(self, **params: Any) -> list[dict[str, Any]]:
+        """GET /api/v1/scripts/ — list podcast scripts (returns a JSON array)."""
         query = {k: v for k, v in params.items() if v is not None}
-        resp = self._client.get("/api/v1/scripts", params=query)
+        resp = self._client.get("/api/v1/scripts/", params=query)
         resp.raise_for_status()
-        return self._resp_json(resp)
+        data: list[dict[str, Any]] = resp.json()
+        return data
 
     # ── Settings ──────────────────────────────────────────────────────
 
@@ -252,10 +259,48 @@ class ApiClient:
             "GET", "/api/v1/kb/search", params={"q": query, "limit": limit}
         )
 
+    def kb_list_topics(self, **params: Any) -> list[dict[str, Any]]:
+        """GET /api/v1/kb/topics — list topics (returns a JSON array of TopicSummary)."""
+        query = {k: v for k, v in params.items() if v is not None}
+        resp = self._client.get("/api/v1/kb/topics", params=query)
+        resp.raise_for_status()
+        data: list[dict[str, Any]] = resp.json()
+        return data
+
+    def kb_get_topic(self, slug: str) -> dict[str, Any]:
+        """GET /api/v1/kb/topics/{slug} — full TopicResponse (raises 404 if missing)."""
+        resp = self._client.get(f"/api/v1/kb/topics/{slug}")
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    def kb_index(self, category: str | None = None) -> dict[str, Any]:
+        """GET /api/v1/kb/index — cached KB index markdown."""
+        params = {"category": category} if category else None
+        resp = self._client.get("/api/v1/kb/index", params=params)
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    def kb_query(self, question: str, file_back: bool = False) -> dict[str, Any]:
+        """POST /api/v1/kb/query — KBQueryResponse shape (LLM-backed Q&A)."""
+        return self._request_with_retry(
+            "POST", "/api/v1/kb/query", json={"question": question, "file_back": file_back}
+        )
+
     def graph_query(self, query: str, limit: int = 20) -> dict[str, Any]:
         """POST /api/v1/graph/query — returns GraphQueryResponse shape."""
         return self._request_with_retry(
             "POST", "/api/v1/graph/query", json={"query": query, "limit": limit}
+        )
+
+    def graph_extract_entities(self, content_id: int) -> dict[str, Any]:
+        """POST /api/v1/graph/extract-entities — push a content summary into the graph.
+
+        Returns GraphExtractResponse shape {entities_added, relationships_added,
+        graph_episode_id}. Raises httpx.HTTPStatusError on 404 (content missing)
+        or 409 (no summary yet) — the caller maps those to user-facing messages.
+        """
+        return self._request_with_retry(
+            "POST", "/api/v1/graph/extract-entities", json={"content_id": content_id}
         )
 
     def references_extract(self, **body: Any) -> dict[str, Any]:

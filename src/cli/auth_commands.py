@@ -31,6 +31,15 @@ from typing import Annotated
 
 import typer
 
+# The Railway CLI plumbing (set a variable, read the linked target) lives in
+# src/cli/railway.py so `aca auth` and `aca deploy sync-secrets` share one
+# implementation. Re-exported under the original private names to keep this
+# module's existing imports and patch-targets stable.
+from src.cli.railway import (
+    linked_target as _railway_linked_target,
+    set_variable as _railway_set_env,
+)
+
 app = typer.Typer(
     name="auth",
     help="Manage OAuth credentials for Gmail/YouTube ingestion.",
@@ -103,43 +112,29 @@ def _run_oauth_flow(provider: str) -> tuple[Path, str]:
     return token_path, token_json
 
 
-def _railway_set_env(key: str, value: str, service: str | None = None) -> None:
-    """Set a Railway env var via ``railway variables --set KEY=VALUE``.
+def _warn_deploy_target(service: str | None) -> None:
+    """Surface the two independent sources of truth before pushing secrets.
 
-    Requires either ``railway link`` to have been run in the current
-    directory, OR ``RAILWAY_TOKEN`` to be set in the environment. The
-    railway CLI itself must be installed.
-
-    We do not echo the value back — env vars set via this path are
-    typically multi-kilobyte JSON blobs that would flood the terminal.
+    ``--deploy`` writes to whatever Railway project ``railway link`` points at,
+    which is *independent* of the active profile's ``api_base_url``. Showing
+    both prevents pushing OAuth tokens to the wrong project/service.
     """
-    if not shutil.which("railway"):
-        typer.echo(
-            "railway CLI not found in PATH. Install with:\n"
-            "  brew install railway     (macOS)\n"
-            "  npm install -g @railway/cli\n"
-            "Or see https://docs.railway.com/guides/cli",
-            err=True,
-        )
-        raise typer.Exit(1)
+    from src.config.settings import get_active_profile_name, get_settings
 
-    cmd = ["railway", "variables", "--set", f"{key}={value}"]
-    if service:
-        cmd.extend(["--service", service])
+    profile = get_active_profile_name() or "(none)"
+    api_base_url = get_settings().api_base_url
+    linked = _railway_linked_target()
+    linked_desc = linked or "(unknown — railway not linked or CLI unavailable)"
+    target_service = service or "(default service)"
 
-    try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
-    except subprocess.CalledProcessError as e:
-        typer.echo(
-            f"`railway variables --set {key}=...` failed (exit {e.returncode}):\n"
-            f"  stderr: {e.stderr.strip() or '(empty)'}\n"
-            "Make sure you've run `railway link` in this directory or set RAILWAY_TOKEN.",
-            err=True,
-        )
-        raise typer.Exit(1) from e
-
-    target = f" on service {service}" if service else ""
-    typer.echo(f"Railway env var {key} set{target}.")
+    typer.echo(
+        "\nDeploy target — please confirm before secrets are pushed:\n"
+        f"  Active profile : {profile}  (api_base_url: {api_base_url})\n"
+        f"  Railway link   : {linked_desc}\n"
+        f"  Railway service: {target_service}\n"
+        "  NOTE: --deploy pushes to the *linked Railway project* above, which is\n"
+        "  independent of the profile's api_base_url. Make sure they match.\n"
+    )
 
 
 def _do_auth(
@@ -157,6 +152,8 @@ def _do_auth(
             f"  aca auth {provider} --deploy"
         )
         return
+
+    _warn_deploy_target(service)
 
     cfg = PROVIDERS[provider]
     _railway_set_env(str(cfg["token_env"]), token_json, service=service)

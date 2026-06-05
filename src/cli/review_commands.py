@@ -26,7 +26,7 @@ from src.cli.adapters import (
     process_revision_turn_sync,
     start_revision_session_sync,
 )
-from src.cli.output import is_direct_mode, is_json_mode, output_result
+from src.cli.output import guard_remote_backend, is_direct_mode, is_json_mode, output_result
 
 app = typer.Typer(help="Review and revise digests.")
 
@@ -270,6 +270,7 @@ def _display_digest_content_from_dict(digest: dict[str, Any]) -> None:
 
 def _list_reviews_direct() -> None:
     """List pending reviews via direct service calls (legacy path)."""
+    guard_remote_backend("review list")
     try:
         digests = list_pending_reviews_sync()
     except Exception as e:
@@ -277,9 +278,10 @@ def _list_reviews_direct() -> None:
         raise typer.Exit(1)
 
     if not digests:
-        typer.echo("No digests pending review.")
         if is_json_mode():
             output_result({"digests": [], "count": 0})
+        else:
+            typer.echo("No digests pending review.")
         return
 
     if is_json_mode():
@@ -334,6 +336,7 @@ def _list_reviews_direct() -> None:
 
 def _view_review_direct(digest_id: int) -> None:
     """View a digest via direct service calls (legacy path)."""
+    guard_remote_backend("review view")
     try:
         digest = get_digest_sync(digest_id)
     except Exception as e:
@@ -372,8 +375,7 @@ def list_reviews() -> None:
         from src.cli.api_client import get_api_client
 
         client = get_api_client()
-        resp = client.list_digests(status="pending_review")
-        digests: list[dict[str, Any]] = resp.get("digests", resp.get("items", []))
+        digests: list[dict[str, Any]] = client.list_digests(status="pending_review")
     except httpx.ConnectError:
         if not is_json_mode():
             from rich.console import Console
@@ -385,9 +387,10 @@ def list_reviews() -> None:
         return
 
     if not digests:
-        typer.echo("No digests pending review.")
         if is_json_mode():
             output_result({"digests": [], "count": 0})
+        else:
+            typer.echo("No digests pending review.")
         return
 
     if is_json_mode():

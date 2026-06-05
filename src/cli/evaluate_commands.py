@@ -15,6 +15,8 @@ from typing import Annotated
 
 import typer
 
+from src.cli.output import guard_remote_backend
+
 app = typer.Typer(
     name="evaluate",
     help="LLM router evaluation — datasets, judging, and calibration",
@@ -30,6 +32,7 @@ def list_datasets(
     ] = None,
 ) -> None:
     """List evaluation datasets."""
+    guard_remote_backend("evaluate list-datasets")
     from src.services.evaluation_service import EvaluationService
     from src.storage.database import get_db
 
@@ -66,6 +69,7 @@ def create_dataset(
     ] = "claude-haiku-4-5",
 ) -> None:
     """Create a new evaluation dataset."""
+    guard_remote_backend("evaluate create-dataset")
     from src.services.evaluation_service import EvaluationService
     from src.storage.database import get_db
 
@@ -97,6 +101,7 @@ def run_evaluation(
 
     Requires a database connection and configured LLM provider.
     """
+    guard_remote_backend("evaluate run")
     import asyncio
 
     from src.evaluation.consensus import ConsensusEngine
@@ -156,6 +161,7 @@ def calibrate(
     ] = 0.95,
 ) -> None:
     """Calibrate routing threshold for a step from evaluation data."""
+    guard_remote_backend("evaluate calibrate")
     from src.evaluation.calibrator import ThresholdCalibrator
     from src.models.evaluation import (
         EvaluationConsensus,
@@ -258,6 +264,7 @@ def compare(
     ] = 0.001,
 ) -> None:
     """Compare cost savings at a given threshold."""
+    guard_remote_backend("evaluate compare")
     from src.evaluation.calibrator import ThresholdCalibrator
     from src.models.evaluation import RoutingDecision
     from src.storage.database import SessionLocal
@@ -304,6 +311,7 @@ def report(
     ] = None,
 ) -> None:
     """Generate cost savings report from routing decisions."""
+    guard_remote_backend("evaluate report")
     from src.services.evaluation_service import EvaluationService
     from src.storage.database import get_db
 

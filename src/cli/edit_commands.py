@@ -22,7 +22,7 @@ from typing import Annotated, Any
 
 import typer
 
-from src.cli.output import is_json_mode, output_result
+from src.cli.output import guard_remote_backend, is_json_mode, output_result
 
 app = typer.Typer(help="Edit content, summaries, digests, and scripts.")
 
@@ -63,6 +63,7 @@ def edit_content(
     status: Annotated[str | None, typer.Option(help="New status")] = None,
 ) -> None:
     """Update fields on a content item."""
+    guard_remote_backend("edit content")
     from src.models.content import ContentStatus, ContentUpdate
     from src.services.content_service import ContentService
     from src.storage.database import get_db
@@ -145,6 +146,7 @@ def edit_summary(
     Use --feedback to trigger AI re-summarization with guidance.
     Other flags perform direct field updates.
     """
+    guard_remote_backend("edit summary")
     from src.models.summary import Summary
     from src.storage.database import get_db
 
@@ -245,6 +247,7 @@ def edit_digest(
     ] = None,
 ) -> None:
     """Directly update digest fields."""
+    guard_remote_backend("edit digest")
     from src.models.digest import Digest
     from src.storage.database import get_db
 
@@ -303,6 +306,7 @@ def edit_digest_section(
 
     Use --feedback for AI revision, --content for direct replacement.
     """
+    guard_remote_backend("edit digest-section")
     import asyncio
 
     if feedback and content:
@@ -386,6 +390,7 @@ def edit_script_section(
 
     Use --feedback for AI revision, --dialogue for direct replacement.
     """
+    guard_remote_backend("edit script-section")
     import asyncio
 
     from src.models.podcast import DialogueTurn, ScriptRevisionRequest
