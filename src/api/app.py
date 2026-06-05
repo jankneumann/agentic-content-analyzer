@@ -119,29 +119,32 @@ async def lifespan(app: FastAPI):
         register_all_handlers()
         worker_task = asyncio.create_task(run_worker(concurrency=concurrency))
 
-    yield
-
-    # Shutdown: Stop embedded worker
-    if worker_task is not None:
-        worker_task.cancel()
-        try:
-            await worker_task
-        except asyncio.CancelledError:
-            pass
-        logger.info("Embedded worker stopped")
-
-    # Shutdown: Flush and close telemetry
-    from src.telemetry import shutdown_telemetry
-
-    shutdown_telemetry()
-
-    # Close queue connection if it was opened
     try:
-        from src.queue.setup import close_queue
+        yield
+    finally:
+        # Shutdown always runs, even if the app raises during its run phase,
+        # so the worker, telemetry, and queue connection are released cleanly.
+        # Shutdown: Stop embedded worker
+        if worker_task is not None:
+            worker_task.cancel()
+            try:
+                await worker_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Embedded worker stopped")
 
-        await close_queue()
-    except ImportError:
-        pass  # Queue module not available
+        # Shutdown: Flush and close telemetry
+        from src.telemetry import shutdown_telemetry
+
+        shutdown_telemetry()
+
+        # Close queue connection if it was opened
+        try:
+            from src.queue.setup import close_queue
+
+            await close_queue()
+        except ImportError:
+            pass  # Queue module not available
 
 
 app = FastAPI(

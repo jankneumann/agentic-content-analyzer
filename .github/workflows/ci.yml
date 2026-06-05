@@ -28,7 +28,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system ruff mypy
+          # Pin linter versions so an unpinned upgrade can't silently break CI
+          # (e.g. a new preview rule landing on a fresh ruff release).
+          uv pip install --system ruff==0.15.15 mypy==2.1.0
 
       - name: Run Ruff linter
         run: ruff check src/
