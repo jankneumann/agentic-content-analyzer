@@ -1,5 +1,12 @@
-"""Source curation: health-check RSS feeds and blog scrapers, then safely
-disable dead sources and fix fixable URLs in the hand-curated sources.d/ YAML.
+"""Source curation: health-check RSS feeds (blog *and* YouTube channel feeds)
+and blog scrapers, then safely disable dead sources and fix fixable URLs in the
+hand-curated sources.d/ YAML.
+
+The same engine serves blog RSS (``rss.yaml``) and YouTube channel RSS
+(``youtube_rss.yaml``): both are real RSS/Atom feeds whose source objects expose
+``url``/``name``/``enabled``, so classification and the line-based YAML mutation
+are shared. Only the EMPTY-feed URL fixes are source-flavored (Reddit ``/.rss``,
+YouTube channel-page → ``feeds/videos.xml``).
 
 Two concerns kept separate:
   - **classify**: fetch each feed/blog and bucket it (OK/FAIL/EMPTY/STALE).
@@ -225,6 +232,36 @@ def _reddit_rss_fix(url: str) -> str | None:
     return f"{trimmed}/.rss"
 
 
+# A YouTube *channel page* URL — what people usually copy from the address bar —
+# rather than the channel's Atom feed. ``/channel/UC...`` and (handle-less)
+# ``/c/...`` legacy paths only; ``@handle`` can't be turned into a feed without
+# resolving the channel id via the API, so it's left for manual review.
+_YT_CHANNEL_PATH = re.compile(r"^/channel/(?P<cid>UC[\w-]+)/?$")
+
+
+def _youtube_channel_rss_fix(url: str) -> str | None:
+    """A YouTube channel-page URL (``/channel/UC...``) isn't a feed — feedparser
+    yields 0 entries (EMPTY). Rewrite it to the channel's Atom feed.
+
+    Returns the fixed feed URL, or None when the URL is already a feed (or not a
+    recognizable YouTube channel-page URL).
+    """
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower().removeprefix("www.")
+    if host not in ("youtube.com", "m.youtube.com"):
+        return None
+    m = _YT_CHANNEL_PATH.match(parsed.path)
+    if not m:
+        return None
+    return f"https://www.youtube.com/feeds/videos.xml?channel_id={m.group('cid')}"
+
+
+def _empty_feed_url_fix(url: str) -> str | None:
+    """Best-effort rewrite for a feed that returned 200 but 0 entries, trying the
+    source-flavored fixers in turn. Returns the fixed URL or None."""
+    return _reddit_rss_fix(url) or _youtube_channel_rss_fix(url)
+
+
 def build_curation_plan(
     results: list[FeedHealth],
     *,
@@ -238,6 +275,8 @@ def build_curation_plan(
 
     Exemptions baked in regardless of flags:
       - Reddit EMPTY feeds are *rewritten* (add ``/.rss``), never disabled.
+      - YouTube channel-page EMPTY URLs (``/channel/UC...``) are *rewritten* to
+        the channel's ``feeds/videos.xml`` feed, never disabled.
       - arXiv EMPTY feeds are *kept and flagged* — they return rss+xml but
         feedparser yields 0 entries (format quirk), so disabling would be wrong.
       - BLOCKED (403/429) feeds are *kept and flagged* by default — the block is
@@ -252,7 +291,7 @@ def build_curation_plan(
         elif r.status == FeedStatus.BLOCKED:
             (plan.disable if disable_blocked else plan.keep_flagged).append(r)
         elif r.status == FeedStatus.EMPTY:
-            if fix_urls and (fixed := _reddit_rss_fix(r.url)):
+            if fix_urls and (fixed := _empty_feed_url_fix(r.url)):
                 plan.rewrite.append((r, fixed))
             elif "arxiv.org" in (urlparse(r.url).hostname or ""):
                 plan.keep_flagged.append(r)

@@ -12,6 +12,7 @@ from src.services.source_curator import (
     MovedCandidate,
     _candidate_feed_urls,
     _identity_tokens,
+    _youtube_channel_rss_fix,
     apply_plan_to_text,
     apply_relocations_to_text,
     best_to_candidate,
@@ -42,6 +43,27 @@ def test_reddit_empty_is_rewritten_not_disabled():
     plan = build_curation_plan(results)
     assert plan.disable == []
     assert plan.rewrite == [(results[0], "https://www.reddit.com/r/MachineLearning/.rss")]
+
+
+def test_youtube_channel_page_empty_is_rewritten_to_feed():
+    # a pasted channel-page URL parses to 0 entries -> rewrite to the Atom feed,
+    # never disable (mirrors the Reddit /.rss fix for YouTube sources)
+    results = [_h("https://www.youtube.com/channel/UCabc123_DEF", FeedStatus.EMPTY)]
+    plan = build_curation_plan(results)
+    assert plan.disable == []
+    assert plan.rewrite == [
+        (results[0], "https://www.youtube.com/feeds/videos.xml?channel_id=UCabc123_DEF")
+    ]
+
+
+def test_youtube_videos_xml_empty_is_disabled_not_rewritten():
+    # an actual channel feed that is genuinely empty (no uploads) has no fix and
+    # should be disabled like any other dead feed
+    url = "https://www.youtube.com/feeds/videos.xml?channel_id=UCdeadchannel0000000000"
+    results = [_h(url, FeedStatus.EMPTY)]
+    plan = build_curation_plan(results)
+    assert plan.rewrite == []
+    assert [h.url for h in plan.disable] == [url]
 
 
 def test_arxiv_empty_is_kept_flagged():
@@ -275,6 +297,32 @@ def test_relocation_idempotent_reapply():
     twice, stats = apply_relocations_to_text(once, cands)
     assert twice == once
     assert stats == {"reenabled": 0, "rewritten": 0}
+
+
+def test_youtube_channel_rss_fix_rewrites_channel_page_url():
+    assert (
+        _youtube_channel_rss_fix("https://www.youtube.com/channel/UCabc-123_X")
+        == "https://www.youtube.com/feeds/videos.xml?channel_id=UCabc-123_X"
+    )
+    # trailing slash and m. mobile host both normalize
+    assert (
+        _youtube_channel_rss_fix("https://m.youtube.com/channel/UCabc123/")
+        == "https://www.youtube.com/feeds/videos.xml?channel_id=UCabc123"
+    )
+
+
+def test_youtube_channel_rss_fix_leaves_feeds_and_handles_alone():
+    # already a feed URL -> no fix
+    assert (
+        _youtube_channel_rss_fix(
+            "https://www.youtube.com/feeds/videos.xml?channel_id=UCabc123"
+        )
+        is None
+    )
+    # @handle can't be resolved to a channel id without an API call -> no fix
+    assert _youtube_channel_rss_fix("https://www.youtube.com/@somehandle") is None
+    # non-YouTube host -> no fix
+    assert _youtube_channel_rss_fix("https://example.com/channel/UCabc123") is None
 
 
 def test_identity_tokens_extract_publication_terms():
