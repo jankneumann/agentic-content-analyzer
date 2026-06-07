@@ -6,6 +6,7 @@ Usage:
     aca curate rss --disable-stale  # also disable feeds idle > --stale-days
     aca curate youtube-rss          # health-check youtube_rss.yaml (report only)
     aca curate youtube-rss --apply  # disable dead channels, fix channel-page URLs
+    aca curate youtube-rss --via-api  # check via the YouTube Data API (needs a key)
     aca curate blog                 # validate blog discovery + overlap report
     aca curate find-moved           # web-search for relocated feeds (report only)
     aca curate find-moved --apply   # re-enable live-again feeds, rewrite moved URLs
@@ -160,20 +161,48 @@ def curate_youtube_rss(
         float,
         typer.Option("--timeout", help="Per-feed fetch timeout in seconds."),
     ] = 15.0,
+    via_api: Annotated[
+        bool | None,
+        typer.Option(
+            "--via-api/--via-rss",
+            help="Check through the YouTube Data API instead of the public feed. "
+            "Default: auto (API when a key is configured, else RSS).",
+        ),
+    ] = None,
+    use_oauth: Annotated[
+        bool,
+        typer.Option(
+            "--oauth",
+            help="Use OAuth instead of an API key (only needed for private playlists).",
+        ),
+    ] = False,
 ) -> None:
     """Health-check YouTube channel RSS feeds and optionally disable dead channels.
 
     YouTube channel feeds (``youtube.com/feeds/videos.xml?channel_id=...``) are
-    ordinary Atom feeds, so this reuses the same engine as ``curate rss``:
-    deleted/terminated channels surface as FAIL_HTTP (404) and get disabled;
-    429s are kept-flagged as rate-limiting (not dead); and a pasted channel-page
-    URL (``/channel/UC...``) is auto-rewritten to its feed. Defaults to a gentler
-    concurrency than ``rss`` because YouTube rate-limits bulk fetches sooner.
+    ordinary Atom feeds, so by default this reuses the same engine as
+    ``curate rss``: deleted/terminated channels surface as FAIL_HTTP (404) and get
+    disabled; 429s are kept-flagged as rate-limiting (not dead); and a pasted
+    channel-page URL (``/channel/UC...``) is auto-rewritten to its feed.
+
+    The public feed endpoint is bot-blocked from datacenter IPs, so when a Data
+    API key (``YOUTUBE_API_KEY``/``GOOGLE_API_KEY``) is configured this checks via
+    the authenticated API instead — sidestepping the block and distinguishing
+    dead channels from throttling precisely. Force the transport with
+    ``--via-api`` / ``--via-rss``; non-YouTube feeds in the file fall back to a
+    plain fetch automatically.
     """
     sources = _load_sources().get_youtube_rss_sources()
     if not sources:
         output_result("No YouTube RSS sources found.", success=False)
         raise typer.Exit(1)
+
+    # Auto: prefer the API when credentials exist (or OAuth requested), since the
+    # public feed is unreliable from server IPs; fall back to RSS otherwise.
+    if via_api is None:
+        from src.config.settings import get_settings
+
+        via_api = use_oauth or bool(get_settings().get_youtube_api_key())
 
     _run_feed_curation(
         sources,
@@ -187,6 +216,8 @@ def curate_youtube_rss(
         concurrency=concurrency,
         timeout=timeout,
         feed_noun="channels",
+        via_api=via_api,
+        use_oauth=use_oauth,
     )
 
 
@@ -377,23 +408,40 @@ def _run_feed_curation(
     concurrency: int,
     timeout: float,
     feed_noun: str = "feeds",
+    via_api: bool = False,
+    use_oauth: bool = False,
 ) -> None:
     """Shared health-check → plan → apply → report flow for RSS-style sources.
 
-    Drives both ``curate rss`` and ``curate youtube-rss``: the only differences
-    are the source list/file handed in and the noun used in the report
-    (``feeds`` vs ``channels``).
+    Drives both ``curate rss`` and ``curate youtube-rss``: the differences are
+    the source list/file handed in, the noun used in the report (``feeds`` vs
+    ``channels``), and the transport — ``via_api`` health-checks YouTube sources
+    through the authenticated Data API instead of fetching the public feed.
     """
     from src.services.source_curator import (
         FeedStatus,
         apply_plan_to_file,
         build_curation_plan,
-        check_rss_feeds,
     )
 
-    results = asyncio.run(
-        check_rss_feeds(sources, stale_days=stale_days, concurrency=concurrency, timeout=timeout)
-    )
+    if via_api:
+        from src.services.source_curator import check_youtube_feeds_via_api
+
+        try:
+            results = check_youtube_feeds_via_api(
+                sources, stale_days=stale_days, use_oauth=use_oauth
+            )
+        except RuntimeError as exc:
+            output_result(str(exc), success=False)
+            raise typer.Exit(1)
+    else:
+        from src.services.source_curator import check_rss_feeds
+
+        results = asyncio.run(
+            check_rss_feeds(
+                sources, stale_days=stale_days, concurrency=concurrency, timeout=timeout
+            )
+        )
     plan = build_curation_plan(
         results,
         disable_empty=disable_empty,
@@ -416,6 +464,7 @@ def _run_feed_curation(
             {
                 "file": str(file),
                 "applied": apply,
+                "via": "youtube_api" if via_api else "rss",
                 "checked": len(results),
                 "counts": counts,
                 "disabled": [
@@ -428,7 +477,8 @@ def _run_feed_curation(
         )
         return
 
-    typer.echo(f"Checked {len(results)} {feed_noun} in {file}:")
+    via = "YouTube Data API" if via_api else "RSS"
+    typer.echo(f"Checked {len(results)} {feed_noun} in {file} (via {via}):")
     typer.echo("  " + "  ".join(f"{k}={v}" for k, v in counts.items() if v))
     _echo_group("Will disable" if not apply else "Disabled", plan.disable)
     if plan.rewrite:

@@ -3,7 +3,13 @@ line-based YAML mutation that must preserve comments/ordering."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import httplib2
 import yaml
+from googleapiclient.errors import HttpError
 
 from src.services.source_curator import (
     CurationPlan,
@@ -11,12 +17,15 @@ from src.services.source_curator import (
     FeedStatus,
     MovedCandidate,
     _candidate_feed_urls,
+    _classify_youtube_http_error,
     _identity_tokens,
+    _parse_youtube_feed_ref,
     _youtube_channel_rss_fix,
     apply_plan_to_text,
     apply_relocations_to_text,
     best_to_candidate,
     build_curation_plan,
+    check_youtube_feeds_via_api,
     detect_overlaps,
 )
 
@@ -323,6 +332,116 @@ def test_youtube_channel_rss_fix_leaves_feeds_and_handles_alone():
     assert _youtube_channel_rss_fix("https://www.youtube.com/@somehandle") is None
     # non-YouTube host -> no fix
     assert _youtube_channel_rss_fix("https://example.com/channel/UCabc123") is None
+
+
+# --- YouTube Data API health checking ---
+
+
+def test_parse_youtube_feed_ref_variants():
+    base = "https://www.youtube.com/feeds/videos.xml"
+    assert _parse_youtube_feed_ref(f"{base}?channel_id=UCabc123") == ("channel", "UCabc123")
+    assert _parse_youtube_feed_ref(f"{base}?playlist_id=PLxyz") == ("playlist", "PLxyz")
+    assert _parse_youtube_feed_ref(f"{base}?user=somename") == ("user", "somename")
+    # channel-page URL form is also resolvable to a channel ref
+    assert _parse_youtube_feed_ref("https://www.youtube.com/channel/UCabc123") == (
+        "channel",
+        "UCabc123",
+    )
+    # non-YouTube feed living in youtube_rss.yaml -> not a YouTube ref
+    assert _parse_youtube_feed_ref("https://www.assemblyai.com/blog/rss/") is None
+
+
+def _http_error(status: int, content: bytes = b"{}") -> HttpError:
+    return HttpError(httplib2.Response({"status": status}), content)
+
+
+def test_classify_youtube_http_error_buckets():
+    u, n = "https://yt/feed", "Chan"
+    # 403 with a quota/rate reason is throttling, not death -> BLOCKED
+    quota = _http_error(403, b'{"error":{"errors":[{"reason":"quotaExceeded"}]}}')
+    assert _classify_youtube_http_error(quota, u, n).status == FeedStatus.BLOCKED
+    assert _classify_youtube_http_error(_http_error(429), u, n).status == FeedStatus.BLOCKED
+    # a plain 403/404 is a definitive failure
+    assert _classify_youtube_http_error(_http_error(403), u, n).status == FeedStatus.FAIL_HTTP
+    assert _classify_youtube_http_error(_http_error(404), u, n).status == FeedStatus.FAIL_HTTP
+    # 5xx is transient infrastructure, not a dead channel
+    assert _classify_youtube_http_error(_http_error(503), u, n).status == FeedStatus.FAIL_NET
+
+
+def _yt_source(url, name="Chan", enabled=True):
+    return SimpleNamespace(url=url, name=name, enabled=enabled)
+
+
+def _api_client(channel_resp=None, playlist_resp=None):
+    service = MagicMock()
+    service.channels.return_value.list.return_value.execute.return_value = channel_resp or {}
+    service.playlistItems.return_value.list.return_value.execute.return_value = playlist_resp or {}
+    return SimpleNamespace(service=service)
+
+
+def test_api_check_ok_channel_resolves_uploads_and_freshness():
+    recent = datetime.now(UTC).isoformat()
+    client = _api_client(
+        channel_resp={"items": [{"contentDetails": {"relatedPlaylists": {"uploads": "UUabc"}}}]},
+        playlist_resp={"items": [{"snippet": {"publishedAt": recent}}], "pageInfo": {"totalResults": 30}},
+    )
+    src = _yt_source("https://www.youtube.com/feeds/videos.xml?channel_id=UCabc")
+    [health] = check_youtube_feeds_via_api([src], client=client)
+    assert health.status == FeedStatus.OK
+    assert health.entry_count == 30
+
+
+def test_api_check_terminated_channel_is_fail_http():
+    client = _api_client(channel_resp={"items": []})  # channel not found / terminated
+    src = _yt_source("https://www.youtube.com/feeds/videos.xml?channel_id=UCgone")
+    [health] = check_youtube_feeds_via_api([src], client=client)
+    assert health.status == FeedStatus.FAIL_HTTP
+    assert health.detail == "channel not found"
+
+
+def test_api_check_empty_uploads_is_empty():
+    client = _api_client(
+        channel_resp={"items": [{"contentDetails": {"relatedPlaylists": {"uploads": "UUabc"}}}]},
+        playlist_resp={"items": [], "pageInfo": {"totalResults": 0}},
+    )
+    src = _yt_source("https://www.youtube.com/feeds/videos.xml?channel_id=UCabc")
+    [health] = check_youtube_feeds_via_api([src], client=client)
+    assert health.status == FeedStatus.EMPTY
+
+
+def test_api_check_stale_channel():
+    old = (datetime.now(UTC) - timedelta(days=400)).isoformat()
+    client = _api_client(
+        channel_resp={"items": [{"contentDetails": {"relatedPlaylists": {"uploads": "UUabc"}}}]},
+        playlist_resp={"items": [{"snippet": {"publishedAt": old}}], "pageInfo": {"totalResults": 5}},
+    )
+    src = _yt_source("https://www.youtube.com/feeds/videos.xml?channel_id=UCabc")
+    [health] = check_youtube_feeds_via_api([src], client=client, stale_days=180)
+    assert health.status == FeedStatus.STALE
+
+
+def test_api_check_playlist_source_skips_channel_lookup():
+    recent = datetime.now(UTC).isoformat()
+    client = _api_client(
+        playlist_resp={"items": [{"snippet": {"publishedAt": recent}}], "pageInfo": {"totalResults": 7}},
+    )
+    src = _yt_source("https://www.youtube.com/feeds/videos.xml?playlist_id=PLabc")
+    [health] = check_youtube_feeds_via_api([src], client=client)
+    assert health.status == FeedStatus.OK
+    client.service.channels.assert_not_called()  # playlist ref needs no channel resolve
+
+
+def test_api_check_throttling_keeps_flagged_not_disabled():
+    # a throttled channel must classify as BLOCKED so build_curation_plan keeps it
+    service = MagicMock()
+    service.channels.return_value.list.return_value.execute.side_effect = _http_error(
+        403, b'{"error":{"errors":[{"reason":"rateLimitExceeded"}]}}'
+    )
+    client = SimpleNamespace(service=service)
+    src = _yt_source("https://www.youtube.com/feeds/videos.xml?channel_id=UCabc")
+    [health] = check_youtube_feeds_via_api([src], client=client)
+    assert health.status == FeedStatus.BLOCKED
+    assert build_curation_plan([health]).disable == []
 
 
 def test_identity_tokens_extract_publication_terms():

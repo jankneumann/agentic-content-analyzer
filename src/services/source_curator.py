@@ -168,6 +168,17 @@ async def _check_one_feed(
 
     if status_code is None:
         return FeedHealth(url, name, FeedStatus.FAIL_NET, net_err)
+    return _classify_feed_response(url, name, status_code, text, stale_days=stale_days)
+
+
+def _classify_feed_response(
+    url: str, name: str, status_code: int, text: str, *, stale_days: int
+) -> FeedHealth:
+    """Bucket a fetched feed response (status + body) into a FeedHealth.
+
+    The shared decision used by every transport: the async RSS checker, the sync
+    fallback fetch, and (after mapping freshness) the YouTube Data API checker.
+    """
     if status_code in _BLOCKED_CODES:
         return FeedHealth(url, name, FeedStatus.BLOCKED, str(status_code))
     if status_code >= 400:
@@ -178,7 +189,17 @@ async def _check_one_feed(
     if count == 0:
         return FeedHealth(url, name, FeedStatus.EMPTY, f"{status_code} 0-entries")
 
-    newest = _newest_entry_date(parsed)
+    return _classify_freshness(url, name, count, _newest_entry_date(parsed), stale_days=stale_days)
+
+
+def _classify_freshness(
+    url: str, name: str, count: int, newest: datetime | None, *, stale_days: int
+) -> FeedHealth:
+    """OK vs STALE given the entry count and newest-entry timestamp.
+
+    Transport-agnostic: ``count``/``newest`` come from feedparser for RSS or from
+    the Data API's playlistItems for YouTube, so both share one staleness rule.
+    """
     if newest and (datetime.now(UTC) - newest) > timedelta(days=stale_days):
         age = (datetime.now(UTC) - newest).days
         return FeedHealth(
@@ -210,6 +231,177 @@ async def check_rss_feeds(
             for s in enabled
         ]
         return list(await asyncio.gather(*tasks))
+
+
+# --- YouTube Data API health checking ---
+#
+# The public videos.xml feed is IP/bot-blocked from datacenters (a 403 that has
+# nothing to do with whether the channel is alive). The Data API uses a different
+# host (googleapis.com) and authenticates with an API key / OAuth, so it sidesteps
+# that wall AND returns precise signals: a terminated channel yields an empty
+# items list, and throttling yields explicit quotaExceeded/rateLimitExceeded
+# reasons. Quota cost is ~1-2 units per channel against the default 10k/day.
+
+
+def _parse_youtube_feed_ref(url: str) -> tuple[str, str] | None:
+    """Extract the API lookup key from a YouTube feed URL.
+
+    Returns ``(kind, value)`` where kind is ``channel`` / ``playlist`` / ``user``,
+    or None when the URL isn't a recognizable YouTube channel/playlist reference
+    (e.g. a non-YouTube RSS feed that happens to live in youtube_rss.yaml).
+    """
+    from urllib.parse import parse_qs
+
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower().removeprefix("www.")
+    if not host.endswith("youtube.com"):
+        return None
+
+    qs = parse_qs(parsed.query)
+    if "channel_id" in qs:
+        return ("channel", qs["channel_id"][0])
+    if "playlist_id" in qs:
+        return ("playlist", qs["playlist_id"][0])
+    if "user" in qs:
+        return ("user", qs["user"][0])
+    # channel-page URL form: /channel/UC...
+    if m := _YT_CHANNEL_PATH.match(parsed.path):
+        return ("channel", m.group("cid"))
+    return None
+
+
+def _http_error_status(exc: object) -> int | None:
+    """Best-effort HTTP status from a googleapiclient HttpError across versions."""
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        status = getattr(getattr(exc, "resp", None), "status", None)
+    return int(status) if status is not None else None
+
+
+def _classify_youtube_http_error(exc: object, url: str, name: str) -> FeedHealth:
+    """Map a YouTube Data API HttpError to a FeedHealth bucket.
+
+    Throttling (429, or 403 with a quota/rate reason) is BLOCKED — recoverable,
+    never auto-disabled. A definitive 4xx is FAIL_HTTP; 5xx is FAIL_NET (transient).
+    """
+    status = _http_error_status(exc)
+    content = getattr(exc, "content", b"")
+    if isinstance(content, bytes | bytearray):
+        content = content.decode("utf-8", "ignore")
+    blob = f"{exc} {content}".lower()
+    is_throttle = any(t in blob for t in ("quota", "ratelimit", "rate limit", "userratelimit"))
+
+    if status == 429 or (status == 403 and is_throttle):
+        return FeedHealth(url, name, FeedStatus.BLOCKED, f"{status} throttled")
+    if status and status >= 500:
+        return FeedHealth(url, name, FeedStatus.FAIL_NET, f"HTTP {status}")
+    return FeedHealth(url, name, FeedStatus.FAIL_HTTP, str(status or "HttpError"))
+
+
+def _newest_playlist_date(items: list[dict]) -> datetime | None:
+    """Newest publishedAt across playlistItems snippets (ISO-8601, e.g. ...Z)."""
+    dates: list[datetime] = []
+    for item in items:
+        published = (item.get("snippet") or {}).get("publishedAt")
+        if not published:
+            continue
+        try:
+            dates.append(datetime.fromisoformat(published.replace("Z", "+00:00")))
+        except ValueError:
+            pass
+    return max(dates) if dates else None
+
+
+def _check_one_youtube_api(service: object, source: object, *, stale_days: int) -> FeedHealth:
+    """Health-check a single YouTube source via the Data API."""
+    from googleapiclient.errors import HttpError
+
+    url = getattr(source, "url", "")
+    name = getattr(source, "name", None) or url
+    ref = _parse_youtube_feed_ref(url)
+    if ref is None:
+        # Not a YouTube channel/playlist ref (e.g. a plain RSS feed): fall back to
+        # a synchronous fetch so mixed-source files aren't mis-flagged.
+        return _check_one_feed_sync(url, name, stale_days=stale_days)
+
+    kind, value = ref
+    try:
+        playlist_id = value
+        if kind in ("channel", "user"):
+            key = {"id": value} if kind == "channel" else {"forUsername": value}
+            resp = service.channels().list(part="contentDetails", **key).execute()  # type: ignore[attr-defined]
+            items = resp.get("items", [])
+            if not items:
+                return FeedHealth(url, name, FeedStatus.FAIL_HTTP, "channel not found")
+            playlist_id = items[0]["contentDetails"]["relatedPlaylists"].get("uploads")
+            if not playlist_id:
+                return FeedHealth(url, name, FeedStatus.EMPTY, "no uploads playlist")
+
+        resp = (
+            service.playlistItems()  # type: ignore[attr-defined]
+            .list(part="snippet", playlistId=playlist_id, maxResults=1)
+            .execute()
+        )
+        items = resp.get("items", [])
+        count = resp.get("pageInfo", {}).get("totalResults", len(items))
+        if not items:
+            return FeedHealth(url, name, FeedStatus.EMPTY, "no videos")
+        return _classify_freshness(
+            url, name, count, _newest_playlist_date(items), stale_days=stale_days
+        )
+    except HttpError as exc:
+        return _classify_youtube_http_error(exc, url, name)
+    except Exception as exc:  # network / transport errors
+        return FeedHealth(url, name, FeedStatus.FAIL_NET, type(exc).__name__)
+
+
+def _check_one_feed_sync(url: str, name: str, *, stale_days: int) -> FeedHealth:
+    """Synchronous single-feed fetch+classify (used by the API path's fallback)."""
+    try:
+        with httpx.Client(follow_redirects=True, timeout=DEFAULT_TIMEOUT) as client:
+            resp = client.get(url, headers=_HEADERS)
+    except Exception as exc:
+        return FeedHealth(url, name, FeedStatus.FAIL_NET, type(exc).__name__)
+    return _classify_feed_response(url, name, resp.status_code, resp.text, stale_days=stale_days)
+
+
+def check_youtube_feeds_via_api(
+    sources: list,
+    *,
+    stale_days: int = DEFAULT_STALE_DAYS,
+    use_oauth: bool = False,
+    client: object | None = None,
+) -> list[FeedHealth]:
+    """Health-check YouTube channel/playlist feeds through the YouTube Data API v3.
+
+    Authenticated alternative to ``check_rss_feeds`` for YouTube: avoids the
+    bot-blocked public videos.xml endpoint and classifies dead vs throttled
+    channels precisely. Requires an API key (YOUTUBE_API_KEY/GOOGLE_API_KEY) or,
+    with ``use_oauth``, OAuth credentials (needed only for private playlists).
+
+    Args:
+        sources: source objects with ``url``/``name``/``enabled``.
+        use_oauth: authenticate via OAuth (private content) instead of API key.
+        client: a pre-built YouTubeClient (injected in tests); resolved otherwise.
+
+    Raises:
+        RuntimeError: if no API key / OAuth credentials are available.
+    """
+    enabled = [s for s in sources if getattr(s, "enabled", True)]
+    if client is None:
+        from src.ingestion.youtube import YouTubeClient
+
+        client = YouTubeClient(use_oauth=use_oauth)
+    try:
+        service = client.service  # type: ignore[attr-defined]  # lazy-authenticates
+    except ValueError as exc:  # no credentials configured
+        raise RuntimeError(
+            "YouTube Data API check needs YOUTUBE_API_KEY or GOOGLE_API_KEY "
+            "(or OAuth credentials with --oauth). Set one in .secrets.yaml and run "
+            "under a PROFILE (e.g. PROFILE=local)."
+        ) from exc
+
+    return [_check_one_youtube_api(service, s, stale_days=stale_days) for s in enabled]
 
 
 # --- Curation policy ---

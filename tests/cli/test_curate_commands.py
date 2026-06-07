@@ -92,3 +92,39 @@ class TestCurateYoutubeRss:
         result = runner.invoke(app, ["curate", "youtube-rss"])
         assert result.exit_code == 1
         assert "No YouTube RSS sources found." in result.output
+
+
+class TestCurateYoutubeRssViaApi:
+    @patch("src.services.source_curator.check_youtube_feeds_via_api")
+    @patch("src.cli.curate_commands._load_sources")
+    def test_via_api_uses_data_api_transport(self, mock_load, mock_api, tmp_path):
+        mock_load.return_value = _yt_config()
+        mock_api.return_value = _health_results()
+        feed_file = tmp_path / "youtube_rss.yaml"
+        _write_yt_file(feed_file)
+
+        result = runner.invoke(
+            app, ["curate", "youtube-rss", "--file", str(feed_file), "--via-api", "--apply"]
+        )
+
+        assert result.exit_code == 0
+        assert "via YouTube Data API" in result.output
+        mock_api.assert_called_once()
+        # the API path drives the same plan/apply engine: dead channel disabled
+        data = {s["url"]: s for s in yaml.safe_load(feed_file.read_text())["sources"]}
+        assert data[_DEAD]["enabled"] is False
+
+    @patch("src.services.source_curator.check_youtube_feeds_via_api")
+    @patch("src.cli.curate_commands._load_sources")
+    def test_via_api_missing_credentials_exits(self, mock_load, mock_api, tmp_path):
+        mock_load.return_value = _yt_config()
+        mock_api.side_effect = RuntimeError("YouTube Data API check needs YOUTUBE_API_KEY")
+        feed_file = tmp_path / "youtube_rss.yaml"
+        _write_yt_file(feed_file)
+
+        result = runner.invoke(
+            app, ["curate", "youtube-rss", "--file", str(feed_file), "--via-api"]
+        )
+
+        assert result.exit_code == 1
+        assert "YOUTUBE_API_KEY" in result.output
