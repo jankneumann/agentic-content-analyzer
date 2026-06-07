@@ -100,6 +100,10 @@ duration source and `yt-dlp` fallback; short path = Gemini file-uri with
 `grounding` (default) / `segments` (opt-in). Model-registry freshness is
 handled in a **separate change** (`auto-update-model-registry`) on this branch.
 
+**Gate 2 (approved):** inference path is **AI Studio (`GOOGLE_API_KEY`) only** —
+Vertex AI is documented as a deferred option (see `design.md` §3.5), not built in
+this change.
+
 ## Analysis: quality / cost / rate limits vs. current
 
 Estimates use Gemini video tokenization (~258 tok/frame default res, ~66 low res,
