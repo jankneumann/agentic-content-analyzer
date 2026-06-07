@@ -74,6 +74,11 @@ aca evaluate run <dataset-id>          # Run judge evaluation
 aca evaluate calibrate --step summarization       # Calibrate threshold
 aca evaluate report                    # Cost savings report
 
+# Model registry freshness
+aca models discover                    # Catalog models not yet in the registry
+aca models refresh [--apply]           # Pricing diffs (dry-run default; --apply writes models.yaml)
+aca models propose-default --step <step> --candidate <model> [--approve]  # Gated default swap
+
 # Testing
 pytest                                  # All tests
 pytest tests/api/ -v                   # API tests
