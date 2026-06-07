@@ -155,3 +155,101 @@ class TestGeminiWithVideoInternal:
                     max_tokens=4096,
                     temperature=0.3,
                 )
+
+
+class TestVideoFpsAndOffsets:
+    """fps + start/end offset passthrough via VideoMetadata (yt-route.5/8)."""
+
+    @staticmethod
+    def _mock_response():
+        resp = MagicMock()
+        resp.candidates = [MagicMock()]
+        resp.candidates[0].content.parts = [MagicMock(text="x" * 200)]
+        resp.usage_metadata = MagicMock(prompt_token_count=100, candidates_token_count=50)
+        return resp
+
+    @pytest.mark.asyncio
+    async def test_fps_and_offsets_in_video_metadata(self, router):
+        with (
+            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch("google.genai.Client") as mock_client_class,
+        ):
+            client = MagicMock()
+            mock_client_class.return_value = client
+            client.models.generate_content.return_value = self._mock_response()
+
+            await router.generate_with_video(
+                model="gemini-2.5-flash",
+                system_prompt="sys",
+                user_prompt="usr",
+                video_url="https://www.youtube.com/watch?v=abc",
+                media_resolution="low",
+                fps=0.1,
+                start_offset="0s",
+                end_offset="2700s",
+            )
+
+            _, kwargs = client.models.generate_content.call_args
+            video_part = kwargs["contents"][0]
+            assert video_part.file_data.file_uri == "https://www.youtube.com/watch?v=abc"
+            assert video_part.video_metadata.fps == pytest.approx(0.1)
+            assert video_part.video_metadata.start_offset == "0s"
+            assert video_part.video_metadata.end_offset == "2700s"
+
+    @pytest.mark.asyncio
+    async def test_no_fps_omits_video_metadata(self, router):
+        with (
+            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch("google.genai.Client") as mock_client_class,
+        ):
+            client = MagicMock()
+            mock_client_class.return_value = client
+            client.models.generate_content.return_value = self._mock_response()
+
+            await router.generate_with_video(
+                model="gemini-2.5-flash",
+                system_prompt="sys",
+                user_prompt="usr",
+                video_url="https://www.youtube.com/watch?v=abc",
+            )
+            _, kwargs = client.models.generate_content.call_args
+            assert kwargs["contents"][0].video_metadata is None
+
+
+class TestGenerateWithGrounding:
+    """Google Search grounding path for long videos (yt-route.7)."""
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_gemini(self, router):
+        with pytest.raises(ValueError, match="only supports Gemini models"):
+            await router.generate_with_grounding(
+                model="claude-sonnet-4-5",
+                system_prompt="s",
+                user_prompt="p",
+            )
+
+    @pytest.mark.asyncio
+    async def test_builds_google_search_tool(self, router):
+        resp = MagicMock()
+        resp.candidates = [MagicMock()]
+        resp.candidates[0].content.parts = [MagicMock(text="grounded summary " * 20)]
+        resp.usage_metadata = MagicMock(prompt_token_count=80, candidates_token_count=40)
+
+        with (
+            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch("google.genai.Client") as mock_client_class,
+        ):
+            client = MagicMock()
+            mock_client_class.return_value = client
+            client.models.generate_content.return_value = resp
+
+            result = await router.generate_with_grounding(
+                model="gemini-2.5-flash",
+                system_prompt="sys",
+                user_prompt="summarize https://www.youtube.com/watch?v=abc",
+            )
+
+            assert result.text
+            _, kwargs = client.models.generate_content.call_args
+            tools = kwargs["config"].tools
+            assert tools and tools[0].google_search is not None
