@@ -1,0 +1,171 @@
+openapi: 3.1.0
+info:
+  title: agentic-content-analyzer — ingestion filtering contract additions
+  version: 1.0.0
+  description: |
+    Delta contract for endpoints added or modified by the
+    add-ingestion-filtering-prioritization change. Non-delta endpoints are not
+    repeated here — this file only documents what changes.
+paths:
+  /api/v1/contents:
+    get:
+      summary: List content items (delta — new query params and response fields)
+      parameters:
+        - name: filter_decision
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [keep, skip]
+          description: Only return rows whose filter decision matches
+        - name: priority_bucket
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [high, normal, low]
+        - name: filter_tier
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [heuristic, embedding, llm]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Content"
+                  total:
+                    type: integer
+              examples:
+                basic:
+                  value:
+                    total: 1
+                    items:
+                      - id: 42
+                        source_type: rss
+                        title: "On the limits of retrieval-augmented generation"
+                        status: PARSED
+                        filter_decision: keep
+                        filter_score: 0.72
+                        filter_tier: embedding
+                        filter_reason: "embedding.similarity:0.72"
+                        priority_bucket: high
+                        filtered_at: "2026-04-19T10:15:00Z"
+
+  /api/v1/contents/{content_id}/filter/explain:
+    get:
+      summary: Return per-tier detail for a content item's filter decision
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FilterExplanation"
+        "404":
+          description: Content not found
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /api/v1/filter/rerun:
+    post:
+      summary: Re-evaluate filter decisions for a persona over a time range
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [persona_id]
+              properties:
+                persona_id: { type: string }
+                since:     { type: string, format: date-time }
+                dry_run:   { type: boolean, default: false }
+      responses:
+        "202":
+          description: Accepted — re-run enqueued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job_id]
+                properties:
+                  job_id:   { type: string }
+                  persona_id: { type: string }
+
+components:
+  schemas:
+    Content:
+      type: object
+      description: "Delta fields only — existing fields preserved."
+      properties:
+        id: { type: integer }
+        source_type: { type: string }
+        title: { type: string }
+        status:
+          type: string
+          enum: [PENDING, PARSING, PARSED, PROCESSING, COMPLETED, FAILED, FILTERED_OUT]
+        filter_decision:
+          type: [string, "null"]
+          enum: [keep, skip, null]
+        filter_score:
+          type: [number, "null"]
+          minimum: 0.0
+          maximum: 1.0
+        filter_tier:
+          type: [string, "null"]
+          enum: [heuristic, embedding, llm, null]
+        filter_reason: { type: [string, "null"] }
+        priority_bucket:
+          type: [string, "null"]
+          enum: [high, normal, low, null]
+        filtered_at: { type: [string, "null"], format: date-time }
+
+    FilterExplanation:
+      type: object
+      required: [content_id, decision, tier, score, reason, tiers]
+      properties:
+        content_id: { type: integer }
+        decision:   { type: string, enum: [keep, skip] }
+        tier:       { type: string, enum: [heuristic, embedding, llm] }
+        score:      { type: number, minimum: 0, maximum: 1 }
+        reason:     { type: string }
+        priority_bucket:
+          type: [string, "null"]
+          enum: [high, normal, low, null]
+        tiers:
+          type: array
+          items:
+            type: object
+            required: [tier, score, reason, ran]
+            properties:
+              tier:   { type: string, enum: [heuristic, embedding, llm] }
+              ran:    { type: boolean }
+              score:  { type: [number, "null"] }
+              reason: { type: [string, "null"] }
+
+    Problem:
+      type: object
+      description: RFC 7807 problem details
+      required: [type, title, status]
+      properties:
+        type:     { type: string, format: uri }
+        title:    { type: string }
+        status:   { type: integer }
+        detail:   { type: string }
+        instance: { type: string, format: uri }
