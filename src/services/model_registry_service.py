@@ -257,3 +257,85 @@ class ModelRegistryService:
     def get_last_refresh(self) -> PricingRefreshReport | None:
         """Get the last pricing refresh report, if any."""
         return _last_refresh_report
+
+    # ------------------------------------------------------------------
+    # Catalog discovery + risk-gated promotion (auto-update-model-registry)
+    # ------------------------------------------------------------------
+
+    def discover_candidates(self, providers: list[str] | None = None) -> Any:
+        """Enumerate provider catalogs and report models absent from the registry.
+
+        Returns a ``DiscoveryReport`` (see model_catalog_discovery). Pricing/spec
+        enrichment for a candidate is done on demand via ``refresh_pricing``.
+        """
+        from src.services.model_catalog_discovery import ModelCatalogDiscovery
+
+        return ModelCatalogDiscovery().discover(providers=providers)
+
+    async def apply_pricing(self, providers: list[str] | None = None) -> PricingRefreshReport:
+        """Apply pricing/spec diffs to existing registry models (low-risk, auto).
+
+        Pricing diffs are LOW risk per the policy, so this is the only writeback
+        that applies without an approval gate. New models and default swaps are
+        handled by ``propose_default`` and remain gated.
+        """
+        return await self.refresh_pricing(providers=providers, dry_run=False)
+
+    def propose_default(
+        self,
+        step: str,
+        candidate: str,
+        *,
+        approved: bool = False,
+        decision: Any = None,
+    ) -> dict[str, Any]:
+        """Propose (and, if approved) swap the default model for a pipeline step.
+
+        Safe by default: a default swap is HIGH risk, so it only takes effect
+        when ``approved`` is True AND, if a promotion ``decision`` is supplied,
+        it recommends the candidate. Applied swaps are written to the
+        ``settings_overrides`` table (key ``model.<step>``) — instant and
+        reversible (delete the row), never editing models.yaml defaults.
+        """
+        from src.config.models import ModelStep
+        from src.services.model_promotion import ChangeKind, classify_change_risk
+
+        result: dict[str, Any] = {
+            "step": step,
+            "candidate": candidate,
+            "risk": classify_change_risk(ChangeKind.DEFAULT_SWAP).value,
+            "applied": False,
+            "status": "pending_approval",
+        }
+
+        # Validate the step and that the candidate exists in the registry.
+        try:
+            ModelStep(step)
+        except ValueError:
+            result["status"] = "rejected"
+            result["reason"] = f"unknown pipeline step '{step}'"
+            return result
+        if candidate not in MODEL_REGISTRY:
+            result["status"] = "rejected"
+            result["reason"] = f"unknown model '{candidate}'"
+            return result
+
+        if decision is not None and not getattr(decision, "recommend", False):
+            result["status"] = "rejected"
+            result["reason"] = "candidate did not pass the promotion gate"
+            result["gate_reasons"] = getattr(decision, "reasons", [])
+            return result
+
+        if not approved:
+            return result  # pending_approval, no change
+
+        from src.services.settings_service import SettingsService
+
+        SettingsService().set(
+            f"model.{step}",
+            candidate,
+            description=f"auto-update-model-registry: promote {candidate} for {step}",
+        )
+        result["applied"] = True
+        result["status"] = "applied"
+        return result
