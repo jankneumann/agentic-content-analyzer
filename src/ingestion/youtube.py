@@ -362,9 +362,7 @@ class YouTubeClient:
             batch = video_ids[start : start + 50]
             try:
                 response = (
-                    self.service.videos()
-                    .list(part="contentDetails", id=",".join(batch))
-                    .execute()
+                    self.service.videos().list(part="contentDetails", id=",".join(batch)).execute()
                 )
             except HttpError as e:
                 logger.warning(f"Duration probe failed for batch {batch[:3]}...: {e}")

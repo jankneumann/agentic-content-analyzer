@@ -98,15 +98,11 @@ def evaluate_promotion(
 
     parity_ok = inputs.parity_score >= target_parity
     if not parity_ok:
-        reasons.append(
-            f"parity {inputs.parity_score:.2f} < target {target_parity:.2f}"
-        )
+        reasons.append(f"parity {inputs.parity_score:.2f} < target {target_parity:.2f}")
 
     agreement_ok = inputs.agreement_rate >= min_agreement
     if not agreement_ok:
-        reasons.append(
-            f"agreement {inputs.agreement_rate:.2f} < min {min_agreement:.2f}"
-        )
+        reasons.append(f"agreement {inputs.agreement_rate:.2f} < min {min_agreement:.2f}")
 
     # Guard against a zero/negative incumbent cost (treat as no budget ceiling).
     if inputs.cost_incumbent <= 0:
@@ -115,9 +111,7 @@ def evaluate_promotion(
         cost_ratio = inputs.cost_candidate / inputs.cost_incumbent
         cost_ok = cost_ratio <= cost_budget_ratio
         if not cost_ok:
-            reasons.append(
-                f"cost ratio {cost_ratio:.2f} > budget {cost_budget_ratio:.2f}"
-            )
+            reasons.append(f"cost ratio {cost_ratio:.2f} > budget {cost_budget_ratio:.2f}")
 
     recommend = parity_ok and agreement_ok and cost_ok
     if recommend:
