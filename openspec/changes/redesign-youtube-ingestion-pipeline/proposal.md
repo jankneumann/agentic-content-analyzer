@@ -92,6 +92,56 @@ Per decision: implement **both, configurable** — `grounding` (default) and
 `segments` (opt-in). Grounding is cheap and needs no download; segments give
 high fidelity at higher cost/complexity.
 
+### Selected Approach (Gate 1)
+
+Duration-routed processing with: Data API `contentDetails` as the primary
+duration source and `yt-dlp` fallback; short path = Gemini file-uri with
+`fps≈0.1` + timestamped-segment prompt; long path = configurable
+`grounding` (default) / `segments` (opt-in). Model-registry freshness is
+handled in a **separate change** (`auto-update-model-registry`) on this branch.
+
+## Analysis: quality / cost / rate limits vs. current
+
+Estimates use Gemini video tokenization (~258 tok/frame default res, ~66 low res,
+**1 fps default sampling**, ~32 audio-tok/s) and registry prices
+(`gemini-2.5-flash` $0.30/$2.50 per Mtok; `-flash-lite` $0.10/$0.40). Verify
+constants against live Gemini docs at implementation time.
+
+### Correctness cliff (most important)
+At default 1 fps + medium res a video costs ~290 tok/s, so the 1M context window
+is exhausted at **~57 min** (1e6 ÷ 290 ≈ 3448 s). **Videos beyond ~57 min are
+truncated or fail today** — exactly the >45-min class. The redesign fixes this,
+it is not merely an optimization.
+
+### Cost (per video, input-dominated)
+| Video | Current (1 fps) | Proposed short (fps 0.1, low) | Δ |
+|---|---|---|---|
+| 30 min | ~522k tok → $0.16 (flash) | ~70k tok → $0.021 / $0.007 lite | ~7.5× |
+| 45 min | ~783k tok → $0.24 (flash) | ~104k tok → $0.031 / $0.010 lite | ~7.7× |
+| 3 h | exceeds 1M → fails | routes to 3b | — |
+
+3b @ 3 h: `grounding` ≈ $0.001–0.005 + grounding fees (summarizes *about* the
+video, not true viewing); `segments` = 4 short calls ≈ $0.12 flash / $0.04 lite
+(full fidelity, addressable). At ~600 videos/day: current ≈ $90–110/day (long
+videos failing) → proposed ≈ $4–13/day with long videos succeeding.
+
+### Quality
+- Short path gains **timestamped segments + transcription** → citable/quotable,
+  feeds the existing `&t=` deep-link affordance; output shape becomes predictable
+  per video instead of varying with the Gemini/transcript fallback.
+- Regression risk: fps 0.1 under-samples fast on-screen content (code/slides);
+  mitigated by per-source `video_fps` override (keep 0.1 for AI-news, raise for
+  demo/tutorial channels).
+
+### Rate limits
+- YouTube Data API: `videos.list(contentDetails)` batches 50 ids/unit → ~13
+  units/day for all sources vs 10,000/day quota = negligible. RSS path newly uses
+  quota only when an API key is present; `yt-dlp` fallback avoids it.
+- Gemini TPM: fps 0.1 cuts per-video tokens ~5× → **relaxes** the binding TPM
+  constraint. `segments` multiplies RPM → keep `youtube_max_concurrent_videos`.
+- `yt-dlp`: no API quota but IP-throttle/bot-detection risk → API-first, yt-dlp
+  fallback only.
+
 ## Impact
 
 - **Behavior change:** processing path now depends on duration; output for short

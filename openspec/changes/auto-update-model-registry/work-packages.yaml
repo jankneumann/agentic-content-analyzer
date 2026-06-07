@@ -1,0 +1,39 @@
+packages:
+  - id: wp-main
+    name: "Auto-update model registry — full scope"
+    description: >
+      Live catalog discovery, candidate enrichment, validate-before-promote gate
+      over the eval harness, risk-gated writeback, and scheduled refresh.
+    tasks:
+      - "1.1"
+      - "1.2"
+      - "1.3"
+      - "2.1"
+      - "2.2"
+      - "2.3"
+      - "3.1"
+      - "3.2"
+      - "4.1"
+      - "4.2"
+      - "4.3"
+      - "4.4"
+    priority: 1
+    dependencies: []
+    scope:
+      write_allow:
+        - "src/services/model_catalog_discovery.py"
+        - "src/services/model_registry_service.py"
+        - "src/services/model_pricing_extractor.py"
+        - "src/services/model_promotion_service.py"
+        - "src/cli/**"
+        - "src/agents/scheduler/**"
+        - "settings/approval.yaml"
+        - "settings/schedule.yaml"
+        - "tests/**"
+        - "docs/MODEL_CONFIGURATION.md"
+        - "CLAUDE.md"
+      read_allow:
+        - "src/**"
+        - "settings/**"
+        - "openspec/**"
+    verification: tier_b
