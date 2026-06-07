@@ -163,6 +163,10 @@ class IngestRequest(BaseModel):
     session_cookie: str | None = Field(default=None, description="Substack session cookie")
     public_only: bool = Field(default=False, description="YouTube: skip private playlists")
     url: str | None = Field(default=None, description="Target URL (url source)")
+    auto_route: bool = Field(
+        default=True,
+        description="Auto-route the URL to the appropriate handler (url source)",
+    )
     title: str | None = Field(default=None, description="Content title override")
     tags: list[str] | None = Field(default=None, description="Content tags (url)")
     notes: str | None = Field(default=None, description="Content notes (url)")
@@ -220,6 +224,7 @@ async def _enqueue_ingestion_job(request: IngestRequest) -> int:
         "context_size",
         "session_cookie",
         "url",
+        "auto_route",
         "title",
         "tags",
         "notes",

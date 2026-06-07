@@ -1086,13 +1086,18 @@ def files(
 
 
 def _url_direct(
-    target_url: str, title: str | None, tags: list[str] | None, notes: str | None
+    target_url: str,
+    title: str | None,
+    tags: list[str] | None,
+    notes: str | None,
+    auto_route: bool = True,
 ) -> None:
     """Direct URL ingestion.
 
     Reads the canonical IngestionResponse envelope from the orchestrator;
-    ``details`` carries content_id/status/duplicate. Rich mode renders a
-    one-line summary with the resolved content_id.
+    ``details`` carries content_id/status/duplicate (web-page route) or
+    routed_to/items_ingested (YouTube/RSS routes). Rich mode renders a
+    one-line summary keyed off ``details.routed_to``.
     """
     guard_remote_backend("ingest url")
     import time
@@ -1108,7 +1113,9 @@ def _url_direct(
     try:
         from src.ingestion.orchestrator import ingest_url
 
-        response = ingest_url(url=target_url, title=title, tags=tags, notes=notes)
+        response = ingest_url(
+            url=target_url, title=title, tags=tags, notes=notes, auto_route=auto_route
+        )
     except Exception as exc:
         elapsed_ms = int((time.monotonic() - started_mono) * 1000)
         response = IngestionResponse(
@@ -1138,8 +1145,34 @@ def _url_direct(
         output_result(response.model_dump(mode="json"))
     else:
         details = response.details
+        routed_to = details.get("routed_to", "webpage")
         content_id = details.get("content_id")
-        if details.get("duplicate"):
+
+        if response.status == "error":
+            msg = response.errors[0].message if response.errors else "unknown error"
+            console.print(f"[red]URL ingestion failed:[/red] {msg}")
+            raise typer.Exit(1)
+
+        if routed_to == "rss_feed":
+            console.print(
+                f"[green]Routed to RSS ingestion.[/green] "
+                f"{details.get('items_ingested', 0)} item(s) ingested."
+            )
+        elif routed_to == "youtube_playlist":
+            console.print(
+                f"[green]Routed to YouTube playlist ingestion.[/green] "
+                f"{details.get('items_ingested', 0)} video(s) ingested."
+            )
+        elif routed_to == "youtube_video":
+            if details.get("duplicate"):
+                console.print(
+                    f"[yellow]YouTube video already ingested.[/yellow] Content ID: {content_id}"
+                )
+            else:
+                console.print(
+                    f"[green]Routed to YouTube analysis.[/green] Content ID: {content_id}"
+                )
+        elif details.get("duplicate"):
             console.print(f"[yellow]URL already exists.[/yellow] Content ID: {content_id}")
         else:
             console.print(
@@ -1165,10 +1198,23 @@ def url(
         str | None,
         typer.Option("--notes", "-n", help="Notes to attach to the content."),
     ] = None,
+    no_route: Annotated[
+        bool,
+        typer.Option(
+            "--no-route",
+            help="Disable auto-routing; always extract as a generic web page.",
+        ),
+    ] = False,
 ) -> None:
-    """Ingest a single URL into the content pipeline."""
+    """Ingest a single URL into the content pipeline.
+
+    By default the URL is auto-routed to the appropriate handler (YouTube
+    video/playlist, RSS feed, or generic web-page extraction). Pass
+    ``--no-route`` to force generic web-page extraction.
+    """
+    auto_route = not no_route
     if is_direct_mode():
-        return _url_direct(target_url, title, tags, notes)
+        return _url_direct(target_url, title, tags, notes, auto_route=auto_route)
 
     try:
         params: dict[str, Any] = {"url": target_url}
@@ -1178,9 +1224,13 @@ def url(
             params["tags"] = tags
         if notes is not None:
             params["notes"] = notes
+        # Only send auto_route when overriding the server default (True) to keep
+        # the common wire format unchanged.
+        if not auto_route:
+            params["auto_route"] = False
         _ingest_via_api("url", params, "URL ingestion")
     except httpx.ConnectError:
-        _url_direct(target_url, title, tags, notes)
+        _url_direct(target_url, title, tags, notes, auto_route=auto_route)
 
 
 # ---------------------------------------------------------------------------

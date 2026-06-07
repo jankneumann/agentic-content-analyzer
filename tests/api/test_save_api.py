@@ -135,6 +135,102 @@ class TestSaveURLEndpoint:
         assert response.status_code == 422
 
 
+class TestSaveURLAutoRouting:
+    """Tests for auto-routing shared URLs to the right handler."""
+
+    def test_save_youtube_url_routes_to_youtube(self, client, db_session):
+        """A shared YouTube video URL is stored as a YOUTUBE row and routed."""
+        with patch(
+            "src.api.save_routes._process_routed_save", new_callable=AsyncMock
+        ) as routed:
+            response = client.post(
+                "/api/v1/content/save-url",
+                json={"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["status"] == "queued"
+        assert "youtube_video" in data["message"]
+
+        content = db_session.query(Content).filter(Content.id == data["content_id"]).first()
+        assert content.source_type == ContentSource.YOUTUBE
+        assert content.source_id == "youtube:dQw4w9WgXcQ"
+        assert content.metadata_json["route"] == "youtube_video"
+        # The routed background task is enqueued, NOT the plain extractor.
+        routed.assert_called_once_with(content.id)
+
+    def test_save_feed_url_routes_to_rss(self, client, db_session):
+        """A shared feed URL is stored as an RSS row and routed."""
+        with patch(
+            "src.api.save_routes._process_routed_save", new_callable=AsyncMock
+        ) as routed:
+            response = client.post(
+                "/api/v1/content/save-url",
+                json={"url": "https://example.com/blog/feed"},
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        content = db_session.query(Content).filter(Content.id == data["content_id"]).first()
+        assert content.source_type == ContentSource.RSS
+        assert content.source_id == "feed:https://example.com/blog/feed"
+        assert content.metadata_json["route"] == "rss_feed"
+        routed.assert_called_once_with(content.id)
+
+    def test_save_plain_url_uses_webpage_path(self, client, db_session):
+        """A regular article URL keeps the original web-page extraction path."""
+        with (
+            patch(
+                "src.api.save_routes._enqueue_extraction", new_callable=AsyncMock
+            ) as extract,
+            patch(
+                "src.api.save_routes._process_routed_save", new_callable=AsyncMock
+            ) as routed,
+        ):
+            response = client.post(
+                "/api/v1/content/save-url",
+                json={"url": "https://example.com/some-article"},
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["message"] == "URL saved. Content extraction in progress."
+        content = db_session.query(Content).filter(Content.id == data["content_id"]).first()
+        assert content.source_type == ContentSource.WEBPAGE
+        extract.assert_called_once_with(content.id)
+        routed.assert_not_called()
+
+    def test_save_youtube_url_dedupes_by_video_id(self, client, db_session):
+        """A youtu.be link dedupes against an existing youtube:<id> row."""
+        existing = Content(
+            source_type=ContentSource.YOUTUBE,
+            source_id="youtube:dQw4w9WgXcQ",
+            source_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            title="Already ingested",
+            markdown_content="transcript",
+            content_hash=generate_markdown_hash("transcript"),
+            status=ContentStatus.PARSED,
+            ingested_at=datetime.now(UTC),
+        )
+        db_session.add(existing)
+        db_session.commit()
+        existing_id = existing.id
+
+        with patch("src.api.save_routes._process_routed_save", new_callable=AsyncMock):
+            response = client.post(
+                "/api/v1/content/save-url",
+                # Different URL form for the same video.
+                json={"url": "https://youtu.be/dQw4w9WgXcQ"},
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["status"] == "exists"
+        assert data["duplicate"] is True
+        assert data["content_id"] == existing_id
+
+
 class TestContentStatusEndpoint:
     """Tests for GET /api/v1/content/{id}/status."""
 

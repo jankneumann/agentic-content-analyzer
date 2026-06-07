@@ -53,6 +53,25 @@ def extract_video_id(url: str) -> str | None:
     return None
 
 
+def extract_playlist_id(url: str) -> str | None:
+    """Extract a playlist ID from a YouTube URL.
+
+    Supports:
+    - https://www.youtube.com/playlist?list=PLAYLIST_ID
+    - https://www.youtube.com/watch?v=VIDEO_ID&list=PLAYLIST_ID
+
+    Args:
+        url: YouTube URL
+
+    Returns:
+        Playlist ID or None if not found.
+    """
+    match = re.search(r"[?&]list=([a-zA-Z0-9_-]+)", url)
+    if match:
+        return match.group(1)
+    return None
+
+
 def extract_timestamp(url: str) -> float | None:
     """Extract timestamp from YouTube URL.
 
