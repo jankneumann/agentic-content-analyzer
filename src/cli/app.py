@@ -38,6 +38,7 @@ from src.cli.ingest_commands import app as ingest_app
 from src.cli.job_commands import app as job_app
 from src.cli.kb_commands import app as kb_app
 from src.cli.manage_commands import app as manage_app
+from src.cli.models_commands import app as models_app
 from src.cli.neon_commands import app as neon_app
 
 # Import output utilities from the shared module (avoids circular imports)
@@ -87,6 +88,7 @@ app.add_typer(sync_app, name="sync")
 app.add_typer(worker_app, name="worker")
 app.add_typer(job_app, name="jobs")
 app.add_typer(evaluate_app, name="evaluate")
+app.add_typer(models_app, name="models")
 app.add_typer(kb_app, name="kb")
 app.add_typer(auth_app, name="auth")
 app.add_typer(curate_app, name="curate")
