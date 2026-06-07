@@ -94,6 +94,33 @@ path's timestamp affordance, but from native video understanding).
   "unknown" and route via a configurable `unknown_duration_strategy`
   (default: `short`, since most RSS channel uploads are short).
 
+### 3.5 Credentials & auth (degradation matrix)
+
+**Important:** a consumer "Google Pro / Gemini Advanced / AI Pro" subscription
+grants no API access — inference always bills against an API key or GCP project.
+Three independent credential axes affect this design:
+
+| Axis | Code today | Options |
+|---|---|---|
+| Gemini inference | `_generate_gemini_with_video` → `genai.Client(api_key=GOOGLE_API_KEY)` (GOOGLE_AI only) | AI Studio key (free/paid) · Vertex (project+ADC) — **no Vertex video branch today** |
+| YouTube discovery + duration | `YouTubeClient`, `videos.list(contentDetails)` | Data API key (public) · OAuth (private + user-project quota) |
+
+Design rules:
+- **AI Studio key is the default inference path.** Free tier has tight RPM/TPM →
+  fps≈0.1 (lower TPM) and `grounding` long-default are the safe choices; paid tier
+  unlocks `segments`.
+- **Vertex is an optional inference branch** (`genai.Client(vertexai=True,
+  project, location)`) — but **YouTube `file_uri` support on Vertex must be
+  verified**; if unsupported, the short/segments paths fall back to grounding (or
+  download→GCS) on Vertex. Treat Vertex video as out-of-scope until verified;
+  document the fallback.
+- **Duration-probe credential ladder:** OAuth (if configured) → Data API key →
+  `yt-dlp` (no Google creds) → unknown→`unknown_duration_strategy`. OAuth vs key
+  is interchangeable for `videos.list`; OAuth additionally unlocks private
+  playlists (existing `visibility: private`).
+- **Long-video default stays `grounding`** because it is the only path that works
+  on the free tier AND survives a Vertex `file_uri` restriction.
+
 ### 4. Config schema (sources.d)
 
 Add to `SourceDefaults` + YouTube source models (`src/config/sources.py`):

@@ -48,6 +48,21 @@ schedule.yaml: refresh_models (cron)
 - **D6 — Audit + versioning**: every writeback bumps the override `version` and
   emits an audit record; `models.yaml` edits are mechanical and minimal-diff.
 
+## Credentials & auth
+
+Discovery is **per-provider-key gated** (already covered by the "degrades without a
+key" scenario). Notes:
+- A consumer "Google Pro / Gemini Advanced" subscription grants **no API access** —
+  discovery needs an actual API key (AI Studio) or GCP project (Vertex).
+- **AI Studio** vs **Vertex** expose different catalog surfaces: AI Studio
+  `models.list()` returns Gemini Developer models; Vertex enumerates publisher
+  models per project/region. `model_catalog_discovery` SHOULD prefer whichever
+  backend the inference path is configured to use, so discovered candidates are
+  actually callable by the pipeline.
+- Pricing enrichment via page-scraping is auth-free, so capability/cost metadata
+  can still be attached even when a list-models key is missing (candidate flagged
+  "discovered via scrape only").
+
 ## Risks / open questions
 
 1. **Provider SDK list-models surfaces differ** — confirm method names/shapes per
