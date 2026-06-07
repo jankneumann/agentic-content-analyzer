@@ -2,6 +2,15 @@ defaults:
   type: youtube_rss
   gemini_summary: true
   gemini_resolution: low
+  # Duration routing (see redesign-youtube-ingestion-pipeline). Defaults shown;
+  # override per-source as needed.
+  video_fps: 0.1                      # short-path frame sampling (~1 frame/10s); set null for Gemini default
+  long_video_threshold_seconds: 2700  # >= 45 min -> long path
+  long_video_strategy: grounding      # grounding (cheap, default) | segments (full fidelity)
+  segment_overlap_seconds: 15
+  unknown_duration_strategy: short
+  # min_duration_seconds: 120         # uncomment to drop very short clips
+  # max_duration_seconds: 14400       # uncomment to drop very long videos
 sources:
 - name: 1littlecoder
   url: https://www.youtube.com/feeds/videos.xml?channel_id=UCpV_X0VrL8-jg3t6wYGS-1g

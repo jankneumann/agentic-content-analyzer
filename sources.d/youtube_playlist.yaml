@@ -3,6 +3,12 @@ defaults:
   gemini_summary: true
   gemini_resolution: default
   proofread: true
+  # Duration routing (see redesign-youtube-ingestion-pipeline). Defaults shown.
+  video_fps: 0.1
+  long_video_threshold_seconds: 2700
+  long_video_strategy: grounding      # grounding (default) | segments
+  segment_overlap_seconds: 15
+  unknown_duration_strategy: short
   hint_terms:
     - Claude
     - Anthropic
