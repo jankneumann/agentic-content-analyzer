@@ -81,6 +81,7 @@ class TestContentStatusEnum:
             "processing",
             "completed",
             "failed",
+            "filtered_out",
         }
         actual_statuses = {status.value for status in ContentStatus}
         assert actual_statuses == expected_statuses

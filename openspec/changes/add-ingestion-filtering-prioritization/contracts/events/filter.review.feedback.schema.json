@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aca.example/contracts/events/filter.review.feedback.schema.json",
+  "title": "FilterReviewFeedback",
+  "description": "Event emitted when a reviewer's digest/content action disagrees or agrees with the original filter decision. v1 is fire-and-forget — log only, no learning.",
+  "type": "object",
+  "required": [
+    "content_id",
+    "persona_id",
+    "original_score",
+    "original_decision",
+    "reviewer_decision",
+    "reviewed_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "content_id": {
+      "type": "integer"
+    },
+    "persona_id": {
+      "type": "string"
+    },
+    "original_score": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "original_decision": {
+      "type": "string",
+      "enum": ["keep", "skip"]
+    },
+    "original_tier": {
+      "type": "string",
+      "enum": ["heuristic", "embedding", "llm"]
+    },
+    "reviewer_decision": {
+      "type": "string",
+      "enum": ["approve", "reject", "promote", "demote"]
+    },
+    "reviewer_id": {
+      "type": ["string", "null"]
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "metadata": {
+      "type": ["object", "null"]
+    }
+  }
+}
