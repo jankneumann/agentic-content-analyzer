@@ -45,7 +45,10 @@ def cosine(a: list[float], b: list[float]) -> float:
         dot += x * y
         na += x * x
         nb += y * y
-    if na == 0.0 or nb == 0.0:
+    # na/nb are sums of squares (>= 0), so <= 0.0 means a zero vector — this
+    # guards the division below. Using <= rather than == avoids an unreliable
+    # float-equality comparison (ruff RUF069) while being exactly equivalent.
+    if na <= 0.0 or nb <= 0.0:
         return 0.0
     sim = dot / (math.sqrt(na) * math.sqrt(nb))
     if sim > 1.0:
