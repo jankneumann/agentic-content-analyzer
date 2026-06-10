@@ -121,7 +121,7 @@ See [docs/MODEL_CONFIGURATION.md](docs/MODEL_CONFIGURATION.md) for full list.
 
 **Ingestion filter** — Three-tier (heuristic → embedding → LLM) post-persist filter in `src/services/ingestion_filter.py`. Runs automatically after every adapter via the orchestrator hook (`src/ingestion/filter_hook.py`). Writes `filter_score`, `filter_decision`, `filter_tier`, `priority_bucket` on `Content`; skipped items get `status=FILTERED_OUT`. Distinct from `src/services/content_filter.py`, which is the pre-persist adapter-side keyword filter. CLI: `aca filter explain|rerun|stats`; `aca ingest --no-filter | --filter-dry-run`.
 
-**Sources** — YAML files in `sources.d/`: `rss.yaml`, `youtube_playlist.yaml`, `youtube_rss.yaml`, `podcasts.yaml`, `gmail.yaml`, `websearch.yaml`, `scholar.yaml`. Each supports `name`, `url`/`id`, `tags`, `enabled`, `max_entries`. See [docs/SETUP.md](docs/SETUP.md) for source-specific options.
+**Sources** — YAML files in `sources.d/`: `rss.yaml`, `youtube_playlist.yaml`, `youtube_channel.yaml` (channels via paginated Data API — uploads-playlist path, no 15-item cap), `podcasts.yaml`, `gmail.yaml`, `websearch.yaml`, `scholar.yaml`. The `youtube_rss` source type still works (Atom feeds, capped ~15, no API key) but ships with no default file. Each supports `name`, `url`/`id`, `tags`, `enabled`, `max_entries`. See [docs/SETUP.md](docs/SETUP.md) for source-specific options.
 
 ## Critical Gotchas (Top 10)
 

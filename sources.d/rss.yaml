@@ -974,3 +974,7 @@ sources:
   url: https://doneyli.substack.com/feed
 - name: Metadata Weekly
   url: https://metadataweekly.substack.com/feed
+# Relocated from youtube_rss.yaml (2026-06-09): a blog RSS feed, not a YouTube
+# channel — the YouTube path skipped it for lacking a video ID.
+- name: "AssemblyAI Blog — News, Tutorials, AI Research"
+  url: https://www.assemblyai.com/blog/rss/
