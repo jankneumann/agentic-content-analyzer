@@ -25,7 +25,7 @@ defaults:
     - Whisper
     - Copilot
 sources:
-- id: PLN4UY0S3lPrs40eHdRIiJ-iXJYMkjI4P6
-  name: "Nate's Newsletter Playlist"
 - id: PLgmaR0EXVZsLXQ30zPCMobz0p02XrNBJq
   name: "Jan's AI Playlist"
+- id: PLN4UY0S3lPrs40eHdRIiJ-iXJYMkjI4P6
+  name: "Nate's Newsletter Playlist"
