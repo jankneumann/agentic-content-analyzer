@@ -1,0 +1,113 @@
+version: 1
+change_id: add-gemini-batch-processing
+# Phases are SEQUENTIAL by design (the requested rollout order), so packages form
+# a dependency chain rather than parallel zones. Overlapping write_allow between
+# wp-phase2/wp-phase3 (both touch youtube.py) is acceptable because they never
+# run concurrently.
+
+packages:
+  - id: wp-core
+    name: "Phase 0 — core batch infrastructure"
+    description: >
+      Durable batch persistence (batch_jobs/batch_requests), LLMRouter
+      submit_batch/poll_batch, BatchCollector, submit/poll/reconcile worker
+      entrypoints with sync fallback, batch_execution config (default OFF), and
+      the `aca evaluate batch-savings` cost-report CLI. No behavior change when
+      disabled.
+    tasks: ["0.1.1", "0.1.2", "0.2.1", "0.2.2", "0.2.3", "0.3.1", "0.3.2", "0.3.3", "0.4.1", "0.4.2", "0.4.3", "0.4.4", "0.5.1", "0.6.1", "0.6.2", "0.7.1", "0.7.2", "0.7.3", "0.7.4"]
+    priority: 1
+    dependencies: []
+    scope:
+      write_allow:
+        - "src/services/batch/**"
+        - "src/models/batch.py"
+        - "src/services/llm_router.py"
+        - "src/queue/worker.py"
+        - "src/config/models.py"
+        - "settings/models.yaml"
+        - "src/cli/**"
+        - "alembic/versions/**"
+        - "tests/**"
+      read_allow: ["**"]
+    locks:
+      keys:
+        - "db:schema:batch_jobs"
+        - "db:schema:batch_requests"
+        - "file:src/services/llm_router.py"
+        - "file:src/queue/worker.py"
+      ttl_minutes: 240
+      reason: "Phase 0 core batch infrastructure"
+    verification: tier_b
+
+  - id: wp-phase1-filtering
+    name: "Phase 1 — content_filtering pilot"
+    description: >
+      Wire content_filter through BatchCollector behind is_batch_enabled; add the
+      ContentFilterResultHandler; prove sync-vs-batch parity.
+    tasks: ["1.1", "1.2", "1.3", "1.4"]
+    priority: 2
+    dependencies: [wp-core]
+    scope:
+      write_allow:
+        - "src/services/content_filter.py"
+        - "src/services/batch/handlers/**"
+        - "settings/models.yaml"
+        - "tests/**"
+      read_allow: ["**"]
+    verification: tier_a
+
+  - id: wp-phase2-text
+    name: "Phase 2 — caption_proofreading + youtube_rss text path"
+    description: >
+      Result handlers + collector branches for the text/transcript steps.
+    tasks: ["2.1", "2.2", "2.3"]
+    priority: 3
+    dependencies: [wp-phase1-filtering]
+    scope:
+      write_allow:
+        - "src/ingestion/youtube.py"
+        - "src/ingestion/youtube_captions.py"
+        - "src/services/batch/handlers/**"
+        - "settings/models.yaml"
+        - "tests/**"
+      read_allow: ["**"]
+    verification: tier_a
+
+  - id: wp-phase3-youtube
+    name: "Phase 3 — youtube_processing + PENDING_BATCH"
+    description: >
+      YouTube-URL + transcript sub-paths, PENDING_BATCH status with digest/
+      summarization exclusion, smoke test, expired-job fallback.
+    tasks: ["3.1", "3.2", "3.3", "3.4", "3.5"]
+    priority: 4
+    dependencies: [wp-phase2-text]
+    scope:
+      write_allow:
+        - "src/ingestion/youtube.py"
+        - "src/models/content.py"
+        - "src/services/batch/handlers/**"
+        - "alembic/versions/**"
+        - "tests/**"
+      read_allow: ["**"]
+    locks:
+      keys:
+        - "db:enum:contentstatus"
+        - "file:src/ingestion/youtube.py"
+      ttl_minutes: 240
+      reason: "Phase 3 youtube_processing + PENDING_BATCH enum"
+    verification: tier_a
+
+  - id: wp-integration
+    name: "Integration — docs + full suite"
+    description: >
+      Docs (MODEL_CONFIGURATION batch section, Gotchas), full test suite, scope
+      verification.
+    tasks: ["D.1", "D.2"]
+    priority: 5
+    dependencies: [wp-phase3-youtube]
+    scope:
+      write_allow:
+        - "docs/**"
+        - "CLAUDE.md"
+      read_allow: ["**"]
+    verification: tier_a
