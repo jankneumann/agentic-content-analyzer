@@ -7,10 +7,10 @@
 ## Phase 0 — Core batch infrastructure (build once, no behavior change)
 
 ### 0.1 Persistence
-- [ ] 0.1.1 Alembic migration: create `batch_jobs` and `batch_requests` tables
+- [x] 0.1.1 Alembic migration: create `batch_jobs` and `batch_requests` tables
   with indexes per design.md (use `alembic revision -m ...` — never hand-craft
   revision IDs; run `alembic heads` after).
-- [ ] 0.1.2 SQLAlchemy models `BatchJob`, `BatchRequest` in `src/models/batch.py`.
+- [x] 0.1.2 SQLAlchemy models `BatchJob`, `BatchRequest` in `src/models/batch.py`.
 
 ### 0.2 Router batch methods
 - [ ] 0.2.1 `BatchRequest`/`BatchPollResult` dataclasses in `src/services/batch/types.py`.
