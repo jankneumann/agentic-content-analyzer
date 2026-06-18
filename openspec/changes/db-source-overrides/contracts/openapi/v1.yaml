@@ -1,0 +1,225 @@
+openapi: 3.1.0
+info:
+  title: Source Override Management API
+  version: "1.0.0"
+  description: >
+    Admin endpoints for managing database-backed ingestion source overrides,
+    merged on top of sources.d/ YAML defaults. Extends the existing read-only
+    GET /api/v1/sources overview.
+servers:
+  - url: /api/v1
+paths:
+  /sources:
+    get:
+      summary: List configured sources with origin and content counts
+      operationId: listSources
+      responses:
+        "200":
+          description: Source overview including YAML and DB sources
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourcesOverview"
+              example:
+                total_sources: 2
+                enabled_sources: 2
+                sources:
+                  - type: blog
+                    name: Normal Tech
+                    url: https://www.normaltech.ai/
+                    enabled: true
+                    origin: db
+                    source_key: "blog:https://www.normaltech.ai/"
+                    tags: [ai]
+                  - type: blog
+                    name: Together AI
+                    url: https://www.together.ai/blog
+                    enabled: true
+                    origin: yaml
+                    source_key: "blog:https://www.together.ai/blog"
+                    tags: [ai, infrastructure]
+                counts: { blog: 42 }
+    post:
+      summary: Add or update a source override (upsert by natural key)
+      operationId: upsertSource
+      security:
+        - adminKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SourceUpsertRequest"
+            example:
+              type: blog
+              config:
+                type: blog
+                name: Normal Tech
+                url: https://www.normaltech.ai/
+                tags: [ai]
+                max_entries: 10
+      responses:
+        "200":
+          description: Source upserted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceMutationResult"
+              example:
+                source_key: "blog:https://www.normaltech.ai/"
+                version: 1
+                origin: db
+                enabled: true
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /sources/{key}:
+    delete:
+      summary: Delete a source override (DB-origin) or remove a shadow (revert to YAML)
+      operationId: deleteSource
+      security:
+        - adminKey: []
+      parameters:
+        - $ref: "#/components/parameters/SourceKey"
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  source_key: { type: string }
+                  deleted: { type: boolean }
+                required: [source_key, deleted]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /sources/{key}/enable:
+    post:
+      summary: Enable a source
+      operationId: enableSource
+      security:
+        - adminKey: []
+      parameters:
+        - $ref: "#/components/parameters/SourceKey"
+      responses:
+        "200":
+          description: Enabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceMutationResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /sources/{key}/disable:
+    post:
+      summary: Disable a source (creates a disable-shadow for YAML sources)
+      operationId: disableSource
+      security:
+        - adminKey: []
+      parameters:
+        - $ref: "#/components/parameters/SourceKey"
+      responses:
+        "200":
+          description: Disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceMutationResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+components:
+  securitySchemes:
+    adminKey:
+      type: apiKey
+      in: header
+      name: X-Admin-Key
+  parameters:
+    SourceKey:
+      name: key
+      in: path
+      required: true
+      description: Natural source key "<type>:<locator>", URL-encoded.
+      schema: { type: string }
+  schemas:
+    SourceInfo:
+      type: object
+      properties:
+        type: { type: string }
+        name: { type: string, nullable: true }
+        url: { type: string }
+        enabled: { type: boolean }
+        origin: { type: string, enum: [yaml, db] }
+        source_key: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+      required: [type, url, enabled, origin, source_key]
+    SourcesOverview:
+      type: object
+      properties:
+        sources:
+          type: array
+          items: { $ref: "#/components/schemas/SourceInfo" }
+        counts:
+          type: object
+          additionalProperties: { type: integer }
+        total_sources: { type: integer }
+        enabled_sources: { type: integer }
+      required: [sources, counts, total_sources, enabled_sources]
+    SourceUpsertRequest:
+      type: object
+      properties:
+        type:
+          type: string
+          description: Source type discriminator (blog, rss, youtube_playlist, ...).
+        config:
+          type: object
+          description: Full source definition, validated against the Source union.
+          additionalProperties: true
+        description:
+          type: string
+          nullable: true
+      required: [type, config]
+    SourceMutationResult:
+      type: object
+      properties:
+        source_key: { type: string }
+        version: { type: integer }
+        origin: { type: string, enum: [yaml, db] }
+        enabled: { type: boolean }
+      required: [source_key, version, origin, enabled]
+    Problem:
+      type: object
+      description: RFC 7807 problem detail
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+      required: [title, status]
+  responses:
+    ValidationError:
+      description: Source config failed validation against the source union
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example:
+            title: Invalid source config
+            status: 400
+            detail: "blog source requires a 'url' field"
+    Unauthorized:
+      description: Missing or invalid admin key
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example: { title: Unauthorized, status: 401 }
+    NotFound:
+      description: Source key not found
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example: { title: Source override not found, status: 404 }
