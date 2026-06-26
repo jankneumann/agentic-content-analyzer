@@ -97,40 +97,34 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
-  /sources/{key}/enable:
-    post:
-      summary: Enable a source
-      operationId: enableSource
+    patch:
+      summary: Enable/disable a source (creates a disable-shadow for YAML sources)
+      operationId: setSourceEnabled
       security:
         - adminKey: []
       parameters:
         - $ref: "#/components/parameters/SourceKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean }
+              required: [enabled]
+            example: { enabled: false }
       responses:
         "200":
-          description: Enabled
+          description: Updated
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SourceMutationResult"
         "401":
           $ref: "#/components/responses/Unauthorized"
-  /sources/{key}/disable:
-    post:
-      summary: Disable a source (creates a disable-shadow for YAML sources)
-      operationId: disableSource
-      security:
-        - adminKey: []
-      parameters:
-        - $ref: "#/components/parameters/SourceKey"
-      responses:
-        "200":
-          description: Disabled
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SourceMutationResult"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   securitySchemes:
     adminKey:

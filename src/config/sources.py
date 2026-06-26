@@ -560,11 +560,12 @@ def merge_source_overrides(
 
     for override in overrides:
         key = override["source_key"]
-        if not override.get("enabled", True):
-            by_key.pop(key, None)  # disable-shadow: suppress the YAML twin
-            continue
         merged = dict(override["config"])
         merged["origin"] = "db"
+        # Carry the override's enabled flag onto the resolved source. A disabled
+        # override keeps the source visible (so it can be re-enabled) while the
+        # per-type getters (get_blog_sources, ...) exclude it from ingestion.
+        merged["enabled"] = override.get("enabled", True)
         by_key[key] = merged
 
     try:
