@@ -42,15 +42,15 @@ Task ordering is test-first (RED before GREEN). Sizes per the Task Sizing Refere
 
 ## Phase 2 — Backend API (wp-backend-api)
 
-- [ ] 2.1 Write API tests: list returns origin/enabled for YAML+DB; POST upsert (200 + result); invalid config → 400; unauthenticated write → 401; delete → 200/404; enable/disable → persisted. **(M)**
+- [x] 2.1 Write API tests: list returns origin/enabled for YAML+DB; POST upsert (200 + result); invalid config → 400; unauthenticated write → 401; delete → 200/404; enable/disable → persisted. **(M)**
   **Spec scenarios**: Source Override Management API (all)
   **Contracts**: contracts/openapi/v1.yaml
   **Dependencies**: 1.6
-- [ ] 2.2 Add `origin`/`source_key` to `SourceInfo` in `src/api/source_routes.py` and implement `src/api/source_write_routes.py` (POST/DELETE/enable/disable, `verify_admin_key`, `{key:path}` handling); register the router in `src/api/app.py`. **(M)**
+- [x] 2.2 Add `origin`/`source_key` to `SourceInfo` in `src/api/source_routes.py` and implement `src/api/source_write_routes.py` (POST/DELETE/enable/disable, `verify_admin_key`, `{key:path}` handling); register the router in `src/api/app.py`. **(M)**
   **Contracts**: contracts/openapi/v1.yaml
   **Design decisions**: D6
   **Dependencies**: 2.1
-- [ ] Checkpoint: run API tests, review diff, verify scope.
+- [x] Checkpoint: run API tests, review diff, verify scope.
 
 ## Phase 3 — CLI (wp-cli)
 

@@ -101,5 +101,11 @@ class TestMergeSourceOverrides:
             }
         ]
         merged = merge_source_overrides(cfg, overrides)
+        # The disabled source stays visible (so it can be re-enabled)...
         urls = {getattr(s, "url", None) for s in merged.sources}
-        assert urls == {"https://keep.com"}
+        assert urls == {"https://a.com", "https://keep.com"}
+        disabled = next(s for s in merged.sources if getattr(s, "url", None) == "https://a.com")
+        assert disabled.enabled is False
+        # ...but is excluded from ingestion (per-type getters filter on enabled).
+        active = {s.url for s in merged.get_blog_sources()}  # type: ignore[attr-defined]
+        assert active == {"https://keep.com"}
