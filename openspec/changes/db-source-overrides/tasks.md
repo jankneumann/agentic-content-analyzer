@@ -76,9 +76,9 @@ Task ordering is test-first (RED before GREEN). Sizes per the Task Sizing Refere
 
 ## Phase 5 — Integration (wp-integration)
 
-- [ ] 5.1 End-to-end acceptance: add `https://www.normaltech.ai/` as a blog via CLI, assert `load_sources_config().get_blog_sources()` includes it with `origin=db`; add via UI and assert it appears; disable a YAML blog and assert exclusion. **(M)**
+- [x] 5.1 End-to-end acceptance: add `https://www.normaltech.ai/` as a blog via CLI, assert `load_sources_config().get_blog_sources()` includes it with `origin=db`; add via UI and assert it appears; disable a YAML blog and assert exclusion. **(M)**
   **Spec scenarios**: Source Resolution Precedence (db adds source), Source Override CLI, Source Override Web UI
   **Dependencies**: 2.2, 3.2, 4.2
-- [ ] 5.2 Run full test suite + `openspec validate db-source-overrides --strict`; update `docs/SETUP.md`/sources docs and CLAUDE.md sources note to mention DB overrides. **(S)**
+- [x] 5.2 Run full test suite + `openspec validate db-source-overrides --strict`; update `docs/SETUP.md`/sources docs and CLAUDE.md sources note to mention DB overrides. **(S)**
   **Dependencies**: 5.1
-- [ ] Checkpoint: full suite green, review cumulative diff against all work_allow scopes.
+- [x] Checkpoint: full suite green, review cumulative diff against all work_allow scopes.
