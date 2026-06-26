@@ -382,7 +382,11 @@ class HuggingFacePapersClient:
     def _extract_upvotes(soup: BeautifulSoup) -> int | None:
         """Extract upvote count if present."""
         # Look for upvote elements
-        for el in soup.find_all(attrs={"class": re.compile(r"upvote|like|vote")}):
+        # NOTE: newer beautifulsoup4 type stubs reject a Pattern value in the
+        # find_all(attrs=...) dict overload; the call is valid at runtime.
+        for el in soup.find_all(  # type: ignore[call-overload]
+            attrs={"class": re.compile(r"upvote|like|vote")}
+        ):
             text = el.get_text(strip=True)
             if text.isdigit():
                 return int(text)
