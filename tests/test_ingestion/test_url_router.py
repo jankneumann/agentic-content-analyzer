@@ -57,6 +57,15 @@ class TestClassifyUrl:
             ("https://example.com/sitemap.xml", RouteKind.WEBPAGE),
             # "feed" as a substring of a real article slug must not trigger.
             ("https://example.com/how-to-feed-your-cat", RouteKind.WEBPAGE),
+            # A non-YouTube host that merely embeds a watch URL in a query
+            # param (e.g. a redirect link) must NOT be routed to YouTube.
+            (
+                "https://example.com/redirect?next=https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                RouteKind.WEBPAGE,
+            ),
+            ("https://notyoutube.com/watch?v=dQw4w9WgXcQ", RouteKind.WEBPAGE),
+            # A ?list= on a non-YouTube host is not a playlist.
+            ("https://example.org/playlist?list=PLabc123", RouteKind.WEBPAGE),
         ],
     )
     def test_classify_url(self, url: str, expected: RouteKind) -> None:

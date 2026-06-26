@@ -151,18 +151,42 @@ def _find_existing_for_route(db, url: str, kind: RouteKind) -> Content | None:
     if existing:
         return existing
 
+    # Dedup by canonical source_id for routes whose source_id is derived from a
+    # stable id (not the raw URL), so a second save under a different URL form
+    # returns the existing row instead of hitting the unique
+    # (source_type, source_id) index.
+    canonical_source_id: str | None = None
     if kind == RouteKind.YOUTUBE_VIDEO:
         vid = extract_video_id(url)
-        if vid:
-            return (
-                db.query(Content)
-                .filter(
-                    Content.source_type == ContentSource.YOUTUBE,
-                    Content.source_id == f"youtube:{vid}",
-                )
-                .first()
+        canonical_source_id = f"youtube:{vid}" if vid else None
+    elif kind == RouteKind.YOUTUBE_PLAYLIST:
+        pid = extract_playlist_id(url)
+        canonical_source_id = f"youtube_playlist:{pid}" if pid else None
+
+    if canonical_source_id:
+        return (
+            db.query(Content)
+            .filter(
+                Content.source_type == ContentSource.YOUTUBE,
+                Content.source_id == canonical_source_id,
             )
+            .first()
+        )
     return None
+
+
+def _mark_failed_if_pending(content_id: int, message: str) -> None:
+    """Mark a still-PENDING save row as FAILED with *message*.
+
+    Used when a routed ingest completes without raising but produces no usable
+    content (e.g. a video with no transcript, or an unreachable feed). The
+    PENDING guard avoids clobbering a row that a handler already finalized.
+    """
+    with get_db() as db:
+        content = db.query(Content).filter(Content.id == content_id).first()
+        if content is not None and content.status == ContentStatus.PENDING:
+            content.status = ContentStatus.FAILED
+            content.error_message = message
 
 
 def _finalize_receipt(content_id: int, items_ingested: int, label: str) -> None:
@@ -216,7 +240,14 @@ async def _process_routed_save(content_id: int) -> None:
             service = YouTubeContentIngestionService()
             # force_reprocess=True so _process_video updates the pre-created
             # youtube:<id> row in place rather than skipping it.
-            await service.ingest_video(url, force_reprocess=True, tags=tags, notes=notes)
+            resp = await service.ingest_video(url, force_reprocess=True, tags=tags, notes=notes)
+            # If nothing was extracted (no transcript / no Gemini result),
+            # _process_video leaves the row PENDING — surface that as FAILED so
+            # status pollers don't wait forever.
+            if resp.items_ingested == 0:
+                _mark_failed_if_pending(
+                    content_id, "No transcript or video content could be extracted."
+                )
             return
 
         if route == RouteKind.RSS_FEED.value:
@@ -230,7 +261,13 @@ async def _process_routed_save(content_id: int) -> None:
                 )
             finally:
                 svc.close()
-            _finalize_receipt(content_id, resp.items_ingested, "feed")
+            # A feed can fail to fetch/parse without raising (status='error').
+            # Don't present that as a successful receipt.
+            if resp.status == "error":
+                msg = resp.errors[0].message if resp.errors else "Feed could not be ingested."
+                _mark_failed_if_pending(content_id, msg)
+            else:
+                _finalize_receipt(content_id, resp.items_ingested, "feed")
             return
 
         if route == RouteKind.YOUTUBE_PLAYLIST.value:
@@ -241,7 +278,14 @@ async def _process_routed_save(content_id: int) -> None:
                 raise ValueError(f"Could not extract a playlist id from: {url}")
             service = YouTubeContentIngestionService()
             result = await service.ingest_playlist(pid)
-            _finalize_receipt(content_id, result.items_fetched, "playlist")
+            # ingest_playlist reports source-level failure via success/error
+            # without raising — don't finalize a failed playlist as a receipt.
+            if not result.success:
+                _mark_failed_if_pending(
+                    content_id, result.error or "Playlist could not be ingested."
+                )
+            else:
+                _finalize_receipt(content_id, result.items_fetched, "playlist")
             return
 
         # Unknown/missing route — fall back to generic extraction.

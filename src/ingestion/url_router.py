@@ -135,12 +135,15 @@ def classify_url(url: str) -> RouteKind:
     Returns:
         The :class:`RouteKind` the URL should be routed to.
     """
-    # 1. A concrete video id beats everything (handles watch?v=...&list=...).
-    if is_youtube_url(url):
+    # 1. A concrete video id on a YouTube host beats everything (also handles
+    #    watch?v=...&list=...). The host check prevents a non-YouTube URL that
+    #    merely embeds a watch URL in a query param (e.g. a redirect link) from
+    #    being misrouted to YouTube ingestion.
+    if _is_youtube_host(url) and is_youtube_url(url):
         return RouteKind.YOUTUBE_VIDEO
 
     # 2. A playlist id with no video id.
-    if extract_playlist_id(url) is not None and _is_youtube_host(url):
+    if _is_youtube_host(url) and extract_playlist_id(url) is not None:
         return RouteKind.YOUTUBE_PLAYLIST
 
     # 3. Feed-shaped URLs.
