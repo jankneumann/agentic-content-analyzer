@@ -59,6 +59,8 @@ from src.models.search import (
     SearchType,
 )
 from src.models.settings import PromptOverride
+from src.models.settings_override import SettingsOverride
+from src.models.source_override import SourceOverride
 from src.models.summary import NewsletterSummary, Summary, SummaryData
 from src.models.theme import ThemeAnalysis
 from src.models.topic import KBIndex, Topic, TopicNote, TopicNoteType, TopicStatus
@@ -173,6 +175,8 @@ __all__ = [
     "Preference",
     # Settings
     "PromptOverride",
+    "SettingsOverride",
+    "SourceOverride",
     # Ingestion filter
     "PersonaFilterProfile",
     "FilterFeedbackEvent",

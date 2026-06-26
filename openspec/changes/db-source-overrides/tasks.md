@@ -4,41 +4,41 @@ Task ordering is test-first (RED before GREEN). Sizes per the Task Sizing Refere
 
 ## Phase 0 — Contracts (wp-contracts)
 
-- [ ] 0.1 Validate `contracts/db/schema.sql` and `contracts/openapi/v1.yaml` parse and align with the spec deltas. **(XS)**
+- [x] 0.1 Validate `contracts/db/schema.sql` and `contracts/openapi/v1.yaml` parse and align with the spec deltas. **(XS)**
   **Spec scenarios**: source-configuration (Database Source Overrides, Source Override Management API)
   **Dependencies**: None
 
 ## Phase 1 — Backend core: key helper, model, migration, service (wp-backend-core)
 
-- [ ] 1.1 Write tests for `_source_key()` natural-key derivation across all source types (blog/rss/substack/podcast/youtube_rss → url; youtube_playlist → id; youtube_channel → channel_id; gmail/scholar → query; unkeyable → raises). **(S)**
+- [x] 1.1 Write tests for `_source_key()` natural-key derivation across all source types (blog/rss/substack/podcast/youtube_rss → url; youtube_playlist → id; youtube_channel → channel_id; gmail/scholar → query; unkeyable → raises). **(S)**
   **Spec scenarios**: Natural-Key Source Identity (locator per type)
   **Design decisions**: D2
   **Dependencies**: 0.1
-- [ ] 1.2 Add `_source_key()` helper and an `origin: Literal["yaml","db"] = "yaml"` field on `SourceBase` in `src/config/sources.py`. **(S)**
+- [x] 1.2 Add `_source_key()` helper and an `origin: Literal["yaml","db"] = "yaml"` field on `SourceBase` in `src/config/sources.py`. **(S)**
   **Dependencies**: 1.1
-- [ ] 1.3 Write tests for the `SourceOverride` model + migration (idempotent create, unique `source_key`, JSON round-trip). **(S)**
+- [x] 1.3 Write tests for the `SourceOverride` model + migration (idempotent create, unique `source_key`, JSON round-trip). **(S)**
   **Contracts**: contracts/db/schema.sql
   **Dependencies**: 0.1
-- [ ] 1.4 Create `src/models/source_override.py` and an idempotent Alembic migration for `source_overrides` (mirror `b1c2d3e4f5a6` settings_overrides pattern; run `alembic heads` to avoid multiple heads). **(M)**
+- [x] 1.4 Create `src/models/source_override.py` and an idempotent Alembic migration for `source_overrides` (mirror `b1c2d3e4f5a6` settings_overrides pattern; run `alembic heads` to avoid multiple heads). **(M)**
   **Contracts**: contracts/db/schema.sql
   **Design decisions**: D1
   **Dependencies**: 1.3
-- [ ] Checkpoint: run model/migration tests, `alembic upgrade head` on a scratch DB, review diff, verify scope.
-- [ ] 1.5 Write tests for `SourceOverrideService`: upsert (insert + version-bump update), validation rejection via the source union, list (with type filter), get, delete, enable/disable, disable-shadow config capture. **(M)**
+- [x] Checkpoint: run model/migration tests, `alembic upgrade head` on a scratch DB, review diff, verify scope.
+- [x] 1.5 Write tests for `SourceOverrideService`: upsert (insert + version-bump update), validation rejection via the source union, list (with type filter), get, delete, enable/disable, disable-shadow config capture. **(M)**
   **Spec scenarios**: Database Source Overrides (all), Source Resolution Precedence (disable/edit)
   **Design decisions**: D4, D5
   **Dependencies**: 1.2, 1.4
-- [ ] 1.6 Implement `src/services/source_override_service.py` (upsert/list/get/delete/set_enabled), validating `config` through `SourcesConfig`/`TypeAdapter(Source)` before persist. **(M)**
+- [x] 1.6 Implement `src/services/source_override_service.py` (upsert/list/get/delete/set_enabled), validating `config` through `SourcesConfig`/`TypeAdapter(Source)` before persist. **(M)**
   **Design decisions**: D4, D5
   **Dependencies**: 1.5
-- [ ] 1.7 Write tests for the `load_sources_config()` merge: DB adds new source (origin db), DB overrides YAML twin by key, DB `enabled:false` shadows YAML source, DB-unavailable falls open to YAML. **(M)**
+- [x] 1.7 Write tests for the `load_sources_config()` merge: DB adds new source (origin db), DB overrides YAML twin by key, DB `enabled:false` shadows YAML source, DB-unavailable falls open to YAML. **(M)**
   **Spec scenarios**: Source Resolution Precedence and Merge (all four scenarios)
   **Design decisions**: D3
   **Dependencies**: 1.6
-- [ ] 1.8 Implement the DB-override merge inside `load_sources_config()` with lazy import + try/except fail-open and origin tagging. **(M)**
+- [x] 1.8 Implement the DB-override merge inside `load_sources_config()` with lazy import + try/except fail-open and origin tagging. **(M)**
   **Design decisions**: D3
   **Dependencies**: 1.7
-- [ ] Checkpoint: run backend-core suite, review diff (`src/config/sources.py`, `src/models/`, `src/services/`, `alembic/`), verify scope.
+- [x] Checkpoint: run backend-core suite, review diff (`src/config/sources.py`, `src/models/`, `src/services/`, `alembic/`), verify scope.
 
 ## Phase 2 — Backend API (wp-backend-api)
 
