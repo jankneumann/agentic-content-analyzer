@@ -53,10 +53,10 @@
 - [ ] Checkpoint: run tests, review `git diff`, verify scope stays within the package's write_allow
 
 ### 0.6 Cost-report CLI (the dry-run that doesn't exist today)
-- [ ] 0.6.1 `aca evaluate batch-savings [--json]`: per-step std vs batch cost from
+- [x] 0.6.1 `aca evaluate batch-savings [--json]`: per-step std vs batch cost from
   pricing + `TOKEN_ESTIMATES` + actual `contents` volumes; backfill + steady-state
   projection. Guard `typer.echo` with `not is_json_mode()`. [depends: none]
-- [ ] 0.6.2 `aca batch status|flush|poll` ops commands (read + manual trigger).
+- [x] 0.6.2 `aca batch status|flush|poll` ops commands (read + manual trigger).
   [depends: 0.4.1, 0.4.2]
 
 ### 0.7 Tests (Phase 0)
@@ -64,7 +64,7 @@
   (success, FAILED, EXPIRED, partial). Patch at SOURCE per repo mock conventions.
 - [x] 0.7.2 Unit: collector persists pending rows; reconciler routes by key to the
   right handler; fallback re-runs failed requests.
-- [ ] 0.7.3 CLI: `batch-savings` output shape (`--json`) and `batch status`.
+- [x] 0.7.3 CLI: `batch-savings` output shape (`--json`) and `batch status`.
 - [ ] 0.7.4 Regression: with `batch.enabled=false`, every Gemini call path is
   byte-for-byte the synchronous behavior (golden assertion).
 

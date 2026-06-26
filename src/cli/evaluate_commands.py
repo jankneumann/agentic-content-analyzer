@@ -15,7 +15,7 @@ from typing import Annotated
 
 import typer
 
-from src.cli.output import guard_remote_backend
+from src.cli.output import guard_remote_backend, is_json_mode, output_result
 
 app = typer.Typer(
     name="evaluate",
@@ -330,3 +330,68 @@ def report(
         typer.echo(f"Routed to weak: {r.pct_routed_to_weak:.1%}")
         typer.echo(f"Cost savings:    ${r.cost_savings_vs_all_strong:.4f}")
         typer.echo(f"Preferences:     {r.preference_distribution}")
+
+
+@app.command("batch-savings")
+def batch_savings(
+    monthly: Annotated[
+        bool,
+        typer.Option(
+            "--monthly",
+            help="Project steady-state monthly cost from the last 30 days "
+            "instead of a full one-time backfill.",
+        ),
+    ] = False,
+) -> None:
+    """Project standard vs Gemini-batch cost for batch-eligible steps.
+
+    A dry-run: reads the real per-step model assignment + pricing and the actual
+    ``contents`` volume, applies the flat 50% batch discount, and reports
+    per-step and total savings. Pure projection — touches no batch tables and
+    submits nothing.
+    """
+    guard_remote_backend("evaluate batch-savings")
+    from datetime import UTC, datetime, timedelta
+
+    from src.config.models import ModelStep, get_model_config
+    from src.models.content import Content, ContentSource
+    from src.services.batch.savings import compute_batch_savings
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        scoped = db.query(Content)
+        if monthly:
+            cutoff = datetime.now(UTC) - timedelta(days=30)
+            scoped = scoped.filter(Content.created_at >= cutoff)
+        total = scoped.count()
+        youtube = scoped.filter(Content.source_type == ContentSource.YOUTUBE).count()
+
+    volumes = {
+        ModelStep.CONTENT_FILTERING: total,
+        ModelStep.CAPTION_PROOFREADING: youtube,
+        ModelStep.YOUTUBE_RSS_PROCESSING: youtube,
+        ModelStep.YOUTUBE_PROCESSING: youtube,
+    }
+    result = compute_batch_savings(get_model_config(), volumes)
+    result["projection"] = "monthly" if monthly else "backfill"
+
+    if is_json_mode():
+        output_result(result)
+        return
+
+    pct = int(result["discount"] * 100)
+    typer.echo(f"\nBatch savings — {result['projection']} projection ({pct}% discount)\n")
+    header = f"{'Step':<24}{'Model':<22}{'Items':>7}{'Std $':>11}{'Batch $':>11}{'Save $':>11}"
+    typer.echo(header)
+    typer.echo("-" * len(header))
+    for r in result["steps"]:
+        typer.echo(
+            f"{r['step']:<24}{r['model_id']:<22}{r['items']:>7}"
+            f"{r['std_cost']:>11.4f}{r['batch_cost']:>11.4f}{r['savings']:>11.4f}"
+        )
+    typer.echo("-" * len(header))
+    typer.echo(
+        f"{'TOTAL':<46}{'':>7}"
+        f"{result['total_std_cost']:>11.4f}{result['total_batch_cost']:>11.4f}"
+        f"{result['total_savings']:>11.4f}"
+    )

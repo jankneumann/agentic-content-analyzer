@@ -28,6 +28,7 @@ import typer
 from src.cli.agent_commands import app as agent_app
 from src.cli.analyze_commands import app as analyze_app
 from src.cli.auth_commands import app as auth_app
+from src.cli.batch_commands import app as batch_app
 from src.cli.curate_commands import app as curate_app
 from src.cli.deploy_commands import app as deploy_app
 from src.cli.digest_commands import app as digest_app
@@ -89,6 +90,7 @@ app.add_typer(sync_app, name="sync")
 app.add_typer(worker_app, name="worker")
 app.add_typer(job_app, name="jobs")
 app.add_typer(evaluate_app, name="evaluate")
+app.add_typer(batch_app, name="batch")
 app.add_typer(kb_app, name="kb")
 app.add_typer(auth_app, name="auth")
 app.add_typer(curate_app, name="curate")
