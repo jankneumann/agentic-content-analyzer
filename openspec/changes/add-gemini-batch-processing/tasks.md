@@ -29,7 +29,7 @@
   from `ConfigRegistry`. [depends: 0.5.1]
 - [x] 0.3.3 `ResultHandler` protocol + registry keyed by `model_step`. [depends: 0.1.2]
 
-- [ ] Checkpoint: run tests, review `git diff`, verify scope stays within the package's write_allow
+- [x] Checkpoint: run tests, review `git diff`, verify scope stays within the package's write_allow
 
 ### 0.4 Submit / poll / reconcile workers
 - [x] 0.4.1 `batch_submit` entrypoint: group `pending` by `(step, model)`, flush
@@ -50,7 +50,7 @@
   (all steps `sync`, `enabled: false`); `GEMINI_BATCH_ENABLED` setting +
   `_env_file` isolation in tests.
 
-- [ ] Checkpoint: run tests, review `git diff`, verify scope stays within the package's write_allow
+- [x] Checkpoint: run tests, review `git diff`, verify scope stays within the package's write_allow
 
 ### 0.6 Cost-report CLI (the dry-run that doesn't exist today)
 - [x] 0.6.1 `aca evaluate batch-savings [--json]`: per-step std vs batch cost from
@@ -65,10 +65,10 @@
 - [x] 0.7.2 Unit: collector persists pending rows; reconciler routes by key to the
   right handler; fallback re-runs failed requests.
 - [x] 0.7.3 CLI: `batch-savings` output shape (`--json`) and `batch status`.
-- [ ] 0.7.4 Regression: with `batch.enabled=false`, every Gemini call path is
+- [x] 0.7.4 Regression: with `batch.enabled=false`, every Gemini call path is
   byte-for-byte the synchronous behavior (golden assertion).
 
-- [ ] Checkpoint: run tests, review `git diff`, verify scope stays within the package's write_allow
+- [x] Checkpoint: run tests, review `git diff`, verify scope stays within the package's write_allow
 
 ## Phase 1 — `content_filtering` pilot (smallest blast radius)
 
