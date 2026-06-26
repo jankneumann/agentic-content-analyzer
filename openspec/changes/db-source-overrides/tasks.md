@@ -54,14 +54,14 @@ Task ordering is test-first (RED before GREEN). Sizes per the Task Sizing Refere
 
 ## Phase 3 — CLI (wp-cli)
 
-- [ ] 3.1 Write CLI tests: `aca sources add/list/remove/enable/disable` in direct mode (DB) and HTTP mode (mocked client), including list origin column. **(M)**
+- [x] 3.1 Write CLI tests: `aca sources add/list/remove/enable/disable` in direct mode (DB) and HTTP mode (mocked client), including list origin column. **(M)**
   **Spec scenarios**: Source Override CLI (all)
   **Dependencies**: 1.6
-- [ ] 3.2 Add `ApiClient` source methods in `src/cli/api_client.py` and implement `src/cli/source_commands.py` (dual-mode like `settings_commands.py`); register the `sources` Typer sub-app. **(M)**
+- [x] 3.2 Add `ApiClient` source methods in `src/cli/api_client.py` and implement `src/cli/source_commands.py` (dual-mode like `settings_commands.py`); register the `sources` Typer sub-app. **(M)**
   **Contracts**: contracts/openapi/v1.yaml
   **Design decisions**: D7
   **Dependencies**: 3.1, 2.2
-- [ ] Checkpoint: run CLI tests, manually run `aca sources add blog --url https://www.normaltech.ai/`, review diff, verify scope.
+- [x] Checkpoint: run CLI tests, manually run `aca sources add blog --url https://www.normaltech.ai/`, review diff, verify scope.
 
 ## Phase 4 — Web UI (wp-web)
 
