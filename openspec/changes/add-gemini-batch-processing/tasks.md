@@ -23,11 +23,11 @@
   return `(state, results_by_key|None)`; map provider states → enum. [depends: 0.2.1]
 
 ### 0.3 Collector + result-handler registry
-- [ ] 0.3.1 `BatchCollector.enqueue(step, target_table, target_id, request)` →
+- [x] 0.3.1 `BatchCollector.enqueue(step, target_table, target_id, request)` →
   persists a `pending` `batch_requests` row. [depends: 0.1.2]
 - [x] 0.3.2 `is_batch_enabled(step)` reading `batch_execution` + `batch.enabled`
   from `ConfigRegistry`. [depends: 0.5.1]
-- [ ] 0.3.3 `ResultHandler` protocol + registry keyed by `model_step`. [depends: 0.1.2]
+- [x] 0.3.3 `ResultHandler` protocol + registry keyed by `model_step`. [depends: 0.1.2]
 
 - [ ] Checkpoint: run tests, review `git diff`, verify scope stays within the package's write_allow
 

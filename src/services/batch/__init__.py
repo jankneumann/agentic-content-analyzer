@@ -8,6 +8,12 @@ Everything here is inert until ``batch.enabled`` is flipped on in
 ``settings/models.yaml`` — see :meth:`src.config.models.ModelConfig.is_batch_enabled`.
 """
 
+from src.services.batch.collector import BatchCollector
+from src.services.batch.handlers import (
+    ResultHandler,
+    ResultHandlerRegistry,
+    result_handlers,
+)
 from src.services.batch.types import (
     TERMINAL_BATCH_STATES,
     BatchPollResult,
@@ -20,4 +26,8 @@ __all__ = [
     "BatchPollResult",
     "BatchState",
     "TERMINAL_BATCH_STATES",
+    "BatchCollector",
+    "ResultHandler",
+    "ResultHandlerRegistry",
+    "result_handlers",
 ]
