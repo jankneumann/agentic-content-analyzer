@@ -57,6 +57,7 @@ from src.cli.profile_commands import app as profile_app
 from src.cli.prompt_commands import app as prompts_app
 from src.cli.review_commands import app as review_app
 from src.cli.settings_commands import app as settings_app
+from src.cli.source_commands import app as sources_app
 from src.cli.summarize_commands import app as summarize_app
 from src.cli.sync_commands import app as sync_app
 from src.cli.worker_commands import app as worker_app
@@ -85,6 +86,7 @@ app.add_typer(neon_app, name="neon")
 app.add_typer(profile_app, name="profile")
 app.add_typer(prompts_app, name="prompts")
 app.add_typer(settings_app, name="settings")
+app.add_typer(sources_app, name="sources")
 app.add_typer(sync_app, name="sync")
 app.add_typer(worker_app, name="worker")
 app.add_typer(job_app, name="jobs")
