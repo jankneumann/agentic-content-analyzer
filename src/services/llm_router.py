@@ -56,6 +56,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from src.config.models import ModelConfig, ModelFamily, Provider
+from src.services.batch.types import BatchPollResult, BatchRequest, BatchState
 from src.utils.logging import get_logger
 
 if TYPE_CHECKING:
@@ -1371,6 +1372,203 @@ class LLMRouter:
             provider=provider,
             model_version=self.model_config.get_model_version(model, provider),
             raw_response=response,
+        )
+
+    # ------------------------------------------------------------------
+    # Batch execution (Phase 0 — Gemini Batch API)
+    #
+    # These wrap ``client.batches.create`` / ``client.batches.get`` and reuse
+    # the same credential resolution as ``_generate_gemini``. They are inert
+    # until ``batch.enabled`` is flipped on; nothing calls them on the
+    # synchronous path. Phase 0 supports ``google_ai`` models only.
+    # ------------------------------------------------------------------
+
+    #: Inline submissions must stay under the provider's ~20MB cap. We guard a
+    #: little below it; larger batches must use the input-file path (follow-up).
+    _INLINE_BATCH_BYTE_LIMIT: ClassVar[int] = 18 * 1024 * 1024
+
+    @staticmethod
+    def _extract_gemini_text(response: Any) -> str:
+        """Pull the first text part out of a Gemini ``GenerateContentResponse``.
+
+        Mirrors the extraction in ``_generate_gemini`` so batch results decode
+        identically to synchronous ones.
+        """
+        candidates = getattr(response, "candidates", None)
+        if not candidates:
+            return ""
+        content = getattr(candidates[0], "content", None)
+        parts = getattr(content, "parts", None) if content else None
+        if not parts:
+            return ""
+        for part in parts:
+            text = getattr(part, "text", None)
+            if text:
+                return str(text)
+        return ""
+
+    @staticmethod
+    def _map_batch_state(raw_state: Any) -> BatchState:
+        """Normalize the provider's ``JOB_STATE_*`` enum to a :class:`BatchState`.
+
+        Accepts either the SDK enum (``JobState.JOB_STATE_SUCCEEDED``) or its
+        string name. Unknown/in-flight states map to ``RUNNING`` so the poller
+        keeps watching rather than abandoning a live job.
+        """
+        name = getattr(raw_state, "name", None) or str(raw_state)
+        mapping = {
+            "JOB_STATE_UNSPECIFIED": BatchState.PENDING,
+            "JOB_STATE_QUEUED": BatchState.PENDING,
+            "JOB_STATE_PENDING": BatchState.PENDING,
+            "JOB_STATE_RUNNING": BatchState.RUNNING,
+            "JOB_STATE_PAUSED": BatchState.RUNNING,
+            "JOB_STATE_UPDATING": BatchState.RUNNING,
+            "JOB_STATE_CANCELLING": BatchState.RUNNING,
+            "JOB_STATE_SUCCEEDED": BatchState.SUCCEEDED,
+            # Partial success still has results to reconcile; missing keys fall
+            # through to synchronous fallback at the worker level.
+            "JOB_STATE_PARTIALLY_SUCCEEDED": BatchState.SUCCEEDED,
+            "JOB_STATE_FAILED": BatchState.FAILED,
+            "JOB_STATE_EXPIRED": BatchState.EXPIRED,
+            "JOB_STATE_CANCELLED": BatchState.CANCELLED,
+        }
+        return mapping.get(name, BatchState.RUNNING)
+
+    async def submit_batch(
+        self,
+        model: str,
+        requests: list[BatchRequest],
+        provider: Provider | None = None,
+    ) -> str:
+        """Submit a Gemini batch job and return its provider job name.
+
+        Each :class:`BatchRequest` becomes an ``InlinedRequest`` whose
+        ``metadata`` carries the ``request_key`` for order-independent
+        reconciliation. Phase 0 sends inline (the configured flush threshold
+        keeps batches well under the inline byte cap); oversized batches raise
+        so the caller reduces batch size rather than silently truncating.
+
+        Args:
+            model: Logical model id (must resolve to a ``google_ai`` provider).
+            requests: In-memory requests to batch. Must be non-empty.
+            provider: Optional explicit provider; defaults to the model's family.
+
+        Returns:
+            The provider job name (e.g. ``"batches/abc123"``) to poll later.
+
+        Raises:
+            ValueError: If ``requests`` is empty, the model is not a
+                ``google_ai`` model, or the inline payload exceeds the cap.
+            RuntimeError: If ``GOOGLE_API_KEY`` is unset.
+        """
+        if not requests:
+            raise ValueError("submit_batch requires at least one request")
+
+        provider = self.resolve_provider(model, provider)
+        if provider != Provider.GOOGLE_AI:
+            raise ValueError(
+                "Batch execution supports google_ai models only in Phase 0; "
+                f"got provider={provider.value} for model={model}"
+            )
+
+        from google import genai
+        from google.genai import types
+
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise RuntimeError("GOOGLE_API_KEY environment variable not set")
+
+        client = genai.Client(api_key=api_key)
+        provider_model_id = self.get_provider_model_id(model, provider)
+
+        inlined: list[types.InlinedRequest] = []
+        approx_bytes = 0
+        for req in requests:
+            config = types.GenerateContentConfig(**req.config) if req.config else None
+            inlined.append(
+                types.InlinedRequest(
+                    contents=req.contents,
+                    config=config,
+                    metadata={"request_key": req.key},
+                )
+            )
+            approx_bytes += len(str(req.contents)) + len(str(req.config))
+
+        if approx_bytes > self._INLINE_BATCH_BYTE_LIMIT:
+            # Input-file (JSONL upload) path is a documented follow-up; for now
+            # fail loudly so the flush worker shrinks the group instead.
+            raise ValueError(
+                f"Inline batch payload ~{approx_bytes} bytes exceeds the "
+                f"{self._INLINE_BATCH_BYTE_LIMIT}-byte inline cap; reduce batch size"
+            )
+
+        job = client.batches.create(model=provider_model_id, src=inlined)
+        logger.info(
+            "submitted gemini batch",
+            extra={
+                "provider_job_name": job.name,
+                "model": provider_model_id,
+                "request_count": len(inlined),
+            },
+        )
+        return str(job.name)
+
+    async def poll_batch(self, provider_job_name: str) -> BatchPollResult:
+        """Poll one batch job and, on success, return its results keyed by request.
+
+        Raises only on transport errors — ``FAILED``/``EXPIRED``/``CANCELLED``
+        are returned as states so the worker can route affected requests to
+        synchronous fallback. On success, ``results_by_key`` maps each
+        ``request_key`` to its generated text; per-request errors (partial
+        success) land in ``errors_by_key``.
+
+        Args:
+            provider_job_name: The job name returned by :meth:`submit_batch`.
+
+        Returns:
+            A :class:`BatchPollResult` describing the job's current state.
+
+        Raises:
+            RuntimeError: If ``GOOGLE_API_KEY`` is unset.
+        """
+        from google import genai
+
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise RuntimeError("GOOGLE_API_KEY environment variable not set")
+
+        client = genai.Client(api_key=api_key)
+        job = client.batches.get(name=provider_job_name)
+        state = self._map_batch_state(getattr(job, "state", None))
+
+        if state != BatchState.SUCCEEDED:
+            job_error = getattr(job, "error", None)
+            return BatchPollResult(
+                state=state,
+                error=str(job_error) if job_error else None,
+            )
+
+        results_by_key: dict[str, str] = {}
+        errors_by_key: dict[str, str] = {}
+
+        dest = getattr(job, "dest", None)
+        responses = getattr(dest, "inlined_responses", None) if dest else None
+        for resp in responses or []:
+            metadata = getattr(resp, "metadata", None) or {}
+            key = metadata.get("request_key")
+            if key is None:
+                logger.warning("batch response missing request_key; skipping")
+                continue
+            resp_error = getattr(resp, "error", None)
+            if resp_error is not None:
+                errors_by_key[key] = str(resp_error)
+                continue
+            results_by_key[key] = self._extract_gemini_text(getattr(resp, "response", None))
+
+        return BatchPollResult(
+            state=state,
+            results_by_key=results_by_key,
+            errors_by_key=errors_by_key or None,
         )
 
     async def _generate_gemini_with_video(

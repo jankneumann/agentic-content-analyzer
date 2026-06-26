@@ -13,11 +13,13 @@
 - [x] 0.1.2 SQLAlchemy models `BatchJob`, `BatchRequest` in `src/models/batch.py`.
 
 ### 0.2 Router batch methods
-- [ ] 0.2.1 `BatchRequest`/`BatchPollResult` dataclasses in `src/services/batch/types.py`.
-- [ ] 0.2.2 `LLMRouter.submit_batch(model, requests)` wrapping
+- [x] 0.2.1 `BatchRequest`/`BatchPollResult` dataclasses in `src/services/batch/types.py`.
+- [x] 0.2.2 `LLMRouter.submit_batch(model, requests)` wrapping
   `client.batches.create` (inline vs input-file by size); reuse `_generate_gemini`
   credential resolution; reject non-`google_ai` models. [depends: 0.2.1]
-- [ ] 0.2.3 `LLMRouter.poll_batch(provider_job_name)` wrapping `client.batches.get`;
+  (Phase 0 ships the inline path + a byte-cap guard; the input-file/JSONL path
+  is a documented follow-up — inline covers the configured flush threshold.)
+- [x] 0.2.3 `LLMRouter.poll_batch(provider_job_name)` wrapping `client.batches.get`;
   return `(state, results_by_key|None)`; map provider states → enum. [depends: 0.2.1]
 
 ### 0.3 Collector + result-handler registry
@@ -55,7 +57,7 @@
   [depends: 0.4.1, 0.4.2]
 
 ### 0.7 Tests (Phase 0)
-- [ ] 0.7.1 Unit: `submit_batch`/`poll_batch` against a mocked `client.batches`
+- [x] 0.7.1 Unit: `submit_batch`/`poll_batch` against a mocked `client.batches`
   (success, FAILED, EXPIRED, partial). Patch at SOURCE per repo mock conventions.
 - [ ] 0.7.2 Unit: collector persists pending rows; reconciler routes by key to the
   right handler; fallback re-runs failed requests.
