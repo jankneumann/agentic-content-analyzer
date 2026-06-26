@@ -7,6 +7,7 @@
  * Sub-routes:
  * - /settings/prompts (default)
  * - /settings/models
+ * - /settings/sources
  * - /settings/voice
  * - /settings/notifications
  *
@@ -20,7 +21,7 @@ import {
   useMatches,
   Link,
 } from "@tanstack/react-router"
-import { Bell, Cpu, Volume2, MessageSquareCode } from "lucide-react"
+import { Bell, Cpu, Volume2, MessageSquareCode, Rss } from "lucide-react"
 
 import { Route as rootRoute } from "./__root"
 import { PageContainer } from "@/components/layout"
@@ -29,6 +30,7 @@ import { cn } from "@/lib/utils"
 const settingsTabs = [
   { path: "/settings/prompts", label: "Prompts", icon: MessageSquareCode },
   { path: "/settings/models", label: "Models", icon: Cpu },
+  { path: "/settings/sources", label: "Sources", icon: Rss },
   { path: "/settings/voice", label: "Voice", icon: Volume2 },
   { path: "/settings/notifications", label: "Notifications", icon: Bell },
 ] as const

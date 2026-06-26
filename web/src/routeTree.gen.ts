@@ -22,6 +22,7 @@ import { ScriptReviewRoute } from "./routes/review/script.$id"
 import { SettingsRoute } from "./routes/settings"
 import { SettingsPromptsRoute } from "./routes/settings/prompts"
 import { SettingsModelsRoute } from "./routes/settings/models"
+import { SettingsSourcesRoute } from "./routes/settings/sources"
 import { SettingsVoiceRoute } from "./routes/settings/voice"
 import { SettingsNotificationsRoute } from "./routes/settings/notifications"
 import { StatusRoute } from "./routes/status"
@@ -41,6 +42,7 @@ import { LoginRoute } from "./routes/login"
  * - /settings (redirects to /settings/prompts)
  * - /settings/prompts
  * - /settings/models
+ * - /settings/sources
  * - /settings/voice
  * - /settings/notifications
  */
@@ -53,6 +55,7 @@ const ReviewRouteWithChildren = ReviewRoute.addChildren([
 const SettingsRouteWithChildren = SettingsRoute.addChildren([
   SettingsPromptsRoute,
   SettingsModelsRoute,
+  SettingsSourcesRoute,
   SettingsVoiceRoute,
   SettingsNotificationsRoute,
 ])

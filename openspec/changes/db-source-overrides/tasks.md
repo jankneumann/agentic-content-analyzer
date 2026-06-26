@@ -65,14 +65,14 @@ Task ordering is test-first (RED before GREEN). Sizes per the Task Sizing Refere
 
 ## Phase 4 — Web UI (wp-web)
 
-- [ ] 4.1 Write component/e2e tests for `SourcesConfigurator`: list grouped by type with origin/enabled badges; add-source dialog validates + posts; toggle enable/disable; delete shown only for db-origin. **(M)**
+- [x] 4.1 Write component/e2e tests for `SourcesConfigurator`: list grouped by type with origin/enabled badges; add-source dialog validates + posts; toggle enable/disable; delete shown only for db-origin. **(M)**
   **Spec scenarios**: Source Override Web UI (all)
   **Dependencies**: 2.2
-- [ ] 4.2 Implement `web/src/lib/api/sources.ts`, types, query-keys, hooks, `web/src/components/settings/SourcesConfigurator.tsx`, route `web/src/routes/settings/sources.tsx`, and the settings tab + nav entry. **(M)**
+- [x] 4.2 Implement `web/src/lib/api/sources.ts`, types, query-keys, hooks, `web/src/components/settings/SourcesConfigurator.tsx`, route `web/src/routes/settings/sources.tsx`, and the settings tab + nav entry. **(M)**
   **Contracts**: contracts/openapi/v1.yaml
   **Design decisions**: D8
   **Dependencies**: 4.1
-- [ ] Checkpoint: run web tests, review diff, verify scope.
+- [x] Checkpoint: run web tests, review diff, verify scope.
 
 ## Phase 5 — Integration (wp-integration)
 
