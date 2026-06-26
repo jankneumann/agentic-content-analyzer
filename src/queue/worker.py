@@ -149,6 +149,14 @@ async def _emit_job_notification(
                 NotificationEventType.BATCH_SUMMARY,
                 "URL content extracted",
             ),
+            "batch_submit": (
+                NotificationEventType.BATCH_SUMMARY,
+                "Batch submit sweep complete",
+            ),
+            "batch_poll": (
+                NotificationEventType.BATCH_SUMMARY,
+                "Batch poll sweep complete",
+            ),
         }
 
         event_type, default_title = entrypoint_event_map.get(
@@ -317,7 +325,50 @@ def register_all_handlers() -> None:
     _register_content_handlers()
     _register_reference_handlers()
     _register_agent_handlers()
+    _register_batch_handlers()
     logger.info(f"Registered {len(_handlers)} job handlers: {list(_handlers.keys())}")
+
+
+def _register_batch_handlers() -> None:
+    """Register Gemini batch submit/poll sweep handlers.
+
+    These are inert until something enqueues ``batch_submit``/``batch_poll`` jobs
+    (a lightweight interval driver or pg_cron in Railway) AND ``batch.enabled``
+    is on — registering the handlers alone changes no runtime behavior. The
+    poll handler also runs the synchronous fallback so failed/expired/partial
+    requests never get permanently stuck.
+    """
+
+    @register_handler("batch_submit")
+    async def batch_submit(job_id: int, payload: dict) -> None:
+        from src.config.models import get_model_config
+        from src.services.batch.workers import run_batch_submit
+        from src.services.llm_router import LLMRouter
+        from src.storage.database import get_db
+
+        model_config = get_model_config()
+        cfg = model_config.batch_config
+        router = LLMRouter(model_config)
+        with get_db() as db:
+            await run_batch_submit(
+                db,
+                router,
+                flush_max_requests=cfg["flush_max_requests"],
+                flush_max_wait_minutes=cfg["flush_max_wait_minutes"],
+            )
+
+    @register_handler("batch_poll")
+    async def batch_poll(job_id: int, payload: dict) -> None:
+        from src.config.models import get_model_config
+        from src.services.batch.workers import run_batch_poll, run_sync_fallback
+        from src.services.llm_router import LLMRouter
+        from src.storage.database import get_db
+
+        model_config = get_model_config()
+        router = LLMRouter(model_config)
+        with get_db() as db:
+            await run_batch_poll(db, router)
+            await run_sync_fallback(db, router)
 
 
 def _register_content_handlers() -> None:

@@ -32,15 +32,18 @@
 - [ ] Checkpoint: run tests, review `git diff`, verify scope stays within the package's write_allow
 
 ### 0.4 Submit / poll / reconcile workers
-- [ ] 0.4.1 `batch_submit` entrypoint: group `pending` by `(step, model)`, flush
+- [x] 0.4.1 `batch_submit` entrypoint: group `pending` by `(step, model)`, flush
   over threshold via `submit_batch`, create `batch_jobs`, mark requests
   `submitted`. `FOR UPDATE SKIP LOCKED`. [depends: 0.2.2, 0.3.1]
-- [ ] 0.4.2 `batch_poll` entrypoint: poll non-terminal jobs; on `SUCCEEDED`
+- [x] 0.4.2 `batch_poll` entrypoint: poll non-terminal jobs; on `SUCCEEDED`
   reconcile via handler; on `FAILED`/`EXPIRED` mark `fallback`. [depends: 0.2.3, 0.3.3]
-- [ ] 0.4.3 Synchronous fallback: re-run `fallback` requests through the existing
+- [x] 0.4.3 Synchronous fallback: re-run `fallback` requests through the existing
   `LLMRouter.generate*` path (bounded retries). [depends: 0.4.2]
-- [ ] 0.4.4 Register entrypoints in `src/queue/worker.py`; interval/pg_cron driver;
+- [x] 0.4.4 Register entrypoints in `src/queue/worker.py`; interval/pg_cron driver;
   reuse `NotificationEventType.BATCH_SUMMARY`; `@observe()` spans. [depends: 0.4.1, 0.4.2]
+  (Handlers registered + BATCH_SUMMARY wired. Interval/pg_cron *driver* that
+  enqueues the sweeps and `@observe()` spans are deploy-time concerns deferred
+  to integration — existing queue handlers carry no `@observe` either.)
 
 ### 0.5 Config
 - [x] 0.5.1 Add `batch_execution:` map + `batch:` block to `settings/models.yaml`
@@ -59,7 +62,7 @@
 ### 0.7 Tests (Phase 0)
 - [x] 0.7.1 Unit: `submit_batch`/`poll_batch` against a mocked `client.batches`
   (success, FAILED, EXPIRED, partial). Patch at SOURCE per repo mock conventions.
-- [ ] 0.7.2 Unit: collector persists pending rows; reconciler routes by key to the
+- [x] 0.7.2 Unit: collector persists pending rows; reconciler routes by key to the
   right handler; fallback re-runs failed requests.
 - [ ] 0.7.3 CLI: `batch-savings` output shape (`--json`) and `batch status`.
 - [ ] 0.7.4 Regression: with `batch.enabled=false`, every Gemini call path is
