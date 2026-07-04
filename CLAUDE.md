@@ -26,6 +26,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | [**ACA Agents**](docs/ACA-AGENTS.md) | Agentic analysis: personas, specialists, memory, approvals, scheduling |
 | [Gotchas](docs/GOTCHAS.md) | Comprehensive list of pitfalls organized by area |
 | [OpenBao](docs/OPENBAO.md) | OpenBao secrets management: setup, AppRole, seeding, audit events |
+| [Improvement Roadmap](docs/IMPROVEMENT_ROADMAP.md) | Ingestion-reliability diagnosis + phased engineering roadmap (2026-07) |
 
 **Always use Context7 MCP** for library/API documentation, code generation, or setup steps for external libraries.
 
