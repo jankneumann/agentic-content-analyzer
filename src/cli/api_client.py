@@ -233,9 +233,7 @@ class ApiClient:
         resp.raise_for_status()
         return self._resp_json(resp)
 
-    def add_source(
-        self, config: dict[str, Any], description: str | None = None
-    ) -> dict[str, Any]:
+    def add_source(self, config: dict[str, Any], description: str | None = None) -> dict[str, Any]:
         """POST /api/v1/sources — add or update a source override."""
         payload: dict[str, Any] = {"config": config}
         if description is not None:

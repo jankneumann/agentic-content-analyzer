@@ -202,9 +202,7 @@ def _set_enabled_direct(key: str, enabled: bool) -> None:
             service = SourceOverrideService(db)
             fallback = None
             if service.get(key) is None:
-                fallback = _resolve_fallback_config(
-                    key, load_sources_config(), derive_source_key
-                )
+                fallback = _resolve_fallback_config(key, load_sources_config(), derive_source_key)
             row = service.set_enabled(key, enabled, fallback_config=fallback)
             data = {
                 "source_key": row.source_key,
@@ -219,7 +217,9 @@ def _set_enabled_direct(key: str, enabled: bool) -> None:
     _print_mutation(data)
 
 
-def _resolve_fallback_config(key: str, config: Any, derive_source_key: Any) -> dict[str, Any] | None:
+def _resolve_fallback_config(
+    key: str, config: Any, derive_source_key: Any
+) -> dict[str, Any] | None:
     """Find the YAML source matching ``key`` and return its config dict."""
     for s in config.sources:
         try:
@@ -336,9 +336,7 @@ def add_source(
         str | None, typer.Option("--channel-id", help="YouTube channel id")
     ] = None,
     name: Annotated[str | None, typer.Option("--name", help="Human-readable name")] = None,
-    tag: Annotated[
-        list[str] | None, typer.Option("--tag", help="Tag (repeatable)")
-    ] = None,
+    tag: Annotated[list[str] | None, typer.Option("--tag", help="Tag (repeatable)")] = None,
     max_entries: Annotated[
         int | None, typer.Option("--max-entries", help="Max entries to ingest")
     ] = None,
