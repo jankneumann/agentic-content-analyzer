@@ -114,7 +114,15 @@ class SourceOverrideService:
             SourceOverrideError: If the config is invalid.
         """
         validated = self.validate_config(config)
-        key = source_key(validated)
+        try:
+            key = source_key(validated)
+        except ValueError as e:
+            # Valid per the Source union but missing a locator (e.g. readwise with
+            # no name, arxiv with only categories). Surface as a 4xx, not a 500.
+            raise SourceOverrideError(
+                f"cannot derive a source key for this {validated.get('type')!r} source: {e}. "
+                "Provide a locator (url/id/query/name) for it."
+            ) from e
         stype = validated["type"]
 
         existing = self.get(key)

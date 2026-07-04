@@ -126,7 +126,8 @@ const SOURCE_FIELDS: Record<SourceType, FieldDef[]> = {
     { key: "tags", label: "Tags", placeholder: "ai, papers", kind: "list" },
   ],
   arxiv: [
-    { key: "query", label: "Query", placeholder: "cat:cs.CL", required: true },
+    { key: "search_query", label: "Search query", placeholder: "cat:cs.CL", required: true },
+    { key: "categories", label: "Categories", placeholder: "cs.CL, cs.AI", kind: "list" },
     { key: "name", label: "Name", placeholder: "arXiv CL" },
     { key: "tags", label: "Tags", placeholder: "ai, papers", kind: "list" },
     { key: "max_entries", label: "Max entries", placeholder: "10", kind: "number" },
@@ -137,7 +138,8 @@ const SOURCE_FIELDS: Record<SourceType, FieldDef[]> = {
     { key: "max_entries", label: "Max entries", placeholder: "10", kind: "number" },
   ],
   websearch: [
-    { key: "query", label: "Query", placeholder: "latest AI news", required: true },
+    { key: "provider", label: "Provider", placeholder: "perplexity or grok", required: true },
+    { key: "prompt", label: "Prompt", placeholder: "latest AI news", required: true },
     { key: "name", label: "Name", placeholder: "AI News Search" },
     { key: "tags", label: "Tags", placeholder: "ai, news", kind: "list" },
     { key: "max_entries", label: "Max entries", placeholder: "10", kind: "number" },
