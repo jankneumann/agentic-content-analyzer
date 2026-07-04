@@ -532,9 +532,7 @@ def source_key(source: dict[str, Any] | SourceBase) -> str:
     return f"{stype}:{locator}"
 
 
-def merge_source_overrides(
-    config: SourcesConfig, overrides: list[dict[str, Any]]
-) -> SourcesConfig:
+def merge_source_overrides(config: SourcesConfig, overrides: list[dict[str, Any]]) -> SourcesConfig:
     """Pure merge of database overrides onto a YAML-loaded config.
 
     ``overrides`` is a list of ``{"source_key", "config", "enabled"}`` dicts.
@@ -594,7 +592,9 @@ def _apply_db_source_overrides(config: SourcesConfig) -> SourcesConfig:
         with get_db() as db:
             overrides = SourceOverrideService(db).list_for_merge()
     except Exception:
-        logger.debug("DB source override lookup unavailable; using YAML-only sources", exc_info=True)
+        logger.debug(
+            "DB source override lookup unavailable; using YAML-only sources", exc_info=True
+        )
         return config
 
     return merge_source_overrides(config, overrides)
