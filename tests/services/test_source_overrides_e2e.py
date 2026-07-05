@@ -3,6 +3,12 @@
 Exercises the full backend path on SQLite (no Postgres): a DB override row is
 merged into the real sources.d/ YAML config. Covers the acceptance example
 (adding https://www.normaltech.ai/ as a blog) and the disable-shadow behavior.
+
+NOTE: lives under tests/services (the `services-stack` CI shard), not
+tests/config, on purpose. In the `rest` shard these tests reordered a
+pre-existing test-isolation bug (a shared FastAPI router object emptied by
+another DB-backed test) into the path of tests/regression's route-inventory
+assertion. Keep source-override tests out of the `rest` shard.
 """
 
 from contextlib import contextmanager
