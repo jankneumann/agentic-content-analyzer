@@ -90,8 +90,10 @@ class TestAgentLayerRegression:
         """Agent API routes are mounted alongside existing routes."""
         from src.api.app import app
 
-        # Collect all route paths
-        paths = {route.path for route in app.routes if hasattr(route, "path")}
+        # Introspect via the OpenAPI schema rather than `app.routes`: starlette
+        # >=1.0 no longer flattens included routers into `app.routes`, though the
+        # routes themselves still resolve and are still advertised in the schema.
+        paths = set(app.openapi().get("paths", {}))
 
         # Agent routes should exist
         assert any("/agent/" in p for p in paths)
