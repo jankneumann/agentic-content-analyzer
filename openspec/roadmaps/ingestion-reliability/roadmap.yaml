@@ -1,0 +1,481 @@
+schema_version: 1
+roadmap_id: ingestion-reliability
+source_proposal: openspec/roadmaps/ingestion-reliability/proposal.md
+status: approved
+policy:
+  default_action: wait_if_budget_exceeded
+  max_switch_attempts_per_item: 2
+items:
+- item_id: ci-real-ingestion-tests
+  title: Real ingestion test tiers in CI
+  status: approved
+  priority: 1
+  effort: M
+  depends_on: []
+  description: 'Un-skip and implement test_ingest_actually_writes_to_db (tests/cli/test_ingest_contract.py:383)
+    using the existing Hoverfly RSS simulation and the CI Postgres service. Add a
+    PR-blocking job running pytest -m ''integration or hoverfly'' (41 tests currently
+    deselected by ci.yml:152 / pyproject.toml:285). Add a nightly schedule: workflow
+    running the Hoverfly-replayed pipeline plus a minimal live_api smoke set.'
+  rationale: "The exact reported symptom \u2014 orchestrator returns 0, CLI reports\
+    \ success \u2014 has a written test that is skipped, and CI executes zero real\
+    \ ingestion behavior."
+  change_id: real-ingestion-test-tiers-in-ci
+  acceptance_outcomes:
+  - A run whose claimed items_ingested does not match the DB row delta fails CI
+  - All integration-marked tests execute on every PR
+  - Upstream feed/API format breakage produces a red nightly run within 24 hours
+  scope:
+    write_allow:
+    - .github/workflows/**
+    - tests/cli/test_ingest_contract.py
+    - tests/integration/**
+    - pyproject.toml
+- item_id: ingestion-run-persistence
+  title: Persisted ingestion run results
+  status: approved
+  priority: 2
+  effort: M
+  depends_on: []
+  description: Introduce IngestionRun and SourceRunResult tables written by every
+    pipeline driver, replacing the current behavior of reading only items_ingested
+    and discarding status/errors/warnings (src/pipeline/runner.py:123, src/cli/pipeline_commands.py:136).
+    Surface via CLI/API queries.
+  rationale: Partial failures (1-of-N dead feeds) are currently invisible above the
+    service layer.
+  change_id: persisted-ingestion-run-results
+  acceptance_outcomes:
+  - aca pipeline daily exits non-zero or prints a WARN summary when any source is
+    partial or failed
+  - Per-source run history is queryable via CLI and API
+  - A 1-of-N feed failure is visible in the run record, not only in logs
+  scope:
+    write_allow:
+    - src/models/**
+    - src/pipeline/**
+    - src/cli/pipeline_commands.py
+    - alembic/versions/**
+    - src/api/**
+- item_id: pipeline-telemetry-alerting
+  title: Production telemetry and out-of-band alerting
+  status: approved
+  priority: 3
+  effort: M
+  depends_on:
+  - id: ingestion-run-persistence
+    source: llm
+    rationale: Zero-item/partial-run alerts key off persisted SourceRunResult records
+    confidence: medium
+  description: Call record_ingestion / record_pipeline_stage_* from src/tasks/content.py
+    and the worker (today only the CLI path is instrumented). Add one out-of-band
+    channel (email via existing SendGrid dep, or webhook) to notification_service.emit()
+    for severity >= warning, covering job_failure and zero-item runs; current delivery
+    is SSE to an open browser only (notification_service.py:141-154).
+  rationale: A 3 a.m. failed or empty run currently alerts nobody.
+  change_id: production-telemetry-and-out-of-band-alerting
+  acceptance_outcomes:
+  - Scheduled runs emit per-source ingestion counters
+  - A failed or empty overnight run produces an email/push notification by morning
+  scope:
+    write_allow:
+    - src/tasks/**
+    - src/queue/**
+    - src/services/notification_service.py
+    - src/telemetry/**
+    - settings/notifications.yaml
+- item_id: stuck-content-sweeper
+  title: Stuck-content sweeper and requeue CLI
+  status: approved
+  priority: 4
+  effort: M
+  depends_on: []
+  description: Periodic job resetting PROCESSING/PARSING rows older than a timeout
+    back to PARSED/PENDING and requeuing FAILED rows up to a retry budget (summarizer.py:90,276
+    never re-selects PROCESSING; queue/setup.py:590 fails jobs without resetting content
+    status). Add 'aca manage requeue-stuck'.
+  rationale: PROCESSING/PARSING are unrecoverable black holes; FAILED has no retry
+    path.
+  change_id: stuck-content-sweeper-and-requeue-cli
+  acceptance_outcomes:
+  - Content rows stuck >1h in transitional states trend to zero automatically
+  - FAILED rows are retried up to a budget and then surfaced, not stranded
+  scope:
+    write_allow:
+    - src/queue/**
+    - src/cli/**
+    - src/models/content.py
+- item_id: unified-source-registry
+  title: Unified source registry for all pipeline drivers
+  status: candidate
+  priority: 5
+  effort: L
+  depends_on:
+  - id: ci-real-ingestion-tests
+    source: explicit
+    rationale: Refactoring the drivers needs the integration safety net in CI
+  - id: ingestion-run-persistence
+    source: explicit
+    rationale: Registry-driven runs report through the persisted run-result path
+  description: One declarative registry (source -> ingest callable, config section,
+    defaults, enabled) consumed by all three drivers, replacing divergent lists in
+    pipeline_commands.py:174, runner.py:88-109, tasks/content.py:270. Strangle and
+    delete bespoke lists after two green weeks.
+  rationale: "The same command ingests different source sets depending on backend\
+    \ reachability \u2014 the root cause of 'works sometimes'."
+  acceptance_outcomes:
+  - Adding a source is one registry entry; all drivers run the identical source set
+  - A parity test asserts the three drivers resolve the same sources
+  - aca pipeline daily behavior no longer depends on backend reachability
+  scope:
+    write_allow:
+    - src/ingestion/**
+    - src/pipeline/**
+    - src/tasks/**
+    - src/cli/pipeline_commands.py
+- item_id: sources-config-isolation
+  title: Per-file isolation for sources.d config loading
+  status: candidate
+  priority: 6
+  effort: M
+  depends_on:
+  - id: ingestion-run-persistence
+    source: explicit
+    rationale: Config-load failures are recorded as source-level errors in the run
+      result
+  description: A malformed sources.d/*.yaml aborts loading of ALL sources (config/sources.py:349,368)
+    and is handled inconsistently (RSS fails loudly; gmail/scholar/arxiv return ok-with-zero
+    via orchestrator.py:113,559,789). Isolate per file; remove catch-and-return-ok
+    paths.
+  rationale: One typo in one YAML currently kills every source, silently for some.
+  acceptance_outcomes:
+  - A broken podcasts.yaml leaves rss/gmail unaffected and marks the run partial with
+    a pointed error
+  - No source can report success-with-zero-items on a config load failure
+  scope:
+    write_allow:
+    - src/config/sources.py
+    - src/ingestion/orchestrator.py
+- item_id: canonical-ingestion-result
+  title: Canonical ingestion result and fail-loud accounting
+  status: candidate
+  priority: 7
+  effort: L
+  depends_on:
+  - id: ingestion-run-persistence
+    source: explicit
+    rationale: The uniform envelope is what gets persisted per source; land the store
+      first
+  description: Every orchestrator function returns IngestionResponse; retire bare-int
+    returns (gmail.py:496, orchestrator.py:964, arxiv.py:613) and delete per-source
+    conversion shims. Replace swallow-and-continue per-item handlers (gmail.py:681-684)
+    with items_failed + structured item_errors on the RSS pattern (rss.py:136-149).
+    Reduce 84 broad except Exception blocks in src/ingestion/ to <20, each justified.
+  rationale: Bare-int returns cannot represent failure; swallowed items make runs
+    lie.
+  acceptance_outcomes:
+  - Uniform, mypy-enforced return signature across all orchestrator ingest functions
+  - Per-item persistence failures increment items_failed with structured errors
+  - Broad exception handlers in src/ingestion/ reduced below 20, each justified
+  scope:
+    write_allow:
+    - src/ingestion/**
+- item_id: adapter-base-framework
+  title: Shared ingestion adapter framework
+  status: candidate
+  priority: 8
+  effort: XL
+  depends_on:
+  - id: unified-source-registry
+    source: explicit
+    rationale: The framework plugs adapters into the single registry
+  - id: canonical-ingestion-result
+    source: explicit
+    rationale: The template method emits the canonical envelope
+  description: 'Template-method BaseIngestionAdapter: framework owns iterate -> dedupe
+    -> persist -> index -> hooks -> error accounting; adapters implement fetch_items()
+    and to_content_data() only. Extract ContentRepository.upsert() to kill the 17x
+    duplicated persist block and per-adapter dedup copies (rss.py:559-581 ~= gmail.py:547-560).
+    Migrate strangler-style: RSS, then gmail, then the rest; one PR each with row-count
+    parity checks.'
+  rationale: 15 hand-rolled copies of the same loop means every bug is fixed at most
+    once out of 15.
+  acceptance_outcomes:
+  - One implementation of the ingest loop; adapters contain only fetch/normalize logic
+  - Duplicated persist block count drops from 17 to 1
+  - A bug fixed in the loop is fixed for every source simultaneously
+  scope:
+    write_allow:
+    - src/ingestion/**
+    - src/storage/**
+- item_id: uniform-hook-wiring
+  title: Uniform downstream hook wiring
+  status: candidate
+  priority: 9
+  effort: M
+  depends_on:
+  - id: adapter-base-framework
+    source: explicit
+    rationale: Hooks are invoked by the base class, not per adapter
+  description: Base framework invokes index_content and reference extraction for every
+    adapter, fail-safe after commit. Today index_content is missing from podcast/xsearch/perplexity/arxiv/readwise
+    (content never searchable) and reference_hook.on_content_ingested has zero production
+    callers.
+  rationale: Whole source types are silently absent from search; a documented hook
+    is inert.
+  acceptance_outcomes:
+  - Content from all adapters appears in hybrid search
+  - Reference extraction runs at ingest time, or docs explicitly state backfill-only
+  scope:
+    write_allow:
+    - src/ingestion/**
+    - src/services/reference_hook.py
+    - src/services/indexing.py
+- item_id: remove-dead-filter-config
+  title: Remove dead filter configuration
+  status: candidate
+  priority: 10
+  effort: M
+  depends_on:
+  - id: adapter-base-framework
+    source: llm
+    rationale: Per-source filters and persona propagation are implemented once in
+      the base loop
+    confidence: medium
+  description: content_filter_* options are silently ignored for every source except
+    blog (content_filter.py:240 used only by blog_scraper.py:509); the filter hook's
+    persona_id is always 'default' because no ingest_* accepts it (orchestrator.py:53).
+    Implement both or remove both.
+  rationale: Silently-ignored configuration is worse than none.
+  acceptance_outcomes:
+  - Every documented per-source filter option either takes effect or fails validation
+  - Persona-aware filtering receives a real persona_id or the parameter is removed
+  scope:
+    write_allow:
+    - src/ingestion/**
+    - src/services/content_filter.py
+    - src/config/sources.py
+- item_id: content-hash-dedup
+  title: Content-hash dedup correctness
+  status: candidate
+  priority: 11
+  effort: S
+  depends_on: []
+  description: "Partial unique index on content_hash (or maintain the in-batch hash\
+    \ set in-loop \u2014 gmail builds its dedup dict once at gmail.py:539 and never\
+    \ updates it), plus a regression test for intra-batch duplicates that currently\
+    \ double-insert."
+  rationale: Intra-batch hash duplicates insert twice as canonical rows.
+  acceptance_outcomes:
+  - Two same-hash items in one batch produce one canonical row plus one duplicate
+    link
+  scope:
+    write_allow:
+    - src/models/content.py
+    - alembic/versions/**
+    - src/ingestion/**
+- item_id: adapter-conformance-suite
+  title: Adapter conformance suite
+  status: candidate
+  priority: 12
+  effort: L
+  depends_on:
+  - id: adapter-base-framework
+    source: explicit
+    rationale: Conformance tests target the shared adapter contract
+  - id: ci-real-ingestion-tests
+    source: explicit
+    rationale: Suite runs in the integration CI tier created there
+  description: 'One parametrized test class run against every registered adapter:
+    response shape, error accounting, dedup idempotency (second run ingests 0; force_reprocess
+    updates in place), malformed-item tolerance. Hoverfly fixture per adapter, including
+    the three currently untested (arxiv.py, files.py, substack.py).'
+  rationale: A new adapter must be unable to register without proving the contract.
+  acceptance_outcomes:
+  - A new adapter cannot register without passing the conformance suite
+  - All registered adapters have replayable HTTP fixtures
+  scope:
+    write_allow:
+    - tests/**
+- item_id: break-config-import-cycles
+  title: Break the config/storage/services import cycles
+  status: candidate
+  priority: 13
+  effort: L
+  depends_on: []
+  description: Ten import cycles run through src.config -> src.config.models -> src.services.settings_service
+    -> src.storage.database -> src.config. Extract Settings from anything importing
+    storage.database; make the DB-override service a consumer, not a dependency, of
+    src.config.
+  rationale: Fragile initialization order is a latent 'works in CLI, breaks in worker'
+    generator.
+  acceptance_outcomes:
+  - The import analyzer reports zero cycles
+  scope:
+    write_allow:
+    - src/config/**
+    - src/storage/**
+    - src/services/settings_service.py
+- item_id: slim-cli-layer
+  title: Slim the CLI layer to argument parsing
+  status: candidate
+  priority: 14
+  effort: L
+  depends_on:
+  - id: unified-source-registry
+    source: explicit
+    rationale: Pipeline logic leaves the CLI only once the registry owns source dispatch
+  description: src/cli/ingest_commands.py (1,911 lines, top-2 tech-debt hotspot) and
+    pipeline_commands.py shrink to argument parsing plus calls into services/pipeline.
+  rationale: Business logic in the CLI layer is untestable from the API/queue paths.
+  acceptance_outcomes:
+  - No ingestion business logic remains in src/cli/; CLI files drop below ~500 lines
+    each
+  scope:
+    write_allow:
+    - src/cli/**
+    - src/pipeline/**
+- item_id: partition-services-package
+  title: Partition the services package
+  status: candidate
+  priority: 15
+  effort: XL
+  depends_on:
+  - id: break-config-import-cycles
+    source: llm
+    rationale: Moving 54 modules while cycles exist risks freezing the cycles into
+      new packages
+    confidence: medium
+  description: Split flat 54-file, 18.3k-LOC src/services/ into domain subpackages
+    (llm/, search/, references/, pricing/, filters/, kb/); split llm_router.py (1,754)
+    by provider and mcp_server.py (2,722) by tool group. Mechanical moves with re-export
+    shims, then shim removal on a dated schedule (incl. src/ingestion/reference_extractor.py
+    shim).
+  rationale: The flat services dir is the repo's largest navigation and merge-conflict
+    hazard.
+  acceptance_outcomes:
+  - Every service lives in a domain subpackage
+  - No src file exceeds ~1,000 lines except by documented exception
+  scope:
+    write_allow:
+    - src/services/**
+    - src/mcp_server.py
+- item_id: rename-filter-twins
+  title: Rename the filter twins
+  status: candidate
+  priority: 16
+  effort: S
+  depends_on: []
+  description: content_filter.py vs ingestion_filter.py encode a pre-persist vs post-persist
+    distinction their names do not carry. Rename with deprecation aliases.
+  rationale: High risk of a developer editing the wrong filter unknowingly.
+  acceptance_outcomes:
+  - Names state the pre/post-persist distinction; old imports warn
+  scope:
+    write_allow:
+    - src/services/**
+    - src/ingestion/**
+- item_id: config-layer-reduction
+  title: Configuration layer reduction and gotcha validators
+  status: candidate
+  priority: 17
+  effort: L
+  depends_on:
+  - id: break-config-import-cycles
+    source: llm
+    rationale: Settings restructuring is safe only after the config/storage cycle
+      is gone
+    confidence: medium
+  description: "Publish one authoritative precedence diagram for the ~11 config layers\
+    \ (settings.py:251-283 plus profiles, registry YAML, DB overrides, sources.d,\
+    \ .secrets.yaml), then remove at least two layers. Convert the 17 GOTCHAS config\
+    \ entries \u2014 and the top-10 gotchas overall \u2014 into fail-fast startup\
+    \ validations."
+  rationale: GOTCHAS prose is standing in for validation; 11 layers exceed human working
+    memory.
+  acceptance_outcomes:
+  - Documented precedence matches implementation; at least two layers eliminated
+  - Top config gotchas are enforced by validators, not prose
+  scope:
+    write_allow:
+    - src/config/**
+    - docs/**
+    - profiles/**
+    - settings/**
+- item_id: docs-reality-sync
+  title: Documentation reality sync and drift check
+  status: candidate
+  priority: 18
+  effort: M
+  depends_on: []
+  description: Delete the never-built multi-framework agent thesis from README.md:101-105
+    and docs/ARCHITECTURE.md:12-20; document the real src/agents/ structure; record
+    the abandonment as an ADR. Add a CI script verifying file paths referenced in
+    ARCHITECTURE.md/CLAUDE.md exist.
+  rationale: Contributors are onboarded onto a system that does not exist.
+  acceptance_outcomes:
+  - ARCHITECTURE.md describes only code that exists; drift check runs in the lint
+    job
+  scope:
+    write_allow:
+    - docs/**
+    - README.md
+    - CLAUDE.md
+    - .github/workflows/**
+- item_id: openspec-queue-grooming
+  title: OpenSpec queue grooming and WIP limits
+  status: candidate
+  priority: 19
+  effort: S
+  depends_on: []
+  description: Archive add-ingestion-filtering-prioritization (38/38 done); close
+    or re-scope the five changes frozen at 0/N tasks since 2026-04-25; adopt a WIP
+    limit (<=3 active changes) and a 30-day staleness rule.
+  rationale: "6 of 8 active changes are stale or done-but-unarchived \u2014 the queue\
+    \ no longer signals intent."
+  acceptance_outcomes:
+  - Zero active changes stale >30 days; completed changes archived within a week
+  scope:
+    write_allow:
+    - openspec/**
+- item_id: planning-system-consolidation
+  title: Single planning system
+  status: candidate
+  priority: 20
+  effort: M
+  depends_on:
+  - id: openspec-queue-grooming
+    source: explicit
+    rationale: Consolidate into OpenSpec only after its queue reflects reality
+  description: Fold docs/plans/ (9 parallel plan docs) into OpenSpec or mark historical;
+    triage the 8,295-line bug-scrub/fix-scrub backlogs into <=20 tracked items and
+    archive the rest.
+  rationale: A backlog nobody reads is documentation debt, not a plan.
+  acceptance_outcomes:
+  - One live planning surface; backlogs are tracked items, not documents
+  scope:
+    write_allow:
+    - docs/**
+    - openspec/**
+- item_id: depth-gate-policy
+  title: Depth gates for new surfaces
+  status: candidate
+  priority: 21
+  effort: S
+  depends_on:
+  - id: adapter-conformance-suite
+    source: explicit
+    rationale: The gate requires the conformance suite to exist before it can be enforced
+  description: 'Document in CLAUDE.md: new ingestion source => registry entry + conformance
+    pass + Hoverfly fixture + sources.d schema entry; new provider/backend => ADR
+    justifying why an existing one cannot serve. Consolidate to one primary + one
+    fallback among the 3 observability backends and 4 parsing engines.'
+  rationale: Prevents the breadth-over-depth accretion from restarting after the cleanup.
+  acceptance_outcomes:
+  - The gate policy is documented and referenced in review; consolidation targets
+    named with owners
+  scope:
+    write_allow:
+    - CLAUDE.md
+    - docs/**
+created_at: '2026-07-04T21:51:31.372053+00:00'
+updated_at: '2026-07-04T21:51:44.248840+00:00'
