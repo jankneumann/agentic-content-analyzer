@@ -382,7 +382,9 @@ class HuggingFacePapersClient:
     def _extract_upvotes(soup: BeautifulSoup) -> int | None:
         """Extract upvote count if present."""
         # Look for upvote elements
-        for el in soup.find_all(attrs={"class": re.compile(r"upvote|like|vote")}):
+        # `name=None` must be passed explicitly: bs4 >=4.15 only accepts a dict
+        # `attrs` on the overload that takes `name` positionally.
+        for el in soup.find_all(None, attrs={"class": re.compile(r"upvote|like|vote")}):
             text = el.get_text(strip=True)
             if text.isdigit():
                 return int(text)
