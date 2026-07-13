@@ -48,22 +48,30 @@ models:
     supports_video: false
     default_version: "20250514"
 
-  # Gemini 3.0 Family
-  gemini-3-flash:
+  # Gemini 3.x Family (latest — defaults for all Gemini pipeline steps)
+  gemini-3.1-pro:
     family: gemini
-    name: "Gemini 3.0 Flash"
+    name: "Gemini 3.1 Pro"
     supports_vision: true
     supports_video: true  # Native YouTube URL support
     supports_audio: true  # Native audio input for cloud STT
     default_version: "preview"
 
-  gemini-3-pro:
+  gemini-3.5-flash:
     family: gemini
-    name: "Gemini 3.0 Pro"
+    name: "Gemini 3.5 Flash"
     supports_vision: true
     supports_video: true  # Native YouTube URL support
     supports_audio: true  # Native audio input for cloud STT
-    default_version: "preview"
+    default_version: ""
+
+  gemini-3.1-flash-lite:
+    family: gemini
+    name: "Gemini 3.1 Flash Lite"
+    supports_vision: true
+    supports_video: true  # Native YouTube URL support
+    supports_audio: true  # Native audio input for cloud STT
+    default_version: ""
 
   gemini-2.5-flash:
     family: gemini
@@ -226,20 +234,29 @@ provider_model_configs:
 
 
 
-  # Gemini 3.0 Pro
-  google_ai.gemini-3-pro:
-    provider_model_id: "gemini-3-pro-preview"
-    cost_per_mtok_input: 2.00 #4.00 if context >200k
-    cost_per_mtok_output: 12.00 #18.00 if context >200k
+  # Gemini 3.1 Pro (latest)
+  google_ai.gemini-3.1-pro:
+    provider_model_id: "gemini-3.1-pro-preview"
+    cost_per_mtok_input: 2.00 # 4.00 if context >200k
+    cost_per_mtok_output: 12.00 # 18.00 if context >200k
     context_window: 1048576  # 1M token context
     max_output_tokens: 65536
     tier: standard
 
-  # Gemini 3.0 Flash
-  google_ai.gemini-3-flash:
-    provider_model_id: "gemini-3-flash-preview"
-    cost_per_mtok_input: 0.50 # 1.00 if audio input
-    cost_per_mtok_output: 3.00
+  # Gemini 3.5 Flash (latest)
+  google_ai.gemini-3.5-flash:
+    provider_model_id: "gemini-3.5-flash"
+    cost_per_mtok_input: 1.50
+    cost_per_mtok_output: 9.00
+    context_window: 1048576  # 1M token context
+    max_output_tokens: 65536
+    tier: standard
+
+  # Gemini 3.1 Flash Lite (latest)
+  google_ai.gemini-3.1-flash-lite:
+    provider_model_id: "gemini-3.1-flash-lite"
+    cost_per_mtok_input: 0.25 # 0.50 for audio input
+    cost_per_mtok_output: 1.50
     context_window: 1048576  # 1M token context
     max_output_tokens: 65536
     tier: standard
@@ -349,16 +366,16 @@ default_models:
   digest_creation: claude-sonnet-4-5  # Balanced quality/cost for long-form
   digest_revision: claude-sonnet-4-5  # Quality-critical for conversational refinement
   historical_context: claude-sonnet-4-5  # Good at temporal reasoning
-  youtube_processing: gemini-2.5-flash  # Native YouTube support, very cheap
-  youtube_rss_processing: gemini-2.5-flash-lite  # Lightweight processing for RSS-sourced YouTube content
-  caption_proofreading: gemini-2.5-flash-lite  # Fast, cheap for caption cleanup
+  youtube_processing: gemini-3.1-flash-lite  # Native YouTube support; flash-lite for cost (batchable)
+  youtube_rss_processing: gemini-3.1-flash-lite  # Lightweight processing for RSS-sourced YouTube content
+  caption_proofreading: gemini-3.1-flash-lite  # Fast, cheap for caption cleanup
   entity_extraction: claude-haiku-4-5  # Structured extraction, cost-effective
   reranking: gpt-5-nano  # Fast, cheap for simple ranking
-  podcast_script: gemini-2.5-flash  # Conversational dialogue, tool use, high rate limits
+  podcast_script: gemini-3.5-flash  # Conversational dialogue, tool use, high rate limits
   voice_cleanup: claude-haiku-4-5  # Fast, cheap for transcript polishing
   image_suggestion: claude-haiku-4-5  # Fast, cheap for image suggestion analysis
-  cloud_stt: gemini-2.5-flash  # Native audio + built-in cleanup in one API call
-  content_filtering: gemini-2.5-flash-lite  # Fast, cheap for relevance classification
+  cloud_stt: gemini-3.5-flash  # Native audio + built-in cleanup in one API call
+  content_filtering: gemini-3.1-flash-lite  # Fast, cheap for relevance classification
   kb_compilation: claude-sonnet-4-5  # Capable model for topic article synthesis from multiple sources
   kb_index: claude-haiku-4-5  # Fast, cheap for index summary generation
 
@@ -388,8 +405,8 @@ routing:
   podcast_script:
     mode: fixed
     enabled: false
-    strong_model: gemini-2.5-flash
-    weak_model: gemini-2.5-flash-lite
+    strong_model: gemini-3.5-flash
+    weak_model: gemini-3.1-flash-lite
     threshold: 0.5
 
 # Notes on provider tiers and pricing:
