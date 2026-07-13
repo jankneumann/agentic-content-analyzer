@@ -159,7 +159,7 @@ cd agent-coordinator
 make hooks-setup
 
 # Or individually:
-make claude-hooks-setup      # Writes ~/.claude/hooks.json (SessionStart, Stop, SessionEnd)
+make claude-hooks-setup      # Merges hooks into ~/.claude/settings.json (SessionStart, Stop, SessionEnd)
 make codex-hooks-setup       # Writes ~/.codex/hooks.json (SessionStart, Stop, SessionEnd)
 make gemini-wrapper-install  # Symlinks gemini-coord to ~/.local/bin/
 ```
@@ -168,11 +168,11 @@ make gemini-wrapper-install  # Symlinks gemini-coord to ~/.local/bin/
 
 | Agent | Mechanism | Events |
 |-------|-----------|--------|
-| Claude Code | `~/.claude/hooks.json` | SessionStart, Stop, SubagentStop, SessionEnd |
+| Claude Code | `~/.claude/settings.json` → `hooks` key | SessionStart, Stop, SubagentStop, SessionEnd |
 | Codex CLI | `~/.codex/hooks.json` | SessionStart, Stop, SessionEnd |
 | Gemini CLI | `gemini-coord` wrapper | register → run → report → deregister |
 
-Hook scripts use absolute paths to the coordinator's `scripts/` directory, so they resolve correctly regardless of the current working directory.
+Hook scripts and `gemini-coord` use absolute paths to the coordinator's `scripts/` directory, so they resolve correctly regardless of the current working directory. `COORDINATION_API_URL` and `COORDINATION_API_KEY` must be set as environment variables before starting the CLI — hooks and wrappers read these from the environment at runtime, just as cloud agents receive them via their runtime configuration.
 
 For Gemini, use `gemini-coord` instead of bare `gemini` to get coordinator integration:
 ```bash
