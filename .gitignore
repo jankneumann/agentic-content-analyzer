@@ -279,3 +279,6 @@ artifacts/
 # Tauri
 web/src-tauri/target/
 web/src-tauri/gen/
+
+# Generated architecture analysis artifacts (regenerate via /refresh-architecture)
+docs/architecture-analysis/
