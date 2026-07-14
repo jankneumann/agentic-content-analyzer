@@ -317,6 +317,7 @@ packages:
     locks:
       files:
         - alembic/versions/d4e5f6a7b8c9_add_workflow_provenance.py
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/db/schema.sql
         - src/models/digest.py
         - src/models/podcast.py
         - src/workflows/digest.py
@@ -330,6 +331,7 @@ packages:
         - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
         - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
         - alembic/versions/d4e5f6a7b8c9_add_workflow_provenance.py
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/db/schema.sql
         - src/models/audio_digest.py
         - src/models/digest.py
         - src/models/podcast.py
