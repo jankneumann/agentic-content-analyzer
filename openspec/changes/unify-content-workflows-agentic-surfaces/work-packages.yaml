@@ -244,22 +244,51 @@ packages:
         - src/processors/theme_analyzer.py
         - src/processors/digest_creator.py
         - src/processors/podcast_script_generator.py
+        - src/processors/digest_reviser.py
+        - src/processors/script_reviser.py
+        - src/processors/historical_context.py
+        - src/processors/audio_digest_generator.py
+        - src/processors/podcast_creator.py
+        - src/processors/provenance.py
+        - src/delivery/tts_service.py
+        - src/delivery/audio_generator_v2.py
+        - src/services/podcast_audio_service.py
+        - src/services/audio_digest_service.py
+        - src/api/audio_digest_routes.py
+        - src/api/podcast_routes.py
+        - src/api/theme_routes.py
+        - src/services/llm_router.py
+        - src/config/models.py
+        - settings/prompts.yaml
       keys:
         - feature:unify-content-workflows-agentic-surfaces:processors
       ttl_minutes: 360
       reason: Sole ownership of processor provenance and provider migration.
     scope:
       write_allow:
+        - openspec/changes/unify-content-workflows-agentic-surfaces/work-packages.yaml
         - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
         - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
         - src/processors/**
         - src/services/podcast_audio_service.py
         - src/services/audio_digest_service.py
+        - src/api/audio_digest_routes.py
+        - src/api/podcast_routes.py
+        - src/api/theme_routes.py
+        - src/services/llm_router.py
+        - src/config/models.py
+        - src/delivery/tts_service.py
+        - src/delivery/audio_generator_v2.py
+        - settings/prompts.yaml
         - tests/processors/**
         - tests/test_processors/**
+        - tests/test_delivery/test_tts_service.py
         - tests/services/test_public_audio_services.py
+        - tests/services/test_llm_router_routing.py
+        - tests/api/test_script_security.py
+        - tests/api/conftest.py
       read_allow: ["src/**", "tests/**", "settings/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
-      deny: ["src/api/**", "src/cli/**", "src/mcp/**", "src/ingestion/**", "web/**"]
+      deny: ["src/cli/**", "src/mcp/**", "src/ingestion/**", "web/**"]
     worktree: { name: wp-processors, mode: isolated }
     timeout_minutes: 480
     retry_budget: 1
@@ -269,7 +298,7 @@ packages:
       steps:
         - name: processor-tests
           kind: command
-          command: uv run pytest tests/processors tests/test_processors tests/services/test_public_audio_services.py --no-cov
+          command: uv run pytest tests/processors tests/test_processors tests/services/test_public_audio_services.py tests/services/test_llm_router_routing.py tests/test_services/test_llm_router.py tests/agents/test_llm_router_extensions.py tests/api/test_audio_digest_api.py tests/api/test_podcast_api.py tests/api/test_script_security.py tests/api/test_theme_api.py --no-cov
           expect_exit_code: 0
           evidence:
             artifacts: [artifacts/wp-processors/pytest.txt]

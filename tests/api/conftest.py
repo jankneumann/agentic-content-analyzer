@@ -236,7 +236,6 @@ def client(db_session) -> Generator[AuthenticatedTestClient, None, None]:
         "src.api.kb_routes.get_db",
         "src.services.script_review_service.get_db",
         "src.services.content_query.get_db",
-        "src.processors.theme_analyzer.get_db",
     ]
 
     # Use ExitStack to avoid exceeding Python's static nesting limit (20)

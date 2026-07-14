@@ -5,11 +5,12 @@ Updated to mock LLMRouter.generate_with_tools() instead of direct Anthropic SDK.
 
 import json
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.config.models import ModelConfig, Provider, ProviderConfig
+from src.config.models import ModelConfig, ModelStep, Provider, ProviderConfig
 from src.models.content import Content, ContentSource
 from src.models.digest import Digest, DigestStatus, DigestType
 from src.models.revision import RevisionContext
@@ -139,50 +140,38 @@ class TestDigestReviserLoadContext:
     @pytest.mark.asyncio
     async def test_load_context_success(self, sample_digest, sample_summaries, sample_contents):
         """Test successful context loading."""
+        loader = MagicMock()
+        loader.load_digest.return_value = SimpleNamespace(
+            digest=sample_digest,
+            items=tuple(
+                SimpleNamespace(summary=summary, content=content)
+                for summary, content in zip(sample_summaries, sample_contents, strict=True)
+            ),
+            resolved_set=SimpleNamespace(content_ids=(1, 2, 3)),
+        )
         with patch("src.processors.digest_reviser.get_db") as mock_get_db:
             mock_db = MagicMock()
             mock_get_db.return_value.__enter__.return_value = mock_db
+            mock_db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
 
-            digest_query_mock = MagicMock()
-            digest_query_mock.filter_by.return_value.first.return_value = sample_digest
-
-            summary_query_mock = MagicMock()
-            summary_query_mock.options.return_value = summary_query_mock
-            summary_query_mock.join.return_value = summary_query_mock
-            summary_query_mock.filter.return_value = summary_query_mock
-            summary_query_mock.order_by.return_value = summary_query_mock
-            summary_query_mock.all.return_value = sample_summaries
-
-            def query_side_effect(model):
-                if model.__name__ == "Digest":
-                    return digest_query_mock
-                elif model.__name__ == "Summary":
-                    return summary_query_mock
-                return MagicMock()
-
-            mock_db.query.side_effect = query_side_effect
-
-            reviser = DigestReviser()
+            reviser = DigestReviser(content_loader=loader)
             context = await reviser.load_context(digest_id=1)
 
             assert isinstance(context, RevisionContext)
             assert context.digest == sample_digest
             assert len(context.summaries) == 3
             assert context.content_ids == [1, 2, 3]
+            loader.load_digest.assert_called_once_with(1)
 
     @pytest.mark.asyncio
     async def test_load_context_digest_not_found(self):
         """Test context loading when digest doesn't exist."""
-        with patch("src.processors.digest_reviser.get_db") as mock_get_db:
-            mock_db = MagicMock()
-            mock_get_db.return_value.__enter__.return_value = mock_db
+        loader = MagicMock()
+        loader.load_digest.side_effect = ValueError("Digest 999 not found")
+        reviser = DigestReviser(content_loader=loader)
 
-            mock_db.query.return_value.filter_by.return_value.first.return_value = None
-
-            reviser = DigestReviser()
-
-            with pytest.raises(ValueError, match="Digest .* not found"):
-                await reviser.load_context(digest_id=999)
+        with pytest.raises(ValueError, match="Digest .* not found"):
+            await reviser.load_context(digest_id=999)
 
 
 class TestDigestReviserToolDefinitions:
@@ -332,6 +321,7 @@ class TestDigestReviserReviseSection:
             assert call_kwargs["max_tokens"] == 8000
             assert call_kwargs["temperature"] == 0.0
             assert call_kwargs["max_iterations"] == 5
+            assert call_kwargs["step"] == ModelStep.DIGEST_REVISION
             assert len(call_kwargs["tools"]) == 2
             assert result.section_modified == "executive_overview"
             assert result.revised_content == "Improved overview text"
@@ -365,6 +355,39 @@ class TestDigestReviserReviseSection:
             assert reviser.input_tokens == 800
             assert reviser.output_tokens == 200
             assert reviser.provider_used == Provider.ANTHROPIC
+
+    @pytest.mark.asyncio
+    async def test_revise_section_preserves_conversation_history(
+        self, mock_model_config, sample_summaries
+    ):
+        response = LLMResponse(
+            text=json.dumps(
+                {
+                    "section_modified": "title",
+                    "revised_content": "New Title",
+                    "explanation": "Followed the prior direction",
+                }
+            ),
+            provider=Provider.ANTHROPIC,
+        )
+        reviser = DigestReviser(model_config=mock_model_config)
+        context = RevisionContext(digest=MagicMock(), summaries=sample_summaries)
+        context.to_llm_context = MagicMock(return_value="Current context")
+
+        with patch.object(reviser.router, "generate_with_tools", return_value=response) as generate:
+            await reviser.revise_section(
+                context,
+                "Keep that tone",
+                conversation_history=[
+                    {"role": "user", "content": "Make it concise"},
+                    {"role": "assistant", "content": "I shortened the overview"},
+                ],
+            )
+
+        prompt = generate.call_args.kwargs["user_prompt"]
+        assert "[USER TURN]\nMake it concise" in prompt
+        assert "[ASSISTANT TURN]\nI shortened the overview" in prompt
+        assert "Keep that tone" in prompt
 
 
 class TestDigestReviserApplyRevision:
