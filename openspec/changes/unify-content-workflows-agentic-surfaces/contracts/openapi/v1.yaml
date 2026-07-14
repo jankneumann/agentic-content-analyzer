@@ -31,7 +31,7 @@ paths:
                 source_commands:
                   - key: rss
                     display_name: RSS
-                    emitted_source: rss
+                    emitted_sources: [rss]
                     scheduled: true
                     transports: [cli, http, mcp, frontend]
                     fields:
@@ -510,9 +510,31 @@ components:
         id: { type: string }
         url: { type: string }
 
+    IngestionResult:
+      type: object
+      additionalProperties: false
+      required: [command_key, resolved_route, emitted_sources, items_ingested, content_ids]
+      properties:
+        command_key: { type: string }
+        resolved_route: { type: string }
+        emitted_sources:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string }
+        items_ingested: { type: integer, minimum: 0 }
+        content_ids:
+          type: array
+          uniqueItems: true
+          items: { type: integer, minimum: 1 }
+        warnings: { type: array, items: { type: string } }
+        details: { type: object, additionalProperties: true }
+
     OperationHandle:
       type: object
       additionalProperties: false
+      x-operation-result-schemas:
+        ingestion.execute: { $ref: "#/components/schemas/IngestionResult" }
       required:
         - schema_version
         - operation_id
@@ -564,10 +586,22 @@ components:
     OperationEvent:
       type: object
       additionalProperties: false
-      required: [event_id, operation_id, status, progress, message, occurred_at]
+      required: [schema_version, event_id, operation_id, operation_type, status, progress, message, occurred_at]
       properties:
+        schema_version: { type: integer, const: 2 }
         event_id: { type: string }
         operation_id: { type: string }
+        operation_type:
+          type: string
+          enum:
+            - ingestion.execute
+            - summarization.run
+            - theme_analysis.create
+            - digest.create
+            - pipeline.run
+            - podcast_script.create
+            - podcast_audio.create
+            - audio_digest.create
         status: { type: string, enum: [queued, in_progress, completed, failed, cancelled] }
         progress: { type: integer, minimum: 0, maximum: 100 }
         message: { type: string }
@@ -606,11 +640,15 @@ components:
     SourceCapability:
       type: object
       additionalProperties: false
-      required: [key, display_name, emitted_source, scheduled, transports, fields]
+      required: [key, display_name, emitted_sources, scheduled, transports, fields]
       properties:
         key: { type: string }
         display_name: { type: string }
-        emitted_source: { type: string }
+        emitted_sources:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string }
         scheduled: { type: boolean }
         transports:
           type: array
@@ -778,6 +816,7 @@ components:
         title: { type: string }
         tags: { type: array, items: { type: string } }
         notes: { type: string }
+        routing_mode: { type: string, enum: [auto, webpage], default: auto }
         force_reprocess: { type: boolean, default: false }
 
     ScholarSearchIngestCommand:

@@ -69,12 +69,14 @@ Create a registry module under `src/ingestion/` whose descriptors contain:
 - canonical machine key and removed/accepted migration aliases;
 - source-specific Pydantic command model and JSON discriminator;
 - orchestrator callable returning canonical `IngestionResponse`;
-- emitted `ContentSource` value;
+- non-empty allowed `ContentSource` set plus an optional dynamic resolver for commands such as `url` that route to more than one storage source;
 - optional config model and config collection accessor;
 - capabilities such as `scheduled`, `supports_force`, `supports_date_range`, `supports_preview`, and `requires_identifier`;
 - display metadata suitable for capability discovery and frontend rendering.
 
 The canonical ingestion keys are `gmail`, `rss`, `blog`, `substack`, `youtube_playlist`, `youtube_rss`, `podcast`, `x_search`, `perplexity_search`, `files`, `url`, `scholar_search`, `scholar_paper`, `scholar_references`, `arxiv_search`, `arxiv_paper`, `huggingface_papers`, and `readwise`. The combined legacy `youtube` dispatcher is removed; callers choose playlist or RSS explicitly.
+
+The `url` command preserves the URL auto-routing behavior landed on `main` in PR #435. Its `routing_mode` is `auto` by default and may be set to `webpage` to force generic extraction. The descriptor reuses the pure URL classifier and declares `webpage`, `rss`, and `youtube` as possible emitted sources; the durable operation result records the resolved route, emitted sources, item count, and content references. Feed and playlist submissions use the operation result as their receipt rather than persisting synthetic receipt content.
 
 `IngestionService.execute(command)` is the only dispatch entry point. Registry validation fails at startup for duplicate keys, aliases, or incomplete descriptors. This was selected over decorators spread across adapter modules because an explicit registry is inspectable, deterministic, and easy to compare with generated contracts.
 

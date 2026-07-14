@@ -1,16 +1,16 @@
 ## 1. Contract Enforcement
 
-- [ ] 1.1 [S] Write contract validation tests
+- [x] 1.1 [S] Write contract validation tests
   **Spec scenarios**: source-capability-registry.5-6, agentic-operations.8-9
   **Contracts**: `contracts/openapi/v1.yaml`, `contracts/events/operation.progress.schema.json`, `contracts/generated/models.py`, `contracts/generated/types.ts`
   **Design decisions**: D8, D9
   **Dependencies**: None
 
-- [ ] 1.2 [M] Add contract generation commands
+- [x] 1.2 [M] Add contract generation commands
   Add reproducible OpenAPI validation, Pydantic generation, TypeScript generation, event-schema validation, and drift checks to the build without editing generated output manually.
   **Dependencies**: 1.1
 
-- [ ] 1.3 [XS] Checkpoint: run contract tests, review diff, verify scope
+- [x] 1.3 [XS] Checkpoint: run contract tests, review diff, verify scope
   **Dependencies**: 1.2
 
 ## 2. Canonical Content Provenance
