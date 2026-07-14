@@ -15,30 +15,30 @@
 
 ## 2. Canonical Content Provenance
 
-- [ ] 2.1 [M] Write provenance migration tests
+- [x] 2.1 [M] Write provenance migration tests
   **Spec scenarios**: content-provenance.7-8, job-management.2
   **Contracts**: `contracts/db/schema.sql`, `contracts/db/seed.sql`
   **Design decisions**: D4, D12
   **Dependencies**: 1.3
 
-- [ ] 2.2 [M] Add provenance schema migration
+- [x] 2.2 [M] Add provenance schema migration
   Add digest selection fields and additive podcast content fields, backfill legacy rows, update ORM models, then make current provenance fields non-null where contracted.
   **Dependencies**: 2.1
 
-- [ ] 2.3 [XS] Checkpoint: run migration tests, review diff, verify scope
+- [x] 2.3 [XS] Checkpoint: run migration tests, review diff, verify scope
   **Dependencies**: 2.2
 
-- [ ] 2.4 [M] Write content resolver tests
+- [x] 2.4 [M] Write content resolver tests
   **Spec scenarios**: content-provenance.1-4, content-query.1-10
   **Contracts**: `contracts/openapi/v1.yaml#/components/schemas/ContentQuery`, `contracts/db/seed.sql`
   **Design decisions**: D2, D3
   **Dependencies**: 1.3
 
-- [ ] 2.5 [M] Implement ContentSetResolver
+- [x] 2.5 [M] Implement ContentSetResolver
   Add immutable policy, item, exclusion, and resolved-set models; implement canonical identity, summary joins, half-open date bases, deterministic ordering, preview diagnostics, and fingerprints.
   **Dependencies**: 2.4, 2.2
 
-- [ ] 2.6 [XS] Checkpoint: run resolver tests, review diff, verify scope
+- [x] 2.6 [XS] Checkpoint: run resolver tests, review diff, verify scope
   **Dependencies**: 2.5
 
 - [ ] 2.7 [M] Write processor provenance tests

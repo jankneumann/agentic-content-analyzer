@@ -243,6 +243,9 @@ class PodcastScriptRecord(Base):
     newsletter_ids_fetched = Column(
         JSON, nullable=True
     )  # IDs fetched via get_newsletter_content tool
+    source_content_ids_available = Column(JSON, nullable=False, default=list, server_default="[]")
+    source_content_ids_cited = Column(JSON, nullable=False, default=list, server_default="[]")
+    selection_fingerprint = Column(String(64), nullable=True, index=True)
     theme_ids = Column(JSON, nullable=True)  # Themes incorporated
     web_search_queries = Column(JSON, nullable=True)  # Web searches performed via tool
     tool_call_count = Column(Integer, nullable=True)  # Total tool invocations

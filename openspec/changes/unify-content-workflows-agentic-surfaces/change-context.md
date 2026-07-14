@@ -13,12 +13,12 @@
 | cli-interface.2 | `specs/cli-interface/spec.md` | Backward compatibility | --- | D12 | --- | `tests/cli/test_workflow_conformance.py` | --- |
 | cli-interface.3 | `specs/cli-interface/spec.md` | Durable CLI workflow behavior | `contracts/openapi/v1.yaml#/components/schemas/OperationHandle` | D6, D8 | --- | `tests/cli/test_workflow_conformance.py` | --- |
 | cli-interface.4 | `specs/cli-interface/spec.md` | CLI capability discovery | `contracts/openapi/v1.yaml#/paths/~1api~1v1~1capabilities` | D9 | --- | `tests/cli/test_workflow_conformance.py` | --- |
-| content-provenance.1 | `specs/content-provenance/spec.md` | Canonical summary-backed content set | `contracts/openapi/v1.yaml#/components/schemas/ContentQuery` | D2, D3 | --- | `tests/services/test_content_set_resolver.py` | --- |
-| content-provenance.2 | `specs/content-provenance/spec.md` | Explicit half-open date policy | `contracts/openapi/v1.yaml#/components/schemas/ContentQuery` | D3 | --- | `tests/services/test_content_set_resolver.py` | --- |
+| content-provenance.1 | `specs/content-provenance/spec.md` | Canonical summary-backed content set | `contracts/openapi/v1.yaml#/components/schemas/ContentQuery` | D2, D3 | `src/models/query.py`, `src/services/content_set_resolver.py` | `tests/services/test_content_set_resolver.py` | --- |
+| content-provenance.2 | `specs/content-provenance/spec.md` | Explicit half-open date policy | `contracts/openapi/v1.yaml#/components/schemas/ContentQuery` | D3 | `src/models/query.py`, `src/services/content_query.py`, `src/services/content_set_resolver.py` | `tests/services/test_content_set_resolver.py` | --- |
 | content-provenance.3 | `specs/content-provenance/spec.md` | End-to-end provenance invariants | `contracts/db/schema.sql` | D3, D4 | --- | `tests/processors/test_workflow_provenance.py`, `tests/contract/test_source_workflow_matrix.py` | --- |
-| content-provenance.4 | `specs/content-provenance/spec.md` | Persisted selection snapshot | `contracts/db/schema.sql` | D4 | --- | `tests/migrations/test_workflow_provenance.py`, `tests/processors/test_workflow_provenance.py` | --- |
-| content-query.1 | `specs/content-query/spec.md` | Structured content selection model | `contracts/openapi/v1.yaml#/components/schemas/ContentQuery` | D3 | --- | `tests/services/test_content_set_resolver.py` | --- |
-| content-query.2 | `specs/content-query/spec.md` | ContentSetResolver workflow execution | `contracts/openapi/v1.yaml#/components/schemas/ContentQuery` | D3 | --- | `tests/services/test_content_set_resolver.py` | --- |
+| content-provenance.4 | `specs/content-provenance/spec.md` | Persisted selection snapshot | `contracts/db/schema.sql` | D4 | `alembic/versions/d4e5f6a7b8c9_add_workflow_provenance.py`, `src/models/digest.py`, `src/models/podcast.py` | `tests/migrations/test_workflow_provenance.py`, `tests/processors/test_workflow_provenance.py` | --- |
+| content-query.1 | `specs/content-query/spec.md` | Structured content selection model | `contracts/openapi/v1.yaml#/components/schemas/ContentQuery` | D3 | `src/models/query.py`, `src/services/content_query.py` | `tests/services/test_content_set_resolver.py` | --- |
+| content-query.2 | `specs/content-query/spec.md` | ContentSetResolver workflow execution | `contracts/openapi/v1.yaml#/components/schemas/ContentQuery` | D3 | `src/services/content_set_resolver.py` | `tests/services/test_content_set_resolver.py` | --- |
 | e2e-testing.1 | `specs/e2e-testing/spec.md` | Registry-generated vertical source coverage | `contracts/openapi/v1.yaml#/components/schemas/IngestCommand` | D11 | --- | `tests/contract/test_source_workflow_matrix.py` | --- |
 | e2e-testing.2 | `specs/e2e-testing/spec.md` | Mixed-source provenance coverage | `contracts/db/seed.sql` | D11 | --- | `tests/contract/test_source_workflow_matrix.py` | --- |
 | e2e-testing.3 | `specs/e2e-testing/spec.md` | Cross-interface conformance coverage | `contracts/openapi/v1.yaml` | D8, D11 | --- | `tests/contract/test_cross_interface_workflows.py` | --- |
@@ -47,9 +47,9 @@
 | Decision | Rationale | Implementation | Why This Approach |
 |----------|-----------|----------------|-------------------|
 | D1 | Make source metadata executable | --- | One descriptor prevents source-key drift across dispatch and discovery. |
-| D2 | Resolve canonical identity before eligibility | --- | Alias rows cannot independently enter downstream analysis. |
-| D3 | Resolve immutable, fingerprinted content selections | --- | Preview and execution consume the same deterministic set. |
-| D4 | Persist digest and podcast provenance | --- | Downstream generation never broadens the original selection. |
+| D2 | Resolve canonical identity before eligibility | `src/services/content_set_resolver.py` | Alias rows cannot independently enter downstream analysis. |
+| D3 | Resolve immutable, fingerprinted content selections | `src/models/query.py`, `src/services/content_set_resolver.py` | Preview and execution consume the same deterministic set. |
+| D4 | Persist digest and podcast provenance | `alembic/versions/d4e5f6a7b8c9_add_workflow_provenance.py`, `src/models/digest.py`, `src/models/podcast.py` | Downstream generation never broadens the original selection. |
 | D5 | Put persistence inside workflows | --- | Every successful operation has a stable resource result. |
 | D6 | Reuse `pgqueuer_jobs` as the operation ledger | `src/models/jobs.py`, `src/services/operation_service.py`, `src/queue/setup.py` | One queue supplies status, retry, idempotency, and cancellation. |
 | D7 | Use one parent-child pipeline workflow | --- | All interfaces observe the same stage semantics. |
