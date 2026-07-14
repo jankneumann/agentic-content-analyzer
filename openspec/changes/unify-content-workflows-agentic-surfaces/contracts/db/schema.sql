@@ -52,7 +52,6 @@ SET source_content_ids_available = COALESCE(
     ),
     source_content_ids_cited = COALESCE(
         source_content_ids_cited,
-        newsletter_ids_fetched,
         '[]'::jsonb
     )
 WHERE source_content_ids_available IS NULL OR source_content_ids_cited IS NULL;
