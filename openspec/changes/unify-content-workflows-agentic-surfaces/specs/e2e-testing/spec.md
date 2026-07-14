@@ -2,12 +2,13 @@
 
 ### Requirement: Registry-generated vertical source coverage
 
-CI SHALL execute a deterministic vertical contract for every registry descriptor covering fixture ingestion, canonical content persistence, persisted summarization, resolved workflow selection, digest persistence, and podcast context assembly. Registry and fixture key sets MUST be equal.
+CI SHALL execute a deterministic vertical contract for every registry descriptor covering fixture ingestion, canonical content persistence, persisted summarization, resolved workflow selection, digest persistence, and podcast context assembly. Registry and fixture key sets MUST be equal. The dynamically routed `url` descriptor SHALL cover webpage, YouTube video, YouTube playlist, RSS, and forced-webpage variants.
 
 #### Scenario: Every source reaches podcast context
 - **WHEN** vertical source contracts run
 - **THEN** each registered source produces eligible canonical summarized content
 - **AND** that content can be persisted in a digest and exposed to podcast generation
+- **AND** each URL routing variant reports the same normalized command and resolved-route fields across interfaces
 
 #### Scenario: Missing source fixture fails CI
 - **WHEN** a registry descriptor has no vertical fixture

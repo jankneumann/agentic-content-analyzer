@@ -2,12 +2,13 @@
 
 ### Requirement: Executable source registry
 
-The system SHALL maintain one executable `SourceRegistry` whose descriptor for every ingestion command defines its canonical key, aliases, typed command model, orchestrator, emitted `ContentSource`, configuration accessor when applicable, scheduling support, and option capabilities. The registry MUST reject duplicate keys, duplicate aliases, and incomplete descriptors during application startup.
+The system SHALL maintain one executable `SourceRegistry` whose descriptor for every ingestion command defines its canonical key, aliases, typed command model, orchestrator, non-empty set of possible emitted `ContentSource` values, optional dynamic source resolver, configuration accessor when applicable, scheduling support, and option capabilities. The registry MUST reject duplicate keys, duplicate aliases, empty emitted-source sets, and incomplete descriptors during application startup.
 
 #### Scenario: Registered source descriptor is complete
 - **WHEN** the application validates a registered ingestion source
 - **THEN** the descriptor contains every field required for dispatch and capability discovery
 - **AND** its command discriminator is unique
+- **AND** a dynamically routed command declares every source it may emit
 
 #### Scenario: Invalid registry fails fast
 - **WHEN** two descriptors claim the same key or alias
@@ -22,6 +23,7 @@ The system SHALL maintain one executable `SourceRegistry` whose descriptor for e
 - **THEN** the registry dispatches the command to the arXiv paper orchestrator
 - **AND** every declared option reaches that orchestrator without loss
 - **AND** the result is a canonical `IngestionResponse`
+- **AND** a `url` command preserves `routing_mode` and reports its resolved route
 
 #### Scenario: Invalid source command is rejected synchronously
 - **WHEN** an ingestion request has an unknown discriminator or an option not allowed by its descriptor

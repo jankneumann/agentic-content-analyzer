@@ -10,6 +10,7 @@ CLI workflow commands and HTTP endpoints SHALL construct the same typed applicat
 - **THEN** both submit the same discriminated ingestion command
 - **AND** both execute through `IngestionService` in a PostgreSQL worker
 - **AND** no source option is lost in either transport
+- **AND** URL auto-routing and forced-webpage mode produce equivalent normalized queue payloads
 
 #### Scenario: Adding a new ingestion source
 - **WHEN** a new source descriptor and fixture are added
