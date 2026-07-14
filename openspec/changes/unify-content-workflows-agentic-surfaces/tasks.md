@@ -230,9 +230,13 @@
   **Contracts**: `contracts/openapi/v1.yaml#/components/schemas/PipelineRequest`
   **Design decisions**: D7
   **Dependencies**: 3.5, 5.2, 5.7
+  Cover durable defer/resume at worker concurrency one, parent-scoped child reuse,
+  descriptor-owned scheduled command planning, and exact selection propagation.
 
 - [ ] 5.17 [M] Implement PipelineWorkflow
-  Create parent-child source jobs from registry descriptors, apply source filters, preserve partial failures, resume durable stages, resolve once, and return the persisted digest.
+  Create parent-child source jobs from registry descriptors, apply source filters,
+  preserve partial failures, defer without occupying a worker while children run,
+  resume from persisted checkpoints, resolve once, and return the persisted digest.
   **Dependencies**: 5.16, 5.4
 
 - [ ] 5.18 [XS] Checkpoint: run pipeline tests, review diff, verify scope
