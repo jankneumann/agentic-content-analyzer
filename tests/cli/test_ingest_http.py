@@ -667,7 +667,9 @@ class TestIngestHttpFallbackArgs:
                 "Note",
             ],
         )
-        mock_direct.assert_called_once_with("https://example.com", "Test", ["ai"], "Note")
+        mock_direct.assert_called_once_with(
+            "https://example.com", "Test", ["ai"], "Note", auto_route=True
+        )
 
     @patch("src.cli.ingest_commands._xsearch_direct")
     @patch(

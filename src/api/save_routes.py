@@ -4,6 +4,7 @@ These endpoints allow saving URLs for background content extraction,
 supporting iOS Shortcuts, bookmarklets, Chrome extension, and web forms.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -14,10 +15,12 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, HttpUrl, StringConstraints
 
 from src.api.save_rate_limiter import save_rate_limiter
+from src.ingestion.url_router import RouteKind, classify_url, route_to_source
 from src.models.content import Content, ContentSource, ContentStatus
 from src.storage.database import get_db
 from src.utils.content_hash import generate_markdown_hash
 from src.utils.logging import get_logger
+from src.utils.youtube_links import extract_playlist_id, extract_video_id
 
 logger = get_logger(__name__)
 
@@ -111,6 +114,197 @@ async def _enqueue_extraction(content_id: int) -> None:
             await extractor.extract_content(content_id)
 
 
+# ---------------------------------------------------------------------------
+# Auto-routing helpers for shared URLs
+# ---------------------------------------------------------------------------
+
+
+def _source_id_for_route(url: str, kind: RouteKind) -> str:
+    """Compute the ``source_id`` for a shared URL given its route.
+
+    YouTube routes use the canonical ``youtube:<video_id>`` /
+    ``youtube_playlist:<id>`` keys so the row lines up with the rows the
+    YouTube ingestion service creates (and so the in-place fill on
+    ``youtube_video`` finds it). Everything else keeps the legacy
+    ``webpage:<url>`` / ``feed:<url>`` shapes.
+    """
+    if kind == RouteKind.YOUTUBE_VIDEO:
+        vid = extract_video_id(url)
+        return f"youtube:{vid}" if vid else f"webpage:{url}"
+    if kind == RouteKind.YOUTUBE_PLAYLIST:
+        pid = extract_playlist_id(url)
+        return f"youtube_playlist:{pid}" if pid else f"webpage:{url}"
+    if kind == RouteKind.RSS_FEED:
+        return f"feed:{url}"
+    return f"webpage:{url}"
+
+
+def _find_existing_for_route(db, url: str, kind: RouteKind) -> Content | None:
+    """Find an already-saved row for *url*, honouring route-specific dedup.
+
+    A YouTube video may already exist under a different URL form (it was
+    ingested from a playlist or shared as youtu.be vs. watch?v=). Deduping by
+    the ``youtube:<id>`` source_id avoids both a duplicate save and an
+    IntegrityError against the unique (source_type, source_id) index.
+    """
+    existing = db.query(Content).filter(Content.source_url == url).first()
+    if existing:
+        return existing
+
+    # Dedup by canonical source_id for routes whose source_id is derived from a
+    # stable id (not the raw URL), so a second save under a different URL form
+    # returns the existing row instead of hitting the unique
+    # (source_type, source_id) index.
+    canonical_source_id: str | None = None
+    if kind == RouteKind.YOUTUBE_VIDEO:
+        vid = extract_video_id(url)
+        canonical_source_id = f"youtube:{vid}" if vid else None
+    elif kind == RouteKind.YOUTUBE_PLAYLIST:
+        pid = extract_playlist_id(url)
+        canonical_source_id = f"youtube_playlist:{pid}" if pid else None
+
+    if canonical_source_id:
+        return (
+            db.query(Content)
+            .filter(
+                Content.source_type == ContentSource.YOUTUBE,
+                Content.source_id == canonical_source_id,
+            )
+            .first()
+        )
+    return None
+
+
+def _mark_failed_if_pending(content_id: int, message: str) -> None:
+    """Mark a still-PENDING save row as FAILED with *message*.
+
+    Used when a routed ingest completes without raising but produces no usable
+    content (e.g. a video with no transcript, or an unreachable feed). The
+    PENDING guard avoids clobbering a row that a handler already finalized.
+    """
+    with get_db() as db:
+        content = db.query(Content).filter(Content.id == content_id).first()
+        if content is not None and content.status == ContentStatus.PENDING:
+            content.status = ContentStatus.FAILED
+            content.error_message = message
+
+
+def _finalize_receipt(content_id: int, items_ingested: int, label: str) -> None:
+    """Mark a multi-item route's tracking row as a completed receipt.
+
+    Feeds and playlists expand into many individual Content rows, so the row
+    created for the shared URL itself becomes a small receipt: it is set to
+    COMPLETED (a terminal status the summarizer ignores) with a one-line note
+    and the ingested count in metadata.
+    """
+    with get_db() as db:
+        content = db.query(Content).filter(Content.id == content_id).first()
+        if content is None:
+            return
+        content.status = ContentStatus.COMPLETED
+        content.markdown_content = (
+            f"Ingested {items_ingested} item(s) from this {label}: {content.source_url}"
+        )
+        meta = dict(content.metadata_json or {})
+        meta["items_ingested"] = items_ingested
+        meta["is_receipt"] = True
+        content.metadata_json = meta
+
+
+async def _process_routed_save(content_id: int) -> None:
+    """Background processing for a shared URL that was auto-routed.
+
+    Reads the route stored on the row's metadata and dispatches:
+
+    - ``youtube_video``    -> fill this row in place with the transcript/analysis
+    - ``rss_feed``         -> ingest the feed's entries, mark this row a receipt
+    - ``youtube_playlist`` -> ingest the playlist's videos, mark this row a receipt
+
+    Falls back to plain URL extraction if the route is missing/unknown.
+    """
+    with get_db() as db:
+        content = db.query(Content).filter(Content.id == content_id).first()
+        if content is None:
+            logger.error(f"_process_routed_save: content {content_id} not found")
+            return
+        meta = content.metadata_json or {}
+        route = meta.get("route")
+        url = content.source_url
+        tags = meta.get("tags")
+        notes = meta.get("notes")
+
+    try:
+        if route == RouteKind.YOUTUBE_VIDEO.value:
+            from src.ingestion.youtube import YouTubeContentIngestionService
+
+            service = YouTubeContentIngestionService()
+            # force_reprocess=True so _process_video updates the pre-created
+            # youtube:<id> row in place rather than skipping it.
+            resp = await service.ingest_video(url, force_reprocess=True, tags=tags, notes=notes)
+            # If nothing was extracted (no transcript / no Gemini result),
+            # _process_video leaves the row PENDING — surface that as FAILED so
+            # status pollers don't wait forever.
+            if resp.items_ingested == 0:
+                _mark_failed_if_pending(
+                    content_id, "No transcript or video content could be extracted."
+                )
+            return
+
+        if route == RouteKind.RSS_FEED.value:
+            from src.config.sources import RSSSource
+            from src.ingestion.rss import RSSContentIngestionService
+
+            svc = RSSContentIngestionService()
+            try:
+                resp = await asyncio.to_thread(
+                    lambda: svc.ingest_content(sources=[RSSSource(url=url, tags=tags or [])])
+                )
+            finally:
+                svc.close()
+            # A feed can fail to fetch/parse without raising (status='error').
+            # Don't present that as a successful receipt.
+            if resp.status == "error":
+                msg = resp.errors[0].message if resp.errors else "Feed could not be ingested."
+                _mark_failed_if_pending(content_id, msg)
+            else:
+                _finalize_receipt(content_id, resp.items_ingested, "feed")
+            return
+
+        if route == RouteKind.YOUTUBE_PLAYLIST.value:
+            from src.ingestion.youtube import YouTubeContentIngestionService
+
+            pid = extract_playlist_id(url)
+            if not pid:
+                raise ValueError(f"Could not extract a playlist id from: {url}")
+            service = YouTubeContentIngestionService()
+            result = await service.ingest_playlist(pid)
+            # ingest_playlist reports source-level failure via success/error
+            # without raising — don't finalize a failed playlist as a receipt.
+            if not result.success:
+                _mark_failed_if_pending(
+                    content_id, result.error or "Playlist could not be ingested."
+                )
+            else:
+                _finalize_receipt(content_id, result.items_fetched, "playlist")
+            return
+
+        # Unknown/missing route — fall back to generic extraction.
+        logger.warning(f"_process_routed_save: unknown route '{route}', extracting as web page")
+        from src.services.url_extractor import URLExtractor
+
+        with get_db() as db:
+            await URLExtractor(db).extract_content(content_id)
+
+    except Exception as e:
+        logger.error(f"Routed save failed for content_id={content_id}: {e}")
+        with get_db() as db:
+            content = db.query(Content).filter(Content.id == content_id).first()
+            if content is not None:
+                content.status = ContentStatus.FAILED
+                content.error_message = str(e)
+        raise
+
+
 # Helper to process client-supplied HTML
 async def _process_client_html(content_id: int, html: str, source_url: str) -> None:
     """Process client-supplied HTML.
@@ -148,9 +342,14 @@ async def save_url(
 
     url_str = str(request.url)
 
+    # Auto-route the shared URL to the right handler (YouTube video/playlist,
+    # RSS feed, or generic web page). The web-page path is unchanged.
+    kind = classify_url(url_str)
+
     with get_db() as db:
-        # Check for duplicate
-        existing = db.query(Content).filter(Content.source_url == url_str).first()
+        # Check for duplicate (route-aware: a YouTube video may already exist
+        # under a different URL form / source_id).
+        existing = _find_existing_for_route(db, url_str, kind)
         if existing:
             return SaveURLResponse(
                 content_id=existing.id,
@@ -169,11 +368,15 @@ async def save_url(
             metadata["notes"] = request.notes
         if request.source:
             metadata["capture_source"] = request.source
+        # Record the routing decision so the background task knows how to
+        # process this row (web pages don't need it — they keep prior behaviour).
+        if kind != RouteKind.WEBPAGE:
+            metadata["route"] = kind.value
 
         # Create content record
         content = Content(
-            source_type=ContentSource.WEBPAGE,
-            source_id=f"webpage:{url_str}",
+            source_type=route_to_source(kind),
+            source_id=_source_id_for_route(url_str, kind),
             source_url=url_str,
             title=request.title or url_str,  # Use URL as title until extracted
             markdown_content="",  # Placeholder until extraction completes
@@ -188,15 +391,22 @@ async def save_url(
         db.refresh(content)
 
         content_id = content.id
-        logger.info(f"Created content record: id={content_id}, url={url_str}")
+        logger.info(f"Created content record: id={content_id}, url={url_str}, route={kind.value}")
 
-    # Enqueue extraction task in background
-    background_tasks.add_task(_enqueue_extraction, content_id)
+    # Enqueue processing in the background. Web pages keep the original
+    # extraction path (and the original message, for client compatibility);
+    # routed types go through the router.
+    if kind == RouteKind.WEBPAGE:
+        background_tasks.add_task(_enqueue_extraction, content_id)
+        message = "URL saved. Content extraction in progress."
+    else:
+        background_tasks.add_task(_process_routed_save, content_id)
+        message = f"URL saved. Routed to {kind.value} ingestion."
 
     return SaveURLResponse(
         content_id=content_id,
         status="queued",
-        message="URL saved. Content extraction in progress.",
+        message=message,
         duplicate=False,
     )
 
