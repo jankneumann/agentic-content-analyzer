@@ -267,24 +267,19 @@ class TestContextAssembly:
     @pytest.mark.asyncio
     async def test_assemble_lightweight_context_no_digest(self):
         """Test context assembly when digest not found."""
-        generator = PodcastScriptGenerator()
+        loader = MagicMock()
+        loader.load_digest.side_effect = ValueError("Digest 999 not found")
+        generator = PodcastScriptGenerator(content_loader=loader)
         request = PodcastRequest(digest_id=999)
 
-        with patch("src.processors.podcast_script_generator.get_db") as mock_get_db:
-            mock_db = MagicMock()
-            mock_db.query.return_value.filter.return_value.first.return_value = None
-            mock_get_db.return_value.__enter__.return_value = mock_db
-
-            context = await generator._assemble_lightweight_context(request)
-
-        assert context["digest"] is None
+        with pytest.raises(ValueError, match="Digest 999 not found"):
+            await generator._assemble_lightweight_context(request)
 
     @pytest.mark.asyncio
     async def test_assemble_lightweight_context_success(
         self, sample_digest_data, sample_content_metadata
     ):
         """Test successful context assembly."""
-        generator = PodcastScriptGenerator()
         request = PodcastRequest(
             digest_id=1,
             custom_focus_topics=["AI Agents", "RAG"],
@@ -303,34 +298,19 @@ class TestContextAssembly:
         mock_digest.emerging_trends = sample_digest_data["emerging_trends"]
         mock_digest.actionable_recommendations = sample_digest_data["actionable_recommendations"]
 
-        # Create mock content items
-        mock_contents = []
-        for c in sample_content_metadata:
-            mock_c = MagicMock()
-            mock_c.id = c["id"]
-            mock_c.title = c["title"]
-            mock_c.publication = c["publication"]
-            mock_c.published_date = datetime.fromisoformat(c["date"])
-            mock_c.url = c["url"]
-            mock_contents.append(mock_c)
-
-        with patch("src.processors.podcast_script_generator.get_db") as mock_get_db:
-            mock_db = MagicMock()
-
-            # Setup chain for digest query
-            mock_db.query.return_value.filter.return_value.first.return_value = mock_digest
-
-            # Setup chain for content query
-            content_query = mock_db.query.return_value.filter.return_value
-            content_query.order_by.return_value.all.return_value = mock_contents
-
-            # Setup chain for summaries query
-            summaries_query = mock_db.query.return_value.filter.return_value
-            summaries_query.all.return_value = []
-
-            mock_get_db.return_value.__enter__.return_value = mock_db
-
-            context = await generator._assemble_lightweight_context(request)
+        resolved = MagicMock()
+        resolved.content_ids = ()
+        resolved.fingerprint = "a" * 64
+        resolved.items = ()
+        resolved.policy.model_dump.return_value = {}
+        loader = MagicMock()
+        loader.load_digest.return_value = MagicMock(
+            digest=mock_digest,
+            resolved_set=resolved,
+            items=(),
+        )
+        generator = PodcastScriptGenerator(content_loader=loader)
+        context = await generator._assemble_lightweight_context(request)
 
         assert context["digest"] is not None
         assert context["digest"]["id"] == 1
@@ -383,6 +363,7 @@ class TestToolHandlers:
     async def test_handle_get_content_not_found(self):
         """Test content retrieval when not found."""
         generator = PodcastScriptGenerator()
+        generator.available_content_ids = (999,)
 
         with patch("src.processors.podcast_script_generator.get_db") as mock_get_db:
             mock_db = MagicMock()
@@ -392,12 +373,13 @@ class TestToolHandlers:
             result = await generator._handle_get_content(999)
 
         assert "not found" in result
-        assert 999 in generator.content_ids_fetched
+        assert 999 not in generator.content_ids_fetched
 
     @pytest.mark.asyncio
     async def test_handle_get_content_success(self):
         """Test successful content retrieval."""
         generator = PodcastScriptGenerator()
+        generator.available_content_ids = (1,)
 
         mock_content = MagicMock()
         mock_content.id = 1
@@ -406,7 +388,7 @@ class TestToolHandlers:
         mock_content.published_date = datetime(2025, 1, 1)
         mock_content.source_type.value = "rss"
         mock_content.markdown_content = "This is the content with important AI news."
-        mock_content.raw_text = None
+        mock_content.raw_content = None
 
         with patch("src.processors.podcast_script_generator.get_db") as mock_get_db:
             mock_db = MagicMock()
@@ -421,9 +403,47 @@ class TestToolHandlers:
         assert 1 in generator.content_ids_fetched
 
     @pytest.mark.asyncio
+    async def test_handle_get_content_falls_back_to_raw_content(self):
+        generator = PodcastScriptGenerator()
+        generator.available_content_ids = (1,)
+
+        mock_content = MagicMock()
+        mock_content.id = 1
+        mock_content.title = "Raw Content"
+        mock_content.publication = "Test Publication"
+        mock_content.published_date = datetime(2025, 1, 1)
+        mock_content.source_type.value = "upload"
+        mock_content.markdown_content = ""
+        mock_content.raw_content = "Fallback body from the persisted content model."
+
+        with patch("src.processors.podcast_script_generator.get_db") as mock_get_db:
+            mock_db = MagicMock()
+            mock_db.query.return_value.filter.return_value.first.return_value = mock_content
+            mock_get_db.return_value.__enter__.return_value = mock_db
+
+            result = await generator._handle_get_content(1)
+
+        assert "Fallback body from the persisted content model" in result
+
+    def test_reset_tracking_clears_generation_usage(self):
+        generator = PodcastScriptGenerator()
+        generator.provider_used = MagicMock()
+        generator.input_tokens = 12
+        generator.output_tokens = 34
+        generator.model_version = "stale-model"
+
+        generator._reset_tracking()
+
+        assert generator.provider_used is None
+        assert generator.input_tokens == 0
+        assert generator.output_tokens == 0
+        assert generator.model_version is None
+
+    @pytest.mark.asyncio
     async def test_handle_get_content_truncation(self):
         """Test content is truncated for long content."""
         generator = PodcastScriptGenerator()
+        generator.available_content_ids = (1,)
 
         # Create content longer than 15k chars
         long_content = "A" * 20000
@@ -452,6 +472,7 @@ class TestToolHandlers:
         from unittest.mock import MagicMock, patch
 
         generator = PodcastScriptGenerator()
+        generator.available_content_ids = (1, 2)
 
         # Mock Tavily service
         mock_tavily = MagicMock()
@@ -480,6 +501,7 @@ class TestScriptParsing:
     def test_parse_script_response_success(self, mock_llm_script_response):
         """Test successful script parsing."""
         generator = PodcastScriptGenerator()
+        generator.available_content_ids = (1, 2)
 
         # Create mock response
         mock_response = MagicMock()
@@ -502,6 +524,7 @@ class TestScriptParsing:
     def test_parse_script_response_with_markdown(self, mock_llm_script_response):
         """Test parsing script with markdown code blocks."""
         generator = PodcastScriptGenerator()
+        generator.available_content_ids = (1, 2)
 
         # Wrap JSON in markdown code block
         json_with_markdown = f"```json\n{json.dumps(mock_llm_script_response)}\n```"

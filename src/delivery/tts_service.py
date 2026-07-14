@@ -472,6 +472,28 @@ class TTSService:
         persona = self.alex_voice if speaker.lower() == "alex" else self.sam_voice
         return self._provider.get_voice_id(persona)
 
+    @property
+    def provider_name(self) -> str:
+        """Stable provider name for chunking and diagnostics."""
+
+        return self._get_provider_name()
+
+    @property
+    def supports_ssml(self) -> bool:
+        """Whether the configured provider accepts SSML input."""
+
+        return self._provider.supports_ssml()
+
+    async def synthesize_voice(
+        self,
+        text: str,
+        voice_id: str,
+        **kwargs: Any,
+    ) -> bytes:
+        """Synthesize with an explicit configured-provider voice identifier."""
+
+        return await self._provider.synthesize(text, voice_id, **kwargs)
+
     async def synthesize(
         self,
         text: str,

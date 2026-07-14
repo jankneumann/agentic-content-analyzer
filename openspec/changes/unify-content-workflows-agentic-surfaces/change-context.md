@@ -8,15 +8,15 @@
 | agentic-operations.2 | `specs/agentic-operations/spec.md` | Universal queue execution | `contracts/db/schema.sql` | D6 | --- | `tests/queue/test_workflow_handlers.py`, `tests/contract/test_cross_interface_workflows.py` | --- |
 | agentic-operations.3 | `specs/agentic-operations/spec.md` | Idempotency and operation control | `contracts/openapi/v1.yaml#/paths/~1api~1v1~1operations~1{id}` | D6 | `src/models/jobs.py`, `src/services/operation_service.py`, `src/queue/setup.py` | `tests/queue/test_operation_controls.py`, `tests/api/test_operation_routes.py` | 13 operation control tests passed |
 | agentic-operations.4 | `specs/agentic-operations/spec.md` | Agent-usable structured interfaces | `contracts/openapi/v1.yaml#/components/schemas/Problem` | D8 | --- | `tests/contract/test_cross_interface_workflows.py` | --- |
-| audio-digest.1 | `specs/audio-digest/spec.md` | Public queued audio digest workflow | `contracts/openapi/v1.yaml#/paths/~1api~1v1~1audio-digests` | D5, D6, D10 | --- | `tests/workflows/test_audio_digest_workflow.py`, `tests/services/test_public_audio_services.py` | --- |
+| audio-digest.1 | `specs/audio-digest/spec.md` | Public queued audio digest workflow | `contracts/openapi/v1.yaml#/paths/~1api~1v1~1audio-digests` | D5, D6, D10 | `src/services/audio_digest_service.py`, `src/api/audio_digest_routes.py`, `src/delivery/tts_service.py` | `tests/workflows/test_audio_digest_workflow.py`, `tests/services/test_public_audio_services.py`, `tests/api/test_audio_digest_api.py` | Public audio and API suites passed |
 | cli-interface.1 | `specs/cli-interface/spec.md` | CLI and API parity | `contracts/openapi/v1.yaml` | D8 | --- | `tests/cli/test_workflow_conformance.py` | --- |
 | cli-interface.2 | `specs/cli-interface/spec.md` | Backward compatibility | --- | D12 | --- | `tests/cli/test_workflow_conformance.py` | --- |
 | cli-interface.3 | `specs/cli-interface/spec.md` | Durable CLI workflow behavior | `contracts/openapi/v1.yaml#/components/schemas/OperationHandle` | D6, D8 | --- | `tests/cli/test_workflow_conformance.py` | --- |
 | cli-interface.4 | `specs/cli-interface/spec.md` | CLI capability discovery | `contracts/openapi/v1.yaml#/paths/~1api~1v1~1capabilities` | D9 | --- | `tests/cli/test_workflow_conformance.py` | --- |
 | content-provenance.1 | `specs/content-provenance/spec.md` | Canonical summary-backed content set | `contracts/openapi/v1.yaml#/components/schemas/ContentQuery` | D2, D3 | `src/models/query.py`, `src/services/content_set_resolver.py` | `tests/services/test_content_set_resolver.py` | --- |
 | content-provenance.2 | `specs/content-provenance/spec.md` | Explicit half-open date policy | `contracts/openapi/v1.yaml#/components/schemas/ContentQuery` | D3 | `src/models/query.py`, `src/services/content_query.py`, `src/services/content_set_resolver.py` | `tests/services/test_content_set_resolver.py` | --- |
-| content-provenance.3 | `specs/content-provenance/spec.md` | End-to-end provenance invariants | `contracts/db/schema.sql` | D3, D4 | `alembic/versions/d4e5f6a7b8c9_add_workflow_provenance.py`, `src/models/theme.py` | `tests/migrations/test_workflow_provenance.py`, `tests/processors/test_workflow_provenance.py`, `tests/contract/test_source_workflow_matrix.py` | --- |
-| content-provenance.4 | `specs/content-provenance/spec.md` | Persisted selection snapshot | `contracts/db/schema.sql` | D4 | `alembic/versions/d4e5f6a7b8c9_add_workflow_provenance.py`, `src/models/digest.py`, `src/models/podcast.py`, `src/models/theme.py` | `tests/migrations/test_workflow_provenance.py`, `tests/processors/test_workflow_provenance.py` | --- |
+| content-provenance.3 | `specs/content-provenance/spec.md` | End-to-end provenance invariants | `contracts/db/schema.sql` | D3, D4 | `alembic/versions/d4e5f6a7b8c9_add_workflow_provenance.py`, `src/models/theme.py`, `src/processors/provenance.py`, `src/processors/digest_creator.py`, `src/processors/podcast_script_generator.py` | `tests/migrations/test_workflow_provenance.py`, `tests/processors/test_workflow_provenance.py`, `tests/contract/test_source_workflow_matrix.py` | 16 processor provenance tests passed |
+| content-provenance.4 | `specs/content-provenance/spec.md` | Persisted selection snapshot | `contracts/db/schema.sql` | D4 | `alembic/versions/d4e5f6a7b8c9_add_workflow_provenance.py`, `src/models/digest.py`, `src/models/podcast.py`, `src/models/theme.py`, `src/processors/provenance.py` | `tests/migrations/test_workflow_provenance.py`, `tests/processors/test_workflow_provenance.py` | Duplicate, count, fingerprint, and legacy snapshot checks passed |
 | content-query.1 | `specs/content-query/spec.md` | Structured content selection model | `contracts/openapi/v1.yaml#/components/schemas/ContentQuery` | D3 | `src/models/query.py`, `src/services/content_query.py` | `tests/services/test_content_set_resolver.py` | --- |
 | content-query.2 | `specs/content-query/spec.md` | ContentSetResolver workflow execution | `contracts/openapi/v1.yaml#/components/schemas/ContentQuery` | D3 | `src/services/content_set_resolver.py` | `tests/services/test_content_set_resolver.py` | --- |
 | e2e-testing.1 | `specs/e2e-testing/spec.md` | Registry-generated vertical source coverage | `contracts/openapi/v1.yaml#/components/schemas/IngestCommand` | D11 | --- | `tests/contract/test_source_workflow_matrix.py` | --- |
@@ -26,7 +26,7 @@
 | job-management.1 | `specs/job-management/spec.md` | Job records project canonical operations | `contracts/db/schema.sql` | D6 | `src/models/jobs.py`, `src/services/operation_service.py`, `src/queue/setup.py` | `tests/queue/test_operation_service.py` | 12 operation projection tests passed; 39 legacy queue/API tests passed |
 | job-management.2 | `specs/job-management/spec.md` | Complete workflow handler registry | `contracts/openapi/v1.yaml#/components/schemas/OperationHandle` | D6 | --- | `tests/queue/test_workflow_handler_registry.py` | --- |
 | job-management.3 | `specs/job-management/spec.md` | Operation cancellation state | `contracts/events/operation.progress.schema.json` | D6 | `src/models/jobs.py`, `src/services/operation_service.py`, `src/queue/setup.py` | `tests/queue/test_operation_controls.py` | 13 operation control tests passed |
-| llm-provider-routing.1 | `specs/llm-provider-routing/spec.md` | Complete pipeline routing through LLMRouter | --- | D10 | --- | `tests/processors/test_provider_boundaries.py` | --- |
+| llm-provider-routing.1 | `specs/llm-provider-routing/spec.md` | Complete pipeline routing through LLMRouter | --- | D10 | `src/services/llm_router.py`, `src/processors/digest_creator.py`, `src/processors/podcast_script_generator.py`, `src/processors/digest_reviser.py`, `src/processors/script_reviser.py`, `src/processors/historical_context.py` | `tests/processors/test_provider_boundaries.py` | Provider priority, failover, tool-step, and SDK-boundary tests passed |
 | mcp-http-client.1 | `specs/mcp-http-client/spec.md` | MCP tools use configured HTTP mode | `contracts/openapi/v1.yaml` | D8 | --- | `tests/mcp/test_workflow_conformance.py` | --- |
 | mcp-http-client.2 | `specs/mcp-http-client/spec.md` | MCP workflow tools use canonical operations | `contracts/openapi/v1.yaml#/components/schemas/OperationHandle` | D6, D8 | --- | `tests/mcp/test_workflow_conformance.py` | --- |
 | mcp-http-client.3 | `specs/mcp-http-client/spec.md` | MCP structured results and errors | `contracts/openapi/v1.yaml#/components/schemas/Problem` | D8 | --- | `tests/mcp/test_workflow_conformance.py` | --- |
@@ -34,13 +34,13 @@
 | pipeline.1 | `specs/pipeline/spec.md` | Parallel registry source ingestion | `contracts/openapi/v1.yaml#/components/schemas/IngestCommand` | D1, D7 | --- | `tests/workflows/test_pipeline_workflow.py` | --- |
 | pipeline.2 | `specs/pipeline/spec.md` | Single durable pipeline workflow | `contracts/openapi/v1.yaml#/paths/~1api~1v1~1pipeline-runs` | D6, D7 | --- | `tests/workflows/test_pipeline_workflow.py` | --- |
 | pipeline.3 | `specs/pipeline/spec.md` | Pipeline selection is preserved | `contracts/db/schema.sql` | D3, D7 | --- | `tests/workflows/test_pipeline_workflow.py` | --- |
-| podcast-generation.1 | `specs/podcast-generation/spec.md` | Digest-bound podcast provenance | `contracts/db/schema.sql` | D4 | --- | `tests/processors/test_workflow_provenance.py`, `tests/workflows/test_podcast_script_workflow.py` | --- |
+| podcast-generation.1 | `specs/podcast-generation/spec.md` | Digest-bound podcast provenance | `contracts/db/schema.sql` | D4 | `src/processors/podcast_script_generator.py`, `src/processors/podcast_creator.py`, `src/processors/script_reviser.py` | `tests/processors/test_workflow_provenance.py`, `tests/workflows/test_podcast_script_workflow.py` | Fetch, citation, revision, and legacy provenance checks passed |
 | podcast-generation.2 | `specs/podcast-generation/spec.md` | Durable podcast workflows | `contracts/openapi/v1.yaml#/paths/~1api~1v1~1podcast-scripts` | D5, D6 | --- | `tests/workflows/test_podcast_script_workflow.py`, `tests/workflows/test_podcast_audio_workflow.py` | --- |
 | source-capability-registry.1 | `specs/source-capability-registry/spec.md` | Executable source registry | `contracts/openapi/v1.yaml#/components/schemas/IngestCommand` | D1 | `src/ingestion/commands.py`, `src/ingestion/registry.py` | `tests/ingestion/test_source_registry.py` | Package tests pass |
 | source-capability-registry.2 | `specs/source-capability-registry/spec.md` | Typed ingestion service dispatch | `contracts/openapi/v1.yaml#/components/schemas/IngestCommand` | D1 | `src/ingestion/service.py`, `src/ingestion/orchestrator.py`, `src/ingestion/files.py`, `src/ingestion/podcast.py`, `src/ingestion/result.py`, `src/services/upload_service.py` | `tests/ingestion/test_ingestion_service.py`, `tests/services/test_upload_service.py` | Package tests pass |
 | source-capability-registry.3 | `specs/source-capability-registry/spec.md` | Registry-derived capability parity | `contracts/openapi/v1.yaml#/components/schemas/CapabilityDocument` | D1, D9 | `src/services/capability_service.py` | `tests/services/test_capability_service.py`, `tests/contract/test_source_workflow_matrix.py` | Package capability tests pass; vertical matrix pending wp-e2e |
 | source-configuration.1 | `specs/source-configuration/spec.md` | Heterogeneous source discovery | `contracts/openapi/v1.yaml#/components/schemas/SourceCapability` | D1 | `src/ingestion/registry.py` | `tests/ingestion/test_source_registry.py`, `tests/services/test_capability_service.py` | Package tests pass |
-| theme-analysis.1 | `specs/theme-analysis/spec.md` | Theme analysis consumes resolved content | `contracts/db/schema.sql` | D3, D4 | `alembic/versions/d4e5f6a7b8c9_add_workflow_provenance.py`, `src/models/theme.py` | `tests/migrations/test_workflow_provenance.py`, `tests/workflows/test_theme_analysis_workflow.py`, `tests/processors/test_workflow_provenance.py` | --- |
+| theme-analysis.1 | `specs/theme-analysis/spec.md` | Theme analysis consumes resolved content | `contracts/db/schema.sql` | D3, D4 | `alembic/versions/d4e5f6a7b8c9_add_workflow_provenance.py`, `src/models/theme.py`, `src/processors/theme_analyzer.py`, `src/api/theme_routes.py` | `tests/migrations/test_workflow_provenance.py`, `tests/workflows/test_theme_analysis_workflow.py`, `tests/processors/test_workflow_provenance.py`, `tests/api/test_theme_api.py` | Exact-set and HTTP theme tests passed |
 
 ## Design Decision Trace
 
@@ -55,7 +55,7 @@
 | D7 | Use one parent-child pipeline workflow | --- | All interfaces observe the same stage semantics. |
 | D8 | Replace external contracts in one coordinated cutover | --- | Controlled clients can converge without permanent adapters. |
 | D9 | Generate interface types and capability metadata | `src/services/capability_service.py`, `scripts/generate_workflow_contracts.py` | Drift becomes a build failure instead of a runtime mismatch. |
-| D10 | Enforce router and media service boundaries | --- | Provider details stay out of workflows and transports. |
+| D10 | Enforce router and media service boundaries | `src/services/llm_router.py`, `src/services/audio_digest_service.py`, `src/services/podcast_audio_service.py` | Configured provider priority/failover and public media services keep provider details out of processors and transports. |
 | D11 | Generate vertical and invariant-focused coverage | --- | Broad source coverage remains deterministic and scalable. |
 | D12 | Use shadow validation before the breaking cutover | --- | Existing data and queued work are checked before legacy removal. |
 
@@ -63,11 +63,19 @@
 
 | Finding ID | Package | Type | Criticality | Disposition | Resolution |
 |------------|---------|------|-------------|-------------|------------|
+| WP-PROC-001 | wp-processors | correctness | high | fixed | Podcast content fallback now uses the persisted `raw_content` field and generation telemetry resets per run. |
+| WP-PROC-002 | wp-processors | provenance | high | fixed | Insufficient theme selections, duplicate digest IDs, and digest counts retain or validate exact snapshots. |
+| WP-PROC-003 | wp-processors | architecture | high | fixed | HTTP and processor audio callers now use public TTS/storage services. |
+| WP-PROC-004 | wp-processors | routing | high | fixed | LLMRouter honors configured provider priority, fails over consistently, and routes tool calls with model steps. |
+| WP-PROC-005 | wp-processors | selection | medium | fixed | Snapshot-bound theme analysis no longer reads graph-wide period facts. |
+| WP-PROC-006 | wp-processors | behavior | medium | fixed | Revision conversation history and cited-ID snapshots are preserved across updates. |
+| WP-PROC-007 | wp-processors | routing | medium | fixed | Non-empty provider configurations now reject models unsupported by every configured provider. |
+| WP-PROC-008 | wp-processors | telemetry | medium | fixed | Router responses expose the selected general model so processors cost and persist dynamic selections accurately. |
 
 ## Coverage Summary
 
 - **Requirements traced**: 37/37
 - **Tests mapped**: 37 requirements have at least one test
-- **Evidence collected**: 4/37 requirements have pass/fail evidence
+- **Evidence collected**: 10/37 requirements have pass/fail evidence
 - **Gaps identified**: Remaining work packages still need implementation files and validation evidence.
 - **Deferred items**: None.

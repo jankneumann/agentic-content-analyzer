@@ -1,14 +1,23 @@
 """Tests for digest creation."""
 
 from datetime import datetime
-from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.models.content import ContentSource
 from src.models.digest import DigestData, DigestRequest, DigestType
+from src.models.query import (
+    ResolvedContentItem,
+    ResolvedContentSet,
+    SelectionPolicy,
+    compute_selection_fingerprint,
+)
 from src.models.summary import Summary
 from src.models.theme import ThemeAnalysisResult, ThemeCategory, ThemeData, ThemeTrend
 from src.processors.digest_creator import DigestCreator
+from src.processors.provenance import LoadedContentItem
 
 
 @pytest.fixture
@@ -20,7 +29,7 @@ def sample_themes() -> list[ThemeData]:
             description="Advancements in LLM capabilities",
             category=ThemeCategory.ML_AI,
             mention_count=5,
-            newsletter_ids=[1, 2, 3],
+            newsletter_ids=[1, 2],
             first_seen=datetime(2025, 1, 1),
             last_seen=datetime(2025, 1, 5),
             trend=ThemeTrend.GROWING,
@@ -41,7 +50,7 @@ def sample_themes() -> list[ThemeData]:
             description="Specialized databases for embeddings",
             category=ThemeCategory.DATA_ENGINEERING,
             mention_count=3,
-            newsletter_ids=[2, 4],
+            newsletter_ids=[2],
             first_seen=datetime(2025, 1, 2),
             last_seen=datetime(2025, 1, 5),
             trend=ThemeTrend.ESTABLISHED,
@@ -113,6 +122,59 @@ def sample_summaries() -> list[Summary]:
 
 
 @pytest.fixture
+def sample_selection(sample_contents, sample_summaries):
+    """Build one immutable selection and its exact persisted pairs."""
+    policy = SelectionPolicy(
+        start_date=datetime(2025, 1, 1),
+        end_date=datetime(2025, 1, 5),
+    )
+    items = tuple(
+        ResolvedContentItem(
+            content_id=content["id"],
+            summary_id=summary.id,
+            source_type=ContentSource(content["source_type"]),
+            title=content["title"],
+            publication=content["publication"],
+            selection_date=content["published_date"],
+        )
+        for content, summary in zip(sample_contents, sample_summaries, strict=True)
+    )
+    resolved = ResolvedContentSet(
+        policy=policy,
+        items=items,
+        fingerprint=compute_selection_fingerprint(
+            policy,
+            [item.content_id for item in items],
+            [item.summary_id for item in items],
+        ),
+    )
+    loaded = tuple(
+        LoadedContentItem(
+            content=SimpleNamespace(
+                id=content["id"],
+                title=content["title"],
+                publication=content["publication"],
+                source_url=content["url"],
+                source_type=ContentSource(content["source_type"]),
+            ),
+            summary=summary,
+        )
+        for content, summary in zip(sample_contents, sample_summaries, strict=True)
+    )
+    loader = MagicMock()
+    loader.load.return_value = loaded
+    return resolved, loader
+
+
+def _empty_selection(request: DigestRequest) -> ResolvedContentSet:
+    policy = SelectionPolicy(start_date=request.period_start, end_date=request.period_end)
+    return ResolvedContentSet(
+        policy=policy,
+        fingerprint=compute_selection_fingerprint(policy, [], []),
+    )
+
+
+@pytest.fixture
 def mock_llm_response() -> dict:
     """Create mock LLM response for digest generation."""
     return {
@@ -179,7 +241,9 @@ def mock_llm_response() -> dict:
 
 
 @pytest.mark.asyncio
-async def test_create_digest_success(sample_themes, sample_contents, mock_llm_response):
+async def test_create_digest_success(
+    sample_themes, sample_contents, sample_selection, mock_llm_response
+):
     """Test successful digest creation."""
     request = DigestRequest(
         digest_type=DigestType.DAILY,
@@ -187,40 +251,21 @@ async def test_create_digest_success(sample_themes, sample_contents, mock_llm_re
         period_end=datetime(2025, 1, 5),
     )
 
-    # Mock theme analyzer
-    theme_result = ThemeAnalysisResult(
-        start_date=request.period_start,
-        end_date=request.period_end,
-        newsletter_count=2,
-        newsletter_ids=[1, 2],
-        # content_count drives the "no content found" early-return in
-        # DigestCreator; without it, the field defaults to 0 and the
-        # digest title falls back to "Daily Digest - No Content".
-        content_count=2,
-        themes=sample_themes,
-        total_themes=2,
-        emerging_themes_count=1,
-        top_theme="Large Language Models",
-        agent_framework="claude",
-        model_used="claude-sonnet-4-20250514",
-        processing_time_seconds=10.5,
-    )
-
-    with patch("src.processors.digest_creator.ThemeAnalyzer") as mock_analyzer_class:
-        mock_analyzer = AsyncMock()
-        mock_analyzer.analyze_themes.return_value = theme_result
-        mock_analyzer_class.return_value = mock_analyzer
-
-        # Mock content fetch
-        with patch.object(DigestCreator, "_fetch_contents", return_value=sample_contents):
-            # Mock LLM generation
-            with patch.object(
-                DigestCreator,
-                "_generate_digest_content",
-                return_value=mock_llm_response,
-            ):
-                creator = DigestCreator()
-                digest = await creator.create_digest(request)
+    resolved, loader = sample_selection
+    with (
+        patch.object(
+            DigestCreator,
+            "_check_token_budget",
+            new=AsyncMock(return_value=(False, {})),
+        ),
+        patch.object(
+            DigestCreator,
+            "_generate_digest_content",
+            new=AsyncMock(return_value=mock_llm_response),
+        ),
+    ):
+        creator = DigestCreator(content_loader=loader)
+        digest = await creator.create_digest(request, resolved, themes=sample_themes)
 
     # Verify digest structure
     assert isinstance(digest, DigestData)
@@ -255,28 +300,11 @@ async def test_create_digest_no_newsletters():
         period_end=datetime(2025, 1, 1),
     )
 
-    # Mock theme analyzer returning zero newsletters
-    theme_result = ThemeAnalysisResult(
-        start_date=request.period_start,
-        end_date=request.period_end,
-        newsletter_count=0,
-        newsletter_ids=[],
-        themes=[],
-        total_themes=0,
-        emerging_themes_count=0,
-        top_theme=None,
-        agent_framework="claude",
-        model_used="claude-sonnet-4-20250514",
-        processing_time_seconds=1.0,
-    )
-
-    with patch("src.processors.digest_creator.ThemeAnalyzer") as mock_analyzer_class:
-        mock_analyzer = AsyncMock()
-        mock_analyzer.analyze_themes.return_value = theme_result
-        mock_analyzer_class.return_value = mock_analyzer
-
-        creator = DigestCreator()
-        digest = await creator.create_digest(request)
+    resolved = _empty_selection(request)
+    loader = MagicMock()
+    loader.load.return_value = ()
+    creator = DigestCreator(content_loader=loader)
+    digest = await creator.create_digest(request, resolved)
 
     # Should return empty digest
     assert digest.newsletter_count == 0
@@ -287,7 +315,7 @@ async def test_create_digest_no_newsletters():
 
 
 @pytest.mark.asyncio
-async def test_create_digest_without_historical_context(sample_themes):
+async def test_create_digest_without_historical_context(sample_themes, sample_selection):
     """Test digest creation with historical context disabled."""
     request = DigestRequest(
         digest_type=DigestType.DAILY,
@@ -323,21 +351,28 @@ async def test_create_digest_without_historical_context(sample_themes):
         patch("src.processors.digest_creator.ThemeAnalyzer") as mock_analyzer_class,
         patch.object(
             DigestCreator,
+            "_check_token_budget",
+            new=AsyncMock(return_value=(False, {})),
+        ),
+        patch.object(
+            DigestCreator,
             "_generate_digest_content",
             new=AsyncMock(return_value=digest_content_stub),
         ),
     ):
         mock_analyzer = AsyncMock()
+        mock_analyzer.analyze_themes.return_value = theme_result
         mock_analyzer_class.return_value = mock_analyzer
 
-        creator = DigestCreator()
-        digest_creator_instance = await creator.create_digest(request)
+        resolved, loader = sample_selection
+        creator = DigestCreator(content_loader=loader)
+        await creator.create_digest(request, resolved)
 
-        # Verify historical context flag was passed to theme analyzer
-        # (This would be called in the actual implementation)
-        # mock_analyzer.analyze_themes.assert_called_once()
-        # call_args = mock_analyzer.analyze_themes.call_args
-        # assert call_args.kwargs.get("include_historical_context") == False
+        mock_analyzer.analyze_themes.assert_awaited_once_with(
+            mock_analyzer.analyze_themes.await_args.args[0],
+            resolved,
+            include_historical_context=False,
+        )
 
 
 def test_build_themes_context(sample_themes):
@@ -460,7 +495,7 @@ def test_create_empty_digest():
         period_end=datetime(2025, 1, 1),
     )
 
-    digest = creator._create_empty_digest(request)
+    digest = creator._create_empty_digest(request, _empty_selection(request))
 
     assert digest.newsletter_count == 0
     assert "No Content" in digest.title

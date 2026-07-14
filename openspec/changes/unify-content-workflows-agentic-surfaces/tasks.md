@@ -41,25 +41,25 @@
 - [x] 2.6 [XS] Checkpoint: run resolver tests, review diff, verify scope
   **Dependencies**: 2.5
 
-- [ ] 2.7 [M] Write processor provenance tests
+- [x] 2.7 [M] Write processor provenance tests
   **Spec scenarios**: content-provenance.5-8, theme-analysis.1-2, podcast-generation.1-2
   **Contracts**: `contracts/db/schema.sql`
   **Design decisions**: D3, D4
   **Dependencies**: 2.5
 
-- [ ] 2.8 [M] Constrain theme analysis selection
+- [x] 2.8 [M] Constrain theme analysis selection
   Replace period re-querying with supplied resolved content and persist analyzed IDs plus fingerprint.
   **Dependencies**: 2.7
 
-- [ ] 2.9 [M] Persist digest selection snapshot
+- [x] 2.9 [M] Persist digest selection snapshot
   Make digest generation consume the supplied resolved set and persist exact content IDs, summary IDs, policy, fingerprint, and canonical count.
   **Dependencies**: 2.7, 2.8
 
-- [ ] 2.10 [M] Constrain podcast content tools
+- [x] 2.10 [M] Constrain podcast content tools
   Load podcast availability from digest provenance, enforce fetch and citation membership, persist content-named fields, and reject incomplete legacy provenance.
   **Dependencies**: 2.7, 2.9
 
-- [ ] 2.11 [XS] Checkpoint: run processor tests, review diff, verify scope
+- [x] 2.11 [XS] Checkpoint: run processor tests, review diff, verify scope
   **Dependencies**: 2.8, 2.9, 2.10
 
 ## 3. Source Registry
@@ -253,38 +253,38 @@
 
 ## 6. Provider Boundaries
 
-- [ ] 6.1 [M] Write provider boundary tests
+- [x] 6.1 [M] Write provider boundary tests
   **Spec scenarios**: llm-provider-routing.1-3
   **Contracts**: None
   **Design decisions**: D10
   **Dependencies**: 1.3
 
-- [ ] 6.2 [M] Migrate digest processors to LLMRouter
+- [x] 6.2 [M] Migrate digest processors to LLMRouter
   Route generation and tool use through provider-neutral router APIs while preserving token, cost, model, and telemetry metadata.
   **Dependencies**: 6.1, 2.9
 
-- [ ] 6.3 [M] Migrate podcast processors to LLMRouter
+- [x] 6.3 [M] Migrate podcast processors to LLMRouter
   Replace bespoke Anthropic and Gemini loops with router tool contracts while preserving constrained content tools.
   **Dependencies**: 6.1, 2.10
 
-- [ ] 6.4 [M] Migrate revision processors to LLMRouter
+- [x] 6.4 [M] Migrate revision processors to LLMRouter
   Move digest revision, podcast revision, and historical context calls behind the router.
   **Dependencies**: 6.1
 
-- [ ] 6.5 [XS] Checkpoint: run LLM routing tests, review diff, verify scope
+- [x] 6.5 [XS] Checkpoint: run LLM routing tests, review diff, verify scope
   **Dependencies**: 6.2, 6.3, 6.4
 
-- [ ] 6.6 [M] Write public audio service tests
+- [x] 6.6 [M] Write public audio service tests
   **Spec scenarios**: audio-digest.1-2, podcast-generation.4
   **Contracts**: None
   **Design decisions**: D10
   **Dependencies**: 1.3
 
-- [ ] 6.7 [M] Consolidate public audio services
+- [x] 6.7 [M] Consolidate public audio services
   Make podcast and audio digest generation use public TTS plus storage methods; remove transport calls to legacy generators and private synthesis methods.
   **Dependencies**: 6.6
 
-- [ ] 6.8 [XS] Checkpoint: run audio service tests, review diff, verify scope
+- [x] 6.8 [XS] Checkpoint: run audio service tests, review diff, verify scope
   **Dependencies**: 6.7
 
 ## 7. HTTP Surface

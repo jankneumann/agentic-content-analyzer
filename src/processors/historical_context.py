@@ -4,11 +4,10 @@ import asyncio
 import json
 from datetime import datetime, timedelta
 
-from anthropic import Anthropic
-
 from src.config import settings
 from src.config.models import ModelConfig, ModelStep, Provider
 from src.models.theme import HistoricalMention, ThemeData, ThemeEvolution
+from src.services.llm_router import LLMRouter
 from src.services.prompt_service import PromptService
 from src.storage.graph_provider import GraphBackendUnavailableError
 from src.storage.graphiti_client import GraphitiClient
@@ -29,6 +28,7 @@ class HistoricalContextAnalyzer:
         model_config: ModelConfig | None = None,
         model: str | None = None,
         prompt_service: PromptService | None = None,
+        llm_router: LLMRouter | None = None,
     ):
         """
         Initialize historical context analyzer.
@@ -46,7 +46,9 @@ class HistoricalContextAnalyzer:
 
         # Get model for historical context step (or use override)
         self.model = model or model_config.get_model_for_step(ModelStep.HISTORICAL_CONTEXT)
+        self.model_used = self.model
         self.prompt_service = prompt_service or PromptService()
+        self.llm_router = llm_router or LLMRouter(model_config)
 
         self.graphiti_client: GraphitiClient | None = None
         self._graphiti_unavailable: bool = False
@@ -279,56 +281,26 @@ class HistoricalContextAnalyzer:
             timeline_context=timeline_context,
         )
 
-        # Call LLM with provider failover
         try:
-            providers = self.model_config.get_providers_for_model(self.model)
-        except ValueError as e:
-            logger.error(f"No providers configured for model {self.model}: {e}")
-            return ("No provider available.", [], None)
-
-        # Filter for Anthropic-compatible providers
-        anthropic_providers = [p for p in providers if p.provider == Provider.ANTHROPIC]
-
-        if not anthropic_providers:
-            logger.error(f"No Anthropic-compatible providers for model {self.model}")
-            return ("No provider available.", [], None)
-
-        # Try each provider in order
-        response = None
-        for provider_config in anthropic_providers:
-            try:
-                logger.debug(f"Trying provider: {provider_config.provider.value}")
-                client = Anthropic(api_key=provider_config.api_key)
-
-                # Get system prompt for historical context
-                system_prompt = self.prompt_service.get_pipeline_prompt("historical_context")
-
-                response = client.messages.create(
-                    model=self.model,
-                    max_tokens=1500,
-                    temperature=0.3,
-                    system=system_prompt,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-
-                # Track provider and token usage
-                self.provider_used = provider_config.provider
-                self.input_tokens = response.usage.input_tokens
-                self.output_tokens = response.usage.output_tokens
-
-                break  # Success
-
-            except Exception as e:
-                logger.error(f"Error with provider {provider_config.provider.value}: {e}")
-                continue
-
-        if response is None:
-            logger.error("All providers failed for evolution analysis")
+            response = await self.llm_router.generate(
+                model=self.model,
+                system_prompt=self.prompt_service.get_pipeline_prompt("historical_context"),
+                user_prompt=prompt,
+                max_tokens=1500,
+                temperature=0.3,
+                step=ModelStep.HISTORICAL_CONTEXT,
+            )
+            self.provider_used = response.provider
+            self.input_tokens += response.input_tokens
+            self.output_tokens += response.output_tokens
+            self.model_used = response.selected_model or self.model
+        except Exception as exc:
+            logger.error("Historical context generation failed through LLMRouter: %s", exc)
             return ("Provider error.", [], None)
 
         # Parse response
         try:
-            response_text = response.content[0].text.strip()
+            response_text = response.text.strip()
 
             # Remove markdown code blocks if present
             if response_text.startswith("```"):

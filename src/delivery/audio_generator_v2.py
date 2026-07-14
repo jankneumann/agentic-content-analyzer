@@ -82,7 +82,7 @@ class PodcastAudioGeneratorV2:
         self.batcher = DialogueBatcher()
 
         # Check if provider supports SSML
-        self.use_ssml = self.tts._provider.supports_ssml()
+        self.use_ssml = self.tts.supports_ssml
 
         # Load pre-generated silence templates
         self._load_silence_templates()

@@ -7,14 +7,12 @@ not just Anthropic.
 import json
 from typing import Any
 
-from sqlalchemy.orm import joinedload
-
 from src.config.models import ModelConfig, ModelStep, Provider
 from src.models.content import Content
 from src.models.digest import Digest
 from src.models.revision import RevisionContext, RevisionResult
-from src.models.summary import Summary
 from src.models.theme import ThemeAnalysis
+from src.processors.provenance import ExactContentSetLoader
 from src.services.llm_router import LLMResponse, LLMRouter, ToolDefinition
 from src.services.prompt_service import PromptService
 from src.storage.database import get_db
@@ -35,6 +33,8 @@ class DigestReviser:
         model_config: ModelConfig | None = None,
         model: str | None = None,
         prompt_service: PromptService | None = None,
+        content_loader: ExactContentSetLoader | None = None,
+        llm_router: LLMRouter | None = None,
     ) -> None:
         """
         Initialize digest reviser.
@@ -54,10 +54,12 @@ class DigestReviser:
 
         # Use configured model for digest revision, or override
         self.model = model or self.model_config.get_model_for_step(ModelStep.DIGEST_REVISION)
+        self.model_used = self.model
         self.prompt_service = prompt_service or PromptService()
 
         # Create LLMRouter for provider-agnostic generation
-        self.router = LLMRouter(model_config)
+        self.router = llm_router or LLMRouter(model_config)
+        self.content_loader = content_loader or ExactContentSetLoader()
 
         # Provider tracking (for cost calculation)
         self.provider_used: Provider | None = None
@@ -86,42 +88,23 @@ class DigestReviser:
         """
         logger.info(f"Loading context for digest {digest_id}")
 
+        loaded = self.content_loader.load_digest(digest_id)
+        digest = loaded.digest
+        summaries = [item.summary for item in loaded.items]
+        for item in loaded.items:
+            item.summary.content = item.content
+        content_ids = list(loaded.resolved_set.content_ids)
+
+        logger.info(
+            f"Loaded digest {digest_id} with {len(summaries)} exact summaries, "
+            f"{len(content_ids)} content items available for on-demand fetching"
+        )
+
         with get_db() as db:
-            # Load digest
-            digest = db.query(Digest).filter_by(id=digest_id).first()
-
-            if not digest:
-                raise ValueError(f"Digest {digest_id} not found")
-
-            # Load summaries for the period with eager loading of content relationship
-            # to prevent DetachedInstanceError when accessing summary.content
-            summaries = (
-                db.query(Summary)
-                .options(joinedload(Summary.content))
-                .join(Content, Summary.content_id == Content.id)
-                .filter(
-                    Content.published_date >= digest.period_start,
-                    Content.published_date <= digest.period_end,
-                )
-                .order_by(Content.published_date.desc())
-                .all()
-            )
-
-            # Extract content IDs for on-demand fetching
-            content_ids = [summary.content_id for summary in summaries if summary.content_id]
-
-            logger.info(
-                f"Loaded digest {digest_id} with {len(summaries)} summaries, "
-                f"{len(content_ids)} content items available for on-demand fetching"
-            )
-
-            # Load theme analysis for the period
-            # We look for an analysis that covers the exact same period
             theme_analysis = (
                 db.query(ThemeAnalysis)
                 .filter(
-                    ThemeAnalysis.start_date == digest.period_start,
-                    ThemeAnalysis.end_date == digest.period_end,
+                    ThemeAnalysis.selection_fingerprint == digest.selection_fingerprint,
                 )
                 .order_by(ThemeAnalysis.analysis_date.desc())
                 .first()
@@ -132,12 +115,12 @@ class DigestReviser:
             else:
                 logger.info("No matching theme analysis found")
 
-            return RevisionContext(
-                digest=digest,
-                summaries=summaries,
-                theme_analysis=theme_analysis,
-                content_ids=content_ids,
-            )
+        return RevisionContext(
+            digest=digest,
+            summaries=summaries,
+            theme_analysis=theme_analysis,
+            content_ids=content_ids,
+        )
 
     async def revise_section(
         self,
@@ -168,9 +151,9 @@ class DigestReviser:
         # Get system prompt for digest revision
         system_prompt = self.prompt_service.get_pipeline_prompt("digest_revision")
 
-        # Build the full user prompt from messages
-        # generate_with_tools expects a single user_prompt string
-        user_prompt = messages[-1]["content"] if messages else user_request
+        # Preserve role-labelled conversation history even though the router's
+        # provider-neutral tool API accepts one user prompt.
+        user_prompt = self._serialize_messages(messages) if messages else user_request
 
         # Get provider-agnostic tool definitions
         tools = self._get_tool_definitions()
@@ -189,6 +172,7 @@ class DigestReviser:
                 max_tokens=8000,
                 temperature=0.0,  # Deterministic for consistent revisions
                 max_iterations=5,
+                step=ModelStep.DIGEST_REVISION,
             )
         except Exception as e:
             error_msg = f"LLM generation failed: {e!s}"
@@ -199,6 +183,7 @@ class DigestReviser:
         self.provider_used = llm_response.provider
         self.input_tokens += llm_response.input_tokens
         self.output_tokens += llm_response.output_tokens
+        self.model_used = llm_response.selected_model or self.model
 
         # Parse final response
         result = self._parse_revision_result(llm_response)
@@ -381,6 +366,18 @@ class DigestReviser:
 
         return messages
 
+    @staticmethod
+    def _serialize_messages(messages: list[dict[str, Any]]) -> str:
+        """Serialize conversation turns without dropping their role boundaries."""
+
+        turns = []
+        for message in messages:
+            role = str(message.get("role", "user")).lower()
+            if role not in {"assistant", "user"}:
+                role = "user"
+            turns.append(f"[{role.upper()} TURN]\n{message.get('content', '')}")
+        return "\n\n".join(turns)
+
     def _parse_revision_result(self, llm_response: LLMResponse) -> RevisionResult:
         """Parse LLM response into RevisionResult.
 
@@ -500,7 +497,7 @@ class DigestReviser:
             return 0.0
 
         return self.model_config.calculate_cost(
-            self.model,
+            self.model_used,
             self.input_tokens,
             self.output_tokens,
             self.provider_used,

@@ -6,7 +6,6 @@ Tests cover:
 - Routing decision logging
 """
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -44,7 +43,7 @@ class TestBackwardCompatibility:
         """Without step parameter, uses the explicitly provided model."""
         router = LLMRouter(model_config)
 
-        with patch.object(router, '_generate_anthropic', new_callable=AsyncMock) as mock_gen:
+        with patch.object(router, "_generate_anthropic", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = LLMResponse(text="response", input_tokens=10, output_tokens=5)
 
             response = await router.generate(
@@ -63,11 +62,13 @@ class TestBackwardCompatibility:
         """Without step, no routing decision should be logged."""
         router = LLMRouter(model_config)
 
-        with patch.object(router, '_generate_anthropic', new_callable=AsyncMock) as mock_gen, \
-             patch.object(router, '_log_routing_decision') as mock_log:
+        with (
+            patch.object(router, "_generate_anthropic", new_callable=AsyncMock) as mock_gen,
+            patch.object(router, "_log_routing_decision") as mock_log,
+        ):
             mock_gen.return_value = LLMResponse(text="response", input_tokens=10, output_tokens=5)
 
-            await router.generate(
+            response = await router.generate(
                 model="claude-sonnet-4-5",
                 system_prompt="test",
                 user_prompt="test",
@@ -94,10 +95,10 @@ class TestDynamicRouting:
 
         router = LLMRouter(model_config, complexity_router=mock_complexity_router)
 
-        with patch.object(router, '_generate_anthropic', new_callable=AsyncMock) as mock_gen:
+        with patch.object(router, "_generate_anthropic", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = LLMResponse(text="response", input_tokens=10, output_tokens=5)
 
-            await router.generate(
+            response = await router.generate(
                 model="claude-sonnet-4-5",  # Original model
                 system_prompt="test",
                 user_prompt="test prompt",
@@ -109,13 +110,14 @@ class TestDynamicRouting:
             # Model was overridden to weak (complexity_score 0.3 < threshold 0.5)
             call_args = mock_gen.call_args
             assert call_args[0][0] == "claude-haiku-4-5"
+            assert response.selected_model == "claude-haiku-4-5"
 
     @pytest.mark.asyncio
     async def test_fixed_mode_ignores_complexity_router(self, model_config, mock_complexity_router):
         """When mode is fixed, complexity router is not called."""
         router = LLMRouter(model_config, complexity_router=mock_complexity_router)
 
-        with patch.object(router, '_generate_anthropic', new_callable=AsyncMock) as mock_gen:
+        with patch.object(router, "_generate_anthropic", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = LLMResponse(text="response", input_tokens=10, output_tokens=5)
 
             await router.generate(
@@ -129,7 +131,9 @@ class TestDynamicRouting:
             mock_complexity_router.classify.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_disabled_dynamic_ignores_complexity_router(self, model_config, mock_complexity_router):
+    async def test_disabled_dynamic_ignores_complexity_router(
+        self, model_config, mock_complexity_router
+    ):
         """When enabled=False, complexity router is not called even if mode=dynamic."""
         model_config._routing_configs["summarization"] = RoutingConfig(
             step="summarization",
@@ -142,7 +146,7 @@ class TestDynamicRouting:
 
         router = LLMRouter(model_config, complexity_router=mock_complexity_router)
 
-        with patch.object(router, '_generate_anthropic', new_callable=AsyncMock) as mock_gen:
+        with patch.object(router, "_generate_anthropic", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = LLMResponse(text="response", input_tokens=10, output_tokens=5)
 
             await router.generate(
@@ -172,8 +176,10 @@ class TestRoutingDecisionLogging:
 
         router = LLMRouter(model_config, complexity_router=mock_complexity_router)
 
-        with patch.object(router, '_generate_anthropic', new_callable=AsyncMock) as mock_gen, \
-             patch.object(router, '_log_routing_decision') as mock_log:
+        with (
+            patch.object(router, "_generate_anthropic", new_callable=AsyncMock) as mock_gen,
+            patch.object(router, "_log_routing_decision") as mock_log,
+        ):
             mock_gen.return_value = LLMResponse(text="response", input_tokens=10, output_tokens=5)
 
             await router.generate(

@@ -5,8 +5,7 @@ import time
 from datetime import datetime
 
 from src.config.models import ModelConfig, ModelStep, Provider, get_model_config
-from src.models.content import Content, ContentStatus
-from src.models.summary import Summary
+from src.models.query import ResolvedContentSet
 from src.models.theme import (
     ThemeAnalysisRequest,
     ThemeAnalysisResult,
@@ -15,9 +14,9 @@ from src.models.theme import (
     ThemeTrend,
 )
 from src.processors.historical_context import HistoricalContextAnalyzer
+from src.processors.provenance import ExactContentSetLoader
 from src.services.llm_router import LLMRouter
 from src.services.prompt_service import PromptService
-from src.storage.database import get_db
 from src.storage.graph_provider import GraphBackendUnavailableError
 from src.storage.graphiti_client import GraphitiClient
 from src.telemetry.decorators import observe
@@ -39,6 +38,8 @@ class ThemeAnalyzer:
         use_large_context: bool = False,
         model_override: str | None = None,
         prompt_service: PromptService | None = None,
+        content_loader: ExactContentSetLoader | None = None,
+        llm_router: LLMRouter | None = None,
     ) -> None:
         """
         Initialize theme analyzer.
@@ -59,9 +60,11 @@ class ThemeAnalyzer:
 
         # Get model for theme analysis step (or use override)
         self.model = model_override or model_config.get_model_for_step(ModelStep.THEME_ANALYSIS)
+        self.model_used = self.model
 
         # Initialize LLM router
-        self.llm_router = LLMRouter(model_config)
+        self.llm_router = llm_router or LLMRouter(model_config)
+        self.content_loader = content_loader or ExactContentSetLoader()
         self.prompt_service = prompt_service or PromptService()
 
         # Determine framework based on model family
@@ -104,6 +107,7 @@ class ThemeAnalyzer:
     async def analyze_themes(
         self,
         request: ThemeAnalysisRequest,
+        resolved_set: ResolvedContentSet,
         include_historical_context: bool = True,
     ) -> ThemeAnalysisResult:
         """
@@ -119,12 +123,32 @@ class ThemeAnalyzer:
         start_time = time.time()
         logger.info(f"Starting theme analysis from {request.start_date} to {request.end_date}")
 
-        # Initialize Graphiti client (lazy, may be None if backend unavailable)
-        client = await self._get_client()
-
         try:
-            # 1. Fetch content from database for the date range (unified Content model)
-            contents = await self._fetch_contents(request.start_date, request.end_date)
+            # The workflow resolves once. Processors load only those exact persisted pairs.
+            loaded_items = self.content_loader.load(resolved_set)
+            selection_dates = {item.content_id: item.selection_date for item in resolved_set.items}
+            contents = [
+                {
+                    "id": item.content.id,
+                    "title": item.content.title,
+                    "publication": item.content.publication,
+                    "published_date": selection_dates[item.content.id],
+                    "source_type": item.content.source_type.value,
+                }
+                for item in loaded_items
+            ]
+            summaries = [
+                {
+                    "id": item.summary.id,
+                    "content_id": item.summary.content_id,
+                    "executive_summary": item.summary.executive_summary,
+                    "key_themes": item.summary.key_themes or [],
+                    "theme_tags": item.summary.theme_tags or [],
+                    "strategic_insights": item.summary.strategic_insights or [],
+                    "technical_details": item.summary.technical_details or [],
+                }
+                for item in loaded_items
+            ]
 
             if len(contents) < request.min_newsletters:
                 logger.warning(
@@ -134,26 +158,20 @@ class ThemeAnalyzer:
                 return ThemeAnalysisResult(
                     start_date=request.start_date,
                     end_date=request.end_date,
-                    content_count=0,
-                    model_used=self.model,
+                    content_count=len(contents),
+                    content_ids=list(resolved_set.content_ids),
+                    summary_ids=list(resolved_set.summary_ids),
+                    selection_fingerprint=resolved_set.fingerprint,
+                    selection_policy=resolved_set.policy.model_dump(mode="json"),
+                    model_used=self.model_used,
                     agent_framework=self.framework,
                 )
 
             logger.info(f"Analyzing {len(contents)} content items")
 
-            # 2. Get summaries for content items
-            content_ids = [c["id"] for c in contents]
-            summaries = await self._fetch_summaries(content_ids)
-
-            # 3. Query Graphiti for themes and entities
+            # Graph-wide period retrieval is intentionally excluded here: it can
+            # introduce facts from content outside the immutable selection.
             graphiti_themes: list[dict] = []
-            if client:
-                graphiti_themes = await client.extract_themes_from_range(
-                    start_date=request.start_date,
-                    end_date=request.end_date,
-                )
-            else:
-                logger.info("Skipping graph theme extraction (backend unavailable)")
 
             # 4. Use LLM to analyze and extract structured themes
             themes = await self._extract_themes_with_llm(
@@ -169,8 +187,8 @@ class ThemeAnalyzer:
                 logger.info("Enriching themes with historical context...")
                 context_analyzer = HistoricalContextAnalyzer(
                     model_config=self.model_config,
-                    model=self.model,
                     prompt_service=self.prompt_service,
+                    llm_router=self.llm_router,
                 )
                 themes = await context_analyzer.enrich_themes_with_history(
                     themes=themes,
@@ -187,12 +205,15 @@ class ThemeAnalyzer:
                 end_date=request.end_date,
                 content_count=len(contents),
                 content_ids=[c["id"] for c in contents],
+                summary_ids=list(resolved_set.summary_ids),
+                selection_fingerprint=resolved_set.fingerprint,
+                selection_policy=resolved_set.policy.model_dump(mode="json"),
                 themes=themes,
                 total_themes=len(themes),
                 emerging_themes_count=len([t for t in themes if t.trend == ThemeTrend.EMERGING]),
                 top_theme=themes[0].name if themes else None,
                 processing_time_seconds=processing_time,
-                model_used=self.model,
+                model_used=self.model_used,
                 model_version=self.model_version,
                 agent_framework=self.framework,
             )
@@ -206,85 +227,6 @@ class ThemeAnalyzer:
         finally:
             if self.graphiti_client:
                 self.graphiti_client.close()
-
-    async def _fetch_contents(
-        self,
-        start_date: datetime,
-        end_date: datetime,
-        status_filter: list[ContentStatus] | None = None,
-    ) -> list[dict]:
-        """
-        Fetch content records from database for date range.
-
-        Uses the unified Content model instead of Newsletter.
-
-        Args:
-            start_date: Period start date
-            end_date: Period end date
-            status_filter: Optional list of content statuses to include
-                          (default: COMPLETED only)
-
-        Returns:
-            List of content dicts with standard fields
-        """
-        if status_filter is None:
-            status_filter = [ContentStatus.COMPLETED]
-
-        with get_db() as db:
-            from sqlalchemy import or_
-
-            contents = (
-                db.query(Content)
-                .filter(
-                    or_(
-                        # Match content published in the date range
-                        (Content.published_date >= start_date)
-                        & (Content.published_date <= end_date),
-                        # Also match content ingested in the date range
-                        # (covers backfilled content with older published_dates)
-                        (Content.ingested_at >= start_date) & (Content.ingested_at <= end_date),
-                    ),
-                    Content.status.in_(status_filter),
-                )
-                .order_by(Content.published_date.desc())
-                .all()
-            )
-
-            return [
-                {
-                    "id": c.id,
-                    "title": c.title,
-                    "publication": c.publication,
-                    "published_date": c.published_date,
-                    "source_type": c.source_type.value,
-                }
-                for c in contents
-            ]
-
-    async def _fetch_summaries(
-        self,
-        content_ids: list[int],
-    ) -> list[dict]:
-        """Fetch summaries for content items by content_id."""
-        if not content_ids:
-            return []
-
-        with get_db() as db:
-            summaries = db.query(Summary).filter(Summary.content_id.in_(content_ids)).all()
-
-            logger.info(f"Found {len(summaries)} summaries for {len(content_ids)} content items")
-
-            return [
-                {
-                    "content_id": s.content_id,
-                    "executive_summary": s.executive_summary,
-                    "key_themes": s.key_themes or [],
-                    "theme_tags": s.theme_tags or [],
-                    "strategic_insights": s.strategic_insights or [],
-                    "technical_details": s.technical_details or [],
-                }
-                for s in summaries
-            ]
 
     async def _extract_themes_with_llm(
         self,
@@ -339,6 +281,7 @@ class ThemeAnalyzer:
                 Provider.ANTHROPIC,
                 Provider.AWS_BEDROCK,
                 Provider.GOOGLE_VERTEX,
+                Provider.MICROSOFT_AZURE,
                 Provider.OPENAI,
                 Provider.GOOGLE_AI,
             ]
@@ -366,6 +309,7 @@ class ThemeAnalyzer:
                     user_prompt=user_prompt,
                     max_tokens=8000 if "claude" in self.model else 4000,
                     temperature=0.3,
+                    step=ModelStep.THEME_ANALYSIS,
                 )
 
                 # Track provider and token usage
@@ -373,6 +317,7 @@ class ThemeAnalyzer:
                 self.input_tokens = response.input_tokens
                 self.output_tokens = response.output_tokens
                 self.model_version = response.model_version
+                self.model_used = response.selected_model or self.model
 
                 response_text = response.text
 
@@ -393,7 +338,7 @@ class ThemeAnalyzer:
 
         # Calculate actual cost
         cost = self.model_config.calculate_cost(
-            model_id=self.model,
+            model_id=self.model_used,
             input_tokens=self.input_tokens,
             output_tokens=self.output_tokens,
             provider=self.provider_used,
@@ -446,10 +391,11 @@ class ThemeAnalyzer:
                 # Combine key_themes and theme_tags for comprehensive coverage
                 themes = summary.get("key_themes", []) or []
                 theme_tags = summary.get("theme_tags", []) or []
-                all_themes = list(set(themes + theme_tags))
+                all_themes = list(dict.fromkeys(themes + theme_tags))
 
                 context_parts.append(
                     f"## {content.get('publication', 'Unknown')} - {content['title']}\n"
+                    f"Content ID: {content_id}\n"
                     f"Date: {content['published_date'].strftime('%Y-%m-%d')}\n"
                     f"Source: {content.get('source_type', 'unknown')}\n\n"
                     f"Summary: {summary['executive_summary']}\n\n"
@@ -521,19 +467,25 @@ class ThemeAnalyzer:
 
             themes = []
             for theme_dict in themes_json:
-                # Map content mentions (simplified - using mention_count)
-                mention_count = theme_dict.get("mention_count", 1)
-                content_ids = [c["id"] for c in contents[:mention_count]]
-
-                # Estimate dates
-                first_date = contents[-1]["published_date"] if contents else datetime.now()
-                last_date = contents[0]["published_date"] if contents else datetime.now()
+                available = {content["id"]: content for content in contents}
+                requested_ids = theme_dict.get("content_ids", [])
+                content_ids = list(
+                    dict.fromkeys(
+                        content_id for content_id in requested_ids if content_id in available
+                    )
+                )
+                selected_dates = [
+                    available[content_id]["published_date"] for content_id in content_ids
+                ]
+                fallback_date = contents[0]["published_date"] if contents else datetime.now()
+                first_date = min(selected_dates, default=fallback_date)
+                last_date = max(selected_dates, default=fallback_date)
 
                 theme = ThemeData(
                     name=theme_dict["name"],
                     description=theme_dict["description"],
                     category=ThemeCategory(theme_dict["category"]),
-                    mention_count=mention_count,
+                    mention_count=len(content_ids),
                     content_ids=content_ids,
                     first_seen=first_date,
                     last_seen=last_date,
