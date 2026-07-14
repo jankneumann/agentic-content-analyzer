@@ -70,16 +70,18 @@ async def _claim_jobs(
     return [dict(row) for row in rows]
 
 
-async def _complete_job(conn: asyncpg.Connection, job_id: int) -> None:
-    """Mark a job as completed."""
-    await conn.execute(
+async def _complete_job(conn: asyncpg.Connection, job_id: int) -> bool:
+    """Mark an active job completed without overwriting a terminal state."""
+    completed_id = await conn.fetchval(
         """
         UPDATE pgqueuer_jobs
         SET status = 'completed', completed_at = NOW(), heartbeat_at = NOW()
-        WHERE id = $1
+        WHERE id = $1 AND status = 'in_progress'
+        RETURNING id
         """,
         job_id,
     )
+    return completed_id is not None
 
 
 async def _fail_job(conn: asyncpg.Connection, job_id: int, error: str) -> None:
@@ -209,9 +211,11 @@ async def _process_job(
 
         await touch_job_heartbeat(job_id)
         await handler(job_id, payload)
-        await _complete_job(conn, job_id)
-        logger.info(f"Job {job_id} ({entrypoint}) completed")
-        await _emit_job_notification(job_id, entrypoint, payload)
+        if await _complete_job(conn, job_id):
+            logger.info(f"Job {job_id} ({entrypoint}) completed")
+            await _emit_job_notification(job_id, entrypoint, payload)
+        else:
+            logger.info(f"Job {job_id} ({entrypoint}) reached a terminal state in its handler")
     except Exception as e:
         logger.error(f"Job {job_id} ({entrypoint}) failed: {e}", exc_info=True)
         generic_error = "Job failed due to an internal error"

@@ -89,6 +89,16 @@ class ResourceReference(BaseModel):
     url: str
 
 
+class OperationProblemError(BaseModel):
+    """Structured field error from the shared RFC 7807 contract."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: list[str | int]
+    code: str
+    message: str
+
+
 class OperationProblem(BaseModel):
     """RFC 7807-compatible problem projected for a failed operation."""
 
@@ -100,7 +110,10 @@ class OperationProblem(BaseModel):
     detail: str
     instance: str | None = None
     code: str | None = None
-    errors: list[dict[str, Any]] | None = None
+    errors: list[OperationProblemError] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
 
 
 class OperationPayloadV2(BaseModel):

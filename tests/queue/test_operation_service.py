@@ -10,11 +10,15 @@ from types import ModuleType
 from unittest.mock import AsyncMock
 
 import pytest
+import yaml
+from jsonschema import Draft202012Validator
 
 from src.models.jobs import (
     JobRecord,
     JobStatus,
     OperationPayloadV2,
+    OperationProblem,
+    OperationProblemError,
     OperationStatus,
     OperationType,
     ResourceReference,
@@ -26,6 +30,10 @@ CONTRACT_MODELS = (
     Path(__file__).parents[2]
     / "openspec/changes/unify-content-workflows-agentic-surfaces/contracts/generated/models.py"
 )
+OPENAPI_CONTRACT = (
+    Path(__file__).parents[2]
+    / "openspec/changes/unify-content-workflows-agentic-surfaces/contracts/openapi/v1.yaml"
+)
 
 
 def _contract_models() -> ModuleType:
@@ -35,6 +43,15 @@ def _contract_models() -> ModuleType:
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _validate_operation_handle_contract(handle: dict) -> None:
+    contract = yaml.safe_load(OPENAPI_CONTRACT.read_text())
+    schema = {
+        "$ref": "#/components/schemas/OperationHandle",
+        "components": contract["components"],
+    }
+    Draft202012Validator(schema).validate(handle)
 
 
 def _job(
@@ -113,12 +130,43 @@ def test_completed_operation_projects_persisted_resource_and_result() -> None:
 
 def test_failed_operation_projects_rfc7807_problem() -> None:
     handle = OperationService.project(_job(status=JobStatus.FAILED, error="provider unavailable"))
+    serialized = handle.model_dump(mode="json")
 
     assert handle.status is OperationStatus.FAILED
     assert handle.problem is not None
     assert handle.problem.status == 500
     assert handle.problem.detail == "provider unavailable"
     assert handle.problem.code == "operation_failed"
+    assert "errors" not in serialized["problem"]
+    _validate_operation_handle_contract(serialized)
+
+
+def test_operation_problem_errors_match_openapi_contract() -> None:
+    job = _job(status=JobStatus.FAILED)
+    job.payload["problem"] = OperationProblem(
+        type="https://aca.rotkohl.ai/problems/validation",
+        title="Validation failed",
+        status=422,
+        detail="The request was invalid",
+        errors=[
+            OperationProblemError(
+                path=["input", "url"],
+                code="invalid_url",
+                message="Must be an absolute URL",
+            )
+        ],
+    ).model_dump(mode="json")
+
+    serialized = OperationService.project(job).model_dump(mode="json")
+
+    assert serialized["problem"]["errors"] == [
+        {
+            "path": ["input", "url"],
+            "code": "invalid_url",
+            "message": "Must be an absolute URL",
+        }
+    ]
+    _validate_operation_handle_contract(serialized)
 
 
 @pytest.mark.parametrize(

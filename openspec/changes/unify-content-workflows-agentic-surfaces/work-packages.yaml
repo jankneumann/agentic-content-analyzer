@@ -177,6 +177,7 @@ packages:
       files:
         - src/models/jobs.py
         - src/queue/setup.py
+        - src/queue/worker.py
         - src/services/operation_service.py
       keys:
         - db:schema:pgqueuer_jobs
@@ -188,11 +189,12 @@ packages:
       write_allow:
         - src/models/jobs.py
         - src/queue/setup.py
+        - src/queue/worker.py
         - src/services/operation_service.py
         - tests/queue/test_operation_service.py
         - tests/queue/test_operation_controls.py
       read_allow: ["src/**", "tests/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
-      deny: ["src/queue/worker.py", "src/api/**", "src/cli/**", "src/mcp/**", "web/**"]
+      deny: ["src/api/**", "src/cli/**", "src/mcp/**", "web/**"]
     worktree: { name: wp-operation-core, mode: isolated }
     timeout_minutes: 360
     retry_budget: 1

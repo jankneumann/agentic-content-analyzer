@@ -124,7 +124,6 @@ class OperationService:
         operation_type: OperationType,
         normalized_input: dict[str, Any],
         *,
-        entrypoint: str | None = None,
         idempotency_key: str | None = None,
         priority: int = 0,
         parent_job_id: int | None = None,
@@ -143,7 +142,7 @@ class OperationService:
             payload["input"],
         )
         job_id, _created = await queue_setup.enqueue_queue_job(
-            entrypoint or operation_type.value,
+            operation_type.value,
             payload,
             priority=priority,
             parent_job_id=parent_job_id,
@@ -315,25 +314,30 @@ class OperationService:
             "result": None,
             "problem": None,
         }
-        row = await self._update_returning(
-            """
-            UPDATE pgqueuer_jobs
-            SET status = 'queued',
-                payload = COALESCE(payload, '{}'::jsonb) || $1::jsonb,
-                error = NULL,
-                retry_count = retry_count + 1,
-                started_at = NULL,
-                completed_at = NULL,
-                execute_after = NOW(),
-                heartbeat_at = NOW()
-            WHERE id = $2 AND status = 'failed'
-            RETURNING id, entrypoint, status, payload, priority, error,
-                      retry_count, parent_job_id, heartbeat_at, created_at,
-                      started_at, completed_at
-            """,
-            json.dumps(reset),
-            job_id,
-        )
+        try:
+            row = await self._update_returning(
+                """
+                UPDATE pgqueuer_jobs
+                SET status = 'queued',
+                    payload = COALESCE(payload, '{}'::jsonb) || $1::jsonb,
+                    error = NULL,
+                    retry_count = retry_count + 1,
+                    started_at = NULL,
+                    completed_at = NULL,
+                    execute_after = NOW(),
+                    heartbeat_at = NOW()
+                WHERE id = $2 AND status = 'failed'
+                RETURNING id, entrypoint, status, payload, priority, error,
+                          retry_count, parent_job_id, heartbeat_at, created_at,
+                          started_at, completed_at
+                """,
+                json.dumps(reset),
+                job_id,
+            )
+        except asyncpg.UniqueViolationError as exc:
+            raise OperationConflictError(
+                f"Operation {operation_id} cannot be retried while an equivalent operation is active"
+            ) from exc
         if row is None:
             current = await self.get(operation_id)
             raise OperationConflictError(

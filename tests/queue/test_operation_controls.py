@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
+import asyncpg
 import pytest
 
 from src.models.jobs import (
@@ -68,6 +70,7 @@ async def test_submission_emits_schema_v2_and_deterministic_idempotency(monkeypa
     first_call = enqueue.await_args_list[0]
     second_call = enqueue.await_args_list[1]
     payload = first_call.args[1]
+    assert first_call.args[0] == OperationType.DIGEST_CREATE.value
     assert payload == {
         "schema_version": 2,
         "operation_type": "digest.create",
@@ -82,6 +85,10 @@ async def test_submission_emits_schema_v2_and_deterministic_idempotency(monkeypa
     }
     assert first_call.kwargs["idempotency_key"] == second_call.kwargs["idempotency_key"]
     assert first.operation_id == "8123"
+
+
+def test_submission_exposes_only_canonical_operation_entrypoints() -> None:
+    assert "entrypoint" not in inspect.signature(OperationService.submit).parameters
 
 
 @pytest.mark.asyncio
@@ -225,6 +232,15 @@ async def test_retry_clears_stale_state_and_preserves_normalized_input() -> None
 
 
 @pytest.mark.asyncio
+async def test_retry_collision_is_reported_as_operation_conflict() -> None:
+    conn = _MutationConnection(None)
+    conn.fetchrow.side_effect = asyncpg.UniqueViolationError("active operation exists")
+
+    with pytest.raises(OperationConflictError, match="equivalent operation is active"):
+        await OperationService(connection=conn).retry("8123")
+
+
+@pytest.mark.asyncio
 async def test_cancellation_checkpoint_transitions_requested_job() -> None:
     cancelled = _job(status=JobStatus.CANCELLED)
     cancelled.payload["cancel_requested"] = True
@@ -238,6 +254,73 @@ async def test_cancellation_checkpoint_transitions_requested_job() -> None:
     assert "cancel_requested" in query
     assert handle is not None
     assert handle.status is OperationStatus.CANCELLED
+
+
+class _CancellationStateConnection:
+    def __init__(self) -> None:
+        self.job = _job(status=JobStatus.IN_PROGRESS)
+        self.job.payload["cancel_requested"] = True
+        self.fetchrow = AsyncMock(side_effect=self._fetchrow)
+        self.fetchval = AsyncMock(side_effect=self._fetchval)
+
+    async def _fetchrow(self, query: str, *_args):
+        if "SET status = 'cancelled'" not in query:
+            return None
+        self.job.status = JobStatus.CANCELLED
+        self.job.payload["message"] = "Cancelled"
+        self.job.completed_at = NOW
+        return _job_row(self.job)
+
+    async def _fetchval(self, query: str, *_args):
+        if "SET status = 'completed'" in query and self.job.status is JobStatus.IN_PROGRESS:
+            self.job.status = JobStatus.COMPLETED
+            return self.job.id
+        return None
+
+
+def _job_row(job: JobRecord) -> dict:
+    return {
+        "id": job.id,
+        "entrypoint": job.entrypoint,
+        "status": job.status.value,
+        "payload": job.payload,
+        "priority": job.priority,
+        "error": job.error,
+        "retry_count": job.retry_count,
+        "parent_job_id": job.parent_job_id,
+        "heartbeat_at": job.heartbeat_at,
+        "created_at": job.created_at,
+        "started_at": job.started_at,
+        "completed_at": job.completed_at,
+    }
+
+
+@pytest.mark.asyncio
+async def test_worker_completion_preserves_checkpoint_cancellation(monkeypatch) -> None:
+    from src.queue import worker
+
+    conn = _CancellationStateConnection()
+    entrypoint = "test.cancellation"
+
+    async def handler(job_id: int, _payload: dict) -> None:
+        handle = await OperationService(connection=conn).checkpoint_cancellation(job_id)
+        assert handle is not None
+        assert handle.status is OperationStatus.CANCELLED
+
+    heartbeat = AsyncMock()
+    notification = AsyncMock()
+    monkeypatch.setattr("src.queue.setup.touch_job_heartbeat", heartbeat)
+    monkeypatch.setattr(worker, "_emit_job_notification", notification)
+    monkeypatch.setitem(worker._handlers, entrypoint, handler)
+
+    await worker._process_job(
+        conn,  # type: ignore[arg-type]
+        {"id": conn.job.id, "entrypoint": entrypoint, "payload": conn.job.payload},
+    )
+
+    assert conn.job.status is JobStatus.CANCELLED
+    assert "status = 'in_progress'" in conn.fetchval.await_args.args[0]
+    notification.assert_not_awaited()
 
 
 @pytest.mark.asyncio
