@@ -163,6 +163,10 @@ class IngestRequest(BaseModel):
     session_cookie: str | None = Field(default=None, description="Substack session cookie")
     public_only: bool = Field(default=False, description="YouTube: skip private playlists")
     url: str | None = Field(default=None, description="Target URL (url source)")
+    auto_route: bool = Field(
+        default=True,
+        description="Auto-route the URL to the appropriate handler (url source)",
+    )
     title: str | None = Field(default=None, description="Content title override")
     tags: list[str] | None = Field(default=None, description="Content tags (url)")
     notes: str | None = Field(default=None, description="Content notes (url)")
@@ -220,6 +224,7 @@ async def _enqueue_ingestion_job(request: IngestRequest) -> int:
         "context_size",
         "session_cookie",
         "url",
+        "auto_route",
         "title",
         "tags",
         "notes",
@@ -375,6 +380,15 @@ async def list_contents(
     start_date: datetime | None = Query(None, description="Filter after this date"),
     end_date: datetime | None = Query(None, description="Filter before this date"),
     search: str | None = Query(None, description="Search in title"),
+    filter_decision: str | None = Query(
+        None, description="Filter by ingestion filter decision (keep|skip)"
+    ),
+    priority_bucket: str | None = Query(
+        None, description="Filter by priority bucket (high|normal|low)"
+    ),
+    filter_tier: str | None = Query(
+        None, description="Filter by tier that made the decision (heuristic|embedding|llm)"
+    ),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     sort_by: str = Query("ingested_at", description="Field to sort by"),
@@ -422,6 +436,15 @@ async def list_contents(
 
         # Apply filters via centralized ContentQueryService
         query = svc.apply_filters(query, content_query)
+
+        # Ingestion filter / priority overlays — applied after ContentQuery so
+        # they stack cleanly with the existing filter set.
+        if filter_decision is not None:
+            query = query.filter(Content.filter_decision == filter_decision)
+        if priority_bucket is not None:
+            query = query.filter(Content.priority_bucket == priority_bucket)
+        if filter_tier is not None:
+            query = query.filter(Content.filter_tier == filter_tier)
 
         # Get total count
         total = query.count()

@@ -37,6 +37,7 @@ from src.models.youtube import TranscriptSegment, YouTubeTranscript
 from src.storage.database import get_db
 from src.utils.content_hash import generate_markdown_hash
 from src.utils.logging import get_logger
+from src.utils.youtube_links import extract_video_id, validate_video_id_format
 
 if TYPE_CHECKING:
     from src.config.sources import YouTubeChannelSource, YouTubePlaylistSource, YouTubeRSSSource
@@ -372,6 +373,43 @@ class YouTubeClient:
                 if seconds is not None:
                     durations[item["id"]] = seconds
         return durations
+
+    def get_video_metadata(self, video_id: str) -> dict[str, Any] | None:
+        """Fetch metadata for a single video via the YouTube Data API.
+
+        Used when a user shares an individual video URL (which carries no
+        playlist context). Returns a video dict shaped exactly like the entries
+        produced by :meth:`get_playlist_videos` so it can be fed straight into
+        ``_process_video``.
+
+        Args:
+            video_id: YouTube video ID.
+
+        Returns:
+            Video metadata dict, or None if the video could not be found.
+
+        Raises:
+            HttpError: If the Data API request fails (propagated for the caller
+                to surface as an ingestion error).
+        """
+        request = self.service.videos().list(part="snippet", id=video_id)
+        response = request.execute()
+
+        items = response.get("items", [])
+        if not items:
+            logger.warning(f"Video not found: {video_id}")
+            return None
+
+        snippet = items[0]["snippet"]
+        return {
+            "video_id": video_id,
+            "title": snippet.get("title", video_id),
+            "description": snippet.get("description", ""),
+            "channel_title": snippet.get("channelTitle", ""),
+            "published_date": self._parse_date(snippet.get("publishedAt", "")),
+            "thumbnail_url": self._get_best_thumbnail(snippet.get("thumbnails", {})),
+            "playlist_id": None,
+        }
 
     def get_transcript(
         self,
@@ -817,6 +855,140 @@ class YouTubeContentIngestionService:
     def __init__(self, use_oauth: bool = True) -> None:
         """Initialize YouTube content ingestion service."""
         self.client = YouTubeClient(use_oauth=use_oauth)
+
+    async def ingest_video(
+        self,
+        url_or_id: str,
+        *,
+        force_reprocess: bool = False,
+        languages: list[str] | None = None,
+        tags: list[str] | None = None,
+        notes: str | None = None,
+    ) -> IngestionResponse:
+        """Ingest a single shared YouTube video (URL or bare 11-char video id).
+
+        This is the entrypoint for auto-routed video links: it fetches the
+        video's metadata, then reuses :meth:`_process_video` (the same code path
+        as playlist/channel ingestion) to extract a transcript / Gemini summary
+        and persist a Content record.
+
+        When ``force_reprocess`` is True an existing ``youtube:<id>`` row is
+        updated in place — this is what the save-URL API relies on, since it
+        pre-creates a placeholder row and wants the extraction to fill it rather
+        than create a second row.
+
+        Args:
+            url_or_id: A YouTube watch/share URL or a bare 11-character video id.
+            force_reprocess: Re-extract and overwrite an existing row in place.
+            languages: Preferred transcript languages.
+            tags: Optional user tags to merge into the row's metadata.
+            notes: Optional user note to merge into the row's metadata.
+
+        Returns:
+            Canonical IngestionResponse (command='ingest.url', source='url').
+            ``details`` carries ``routed_to='youtube_video'``, ``video_id``,
+            ``content_id`` (may be None if nothing was persisted) and
+            ``duplicate``.
+        """
+        video_id = extract_video_id(url_or_id)
+        if video_id is None and validate_video_id_format(url_or_id):
+            video_id = url_or_id
+
+        if video_id is None:
+            return IngestionResponse(
+                command="ingest.url",
+                source="url",
+                status="error",
+                errors=[
+                    IngestionError(
+                        code="invalid_youtube_url",
+                        message=f"Could not extract a YouTube video id from: {url_or_id}",
+                        url=url_or_id,
+                    )
+                ],
+                details={"routed_to": "youtube_video", "url": url_or_id},
+            )
+
+        # Metadata fetch is a sync Data API call — bridge to a thread.
+        try:
+            video = await asyncio.to_thread(self.client.get_video_metadata, video_id)
+        except Exception as exc:
+            logger.warning(f"YouTube metadata fetch failed for {video_id}: {exc}")
+            return IngestionResponse(
+                command="ingest.url",
+                source="url",
+                status="error",
+                errors=[
+                    IngestionError(
+                        code="youtube_metadata_failed",
+                        message=str(exc),
+                        url=url_or_id,
+                    )
+                ],
+                details={"routed_to": "youtube_video", "url": url_or_id, "video_id": video_id},
+            )
+
+        if video is None:
+            return IngestionResponse(
+                command="ingest.url",
+                source="url",
+                status="error",
+                errors=[
+                    IngestionError(
+                        code="youtube_video_not_found",
+                        message=f"Video not found: {video_id}",
+                        url=url_or_id,
+                    )
+                ],
+                details={"routed_to": "youtube_video", "url": url_or_id, "video_id": video_id},
+            )
+
+        ingested = await self._process_video(
+            video,
+            playlist_id="",
+            force_reprocess=force_reprocess,
+            languages=languages,
+        )
+
+        # Resolve the resulting row (created or updated in place) and merge any
+        # user-supplied tags/notes — _process_video rewrites metadata_json on a
+        # force_reprocess update, so this must run afterwards.
+        source_id = f"youtube:{video_id}"
+        content_id: int | None = None
+        with get_db() as db:
+            row = (
+                db.query(Content)
+                .filter(
+                    Content.source_type == ContentSource.YOUTUBE,
+                    Content.source_id == source_id,
+                )
+                .first()
+            )
+            if row is not None:
+                content_id = row.id
+                if tags or notes:
+                    meta = dict(row.metadata_json or {})
+                    if tags:
+                        meta["tags"] = tags
+                    if notes:
+                        meta["notes"] = notes
+                    row.metadata_json = meta
+
+        duplicate = bool(content_id is not None and not ingested)
+        return IngestionResponse(
+            command="ingest.url",
+            source="url",
+            status="ok",
+            items_ingested=1 if ingested else 0,
+            items_skipped=0 if ingested else 1,
+            details={
+                "routed_to": "youtube_video",
+                "url": url_or_id,
+                "video_id": video_id,
+                "content_id": content_id,
+                "duplicate": duplicate,
+            },
+        )
 
     async def _process_video(
         self,

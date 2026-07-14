@@ -26,6 +26,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | [**ACA Agents**](docs/ACA-AGENTS.md) | Agentic analysis: personas, specialists, memory, approvals, scheduling |
 | [Gotchas](docs/GOTCHAS.md) | Comprehensive list of pitfalls organized by area |
 | [OpenBao](docs/OPENBAO.md) | OpenBao secrets management: setup, AppRole, seeding, audit events |
+| [Improvement Roadmap](docs/IMPROVEMENT_ROADMAP.md) | Ingestion-reliability diagnosis + phased engineering roadmap (2026-07) |
 
 **Always use Context7 MCP** for library/API documentation, code generation, or setup steps for external libraries.
 
@@ -121,9 +122,13 @@ MODEL_YOUTUBE_PROCESSING=gemini-2.5-flash
 
 See [docs/MODEL_CONFIGURATION.md](docs/MODEL_CONFIGURATION.md) for full list.
 
-**Settings** — YAML defaults in `settings/`: `prompts.yaml` (prompt templates), `models.yaml` (model registry + defaults), `voice.yaml` (TTS config), `notifications.yaml` (event toggles). Loaded via `ConfigRegistry` (`src/config/config_registry.py`). Override precedence: env var > DB override > YAML default.
+**Settings** — YAML defaults in `settings/`: `prompts.yaml` (prompt templates), `models.yaml` (model registry + defaults), `voice.yaml` (TTS config), `notifications.yaml` (event toggles), `filtering.yaml` (ingestion filter). Loaded via `ConfigRegistry` (`src/config/config_registry.py`). Override precedence: env var > DB override > YAML default.
 
-**Sources** — YAML files in `sources.d/`: `rss.yaml`, `youtube_playlist.yaml`, `youtube_rss.yaml`, `podcasts.yaml`, `gmail.yaml`, `websearch.yaml`, `scholar.yaml`. Each supports `name`, `url`/`id`, `tags`, `enabled`, `max_entries`. See [docs/SETUP.md](docs/SETUP.md) for source-specific options.
+**Ingestion filter** — Three-tier (heuristic → embedding → LLM) post-persist filter in `src/services/ingestion_filter.py`. Runs automatically after every adapter via the orchestrator hook (`src/ingestion/filter_hook.py`). Writes `filter_score`, `filter_decision`, `filter_tier`, `priority_bucket` on `Content`; skipped items get `status=FILTERED_OUT`. Distinct from `src/services/content_filter.py`, which is the pre-persist adapter-side keyword filter. CLI: `aca filter explain|rerun|stats`; `aca ingest --no-filter | --filter-dry-run`.
+
+**Sources** — YAML files in `sources.d/`: `rss.yaml`, `youtube_playlist.yaml`, `youtube_channel.yaml` (channels via paginated Data API — uploads-playlist path, no 15-item cap), `podcasts.yaml`, `gmail.yaml`, `websearch.yaml`, `scholar.yaml`. The `youtube_rss` source type still works (Atom feeds, capped ~15, no API key) but ships with no default file. Each supports `name`, `url`/`id`, `tags`, `enabled`, `max_entries`. See [docs/SETUP.md](docs/SETUP.md) for source-specific options.
+
+**Source DB overrides** — Sources can also be added/edited/disabled at runtime (no YAML commit) via database overrides merged on top of the YAML defaults inside `load_sources_config()` (`src/config/sources.py`). Precedence is DB over YAML, keyed by the natural key `<type>:<locator>` (`source_key()`); a DB row with `enabled:false` shadows its YAML twin. Storage: `source_overrides` table + `SourceOverrideService` (validates each `config` against the `Source` union). Manage via CLI `aca sources add|list|remove|enable|disable`, the `/api/v1/sources` write endpoints (admin-key), or the web **Settings → Sources** tab. The merge fails open to YAML-only when the DB is unavailable.
 
 ## Critical Gotchas (Top 10)
 

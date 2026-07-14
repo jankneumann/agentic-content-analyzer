@@ -247,6 +247,7 @@ def register_content_tasks(pgq: PgQueuer) -> None:
             ingest_podcast,
             ingest_rss,
             ingest_substack,
+            ingest_url,
             ingest_youtube,
             ingest_youtube_playlist,
             ingest_youtube_rss,
@@ -261,6 +262,36 @@ def register_content_tasks(pgq: PgQueuer) -> None:
 
         logger.info(f"Starting ingestion for source={source}")
         await update_job_progress(job.id, 10, f"Starting {source} ingestion")
+
+        # A single submitted URL is handled separately: it takes a url (not a
+        # date window / max_results) and auto-routes to the right handler.
+        if source == "url":
+            url = payload.get("url")
+            if not url:
+                logger.error("ingest_content: 'url' source requires a 'url' payload field")
+                await update_job_progress(job.id, 0, "Error: missing url")
+                raise ValueError("'url' source requires a 'url' payload field")
+
+            try:
+                result = await asyncio.to_thread(
+                    lambda: ingest_url(
+                        url=url,
+                        title=payload.get("title"),
+                        tags=payload.get("tags"),
+                        notes=payload.get("notes"),
+                        auto_route=payload.get("auto_route", True),
+                    )
+                )
+                routed_to = (result.details or {}).get("routed_to", "webpage")
+                count = result.items_ingested
+                await update_job_progress(
+                    job.id, 100, f"Ingested {count} item(s) (routed to {routed_to})"
+                )
+                logger.info(f"URL ingestion completed: routed_to={routed_to}, items={count}")
+            except Exception as e:
+                logger.error(f"URL ingestion failed for {url}: {e}")
+                raise
+            return
 
         after_date = datetime.now(UTC) - timedelta(days=days_back)
 

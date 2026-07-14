@@ -81,6 +81,10 @@ class SourceBase(BaseModel):
     content_filter_strategy: str | None = None
     content_filter_topics: list[str] | None = None
     content_filter_excerpt_chars: int | None = None
+    # Provenance: where this resolved source came from. Defaults to "yaml";
+    # set to "db" by the database-override merge in load_sources_config().
+    # Purely informational — ignored by ingestion logic.
+    origin: Literal["yaml", "db"] = "yaml"
 
 
 class RSSSource(SourceBase):
@@ -502,6 +506,124 @@ def load_sources_from_legacy(
     return SourcesConfig(sources=sources)
 
 
+# --- Database Override Merge ---
+
+# Primary locator field per source type, used to build the natural key
+# "<type>:<locator>". Types absent here fall back to "url" then "name".
+_LOCATOR_FIELDS: dict[str, str | None] = {
+    "blog": "url",
+    "rss": "url",
+    "substack": "url",
+    "podcast": "url",
+    "youtube_rss": "url",
+    "youtube_playlist": "id",
+    "youtube_channel": "channel_id",
+    "gmail": "query",
+    "scholar": "query",
+    "huggingface_papers": "url",
+    "arxiv": "search_query",
+    "websearch": "prompt",
+    "readwise": None,  # effectively a singleton; keyed by name
+}
+
+
+def source_key(source: dict[str, Any] | SourceBase) -> str:
+    """Derive the natural key ``<type>:<locator>`` for a source.
+
+    The locator is the source's primary identifier for its type (``url`` for
+    blog/rss/podcast/substack/youtube_rss, ``id`` for youtube_playlist,
+    ``channel_id`` for youtube_channel, ``query`` for gmail/scholar, etc.),
+    falling back to ``url`` then ``name``. This single helper is the authority
+    for source identity, reused by the loader merge, the override service, and
+    the API/CLI so database overrides line up with their YAML twins.
+
+    Raises:
+        ValueError: If the source has no ``type`` or no derivable locator.
+    """
+    data = source if isinstance(source, dict) else source.model_dump()
+    stype = data.get("type")
+    if not stype:
+        raise ValueError("source has no 'type' field")
+
+    field = _LOCATOR_FIELDS.get(stype, "url")
+    locator = data.get(field) if field else None
+    if not locator:
+        # Fallbacks: a url if present, otherwise the human name.
+        locator = data.get("url") or data.get("name")
+    if not locator:
+        raise ValueError(f"cannot derive source key for type={stype!r}: no locator field")
+
+    return f"{stype}:{locator}"
+
+
+def merge_source_overrides(config: SourcesConfig, overrides: list[dict[str, Any]]) -> SourcesConfig:
+    """Pure merge of database overrides onto a YAML-loaded config.
+
+    ``overrides`` is a list of ``{"source_key", "config", "enabled"}`` dicts.
+    Database overrides take precedence over YAML sources sharing the same
+    natural key; an override with ``enabled=False`` shadows (removes) its YAML
+    twin. Each database-origin source is tagged ``origin="db"``.
+
+    Returns the original config unchanged when ``overrides`` is empty or when the
+    merged result fails validation (logged at warning).
+    """
+    if not overrides:
+        return config
+
+    # Key the YAML sources; unkeyable ones keep a synthetic key so they survive.
+    by_key: dict[str, dict[str, Any]] = {}
+    for i, src in enumerate(config.sources):
+        dumped = src.model_dump()
+        try:
+            key = source_key(dumped)
+        except ValueError:
+            key = f"__yaml_unkeyed_{i}"
+        by_key[key] = dumped
+
+    for override in overrides:
+        key = override["source_key"]
+        merged = dict(override["config"])
+        merged["origin"] = "db"
+        # Carry the override's enabled flag onto the resolved source. A disabled
+        # override keeps the source visible (so it can be re-enabled) while the
+        # per-type getters (get_blog_sources, ...) exclude it from ingestion.
+        merged["enabled"] = override.get("enabled", True)
+        by_key[key] = merged
+
+    try:
+        return SourcesConfig(
+            version=config.version,
+            defaults=config.defaults,
+            sources=list(by_key.values()),
+        )
+    except Exception:
+        logger.warning(
+            "Merged source-override validation failed; using YAML-only sources", exc_info=True
+        )
+        return config
+
+
+def _apply_db_source_overrides(config: SourcesConfig) -> SourcesConfig:
+    """Fetch database source overrides and merge them onto ``config``.
+
+    Fails open: if the database is unavailable, the original YAML-only config is
+    returned and the error is logged at debug.
+    """
+    try:
+        from src.services.source_override_service import SourceOverrideService
+        from src.storage.database import get_db
+
+        with get_db() as db:
+            overrides = SourceOverrideService(db).list_for_merge()
+    except Exception:
+        logger.debug(
+            "DB source override lookup unavailable; using YAML-only sources", exc_info=True
+        )
+        return config
+
+    return merge_source_overrides(config, overrides)
+
+
 def load_sources_config(
     sources_dir: str = "sources.d",
     sources_file: str = "sources.yaml",
@@ -529,10 +651,13 @@ def load_sources_config(
 
     if dir_path.is_dir():
         logger.info(f"Loading sources from directory: {dir_path}")
-        return load_sources_directory(dir_path)
-
-    if file_path.is_file():
+        config = load_sources_directory(dir_path)
+    elif file_path.is_file():
         logger.info(f"Loading sources from file: {file_path}")
-        return load_sources_yaml(file_path)
+        config = load_sources_yaml(file_path)
+    else:
+        config = load_sources_from_legacy(rss_feeds_file, youtube_playlists_file)
 
-    return load_sources_from_legacy(rss_feeds_file, youtube_playlists_file)
+    # Overlay database overrides on top of the YAML/legacy baseline. Fails open
+    # to the YAML-only config when the database is unavailable.
+    return _apply_db_source_overrides(config)

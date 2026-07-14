@@ -9,6 +9,8 @@ Tests the mobile content capture API including:
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from src.models.content import Content, ContentSource, ContentStatus
 from src.utils.content_hash import generate_markdown_hash
 
@@ -133,6 +135,228 @@ class TestSaveURLEndpoint:
         )
 
         assert response.status_code == 422
+
+
+class TestSaveURLAutoRouting:
+    """Tests for auto-routing shared URLs to the right handler."""
+
+    def test_save_youtube_url_routes_to_youtube(self, client, db_session):
+        """A shared YouTube video URL is stored as a YOUTUBE row and routed."""
+        with patch(
+            "src.api.save_routes._process_routed_save", new_callable=AsyncMock
+        ) as routed:
+            response = client.post(
+                "/api/v1/content/save-url",
+                json={"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["status"] == "queued"
+        assert "youtube_video" in data["message"]
+
+        content = db_session.query(Content).filter(Content.id == data["content_id"]).first()
+        assert content.source_type == ContentSource.YOUTUBE
+        assert content.source_id == "youtube:dQw4w9WgXcQ"
+        assert content.metadata_json["route"] == "youtube_video"
+        # The routed background task is enqueued, NOT the plain extractor.
+        routed.assert_called_once_with(content.id)
+
+    def test_save_feed_url_routes_to_rss(self, client, db_session):
+        """A shared feed URL is stored as an RSS row and routed."""
+        with patch(
+            "src.api.save_routes._process_routed_save", new_callable=AsyncMock
+        ) as routed:
+            response = client.post(
+                "/api/v1/content/save-url",
+                json={"url": "https://example.com/blog/feed"},
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        content = db_session.query(Content).filter(Content.id == data["content_id"]).first()
+        assert content.source_type == ContentSource.RSS
+        assert content.source_id == "feed:https://example.com/blog/feed"
+        assert content.metadata_json["route"] == "rss_feed"
+        routed.assert_called_once_with(content.id)
+
+    def test_save_plain_url_uses_webpage_path(self, client, db_session):
+        """A regular article URL keeps the original web-page extraction path."""
+        with (
+            patch(
+                "src.api.save_routes._enqueue_extraction", new_callable=AsyncMock
+            ) as extract,
+            patch(
+                "src.api.save_routes._process_routed_save", new_callable=AsyncMock
+            ) as routed,
+        ):
+            response = client.post(
+                "/api/v1/content/save-url",
+                json={"url": "https://example.com/some-article"},
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["message"] == "URL saved. Content extraction in progress."
+        content = db_session.query(Content).filter(Content.id == data["content_id"]).first()
+        assert content.source_type == ContentSource.WEBPAGE
+        extract.assert_called_once_with(content.id)
+        routed.assert_not_called()
+
+    def test_save_youtube_url_dedupes_by_video_id(self, client, db_session):
+        """A youtu.be link dedupes against an existing youtube:<id> row."""
+        existing = Content(
+            source_type=ContentSource.YOUTUBE,
+            source_id="youtube:dQw4w9WgXcQ",
+            source_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            title="Already ingested",
+            markdown_content="transcript",
+            content_hash=generate_markdown_hash("transcript"),
+            status=ContentStatus.PARSED,
+            ingested_at=datetime.now(UTC),
+        )
+        db_session.add(existing)
+        db_session.commit()
+        existing_id = existing.id
+
+        with patch("src.api.save_routes._process_routed_save", new_callable=AsyncMock):
+            response = client.post(
+                "/api/v1/content/save-url",
+                # Different URL form for the same video.
+                json={"url": "https://youtu.be/dQw4w9WgXcQ"},
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["status"] == "exists"
+        assert data["duplicate"] is True
+        assert data["content_id"] == existing_id
+
+    def test_save_playlist_url_dedupes_by_playlist_id(self, client, db_session):
+        """A second playlist save (different URL form) dedupes by playlist id."""
+        existing = Content(
+            source_type=ContentSource.YOUTUBE,
+            source_id="youtube_playlist:PLabc123",
+            source_url="https://www.youtube.com/playlist?list=PLabc123",
+            title="Saved playlist",
+            markdown_content="receipt",
+            content_hash=generate_markdown_hash("receipt"),
+            status=ContentStatus.COMPLETED,
+            ingested_at=datetime.now(UTC),
+        )
+        db_session.add(existing)
+        db_session.commit()
+        existing_id = existing.id
+
+        with patch("src.api.save_routes._process_routed_save", new_callable=AsyncMock):
+            response = client.post(
+                "/api/v1/content/save-url",
+                # Same playlist, extra query params -> different source_url.
+                json={"url": "https://www.youtube.com/playlist?list=PLabc123&si=xyz"},
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["status"] == "exists"
+        assert data["content_id"] == existing_id
+
+
+def _use_session(session):
+    """A get_db() replacement that yields the test session (no commit/close)."""
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _cm():
+        yield session
+
+    return _cm
+
+
+class TestProcessRoutedSave:
+    """Background routing finalization, including failure surfacing."""
+
+    @pytest.mark.asyncio
+    async def test_youtube_no_content_marks_failed(self, db_session):
+        """A video that yields no transcript leaves the row FAILED, not PENDING."""
+        from unittest.mock import MagicMock
+
+        from src.api.save_routes import _process_routed_save
+        from src.ingestion.result import IngestionResponse
+
+        row = Content(
+            source_type=ContentSource.YOUTUBE,
+            source_id="youtube:dQw4w9WgXcQ",
+            source_url="https://youtu.be/dQw4w9WgXcQ",
+            title="Pending video",
+            markdown_content="",
+            content_hash=generate_markdown_hash(""),
+            status=ContentStatus.PENDING,
+            metadata_json={"route": "youtube_video"},
+            ingested_at=datetime.now(UTC),
+        )
+        db_session.add(row)
+        db_session.commit()
+        content_id = row.id
+
+        svc = MagicMock()
+        # No transcript / no Gemini -> ok envelope with nothing ingested.
+        svc.ingest_video = AsyncMock(
+            return_value=IngestionResponse(
+                command="ingest.url", source="url", status="ok", items_skipped=1
+            )
+        )
+        with (
+            patch("src.ingestion.youtube.YouTubeContentIngestionService", return_value=svc),
+            patch("src.api.save_routes.get_db", _use_session(db_session)),
+        ):
+            await _process_routed_save(content_id)
+
+        refreshed = db_session.query(Content).filter(Content.id == content_id).first()
+        assert refreshed.status == ContentStatus.FAILED
+        assert refreshed.error_message
+
+    @pytest.mark.asyncio
+    async def test_failed_feed_not_completed(self, db_session):
+        """An errored feed ingest marks the receipt FAILED, not COMPLETED."""
+        from unittest.mock import MagicMock
+
+        from src.api.save_routes import _process_routed_save
+        from src.ingestion.result import IngestionError, IngestionResponse
+
+        row = Content(
+            source_type=ContentSource.RSS,
+            source_id="feed:https://bad.example.com/feed",
+            source_url="https://bad.example.com/feed",
+            title="Pending feed",
+            markdown_content="",
+            content_hash=generate_markdown_hash(""),
+            status=ContentStatus.PENDING,
+            metadata_json={"route": "rss_feed"},
+            ingested_at=datetime.now(UTC),
+        )
+        db_session.add(row)
+        db_session.commit()
+        content_id = row.id
+
+        svc = MagicMock()
+        svc.ingest_content = MagicMock(
+            return_value=IngestionResponse(
+                command="ingest.rss",
+                source="rss",
+                status="error",
+                errors=[IngestionError(code="http_error", message="404 Not Found")],
+            )
+        )
+        svc.close = MagicMock()
+        with (
+            patch("src.ingestion.rss.RSSContentIngestionService", return_value=svc),
+            patch("src.api.save_routes.get_db", _use_session(db_session)),
+        ):
+            await _process_routed_save(content_id)
+
+        refreshed = db_session.query(Content).filter(Content.id == content_id).first()
+        assert refreshed.status == ContentStatus.FAILED
+        assert "404" in (refreshed.error_message or "")
 
 
 class TestContentStatusEndpoint:

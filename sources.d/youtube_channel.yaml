@@ -1,0 +1,163 @@
+# YouTube channels ingested via the YouTube Data API (paginated).
+# Migrated from youtube_rss.yaml to bypass the ~15-item Atom feed cap:
+# each channel resolves to its uploads playlist and pages through history
+# up to max_entries. Dedup (by source_id) keeps steady-state runs cheap;
+# the first run backfills up to max_entries per channel.
+defaults:
+  type: youtube_channel
+  max_entries: 25            # clears the old 15-cap; bump for a deeper backfill
+  gemini_summary: true
+  gemini_resolution: low     # high-volume channels — keep cost low (matches old RSS path)
+  proofread: true
+  # Duration routing (see redesign-youtube-ingestion-pipeline). Defaults shown;
+  # override per-source as needed. Carried over from youtube_rss.yaml, which these
+  # channels were migrated out of.
+  video_fps: 0.1                      # short-path frame sampling (~1 frame/10s); set null for Gemini default
+  long_video_threshold_seconds: 2700  # >= 45 min -> long path
+  long_video_strategy: grounding      # grounding (cheap, default) | segments (full fidelity)
+  segment_overlap_seconds: 15
+  unknown_duration_strategy: short
+  # min_duration_seconds: 120         # uncomment to drop very short clips
+  # max_duration_seconds: 14400       # uncomment to drop very long videos
+  hint_terms:
+    - Claude
+    - Anthropic
+    - OpenAI
+    - LLaMA
+    - ChatGPT
+    - Gemini
+    - Mistral
+    - GPT-4
+    - GPT-4o
+    - DeepSeek
+    - Llama
+    - Hugging Face
+    - LangChain
+    - LlamaIndex
+    - Midjourney
+    - Stable Diffusion
+    - DALL-E
+    - Sora
+    - Whisper
+    - Copilot
+sources:
+- channel_id: UCpV_X0VrL8-jg3t6wYGS-1g
+  name: "1littlecoder"
+- channel_id: UCBPRJjIWfyNG4X-CRbnv78A
+  name: "Abhishek Thakur"
+- channel_id: UCobqgqE4i5Kf7wrxRxhToQA
+  name: "AI Coffee Break with Letitia"
+- channel_id: UCNJ1Ymd5yFuUPtn21xtRbbw
+  name: "AI Explained"
+- channel_id: UCrXSVX9a1mj8l0CMLwKgMVw
+  name: "AI Jason"
+- channel_id: UCEAbqW0HFB_UxZoUDO0kJBw
+  name: "Aitrepreneur"
+- channel_id: UCj8shE7aIn4Yawwbo2FceCQ
+  name: "Aleksa Gordić - The AI Epiphany"
+- channel_id: UC7cs8q-gJRlGwj4A8OmCmXg
+  name: "Alex The Analyst"
+- channel_id: UCR9j1jqqB5Rse69wjUnbYwA
+  name: "All About AI"
+- channel_id: UCEqgmyWChwvt6MFGGlmUQCQ
+  name: "Allen Institute for AI"
+- channel_id: UCAlwrsgeJavG1vw9qSFOUmA
+  name: "Analytics India Magazine"
+- channel_id: UCORX3Cl7ByidjEgzSCgv9Yw
+  name: "Anastasi In Tech"
+- channel_id: UCqSX0Z20QCEE7tZKaQ4pS3Q
+  name: "Andrej Baranovskij"
+- channel_id: UCtatfZMf-8EkIwASXM4ts0A
+  name: "AssemblyAI"
+- channel_id: UCDMP6ATYKNXMvn2ok1gfM7Q
+  name: "Avra"
+- channel_id: UCfOvNb3xj28SNqPQ_JIbumg
+  name: "code_your_own_AI"
+- channel_id: UCyR2Ct3pDOeZSRyZH5hPO-Q
+  name: "Data Independent"
+- channel_id: UCvKRFNawVcuz4b9ihUTApCg
+  name: "David Shapiro ~ AI"
+- channel_id: UCP7jMXSY2xbc3KCAE0MHQ-A
+  name: "DeepMind"
+- channel_id: UC66Ggxy8MHX9DCDohdRYDTA
+  name: "Edan Meyer"
+- channel_id: UCVchfoB65aVtQiDITbGq2LQ
+  name: "Full Stack Deep Learning"
+- channel_id: UCk6ONJlPzjw3DohAeMSgsng
+  name: "H2O.ai"
+- channel_id: UCwx7Y3W30N8aS_tiCy2x-2g
+  name: "IBM Research"
+- channel_id: UCv83tO5cePwHMt1952IVVHw
+  name: "James Briggs"
+- channel_id: UCX7Y2qWriXpqocG97SFW2OQ
+  name: "Jeremy Howard"
+- channel_id: UCV0qA-eDDICsRR9rPcnG7tw
+  name: "Joma Tech"
+- channel_id: UC1H1NWNTG2Xi3pt85ykVSHA
+  name: "Jordan Harrod"
+- channel_id: UCSNeZleDn9c74yQc-EKnVTA
+  name: "Kaggle"
+- channel_id: UCq6XkhO5SZ66N04IcPbqNcw
+  name: "Keith Galli"
+- channel_id: UCiT9RITQ9PW6BhXK0y2jaeg
+  name: "Ken Jee"
+- channel_id: UCeRjipR4_SsCddq9VZ2AeKg
+  name: "LlamaIndex"
+- channel_id: UCMLtBahI5DMrt0NPvDSoIRQ
+  name: "Machine Learning Street Talk"
+- channel_id: UCDia_lkNYKLJVLRLQl_-pFw
+  name: "Manning Publications"
+- channel_id: UCXx0JWOKERPZdzczPfY-huA
+  name: "Martin Thissen"
+- channel_id: UChpleBmo18P08aKCIgti38g
+  name: "Matt Wolfe"
+- channel_id: UCG6qpjVnBTTT8wLGBygANOQ
+  name: "MLOps.community"
+- channel_id: UCHXa4OpASJEwrHrLeIzw7Yg
+  name: "Nicholas Renotte"
+- channel_id: UCHuiy8bXnmK5nisYHUd1J5g
+  name: "NVIDIA"
+- channel_id: UCCKx8mAHiFus-XYQLy_WnaA
+  name: "Olivio Sarikas"
+- channel_id: UCbXgNpp0jedKWcQiULLbDTA
+  name: "Patrick Loeber"
+- channel_id: UCUbLzJ30GLE1F5OSWNoYs9g
+  name: "Playground AI"
+- channel_id: UCDq7SjbgRKty5TgGafW8Clg
+  name: "Prompt Engineering"
+- channel_id: UCNszHNG0PlhWJdtNqFvwMWw
+  name: "Rabbitmetrics"
+- channel_id: UCBqMxo5ch1NN0hZsM58gf6Q
+  name: "Reuven Lerner"
+- channel_id: UC55ODQSvARtgSyc8ThfiepQ
+  name: "Sam Witteveen"
+- channel_id: UCfzlCWGWYyIQ0aLC5w48gBQ
+  name: "sentdex"
+- channel_id: UCMbtqTGdSsxYYhhTpV4lSTQ
+  name: "Super Data Science Podcast with Jon Krohn"
+- channel_id: UC0rqucBdTuFTjJiefW5t-IQ
+  name: "TensorFlow"
+- channel_id: UCHhYXsLBEVVnbvsq57n1MTQ
+  name: "The AI Advantage"
+- channel_id: UCa0RTSXWyZdh7IciV9r-3ow
+  name: "The Data Scientist Show - Daliana Liu"
+- channel_id: UCJQJAI7IjbLcpsjWdSzYz0Q
+  name: "Thu Vu data analytics"
+- channel_id: UCuHZ1UYfHRqk3-5N5oc97Kw
+  name: "Towards Data Science"
+- channel_id: UCbfYPyITQ-7l4upoX8nvctg
+  name: "Two Minute Papers"
+- channel_id: UCqp4QHWfVYd65onoyraiYvg
+  name: "Unconventional Coding"
+- channel_id: UCoW_WzQNJVAjxo4osNAxd_g
+  name: "Venelin Valkov"
+- channel_id: UCBp3w4DCEC64FZr4k9ROxig
+  name: "Weights & Biases"
+- channel_id: UCUzGQrN-lyyc0BWTYoJM_Sg
+  name: "What's AI by Louis Bouchard"
+- channel_id: UCJekgf6k62CQHdENWf2NgAQ
+  name: "Wolfram"
+- channel_id: UC2WmuBuFq6gL08QYG-JjXKw
+  name: "WorldofAI"
+- channel_id: UCZHmQk67mSJgfCCTn7xBfew
+  name: "Yannic Kilcher"

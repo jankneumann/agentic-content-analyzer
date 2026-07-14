@@ -285,6 +285,7 @@ export const settingsKeys = {
   all: ["settings"] as const,
   models: () => [...settingsKeys.all, "models"] as const,
   voice: () => [...settingsKeys.all, "voice"] as const,
+  sources: () => [...settingsKeys.all, "sources"] as const,
 }
 
 /**

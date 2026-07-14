@@ -12,6 +12,12 @@ Each function:
   ``URLIngestResult`` dataclass for url, and the ad-hoc per-file dict for
   files); every command now produces the same envelope.
 
+Post-persist filter hook (see src/ingestion/filter_hook.py): every ingest
+function is wrapped with ``_with_filter_hook`` so that, after the adapter
+persists its Content rows, IngestionFilterService evaluates them through
+the three-tier persona-aware filter. The hook is a no-op when filtering is
+globally disabled, and adapters don't need to know about it.
+
 Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity,
 url, files, scholar, arxiv, huggingface_papers, readwise
 
@@ -20,12 +26,39 @@ url, files, scholar, arxiv, huggingface_papers, readwise
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
+from functools import wraps
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.telemetry.decorators import observe
 from src.utils.logging import get_logger
+
+
+def _with_filter_hook[**P, R](func: Callable[P, R]) -> Callable[P, R]:
+    """Run the post-persist IngestionFilter hook after ``func`` completes.
+
+    Captures a ``since`` timestamp before the ingest call, then evaluates any
+    Content rows ingested after that point. Errors in the hook never block
+    the ingest return value — the adapter's result is always returned.
+    """
+
+    @wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        since = datetime.now(UTC).replace(tzinfo=None)
+        result = func(*args, **kwargs)
+        try:
+            from src.ingestion.filter_hook import apply_filter_to_recent
+
+            persona_id: Any = kwargs.get("persona_id", "default")
+            apply_filter_to_recent(since=since, persona_id=str(persona_id))
+        except Exception:
+            logger_local = get_logger(__name__)
+            logger_local.exception("post-persist filter hook failed; ingestion result preserved")
+        return result
+
+    return wrapper
+
 
 if TYPE_CHECKING:
     from src.ingestion.arxiv import ArxivPaperResult
@@ -990,8 +1023,160 @@ def ingest_url(
     title: str | None = None,
     tags: list[str] | None = None,
     notes: str | None = None,
+    auto_route: bool = True,
 ) -> IngestionResponse:
-    """Ingest a single URL using the save-url workflow.
+    """Ingest a single submitted URL, auto-routing it to the right handler.
+
+    When ``auto_route`` is True (the default) the URL is classified via
+    :func:`src.ingestion.url_router.classify_url` and dispatched:
+
+    - YouTube video    -> YouTube transcript/analysis ingestion
+    - YouTube playlist -> playlist ingestion
+    - RSS / Atom feed  -> RSS feed ingestion
+    - anything else    -> generic web-page extraction (Trafilatura)
+
+    Set ``auto_route=False`` to force generic web-page extraction regardless of
+    the URL shape (the original ``aca ingest url`` behaviour).
+
+    All branches return the same canonical envelope (command='ingest.url',
+    source='url'); ``details.routed_to`` records which handler ran so callers
+    can render an appropriate message.
+
+    Args:
+        url: The URL to ingest.
+        title: Optional title override (web-page route only; URL used as fallback).
+        tags: Optional tags for the content.
+        notes: Optional user notes.
+        auto_route: Classify and route the URL (True) or always treat it as a
+            generic web page (False).
+
+    Returns:
+        Canonical IngestionResponse envelope (command='ingest.url', source='url').
+    """
+    from src.ingestion.url_router import RouteKind, classify_url
+
+    kind = classify_url(url) if auto_route else RouteKind.WEBPAGE
+
+    if kind == RouteKind.YOUTUBE_VIDEO:
+        return _ingest_routed_youtube_video(url, tags, notes)
+    if kind == RouteKind.YOUTUBE_PLAYLIST:
+        return _ingest_routed_youtube_playlist(url, tags, notes)
+    if kind == RouteKind.RSS_FEED:
+        return _ingest_routed_rss(url, tags, notes)
+    return _ingest_webpage(url=url, title=title, tags=tags, notes=notes)
+
+
+def _ingest_routed_youtube_video(
+    url: str, tags: list[str] | None, notes: str | None
+) -> IngestionResponse:
+    """Route a shared YouTube video URL to YouTube ingestion."""
+    import asyncio
+
+    from src.ingestion.youtube import YouTubeContentIngestionService
+
+    async def _run() -> IngestionResponse:
+        service = YouTubeContentIngestionService()
+        return await service.ingest_video(url, tags=tags, notes=notes)
+
+    return asyncio.run(_run())
+
+
+def _ingest_routed_youtube_playlist(
+    url: str, tags: list[str] | None, notes: str | None
+) -> IngestionResponse:
+    """Route a shared YouTube playlist URL to playlist ingestion."""
+    import asyncio
+
+    from src.ingestion.result import IngestionError, IngestionResponse, derive_status
+    from src.ingestion.youtube import YouTubeContentIngestionService
+    from src.utils.youtube_links import extract_playlist_id
+
+    playlist_id = extract_playlist_id(url)
+    if not playlist_id:
+        return IngestionResponse(
+            command="ingest.url",
+            source="url",
+            status="error",
+            errors=[
+                IngestionError(
+                    code="invalid_youtube_playlist",
+                    message=f"Could not extract a playlist id from: {url}",
+                    url=url,
+                )
+            ],
+            details={"routed_to": "youtube_playlist", "url": url},
+        )
+
+    async def _run():
+        service = YouTubeContentIngestionService()
+        return await service.ingest_playlist(playlist_id)
+
+    result = asyncio.run(_run())  # SourceFetchResult
+    items = result.items_fetched
+    return IngestionResponse(
+        command="ingest.url",
+        source="url",
+        status=derive_status(
+            items_ingested=items, items_failed=result.items_failed, errors=result.item_errors
+        ),
+        items_ingested=items,
+        items_failed=result.items_failed,
+        errors=result.item_errors,
+        details={
+            "routed_to": "youtube_playlist",
+            "url": url,
+            "playlist_id": playlist_id,
+            "content_id": None,
+            "items_ingested": items,
+        },
+    )
+
+
+def _ingest_routed_rss(url: str, tags: list[str] | None, notes: str | None) -> IngestionResponse:
+    """Route a shared feed URL to RSS feed ingestion.
+
+    A feed expands to many items, so there is no single ``content_id`` to
+    return; ``details.items_ingested`` reports how many entries landed. User
+    ``notes`` have no per-entry home and are ignored for feeds; ``tags`` ride
+    along on the synthesised source so they attach to every ingested entry.
+    """
+    from src.config.sources import RSSSource
+    from src.ingestion.result import IngestionResponse
+    from src.ingestion.rss import RSSContentIngestionService
+
+    service = RSSContentIngestionService()
+    try:
+        source = RSSSource(url=url, tags=tags or [])
+        resp = service.ingest_content(sources=[source])
+    finally:
+        service.close()
+
+    return IngestionResponse(
+        command="ingest.url",
+        source="url",
+        status=resp.status,
+        items_ingested=resp.items_ingested,
+        items_skipped=resp.items_skipped,
+        items_failed=resp.items_failed,
+        errors=resp.errors,
+        warnings=resp.warnings,
+        details={
+            "routed_to": "rss_feed",
+            "url": url,
+            "content_id": None,
+            "items_ingested": resp.items_ingested,
+        },
+    )
+
+
+def _ingest_webpage(
+    *,
+    url: str,
+    title: str | None = None,
+    tags: list[str] | None = None,
+    notes: str | None = None,
+) -> IngestionResponse:
+    """Ingest a single URL as a generic web page (Trafilatura extraction).
 
     Creates a Content record (source_type=WEBPAGE) and runs URL extraction
     synchronously. Deduplicates by source_url; a duplicate hit returns
@@ -1197,3 +1382,20 @@ def ingest_files(
         errors=errors,
         details={"results": results},
     )
+
+
+# ---------------------------------------------------------------------------
+# Post-persist filter hook — wrap every ingest_* function in this module so
+# the filter runs automatically after each adapter, without touching
+# individual adapter code. New adapters added here inherit the behavior.
+# ---------------------------------------------------------------------------
+
+
+def _install_filter_hooks() -> None:
+    this_module = globals()
+    for name, obj in list(this_module.items()):
+        if name.startswith("ingest_") and callable(obj):
+            this_module[name] = _with_filter_hook(obj)
+
+
+_install_filter_hooks()

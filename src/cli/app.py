@@ -33,6 +33,7 @@ from src.cli.deploy_commands import app as deploy_app
 from src.cli.digest_commands import app as digest_app
 from src.cli.edit_commands import app as edit_app
 from src.cli.evaluate_commands import app as evaluate_app
+from src.cli.filter_commands import app as filter_app
 from src.cli.graph_commands import app as graph_app
 from src.cli.ingest_commands import app as ingest_app
 from src.cli.job_commands import app as job_app
@@ -57,6 +58,7 @@ from src.cli.profile_commands import app as profile_app
 from src.cli.prompt_commands import app as prompts_app
 from src.cli.review_commands import app as review_app
 from src.cli.settings_commands import app as settings_app
+from src.cli.source_commands import app as sources_app
 from src.cli.summarize_commands import app as summarize_app
 from src.cli.sync_commands import app as sync_app
 from src.cli.worker_commands import app as worker_app
@@ -70,6 +72,7 @@ app = typer.Typer(
 
 # Register all sub-command groups
 app.add_typer(ingest_app, name="ingest")
+app.add_typer(filter_app, name="filter")
 app.add_typer(summarize_app, name="summarize")
 app.add_typer(digest_app, name="create-digest")
 app.add_typer(edit_app, name="edit")
@@ -84,6 +87,7 @@ app.add_typer(neon_app, name="neon")
 app.add_typer(profile_app, name="profile")
 app.add_typer(prompts_app, name="prompts")
 app.add_typer(settings_app, name="settings")
+app.add_typer(sources_app, name="sources")
 app.add_typer(sync_app, name="sync")
 app.add_typer(worker_app, name="worker")
 app.add_typer(job_app, name="jobs")

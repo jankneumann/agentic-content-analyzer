@@ -224,6 +224,46 @@ class ApiClient:
         resp.raise_for_status()
         return self._resp_json(resp)
 
+    # ── Sources ───────────────────────────────────────────────────────
+
+    def list_sources(self, **params: Any) -> dict[str, Any]:
+        """GET /api/v1/sources — list configured sources with counts."""
+        query = {k: v for k, v in params.items() if v is not None}
+        resp = self._client.get("/api/v1/sources", params=query)
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    def add_source(self, config: dict[str, Any], description: str | None = None) -> dict[str, Any]:
+        """POST /api/v1/sources — add or update a source override."""
+        payload: dict[str, Any] = {"config": config}
+        if description is not None:
+            payload["description"] = description
+        resp = self._client.post("/api/v1/sources", json=payload)
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    def remove_source(self, key: str) -> dict[str, Any]:
+        """DELETE /api/v1/sources/{key} — delete a source override.
+
+        The natural key (e.g. ``blog:https://www.normaltech.ai/``) is
+        URL-encoded so its ``:`` and ``/`` survive transit.
+        """
+        from urllib.parse import quote
+
+        resp = self._client.delete(f"/api/v1/sources/{quote(key, safe='')}")
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
+    def set_source_enabled(self, key: str, enabled: bool) -> dict[str, Any]:
+        """PATCH /api/v1/sources/{key} — enable/disable a source override."""
+        from urllib.parse import quote
+
+        resp = self._client.patch(
+            f"/api/v1/sources/{quote(key, safe='')}", json={"enabled": enabled}
+        )
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
     # ── Prompts ───────────────────────────────────────────────────────
 
     def list_prompts(self, **params: Any) -> dict[str, Any]:

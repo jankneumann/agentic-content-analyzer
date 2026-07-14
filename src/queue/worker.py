@@ -525,6 +525,7 @@ def _register_content_handlers() -> None:
                     **({"title": payload["title"]} if "title" in payload else {}),
                     **({"tags": payload["tags"]} if "tags" in payload else {}),
                     **({"notes": payload["notes"]} if "notes" in payload else {}),
+                    **({"auto_route": payload["auto_route"]} if "auto_route" in payload else {}),
                 },
             ),
             "huggingface_papers": (
