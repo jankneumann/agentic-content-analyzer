@@ -11,12 +11,15 @@ Key features:
 - Direct database connections (bypasses pooler)
 - Job progress tracking via payload JSON
 
-Job Payload Schema:
+Legacy Job Payload Schema (version 1):
     {
         "content_id": int,      # ID of content being processed
         "progress": 0-100,      # Completion percentage
         "message": str          # Current status message
     }
+
+Canonical operation submissions use schema version 2. Existing version-1
+payloads remain unchanged so workers can drain them during the migration.
 """
 
 from __future__ import annotations
@@ -320,6 +323,29 @@ async def init_queue_schema() -> None:
 # ============================================================================
 
 
+async def _fetch_job_row(conn: asyncpg.Connection, job_id: int) -> asyncpg.Record | None:
+    return await conn.fetchrow(
+        """
+        SELECT
+            id,
+            entrypoint,
+            status,
+            payload,
+            priority,
+            error,
+            retry_count,
+            parent_job_id,
+            heartbeat_at,
+            created_at,
+            started_at,
+            completed_at
+        FROM pgqueuer_jobs
+        WHERE id = $1
+        """,
+        job_id,
+    )
+
+
 async def get_job_status(
     job_id: int,
     *,
@@ -336,29 +362,18 @@ async def get_job_status(
         JobRecord if found, None if job doesn't exist
     """
     async with _queue_connection(conn) as query_conn:
-        row = await query_conn.fetchrow(
-            """
-            SELECT
-                id,
-                entrypoint,
-                status,
-                payload,
-                priority,
-                error,
-                retry_count,
-                parent_job_id,
-                heartbeat_at,
-                created_at,
-                started_at,
-                completed_at
-            FROM pgqueuer_jobs
-            WHERE id = $1
-            """,
-            job_id,
-        )
+        row = await _fetch_job_row(query_conn, job_id)
 
         if row is None:
             return None
+
+        # A failed child never reaches the legacy worker's success callback.
+        # Reconcile on reads too so a fully terminal batch cannot remain stuck.
+        if row["entrypoint"] == "summarize_batch" and row["status"] == "in_progress":
+            await _reconcile_batch_parent_status(query_conn, job_id)
+            row = await _fetch_job_row(query_conn, job_id)
+            if row is None:
+                return None
 
         # Parse payload from JSONB
         payload = row["payload"] if row["payload"] else {}
@@ -536,6 +551,15 @@ async def retry_failed_job(job_id: int) -> JobRecord | None:
             UPDATE pgqueuer_jobs
             SET
                 status = 'queued',
+                payload = COALESCE(payload, '{}'::jsonb) ||
+                    '{
+                        "progress": 0,
+                        "message": "Queued",
+                        "cancel_requested": false,
+                        "resource": null,
+                        "result": null,
+                        "problem": null
+                    }'::jsonb,
                 error = NULL,
                 retry_count = retry_count + 1,
                 started_at = NULL,
@@ -558,10 +582,10 @@ async def retry_failed_job(job_id: int) -> JobRecord | None:
 
 
 async def cleanup_old_jobs(older_than_days: int = 30) -> int:
-    """Delete old completed jobs.
+    """Delete old terminal jobs that no longer need operational retention.
 
-    Only deletes jobs with status='completed'. Never deletes
-    queued, in_progress, or failed jobs.
+    Deletes completed and cancelled jobs. Never deletes queued, in_progress,
+    or failed jobs so active and retryable work remains observable.
 
     Args:
         older_than_days: Delete completed jobs older than this many days
@@ -575,7 +599,7 @@ async def cleanup_old_jobs(older_than_days: int = 30) -> int:
         result = await conn.execute(
             """
             DELETE FROM pgqueuer_jobs
-            WHERE status = 'completed'
+            WHERE status IN ('completed', 'cancelled')
               AND completed_at < $1
             """,
             cutoff,
@@ -583,7 +607,7 @@ async def cleanup_old_jobs(older_than_days: int = 30) -> int:
 
         # Parse "DELETE N" result
         count = int(result.split()[-1]) if result else 0
-        logger.info(f"Cleaned up {count} old completed jobs (older than {older_than_days} days)")
+        logger.info(f"Cleaned up {count} old terminal jobs (older than {older_than_days} days)")
         return count
 
 
@@ -634,11 +658,17 @@ async def enqueue_queue_job(
     priority: int = 0,
     parent_job_id: int | None = None,
     conn: asyncpg.Connection | None = None,
+    idempotency_key: str | None = None,
 ) -> tuple[int, bool]:
-    """Enqueue with canonical payload and active-job idempotency."""
+    """Enqueue with versioned payload and active-job idempotency.
+
+    Legacy callers omit ``idempotency_key`` and retain their established
+    entrypoint-specific key derivation. Canonical operation callers supply a
+    key derived from normalized input or the external Idempotency-Key header.
+    """
     _validate_payload(entrypoint, payload)
     payload = _normalize_job_payload(payload)
-    idempotency_key = _build_idempotency_key(entrypoint, payload)
+    effective_idempotency_key = idempotency_key or _build_idempotency_key(entrypoint, payload)
 
     async with _queue_connection(conn) as query_conn:
         row = await query_conn.fetchrow(
@@ -657,7 +687,7 @@ async def enqueue_queue_job(
             json.dumps(payload),
             priority,
             parent_job_id,
-            idempotency_key,
+            effective_idempotency_key,
         )
         if row:
             job_id = int(row["id"])
@@ -675,7 +705,7 @@ async def enqueue_queue_job(
             LIMIT 1
             """,
             entrypoint,
-            idempotency_key,
+            effective_idempotency_key,
         )
         if existing_id is None:
             raise RuntimeError(f"Unable to enqueue or locate duplicate job for '{entrypoint}'")
@@ -821,65 +851,88 @@ async def reconcile_batch_job_status(
         if batch_id is None:
             return
 
-        row = await conn.fetchrow(
+        await _reconcile_batch_parent_status(
+            conn,
+            int(batch_id),
+            current_child_id=child_job_id,
+            include_current_as_completed=include_current_as_completed,
+        )
+
+
+async def _reconcile_batch_parent_status(
+    conn: asyncpg.Connection,
+    parent_job_id: int,
+    *,
+    current_child_id: int | None = None,
+    include_current_as_completed: bool = False,
+) -> None:
+    """Persist aggregate state once all summarize children are terminal."""
+
+    row = await conn.fetchrow(
+        """
+        SELECT
+            COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
+            COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
+            COUNT(*) FILTER (WHERE status = 'cancelled')::int AS cancelled,
+            COUNT(*)::int AS total
+        FROM pgqueuer_jobs
+        WHERE parent_job_id = $1
+          AND entrypoint = 'summarize_content'
+        """,
+        parent_job_id,
+    )
+    if row is None:
+        return
+
+    completed = int(row["completed"] or 0)
+    failed = int(row["failed"] or 0)
+    cancelled = int(row["cancelled"] or 0)
+    total = int(row["total"] or 0)
+
+    if include_current_as_completed and current_child_id is not None:
+        child_status = await conn.fetchval(
             """
-            SELECT
-                COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
-                COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
-                COUNT(*)::int AS total
+            SELECT status
             FROM pgqueuer_jobs
-            WHERE parent_job_id = $1
-              AND entrypoint = 'summarize_content'
+            WHERE id = $1
             """,
-            int(batch_id),
+            current_child_id,
         )
-        if row is None:
-            return
+        if child_status == "in_progress":
+            completed += 1
 
-        completed = int(row["completed"] or 0)
-        failed = int(row["failed"] or 0)
-        total = int(row["total"] or 0)
+    processed = completed + failed + cancelled
+    progress = int((processed / total) * 100) if total > 0 else 100
+    is_terminal = total > 0 and processed >= total
 
-        if include_current_as_completed:
-            child_status = await conn.fetchval(
-                """
-                SELECT status
-                FROM pgqueuer_jobs
-                WHERE id = $1
-                """,
-                child_job_id,
-            )
-            if child_status == "in_progress":
-                completed += 1
-
-        processed = completed + failed
-        progress = int((processed / total) * 100) if total > 0 else 100
-        is_terminal = processed >= total
-
-        await conn.execute(
-            """
-            UPDATE pgqueuer_jobs
-            SET payload = COALESCE(payload, '{}'::jsonb) || $2::jsonb,
-                status = CASE WHEN $3 THEN 'completed' ELSE status END,
-                completed_at = CASE WHEN $3 THEN NOW() ELSE completed_at END,
-                heartbeat_at = NOW()
-            WHERE id = $1 AND status = 'in_progress'
-            """,
-            int(batch_id),
-            json.dumps(
-                {
-                    "completed": completed,
-                    "failed": failed,
-                    "total": total,
-                    "processed": processed,
-                    "progress": progress,
-                    "message": f"Processed {processed}/{total}",
-                }
-            ),
-            is_terminal,
+    await conn.execute(
+        """
+        UPDATE pgqueuer_jobs
+        SET payload = COALESCE(payload, '{}'::jsonb) || $2::jsonb,
+            status = CASE WHEN $3 THEN 'completed' ELSE status END,
+            completed_at = CASE WHEN $3 THEN NOW() ELSE completed_at END,
+            heartbeat_at = NOW()
+        WHERE id = $1 AND status = 'in_progress'
+        """,
+        parent_job_id,
+        json.dumps(
+            {
+                "completed": completed,
+                "failed": failed,
+                "cancelled": cancelled,
+                "total": total,
+                "processed": processed,
+                "progress": progress,
+                "message": f"Processed {processed}/{total}",
+            }
+        ),
+        is_terminal,
+    )
+    if is_terminal:
+        logger.info(
+            f"Batch job {parent_job_id} completed: {completed} succeeded, "
+            f"{failed} failed, {cancelled} cancelled"
         )
-        if is_terminal:
-            logger.info(f"Batch job {batch_id} completed: {completed} succeeded, {failed} failed")
 
 
 async def get_batch_child_counts(
