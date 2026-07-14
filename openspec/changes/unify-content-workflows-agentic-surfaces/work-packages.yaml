@@ -335,6 +335,7 @@ packages:
         - src/models/podcast.py
         - src/models/theme.py
         - src/workflows/__init__.py
+        - src/workflows/resource.py
         - src/workflows/summarization.py
         - src/workflows/theme_analysis.py
         - src/workflows/digest.py
@@ -342,6 +343,7 @@ packages:
         - src/workflows/podcast_audio.py
         - src/workflows/audio_digest.py
         - tests/workflows/test_summarization_workflow.py
+        - tests/workflows/test_resource.py
         - tests/workflows/test_theme_analysis_workflow.py
         - tests/workflows/test_digest_workflow.py
         - tests/workflows/test_podcast_script_workflow.py
