@@ -141,6 +141,8 @@ def test_database_contract_declares_provenance_and_queue_payload() -> None:
         "pgqueuer_jobs.payload",
     ):
         assert fragment in schema
+    cited_backfill = schema.split("source_content_ids_cited =", 1)[1].split(")", 1)[0]
+    assert "newsletter_ids_fetched" not in cited_backfill
 
 
 def test_generated_contract_files_have_no_drift() -> None:
