@@ -316,6 +316,9 @@ packages:
       task_ids: ["5.1", "5.2", "5.3", "5.4", "5.5", "5.6", "5.7", "5.8", "5.9", "5.10", "5.11", "5.12", "5.13", "5.14", "5.15"]
     locks:
       files:
+        - alembic/versions/d4e5f6a7b8c9_add_workflow_provenance.py
+        - src/models/digest.py
+        - src/models/podcast.py
         - src/workflows/digest.py
         - src/workflows/podcast_script.py
       keys:
@@ -326,6 +329,11 @@ packages:
       write_allow:
         - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
         - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
+        - alembic/versions/d4e5f6a7b8c9_add_workflow_provenance.py
+        - src/models/audio_digest.py
+        - src/models/digest.py
+        - src/models/podcast.py
+        - src/models/theme.py
         - src/workflows/__init__.py
         - src/workflows/summarization.py
         - src/workflows/theme_analysis.py
@@ -339,6 +347,7 @@ packages:
         - tests/workflows/test_podcast_script_workflow.py
         - tests/workflows/test_podcast_audio_workflow.py
         - tests/workflows/test_audio_digest_workflow.py
+        - tests/migrations/test_workflow_provenance.py
       read_allow: ["src/**", "tests/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
       deny: ["src/workflows/pipeline.py", "src/api/**", "src/cli/**", "src/mcp/**", "web/**"]
     worktree: { name: wp-workflows, mode: isolated }
@@ -350,7 +359,7 @@ packages:
       steps:
         - name: workflow-tests
           kind: command
-          command: uv run pytest tests/workflows --ignore=tests/workflows/test_pipeline_workflow.py --no-cov
+          command: uv run pytest tests/workflows --ignore=tests/workflows/test_pipeline_workflow.py tests/migrations/test_workflow_provenance.py --no-cov
           expect_exit_code: 0
           evidence:
             artifacts: [artifacts/wp-workflows/pytest.txt]
