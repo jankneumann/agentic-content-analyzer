@@ -4,9 +4,9 @@
 
 | Req ID | Spec Source | Description | Contract Ref | Design Decision | Files Changed | Test(s) | Evidence |
 |--------|-------------|-------------|--------------|-----------------|---------------|---------|----------|
-| agentic-operations.1 | `specs/agentic-operations/spec.md` | Canonical operation handle | `contracts/openapi/v1.yaml#/components/schemas/OperationHandle` | D6, D8 | --- | `tests/contract/test_canonical_workflow_contracts.py`, `tests/queue/test_operation_service.py` | --- |
+| agentic-operations.1 | `specs/agentic-operations/spec.md` | Canonical operation handle | `contracts/openapi/v1.yaml#/components/schemas/OperationHandle` | D6, D8 | `src/models/jobs.py`, `src/services/operation_service.py`, `src/queue/setup.py` | `tests/contract/test_canonical_workflow_contracts.py`, `tests/queue/test_operation_service.py` | 12 operation projection tests passed |
 | agentic-operations.2 | `specs/agentic-operations/spec.md` | Universal queue execution | `contracts/db/schema.sql` | D6 | --- | `tests/queue/test_workflow_handlers.py`, `tests/contract/test_cross_interface_workflows.py` | --- |
-| agentic-operations.3 | `specs/agentic-operations/spec.md` | Idempotency and operation control | `contracts/openapi/v1.yaml#/paths/~1api~1v1~1operations~1{id}` | D6 | --- | `tests/queue/test_operation_controls.py`, `tests/api/test_operation_routes.py` | --- |
+| agentic-operations.3 | `specs/agentic-operations/spec.md` | Idempotency and operation control | `contracts/openapi/v1.yaml#/paths/~1api~1v1~1operations~1{id}` | D6 | `src/models/jobs.py`, `src/services/operation_service.py`, `src/queue/setup.py` | `tests/queue/test_operation_controls.py`, `tests/api/test_operation_routes.py` | 13 operation control tests passed |
 | agentic-operations.4 | `specs/agentic-operations/spec.md` | Agent-usable structured interfaces | `contracts/openapi/v1.yaml#/components/schemas/Problem` | D8 | --- | `tests/contract/test_cross_interface_workflows.py` | --- |
 | audio-digest.1 | `specs/audio-digest/spec.md` | Public queued audio digest workflow | `contracts/openapi/v1.yaml#/paths/~1api~1v1~1audio-digests` | D5, D6, D10 | --- | `tests/workflows/test_audio_digest_workflow.py`, `tests/services/test_public_audio_services.py` | --- |
 | cli-interface.1 | `specs/cli-interface/spec.md` | CLI and API parity | `contracts/openapi/v1.yaml` | D8 | --- | `tests/cli/test_workflow_conformance.py` | --- |
@@ -23,9 +23,9 @@
 | e2e-testing.2 | `specs/e2e-testing/spec.md` | Mixed-source provenance coverage | `contracts/db/seed.sql` | D11 | --- | `tests/contract/test_source_workflow_matrix.py` | --- |
 | e2e-testing.3 | `specs/e2e-testing/spec.md` | Cross-interface conformance coverage | `contracts/openapi/v1.yaml` | D8, D11 | --- | `tests/contract/test_cross_interface_workflows.py` | --- |
 | e2e-testing.4 | `specs/e2e-testing/spec.md` | Workflow edge-case coverage | `contracts/db/seed.sql` | D11, D12 | --- | `tests/contract/test_source_workflow_matrix.py`, `tests/contract/test_cross_interface_workflows.py` | --- |
-| job-management.1 | `specs/job-management/spec.md` | Job records project canonical operations | `contracts/db/schema.sql` | D6 | --- | `tests/queue/test_operation_service.py` | --- |
+| job-management.1 | `specs/job-management/spec.md` | Job records project canonical operations | `contracts/db/schema.sql` | D6 | `src/models/jobs.py`, `src/services/operation_service.py`, `src/queue/setup.py` | `tests/queue/test_operation_service.py` | 12 operation projection tests passed; 39 legacy queue/API tests passed |
 | job-management.2 | `specs/job-management/spec.md` | Complete workflow handler registry | `contracts/openapi/v1.yaml#/components/schemas/OperationHandle` | D6 | --- | `tests/queue/test_workflow_handler_registry.py` | --- |
-| job-management.3 | `specs/job-management/spec.md` | Operation cancellation state | `contracts/events/operation.progress.schema.json` | D6 | --- | `tests/queue/test_operation_controls.py` | --- |
+| job-management.3 | `specs/job-management/spec.md` | Operation cancellation state | `contracts/events/operation.progress.schema.json` | D6 | `src/models/jobs.py`, `src/services/operation_service.py`, `src/queue/setup.py` | `tests/queue/test_operation_controls.py` | 13 operation control tests passed |
 | llm-provider-routing.1 | `specs/llm-provider-routing/spec.md` | Complete pipeline routing through LLMRouter | --- | D10 | --- | `tests/processors/test_provider_boundaries.py` | --- |
 | mcp-http-client.1 | `specs/mcp-http-client/spec.md` | MCP tools use configured HTTP mode | `contracts/openapi/v1.yaml` | D8 | --- | `tests/mcp/test_workflow_conformance.py` | --- |
 | mcp-http-client.2 | `specs/mcp-http-client/spec.md` | MCP workflow tools use canonical operations | `contracts/openapi/v1.yaml#/components/schemas/OperationHandle` | D6, D8 | --- | `tests/mcp/test_workflow_conformance.py` | --- |
@@ -51,7 +51,7 @@
 | D3 | Resolve immutable, fingerprinted content selections | --- | Preview and execution consume the same deterministic set. |
 | D4 | Persist digest and podcast provenance | --- | Downstream generation never broadens the original selection. |
 | D5 | Put persistence inside workflows | --- | Every successful operation has a stable resource result. |
-| D6 | Reuse `pgqueuer_jobs` as the operation ledger | --- | One queue supplies status, retry, idempotency, and cancellation. |
+| D6 | Reuse `pgqueuer_jobs` as the operation ledger | `src/models/jobs.py`, `src/services/operation_service.py`, `src/queue/setup.py` | One queue supplies status, retry, idempotency, and cancellation. |
 | D7 | Use one parent-child pipeline workflow | --- | All interfaces observe the same stage semantics. |
 | D8 | Replace external contracts in one coordinated cutover | --- | Controlled clients can converge without permanent adapters. |
 | D9 | Generate interface types and capability metadata | --- | Drift becomes a build failure instead of a runtime mismatch. |
@@ -68,6 +68,6 @@
 
 - **Requirements traced**: 37/37
 - **Tests mapped**: 37 requirements have at least one test
-- **Evidence collected**: 0/37 requirements have pass/fail evidence
-- **Gaps identified**: Implementation files and validation evidence are pending.
+- **Evidence collected**: 4/37 requirements have pass/fail evidence
+- **Gaps identified**: Remaining work packages still need implementation files and validation evidence.
 - **Deferred items**: None.

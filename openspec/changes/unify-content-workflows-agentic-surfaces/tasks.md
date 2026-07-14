@@ -115,17 +115,17 @@
 
 ## 4. Operation Core
 
-- [ ] 4.1 [M] Write operation projection tests
+- [x] 4.1 [M] Write operation projection tests
   **Spec scenarios**: agentic-operations.1-2, job-management.1-2
   **Contracts**: `contracts/openapi/v1.yaml#/components/schemas/OperationHandle`, `contracts/events/operation.progress.schema.json`
   **Design decisions**: D5, D6
   **Dependencies**: 1.3
 
-- [ ] 4.2 [M] Implement OperationService
+- [x] 4.2 [M] Implement OperationService
   Add versioned job payload models, operation projection, resource attachment, result attachment, progress events, bounded waiting, and cursor listing over `pgqueuer_jobs`.
   **Dependencies**: 4.1
 
-- [ ] 4.3 [XS] Checkpoint: run operation model tests, review diff, verify scope
+- [x] 4.3 [XS] Checkpoint: run operation model tests, review diff, verify scope
   **Dependencies**: 4.2
 
 - [ ] 4.4 [M] Write handler registry contract tests
@@ -141,17 +141,17 @@
 - [ ] 4.6 [XS] Checkpoint: run handler tests, review diff, verify scope
   **Dependencies**: 4.5
 
-- [ ] 4.7 [M] Write operation control tests
+- [x] 4.7 [M] Write operation control tests
   **Spec scenarios**: agentic-operations.4-7, job-management.4-5
   **Contracts**: `contracts/openapi/v1.yaml#/paths/~1api~1v1~1operations~1{operation_id}~1retry`, `contracts/openapi/v1.yaml#/paths/~1api~1v1~1operations~1{operation_id}~1cancel`
   **Design decisions**: D6, D12
   **Dependencies**: 4.2
 
-- [ ] 4.8 [M] Implement operation controls
+- [x] 4.8 [M] Implement operation controls
   Add idempotent submission, retry rules, queued cancellation, running cancellation requests, cancellation checkpoints, and version 1 payload compatibility.
   **Dependencies**: 4.7
 
-- [ ] 4.9 [XS] Checkpoint: run operation control tests, review diff, verify scope
+- [x] 4.9 [XS] Checkpoint: run operation control tests, review diff, verify scope
   **Dependencies**: 4.8
 
 ## 5. Durable Workflows
