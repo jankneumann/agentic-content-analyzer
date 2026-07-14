@@ -1,4 +1,4 @@
-"""Add durable digest and podcast workflow provenance.
+"""Add durable theme, digest, and podcast workflow provenance.
 
 Revision ID: d4e5f6a7b8c9
 Revises: c3d4e5f6a7b8
@@ -98,6 +98,42 @@ def _backfill_digests(bind: sa.Connection) -> None:
         )
 
 
+def _backfill_theme_analyses(bind: sa.Connection) -> None:
+    analyses = sa.table(
+        "theme_analyses",
+        sa.column("id", sa.Integer()),
+        sa.column("content_ids", _JSON),
+        sa.column("summary_ids", _JSON),
+        sa.column("selection_policy", _JSON),
+        sa.column("selection_fingerprint", sa.String(64)),
+    )
+    rows = bind.execute(
+        sa.select(
+            analyses.c.id,
+            analyses.c.content_ids,
+            analyses.c.summary_ids,
+            analyses.c.selection_policy,
+            analyses.c.selection_fingerprint,
+        )
+    ).mappings()
+    for row in rows:
+        policy = row["selection_policy"] or _legacy_policy()
+        content_ids = list(row["content_ids"] or [])
+        summary_ids = list(row["summary_ids"] or [])
+        fingerprint = row["selection_fingerprint"] or _selection_fingerprint(
+            policy, content_ids, summary_ids
+        )
+        bind.execute(
+            analyses.update()
+            .where(analyses.c.id == row["id"])
+            .values(
+                summary_ids=summary_ids,
+                selection_policy=policy,
+                selection_fingerprint=fingerprint,
+            )
+        )
+
+
 def _backfill_podcast_scripts(bind: sa.Connection) -> None:
     digests = sa.table(
         "digests",
@@ -157,6 +193,47 @@ def upgrade() -> None:
         _legacy_policy(), sort_keys=True, separators=(",", ":"), ensure_ascii=True
     )
     legacy_policy_default = legacy_policy_json
+
+    if "theme_analyses" in tables:
+        columns = _columns(bind, "theme_analyses")
+        with op.batch_alter_table("theme_analyses") as batch_op:
+            if "summary_ids" not in columns:
+                batch_op.add_column(sa.Column("summary_ids", _JSON, nullable=True))
+            if "selection_fingerprint" not in columns:
+                batch_op.add_column(
+                    sa.Column("selection_fingerprint", sa.String(length=64), nullable=True)
+                )
+            if "selection_policy" not in columns:
+                batch_op.add_column(sa.Column("selection_policy", _JSON, nullable=True))
+
+        _backfill_theme_analyses(bind)
+        columns = _columns(bind, "theme_analyses")
+        with op.batch_alter_table("theme_analyses") as batch_op:
+            if columns["summary_ids"]["nullable"] or columns["summary_ids"]["default"] is None:
+                batch_op.alter_column(
+                    "summary_ids",
+                    existing_type=_JSON,
+                    nullable=False,
+                    server_default=empty_list_default,
+                )
+            if (
+                columns["selection_policy"]["nullable"]
+                or columns["selection_policy"]["default"] is None
+            ):
+                batch_op.alter_column(
+                    "selection_policy",
+                    existing_type=_JSON,
+                    nullable=False,
+                    server_default=legacy_policy_default,
+                )
+            if "ix_theme_analyses_selection_fingerprint" not in _indexes(
+                bind, "theme_analyses"
+            ):
+                batch_op.create_index(
+                    "ix_theme_analyses_selection_fingerprint",
+                    ["selection_fingerprint"],
+                    unique=False,
+                )
 
     if "digests" in tables:
         columns = _columns(bind, "digests")
@@ -245,6 +322,19 @@ def upgrade() -> None:
                 )
 
     if bind.dialect.name == "postgresql":
+        if "theme_analyses" in tables:
+            op.execute(
+                "COMMENT ON COLUMN theme_analyses.summary_ids IS "
+                "'Ordered persisted Summary IDs paired with content_ids'"
+            )
+            op.execute(
+                "COMMENT ON COLUMN theme_analyses.selection_fingerprint IS "
+                "'SHA-256 fingerprint of normalized policy, content IDs, and summary IDs'"
+            )
+            op.execute(
+                "COMMENT ON COLUMN theme_analyses.selection_policy IS "
+                "'Normalized workflow selection policy including schema version and date basis'"
+            )
         op.execute(
             "COMMENT ON COLUMN digests.source_summary_ids IS "
             "'Ordered persisted Summary IDs paired with source_content_ids'"
@@ -268,6 +358,21 @@ def upgrade() -> None:
 def downgrade() -> None:
     bind = op.get_bind()
     tables = set(sa.inspect(bind).get_table_names())
+
+    if "theme_analyses" in tables:
+        columns = _columns(bind, "theme_analyses")
+        with op.batch_alter_table("theme_analyses") as batch_op:
+            if "ix_theme_analyses_selection_fingerprint" in _indexes(
+                bind, "theme_analyses"
+            ):
+                batch_op.drop_index("ix_theme_analyses_selection_fingerprint")
+            for column_name in (
+                "selection_policy",
+                "selection_fingerprint",
+                "summary_ids",
+            ):
+                if column_name in columns:
+                    batch_op.drop_column(column_name)
 
     if "podcast_scripts" in tables:
         columns = _columns(bind, "podcast_scripts")

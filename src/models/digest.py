@@ -1,6 +1,5 @@
 """Digest data models."""
 
-import json
 from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -10,7 +9,11 @@ from sqlalchemy import JSON, Boolean, Column, DateTime, Enum as SQLEnum, Integer
 from sqlalchemy.orm import Mapped, relationship
 
 from src.models.base import Base
-from src.models.query import ContentQuery
+from src.models.query import (
+    LEGACY_SELECTION_POLICY_JSON,
+    ContentQuery,
+    legacy_selection_policy,
+)
 
 if TYPE_CHECKING:
     from src.models.audio_digest import AudioDigest
@@ -35,27 +38,6 @@ class DigestStatus(StrEnum):
     APPROVED = "APPROVED"  # NEW: Approved for delivery
     REJECTED = "REJECTED"  # NEW: Rejected (won't deliver)
     DELIVERED = "DELIVERED"
-
-
-_LEGACY_SELECTION_POLICY: dict[str, object] = {
-    "schema_version": 0,
-    "provenance": "legacy-v0",
-    "date_basis": "published_date",
-    "start_inclusive": True,
-    "end_exclusive": False,
-}
-_LEGACY_SELECTION_POLICY_JSON = json.dumps(
-    _LEGACY_SELECTION_POLICY,
-    sort_keys=True,
-    separators=(",", ":"),
-    ensure_ascii=True,
-)
-
-
-def legacy_selection_policy() -> dict[str, object]:
-    """Mark records created by pre-provenance callers as explicitly incomplete."""
-
-    return dict(_LEGACY_SELECTION_POLICY)
 
 
 class Digest(Base):
@@ -92,7 +74,7 @@ class Digest(Base):
         JSON,
         nullable=False,
         default=legacy_selection_policy,
-        server_default=_LEGACY_SELECTION_POLICY_JSON,
+        server_default=LEGACY_SELECTION_POLICY_JSON,
     )
 
     # Metadata

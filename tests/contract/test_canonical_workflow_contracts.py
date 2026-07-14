@@ -139,10 +139,16 @@ def test_database_contract_declares_provenance_and_queue_payload() -> None:
         "source_content_ids_available",
         "source_content_ids_cited",
         "pgqueuer_jobs.payload",
+        "ALTER TABLE theme_analyses",
+        "summary_ids",
+        "ix_theme_analyses_selection_fingerprint",
     ):
         assert fragment in schema
     cited_backfill = schema.split("source_content_ids_cited =", 1)[1].split(")", 1)[0]
     assert "newsletter_ids_fetched" not in cited_backfill
+
+    assert "ALTER COLUMN summary_ids SET DEFAULT '[]'::jsonb" in schema
+    assert "ALTER COLUMN selection_policy SET DEFAULT" in schema
 
 
 def test_generated_contract_files_have_no_drift() -> None:
