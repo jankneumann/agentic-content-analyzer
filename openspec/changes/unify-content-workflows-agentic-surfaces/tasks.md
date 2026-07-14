@@ -64,53 +64,53 @@
 
 ## 3. Source Registry
 
-- [ ] 3.1 [M] Write source registry tests
+- [x] 3.1 [M] Write source registry tests
   **Spec scenarios**: source-capability-registry.1-4, source-configuration.1-2
   **Contracts**: `contracts/openapi/v1.yaml#/components/schemas/IngestCommand`
   **Design decisions**: D1
   **Dependencies**: 1.3
 
-- [ ] 3.2 [M] Implement SourceRegistry
+- [x] 3.2 [M] Implement SourceRegistry
   Add descriptors for all eighteen canonical commands, startup validation, emitted source metadata, config accessors, scheduling flags, and removed-key diagnostics.
   **Dependencies**: 3.1
 
-- [ ] 3.3 [XS] Checkpoint: run registry tests, review diff, verify scope
+- [x] 3.3 [XS] Checkpoint: run registry tests, review diff, verify scope
   **Dependencies**: 3.2
 
-- [ ] 3.4 [M] Write ingestion dispatch tests
+- [x] 3.4 [M] Write ingestion dispatch tests
   **Spec scenarios**: source-capability-registry.3-4, cli-interface.1-2
   **Contracts**: `contracts/openapi/v1.yaml#/components/schemas/IngestCommand`
   **Design decisions**: D1
   **Dependencies**: 3.2
 
-- [ ] 3.5 [M] Implement IngestionService
+- [x] 3.5 [M] Implement IngestionService
   Dispatch typed commands through registry descriptors, preserve every source-specific option, return canonical ingestion responses, and migrate adapter entry points to the service.
   **Dependencies**: 3.4
 
-- [ ] 3.6 [XS] Checkpoint: run ingestion tests, review diff, verify scope
+- [x] 3.6 [XS] Checkpoint: run ingestion tests, review diff, verify scope
   **Dependencies**: 3.5
 
-- [ ] 3.7 [M] Write capability parity tests
+- [x] 3.7 [M] Write capability parity tests
   **Spec scenarios**: source-capability-registry.5-6, cli-interface.6, mcp-http-client.9
   **Contracts**: `contracts/openapi/v1.yaml#/components/schemas/CapabilityDocument`
   **Design decisions**: D9
   **Dependencies**: 3.2, 1.2
 
-- [ ] 3.8 [M] Implement CapabilityService
+- [x] 3.8 [M] Implement CapabilityService
   Project registry descriptors into the canonical capability document with stable contract version, fields, transports, operations, and resources.
   **Dependencies**: 3.7
 
-- [ ] 3.9 [S] Write upload reference tests
+- [x] 3.9 [S] Write upload reference tests
   **Spec scenarios**: source-capability-registry.3-6
   **Contracts**: `contracts/openapi/v1.yaml#/paths/~1api~1v1~1uploads`, `contracts/openapi/v1.yaml#/components/schemas/FilesIngestCommand`
   **Design decisions**: D1, D8
   **Dependencies**: 1.3
 
-- [ ] 3.10 [M] Implement durable upload references
+- [x] 3.10 [M] Implement durable upload references
   Store uploaded documents through the configured storage provider and resolve `upload_ids` inside files ingestion so CLI, HTTP, MCP, and frontend share one server-visible contract.
   **Dependencies**: 3.9, 3.5
 
-- [ ] 3.11 [XS] Checkpoint: run capability tests, review diff, verify scope
+- [x] 3.11 [XS] Checkpoint: run capability tests, review diff, verify scope
   **Dependencies**: 3.8, 3.10
 
 ## 4. Operation Core

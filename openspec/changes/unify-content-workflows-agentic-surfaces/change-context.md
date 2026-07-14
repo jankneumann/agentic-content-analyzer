@@ -36,17 +36,17 @@
 | pipeline.3 | `specs/pipeline/spec.md` | Pipeline selection is preserved | `contracts/db/schema.sql` | D3, D7 | --- | `tests/workflows/test_pipeline_workflow.py` | --- |
 | podcast-generation.1 | `specs/podcast-generation/spec.md` | Digest-bound podcast provenance | `contracts/db/schema.sql` | D4 | --- | `tests/processors/test_workflow_provenance.py`, `tests/workflows/test_podcast_script_workflow.py` | --- |
 | podcast-generation.2 | `specs/podcast-generation/spec.md` | Durable podcast workflows | `contracts/openapi/v1.yaml#/paths/~1api~1v1~1podcast-scripts` | D5, D6 | --- | `tests/workflows/test_podcast_script_workflow.py`, `tests/workflows/test_podcast_audio_workflow.py` | --- |
-| source-capability-registry.1 | `specs/source-capability-registry/spec.md` | Executable source registry | `contracts/openapi/v1.yaml#/components/schemas/IngestCommand` | D1 | --- | `tests/ingestion/test_source_registry.py` | --- |
-| source-capability-registry.2 | `specs/source-capability-registry/spec.md` | Typed ingestion service dispatch | `contracts/openapi/v1.yaml#/components/schemas/IngestCommand` | D1 | --- | `tests/ingestion/test_ingestion_service.py` | --- |
-| source-capability-registry.3 | `specs/source-capability-registry/spec.md` | Registry-derived capability parity | `contracts/openapi/v1.yaml#/components/schemas/CapabilityDocument` | D1, D9 | --- | `tests/services/test_capability_service.py`, `tests/contract/test_source_workflow_matrix.py` | --- |
-| source-configuration.1 | `specs/source-configuration/spec.md` | Heterogeneous source discovery | `contracts/openapi/v1.yaml#/components/schemas/SourceCapability` | D1 | --- | `tests/ingestion/test_source_registry.py`, `tests/services/test_capability_service.py` | --- |
+| source-capability-registry.1 | `specs/source-capability-registry/spec.md` | Executable source registry | `contracts/openapi/v1.yaml#/components/schemas/IngestCommand` | D1 | `src/ingestion/commands.py`, `src/ingestion/registry.py` | `tests/ingestion/test_source_registry.py` | Package tests pass |
+| source-capability-registry.2 | `specs/source-capability-registry/spec.md` | Typed ingestion service dispatch | `contracts/openapi/v1.yaml#/components/schemas/IngestCommand` | D1 | `src/ingestion/service.py`, `src/ingestion/orchestrator.py`, `src/ingestion/files.py`, `src/ingestion/podcast.py`, `src/ingestion/result.py`, `src/services/upload_service.py` | `tests/ingestion/test_ingestion_service.py`, `tests/services/test_upload_service.py` | Package tests pass |
+| source-capability-registry.3 | `specs/source-capability-registry/spec.md` | Registry-derived capability parity | `contracts/openapi/v1.yaml#/components/schemas/CapabilityDocument` | D1, D9 | `src/services/capability_service.py` | `tests/services/test_capability_service.py`, `tests/contract/test_source_workflow_matrix.py` | Package capability tests pass; vertical matrix pending wp-e2e |
+| source-configuration.1 | `specs/source-configuration/spec.md` | Heterogeneous source discovery | `contracts/openapi/v1.yaml#/components/schemas/SourceCapability` | D1 | `src/ingestion/registry.py` | `tests/ingestion/test_source_registry.py`, `tests/services/test_capability_service.py` | Package tests pass |
 | theme-analysis.1 | `specs/theme-analysis/spec.md` | Theme analysis consumes resolved content | `contracts/db/schema.sql` | D3, D4 | --- | `tests/workflows/test_theme_analysis_workflow.py`, `tests/processors/test_workflow_provenance.py` | --- |
 
 ## Design Decision Trace
 
 | Decision | Rationale | Implementation | Why This Approach |
 |----------|-----------|----------------|-------------------|
-| D1 | Make source metadata executable | --- | One descriptor prevents source-key drift across dispatch and discovery. |
+| D1 | Make source metadata executable | `src/ingestion/commands.py`, `src/ingestion/registry.py`, `src/ingestion/service.py` | One descriptor prevents source-key drift across dispatch and discovery. |
 | D2 | Resolve canonical identity before eligibility | `src/services/content_set_resolver.py` | Alias rows cannot independently enter downstream analysis. |
 | D3 | Resolve immutable, fingerprinted content selections | `src/models/query.py`, `src/services/content_set_resolver.py` | Preview and execution consume the same deterministic set. |
 | D4 | Persist digest and podcast provenance | `alembic/versions/d4e5f6a7b8c9_add_workflow_provenance.py`, `src/models/digest.py`, `src/models/podcast.py` | Downstream generation never broadens the original selection. |
@@ -54,7 +54,7 @@
 | D6 | Reuse `pgqueuer_jobs` as the operation ledger | `src/models/jobs.py`, `src/services/operation_service.py`, `src/queue/setup.py` | One queue supplies status, retry, idempotency, and cancellation. |
 | D7 | Use one parent-child pipeline workflow | --- | All interfaces observe the same stage semantics. |
 | D8 | Replace external contracts in one coordinated cutover | --- | Controlled clients can converge without permanent adapters. |
-| D9 | Generate interface types and capability metadata | --- | Drift becomes a build failure instead of a runtime mismatch. |
+| D9 | Generate interface types and capability metadata | `src/services/capability_service.py`, `scripts/generate_workflow_contracts.py` | Drift becomes a build failure instead of a runtime mismatch. |
 | D10 | Enforce router and media service boundaries | --- | Provider details stay out of workflows and transports. |
 | D11 | Generate vertical and invariant-focused coverage | --- | Broad source coverage remains deterministic and scalable. |
 | D12 | Use shadow validation before the breaking cutover | --- | Existing data and queued work are checked before legacy removal. |

@@ -1,5 +1,5 @@
 // Generated from contracts/openapi/v1.yaml; do not edit.
-export const CONTRACT_SHA256 = "ea9a21f15ab2f3f455c0b3d4262b79f08423aec16a8b16e3519391155311a3af" as const;
+export const CONTRACT_SHA256 = "5f07ac468bf37a86011b7560182ce5d3a9057b3bd654feaae1e20eef2aa26eaf" as const;
 
 export type OperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 export type OperationType = "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
@@ -67,6 +67,8 @@ export interface UploadReference {
   filename: string;
   media_type: string;
   size_bytes: number;
+  title?: string | null;
+  publication?: string | null;
 }
 
 export interface CapabilityField {
@@ -74,8 +76,10 @@ export interface CapabilityField {
   type: string;
   required: boolean;
   description?: string | null;
+  format?: string | null;
   enum?: Array<string>;
   default?: unknown;
+  constraints?: Record<string, unknown>;
 }
 
 export interface SourceCapability {
@@ -83,6 +87,10 @@ export interface SourceCapability {
   display_name: string;
   emitted_sources: Array<string>;
   scheduled: boolean;
+  supports_force: boolean;
+  supports_date_range: boolean;
+  supports_preview: boolean;
+  requires_identifier: boolean;
   transports: Array<"cli" | "http" | "mcp" | "frontend">;
   fields: Array<CapabilityField>;
 }

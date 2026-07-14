@@ -352,28 +352,40 @@ class PerplexityContentIngestionService:
             try:
                 db.begin_nested()  # SAVEPOINT
 
-                if not force_reprocess and self._is_duplicate(db, source_id, response.citations):
+                existing = None
+                duplicate = False
+                if force_reprocess:
+                    existing = (
+                        db.query(Content)
+                        .filter(
+                            Content.source_type == ContentSource.PERPLEXITY,
+                            Content.source_id == source_id,
+                        )
+                        .first()
+                    )
+                elif self._is_duplicate(db, source_id, response.citations):
                     logger.debug(f"Skipping duplicate: {source_id}")
                     items_skipped += 1
-                else:
-                    # Determine title from first line of content
+                    duplicate = True
+                if not duplicate:
+                    if existing is None:
+                        content = Content(
+                            source_type=ContentSource.PERPLEXITY,
+                            source_id=source_id,
+                        )
+                        db.add(content)
+                    else:
+                        content = existing
                     first_line = response.content.strip().split("\n")[0][:120]
-                    title = first_line if first_line else "Perplexity Web Search"
-
-                    content = Content(
-                        source_type=ContentSource.PERPLEXITY,
-                        source_id=source_id,
-                        title=title,
-                        author="Perplexity AI",
-                        publication="Web Search",
-                        published_date=datetime.now(UTC),
-                        markdown_content=markdown_content,
-                        content_hash=generate_markdown_hash(markdown_content),
-                        status=ContentStatus.PENDING,
-                        metadata_json=metadata,
-                        ingested_at=datetime.now(UTC),
-                    )
-                    db.add(content)
+                    content.title = first_line or "Perplexity Web Search"
+                    content.author = "Perplexity AI"
+                    content.publication = "Web Search"
+                    content.published_date = datetime.now(UTC)
+                    content.markdown_content = markdown_content
+                    content.content_hash = generate_markdown_hash(markdown_content)
+                    content.status = ContentStatus.PENDING
+                    content.metadata_json = metadata
+                    content.ingested_at = datetime.now(UTC)
                     db.flush()
                     items_ingested += 1
                     logger.info(

@@ -26,6 +26,7 @@ from src.ingestion.perplexity_search import (
     _format_citations_markdown,
     _generate_source_id,
 )
+from src.models.content import Content, ContentSource, ContentStatus
 
 # ---------------------------------------------------------------------------
 # PerplexityResponse model
@@ -475,11 +476,23 @@ class TestPerplexityContentIngestionService:
 
     @patch("src.ingestion.perplexity_search.get_db")
     @patch("src.ingestion.perplexity_search.PerplexityClient")
-    def test_ingest_content_force_reprocess_bypasses_dedup(self, mock_client_cls, mock_get_db):
-        """force_reprocess=True should skip dedup check."""
+    def test_ingest_content_force_reprocess_updates_existing_in_place(
+        self, mock_client_cls, mock_get_db
+    ):
+        """force_reprocess=True preserves the canonical identity."""
         mock_db = MagicMock()
         mock_get_db.return_value.__enter__ = MagicMock(return_value=mock_db)
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
+        existing = Content(
+            id=52,
+            source_type=ContentSource.PERPLEXITY,
+            source_id=_generate_source_id(["https://a.com"]),
+            title="Old",
+            markdown_content="Old",
+            content_hash="old",
+            status=ContentStatus.COMPLETED,
+        )
+        mock_db.query.return_value.filter.return_value.first.return_value = existing
 
         mock_response = PerplexityResponse(
             content="Force reprocessed.", citations=["https://a.com"], model="sonar"
@@ -496,8 +509,9 @@ class TestPerplexityContentIngestionService:
             result = service.ingest_content(force_reprocess=True)
 
         assert result.items_ingested == 1
-        # _is_duplicate should NOT have been called
-        mock_db.query.return_value.filter.return_value.first.assert_not_called()
+        assert existing.id == 52
+        assert existing.markdown_content.startswith("Force reprocessed.")
+        mock_db.add.assert_not_called()
 
     @patch("src.ingestion.perplexity_search.PerplexityClient")
     def test_close_delegates_to_client(self, mock_client_cls):
