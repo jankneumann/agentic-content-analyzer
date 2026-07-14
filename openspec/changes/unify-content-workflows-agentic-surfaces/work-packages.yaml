@@ -145,11 +145,17 @@ packages:
       write_allow:
         - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
         - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
+        - openspec/changes/unify-content-workflows-agentic-surfaces/work-packages.yaml
+        - scripts/generate_workflow_contracts.py
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/**
+        - src/contracts/**
         - src/ingestion/**
         - src/config/sources.py
         - src/services/capability_service.py
         - src/services/upload_service.py
         - tests/ingestion/**
+        - tests/test_ingestion/test_xsearch.py
+        - tests/test_ingestion/test_perplexity_search.py
         - tests/services/test_capability_service.py
         - tests/services/test_upload_service.py
       read_allow: ["src/**", "tests/**", "sources.d/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]

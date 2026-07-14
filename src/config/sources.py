@@ -636,4 +636,8 @@ def load_sources_config(
 
     # Overlay database overrides on top of the YAML/legacy baseline. Fails open
     # to the YAML-only config when the database is unavailable.
-    return _apply_db_source_overrides(config)
+    config = _apply_db_source_overrides(config)
+    from src.ingestion.registry import SOURCE_REGISTRY
+
+    SOURCE_REGISTRY.validate_config(config)
+    return config

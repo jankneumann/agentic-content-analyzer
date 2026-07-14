@@ -112,6 +112,7 @@ IngestionCommandLiteral = Literal[
     "ingest.arxiv-paper",
     "ingest.files",
     "ingest.url",
+    "ingest.readwise",
 ]
 
 # Closed registry of canonical ``source`` identifiers. Note the two
@@ -140,6 +141,7 @@ IngestionSourceLiteral = Literal[
     "arxiv_paper",
     "files",
     "url",
+    "readwise",
 ]
 
 

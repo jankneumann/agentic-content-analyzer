@@ -624,6 +624,8 @@ components:
         filename: { type: string }
         media_type: { type: string }
         size_bytes: { type: integer, minimum: 0 }
+        title: { type: [string, "null"] }
+        publication: { type: [string, "null"] }
 
     CapabilityField:
       type: object
@@ -634,13 +636,28 @@ components:
         type: { type: string }
         required: { type: boolean }
         description: { type: [string, "null"] }
+        format: { type: [string, "null"] }
         enum: { type: array, items: { type: string } }
         default: {}
+        constraints:
+          type: object
+          additionalProperties: true
+          default: {}
 
     SourceCapability:
       type: object
       additionalProperties: false
-      required: [key, display_name, emitted_sources, scheduled, transports, fields]
+      required:
+        - key
+        - display_name
+        - emitted_sources
+        - scheduled
+        - transports
+        - supports_force
+        - supports_date_range
+        - supports_preview
+        - requires_identifier
+        - fields
       properties:
         key: { type: string }
         display_name: { type: string }
@@ -650,6 +667,10 @@ components:
           uniqueItems: true
           items: { type: string }
         scheduled: { type: boolean }
+        supports_force: { type: boolean }
+        supports_date_range: { type: boolean }
+        supports_preview: { type: boolean }
+        requires_identifier: { type: boolean }
         transports:
           type: array
           items: { type: string, enum: [cli, http, mcp, frontend] }

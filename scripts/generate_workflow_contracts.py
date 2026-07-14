@@ -7,6 +7,7 @@ import argparse
 import difflib
 import hashlib
 import json
+import pprint
 import subprocess
 import sys
 from pathlib import Path
@@ -21,6 +22,7 @@ CONTRACTS = CHANGE / "contracts"
 OPENAPI = CONTRACTS / "openapi/v1.yaml"
 EVENT_SCHEMA = CONTRACTS / "events/operation.progress.schema.json"
 PYTHON_OUTPUT = CONTRACTS / "generated/models.py"
+RUNTIME_PYTHON_OUTPUT = ROOT / "src/contracts/workflow_models.py"
 TYPESCRIPT_OUTPUT = CONTRACTS / "generated/types.ts"
 
 
@@ -73,7 +75,11 @@ def _python_type(schema: dict[str, Any], *, field_name: str | None = None) -> st
     if schema_type == "null":
         return "None"
     if schema_type == "string":
-        return "datetime" if schema.get("format") == "date-time" else "str"
+        if schema.get("format") == "date-time":
+            return "datetime"
+        if schema.get("format") == "uri":
+            return "AnyUrl"
+        return "str"
     if schema_type == "integer":
         return "int"
     if schema_type == "number":
@@ -102,7 +108,9 @@ def _python_default(schema: dict[str, Any], *, required: bool) -> tuple[str, lis
         if source in schema:
             constraints.append(f"{target}={schema[source]!r}")
 
-    if required:
+    if required and "const" in schema:
+        default = repr(schema["const"])
+    elif required:
         default = "..."
     elif "default" in schema:
         default = repr(schema["default"])
@@ -137,7 +145,7 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
         "from datetime import datetime",
         "from typing import Annotated, Any, Literal",
         "",
-        "from pydantic import BaseModel, ConfigDict, Field",
+        "from pydantic import AnyUrl, BaseModel, ConfigDict, Field",
         "",
         f'CONTRACT_SHA256 = "{digest}"',
         "",
@@ -147,6 +155,10 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
         "",
         "class StrictModel(BaseModel):",
         '    model_config = ConfigDict(extra="forbid")',
+        "",
+        "",
+        "COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = "
+        + pprint.pformat(_command_field_schemas(spec), sort_dicts=False, width=100),
     ]
 
     aliases: list[tuple[str, dict[str, Any]]] = []
@@ -177,6 +189,8 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
             if is_required and constraints:
                 constraint_args = ", ".join(constraints)
                 lines.append(f"    {field_name}: Annotated[{field_type}, Field({constraint_args})]")
+            elif is_required and "const" in field_schema:
+                lines.append(f"    {field_name}: {field_type} = {default}")
             elif is_required:
                 lines.append(f"    {field_name}: {field_type}")
             elif constraints:
@@ -201,6 +215,30 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
         else:
             lines.append(f"{name} = {union}")
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _command_field_schemas(spec: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    schemas = spec["components"]["schemas"]
+    mapping = schemas["IngestCommand"]["discriminator"]["mapping"]
+
+    def resolve(schema: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+        properties: dict[str, Any] = {}
+        required: list[str] = []
+        for part in schema.get("allOf", [schema]):
+            if "$ref" in part:
+                part_properties, part_required = resolve(schemas[_ref_name(part["$ref"])])
+            else:
+                part_properties = dict(part.get("properties", {}))
+                part_required = list(part.get("required", []))
+            properties.update(part_properties)
+            required.extend(name for name in part_required if name not in required)
+        return properties, required
+
+    result: dict[str, dict[str, Any]] = {}
+    for key, ref in mapping.items():
+        properties, required = resolve(schemas[_ref_name(ref)])
+        result[key] = {"properties": properties, "required": required}
+    return result
 
 
 def _typescript_type(schema: dict[str, Any]) -> str:
@@ -348,6 +386,7 @@ def main() -> int:
     digest = hashlib.sha256(OPENAPI.read_bytes()).hexdigest()
     outputs = {
         PYTHON_OUTPUT: _format_python(_render_python(spec, digest)),
+        RUNTIME_PYTHON_OUTPUT: _format_python(_render_python(spec, digest)),
         TYPESCRIPT_OUTPUT: _render_typescript(spec, digest),
     }
     if args.check:

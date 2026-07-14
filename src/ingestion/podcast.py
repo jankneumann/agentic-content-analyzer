@@ -332,6 +332,7 @@ class PodcastContentIngestionService:
         max_entries_per_feed: int = 10,
         after_date: datetime | None = None,
         force_reprocess: bool = False,
+        transcribe: bool | None = None,
     ) -> IngestionResponse:
         """Ingest episodes from multiple podcast feeds.
 
@@ -375,7 +376,7 @@ class PodcastContentIngestionService:
                     force_reprocess=force_reprocess,
                     source_name=source.name,
                     source_tags=source.tags if source.tags else None,
-                    transcribe=source.transcribe,
+                    transcribe=source.transcribe if transcribe is None else transcribe,
                     stt_provider=source.stt_provider,
                     languages=source.languages if source.languages else None,
                 )
