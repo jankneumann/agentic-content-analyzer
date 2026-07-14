@@ -370,6 +370,9 @@ packages:
       files:
         - src/workflows/pipeline.py
         - src/pipeline/runner.py
+        - src/services/operation_service.py
+        - src/queue/setup.py
+        - src/ingestion/registry.py
       keys:
         - feature:unify-content-workflows-agentic-surfaces:pipeline
       ttl_minutes: 300
@@ -380,8 +383,13 @@ packages:
         - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
         - src/workflows/pipeline.py
         - src/pipeline/**
+        - src/services/operation_service.py
+        - src/queue/setup.py
+        - src/ingestion/registry.py
         - tests/pipeline/**
         - tests/workflows/test_pipeline_workflow.py
+        - tests/queue/test_operation_service.py
+        - tests/ingestion/test_source_registry.py
       read_allow: ["src/**", "tests/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
       deny: ["src/api/**", "src/cli/**", "src/mcp/**", "web/**"]
     worktree: { name: wp-pipeline, mode: isolated }
@@ -393,7 +401,7 @@ packages:
       steps:
         - name: pipeline-tests
           kind: command
-          command: uv run pytest tests/pipeline tests/workflows/test_pipeline_workflow.py --no-cov
+          command: uv run pytest tests/pipeline tests/workflows/test_pipeline_workflow.py tests/queue/test_operation_service.py tests/ingestion/test_source_registry.py --no-cov
           expect_exit_code: 0
           evidence:
             artifacts: [artifacts/wp-pipeline/pytest.txt]
