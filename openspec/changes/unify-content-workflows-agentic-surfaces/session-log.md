@@ -43,3 +43,27 @@
 
 ### Context
 Planned a coordinated breaking migration that unifies source dispatch, canonical content provenance, durable PostgreSQL operations, and CLI/HTTP/MCP/frontend workflows. Gate 1 selected the domain registry and durable workflows approach; strict OpenSpec and package validations pass.
+
+---
+
+## Phase: Plan Approval (2026-07-14)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Approve Gate 2 implementation plan** `architectural: agentic-operations` — The user selected Approve after reviewing the proposal, design, tasks, executable contracts, and work-package DAG.
+
+### Open Questions
+- [ ] Choose the exact coordinated cutover release and maintenance window during implementation.
+- [ ] Retry coordinator task seeding when implement-feature has a reachable coordinator transport.
+
+### Next Steps
+- Run implement-feature for unify-content-workflows-agentic-surfaces.
+- Begin with wp-contracts and follow the validated work-package dependency DAG.
+
+### Relevant Files
+- `openspec/changes/unify-content-workflows-agentic-surfaces/proposal.md` — Gate 1 and Gate 2 approved proposal
+- `openspec/changes/unify-content-workflows-agentic-surfaces/work-packages.yaml` — Approved implementation DAG
+
+### Context
+Gate 2 approved the complete domain registry and durable workflows plan for implementation. Coordinator issue seeding was attempted but deferred because the local bridge cannot reach the MCP-only coordinator transport; implementation will retry idempotently.
