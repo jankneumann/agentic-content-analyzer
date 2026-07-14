@@ -1,5 +1,6 @@
 """Digest data models."""
 
+import json
 from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -36,6 +37,27 @@ class DigestStatus(StrEnum):
     DELIVERED = "DELIVERED"
 
 
+_LEGACY_SELECTION_POLICY: dict[str, object] = {
+    "schema_version": 0,
+    "provenance": "legacy-v0",
+    "date_basis": "published_date",
+    "start_inclusive": True,
+    "end_exclusive": False,
+}
+_LEGACY_SELECTION_POLICY_JSON = json.dumps(
+    _LEGACY_SELECTION_POLICY,
+    sort_keys=True,
+    separators=(",", ":"),
+    ensure_ascii=True,
+)
+
+
+def legacy_selection_policy() -> dict[str, object]:
+    """Mark records created by pre-provenance callers as explicitly incomplete."""
+
+    return dict(_LEGACY_SELECTION_POLICY)
+
+
 class Digest(Base):
     """Digest database model."""
 
@@ -64,6 +86,14 @@ class Digest(Base):
     markdown_content = Column(Text, nullable=True)  # Full markdown representation
     theme_tags = Column(JSON, nullable=True)  # List[str] - Extracted theme tags
     source_content_ids = Column(JSON, nullable=True)  # List[int] - Content IDs used in digest
+    source_summary_ids = Column(JSON, nullable=False, default=list, server_default="[]")
+    selection_fingerprint = Column(String(64), nullable=True, index=True)
+    selection_policy = Column(
+        JSON,
+        nullable=False,
+        default=legacy_selection_policy,
+        server_default=_LEGACY_SELECTION_POLICY_JSON,
+    )
 
     # Metadata
     newsletter_count = Column(Integer, nullable=False)  # Legacy name, now represents content count
@@ -141,6 +171,9 @@ class DigestData(BaseModel):
     markdown_content: str | None = None
     theme_tags: list[str] | None = None
     source_content_ids: list[int] | None = None
+    source_summary_ids: list[int] = Field(default_factory=list)
+    selection_fingerprint: str | None = None
+    selection_policy: dict[str, object] = Field(default_factory=legacy_selection_policy)
 
     newsletter_count: int
     agent_framework: str

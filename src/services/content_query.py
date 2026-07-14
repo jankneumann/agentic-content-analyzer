@@ -42,10 +42,11 @@ class ContentQueryService:
             q = q.filter(Content.publication.in_(query.publications))
         if query.publication_search:
             q = q.filter(Content.publication.ilike(f"%{query.publication_search}%"))
+        date_column = getattr(Content, query.date_basis.value)
         if query.start_date:
-            q = q.filter(Content.published_date >= query.start_date)
+            q = q.filter(date_column >= query.start_date)
         if query.end_date:
-            q = q.filter(Content.published_date <= query.end_date)
+            q = q.filter(date_column <= query.end_date)
         if query.search:
             q = q.filter(Content.title.ilike(f"%{query.search}%"))
         return q
