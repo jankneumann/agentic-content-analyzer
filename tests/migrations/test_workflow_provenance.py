@@ -15,6 +15,7 @@ from sqlalchemy.engine import Engine
 
 from src.models.digest import Digest, DigestData, DigestType
 from src.models.podcast import PodcastScriptRecord
+from src.models.theme import ThemeAnalysis, ThemeAnalysisResult
 
 
 def _load_migration() -> ModuleType:
@@ -52,6 +53,12 @@ def test_provenance_migration_round_trip_preserves_legacy_semantics() -> None:
         sa.Column("newsletter_ids_available", sa.JSON, nullable=True),
         sa.Column("newsletter_ids_fetched", sa.JSON, nullable=True),
     )
+    themes = sa.Table(
+        "theme_analyses",
+        metadata,
+        sa.Column("id", sa.Integer, primary_key=True),
+        sa.Column("content_ids", sa.JSON, nullable=False, server_default="[]"),
+    )
     jobs = sa.Table(
         "pgqueuer_jobs",
         metadata,
@@ -75,6 +82,7 @@ def test_provenance_migration_round_trip_preserves_legacy_semantics() -> None:
             jobs.insert(),
             {"id": 1, "payload": {"schema_version": 1, "operation_type": "legacy"}},
         )
+        connection.execute(themes.insert(), {"id": 1, "content_ids": [12, 10]})
 
         migration.op = Operations(MigrationContext.configure(connection))
         migration.upgrade()
@@ -93,11 +101,15 @@ def test_provenance_migration_round_trip_preserves_legacy_semantics() -> None:
                 "newsletter_ids_fetched": [20],
             },
         )
+        connection.execute(themes.insert(), {"id": 2, "content_ids": [20]})
 
         inspector = sa.inspect(connection)
         digest_columns = {column["name"]: column for column in inspector.get_columns("digests")}
         script_columns = {
             column["name"]: column for column in inspector.get_columns("podcast_scripts")
+        }
+        theme_columns = {
+            column["name"]: column for column in inspector.get_columns("theme_analyses")
         }
         assert digest_columns["source_summary_ids"]["nullable"] is False
         assert digest_columns["selection_policy"]["nullable"] is False
@@ -112,6 +124,13 @@ def test_provenance_migration_round_trip_preserves_legacy_semantics() -> None:
         assert script_columns["source_content_ids_cited"]["nullable"] is False
         assert script_columns["source_content_ids_available"]["default"] is not None
         assert script_columns["source_content_ids_cited"]["default"] is not None
+        assert {"summary_ids", "selection_fingerprint", "selection_policy"} <= (
+            theme_columns.keys()
+        )
+        assert theme_columns["summary_ids"]["nullable"] is False
+        assert theme_columns["selection_policy"]["nullable"] is False
+        assert theme_columns["summary_ids"]["default"] is not None
+        assert theme_columns["selection_policy"]["default"] is not None
 
         migrated_digests = _json_table(
             "digests",
@@ -126,6 +145,14 @@ def test_provenance_migration_round_trip_preserves_legacy_semantics() -> None:
             sa.Column("id", sa.Integer, primary_key=True),
             sa.Column("source_content_ids_available", sa.JSON),
             sa.Column("source_content_ids_cited", sa.JSON),
+            sa.Column("selection_fingerprint", sa.String(64)),
+        )
+        migrated_themes = _json_table(
+            "theme_analyses",
+            sa.Column("id", sa.Integer, primary_key=True),
+            sa.Column("content_ids", sa.JSON),
+            sa.Column("summary_ids", sa.JSON),
+            sa.Column("selection_policy", sa.JSON),
             sa.Column("selection_fingerprint", sa.String(64)),
         )
         digest_row = (
@@ -148,6 +175,16 @@ def test_provenance_migration_round_trip_preserves_legacy_semantics() -> None:
             .mappings()
             .one()
         )
+        theme_row = (
+            connection.execute(sa.select(migrated_themes).where(migrated_themes.c.id == 1))
+            .mappings()
+            .one()
+        )
+        legacy_theme_row = (
+            connection.execute(sa.select(migrated_themes).where(migrated_themes.c.id == 2))
+            .mappings()
+            .one()
+        )
 
         assert digest_row["source_summary_ids"] == []
         assert digest_row["selection_policy"]["provenance"] == "legacy-v0"
@@ -162,11 +199,21 @@ def test_provenance_migration_round_trip_preserves_legacy_semantics() -> None:
         assert legacy_digest_row["selection_policy"]["provenance"] == "legacy-v0"
         assert legacy_script_row["source_content_ids_available"] == []
         assert legacy_script_row["source_content_ids_cited"] == []
+        assert theme_row["summary_ids"] == []
+        assert theme_row["selection_policy"]["provenance"] == "legacy-v0"
+        assert theme_row["selection_fingerprint"] == migration._selection_fingerprint(
+            theme_row["selection_policy"], [12, 10], []
+        )
+        assert legacy_theme_row["summary_ids"] == []
+        assert legacy_theme_row["selection_policy"]["provenance"] == "legacy-v0"
+        assert legacy_theme_row["selection_fingerprint"] is None
 
         indexes = {index["name"] for index in inspector.get_indexes("digests")}
         assert "ix_digests_selection_fingerprint" in indexes
         script_indexes = {index["name"] for index in inspector.get_indexes("podcast_scripts")}
         assert "ix_podcast_scripts_selection_fingerprint" in script_indexes
+        theme_indexes = {index["name"] for index in inspector.get_indexes("theme_analyses")}
+        assert "ix_theme_analyses_selection_fingerprint" in theme_indexes
 
         # Reusing the queue does not introduce a competing operation table or mutate payloads.
         assert "operations" not in inspector.get_table_names()
@@ -186,6 +233,9 @@ def test_provenance_migration_round_trip_preserves_legacy_semantics() -> None:
         assert "newsletter_ids_fetched" in {
             column["name"] for column in downgraded.get_columns("podcast_scripts")
         }
+        assert "summary_ids" not in {
+            column["name"] for column in downgraded.get_columns("theme_analyses")
+        }
 
 
 def test_postgresql_defaults_accept_legacy_writes(test_engine: Engine) -> None:
@@ -198,6 +248,7 @@ def test_postgresql_defaults_accept_legacy_writes(test_engine: Engine) -> None:
         metadata = sa.MetaData()
         digests = sa.Table("digests", metadata, autoload_with=connection)
         scripts = sa.Table("podcast_scripts", metadata, autoload_with=connection)
+        themes = sa.Table("theme_analyses", metadata, autoload_with=connection)
         now = datetime.now(UTC)
         digest_id = connection.execute(
             digests.insert()
@@ -231,6 +282,24 @@ def test_postgresql_defaults_accept_legacy_writes(test_engine: Engine) -> None:
             )
             .returning(scripts.c.id)
         ).scalar_one()
+        theme_id = connection.execute(
+            themes.insert()
+            .values(
+                status="queued",
+                analysis_date=now,
+                start_date=now,
+                end_date=now,
+                content_count=1,
+                content_ids=[31],
+                themes=[],
+                total_themes=0,
+                emerging_themes_count=0,
+                agent_framework="test",
+                model_used="test",
+                created_at=now,
+            )
+            .returning(themes.c.id)
+        ).scalar_one()
 
         digest_defaults = connection.execute(
             sa.select(
@@ -244,11 +313,21 @@ def test_postgresql_defaults_accept_legacy_writes(test_engine: Engine) -> None:
                 scripts.c.source_content_ids_cited,
             ).where(scripts.c.id == script_id)
         ).one()
+        theme_defaults = connection.execute(
+            sa.select(
+                themes.c.summary_ids,
+                themes.c.selection_policy,
+                themes.c.selection_fingerprint,
+            ).where(themes.c.id == theme_id)
+        ).one()
 
         assert digest_defaults.source_summary_ids == []
         assert digest_defaults.selection_policy["provenance"] == "legacy-v0"
         assert script_defaults.source_content_ids_available == []
         assert script_defaults.source_content_ids_cited == []
+        assert theme_defaults.summary_ids == []
+        assert theme_defaults.selection_policy["provenance"] == "legacy-v0"
+        assert theme_defaults.selection_fingerprint is None
         transaction.rollback()
 
 
@@ -273,6 +352,25 @@ def test_orm_models_expose_additive_provenance_fields() -> None:
         "source_content_ids_cited",
         "selection_fingerprint",
     } <= set(PodcastScriptRecord.__table__.columns.keys())
+    assert {
+        "content_ids",
+        "summary_ids",
+        "selection_fingerprint",
+        "selection_policy",
+    } <= set(ThemeAnalysis.__table__.columns.keys())
+
+    theme = ThemeAnalysis()
+    assert ThemeAnalysis.summary_ids.default.arg(None) == []
+    assert ThemeAnalysis.selection_policy.default.arg(None)["provenance"] == "legacy-v0"
+    assert theme.selection_fingerprint is None
+
+    theme_result = ThemeAnalysisResult(
+        start_date=datetime(2026, 7, 12),
+        end_date=datetime(2026, 7, 13),
+    )
+    assert theme_result.summary_ids == []
+    assert theme_result.selection_policy["provenance"] == "legacy-v0"
+    assert theme_result.selection_fingerprint is None
 
     digest = DigestData(
         digest_type=DigestType.DAILY,

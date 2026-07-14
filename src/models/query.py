@@ -28,6 +28,25 @@ CONTENT_SORT_FIELDS = {
 
 PREVIEW_SAMPLE_LIMIT = 10  # Max sample titles in preview
 SELECTION_SCHEMA_VERSION = 1
+_LEGACY_SELECTION_POLICY: dict[str, object] = {
+    "schema_version": 0,
+    "provenance": "legacy-v0",
+    "date_basis": "published_date",
+    "start_inclusive": True,
+    "end_exclusive": False,
+}
+LEGACY_SELECTION_POLICY_JSON = json.dumps(
+    _LEGACY_SELECTION_POLICY,
+    sort_keys=True,
+    separators=(",", ":"),
+    ensure_ascii=True,
+)
+
+
+def legacy_selection_policy() -> dict[str, object]:
+    """Mark records created without a resolved content set as incomplete."""
+
+    return dict(_LEGACY_SELECTION_POLICY)
 
 
 class DateBasis(StrEnum):

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import JSON, Column, DateTime, Enum, Float, Index, Integer, String, Text
 
 from src.models.base import Base
+from src.models.query import LEGACY_SELECTION_POLICY_JSON, legacy_selection_policy
 
 
 class ThemeCategory(StrEnum):
@@ -70,6 +71,14 @@ class ThemeAnalysis(Base):
     # Analysis scope (renamed from newsletter_*)
     content_count = Column(Integer, nullable=False, default=0)
     content_ids = Column(JSON, nullable=False, default=list)  # List[int]
+    summary_ids = Column(JSON, nullable=False, default=list, server_default="[]")  # List[int]
+    selection_fingerprint = Column(String(64), nullable=True, index=True)
+    selection_policy = Column(
+        JSON,
+        nullable=False,
+        default=legacy_selection_policy,
+        server_default=LEGACY_SELECTION_POLICY_JSON,
+    )
 
     # Detected themes
     themes = Column(JSON, nullable=False, default=list)  # List[ThemeData dict]
@@ -203,6 +212,9 @@ class ThemeAnalysisResult(BaseModel):
     # Content items analyzed (renamed from newsletter_*)
     content_count: int = 0
     content_ids: list[int] = Field(default_factory=list)
+    summary_ids: list[int] = Field(default_factory=list)
+    selection_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    selection_policy: dict[str, object] = Field(default_factory=legacy_selection_policy)
 
     # Themes
     themes: list[ThemeData] = Field(default_factory=list)

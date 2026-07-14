@@ -85,11 +85,13 @@ packages:
         - src/models/digest.py
         - src/models/podcast.py
         - src/models/query.py
+        - src/models/theme.py
         - src/services/content_query.py
       keys:
         - db:migration-slot
         - db:schema:digests
         - db:schema:podcast_scripts
+        - db:schema:theme_analyses
         - feature:unify-content-workflows-agentic-surfaces:provenance
       ttl_minutes: 240
       reason: Own schema and canonical resolver changes.
@@ -101,8 +103,11 @@ packages:
         - src/models/digest.py
         - src/models/podcast.py
         - src/models/query.py
+        - src/models/theme.py
         - src/services/content_query.py
         - src/services/content_set_resolver.py
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/db/schema.sql
+        - tests/contract/test_canonical_workflow_contracts.py
         - tests/migrations/test_workflow_provenance.py
         - tests/services/test_content_set_resolver.py
       read_allow: ["src/**", "tests/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]

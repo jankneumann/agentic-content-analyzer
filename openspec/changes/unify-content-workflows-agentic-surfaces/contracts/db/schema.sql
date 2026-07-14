@@ -1,6 +1,48 @@
 -- Contract delta for canonical content provenance and queue-backed operations.
 -- Implementation must translate this contract into an idempotent Alembic migration.
 
+-- Theme analysis preserves the exact resolved content and Summary pairs rather
+-- than re-querying a period and silently broadening the selection.
+ALTER TABLE theme_analyses
+    ADD COLUMN summary_ids JSONB,
+    ADD COLUMN selection_fingerprint VARCHAR(64),
+    ADD COLUMN selection_policy JSONB;
+
+COMMENT ON COLUMN theme_analyses.summary_ids IS
+    'Ordered persisted Summary IDs paired with content_ids';
+COMMENT ON COLUMN theme_analyses.selection_fingerprint IS
+    'SHA-256 fingerprint of selection schema, normalized policy, content IDs, and summary IDs';
+COMMENT ON COLUMN theme_analyses.selection_policy IS
+    'Normalized workflow SelectionPolicy including schema version and date basis';
+
+UPDATE theme_analyses
+SET summary_ids = COALESCE(summary_ids, '[]'::jsonb),
+    selection_policy = COALESCE(
+        selection_policy,
+        jsonb_build_object(
+            'schema_version', 0,
+            'provenance', 'legacy-v0',
+            'date_basis', 'published_date',
+            'start_inclusive', true,
+            'end_exclusive', false
+        )
+    )
+WHERE summary_ids IS NULL OR selection_policy IS NULL;
+
+-- The Alembic migration computes selection_fingerprint from the preserved
+-- content_ids, empty legacy summary_ids, and legacy policy using the same
+-- canonical JSON serialization as ContentSetResolver.
+
+ALTER TABLE theme_analyses
+    ALTER COLUMN summary_ids SET DEFAULT '[]'::jsonb,
+    ALTER COLUMN summary_ids SET NOT NULL,
+    ALTER COLUMN selection_policy SET DEFAULT
+        '{"date_basis":"published_date","end_exclusive":false,"provenance":"legacy-v0","schema_version":0,"start_inclusive":true}'::jsonb,
+    ALTER COLUMN selection_policy SET NOT NULL;
+
+CREATE INDEX ix_theme_analyses_selection_fingerprint
+    ON theme_analyses (selection_fingerprint);
+
 ALTER TABLE digests
     ADD COLUMN source_summary_ids JSONB,
     ADD COLUMN selection_fingerprint VARCHAR(64),
