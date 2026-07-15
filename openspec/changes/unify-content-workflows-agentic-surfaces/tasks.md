@@ -156,73 +156,73 @@
 
 ## 5. Durable Workflows
 
-- [ ] 5.1 [M] Write summarization workflow tests
+- [x] 5.1 [M] Write summarization workflow tests
   **Spec scenarios**: agentic-operations.2-4
   **Contracts**: `contracts/openapi/v1.yaml#/components/schemas/SummarizationRequest`
   **Design decisions**: D5, D6
   **Dependencies**: 4.2
 
-- [ ] 5.2 [M] Implement SummarizationWorkflow
+- [x] 5.2 [M] Implement SummarizationWorkflow
   Normalize selection defaults, enqueue item children, aggregate canonical results, and attach a durable summary-batch result.
   **Dependencies**: 5.1, 2.5
 
-- [ ] 5.3 [M] Write theme workflow tests
+- [x] 5.3 [M] Write theme workflow tests
   **Spec scenarios**: theme-analysis.1-2, agentic-operations.1-3
   **Contracts**: `contracts/openapi/v1.yaml#/components/schemas/ThemeAnalysisRequest`
   **Design decisions**: D3, D5
   **Dependencies**: 2.8, 4.2
 
-- [ ] 5.4 [M] Implement ThemeAnalysisWorkflow
+- [x] 5.4 [M] Implement ThemeAnalysisWorkflow
   Resolve once, create a persisted analysis lifecycle, call the constrained analyzer, and attach the analysis resource.
   **Dependencies**: 5.3
 
-- [ ] 5.5 [XS] Checkpoint: run summary/theme workflow tests, review diff, verify scope
+- [x] 5.5 [XS] Checkpoint: run summary/theme workflow tests, review diff, verify scope
   **Dependencies**: 5.2, 5.4
 
-- [ ] 5.6 [M] Write digest workflow tests
+- [x] 5.6 [M] Write digest workflow tests
   **Spec scenarios**: content-provenance.5-8, agentic-operations.2, cli-interface.4
   **Contracts**: `contracts/openapi/v1.yaml#/components/schemas/DigestCreateRequest`, `contracts/db/schema.sql`
   **Design decisions**: D4, D5
   **Dependencies**: 2.9, 4.2
 
-- [ ] 5.7 [M] Implement DigestWorkflow
+- [x] 5.7 [M] Implement DigestWorkflow
   Reserve one digest record, resolve or verify its content set, run theme analysis, persist generated data, and attach the digest resource idempotently.
   **Dependencies**: 5.6, 5.4
 
-- [ ] 5.8 [M] Write podcast script workflow tests
+- [x] 5.8 [M] Write podcast script workflow tests
   **Spec scenarios**: podcast-generation.1-3
   **Contracts**: `contracts/openapi/v1.yaml#/components/schemas/PodcastScriptRequest`, `contracts/db/schema.sql`
   **Design decisions**: D4, D5
   **Dependencies**: 2.10, 4.2
 
-- [ ] 5.9 [M] Implement PodcastScriptWorkflow
+- [x] 5.9 [M] Implement PodcastScriptWorkflow
   Reserve one script record, verify digest provenance, generate against the constrained context, persist metadata, and attach the script resource.
   **Dependencies**: 5.8
 
-- [ ] 5.10 [XS] Checkpoint: run digest/script workflow tests, review diff, verify scope
+- [x] 5.10 [XS] Checkpoint: run digest/script workflow tests, review diff, verify scope
   **Dependencies**: 5.7, 5.9
 
-- [ ] 5.11 [M] Write podcast audio workflow tests
+- [x] 5.11 [M] Write podcast audio workflow tests
   **Spec scenarios**: podcast-generation.4-5
   **Contracts**: `contracts/openapi/v1.yaml#/components/schemas/PodcastAudioRequest`
   **Design decisions**: D5, D10
   **Dependencies**: 4.2
 
-- [ ] 5.12 [M] Implement PodcastAudioWorkflow
+- [x] 5.12 [M] Implement PodcastAudioWorkflow
   Enforce script approval, reserve one podcast record, invoke the public audio service, store output, and attach the podcast resource idempotently.
   **Dependencies**: 5.11, 5.9
 
-- [ ] 5.13 [M] Write audio digest workflow tests
+- [x] 5.13 [M] Write audio digest workflow tests
   **Spec scenarios**: audio-digest.1-2
   **Contracts**: `contracts/openapi/v1.yaml#/components/schemas/AudioDigestRequest`
   **Design decisions**: D5, D10
   **Dependencies**: 4.2
 
-- [ ] 5.14 [M] Implement AudioDigestWorkflow
+- [x] 5.14 [M] Implement AudioDigestWorkflow
   Reserve one audio digest record, invoke only the public generator API, persist storage output, and attach the resource idempotently.
   **Dependencies**: 5.13
 
-- [ ] 5.15 [XS] Checkpoint: run audio workflow tests, review diff, verify scope
+- [x] 5.15 [XS] Checkpoint: run audio workflow tests, review diff, verify scope
   **Dependencies**: 5.12, 5.14
 
 - [ ] 5.16 [M] Write pipeline workflow tests
@@ -243,6 +243,7 @@
   **Dependencies**: 5.17
 
 - [ ] 5.19 [M] Write worker handler integration tests
+  Prove deferred workflows requeue their parent without occupying a worker slot, and prove `force_reprocess` reaches summarization execution rather than being ignored.
   **Spec scenarios**: agentic-operations.3, job-management.3
   **Contracts**: `contracts/openapi/v1.yaml#/components/schemas/OperationHandle`
   **Design decisions**: D5, D6, D7
@@ -250,6 +251,7 @@
 
 - [ ] 5.20 [M] Register durable workflow handlers
   Register ingestion, summarization, theme, digest, pipeline, podcast script, podcast audio, and audio digest handlers against the application workflows.
+  A handler returning a deferred outcome MUST release and requeue the parent operation, and the summarization handler MUST honor `force_reprocess` for completed content.
   **Dependencies**: 5.19, 5.2, 5.4, 5.7, 5.9, 5.12, 5.14, 5.17
 
 - [ ] 5.21 [XS] Checkpoint: run worker integration tests, review diff, verify scope
