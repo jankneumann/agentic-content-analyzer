@@ -386,6 +386,7 @@ packages:
         - src/services/operation_service.py
         - src/queue/setup.py
         - src/ingestion/registry.py
+        - src/workflows/digest.py
       keys:
         - feature:unify-content-workflows-agentic-surfaces:pipeline
       ttl_minutes: 300
@@ -399,8 +400,10 @@ packages:
         - src/services/operation_service.py
         - src/queue/setup.py
         - src/ingestion/registry.py
+        - src/workflows/digest.py
         - tests/pipeline/**
         - tests/workflows/test_pipeline_workflow.py
+        - tests/workflows/test_digest_workflow.py
         - tests/queue/test_operation_service.py
         - tests/ingestion/test_source_registry.py
       read_allow: ["src/**", "tests/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
