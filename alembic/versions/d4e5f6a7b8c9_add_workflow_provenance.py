@@ -23,6 +23,14 @@ depends_on: str | Sequence[str] | None = None
 
 _JSON = postgresql.JSONB(astext_type=sa.Text()).with_variant(sa.JSON(), "sqlite")
 
+_OPERATION_OWNED_TABLES = (
+    "theme_analyses",
+    "digests",
+    "podcast_scripts",
+    "podcasts",
+    "audio_digests",
+)
+
 
 def _legacy_policy() -> dict[str, Any]:
     return {
@@ -60,6 +68,34 @@ def _indexes(bind: sa.Connection, table_name: str) -> set[str]:
         for index in sa.inspect(bind).get_indexes(table_name)
         if index["name"] is not None
     }
+
+
+def _ensure_operation_ownership(bind: sa.Connection, table_name: str) -> None:
+    """Add restart-safe ownership used to recover resources after worker crashes."""
+
+    if "operation_id" not in _columns(bind, table_name):
+        with op.batch_alter_table(table_name) as batch_op:
+            batch_op.add_column(sa.Column("operation_id", sa.BigInteger(), nullable=True))
+
+    index_name = f"ix_{table_name}_operation_id"
+    if index_name not in _indexes(bind, table_name):
+        with op.batch_alter_table(table_name) as batch_op:
+            batch_op.create_index(index_name, ["operation_id"], unique=True)
+
+
+def _drop_operation_ownership(bind: sa.Connection, table_name: str) -> None:
+    """Remove ownership independently so a repeated downgrade remains safe."""
+
+    columns = _columns(bind, table_name)
+    index_name = f"ix_{table_name}_operation_id"
+    indexes = _indexes(bind, table_name)
+    if "operation_id" not in columns and index_name not in indexes:
+        return
+    with op.batch_alter_table(table_name) as batch_op:
+        if index_name in indexes:
+            batch_op.drop_index(index_name)
+        if "operation_id" in columns:
+            batch_op.drop_column("operation_id")
 
 
 def _backfill_digests(bind: sa.Connection) -> None:
@@ -193,6 +229,10 @@ def upgrade() -> None:
         _legacy_policy(), sort_keys=True, separators=(",", ":"), ensure_ascii=True
     )
     legacy_policy_default = legacy_policy_json
+
+    for table_name in _OPERATION_OWNED_TABLES:
+        if table_name in tables:
+            _ensure_operation_ownership(bind, table_name)
 
     if "theme_analyses" in tables:
         columns = _columns(bind, "theme_analyses")
@@ -358,6 +398,10 @@ def upgrade() -> None:
 def downgrade() -> None:
     bind = op.get_bind()
     tables = set(sa.inspect(bind).get_table_names())
+
+    for table_name in _OPERATION_OWNED_TABLES:
+        if table_name in tables:
+            _drop_operation_ownership(bind, table_name)
 
     if "theme_analyses" in tables:
         columns = _columns(bind, "theme_analyses")

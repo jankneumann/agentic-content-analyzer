@@ -5,10 +5,10 @@
 | Req ID | Spec Source | Description | Contract Ref | Design Decision | Files Changed | Test(s) | Evidence |
 |--------|-------------|-------------|--------------|-----------------|---------------|---------|----------|
 | agentic-operations.1 | `specs/agentic-operations/spec.md` | Canonical operation handle | `contracts/openapi/v1.yaml#/components/schemas/OperationHandle` | D6, D8 | `src/models/jobs.py`, `src/services/operation_service.py`, `src/queue/setup.py` | `tests/contract/test_canonical_workflow_contracts.py`, `tests/queue/test_operation_service.py` | 12 operation projection tests passed |
-| agentic-operations.2 | `specs/agentic-operations/spec.md` | Universal queue execution | `contracts/db/schema.sql` | D6 | --- | `tests/queue/test_workflow_handlers.py`, `tests/contract/test_cross_interface_workflows.py` | --- |
+| agentic-operations.2 | `specs/agentic-operations/spec.md` | Universal queue execution | `contracts/db/schema.sql` | D6 | `src/workflows/summarization.py`, `src/workflows/theme_analysis.py`, `src/workflows/digest.py`, `src/workflows/podcast_script.py`, `src/workflows/podcast_audio.py`, `src/workflows/audio_digest.py` | `tests/workflows/`, `tests/queue/test_workflow_handlers.py`, `tests/contract/test_cross_interface_workflows.py` | 20 PostgreSQL-backed workflow and migration tests passed |
 | agentic-operations.3 | `specs/agentic-operations/spec.md` | Idempotency and operation control | `contracts/openapi/v1.yaml#/paths/~1api~1v1~1operations~1{id}` | D6 | `src/models/jobs.py`, `src/services/operation_service.py`, `src/queue/setup.py` | `tests/queue/test_operation_controls.py`, `tests/api/test_operation_routes.py` | 13 operation control tests passed |
 | agentic-operations.4 | `specs/agentic-operations/spec.md` | Agent-usable structured interfaces | `contracts/openapi/v1.yaml#/components/schemas/Problem` | D8 | --- | `tests/contract/test_cross_interface_workflows.py` | --- |
-| audio-digest.1 | `specs/audio-digest/spec.md` | Public queued audio digest workflow | `contracts/openapi/v1.yaml#/paths/~1api~1v1~1audio-digests` | D5, D6, D10 | `src/services/audio_digest_service.py`, `src/api/audio_digest_routes.py`, `src/delivery/tts_service.py` | `tests/workflows/test_audio_digest_workflow.py`, `tests/services/test_public_audio_services.py`, `tests/api/test_audio_digest_api.py` | Public audio and API suites passed |
+| audio-digest.1 | `specs/audio-digest/spec.md` | Public queued audio digest workflow | `contracts/openapi/v1.yaml#/paths/~1api~1v1~1audio-digests` | D5, D6, D10 | `src/workflows/audio_digest.py`, `src/services/audio_digest_service.py`, `src/api/audio_digest_routes.py`, `src/delivery/tts_service.py` | `tests/workflows/test_audio_digest_workflow.py`, `tests/services/test_public_audio_services.py`, `tests/api/test_audio_digest_api.py` | Public audio, durable workflow, and API suites passed |
 | cli-interface.1 | `specs/cli-interface/spec.md` | CLI and API parity | `contracts/openapi/v1.yaml` | D8 | --- | `tests/cli/test_workflow_conformance.py` | --- |
 | cli-interface.2 | `specs/cli-interface/spec.md` | Backward compatibility | --- | D12 | --- | `tests/cli/test_workflow_conformance.py` | --- |
 | cli-interface.3 | `specs/cli-interface/spec.md` | Durable CLI workflow behavior | `contracts/openapi/v1.yaml#/components/schemas/OperationHandle` | D6, D8 | --- | `tests/cli/test_workflow_conformance.py` | --- |
@@ -35,12 +35,12 @@
 | pipeline.2 | `specs/pipeline/spec.md` | Single durable pipeline workflow | `contracts/openapi/v1.yaml#/paths/~1api~1v1~1pipeline-runs` | D6, D7 | --- | `tests/workflows/test_pipeline_workflow.py` | --- |
 | pipeline.3 | `specs/pipeline/spec.md` | Pipeline selection is preserved | `contracts/db/schema.sql` | D3, D7 | --- | `tests/workflows/test_pipeline_workflow.py` | --- |
 | podcast-generation.1 | `specs/podcast-generation/spec.md` | Digest-bound podcast provenance | `contracts/db/schema.sql` | D4 | `src/processors/podcast_script_generator.py`, `src/processors/podcast_creator.py`, `src/processors/script_reviser.py` | `tests/processors/test_workflow_provenance.py`, `tests/workflows/test_podcast_script_workflow.py` | Fetch, citation, revision, and legacy provenance checks passed |
-| podcast-generation.2 | `specs/podcast-generation/spec.md` | Durable podcast workflows | `contracts/openapi/v1.yaml#/paths/~1api~1v1~1podcast-scripts` | D5, D6 | --- | `tests/workflows/test_podcast_script_workflow.py`, `tests/workflows/test_podcast_audio_workflow.py` | --- |
+| podcast-generation.2 | `specs/podcast-generation/spec.md` | Durable podcast workflows | `contracts/openapi/v1.yaml#/paths/~1api~1v1~1podcast-scripts` | D5, D6 | `src/workflows/podcast_script.py`, `src/workflows/podcast_audio.py` | `tests/workflows/test_podcast_script_workflow.py`, `tests/workflows/test_podcast_audio_workflow.py` | Reservation, approval, persistence, provenance, and re-entry checks passed |
 | source-capability-registry.1 | `specs/source-capability-registry/spec.md` | Executable source registry | `contracts/openapi/v1.yaml#/components/schemas/IngestCommand` | D1 | `src/ingestion/commands.py`, `src/ingestion/registry.py` | `tests/ingestion/test_source_registry.py` | Package tests pass |
 | source-capability-registry.2 | `specs/source-capability-registry/spec.md` | Typed ingestion service dispatch | `contracts/openapi/v1.yaml#/components/schemas/IngestCommand` | D1 | `src/ingestion/service.py`, `src/ingestion/orchestrator.py`, `src/ingestion/files.py`, `src/ingestion/podcast.py`, `src/ingestion/result.py`, `src/services/upload_service.py` | `tests/ingestion/test_ingestion_service.py`, `tests/services/test_upload_service.py` | Package tests pass |
 | source-capability-registry.3 | `specs/source-capability-registry/spec.md` | Registry-derived capability parity | `contracts/openapi/v1.yaml#/components/schemas/CapabilityDocument` | D1, D9 | `src/services/capability_service.py` | `tests/services/test_capability_service.py`, `tests/contract/test_source_workflow_matrix.py` | Package capability tests pass; vertical matrix pending wp-e2e |
 | source-configuration.1 | `specs/source-configuration/spec.md` | Heterogeneous source discovery | `contracts/openapi/v1.yaml#/components/schemas/SourceCapability` | D1 | `src/ingestion/registry.py` | `tests/ingestion/test_source_registry.py`, `tests/services/test_capability_service.py` | Package tests pass |
-| theme-analysis.1 | `specs/theme-analysis/spec.md` | Theme analysis consumes resolved content | `contracts/db/schema.sql` | D3, D4 | `alembic/versions/d4e5f6a7b8c9_add_workflow_provenance.py`, `src/models/theme.py`, `src/processors/theme_analyzer.py`, `src/api/theme_routes.py` | `tests/migrations/test_workflow_provenance.py`, `tests/workflows/test_theme_analysis_workflow.py`, `tests/processors/test_workflow_provenance.py`, `tests/api/test_theme_api.py` | Exact-set and HTTP theme tests passed |
+| theme-analysis.1 | `specs/theme-analysis/spec.md` | Theme analysis consumes resolved content | `contracts/db/schema.sql` | D3, D4 | `alembic/versions/d4e5f6a7b8c9_add_workflow_provenance.py`, `src/models/theme.py`, `src/processors/theme_analyzer.py`, `src/workflows/theme_analysis.py`, `src/api/theme_routes.py` | `tests/migrations/test_workflow_provenance.py`, `tests/workflows/test_theme_analysis_workflow.py`, `tests/processors/test_workflow_provenance.py`, `tests/api/test_theme_api.py` | Exact-set persistence, idempotent re-entry, and HTTP theme tests passed |
 
 ## Design Decision Trace
 
@@ -50,7 +50,7 @@
 | D2 | Resolve canonical identity before eligibility | `src/services/content_set_resolver.py` | Alias rows cannot independently enter downstream analysis. |
 | D3 | Resolve immutable, fingerprinted content selections | `src/models/query.py`, `src/services/content_set_resolver.py` | Preview and execution consume the same deterministic set. |
 | D4 | Persist theme, digest, and podcast provenance | `alembic/versions/d4e5f6a7b8c9_add_workflow_provenance.py`, `src/models/digest.py`, `src/models/podcast.py`, `src/models/theme.py` | Downstream generation never broadens the original selection. |
-| D5 | Put persistence inside workflows | --- | Every successful operation has a stable resource result. |
+| D5 | Put persistence inside workflows | `src/workflows/` | Workflows reserve and attach stable ORM resources before expensive generation, persist failures, and resume the same resource on retry. |
 | D6 | Reuse `pgqueuer_jobs` as the operation ledger | `src/models/jobs.py`, `src/services/operation_service.py`, `src/queue/setup.py` | One queue supplies status, retry, idempotency, and cancellation. |
 | D7 | Use one parent-child pipeline workflow | --- | All interfaces observe the same stage semantics. |
 | D8 | Replace external contracts in one coordinated cutover | --- | Controlled clients can converge without permanent adapters. |
@@ -71,11 +71,19 @@
 | WP-PROC-006 | wp-processors | behavior | medium | fixed | Revision conversation history and cited-ID snapshots are preserved across updates. |
 | WP-PROC-007 | wp-processors | routing | medium | fixed | Non-empty provider configurations now reject models unsupported by every configured provider. |
 | WP-PROC-008 | wp-processors | telemetry | medium | fixed | Router responses expose the selected general model so processors cost and persist dynamic selections accurately. |
+| WP-WF-001 | wp-workflows | idempotency | high | fixed | Resource references are attached immediately after reservation, and retry resumes the same non-terminal ORM record. |
+| WP-WF-002 | wp-workflows | persistence | medium | fixed | Audio generation receives an explicitly loaded detached digest rather than an expired ORM instance. |
+| WP-WF-003 | wp-workflows | checkpointing | high | fixed | Query-selected summarization reuses the persisted ordered content IDs while aggregating child operations. |
+| WP-WF-004 | wp-workflows | provenance | high | fixed | Theme results must match the resolved content IDs, summary IDs, policy, and fingerprint before persistence. |
+| WP-WF-005 | wp-workflows | completion | medium | fixed | An empty summarization selection completes immediately without creating child operations. |
+| WP-WF-006 | wp-workflows | ownership | medium | fixed | Recovery atomically claims null legacy ownership with a conditional update and rejects resources owned by another operation. |
+| WP-PIPE-001 | wp-pipeline | deferral | high | assigned | Tasks 5.19-5.20 require typed handlers to release and requeue deferred parent operations. |
+| WP-PIPE-002 | wp-pipeline | force execution | medium | assigned | Tasks 5.19-5.20 require the summarization handler to honor `force_reprocess`. |
 
 ## Coverage Summary
 
 - **Requirements traced**: 37/37
 - **Tests mapped**: 37 requirements have at least one test
-- **Evidence collected**: 10/37 requirements have pass/fail evidence
+- **Evidence collected**: 14/37 requirements have pass/fail evidence
 - **Gaps identified**: Remaining work packages still need implementation files and validation evidence.
 - **Deferred items**: None.

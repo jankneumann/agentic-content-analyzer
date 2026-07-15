@@ -10,6 +10,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import (
+    BigInteger,
     Column,
     DateTime,
     Enum as SQLEnum,
@@ -44,6 +45,7 @@ class AudioDigest(Base):
     __tablename__ = "audio_digests"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    operation_id = Column(BigInteger, nullable=True, unique=True, index=True)
     digest_id = Column(Integer, ForeignKey("digests.id"), nullable=False, index=True)
 
     # Generation config

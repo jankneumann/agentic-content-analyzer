@@ -13,8 +13,9 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from sqlalchemy.engine import Engine
 
+from src.models.audio_digest import AudioDigest
 from src.models.digest import Digest, DigestData, DigestType
-from src.models.podcast import PodcastScriptRecord
+from src.models.podcast import Podcast, PodcastScriptRecord
 from src.models.theme import ThemeAnalysis, ThemeAnalysisResult
 
 
@@ -59,6 +60,18 @@ def test_provenance_migration_round_trip_preserves_legacy_semantics() -> None:
         sa.Column("id", sa.Integer, primary_key=True),
         sa.Column("content_ids", sa.JSON, nullable=False, server_default="[]"),
     )
+    podcasts = sa.Table(
+        "podcasts",
+        metadata,
+        sa.Column("id", sa.Integer, primary_key=True),
+        sa.Column("script_id", sa.Integer, nullable=False),
+    )
+    audio_digests = sa.Table(
+        "audio_digests",
+        metadata,
+        sa.Column("id", sa.Integer, primary_key=True),
+        sa.Column("digest_id", sa.Integer, nullable=False),
+    )
     jobs = sa.Table(
         "pgqueuer_jobs",
         metadata,
@@ -83,6 +96,8 @@ def test_provenance_migration_round_trip_preserves_legacy_semantics() -> None:
             {"id": 1, "payload": {"schema_version": 1, "operation_type": "legacy"}},
         )
         connection.execute(themes.insert(), {"id": 1, "content_ids": [12, 10]})
+        connection.execute(podcasts.insert(), {"id": 1, "script_id": 1})
+        connection.execute(audio_digests.insert(), {"id": 1, "digest_id": 1})
 
         migration.op = Operations(MigrationContext.configure(connection))
         migration.upgrade()
@@ -131,6 +146,21 @@ def test_provenance_migration_round_trip_preserves_legacy_semantics() -> None:
         assert theme_columns["selection_policy"]["nullable"] is False
         assert theme_columns["summary_ids"]["default"] is not None
         assert theme_columns["selection_policy"]["default"] is not None
+        for table_name in (
+            "theme_analyses",
+            "digests",
+            "podcast_scripts",
+            "podcasts",
+            "audio_digests",
+        ):
+            operation_column = {
+                column["name"]: column for column in inspector.get_columns(table_name)
+            }["operation_id"]
+            assert operation_column["nullable"] is True
+            operation_index = {index["name"]: index for index in inspector.get_indexes(table_name)}[
+                f"ix_{table_name}_operation_id"
+            ]
+            assert bool(operation_index["unique"]) is True
 
         migrated_digests = _json_table(
             "digests",
@@ -215,6 +245,25 @@ def test_provenance_migration_round_trip_preserves_legacy_semantics() -> None:
         theme_indexes = {index["name"] for index in inspector.get_indexes("theme_analyses")}
         assert "ix_theme_analyses_selection_fingerprint" in theme_indexes
 
+        generated_resources = {
+            table_name: sa.Table(table_name, sa.MetaData(), autoload_with=connection)
+            for table_name in (
+                "theme_analyses",
+                "digests",
+                "podcast_scripts",
+                "podcasts",
+                "audio_digests",
+            )
+        }
+        for table in generated_resources.values():
+            connection.execute(table.update().where(table.c.id == 1).values(operation_id=101))
+            duplicate = dict(
+                connection.execute(sa.select(table).where(table.c.id == 1)).mappings().one()
+            )
+            duplicate.pop("id")
+            with pytest.raises(sa.exc.IntegrityError):
+                connection.execute(table.insert().values(**duplicate))
+
         # Reusing the queue does not introduce a competing operation table or mutate payloads.
         assert "operations" not in inspector.get_table_names()
         assert connection.execute(sa.select(jobs.c.payload)).scalar_one() == {
@@ -222,6 +271,7 @@ def test_provenance_migration_round_trip_preserves_legacy_semantics() -> None:
             "operation_type": "legacy",
         }
 
+        migration.downgrade()
         migration.downgrade()
         downgraded = sa.inspect(connection)
         assert "source_summary_ids" not in {
@@ -236,6 +286,16 @@ def test_provenance_migration_round_trip_preserves_legacy_semantics() -> None:
         assert "summary_ids" not in {
             column["name"] for column in downgraded.get_columns("theme_analyses")
         }
+        for table_name in (
+            "theme_analyses",
+            "digests",
+            "podcast_scripts",
+            "podcasts",
+            "audio_digests",
+        ):
+            assert "operation_id" not in {
+                column["name"] for column in downgraded.get_columns(table_name)
+            }
 
 
 def test_postgresql_defaults_accept_legacy_writes(test_engine: Engine) -> None:
@@ -342,6 +402,12 @@ def test_legacy_fingerprint_is_deterministic_and_order_sensitive() -> None:
 
 
 def test_orm_models_expose_additive_provenance_fields() -> None:
+    for model in (ThemeAnalysis, Digest, PodcastScriptRecord, Podcast, AudioDigest):
+        operation_column = model.__table__.columns["operation_id"]
+        assert operation_column.nullable is True
+        assert isinstance(operation_column.type, sa.BigInteger)
+        assert operation_column.unique is True
+
     assert {
         "source_summary_ids",
         "selection_fingerprint",

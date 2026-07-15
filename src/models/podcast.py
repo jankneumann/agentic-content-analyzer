@@ -13,6 +13,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Column,
     DateTime,
     ForeignKey,
@@ -214,6 +215,7 @@ class PodcastScriptRecord(Base):
     __tablename__ = "podcast_scripts"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    operation_id = Column(BigInteger, nullable=True, unique=True, index=True)
     digest_id = Column(Integer, ForeignKey("digests.id"), nullable=False, index=True)
     length = Column(String(50), nullable=False)  # Using String to match DB values
 
@@ -276,6 +278,7 @@ class Podcast(Base):
     __tablename__ = "podcasts"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    operation_id = Column(BigInteger, nullable=True, unique=True, index=True)
     script_id = Column(Integer, ForeignKey("podcast_scripts.id"), nullable=False, index=True)
 
     # Audio output

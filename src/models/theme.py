@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
-from sqlalchemy import JSON, Column, DateTime, Enum, Float, Index, Integer, String, Text
+from sqlalchemy import JSON, BigInteger, Column, DateTime, Enum, Float, Index, Integer, String, Text
 
 from src.models.base import Base
 from src.models.query import LEGACY_SELECTION_POLICY_JSON, legacy_selection_policy
@@ -48,6 +48,7 @@ class ThemeAnalysis(Base):
     __tablename__ = "theme_analyses"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    operation_id = Column(BigInteger, nullable=True, unique=True, index=True)
 
     # Lifecycle status
     status = Column(

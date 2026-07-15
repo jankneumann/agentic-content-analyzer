@@ -1,6 +1,21 @@
 -- Contract delta for canonical content provenance and queue-backed operations.
 -- Implementation must translate this contract into an idempotent Alembic migration.
 
+-- Each generated resource is durably owned by at most one queue operation.
+-- Nullable ownership preserves legacy writers while allowing a worker to recover
+-- a committed resource if its operation projection was not attached before a crash.
+ALTER TABLE theme_analyses ADD COLUMN operation_id BIGINT;
+ALTER TABLE digests ADD COLUMN operation_id BIGINT;
+ALTER TABLE podcast_scripts ADD COLUMN operation_id BIGINT;
+ALTER TABLE podcasts ADD COLUMN operation_id BIGINT;
+ALTER TABLE audio_digests ADD COLUMN operation_id BIGINT;
+
+CREATE UNIQUE INDEX ix_theme_analyses_operation_id ON theme_analyses (operation_id);
+CREATE UNIQUE INDEX ix_digests_operation_id ON digests (operation_id);
+CREATE UNIQUE INDEX ix_podcast_scripts_operation_id ON podcast_scripts (operation_id);
+CREATE UNIQUE INDEX ix_podcasts_operation_id ON podcasts (operation_id);
+CREATE UNIQUE INDEX ix_audio_digests_operation_id ON audio_digests (operation_id);
+
 -- Theme analysis preserves the exact resolved content and Summary pairs rather
 -- than re-querying a period and silently broadening the selection.
 ALTER TABLE theme_analyses

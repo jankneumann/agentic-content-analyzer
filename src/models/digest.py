@@ -5,7 +5,17 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
-from sqlalchemy import JSON, Boolean, Column, DateTime, Enum as SQLEnum, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    Column,
+    DateTime,
+    Enum as SQLEnum,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, relationship
 
 from src.models.base import Base
@@ -46,6 +56,7 @@ class Digest(Base):
     __tablename__ = "digests"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    operation_id = Column(BigInteger, nullable=True, unique=True, index=True)
     digest_type = Column(SQLEnum(DigestType), nullable=False, index=True)
 
     # Time period covered
