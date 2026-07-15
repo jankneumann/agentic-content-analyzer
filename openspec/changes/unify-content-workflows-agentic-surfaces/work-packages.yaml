@@ -391,6 +391,8 @@ packages:
         - src/ingestion/xsearch.py
         - src/ingestion/perplexity_search.py
         - src/ingestion/podcast.py
+        - src/ingestion/scholar.py
+        - src/ingestion/youtube.py
         - src/config/sources.py
         - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/openapi/v1.yaml
         - src/contracts/workflow_models.py
@@ -413,6 +415,8 @@ packages:
         - src/ingestion/xsearch.py
         - src/ingestion/perplexity_search.py
         - src/ingestion/podcast.py
+        - src/ingestion/scholar.py
+        - src/ingestion/youtube.py
         - src/config/sources.py
         - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/openapi/v1.yaml
         - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/generated/models.py
@@ -429,6 +433,8 @@ packages:
         - tests/test_ingestion/test_xsearch.py
         - tests/test_ingestion/test_perplexity_search.py
         - tests/test_ingestion/test_podcast.py
+        - tests/test_ingestion/test_scholar.py
+        - tests/test_ingestion/test_youtube_sources.py
         - tests/test_config/test_sources.py
         - tests/contract/test_canonical_workflow_contracts.py
       read_allow: ["src/**", "tests/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
@@ -442,7 +448,7 @@ packages:
       steps:
         - name: pipeline-tests
           kind: command
-          command: uv run pytest tests/pipeline tests/workflows/test_pipeline_workflow.py tests/queue/test_operation_service.py tests/ingestion/test_content_references.py tests/ingestion/test_ingestion_service.py tests/ingestion/test_source_registry.py tests/test_ingestion/test_xsearch.py tests/test_ingestion/test_perplexity_search.py tests/test_ingestion/test_podcast.py tests/test_config/test_sources.py tests/contract/test_canonical_workflow_contracts.py --no-cov
+          command: uv run pytest tests/pipeline tests/workflows/test_pipeline_workflow.py tests/queue/test_operation_service.py tests/ingestion/test_content_references.py tests/ingestion/test_ingestion_service.py tests/ingestion/test_source_registry.py tests/test_ingestion/test_xsearch.py tests/test_ingestion/test_perplexity_search.py tests/test_ingestion/test_podcast.py tests/test_ingestion/test_scholar.py tests/test_ingestion/test_youtube_sources.py tests/test_config/test_sources.py tests/contract/test_canonical_workflow_contracts.py --no-cov
           expect_exit_code: 0
           evidence:
             artifacts: [artifacts/wp-pipeline/pytest.txt]
