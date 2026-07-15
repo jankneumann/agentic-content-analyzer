@@ -386,6 +386,10 @@ packages:
         - src/services/operation_service.py
         - src/queue/setup.py
         - src/ingestion/registry.py
+        - src/ingestion/content_references.py
+        - src/ingestion/service.py
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/openapi/v1.yaml
+        - src/contracts/workflow_models.py
         - src/workflows/digest.py
       keys:
         - feature:unify-content-workflows-agentic-surfaces:pipeline
@@ -400,12 +404,21 @@ packages:
         - src/services/operation_service.py
         - src/queue/setup.py
         - src/ingestion/registry.py
+        - src/ingestion/content_references.py
+        - src/ingestion/service.py
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/openapi/v1.yaml
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/generated/models.py
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/generated/types.ts
+        - src/contracts/workflow_models.py
         - src/workflows/digest.py
         - tests/pipeline/**
         - tests/workflows/test_pipeline_workflow.py
         - tests/workflows/test_digest_workflow.py
         - tests/queue/test_operation_service.py
+        - tests/ingestion/test_content_references.py
+        - tests/ingestion/test_ingestion_service.py
         - tests/ingestion/test_source_registry.py
+        - tests/contract/test_canonical_workflow_contracts.py
       read_allow: ["src/**", "tests/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
       deny: ["src/api/**", "src/cli/**", "src/mcp/**", "web/**"]
     worktree: { name: wp-pipeline, mode: isolated }
@@ -417,7 +430,7 @@ packages:
       steps:
         - name: pipeline-tests
           kind: command
-          command: uv run pytest tests/pipeline tests/workflows/test_pipeline_workflow.py tests/queue/test_operation_service.py tests/ingestion/test_source_registry.py --no-cov
+          command: uv run pytest tests/pipeline tests/workflows/test_pipeline_workflow.py tests/queue/test_operation_service.py tests/ingestion/test_content_references.py tests/ingestion/test_ingestion_service.py tests/ingestion/test_source_registry.py tests/contract/test_canonical_workflow_contracts.py --no-cov
           expect_exit_code: 0
           evidence:
             artifacts: [artifacts/wp-pipeline/pytest.txt]
