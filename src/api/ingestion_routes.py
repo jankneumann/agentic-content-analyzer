@@ -50,6 +50,7 @@ _UPLOAD_SIGNATURES: dict[str, tuple[bytes, ...]] = {
     ".jpeg": (b"\xff\xd8\xff",),
     ".jpg": (b"\xff\xd8\xff",),
     ".mp3": (b"ID3", b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"),
+    ".msg": (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1",),
     ".pdf": (b"%PDF",),
     ".png": (b"\x89PNG\r\n\x1a\n",),
     ".pptx": (b"PK\x03\x04",),
