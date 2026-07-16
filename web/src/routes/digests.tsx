@@ -167,18 +167,10 @@ function DigestsPage() {
   const generateMutation = useGenerateDigest()
   const approveMutation = useApproveDigest()
   const rejectMutation = useRejectDigest()
-  const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
+  const { addOperation } = useBackgroundTasks()
 
   const handleGenerateDigest = (params: DigestGenerationParams) => {
-    // Close dialog immediately - task runs in background
     setShowGenerateDialog(false)
-
-    // Add background task
-    const taskId = addTask({
-      type: "digest",
-      title: `${params.digest_type === "daily" ? "Daily" : "Weekly"} Digest`,
-      message: "Starting generation...",
-    })
 
     generateMutation.mutate(
       {
@@ -190,51 +182,13 @@ function DigestsPage() {
         max_emerging_trends: params.max_emerging_trends,
       },
       {
-        onSuccess: () => {
-          // API returns "queued" - actual work happens in background
-          // Poll for completion by checking digest list
-          updateTask(taskId, { progress: 20, message: "Generating digest content..." })
-
-          let pollCount = 0
-          const maxPolls = 60 // 5 minutes max (5s intervals)
-
-          const pollInterval = setInterval(async () => {
-            pollCount++
-            const progressPercent = Math.min(20 + pollCount * 1.3, 95)
-            updateTask(taskId, {
-              progress: Math.round(progressPercent),
-              message: pollCount < 10 ? "Analyzing summaries..." :
-                       pollCount < 20 ? "Building strategic insights..." :
-                       pollCount < 30 ? "Identifying trends..." : "Finalizing digest..."
-            })
-
-            // Refetch to check status
-            const result = await refetch()
-            const newDigest = result.data?.find(
-              (d) => d.status === "PENDING_REVIEW" || d.status === "COMPLETED"
-            )
-
-            if (newDigest || pollCount >= maxPolls) {
-              clearInterval(pollInterval)
-              if (newDigest) {
-                completeTask(taskId, "Digest generated successfully")
-                toast.success(`${params.digest_type === "daily" ? "Daily" : "Weekly"} digest generated`)
-              } else {
-                updateTask(taskId, { progress: 95, message: "Generation in progress..." })
-              }
-            }
-          }, 5000)
-        },
+        onSuccess: (operation) => { addOperation(operation); toast.success("Digest queued") },
         onError: (err) => {
           const errorMsg = err instanceof Error ? err.message : "Unknown error"
-          failTask(taskId, errorMsg)
           toast.error(`Failed to generate digest: ${errorMsg}`)
         },
       }
     )
-
-    // Update progress indicator
-    updateTask(taskId, { progress: 10, message: "Queuing generation..." })
   }
 
   const handleApprove = (digestId: number) => {

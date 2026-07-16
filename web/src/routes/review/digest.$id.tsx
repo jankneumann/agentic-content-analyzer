@@ -21,12 +21,11 @@ import {
   SelectionPopover,
 } from "@/components/review"
 import { RevisionChatPanel } from "@/components/chat"
-import { type DigestSourceSummary, regenerateDigest } from "@/lib/api/digests"
+import { type DigestSourceSummary } from "@/lib/api/digests"
 import { ReviewProvider, useReviewContext } from "@/contexts/ReviewContext"
 import { useDigest, useDigestSources, useDigestNavigation } from "@/hooks/use-digests"
 import { useChatConfig, useChatSession } from "@/hooks/use-chat"
 import { useTextSelection } from "@/hooks/use-text-selection"
-import { useQueryClient } from "@tanstack/react-query"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
@@ -190,9 +189,6 @@ function DigestReviewContent({
   // Chat session hook - handles persistence and messaging
   const chat = useChatSession("digest", digest.id.toString())
 
-  // Local state for regeneration (separate from chat)
-  const [isGenerating, setIsGenerating] = React.useState(false)
-
   // Chat config and model selection
   const { data: chatConfig } = useChatConfig()
   const [selectedModel, setSelectedModel] = React.useState<string | undefined>()
@@ -252,31 +248,6 @@ function DigestReviewContent({
     }
   }, [chat, selectedModel])
 
-  // React Query client for invalidation
-  const queryClient = useQueryClient()
-
-  // Handle generating a preview (explicit button click)
-  const handleGeneratePreview = React.useCallback(async () => {
-    try {
-      setIsGenerating(true)
-
-      await regenerateDigest(digest.id)
-
-      toast.success("Regeneration started", {
-        description: "The digest is being regenerated in the background.",
-      })
-
-      // Invalidate digest query to trigger re-fetch/polling
-      await queryClient.invalidateQueries({ queryKey: ["digest", digest.id] })
-
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error("Failed to regenerate digest")
-      toast.error("Regeneration failed", { description: error.message })
-    } finally {
-      setIsGenerating(false)
-    }
-  }, [digest.id, queryClient])
-
   return (
     <div ref={containerRef} className="flex h-full flex-col">
       {/* Main content area */}
@@ -312,8 +283,6 @@ function DigestReviewContent({
           streamingContent={chat.streamingContent}
           error={chat.error}
           onSendMessage={handleSendMessage}
-          onGeneratePreview={handleGeneratePreview}
-          isGenerating={isGenerating}
           artifactType="digest"
           isExpanded={isPanelExpanded}
           onToggle={() => setIsPanelExpanded(!isPanelExpanded)}

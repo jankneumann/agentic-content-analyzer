@@ -20,7 +20,6 @@
  * })
  */
 
-import type { ApiError } from "@/types"
 import type { Problem } from "@/generated/workflow-contracts"
 
 /**

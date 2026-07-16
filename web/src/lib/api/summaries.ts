@@ -23,6 +23,7 @@ import type {
   SummaryFilters,
   PaginatedResponse,
 } from "@/types"
+import type { OperationHandle } from "@/generated/workflow-contracts"
 
 // Re-export for convenience
 export type { SummaryFilters }
@@ -84,8 +85,9 @@ export async function fetchSummaryByNewsletter(
  */
 export async function triggerSummarization(
   request: SummarizeRequest
-): Promise<SummarizeResponse> {
-  return apiClient.post<SummarizeResponse>("/summaries/generate", request)
+): Promise<OperationHandle> {
+  const contentIds = request.content_ids?.length ? request.content_ids.map(Number) : undefined
+  return apiClient.post<OperationHandle>("/summarization-runs", { content_ids: contentIds, query: contentIds ? undefined : {}, force_reprocess: request.force })
 }
 
 /**
@@ -99,7 +101,7 @@ export async function triggerSummarization(
 export async function regenerateSummary(
   summaryId: string
 ): Promise<SummarizeResponse> {
-  return apiClient.post<SummarizeResponse>(`/summaries/${summaryId}/regenerate`)
+  throw new Error(`Summary regeneration is unavailable after the workflow migration (${summaryId})`)
 }
 
 /**

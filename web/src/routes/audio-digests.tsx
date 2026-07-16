@@ -178,18 +178,10 @@ function AudioDigestsPage() {
   const { data: availableDigests } = useAvailableDigests()
   const createMutation = useCreateAudioDigest()
   const deleteMutation = useDeleteAudioDigest()
-  const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
+  const { addOperation } = useBackgroundTasks()
 
   const handleGenerateAudio = (params: AudioDigestGenerationParams) => {
-    // Close dialog immediately - task runs in background
     setShowGenerateDialog(false)
-
-    // Add background task
-    const taskId = addTask({
-      type: "audio",
-      title: "Generate Audio Digest",
-      message: "Starting audio generation...",
-    })
 
     createMutation.mutate(
       {
@@ -201,68 +193,13 @@ function AudioDigestsPage() {
         },
       },
       {
-        onSuccess: () => {
-          // API returns "pending" - actual work happens in background
-          // Poll for completion by checking audio digest list
-          updateTask(taskId, { progress: 20, message: "Processing digest content..." })
-
-          let pollCount = 0
-          const maxPolls = 120 // 10 minutes max (5s intervals) - audio gen is slow
-
-          const pollInterval = setInterval(async () => {
-            pollCount++
-            const progressPercent = Math.min(20 + pollCount * 0.6, 95)
-            updateTask(taskId, {
-              progress: Math.round(progressPercent),
-              message:
-                pollCount < 15
-                  ? "Processing digest content..."
-                  : pollCount < 30
-                    ? "Chunking text for TTS..."
-                    : pollCount < 60
-                      ? "Synthesizing audio..."
-                      : pollCount < 90
-                        ? "Combining audio segments..."
-                        : "Finalizing audio...",
-            })
-
-            const result = await refetch()
-            // Look for an audio digest that just completed or is processing for this digest
-            const newAudioDigest = result.data?.find(
-              (a) => a.digest_id === params.digest_id && a.status === "completed"
-            )
-            const processingAudioDigest = result.data?.find(
-              (a) => a.digest_id === params.digest_id && (a.status === "processing" || a.status === "pending")
-            )
-            const failedAudioDigest = result.data?.find(
-              (a) => a.digest_id === params.digest_id && a.status === "failed"
-            )
-
-            if (newAudioDigest || failedAudioDigest || pollCount >= maxPolls) {
-              clearInterval(pollInterval)
-              if (newAudioDigest) {
-                completeTask(taskId, "Audio digest generated successfully")
-                toast.success("Audio digest generated")
-              } else if (failedAudioDigest) {
-                failTask(taskId, failedAudioDigest.error_message ?? "Audio generation failed")
-                toast.error(`Audio generation failed: ${failedAudioDigest.error_message}`)
-              } else if (!processingAudioDigest) {
-                // No processing audio digest found after timeout
-                updateTask(taskId, { progress: 95, message: "Generation may still be in progress..." })
-              }
-            }
-          }, 5000)
-        },
+        onSuccess: (operation) => { addOperation(operation); toast.success("Audio digest queued") },
         onError: (err) => {
           const errorMsg = err instanceof Error ? err.message : "Unknown error"
-          failTask(taskId, errorMsg)
           toast.error(`Failed to generate audio: ${errorMsg}`)
         },
       }
     )
-
-    // Update progress indicator
-    updateTask(taskId, { progress: 10, message: "Queuing audio generation..." })
   }
 
   const handleDelete = (audioDigest: AudioDigestListItem) => {

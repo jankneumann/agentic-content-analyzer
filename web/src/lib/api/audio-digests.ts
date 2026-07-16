@@ -20,9 +20,9 @@ import type {
   AudioDigestStatistics,
   AudioDigestFilters,
   CreateAudioDigestRequest,
-  CreateAudioDigestResponse,
   AvailableDigest,
 } from "@/types"
+import type { OperationHandle } from "@/generated/workflow-contracts"
 
 /**
  * Fetch list of audio digests
@@ -83,8 +83,8 @@ export async function fetchAudioDigestsForDigest(
 export async function createAudioDigest(
   digestId: number,
   request: CreateAudioDigestRequest
-): Promise<CreateAudioDigestResponse> {
-  return apiClient.post(`/digests/${digestId}/audio`, request)
+): Promise<OperationHandle> {
+  return apiClient.post("/audio-digests", { digest_id: digestId, ...request })
 }
 
 /**
