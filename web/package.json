@@ -4,8 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "contracts:generate": "cd .. && uv run python scripts/generate_workflow_contracts.py",
+    "contracts:check": "cd .. && uv run python scripts/generate_workflow_contracts.py --check",
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "pnpm contracts:check && tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

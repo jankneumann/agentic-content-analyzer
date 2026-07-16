@@ -397,21 +397,21 @@
 
 ## 9. Frontend Surface
 
-- [ ] 9.1 [M] Write frontend contract drift tests
+- [x] 9.1 [M] Write frontend contract drift tests
   **Spec scenarios**: source-capability-registry.5-6, agentic-operations.8, cli-interface.6
   **Contracts**: `contracts/generated/types.ts`, `contracts/openapi/v1.yaml`
   **Design decisions**: D9
   **Dependencies**: 1.2
 
-- [ ] 9.2 [S] Add frontend type generation
+- [x] 9.2 [S] Add frontend type generation
   Generate source command, operation, problem, capability, and resource types from OpenAPI during the frontend build and CI.
   **Dependencies**: 9.1
 
-- [ ] 9.3 [M] Implement canonical frontend API client
+- [x] 9.3 [M] Implement canonical frontend API client
   Add typed submission, upload, capability, status, SSE, retry, cancellation, and resource lookup methods.
   **Dependencies**: 9.1, 9.2, 7.11
 
-- [ ] 9.4 [XS] Checkpoint: run frontend contract tests, review diff, verify scope
+- [x] 9.4 [XS] Checkpoint: run frontend contract tests, review diff, verify scope
   **Dependencies**: 9.2, 9.3
 
 - [ ] 9.5 [M] Write frontend workflow tests
