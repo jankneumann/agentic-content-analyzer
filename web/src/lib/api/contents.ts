@@ -217,10 +217,14 @@ export interface SaveURLResponse {
  * @param params - URL and optional metadata
  * @returns Save result with content_id and status
  */
-export async function saveUrl(
-  params: SaveURLParams
-): Promise<OperationHandle> {
-  return apiClient.post<OperationHandle>("/ingestions", { kind: "url", ...params })
+export async function saveUrl(params: SaveURLParams): Promise<OperationHandle> {
+  return apiClient.post<OperationHandle>("/ingestions", {
+    kind: "url",
+    url: params.url,
+    title: params.title,
+    tags: params.tags,
+    notes: params.notes,
+  })
 }
 
 // ============================================================================
@@ -336,7 +340,10 @@ export function trackContentSummarization(
                   ) as ContentSummarizationProgressEvent
                   onProgress?.(event)
 
-                  if (event.status === "completed" || event.status === "error") {
+                  if (
+                    event.status === "completed" ||
+                    event.status === "error"
+                  ) {
                     resolve(event)
                     return
                   }

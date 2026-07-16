@@ -3,7 +3,7 @@
  *
  * Tests for /review/summary/:id page: two-pane layout,
  * left pane (original content), right pane (summary),
- * feedback panel, and regenerate button.
+ * revision chat panel, with unsupported direct preview mutations absent.
  *
  * The ReviewHeader renders:
  * - <h1> title: "Review Summary"
@@ -136,5 +136,8 @@ test.describe("Summary Review Page", () => {
 
     // The revision panel is rendered in the border-t area
     await expect(reviewPage.page.locator(".border-t").last()).toBeVisible()
+    await expect(
+      reviewPage.page.getByRole("button", { name: "Generate Preview" })
+    ).toHaveCount(0)
   })
 })
