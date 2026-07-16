@@ -8,7 +8,7 @@
  */
 
 import * as React from "react"
-import { Loader2, FileText, ListChecks, Filter } from "lucide-react"
+import { Loader2, FileText, RefreshCw, ListChecks, Filter } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -79,7 +79,7 @@ export function GenerateSummaryDialog({
   }
 
   // Calculate total items to process
-  const totalPending = pendingCount + (retryFailed ? failedCount : 0)
+  const totalPending = pendingCount
   const canGenerate =
     mode === "pending" ? totalPending > 0 : parsedIds.length > 0
 

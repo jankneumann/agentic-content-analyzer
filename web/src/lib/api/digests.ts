@@ -92,7 +92,15 @@ export async function generateDigest(
   request: GenerateDigestRequest
 ): Promise<OperationHandle> {
   if (!request.period_start || !request.period_end) throw new Error("Digest period is required")
-  const canonical: DigestCreateRequest = { digest_type: request.digest_type, period_start: request.period_start, period_end: request.period_end, query: request.content_query, include_historical_context: request.include_historical_context }
+  const query = request.content_query
+    ? {
+        ...request.content_query,
+        sort_by: ["id", "title", "source_type", "publication", "status", "published_date", "ingested_at"].includes(request.content_query.sort_by ?? "")
+          ? request.content_query.sort_by as NonNullable<DigestCreateRequest["query"]>["sort_by"]
+          : undefined,
+      }
+    : undefined
+  const canonical: DigestCreateRequest = { digest_type: request.digest_type, period_start: request.period_start, period_end: request.period_end, query, include_historical_context: request.include_historical_context }
   return apiClient.post("/digests", canonical)
 }
 
