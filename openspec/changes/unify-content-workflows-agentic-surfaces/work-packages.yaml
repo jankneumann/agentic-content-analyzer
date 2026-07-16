@@ -625,6 +625,9 @@ packages:
         - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
         - src/mcp_server.py
         - src/mcp_tools/**
+        - src/services/reference_workflow_service.py
+        - src/api/routes/reference_routes.py
+        - tests/api/test_reference_routes.py
         - tests/mcp/**
       read_allow: ["src/**", "tests/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
       deny: ["src/api/**", "src/cli/**", "web/**"]
