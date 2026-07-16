@@ -394,9 +394,13 @@ async def test_reference_extract_http_and_in_process_have_contract_parity(
 
     monkeypatch.delenv("ACA_API_BASE_URL")
     monkeypatch.delenv("ACA_ADMIN_KEY")
-    import src.api.routes.reference_routes as reference_routes
+    import src.services.reference_workflow_service as reference_workflows
 
-    monkeypatch.setattr(reference_routes, "_run_extraction", MagicMock(return_value=expected))
+    monkeypatch.setattr(
+        reference_workflows.ReferenceWorkflowService,
+        "extract",
+        MagicMock(return_value=expected),
+    )
     local_result = await knowledge.extract_references(content_ids=[7])
 
     assert http_result == local_result
@@ -588,3 +592,87 @@ async def test_http_wait_runs_sync_client_off_the_event_loop(
         timeout_seconds=12,
         poll_interval=0.5,
     )
+
+
+@pytest.mark.asyncio
+async def test_http_status_long_poll_runs_off_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ACA_API_BASE_URL", "https://api.example.test")
+    monkeypatch.setenv("ACA_ADMIN_KEY", "secret")
+    client = MagicMock()
+    monkeypatch.setattr(runtime, "create_workflow_client", lambda: client)
+    to_thread = AsyncMock(return_value=_handle())
+    monkeypatch.setattr(operations.asyncio, "to_thread", to_thread)
+
+    result = await operations.get_operation_status("42", wait_seconds=30)
+
+    assert result.operation_id == "42"
+    to_thread.assert_awaited_once_with(client.get_operation, "42", wait_seconds=30)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool", "path", "label"),
+    [
+        (content.get_content, "/api/v1/contents/404", "Content 404"),
+        (content.get_digest, "/api/v1/digests/404", "Digest 404"),
+        (
+            content.get_podcast_script,
+            "/api/v1/scripts/404",
+            "Podcast script 404",
+        ),
+    ],
+)
+async def test_http_resource_misses_use_typed_not_found_problem(
+    monkeypatch: pytest.MonkeyPatch,
+    tool,
+    path: str,
+    label: str,
+) -> None:
+    monkeypatch.setenv("ACA_API_BASE_URL", "https://api.example.test")
+    monkeypatch.setenv("ACA_ADMIN_KEY", "secret")
+    problem = Problem(
+        type="https://aca.example/problems/not-found",
+        title="Not found",
+        status=404,
+        detail=f"{label} not found",
+    )
+    request = MagicMock(side_effect=runtime.ProblemError(problem))
+    monkeypatch.setattr(runtime, "request_json", request)
+
+    with pytest.raises(McpError) as exc_info:
+        await tool(404)
+
+    request.assert_called_once_with("GET", path)
+    assert exc_info.value.error.data["code"] == "resource_not_found"
+    assert exc_info.value.error.data["problem"]["status"] == 404
+
+
+@pytest.mark.asyncio
+async def test_in_process_resource_misses_match_typed_not_found_problem(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import src.services.content_service as content_service_module
+    import src.services.review_service as review_service_module
+    import src.services.script_review_service as script_review_module
+    import src.storage.database as database_module
+
+    context = MagicMock()
+    context.__enter__.return_value = MagicMock()
+    monkeypatch.setattr(database_module, "get_db", lambda: context)
+    content_service = MagicMock()
+    content_service.get.return_value = None
+    monkeypatch.setattr(content_service_module, "ContentService", lambda _: content_service)
+    review_service = MagicMock()
+    review_service.get_digest = AsyncMock(return_value=None)
+    monkeypatch.setattr(review_service_module, "ReviewService", lambda: review_service)
+    script_service = MagicMock()
+    script_service.get_script_for_review.side_effect = ValueError("not found")
+    monkeypatch.setattr(script_review_module, "ScriptReviewService", lambda: script_service)
+
+    for tool in (content.get_content, content.get_digest, content.get_podcast_script):
+        with pytest.raises(McpError) as exc_info:
+            await tool(404)
+        assert exc_info.value.error.data["code"] == "resource_not_found"
+        assert exc_info.value.error.data["problem"]["status"] == 404

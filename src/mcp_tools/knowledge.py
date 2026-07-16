@@ -9,7 +9,12 @@ from typing import Annotated, Any, Literal
 from pydantic import Field
 
 from src.api.schemas.graph import GraphQueryResponse
-from src.api.schemas.references import ReferencesExtractResponse, ReferencesResolveResponse
+from src.api.schemas.references import (
+    ReferencesExtractRequest,
+    ReferencesExtractResponse,
+    ReferencesResolveRequest,
+    ReferencesResolveResponse,
+)
 from src.mcp_tools import runtime
 
 
@@ -177,33 +182,29 @@ async def extract_references(
     batch_size: Annotated[int, Field(ge=1, le=500)] = 50,
 ) -> ReferencesExtractResponse:
     """Extract and persist references in a bounded batch."""
-    if content_ids is None and since is None:
-        raise ValueError("Provide content_ids or since")
-    if content_ids is not None and (since is not None or until is not None):
-        raise ValueError("content_ids and since/until are mutually exclusive")
-    body = {
-        key: value
-        for key, value in {
-            "content_ids": content_ids,
-            "since": since,
-            "until": until,
-            "batch_size": batch_size,
-        }.items()
-        if value is not None
-    }
+    request = ReferencesExtractRequest(
+        content_ids=content_ids,
+        since=since,
+        until=until,
+        batch_size=batch_size,
+    )
+    body = request.model_dump(mode="json", exclude_none=True)
     if runtime.transport_mode() is runtime.TransportMode.HTTP:
         return ReferencesExtractResponse.model_validate(
             runtime.request_json("POST", "/api/v1/references/extract", json=body)
         )
-    from src.api.routes.reference_routes import REFERENCE_BATCH_TIMEOUT_S, _run_extraction
+    from src.services.reference_workflow_service import (
+        REFERENCE_BATCH_TIMEOUT_S,
+        ReferenceWorkflowService,
+    )
 
     result = await asyncio.wait_for(
         asyncio.to_thread(
-            _run_extraction,
-            content_ids=content_ids,
-            since=since,
-            until=until,
-            batch_size=batch_size,
+            ReferenceWorkflowService().extract,
+            content_ids=request.content_ids,
+            since=request.since,
+            until=request.until,
+            batch_size=request.batch_size,
         ),
         timeout=REFERENCE_BATCH_TIMEOUT_S,
     )
@@ -219,16 +220,22 @@ async def resolve_references(
     batch_size: Annotated[int, Field(ge=1, le=1000)] = 100,
 ) -> ReferencesResolveResponse:
     """Resolve persisted references in a bounded batch."""
+    request = ReferencesResolveRequest(batch_size=batch_size)
     if runtime.transport_mode() is runtime.TransportMode.HTTP:
         return ReferencesResolveResponse.model_validate(
             runtime.request_json(
-                "POST", "/api/v1/references/resolve", json={"batch_size": batch_size}
+                "POST",
+                "/api/v1/references/resolve",
+                json=request.model_dump(mode="json"),
             )
         )
-    from src.api.routes.reference_routes import REFERENCE_BATCH_TIMEOUT_S, _run_resolution
+    from src.services.reference_workflow_service import (
+        REFERENCE_BATCH_TIMEOUT_S,
+        ReferenceWorkflowService,
+    )
 
     result = await asyncio.wait_for(
-        asyncio.to_thread(_run_resolution, batch_size=batch_size),
+        asyncio.to_thread(ReferenceWorkflowService().resolve, batch_size=request.batch_size),
         timeout=REFERENCE_BATCH_TIMEOUT_S,
     )
     return ReferencesResolveResponse.model_validate(result)

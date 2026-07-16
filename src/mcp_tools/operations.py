@@ -94,7 +94,11 @@ async def get_operation_status(operation_id: str, wait_seconds: int = 0) -> Oper
     if runtime.transport_mode() is runtime.TransportMode.HTTP:
         client = runtime.create_workflow_client()
         try:
-            return client.get_operation(operation_id, wait_seconds=wait_seconds)
+            return await asyncio.to_thread(
+                client.get_operation,
+                operation_id,
+                wait_seconds=wait_seconds,
+            )
         finally:
             client.close()
     service = OperationService()
