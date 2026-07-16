@@ -77,11 +77,10 @@ class TestUpsert:
         with pytest.raises(SourceOverrideError):
             SourceOverrideService(db).upsert({"type": "blog"})
 
-    def test_valid_but_unkeyable_source_raises_service_error(self, db):
-        # readwise passes the Source union but has no locator field; upsert must
-        # surface a SourceOverrideError (-> HTTP 400), not a bare ValueError (500).
-        with pytest.raises(SourceOverrideError):
-            SourceOverrideService(db).upsert({"type": "readwise"})
+    def test_singleton_source_uses_stable_default_key(self, db):
+        row = SourceOverrideService(db).upsert({"type": "readwise"})
+
+        assert row.source_key == "readwise:default"
 
 
 class TestListAndGet:
