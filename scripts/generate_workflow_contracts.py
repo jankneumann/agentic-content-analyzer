@@ -8,8 +8,8 @@ import difflib
 import hashlib
 import json
 import pprint
+import shutil
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any, cast
 
@@ -357,13 +357,13 @@ def _validated_contract() -> dict[str, Any]:
 
 
 def _format_python(source: str) -> str:
-    ruff = Path(sys.executable).with_name("ruff")
-    if not ruff.exists():
+    ruff = shutil.which("ruff")
+    if ruff is None:
         raise RuntimeError(
-            "ruff is required for deterministic Python generation; run through `uv run --extra dev`"
+            "ruff is required for deterministic Python generation; install it or add it to PATH"
         )
     result = subprocess.run(
-        [str(ruff), "format", "--stdin-filename", str(PYTHON_OUTPUT), "-"],
+        [ruff, "format", "--stdin-filename", str(PYTHON_OUTPUT), "-"],
         input=source,
         text=True,
         capture_output=True,
