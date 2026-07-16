@@ -12,6 +12,8 @@
  * @see Backend model: src/models/digest.py
  */
 
+import type { ContentQuery } from "./query"
+
 /**
  * Type of digest
  * - daily: Aggregation of a single day's content
@@ -214,6 +216,7 @@ export interface GenerateDigestRequest {
   max_followup_prompts?: number
   /** Include historical context from knowledge graph */
   include_historical_context?: boolean
+  content_query?: ContentQuery
 }
 
 /**

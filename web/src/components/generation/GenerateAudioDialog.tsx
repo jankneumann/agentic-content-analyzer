@@ -49,18 +49,18 @@ export interface AudioGenerationParams {
 const voiceProviders = [
   { value: "openai_tts", label: "OpenAI TTS" },
   { value: "elevenlabs", label: "ElevenLabs" },
+  { value: "google_tts", label: "Google TTS" },
+  { value: "aws_polly", label: "AWS Polly" },
 ]
 
 const alexVoices = [
   { value: "alex_male", label: "Alex (Male, Default)" },
-  { value: "onyx", label: "Onyx (Deep Male)" },
-  { value: "echo", label: "Echo (Natural Male)" },
+  { value: "alex_female", label: "Alex (Female)" },
 ]
 
 const samVoices = [
   { value: "sam_female", label: "Sam (Female, Default)" },
-  { value: "nova", label: "Nova (Warm Female)" },
-  { value: "shimmer", label: "Shimmer (Expressive Female)" },
+  { value: "sam_male", label: "Sam (Male)" },
 ]
 
 export function GenerateAudioDialog({
