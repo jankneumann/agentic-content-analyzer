@@ -11,7 +11,7 @@ from pydantic import TypeAdapter
 from src.config.sources import load_sources_config
 from src.contracts.workflow_models import IngestCommand, OperationHandle, UploadReference
 from src.ingestion.registry import SOURCE_REGISTRY
-from src.mcp import runtime
+from src.mcp_tools import runtime
 from src.models.jobs import OperationType
 from src.services.operation_service import OperationService
 from src.services.upload_service import UploadService

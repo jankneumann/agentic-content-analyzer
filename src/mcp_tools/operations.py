@@ -6,7 +6,7 @@ from typing import Any
 
 from src.config.sources import load_sources_config
 from src.contracts.workflow_models import OperationHandle, OperationPage
-from src.mcp import runtime
+from src.mcp_tools import runtime
 from src.services.capability_service import CapabilityService
 from src.services.operation_service import OperationService
 

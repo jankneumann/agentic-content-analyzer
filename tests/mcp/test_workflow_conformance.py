@@ -11,8 +11,8 @@ import pytest
 from mcp.shared.exceptions import McpError
 
 from src.contracts.workflow_models import COMMAND_FIELD_SCHEMAS, OperationHandle, Problem
-from src.mcp import content, ingestion, knowledge, operations, runtime, workflows
-from src.mcp.toolsets import CANONICAL_TOOL_NAMES, register_toolsets
+from src.mcp_tools import content, ingestion, knowledge, operations, runtime, workflows
+from src.mcp_tools.toolsets import CANONICAL_TOOL_NAMES, register_toolsets
 
 
 def _handle(operation_type: str = "ingestion.execute") -> OperationHandle:

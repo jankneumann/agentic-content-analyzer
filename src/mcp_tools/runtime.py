@@ -7,16 +7,17 @@ import sys
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from functools import wraps
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
-from mcp.shared.exceptions import McpError
-from mcp.types import ErrorData
 from pydantic import BaseModel, ValidationError
 
 from src.clients.workflow_api_client import ProblemError, WorkflowApiClient
 from src.contracts.workflow_models import Problem
 from src.services.operation_service import OperationConflictError, OperationNotFoundError
+
+if TYPE_CHECKING:
+    from mcp.shared.exceptions import McpError
 
 
 class TransportMode(StrEnum):
@@ -87,6 +88,9 @@ def configuration_error(message: str) -> McpError:
 
 
 def protocol_error(code: str, message: str, *, data: Any | None = None) -> McpError:
+    from mcp.shared.exceptions import McpError
+    from mcp.types import ErrorData
+
     payload = {"code": code}
     if data is not None:
         payload["details"] = native(data)
@@ -94,6 +98,9 @@ def protocol_error(code: str, message: str, *, data: Any | None = None) -> McpEr
 
 
 def problem_error(problem: Problem) -> McpError:
+    from mcp.shared.exceptions import McpError
+    from mcp.types import ErrorData
+
     problem_data = problem.model_dump(mode="json", exclude_none=True)
     return McpError(
         ErrorData(
@@ -116,8 +123,6 @@ def tool_boundary[**P, T](
     async def guarded(*args: P.args, **kwargs: P.kwargs) -> T:
         try:
             return await function(*args, **kwargs)
-        except McpError:
-            raise
         except ProblemError as exc:
             raise problem_error(exc.problem) from exc
         except ValidationError as exc:
