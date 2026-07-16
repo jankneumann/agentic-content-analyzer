@@ -798,6 +798,8 @@ components:
       properties:
         configured_sources:
           type: array
+          readOnly: true
+          x-internal: true
           items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1 }
         days_back: { type: integer, minimum: 0 }
@@ -814,6 +816,8 @@ components:
             kind: { type: string, const: gmail }
             configured_sources:
               type: array
+              readOnly: true
+              x-internal: true
               items: { type: object, additionalProperties: true }
             query: { type: string }
             max_items: { type: integer, minimum: 1 }
@@ -829,6 +833,8 @@ components:
         kind: { type: string, const: rss }
         configured_sources:
           type: array
+          readOnly: true
+          x-internal: true
           items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1 }
         days_back: { type: integer, minimum: 0 }
@@ -843,6 +849,8 @@ components:
         kind: { type: string, const: blog }
         configured_sources:
           type: array
+          readOnly: true
+          x-internal: true
           items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1 }
         days_back: { type: integer, minimum: 0 }
@@ -857,6 +865,8 @@ components:
         kind: { type: string, const: substack }
         configured_sources:
           type: array
+          readOnly: true
+          x-internal: true
           items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1 }
         days_back: { type: integer, minimum: 0 }
@@ -871,6 +881,8 @@ components:
         kind: { type: string, const: youtube_playlist }
         configured_sources:
           type: array
+          readOnly: true
+          x-internal: true
           items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1 }
         days_back: { type: integer, minimum: 0 }
@@ -886,6 +898,8 @@ components:
         kind: { type: string, const: youtube_rss }
         configured_sources:
           type: array
+          readOnly: true
+          x-internal: true
           items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1 }
         days_back: { type: integer, minimum: 0 }
@@ -900,6 +914,8 @@ components:
         kind: { type: string, const: podcast }
         configured_sources:
           type: array
+          readOnly: true
+          x-internal: true
           items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1 }
         days_back: { type: integer, minimum: 0 }
@@ -915,6 +931,8 @@ components:
         kind: { type: string, const: x_search }
         configured_sources:
           type: array
+          readOnly: true
+          x-internal: true
           items: { type: object, additionalProperties: true }
         prompt: { type: string }
         max_threads: { type: integer, minimum: 1 }
@@ -928,6 +946,8 @@ components:
         kind: { type: string, const: perplexity_search }
         configured_sources:
           type: array
+          readOnly: true
+          x-internal: true
           items: { type: object, additionalProperties: true }
         prompt: { type: string }
         max_items: { type: integer, minimum: 1 }
@@ -965,6 +985,8 @@ components:
         kind: { type: string, const: scholar_search }
         configured_sources:
           type: array
+          readOnly: true
+          x-internal: true
           items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1, default: 20 }
 
@@ -997,6 +1019,8 @@ components:
         kind: { type: string, const: arxiv_search }
         configured_sources:
           type: array
+          readOnly: true
+          x-internal: true
           items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1, default: 20 }
         days_back: { type: integer, minimum: 0 }
@@ -1022,6 +1046,8 @@ components:
         kind: { type: string, const: huggingface_papers }
         configured_sources:
           type: array
+          readOnly: true
+          x-internal: true
           items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1, default: 30 }
         days_back: { type: integer, minimum: 0 }
@@ -1036,6 +1062,8 @@ components:
         kind: { type: string, const: readwise }
         configured_sources:
           type: array
+          readOnly: true
+          x-internal: true
           items: { type: object, additionalProperties: true }
         updated_after: { type: string, format: date-time }
         source_types: { type: array, items: { type: string } }

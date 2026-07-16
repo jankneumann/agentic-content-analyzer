@@ -6,6 +6,7 @@ import pytest
 import yaml
 from pydantic import TypeAdapter, ValidationError
 
+from src.config.sources import GmailSource, ReadwiseSource, RSSSource, SourcesConfig
 from src.contracts.workflow_models import (
     IngestCommand,
     UrlIngestCommand as GeneratedUrlIngestCommand,
@@ -40,6 +41,8 @@ def test_capabilities_match_openapi_discriminator_and_fields() -> None:
             properties.update(branch.get("properties", {}))
             required.update(branch.get("required", []))
 
+        properties.pop("configured_sources", None)
+        required.discard("configured_sources")
         assert [field.name for field in capability.fields] == list(properties)
         assert {field.name for field in capability.fields if field.required} == required
         for field in capability.fields:
@@ -102,3 +105,42 @@ def test_runtime_commands_reexport_generated_contract_models() -> None:
         {"kind": "url", "url": "https://example.com/article"}
     )
     assert isinstance(parsed, UrlIngestCommand)
+
+
+def test_capability_and_configured_source_discovery_are_safe_cursor_pages() -> None:
+    service = CapabilityService(SOURCE_REGISTRY)
+    first = service.get_capabilities(limit=1)
+    second = service.get_capabilities(limit=1, cursor=first.next_cursor)
+    assert first.next_cursor
+    assert first.source_commands[0].key != second.source_commands[0].key
+    assert all(
+        field.name != "configured_sources"
+        for capability in service.get_capabilities().source_commands
+        for field in capability.fields
+    )
+
+    secret = "DO-NOT-DISCLOSE"
+    configured = SourcesConfig(
+        sources=[
+            ReadwiseSource(),
+            RSSSource(
+                url=f"https://user:pass@example.com/private?token={secret}",
+                name=secret,
+                tags=[secret],
+            ),
+            GmailSource(query=f"subject:{secret}"),
+        ]
+    )
+    page = service.list_configured_sources(configured, limit=100)
+    serialized = page.model_dump_json()
+
+    assert secret not in serialized
+    assert "user:pass" not in serialized
+    assert "/private" not in serialized
+    assert "subject:" not in serialized
+    assert '"name":null' in serialized
+    assert "example.com" in serialized
+    assert all(source.key.startswith("src_") for source in page.data)
+    readwise = next(source for source in page.data if source.source_type == "readwise")
+    assert readwise.command_key == "readwise"
+    assert "url" not in readwise.configuration

@@ -523,7 +523,7 @@ _LOCATOR_FIELDS: dict[str, str | None] = {
     "huggingface_papers": "url",
     "arxiv": "search_query",
     "websearch": "prompt",
-    "readwise": None,  # effectively a singleton; keyed by name
+    "readwise": None,  # singleton; unnamed instances use the stable default locator
 }
 
 
@@ -550,6 +550,8 @@ def source_key(source: dict[str, Any] | SourceBase) -> str:
     if not locator:
         # Fallbacks: a url if present, otherwise the human name.
         locator = data.get("url") or data.get("name")
+    if not locator and stype == "readwise":
+        locator = "default"
     if not locator:
         raise ValueError(f"cannot derive source key for type={stype!r}: no locator field")
 

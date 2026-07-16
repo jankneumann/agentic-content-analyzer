@@ -308,51 +308,51 @@
 
 ## 7. HTTP Surface
 
-- [ ] 7.1 [M] Write operation API contract tests
+- [x] 7.1 [M] Write operation API contract tests
   **Spec scenarios**: agentic-operations.1-9, job-management.1-5
   **Contracts**: `contracts/openapi/v1.yaml#/paths/~1api~1v1~1operations~1{operation_id}`, `contracts/events/operation.progress.schema.json`
   **Design decisions**: D6, D8
   **Dependencies**: 1.2, 4.2
 
-- [ ] 7.2 [M] Implement operation API routes
+- [x] 7.2 [M] Implement operation API routes
   Add status, bounded wait, cursor listing, SSE, retry, cancellation, RFC 7807 projection, and capability discovery routes.
   **Dependencies**: 7.1, 3.8, 4.8
 
-- [ ] 7.3 [XS] Checkpoint: run operation API tests, review diff, verify scope
+- [x] 7.3 [XS] Checkpoint: run operation API tests, review diff, verify scope
   **Dependencies**: 7.2
 
-- [ ] 7.4 [M] Write ingestion API contract tests
+- [x] 7.4 [M] Write ingestion API contract tests
   **Spec scenarios**: source-capability-registry.3-4, cli-interface.1-2, source-configuration.1-2
   **Contracts**: `contracts/openapi/v1.yaml#/paths/~1api~1v1~1ingestions`, `contracts/openapi/v1.yaml#/paths/~1api~1v1~1uploads`
   **Design decisions**: D1, D8
   **Dependencies**: 1.2, 3.10
 
-- [ ] 7.5 [M] Implement upload API route
+- [x] 7.5 [M] Implement upload API route
   Accept multipart files, store them through the upload service, return durable upload references, and enforce size plus media limits.
   **Dependencies**: 7.4
 
-- [ ] 7.6 [M] Implement ingestion API route
+- [x] 7.6 [M] Implement ingestion API route
   Validate the discriminated union, reject extra fields, submit `ingestion.execute`, and preserve the canonical ingestion result in the completed operation.
   **Dependencies**: 7.4, 7.5, 5.20
 
-- [ ] 7.7 [XS] Checkpoint: run ingestion API tests, review diff, verify scope
+- [x] 7.7 [XS] Checkpoint: run ingestion API tests, review diff, verify scope
   **Dependencies**: 7.5, 7.6
 
-- [ ] 7.8 [M] Write workflow API contract tests
+- [x] 7.8 [M] Write workflow API contract tests
   **Spec scenarios**: theme-analysis.2, podcast-generation.3-5, audio-digest.1, pipeline.6
   **Contracts**: `contracts/openapi/v1.yaml`
   **Design decisions**: D5, D8
   **Dependencies**: 1.2
 
-- [ ] 7.9 [M] Implement workflow API routes
+- [x] 7.9 [M] Implement workflow API routes
   Replace summarization, theme, digest, pipeline, podcast script, podcast audio, and audio digest mutation routes with canonical operation submission.
   **Dependencies**: 7.8, 5.20
 
-- [ ] 7.10 [S] Retire legacy HTTP mutation routes
+- [x] 7.10 [S] Retire legacy HTTP mutation routes
   Remove workflow-specific background tasks, status endpoints, flat ingestion request parsing, and direct audio generator calls at the coordinated cutover.
   **Dependencies**: 7.9
 
-- [ ] 7.11 [XS] Checkpoint: run HTTP tests, review diff, verify scope
+- [x] 7.11 [XS] Checkpoint: run HTTP tests, review diff, verify scope
   **Dependencies**: 7.9, 7.10
 
 ## 8. CLI and MCP Surfaces

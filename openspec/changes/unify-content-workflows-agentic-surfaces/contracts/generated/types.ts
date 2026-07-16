@@ -1,5 +1,5 @@
 // Generated from contracts/openapi/v1.yaml; do not edit.
-export const CONTRACT_SHA256 = "f41871c40fc452f59b76cafe77a653a73883d6737ddf59902b7f51f0d47c1cb3" as const;
+export const CONTRACT_SHA256 = "f4d7230b27032fcf937a5c1221a69d779484f1dc8a95d1dccd0543f5789e8413" as const;
 
 export type OperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 export type OperationType = "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
@@ -140,7 +140,6 @@ export interface ContentQuery {
 }
 
 export interface ConfiguredSourceCommandBase {
-  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
   days_back?: number;
   after_date?: string;
@@ -149,7 +148,6 @@ export interface ConfiguredSourceCommandBase {
 
 export interface GmailIngestCommand extends ConfiguredSourceCommandBase {
   kind: "gmail";
-  configured_sources?: Array<Record<string, unknown>>;
   query?: string;
   max_items?: number;
   days_back?: number;
@@ -159,7 +157,6 @@ export interface GmailIngestCommand extends ConfiguredSourceCommandBase {
 
 export interface RssIngestCommand {
   kind: "rss";
-  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
   days_back?: number;
   after_date?: string;
@@ -168,7 +165,6 @@ export interface RssIngestCommand {
 
 export interface BlogIngestCommand {
   kind: "blog";
-  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
   days_back?: number;
   after_date?: string;
@@ -177,7 +173,6 @@ export interface BlogIngestCommand {
 
 export interface SubstackIngestCommand {
   kind: "substack";
-  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
   days_back?: number;
   after_date?: string;
@@ -186,7 +181,6 @@ export interface SubstackIngestCommand {
 
 export interface YouTubePlaylistIngestCommand {
   kind: "youtube_playlist";
-  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
   days_back?: number;
   after_date?: string;
@@ -196,7 +190,6 @@ export interface YouTubePlaylistIngestCommand {
 
 export interface YouTubeRssIngestCommand {
   kind: "youtube_rss";
-  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
   days_back?: number;
   after_date?: string;
@@ -205,7 +198,6 @@ export interface YouTubeRssIngestCommand {
 
 export interface PodcastIngestCommand {
   kind: "podcast";
-  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
   days_back?: number;
   after_date?: string;
@@ -215,7 +207,6 @@ export interface PodcastIngestCommand {
 
 export interface XSearchIngestCommand {
   kind: "x_search";
-  configured_sources?: Array<Record<string, unknown>>;
   prompt?: string;
   max_threads?: number;
   force_reprocess?: boolean;
@@ -223,7 +214,6 @@ export interface XSearchIngestCommand {
 
 export interface PerplexitySearchIngestCommand {
   kind: "perplexity_search";
-  configured_sources?: Array<Record<string, unknown>>;
   prompt?: string;
   max_items?: number;
   recency?: "hour" | "day" | "week" | "month";
@@ -249,7 +239,6 @@ export interface UrlIngestCommand {
 
 export interface ScholarSearchIngestCommand {
   kind: "scholar_search";
-  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
 }
 
@@ -270,7 +259,6 @@ export interface ScholarReferencesIngestCommand {
 
 export interface ArxivSearchIngestCommand {
   kind: "arxiv_search";
-  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
   days_back?: number;
   after_date?: string;
@@ -287,7 +275,6 @@ export interface ArxivPaperIngestCommand {
 
 export interface HuggingFacePapersIngestCommand {
   kind: "huggingface_papers";
-  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
   days_back?: number;
   after_date?: string;
@@ -296,7 +283,6 @@ export interface HuggingFacePapersIngestCommand {
 
 export interface ReadwiseIngestCommand {
   kind: "readwise";
-  configured_sources?: Array<Record<string, unknown>>;
   updated_after?: string;
   source_types?: Array<string>;
   include_deleted?: boolean;

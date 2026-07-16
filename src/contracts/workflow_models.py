@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
-CONTRACT_SHA256 = "f41871c40fc452f59b76cafe77a653a73883d6737ddf59902b7f51f0d47c1cb3"
+CONTRACT_SHA256 = "f4d7230b27032fcf937a5c1221a69d779484f1dc8a95d1dccd0543f5789e8413"
 
 OperationStatus = Literal["queued", "in_progress", "completed", "failed", "cancelled"]
 OperationType = Literal[
@@ -29,10 +29,6 @@ class StrictModel(BaseModel):
 COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "gmail": {
         "properties": {
-            "configured_sources": {
-                "type": "array",
-                "items": {"type": "object", "additionalProperties": True},
-            },
             "max_items": {"type": "integer", "minimum": 1},
             "days_back": {"type": "integer", "minimum": 0},
             "after_date": {"type": "string", "format": "date-time"},
@@ -45,10 +41,6 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "rss": {
         "properties": {
             "kind": {"type": "string", "const": "rss"},
-            "configured_sources": {
-                "type": "array",
-                "items": {"type": "object", "additionalProperties": True},
-            },
             "max_items": {"type": "integer", "minimum": 1},
             "days_back": {"type": "integer", "minimum": 0},
             "after_date": {"type": "string", "format": "date-time"},
@@ -59,10 +51,6 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "blog": {
         "properties": {
             "kind": {"type": "string", "const": "blog"},
-            "configured_sources": {
-                "type": "array",
-                "items": {"type": "object", "additionalProperties": True},
-            },
             "max_items": {"type": "integer", "minimum": 1},
             "days_back": {"type": "integer", "minimum": 0},
             "after_date": {"type": "string", "format": "date-time"},
@@ -73,10 +61,6 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "substack": {
         "properties": {
             "kind": {"type": "string", "const": "substack"},
-            "configured_sources": {
-                "type": "array",
-                "items": {"type": "object", "additionalProperties": True},
-            },
             "max_items": {"type": "integer", "minimum": 1},
             "days_back": {"type": "integer", "minimum": 0},
             "after_date": {"type": "string", "format": "date-time"},
@@ -87,10 +71,6 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "youtube_playlist": {
         "properties": {
             "kind": {"type": "string", "const": "youtube_playlist"},
-            "configured_sources": {
-                "type": "array",
-                "items": {"type": "object", "additionalProperties": True},
-            },
             "max_items": {"type": "integer", "minimum": 1},
             "days_back": {"type": "integer", "minimum": 0},
             "after_date": {"type": "string", "format": "date-time"},
@@ -102,10 +82,6 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "youtube_rss": {
         "properties": {
             "kind": {"type": "string", "const": "youtube_rss"},
-            "configured_sources": {
-                "type": "array",
-                "items": {"type": "object", "additionalProperties": True},
-            },
             "max_items": {"type": "integer", "minimum": 1},
             "days_back": {"type": "integer", "minimum": 0},
             "after_date": {"type": "string", "format": "date-time"},
@@ -116,10 +92,6 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "podcast": {
         "properties": {
             "kind": {"type": "string", "const": "podcast"},
-            "configured_sources": {
-                "type": "array",
-                "items": {"type": "object", "additionalProperties": True},
-            },
             "max_items": {"type": "integer", "minimum": 1},
             "days_back": {"type": "integer", "minimum": 0},
             "after_date": {"type": "string", "format": "date-time"},
@@ -131,10 +103,6 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "x_search": {
         "properties": {
             "kind": {"type": "string", "const": "x_search"},
-            "configured_sources": {
-                "type": "array",
-                "items": {"type": "object", "additionalProperties": True},
-            },
             "prompt": {"type": "string"},
             "max_threads": {"type": "integer", "minimum": 1},
             "force_reprocess": {"type": "boolean", "default": False},
@@ -144,10 +112,6 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "perplexity_search": {
         "properties": {
             "kind": {"type": "string", "const": "perplexity_search"},
-            "configured_sources": {
-                "type": "array",
-                "items": {"type": "object", "additionalProperties": True},
-            },
             "prompt": {"type": "string"},
             "max_items": {"type": "integer", "minimum": 1},
             "recency": {"type": "string", "enum": ["hour", "day", "week", "month"]},
@@ -179,10 +143,6 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "scholar_search": {
         "properties": {
             "kind": {"type": "string", "const": "scholar_search"},
-            "configured_sources": {
-                "type": "array",
-                "items": {"type": "object", "additionalProperties": True},
-            },
             "max_items": {"type": "integer", "minimum": 1, "default": 20},
         },
         "required": ["kind"],
@@ -209,10 +169,6 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "arxiv_search": {
         "properties": {
             "kind": {"type": "string", "const": "arxiv_search"},
-            "configured_sources": {
-                "type": "array",
-                "items": {"type": "object", "additionalProperties": True},
-            },
             "max_items": {"type": "integer", "minimum": 1, "default": 20},
             "days_back": {"type": "integer", "minimum": 0},
             "after_date": {"type": "string", "format": "date-time"},
@@ -233,10 +189,6 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "huggingface_papers": {
         "properties": {
             "kind": {"type": "string", "const": "huggingface_papers"},
-            "configured_sources": {
-                "type": "array",
-                "items": {"type": "object", "additionalProperties": True},
-            },
             "max_items": {"type": "integer", "minimum": 1, "default": 30},
             "days_back": {"type": "integer", "minimum": 0},
             "after_date": {"type": "string", "format": "date-time"},
@@ -247,10 +199,6 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "readwise": {
         "properties": {
             "kind": {"type": "string", "const": "readwise"},
-            "configured_sources": {
-                "type": "array",
-                "items": {"type": "object", "additionalProperties": True},
-            },
             "updated_after": {"type": "string", "format": "date-time"},
             "source_types": {"type": "array", "items": {"type": "string"}},
             "include_deleted": {"type": "boolean", "default": False},
