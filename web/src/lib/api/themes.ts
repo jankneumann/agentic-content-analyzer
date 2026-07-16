@@ -4,6 +4,7 @@
 
 import { apiClient } from "./client"
 import type { ThemeAnalysisResult } from "@/types"
+import type { OperationHandle, ThemeAnalysisRequest } from "@/generated/workflow-contracts"
 
 export interface AnalyzeThemesRequest {
   start_date?: string
@@ -41,8 +42,9 @@ export interface AnalysisListItem {
  */
 export async function analyzeThemes(
   request: AnalyzeThemesRequest
-): Promise<AnalyzeThemesResponse> {
-  return apiClient.post<AnalyzeThemesResponse>("/themes/analyze", request)
+): Promise<OperationHandle> {
+  const canonical: ThemeAnalysisRequest = { query: { start_date: request.start_date, end_date: request.end_date }, max_themes: request.max_themes }
+  return apiClient.post<OperationHandle>("/theme-analyses", canonical)
 }
 
 /**

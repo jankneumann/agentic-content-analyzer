@@ -92,7 +92,7 @@ interface RevisionChatPanelProps {
     options?: { enableWebSearch?: boolean; model?: string }
   ) => void
   /** Callback when user clicks "Generate Preview" button */
-  onGeneratePreview: () => void
+  onGeneratePreview?: () => void
   /** Whether preview generation is in progress */
   isGenerating?: boolean
   /** Artifact type for context */
@@ -241,8 +241,7 @@ export function RevisionChatPanel({
   // Handle "Try Again" - reject and immediately generate new preview
   const handleTryAgain = React.useCallback(() => {
     onRejectPreview?.()
-    // Small delay to allow state to update before generating
-    setTimeout(() => onGeneratePreview(), 100)
+    if (onGeneratePreview) setTimeout(() => onGeneratePreview(), 100)
   }, [onRejectPreview, onGeneratePreview])
 
   const handleGeneratePreview = React.useCallback(
@@ -251,7 +250,7 @@ export function RevisionChatPanel({
         if (e) e.preventDefault()
         return
       }
-      onGeneratePreview()
+      onGeneratePreview?.()
     },
     [canGenerate, onGeneratePreview]
   )
@@ -598,8 +597,7 @@ export function RevisionChatPanel({
                 </span>
               </div>
 
-              {/* Generate Preview button */}
-              <Tooltip>
+              {onGeneratePreview && <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     size="sm"
@@ -628,7 +626,7 @@ export function RevisionChatPanel({
                 <TooltipContent>
                   <p>{generatePreviewTooltip}</p>
                 </TooltipContent>
-              </Tooltip>
+              </Tooltip>}
             </div>
           </div>
         </>

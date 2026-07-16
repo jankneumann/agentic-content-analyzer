@@ -14,7 +14,6 @@
  * mutate({ contentIds: ['id1'] })
  */
 
-import { useState, useCallback } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { queryKeys } from "@/lib/api/query-keys"
 import {
@@ -28,10 +27,8 @@ import {
   fetchSummaryNavigation,
   type SummaryNavigationFilters,
 } from "@/lib/api/summaries"
-import { subscribeToProgress, type ProgressEvent } from "@/lib/api/sse"
 import type {
   SummarizeRequest,
-  SummarizationProgress,
   SummaryFilters,
 } from "@/types"
 
@@ -115,43 +112,9 @@ export function useSummaryStats() {
  */
 export function useTriggerSummarization() {
   const queryClient = useQueryClient()
-  const [progress, setProgress] = useState<SummarizationProgress | null>(null)
-  const [isProcessing, setIsProcessing] = useState(false)
 
   const mutation = useMutation({
-    mutationFn: async (request: SummarizeRequest) => {
-      const response = await triggerSummarization(request)
-
-      // Subscribe to progress updates
-      if (response.task_id) {
-        setIsProcessing(true)
-
-        return new Promise<typeof response>((resolve, reject) => {
-          subscribeToProgress<SummarizationProgress>(
-            `/summaries/status/${response.task_id}`,
-            {
-              onProgress: (event: ProgressEvent<SummarizationProgress>) => {
-                if (event.data) {
-                  setProgress(event.data)
-                }
-              },
-              onComplete: () => {
-                setIsProcessing(false)
-                setProgress(null)
-                resolve(response)
-              },
-              onError: (error) => {
-                setIsProcessing(false)
-                setProgress(null)
-                reject(error)
-              },
-            }
-          )
-        })
-      }
-
-      return response
-    },
+    mutationFn: (request: SummarizeRequest) => triggerSummarization(request),
     onSuccess: () => {
       // Invalidate summaries and contents lists
       queryClient.invalidateQueries({
@@ -163,17 +126,11 @@ export function useTriggerSummarization() {
     },
   })
 
-  // Reset progress
-  const resetProgress = useCallback(() => {
-    setProgress(null)
-    setIsProcessing(false)
-  }, [])
-
   return {
     ...mutation,
-    progress,
-    isProcessing,
-    resetProgress,
+    progress: null,
+    isProcessing: false,
+    resetProgress: () => undefined,
   }
 }
 
