@@ -357,21 +357,21 @@
 
 ## 8. CLI and MCP Surfaces
 
-- [ ] 8.1 [M] Write CLI conformance tests
+- [x] 8.1 [M] Write CLI conformance tests
   **Spec scenarios**: cli-interface.1-6, agentic-operations.1-7
   **Contracts**: `contracts/openapi/v1.yaml`
   **Design decisions**: D8, D9
   **Dependencies**: 1.2, 7.11
 
-- [ ] 8.2 [M] Implement canonical CLI workflows
+- [x] 8.2 [M] Implement canonical CLI workflows
   Generate source arguments from command models, support uploads, submit operations through one client, add JSON output, add waiting, and expose capability discovery.
   **Dependencies**: 8.1
 
-- [ ] 8.3 [S] Retire direct CLI workflow paths
+- [x] 8.3 [S] Retire direct CLI workflow paths
   Remove direct ingestion, digest, pipeline, podcast, and audio execution paths plus obsolete legacy aliases.
   **Dependencies**: 8.2
 
-- [ ] 8.4 [XS] Checkpoint: run CLI tests, review diff, verify scope
+- [x] 8.4 [XS] Checkpoint: run CLI tests, review diff, verify scope
   **Dependencies**: 8.2, 8.3
 
 - [ ] 8.5 [M] Write MCP conformance tests
