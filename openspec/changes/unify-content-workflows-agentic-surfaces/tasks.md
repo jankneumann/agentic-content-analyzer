@@ -128,17 +128,17 @@
 - [x] 4.3 [XS] Checkpoint: run operation model tests, review diff, verify scope
   **Dependencies**: 4.2
 
-- [ ] 4.4 [M] Write handler registry contract tests
+- [x] 4.4 [M] Write handler registry contract tests
   **Spec scenarios**: agentic-operations.3, job-management.3
   **Contracts**: `contracts/openapi/v1.yaml#/components/schemas/OperationHandle`
   **Design decisions**: D5, D6
   **Dependencies**: 4.2
 
-- [ ] 4.5 [M] Implement handler registry contract
+- [x] 4.5 [M] Implement handler registry contract
   Add typed handler registration, operation-type completeness validation, worker-startup failure, and resource-attachment enforcement using test handlers.
   **Dependencies**: 4.4
 
-- [ ] 4.6 [XS] Checkpoint: run handler tests, review diff, verify scope
+- [x] 4.6 [XS] Checkpoint: run handler tests, review diff, verify scope
   **Dependencies**: 4.5
 
 - [x] 4.7 [M] Write operation control tests
@@ -248,7 +248,7 @@
 - [x] 5.18 [XS] Checkpoint: run pipeline tests, review diff, verify scope
   **Dependencies**: 5.17
 
-- [ ] 5.19 [M] Write worker handler integration tests
+- [x] 5.19 [M] Write worker handler integration tests
   Prove at worker concurrency one that deferred workflows demote and requeue their parent so
   child operations run without starvation. Prove ingestion handlers apply descriptor-owned retry
   policy to HTTP 429 responses and retain diagnostics when retries are exhausted. Prove the digest
@@ -259,7 +259,7 @@
   **Design decisions**: D5, D6, D7
   **Dependencies**: 4.5, 5.17
 
-- [ ] 5.20 [M] Register durable workflow handlers
+- [x] 5.20 [M] Register durable workflow handlers
   Register ingestion, summarization, theme, digest, pipeline, podcast script, podcast audio, and audio digest handlers against the application workflows.
   A handler returning a deferred outcome MUST release and requeue the parent operation. The
   ingestion handler MUST enforce `SourceRetryPolicy` for retryable responses and preserve terminal
@@ -267,7 +267,7 @@
   content, and the digest handler MUST validate and pass the pipeline's serialized exact selection.
   **Dependencies**: 5.19, 5.2, 5.4, 5.7, 5.9, 5.12, 5.14, 5.17
 
-- [ ] 5.21 [XS] Checkpoint: run worker integration tests, review diff, verify scope
+- [x] 5.21 [XS] Checkpoint: run worker integration tests, review diff, verify scope
   **Dependencies**: 5.20
 
 ## 6. Provider Boundaries
