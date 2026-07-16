@@ -21,6 +21,7 @@
  */
 
 import type { ApiError } from "@/types"
+import type { Problem } from "@/generated/workflow-contracts"
 
 /**
  * API configuration
@@ -52,13 +53,26 @@ export class ApiClientError extends Error {
   code: string
   /** Additional error details */
   details?: Record<string, unknown>
+  /** Complete RFC 7807 response returned by canonical endpoints. */
+  problem: Problem
 
-  constructor(message: string, status: number, code: string, details?: Record<string, unknown>) {
-    super(message)
+  constructor(problem: Problem, status?: number)
+  constructor(message: string, status: number, code: string, details?: Record<string, unknown>)
+  constructor(
+    problemOrMessage: Problem | string,
+    status = 0,
+    code = "HTTP_ERROR",
+    details?: Record<string, unknown>,
+  ) {
+    const problem: Problem = typeof problemOrMessage === "string"
+      ? { type: "about:blank", title: problemOrMessage, status, detail: problemOrMessage, code, ...(details ? { errors: [details] } : {}) }
+      : problemOrMessage
+    super(problem.detail)
     this.name = "ApiClientError"
-    this.status = status
-    this.code = code
+    this.status = problem.status
+    this.code = problem.code ?? code
     this.details = details
+    this.problem = problem
   }
 
   /**
@@ -129,19 +143,20 @@ function buildUrl(path: string, params?: Record<string, string | number | boolea
  * @param response - Fetch response object
  * @returns Parsed ApiError or default error
  */
-async function parseErrorResponse(response: Response): Promise<ApiError> {
+async function parseErrorResponse(response: Response): Promise<Problem> {
   try {
     const data = await response.json()
     return {
-      message: data.detail || data.message || "An error occurred",
+      type: data.type || "about:blank",
+      title: data.title || response.statusText || "Request failed",
+      status: data.status || response.status,
+      detail: data.detail || data.message || "An error occurred",
+      instance: data.instance,
       code: data.code || `HTTP_${response.status}`,
-      details: data.details,
+      errors: data.errors || (data.details ? [data.details] : undefined),
     }
   } catch {
-    return {
-      message: response.statusText || "An error occurred",
-      code: `HTTP_${response.status}`,
-    }
+    return { type: "about:blank", title: response.statusText || "Request failed", status: response.status, detail: response.statusText || "An error occurred", code: `HTTP_${response.status}` }
   }
 }
 
@@ -175,11 +190,11 @@ async function request<T>(
     const response = await fetch(url, {
       method,
       headers: {
-        "Content-Type": "application/json",
+        ...(body instanceof FormData ? {} : { "Content-Type": "application/json" }),
         Accept: "application/json",
         ...headers,
       },
-      body: body ? JSON.stringify(body) : undefined,
+      body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
       // Include cookies in cross-origin requests when API is on a different host.
       // Harmless for unauthenticated endpoints (cookies are simply absent or ignored).
@@ -192,7 +207,7 @@ async function request<T>(
     // Handle error responses
     if (!response.ok) {
       const error = await parseErrorResponse(response)
-      throw new ApiClientError(error.message, response.status, error.code, error.details)
+      throw new ApiClientError(error, response.status)
     }
 
     // Handle empty responses (204 No Content)
