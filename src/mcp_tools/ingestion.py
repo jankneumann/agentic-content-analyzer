@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import base64
 import binascii
-from typing import Any, Literal
+from datetime import datetime
+from typing import Annotated, Any, Literal
 
-from pydantic import TypeAdapter
+from pydantic import AnyUrl, Field, TypeAdapter
 
 from src.config.sources import load_sources_config
 from src.contracts.workflow_models import IngestCommand, OperationHandle, UploadReference
@@ -17,6 +18,11 @@ from src.services.operation_service import OperationService
 from src.services.upload_service import UploadService
 
 _INGEST_COMMAND: TypeAdapter[IngestCommand] = TypeAdapter(IngestCommand)
+PositiveInt = Annotated[int, Field(ge=1)]
+OptionalPositiveInt = Annotated[int | None, Field(ge=1)]
+OptionalNonNegativeInt = Annotated[int | None, Field(ge=0)]
+NonEmptyString = Annotated[str, Field(min_length=1)]
+NonEmptyStringList = Annotated[list[str], Field(min_length=1)]
 
 
 def _payload(kind: str, **values: Any) -> dict[str, Any]:
@@ -51,9 +57,9 @@ async def _submit(command: dict[str, Any], idempotency_key: str | None = None) -
 
 @runtime.tool_boundary
 async def upload_content(
-    filename: str,
-    content_base64: str,
-    media_type: str,
+    filename: NonEmptyString,
+    content_base64: NonEmptyString,
+    media_type: NonEmptyString,
     title: str | None = None,
     publication: str | None = None,
 ) -> UploadReference:
@@ -87,9 +93,9 @@ async def upload_content(
 @runtime.tool_boundary
 async def ingest_gmail(
     query: str | None = None,
-    max_items: int | None = None,
-    days_back: int | None = None,
-    after_date: str | None = None,
+    max_items: OptionalPositiveInt = None,
+    days_back: OptionalNonNegativeInt = None,
+    after_date: datetime | None = None,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
 ) -> OperationHandle:
@@ -110,7 +116,7 @@ async def _scheduled(
     kind: str,
     max_items: int | None,
     days_back: int | None,
-    after_date: str | None,
+    after_date: datetime | None,
     force_reprocess: bool,
     idempotency_key: str | None,
     **extra: Any,
@@ -130,9 +136,9 @@ async def _scheduled(
 
 @runtime.tool_boundary
 async def ingest_rss(
-    max_items: int | None = None,
-    days_back: int | None = None,
-    after_date: str | None = None,
+    max_items: OptionalPositiveInt = None,
+    days_back: OptionalNonNegativeInt = None,
+    after_date: datetime | None = None,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
 ) -> OperationHandle:
@@ -143,9 +149,9 @@ async def ingest_rss(
 
 @runtime.tool_boundary
 async def ingest_blog(
-    max_items: int | None = None,
-    days_back: int | None = None,
-    after_date: str | None = None,
+    max_items: OptionalPositiveInt = None,
+    days_back: OptionalNonNegativeInt = None,
+    after_date: datetime | None = None,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
 ) -> OperationHandle:
@@ -156,9 +162,9 @@ async def ingest_blog(
 
 @runtime.tool_boundary
 async def ingest_substack(
-    max_items: int | None = None,
-    days_back: int | None = None,
-    after_date: str | None = None,
+    max_items: OptionalPositiveInt = None,
+    days_back: OptionalNonNegativeInt = None,
+    after_date: datetime | None = None,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
 ) -> OperationHandle:
@@ -169,9 +175,9 @@ async def ingest_substack(
 
 @runtime.tool_boundary
 async def ingest_youtube_playlist(
-    max_items: int | None = None,
-    days_back: int | None = None,
-    after_date: str | None = None,
+    max_items: OptionalPositiveInt = None,
+    days_back: OptionalNonNegativeInt = None,
+    after_date: datetime | None = None,
     force_reprocess: bool = False,
     public_only: bool = False,
     idempotency_key: str | None = None,
@@ -189,9 +195,9 @@ async def ingest_youtube_playlist(
 
 @runtime.tool_boundary
 async def ingest_youtube_rss(
-    max_items: int | None = None,
-    days_back: int | None = None,
-    after_date: str | None = None,
+    max_items: OptionalPositiveInt = None,
+    days_back: OptionalNonNegativeInt = None,
+    after_date: datetime | None = None,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
 ) -> OperationHandle:
@@ -202,9 +208,9 @@ async def ingest_youtube_rss(
 
 @runtime.tool_boundary
 async def ingest_podcast(
-    max_items: int | None = None,
-    days_back: int | None = None,
-    after_date: str | None = None,
+    max_items: OptionalPositiveInt = None,
+    days_back: OptionalNonNegativeInt = None,
+    after_date: datetime | None = None,
     force_reprocess: bool = False,
     transcribe: bool = True,
     idempotency_key: str | None = None,
@@ -223,7 +229,7 @@ async def ingest_podcast(
 @runtime.tool_boundary
 async def ingest_x_search(
     prompt: str | None = None,
-    max_threads: int | None = None,
+    max_threads: OptionalPositiveInt = None,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
 ) -> OperationHandle:
@@ -238,7 +244,7 @@ async def ingest_x_search(
 @runtime.tool_boundary
 async def ingest_perplexity_search(
     prompt: str | None = None,
-    max_items: int | None = None,
+    max_items: OptionalPositiveInt = None,
     recency: Literal["hour", "day", "week", "month"] | None = None,
     context_size: Literal["low", "medium", "high"] | None = None,
     force_reprocess: bool = False,
@@ -259,7 +265,9 @@ async def ingest_perplexity_search(
 
 @runtime.tool_boundary
 async def ingest_files(
-    upload_ids: list[str], force_reprocess: bool = False, idempotency_key: str | None = None
+    upload_ids: NonEmptyStringList,
+    force_reprocess: bool = False,
+    idempotency_key: str | None = None,
 ) -> OperationHandle:
     return await _submit(
         _payload("files", upload_ids=upload_ids, force_reprocess=force_reprocess), idempotency_key
@@ -268,7 +276,7 @@ async def ingest_files(
 
 @runtime.tool_boundary
 async def ingest_url(
-    url: str,
+    url: AnyUrl,
     title: str | None = None,
     tags: list[str] | None = None,
     notes: str | None = None,
@@ -292,14 +300,16 @@ async def ingest_url(
 
 @runtime.tool_boundary
 async def ingest_scholar_search(
-    max_items: int = 20, idempotency_key: str | None = None
+    max_items: PositiveInt = 20, idempotency_key: str | None = None
 ) -> OperationHandle:
     return await _submit(_payload("scholar_search", max_items=max_items), idempotency_key)
 
 
 @runtime.tool_boundary
 async def ingest_scholar_paper(
-    identifier: str, with_references: bool = False, idempotency_key: str | None = None
+    identifier: NonEmptyString,
+    with_references: bool = False,
+    idempotency_key: str | None = None,
 ) -> OperationHandle:
     return await _submit(
         _payload("scholar_paper", identifier=identifier, with_references=with_references),
@@ -309,11 +319,11 @@ async def ingest_scholar_paper(
 
 @runtime.tool_boundary
 async def ingest_scholar_references(
-    after: str | None = None,
-    before: str | None = None,
+    after: datetime | None = None,
+    before: datetime | None = None,
     source_types: list[str] | None = None,
     dry_run: bool = False,
-    limit: int | None = None,
+    limit: OptionalPositiveInt = None,
     idempotency_key: str | None = None,
 ) -> OperationHandle:
     return await _submit(
@@ -331,9 +341,9 @@ async def ingest_scholar_references(
 
 @runtime.tool_boundary
 async def ingest_arxiv_search(
-    max_items: int = 20,
-    days_back: int | None = None,
-    after_date: str | None = None,
+    max_items: PositiveInt = 20,
+    days_back: OptionalNonNegativeInt = None,
+    after_date: datetime | None = None,
     force_reprocess: bool = False,
     extract_pdf: bool = True,
     idempotency_key: str | None = None,
@@ -353,7 +363,7 @@ async def ingest_arxiv_search(
 
 @runtime.tool_boundary
 async def ingest_arxiv_paper(
-    identifier: str,
+    identifier: NonEmptyString,
     extract_pdf: bool = True,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
@@ -371,9 +381,9 @@ async def ingest_arxiv_paper(
 
 @runtime.tool_boundary
 async def ingest_huggingface_papers(
-    max_items: int = 30,
-    days_back: int | None = None,
-    after_date: str | None = None,
+    max_items: PositiveInt = 30,
+    days_back: OptionalNonNegativeInt = None,
+    after_date: datetime | None = None,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
 ) -> OperationHandle:
@@ -391,10 +401,10 @@ async def ingest_huggingface_papers(
 
 @runtime.tool_boundary
 async def ingest_readwise(
-    updated_after: str | None = None,
+    updated_after: datetime | None = None,
     source_types: list[str] | None = None,
     include_deleted: bool = False,
-    max_books: int | None = None,
+    max_books: OptionalPositiveInt = None,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
 ) -> OperationHandle:

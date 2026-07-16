@@ -2,17 +2,28 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+import asyncio
+from datetime import datetime
+from typing import Annotated, Any, Literal
 
+from pydantic import Field
+
+from src.api.schemas.graph import GraphQueryResponse
+from src.api.schemas.references import ReferencesExtractResponse, ReferencesResolveResponse
 from src.mcp_tools import runtime
 
 
 @runtime.tool_boundary
-async def search_knowledge_graph(query: str, limit: int = 10) -> Any:
+async def search_knowledge_graph(
+    query: Annotated[str, Field(min_length=1)],
+    limit: Annotated[int, Field(ge=1, le=100)] = 10,
+) -> GraphQueryResponse:
     """Search graph entities and relationships."""
     if runtime.transport_mode() is runtime.TransportMode.HTTP:
-        return runtime.request_json(
-            "POST", "/api/v1/graph/query", json={"query": query, "limit": limit}
+        return GraphQueryResponse.model_validate(
+            runtime.request_json(
+                "POST", "/api/v1/graph/query", json={"query": query, "limit": limit}
+            )
         )
     from src.storage.graphiti_client import GraphitiClient
 
@@ -45,7 +56,7 @@ async def search_knowledge_graph(query: str, limit: int = 10) -> Any:
                     "score": float(value.get("score") or 0),
                 }
             )
-    return {"entities": entities, "relationships": relationships}
+    return GraphQueryResponse(entities=entities, relationships=relationships)
 
 
 @runtime.tool_boundary
@@ -160,11 +171,11 @@ async def get_content_references(
 
 @runtime.tool_boundary
 async def extract_references(
-    content_ids: list[int] | None = None,
-    since: str | None = None,
-    until: str | None = None,
-    batch_size: int = 50,
-) -> Any:
+    content_ids: Annotated[list[int] | None, Field(min_length=1, max_length=500)] = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    batch_size: Annotated[int, Field(ge=1, le=500)] = 50,
+) -> ReferencesExtractResponse:
     """Extract and persist references in a bounded batch."""
     if content_ids is None and since is None:
         raise ValueError("Provide content_ids or since")
@@ -181,63 +192,46 @@ async def extract_references(
         if value is not None
     }
     if runtime.transport_mode() is runtime.TransportMode.HTTP:
-        return runtime.request_json("POST", "/api/v1/references/extract", json=body)
-    from src.models.content import Content
-    from src.services.reference_extractor import ReferenceExtractor
-    from src.storage.database import get_db
+        return ReferencesExtractResponse.model_validate(
+            runtime.request_json("POST", "/api/v1/references/extract", json=body)
+        )
+    from src.api.routes.reference_routes import REFERENCE_BATCH_TIMEOUT_S, _run_extraction
 
-    extractor = ReferenceExtractor()
-    with get_db() as db:
-        query = db.query(Content).order_by(Content.ingested_at.asc(), Content.id.asc())
-        if content_ids:
-            query = query.filter(Content.id.in_(content_ids))
-        if since:
-            query = query.filter(Content.ingested_at >= since)
-        if until:
-            query = query.filter(Content.ingested_at <= until)
-        rows = query.limit(batch_size + 1).all()
-        has_more = len(rows) > batch_size
-        rows = rows[:batch_size]
-        extracted = 0
-        per_content = []
-        for content in rows:
-            references = extractor.extract_from_content(content, db)
-            if content.id is None:
-                raise ValueError("Persisted content is missing an ID")
-            stored = extractor.store_references(content.id, references, db) if references else 0
-            extracted += stored
-            per_content.append({"content_id": content.id, "references_found": len(references)})
-    return {
-        "references_extracted": extracted,
-        "content_processed": len(rows),
-        "has_more": has_more,
-        "per_content": per_content,
-    }
+    result = await asyncio.wait_for(
+        asyncio.to_thread(
+            _run_extraction,
+            content_ids=content_ids,
+            since=since,
+            until=until,
+            batch_size=batch_size,
+        ),
+        timeout=REFERENCE_BATCH_TIMEOUT_S,
+    )
+    if len(result["per_content"]) > 100:
+        result["per_content"] = None
+    if not result["has_more"]:
+        result["next_cursor"] = None
+    return ReferencesExtractResponse.model_validate(result)
 
 
 @runtime.tool_boundary
-async def resolve_references(batch_size: int = 100) -> Any:
+async def resolve_references(
+    batch_size: Annotated[int, Field(ge=1, le=1000)] = 100,
+) -> ReferencesResolveResponse:
     """Resolve persisted references in a bounded batch."""
     if runtime.transport_mode() is runtime.TransportMode.HTTP:
-        return runtime.request_json(
-            "POST", "/api/v1/references/resolve", json={"batch_size": batch_size}
+        return ReferencesResolveResponse.model_validate(
+            runtime.request_json(
+                "POST", "/api/v1/references/resolve", json={"batch_size": batch_size}
+            )
         )
-    from src.models.content_reference import ContentReference, ResolutionStatus
-    from src.services.reference_resolver import ReferenceResolver
-    from src.storage.database import get_db
+    from src.api.routes.reference_routes import REFERENCE_BATCH_TIMEOUT_S, _run_resolution
 
-    with get_db() as db:
-        resolved = ReferenceResolver(db).resolve_batch(batch_size)
-        remaining = (
-            db.query(ContentReference)
-            .filter(ContentReference.resolution_status == ResolutionStatus.UNRESOLVED)
-            .count()
-        )
-    return {
-        "resolved_count": int(resolved),
-        "still_unresolved_count": remaining,
-        "has_more": remaining > 0,
-    }
+    result = await asyncio.wait_for(
+        asyncio.to_thread(_run_resolution, batch_size=batch_size),
+        timeout=REFERENCE_BATCH_TIMEOUT_S,
+    )
+    return ReferencesResolveResponse.model_validate(result)
 
 
 @runtime.tool_boundary
