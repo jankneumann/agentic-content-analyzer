@@ -2,9 +2,65 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
+from pydantic import BaseModel
+
 from src.mcp_tools import runtime
+from src.models.content import ContentResponse
+from src.models.search import SearchResponse
+
+
+class PodcastDialogueResource(BaseModel):
+    speaker: str
+    text: str
+    emphasis: str | None = None
+    pause_after: float | None = None
+
+
+class PodcastSectionResource(BaseModel):
+    index: int
+    type: str
+    title: str
+    word_count: int
+    dialogue: list[PodcastDialogueResource]
+    sources_cited: list[int]
+
+
+class PodcastScriptResource(BaseModel):
+    id: int
+    digest_id: int
+    title: str
+    length: str
+    word_count: int
+    estimated_duration: str
+    estimated_duration_seconds: int
+    status: str
+    revision_count: int
+    created_at: datetime | None = None
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
+    sections: list[PodcastSectionResource]
+    sources_summary: list[dict[str, Any]]
+    revision_history: list[dict[str, Any]]
+    newsletter_ids_fetched: list[int]
+    web_search_queries: list[str]
+    tool_call_count: int
+
+
+class DigestResource(BaseModel):
+    id: int
+    digest_type: str
+    title: str
+    period_start: datetime
+    period_end: datetime
+    status: str
+    created_at: datetime
+    completed_at: datetime | None = None
+    markdown_content: str | None = None
+    source_content_ids: list[int] | None = None
+    revision_count: int
 
 
 def _csv(value: str | None) -> list[str] | None:
@@ -68,10 +124,12 @@ async def list_content(
 
 
 @runtime.tool_boundary
-async def get_content(content_id: int) -> Any:
+async def get_content(content_id: int) -> ContentResponse:
     """Get one canonical content record by stable ID."""
     if runtime.transport_mode() is runtime.TransportMode.HTTP:
-        return runtime.request_json("GET", f"/api/v1/contents/{content_id}")
+        return ContentResponse.model_validate(
+            runtime.request_json("GET", f"/api/v1/contents/{content_id}")
+        )
     from src.services.content_service import ContentService
     from src.storage.database import get_db
 
@@ -79,7 +137,7 @@ async def get_content(content_id: int) -> Any:
         content = ContentService(db).get(content_id)
         if content is None:
             raise ValueError(f"Content {content_id} not found")
-        return runtime.native(content)
+        return ContentResponse.model_validate(content)
 
 
 @runtime.tool_boundary
@@ -91,7 +149,7 @@ async def search_content(
     date_to: str | None = None,
     publications: str | None = None,
     limit: int = 20,
-) -> Any:
+) -> SearchResponse:
     """Search content using the canonical hybrid search service."""
     body = {
         "query": query,
@@ -110,13 +168,15 @@ async def search_content(
         "limit": min(limit, 100),
     }
     if runtime.transport_mode() is runtime.TransportMode.HTTP:
-        return runtime.request_json("POST", "/api/v1/search", json=body)
+        return SearchResponse.model_validate(
+            runtime.request_json("POST", "/api/v1/search", json=body)
+        )
     from src.models.search import SearchQuery
     from src.services.search import HybridSearchService
     from src.storage.database import get_db
 
     with get_db() as db:
-        return runtime.native(await HybridSearchService(session=db).search(SearchQuery(**body)))
+        return await HybridSearchService(session=db).search(SearchQuery(**body))
 
 
 async def _resource_get(path: str, model: type[Any], resource_id: int) -> Any:
@@ -139,17 +199,28 @@ async def get_summary(summary_id: int) -> Any:
 
 
 @runtime.tool_boundary
-async def get_digest(digest_id: int) -> Any:
-    from src.models.digest import Digest
+async def get_digest(digest_id: int) -> DigestResource:
+    if runtime.transport_mode() is runtime.TransportMode.HTTP:
+        return DigestResource.model_validate(
+            runtime.request_json("GET", f"/api/v1/digests/{digest_id}")
+        )
+    from src.api.digest_routes import get_digest as api_get_digest
 
-    return await _resource_get(f"/api/v1/digests/{digest_id}", Digest, digest_id)
+    result = await api_get_digest(digest_id, include_parsed_sections=False)
+    return DigestResource.model_validate(result.model_dump(mode="json"))
 
 
 @runtime.tool_boundary
-async def get_podcast_script(script_id: int) -> Any:
-    from src.models.podcast import PodcastScriptRecord
+async def get_podcast_script(script_id: int) -> PodcastScriptResource:
+    if runtime.transport_mode() is runtime.TransportMode.HTTP:
+        return PodcastScriptResource.model_validate(
+            runtime.request_json("GET", f"/api/v1/scripts/{script_id}")
+        )
+    from src.services.script_review_service import ScriptReviewService
 
-    return await _resource_get(f"/api/v1/scripts/{script_id}", PodcastScriptRecord, script_id)
+    return PodcastScriptResource.model_validate(
+        ScriptReviewService().get_script_for_review(script_id)
+    )
 
 
 @runtime.tool_boundary
@@ -175,4 +246,4 @@ async def list_digests(
         return runtime.native(query.limit(limit).all())
 
 
-TOOLS = (search_content,)
+TOOLS = (search_content, get_content, get_digest, get_podcast_script)

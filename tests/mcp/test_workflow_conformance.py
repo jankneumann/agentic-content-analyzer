@@ -18,7 +18,7 @@ from src.contracts.workflow_models import (
     Problem,
     UploadReference,
 )
-from src.mcp_tools import content, ingestion, operations, review, runtime, workflows
+from src.mcp_tools import content, ingestion, knowledge, operations, review, runtime, workflows
 from src.mcp_tools.toolsets import CANONICAL_TOOL_NAMES, register_toolsets
 
 
@@ -38,6 +38,20 @@ def _handle(operation_type: str = "ingestion.execute") -> OperationHandle:
             "created_at": datetime.now(UTC),
         }
     )
+
+
+def _search_response() -> dict:
+    return {
+        "results": [],
+        "total": 0,
+        "meta": {
+            "bm25_strategy": "postgres_native_fts",
+            "embedding_provider": "test",
+            "embedding_model": "test",
+            "query_time_ms": 1,
+            "backend": "test",
+        },
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -169,7 +183,9 @@ async def test_partial_config_warns_to_stderr_and_uses_in_process(
 
     result = await operations.get_capabilities()
 
-    assert result == expected
+    assert result.contract_version == expected.contract_version
+    assert "get_operation_status" in result.supported_tools
+    assert result.status_tool == "get_operation_status"
     captured = capsys.readouterr()
     assert "ACA_ADMIN_KEY" in captured.err
     assert captured.out == ""
@@ -288,20 +304,20 @@ async def test_http_content_tool_never_opens_local_persistence(
 ) -> None:
     monkeypatch.setenv("ACA_API_BASE_URL", "https://api.example.test")
     monkeypatch.setenv("ACA_ADMIN_KEY", "secret")
-    request = MagicMock(return_value={"items": [], "total": 0})
+    request = MagicMock(return_value=_search_response())
     monkeypatch.setattr(runtime, "request_json", request)
 
     result = await content.search_content("agents", source_types="rss", limit=5)
 
     request.assert_called_once()
-    assert result["total"] == 0
+    assert result.total == 0
 
 
 @pytest.mark.asyncio
 async def test_search_http_and_in_process_results_have_projection_parity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    expected = {"items": [{"content_id": 7, "score": 0.9}], "total": 1}
+    expected = _search_response()
     monkeypatch.setenv("ACA_API_BASE_URL", "https://api.example.test")
     monkeypatch.setenv("ACA_ADMIN_KEY", "secret")
     monkeypatch.setattr(runtime, "request_json", MagicMock(return_value=expected))
@@ -313,14 +329,15 @@ async def test_search_http_and_in_process_results_have_projection_parity(
     import src.storage.database as database_module
 
     search_service = MagicMock()
-    search_service.search = AsyncMock(return_value=expected)
+    search_service.search = AsyncMock(return_value=content.SearchResponse.model_validate(expected))
     monkeypatch.setattr(search_module, "HybridSearchService", lambda **_: search_service)
     context = MagicMock()
     context.__enter__.return_value = MagicMock()
     monkeypatch.setattr(database_module, "get_db", lambda: context)
     local_result = await content.search_content("agents", source_types="rss,blog", limit=5)
 
-    assert http_result == local_result == expected
+    assert http_result == local_result
+    assert http_result.model_dump(mode="json", exclude_none=True) == expected
 
 
 @pytest.mark.asyncio
@@ -355,7 +372,122 @@ async def test_review_http_and_in_process_results_have_projection_parity(
     monkeypatch.setattr(review_module, "ReviewService", lambda: service)
     local_result = await review.finalize_review(9, "approve", reviewer="agent")
 
-    assert http_result == local_result == expected
+    assert http_result == local_result
+    assert http_result.model_dump(mode="json")["digest_id"] == expected["digest_id"]
+
+
+@pytest.mark.asyncio
+async def test_reference_extract_http_and_in_process_have_contract_parity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = {
+        "references_extracted": 2,
+        "content_processed": 1,
+        "has_more": False,
+        "next_cursor": None,
+        "per_content": [{"content_id": 7, "references_found": 2}],
+    }
+    monkeypatch.setenv("ACA_API_BASE_URL", "https://api.example.test")
+    monkeypatch.setenv("ACA_ADMIN_KEY", "secret")
+    monkeypatch.setattr(runtime, "request_json", MagicMock(return_value=expected))
+    http_result = await knowledge.extract_references(content_ids=[7])
+
+    monkeypatch.delenv("ACA_API_BASE_URL")
+    monkeypatch.delenv("ACA_ADMIN_KEY")
+    import src.api.routes.reference_routes as reference_routes
+
+    monkeypatch.setattr(reference_routes, "_run_extraction", MagicMock(return_value=expected))
+    local_result = await knowledge.extract_references(content_ids=[7])
+
+    assert http_result == local_result
+    assert local_result.per_content is not None
+    assert local_result.per_content[0].references_found == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool", "path", "payload"),
+    [
+        (
+            content.get_content,
+            "/api/v1/contents/7",
+            {
+                "id": 7,
+                "source_type": "rss",
+                "source_id": "article-7",
+                "title": "Agent systems",
+                "markdown_content": "# Agent systems",
+                "content_hash": "abc",
+                "status": "completed",
+                "is_public": False,
+                "ingested_at": "2026-07-16T00:00:00Z",
+            },
+        ),
+        (
+            content.get_digest,
+            "/api/v1/digests/7",
+            {
+                "id": 7,
+                "digest_type": "daily",
+                "title": "Daily digest",
+                "period_start": "2026-07-15T00:00:00Z",
+                "period_end": "2026-07-16T00:00:00Z",
+                "status": "APPROVED",
+                "created_at": "2026-07-16T00:00:00Z",
+                "revision_count": 0,
+            },
+        ),
+    ],
+)
+async def test_resource_lookup_http_tools_return_typed_projections(
+    monkeypatch: pytest.MonkeyPatch,
+    tool,
+    path: str,
+    payload: dict,
+) -> None:
+    monkeypatch.setenv("ACA_API_BASE_URL", "https://api.example.test")
+    monkeypatch.setenv("ACA_ADMIN_KEY", "secret")
+    request = MagicMock(return_value=payload)
+    monkeypatch.setattr(runtime, "request_json", request)
+
+    result = await tool(7)
+
+    request.assert_called_once_with("GET", path)
+    assert result.id == 7
+
+
+@pytest.mark.asyncio
+async def test_podcast_script_lookup_returns_typed_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = {
+        "id": 8,
+        "digest_id": 7,
+        "title": "Agent systems",
+        "length": "standard",
+        "word_count": 100,
+        "estimated_duration": "1 min",
+        "estimated_duration_seconds": 60,
+        "status": "script_approved",
+        "revision_count": 0,
+        "created_at": "2026-07-16T00:00:00Z",
+        "reviewed_by": None,
+        "reviewed_at": None,
+        "sections": [],
+        "sources_summary": [],
+        "revision_history": [],
+        "newsletter_ids_fetched": [],
+        "web_search_queries": [],
+        "tool_call_count": 0,
+    }
+    monkeypatch.setenv("ACA_API_BASE_URL", "https://api.example.test")
+    monkeypatch.setenv("ACA_ADMIN_KEY", "secret")
+    monkeypatch.setattr(runtime, "request_json", MagicMock(return_value=payload))
+
+    result = await content.get_podcast_script(8)
+
+    assert result.id == 8
+    assert result.digest_id == 7
 
 
 @pytest.mark.asyncio
@@ -378,6 +510,16 @@ async def test_fastmcp_advertises_generated_contract_schemas() -> None:
     assert "contract_version" in tools["get_capabilities"].outputSchema["properties"]
     query_schema = tools["create_digest"].inputSchema["properties"]["query"]
     assert "$ref" in str(query_schema)
+    assert set(tools) == set(CANONICAL_TOOL_NAMES)
+    assert all(tool.outputSchema is not None for tool in tools.values())
+    assert "minimum': 1" in str(tools["ingest_rss"].inputSchema["properties"]["max_items"])
+    assert "minItems': 1" in str(tools["ingest_files"].inputSchema["properties"]["upload_ids"])
+    assert "minLength': 1" in str(
+        tools["ingest_scholar_paper"].inputSchema["properties"]["identifier"]
+    )
+    assert "request_revision" not in str(
+        tools["finalize_review"].inputSchema["properties"]["action"]
+    )
 
 
 @pytest.mark.asyncio
@@ -389,6 +531,9 @@ async def test_fastmcp_protocol_call_returns_structured_content() -> None:
     assert content_blocks
     assert structured["contract_version"]
     assert isinstance(structured["source_commands"], list)
+    assert "get_digest" in structured["supported_tools"]
+    assert structured["status_tool"] == "get_operation_status"
+    assert structured["mutation_result_schema"] == "OperationHandle"
 
 
 @pytest.mark.asyncio
@@ -412,3 +557,34 @@ async def test_operation_status_rejects_unbounded_http_wait() -> None:
         await operations.get_operation_status("42", wait_seconds=31)
 
     assert exc_info.value.error.data["problem"]["status"] == 422
+
+
+@pytest.mark.asyncio
+async def test_wait_rejects_unbounded_agent_timeout() -> None:
+    with pytest.raises(McpError) as exc_info:
+        await operations.wait_for_operation("42", timeout_seconds=301)
+
+    assert exc_info.value.error.data["problem"]["status"] == 422
+
+
+@pytest.mark.asyncio
+async def test_http_wait_runs_sync_client_off_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ACA_API_BASE_URL", "https://api.example.test")
+    monkeypatch.setenv("ACA_ADMIN_KEY", "secret")
+    client = MagicMock()
+    client.wait_operation.return_value = _handle()
+    monkeypatch.setattr(runtime, "create_workflow_client", lambda: client)
+    to_thread = AsyncMock(return_value=_handle())
+    monkeypatch.setattr(operations.asyncio, "to_thread", to_thread)
+
+    result = await operations.wait_for_operation("42", timeout_seconds=12)
+
+    assert result.operation_id == "42"
+    to_thread.assert_awaited_once_with(
+        client.wait_operation,
+        "42",
+        timeout_seconds=12,
+        poll_interval=0.5,
+    )

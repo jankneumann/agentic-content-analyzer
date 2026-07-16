@@ -2,9 +2,19 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
+from pydantic import BaseModel
+
 from src.mcp_tools import runtime
+
+
+class ReviewResult(BaseModel):
+    digest_id: int
+    status: str
+    reviewed_by: str | None
+    reviewed_at: datetime
 
 
 @runtime.tool_boundary
@@ -20,38 +30,40 @@ async def list_pending_reviews() -> Any:
 @runtime.tool_boundary
 async def finalize_review(
     digest_id: int,
-    action: Literal["approve", "reject", "request_revision"],
+    action: Literal["approve", "reject"],
     reviewer: str = "mcp-agent",
     review_notes: str | None = None,
-) -> Any:
+) -> ReviewResult:
     """Submit an explicit review decision for a digest."""
     if runtime.transport_mode() is runtime.TransportMode.HTTP:
-        return runtime.request_json(
-            "POST",
-            f"/api/v1/digests/{digest_id}/review",
-            json={
-                "action": action,
-                "reviewer": reviewer,
-                "notes": review_notes,
-            },
+        return ReviewResult.model_validate(
+            runtime.request_json(
+                "POST",
+                f"/api/v1/digests/{digest_id}/review",
+                json={
+                    "action": action,
+                    "reviewer": reviewer,
+                    "notes": review_notes,
+                },
+            )
         )
     from src.services.review_service import ReviewService
 
     result = await ReviewService().finalize_review(
         digest_id=digest_id,
-        action="save-draft" if action == "request_revision" else action,
+        action=action,
         revision_history=None,
         reviewer=reviewer,
         review_notes=review_notes,
     )
     if result.id is None or result.status is None or result.reviewed_at is None:
         raise RuntimeError("Review service returned an incomplete persisted digest")
-    return {
-        "digest_id": result.id,
-        "status": result.status.value,
-        "reviewed_by": result.reviewed_by,
-        "reviewed_at": result.reviewed_at.isoformat(),
-    }
+    return ReviewResult(
+        digest_id=result.id,
+        status=result.status.value,
+        reviewed_by=result.reviewed_by,
+        reviewed_at=result.reviewed_at,
+    )
 
 
 @runtime.tool_boundary

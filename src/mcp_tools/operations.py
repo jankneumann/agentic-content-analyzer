@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+from typing import Annotated, Literal
+
+from pydantic import Field
+
 from src.config.sources import load_sources_config
 from src.contracts.workflow_models import (
     CapabilityDocument,
@@ -14,20 +19,42 @@ from src.services.capability_service import CapabilityService
 from src.services.operation_service import OperationService
 
 
+class OperationToolGuide(CapabilityDocument):
+    supported_tools: list[str]
+    status_tool: Literal["get_operation_status"] = "get_operation_status"
+    wait_tool: Literal["wait_for_operation"] = "wait_for_operation"
+    retry_tool: Literal["retry_operation"] = "retry_operation"
+    cancel_tool: Literal["cancel_operation"] = "cancel_operation"
+    mutation_result_schema: Literal["OperationHandle"] = "OperationHandle"
+    cancellable_statuses: tuple[Literal["queued", "in_progress"], ...] = (
+        "queued",
+        "in_progress",
+    )
+
+
 def _in_process_capabilities(*, limit: int, cursor: str | None) -> CapabilityDocument:
     return CapabilityService().get_capabilities(limit=limit, cursor=cursor)
 
 
+def _mcp_capabilities(document: CapabilityDocument) -> OperationToolGuide:
+    from src.mcp_tools.toolsets import CANONICAL_TOOL_NAMES
+
+    return OperationToolGuide(
+        **document.model_dump(mode="json"),
+        supported_tools=list(CANONICAL_TOOL_NAMES),
+    )
+
+
 @runtime.tool_boundary
-async def get_capabilities(limit: int = 50, cursor: str | None = None) -> CapabilityDocument:
+async def get_capabilities(limit: int = 50, cursor: str | None = None) -> OperationToolGuide:
     """Discover source fields, operations, resources, and transport support."""
     if runtime.transport_mode() is runtime.TransportMode.HTTP:
         client = runtime.create_workflow_client()
         try:
-            return client.get_capabilities(limit=limit, cursor=cursor)
+            return _mcp_capabilities(client.get_capabilities(limit=limit, cursor=cursor))
         finally:
             client.close()
-    return _in_process_capabilities(limit=limit, cursor=cursor)
+    return _mcp_capabilities(_in_process_capabilities(limit=limit, cursor=cursor))
 
 
 @runtime.tool_boundary
@@ -82,14 +109,19 @@ async def get_operation_status(operation_id: str, wait_seconds: int = 0) -> Oper
 @runtime.tool_boundary
 async def wait_for_operation(
     operation_id: str,
-    timeout_seconds: float = 300,
-    poll_interval: float = 0.5,
+    timeout_seconds: Annotated[float, Field(ge=0, le=300)] = 300,
+    poll_interval: Annotated[float, Field(ge=0, le=30)] = 0.5,
 ) -> OperationHandle:
     """Wait for terminal state while preserving a bounded agent call."""
+    if not 0 <= timeout_seconds <= 300:
+        raise ValueError("timeout_seconds must be between 0 and 300")
+    if not 0 <= poll_interval <= 30:
+        raise ValueError("poll_interval must be between 0 and 30")
     if runtime.transport_mode() is runtime.TransportMode.HTTP:
         client = runtime.create_workflow_client()
         try:
-            return client.wait_operation(
+            return await asyncio.to_thread(
+                client.wait_operation,
                 operation_id,
                 timeout_seconds=timeout_seconds,
                 poll_interval=poll_interval,
