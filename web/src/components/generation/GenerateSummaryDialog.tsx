@@ -8,7 +8,7 @@
  */
 
 import * as React from "react"
-import { Loader2, FileText, RefreshCw, ListChecks, Filter } from "lucide-react"
+import { Loader2, FileText, ListChecks, Filter } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -34,14 +34,12 @@ interface GenerateSummaryDialogProps {
   onGenerate: (params: SummaryGenerationParams) => void
   isGenerating?: boolean
   pendingCount?: number
-  failedCount?: number
 }
 
 export interface SummaryGenerationParams {
   /** Content IDs to summarize (uses newsletter_ids for backward compatibility) */
   newsletter_ids: number[]
   force: boolean
-  retry_failed: boolean
   /** Optional content query filter for targeted summarization */
   content_query?: ContentQuery
 }
@@ -52,13 +50,11 @@ export function GenerateSummaryDialog({
   onGenerate,
   isGenerating = false,
   pendingCount = 0,
-  failedCount = 0,
 }: GenerateSummaryDialogProps) {
   // Form state
   const [mode, setMode] = React.useState<"pending" | "specific">("pending")
   const [contentIds, setContentIds] = React.useState("")
   const [force, setForce] = React.useState(false)
-  const [retryFailed, setRetryFailed] = React.useState(false)
   const [filtersOpen, setFiltersOpen] = React.useState(false)
   const [contentQuery, setContentQuery] = React.useState<ContentQuery | undefined>(undefined)
 
@@ -78,7 +74,6 @@ export function GenerateSummaryDialog({
     onGenerate({
       newsletter_ids: mode === "specific" ? parsedIds : [],
       force,
-      retry_failed: retryFailed,
       content_query: mode === "pending" ? contentQuery : undefined,
     })
   }
@@ -132,32 +127,6 @@ export function GenerateSummaryDialog({
                 </div>
               </div>
 
-              {/* Retry Failed Toggle */}
-              {failedCount > 0 && (
-                <div className="flex items-center justify-between rounded-lg border p-3 border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950">
-                  <div className="space-y-0.5">
-                    <Label
-                      htmlFor="retry-failed-switch"
-                      className="flex items-center gap-2 text-amber-800 dark:text-amber-200"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                      Retry {failedCount} Failed Items
-                    </Label>
-                    <p
-                      id="retry-failed-desc"
-                      className="text-xs text-amber-600 dark:text-amber-400"
-                    >
-                      Reset failed content and attempt summarization again
-                    </p>
-                  </div>
-                  <Switch
-                    id="retry-failed-switch"
-                    aria-describedby="retry-failed-desc"
-                    checked={retryFailed}
-                    onCheckedChange={setRetryFailed}
-                  />
-                </div>
-              )}
             </div>
           ) : (
             <div className="space-y-2">

@@ -7,7 +7,7 @@
 
 import * as React from "react"
 import { format, subDays, startOfDay, endOfDay } from "date-fns"
-import { Calendar, Loader2, BarChart3, Network, Settings2 } from "lucide-react"
+import { Calendar, Loader2, BarChart3, Settings2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -27,7 +27,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface AnalyzeThemesDialogProps {
@@ -41,9 +40,6 @@ export interface ThemeAnalysisParams {
   start_date?: string
   end_date?: string
   max_themes: number
-  min_newsletters: number
-  relevance_threshold: number
-  include_historical_context: boolean
 }
 
 export function AnalyzeThemesDialog({
@@ -57,9 +53,6 @@ export function AnalyzeThemesDialog({
   const [periodStart, setPeriodStart] = React.useState("")
   const [periodEnd, setPeriodEnd] = React.useState("")
   const [maxThemes, setMaxThemes] = React.useState(15)
-  const [minNewsletters, setMinNewsletters] = React.useState(2)
-  const [relevanceThreshold, setRelevanceThreshold] = React.useState(0.3)
-  const [includeHistorical, setIncludeHistorical] = React.useState(true)
 
   // Set default dates based on date range
   React.useEffect(() => {
@@ -80,9 +73,6 @@ export function AnalyzeThemesDialog({
   const handleAnalyze = () => {
     const params: ThemeAnalysisParams = {
       max_themes: maxThemes,
-      min_newsletters: minNewsletters,
-      relevance_threshold: relevanceThreshold,
-      include_historical_context: includeHistorical,
     }
 
     if (periodStart && periodEnd) {
@@ -154,7 +144,7 @@ export function AnalyzeThemesDialog({
               <Settings2 className="h-4 w-4 text-muted-foreground" />
               <Label>Analysis Parameters</Label>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Max Themes</Label>
                 <Select
@@ -173,59 +163,7 @@ export function AnalyzeThemesDialog({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Min Newsletters</Label>
-                <Select
-                  value={String(minNewsletters)}
-                  onValueChange={(v) => setMinNewsletters(Number(v))}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[1, 2, 3, 5, 10].map((n) => (
-                      <SelectItem key={n} value={String(n)}>
-                        {n} min
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Relevance Threshold</Label>
-              <Select
-                value={String(relevanceThreshold)}
-                onValueChange={(v) => setRelevanceThreshold(Number(v))}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0.1">Low (0.1) - More themes</SelectItem>
-                  <SelectItem value="0.3">Medium (0.3) - Balanced</SelectItem>
-                  <SelectItem value="0.5">High (0.5) - Key themes only</SelectItem>
-                  <SelectItem value="0.7">Very High (0.7) - Critical themes</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Historical Context */}
-          <div className="flex items-center justify-between rounded-md border p-3">
-            <div className="flex items-center gap-2">
-              <Network className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <Label className="text-sm">Include Historical Context</Label>
-                <p className="text-xs text-muted-foreground">
-                  Enrich themes with knowledge graph history
-                </p>
-              </div>
-            </div>
-            <Switch
-              checked={includeHistorical}
-              onCheckedChange={setIncludeHistorical}
-            />
           </div>
         </div>
 
