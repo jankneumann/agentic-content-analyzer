@@ -61,7 +61,7 @@ async def test_digest_workflow_persists_exact_selection_and_attaches(db_session)
         get=AsyncMock(return_value=SimpleNamespace(resource=None)),
         update_progress=AsyncMock(),
         attach_resource=AsyncMock(),
-        attach_result=AsyncMock(),
+        attach_completion=AsyncMock(),
     )
 
     @contextmanager
@@ -84,6 +84,7 @@ async def test_digest_workflow_persists_exact_selection_and_attaches(db_session)
     assert record.selection_fingerprint == resolved.fingerprint
     resolver.resolve.assert_not_called()
     assert theme_workflow.analyze_persisted.await_args.kwargs["resolved_set"] is resolved
+    assert theme_workflow.analyze_persisted.await_args.kwargs["owner_operation_id"] == 61
     assert creator.create_digest.await_args.args[1] is resolved
     creator.create_digest.assert_awaited_once()
     operations.attach_resource.assert_awaited_once_with(
@@ -101,7 +102,7 @@ async def test_digest_workflow_persists_exact_selection_and_attaches(db_session)
     assert repeated.id == record.id
     assert creator.create_digest.await_count == 1
     assert operations.attach_resource.await_count == 1
-    assert operations.attach_result.await_count == 2
+    assert operations.attach_completion.await_count == 2
 
     creator.create_digest.return_value = creator.create_digest.return_value.model_copy(
         update={"selection_fingerprint": "b" * 64}
@@ -111,6 +112,52 @@ async def test_digest_workflow_persists_exact_selection_and_attaches(db_session)
         await workflow.execute("63", request, resolved_set=resolved)
     mismatched = db_session.query(Digest).filter_by(operation_id=63).one()
     assert mismatched.status == DigestStatus.FAILED
+
+
+def test_digest_apply_preserves_reserved_provenance() -> None:
+    trusted_content_ids = [31]
+    trusted_summary_ids = [41]
+    trusted_policy = {"schema_version": 1, "source_types": ["rss"]}
+    record = SimpleNamespace(
+        source_content_ids=trusted_content_ids,
+        source_summary_ids=trusted_summary_ids,
+        selection_fingerprint="a" * 64,
+        selection_policy=trusted_policy,
+        newsletter_count=1,
+    )
+    data = SimpleNamespace(
+        title="Daily",
+        executive_overview="Overview",
+        strategic_insights=[],
+        technical_developments=[],
+        emerging_trends=[],
+        actionable_recommendations={},
+        sources=[],
+        newsletter_count=1,
+        agent_framework="test",
+        model_used="test",
+        model_version=None,
+        token_usage=None,
+        processing_time_seconds=None,
+        markdown_content=None,
+        theme_tags=None,
+        source_content_ids=[31],
+        source_summary_ids=[41],
+        selection_fingerprint="a" * 64,
+        selection_policy=dict(trusted_policy),
+        historical_context=None,
+        is_combined=False,
+        child_digest_ids=None,
+        source_digest_count=None,
+    )
+
+    DigestWorkflow._apply(record, data)
+
+    assert record.source_content_ids is trusted_content_ids
+    assert record.source_summary_ids is trusted_summary_ids
+    assert record.selection_policy is trusted_policy
+    assert record.selection_fingerprint == "a" * 64
+    assert record.newsletter_count == 1
 
 
 @pytest.mark.asyncio
@@ -140,7 +187,7 @@ async def test_digest_failure_keeps_reserved_failed_resource(db_session) -> None
         get=AsyncMock(return_value=SimpleNamespace(resource=None)),
         update_progress=AsyncMock(),
         attach_resource=AsyncMock(),
-        attach_result=AsyncMock(),
+        attach_completion=AsyncMock(),
     )
 
     @contextmanager
@@ -164,7 +211,7 @@ async def test_digest_failure_keeps_reserved_failed_resource(db_session) -> None
     assert failed is not None
     assert failed.status == DigestStatus.FAILED
     operations.attach_resource.assert_awaited_once()
-    operations.attach_result.assert_not_awaited()
+    operations.attach_completion.assert_not_awaited()
 
     changed_policy = SelectionPolicy(
         start_date=start,
@@ -191,7 +238,15 @@ async def test_digest_failure_keeps_reserved_failed_resource(db_session) -> None
     [
         {"newsletter_count": 0},
         {"source_content_ids": None},
+        {"source_content_ids": [32]},
         {"source_summary_ids": None},
+        {"source_summary_ids": [42]},
+        {"selection_fingerprint": "b" * 64},
+        {
+            "selection_policy": SelectionPolicy(source_types=(ContentSource.GMAIL,)).model_dump(
+                mode="json"
+            )
+        },
     ],
 )
 def test_digest_provenance_fails_closed_on_count_and_nullable_ids(updates: dict) -> None:

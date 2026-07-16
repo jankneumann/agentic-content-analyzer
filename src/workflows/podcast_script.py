@@ -142,8 +142,13 @@ class PodcastScriptWorkflow:
         )
 
     async def _attach_result(self, operation_id: str | int, record: PodcastScriptRecord) -> None:
-        await self.operations.attach_result(
+        await self.operations.attach_completion(
             operation_id,
-            {"script_id": record.id, "selection_fingerprint": record.selection_fingerprint},
+            result={"script_id": record.id, "selection_fingerprint": record.selection_fingerprint},
+            resource=ResourceReference(
+                type="podcast_script",
+                id=str(record.id),
+                url=f"/api/v1/scripts/{record.id}",
+            ),
+            message="Podcast script complete",
         )
-        await self.operations.update_progress(operation_id, 100, "Podcast script complete")

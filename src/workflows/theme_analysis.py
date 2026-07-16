@@ -7,6 +7,7 @@ from contextlib import AbstractContextManager
 from datetime import UTC, datetime
 from typing import Any, cast
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.contracts.workflow_models import ThemeAnalysisRequest as WorkflowThemeRequest
@@ -114,16 +115,78 @@ class ThemeAnalysisWorkflow:
         request: WorkflowThemeRequest,
         *,
         resolved_set: ResolvedContentSet,
+        owner_operation_id: int | None = None,
     ) -> ThemeAnalysisResult:
         """Run an internal theme analysis while retaining its provenance record."""
 
-        record_id = self._reserve(resolved_set, operation_id=None)
+        existing = (
+            self._owned_analysis(owner_operation_id) if owner_operation_id is not None else None
+        )
+        if existing is not None:
+            self._validate_persisted_selection(existing, resolved_set)
+            if existing.status == AnalysisStatus.COMPLETED:
+                return self._result_from_record(existing)
+            record_id = cast(int, existing.id)
+            with self.session_factory() as db:
+                loaded = db.get(ThemeAnalysis, record_id)
+                if loaded is None:
+                    raise RuntimeError(f"Owned theme analysis {record_id} disappeared")
+                loaded.status = AnalysisStatus.RUNNING
+                loaded.error_message = None
+                db.commit()
+        else:
+            record_id = self._reserve(resolved_set, operation_id=owner_operation_id)
         try:
             _, result = await self._run_and_persist(request, resolved_set, record_id)
             return result
         except Exception as exc:
             self._mark_failed(record_id, exc)
             raise
+
+    def _owned_analysis(self, operation_id: int) -> ThemeAnalysis | None:
+        with self.session_factory() as db:
+            return db.execute(
+                select(ThemeAnalysis).where(ThemeAnalysis.operation_id == operation_id)
+            ).scalar_one_or_none()
+
+    @staticmethod
+    def _validate_persisted_selection(
+        record: ThemeAnalysis,
+        resolved: ResolvedContentSet,
+    ) -> None:
+        if (
+            record.selection_fingerprint != resolved.fingerprint
+            or list(record.content_ids or []) != list(resolved.content_ids)
+            or list(record.summary_ids or []) != list(resolved.summary_ids)
+            or SelectionPolicy.model_validate(record.selection_policy) != resolved.policy
+        ):
+            raise ValueError("Persisted theme selection changed before retry")
+
+    @staticmethod
+    def _result_from_record(record: ThemeAnalysis) -> ThemeAnalysisResult:
+        return ThemeAnalysisResult.model_validate(
+            {
+                "id": record.id,
+                "analysis_date": record.analysis_date,
+                "start_date": record.start_date,
+                "end_date": record.end_date,
+                "content_count": record.content_count,
+                "content_ids": record.content_ids,
+                "summary_ids": record.summary_ids,
+                "selection_fingerprint": record.selection_fingerprint,
+                "selection_policy": record.selection_policy,
+                "themes": record.themes,
+                "total_themes": record.total_themes,
+                "emerging_themes_count": record.emerging_themes_count,
+                "top_theme": record.top_theme,
+                "processing_time_seconds": record.processing_time_seconds or 0.0,
+                "token_usage": record.token_usage,
+                "model_used": record.model_used,
+                "model_version": record.model_version,
+                "agent_framework": record.agent_framework,
+                "cross_theme_insights": record.cross_theme_insights or [],
+            }
+        )
 
     def _reserve(
         self,
@@ -181,7 +244,7 @@ class ThemeAnalysisWorkflow:
             loaded.cross_theme_insights = result.cross_theme_insights
             db.commit()
             db.refresh(loaded)
-            return cast(ThemeAnalysis, loaded), result
+            return cast(ThemeAnalysis, loaded), result.model_copy(update={"id": loaded.id})
 
     def _mark_failed(self, record_id: int, exc: Exception) -> None:
         with self.session_factory() as db:
@@ -212,8 +275,16 @@ class ThemeAnalysisWorkflow:
         )
 
     async def _attach_result(self, operation_id: str | int, record: ThemeAnalysis) -> None:
-        await self.operations.attach_result(
+        await self.operations.attach_completion(
             operation_id,
-            {"theme_analysis_id": record.id, "selection_fingerprint": record.selection_fingerprint},
+            result={
+                "theme_analysis_id": record.id,
+                "selection_fingerprint": record.selection_fingerprint,
+            },
+            resource=ResourceReference(
+                type="theme_analysis",
+                id=str(record.id),
+                url=f"/api/v1/themes/analysis/{record.id}",
+            ),
+            message="Theme analysis complete",
         )
-        await self.operations.update_progress(operation_id, 100, "Theme analysis complete")

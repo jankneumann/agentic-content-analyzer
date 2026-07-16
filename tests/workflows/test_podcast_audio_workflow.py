@@ -59,7 +59,7 @@ async def test_podcast_audio_reserves_generates_and_attaches(
         get=AsyncMock(return_value=SimpleNamespace(resource=None)),
         update_progress=AsyncMock(),
         attach_resource=AsyncMock(),
-        attach_result=AsyncMock(),
+        attach_completion=AsyncMock(),
     )
 
     @contextmanager
@@ -90,4 +90,4 @@ async def test_podcast_audio_reserves_generates_and_attaches(
     assert repeated.id == record.id
     assert service.generate.await_count == 1
     assert operations.attach_resource.await_count == 1
-    assert operations.attach_result.await_count == 2
+    assert operations.attach_completion.await_count == 2
