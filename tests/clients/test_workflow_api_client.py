@@ -130,6 +130,49 @@ def test_upload_uses_multipart_file(tmp_path: Path) -> None:
     assert client.upload(document).id == "upload-1"
 
 
+def test_upload_bytes_uses_public_multipart_boundary() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/uploads"
+        assert b'filename="notes.txt"' in request.content
+        assert b"hello" in request.content
+        assert b'name="title"' in request.content
+        assert b"Agent notes" in request.content
+        return httpx.Response(
+            201,
+            json={
+                "id": "upload-1",
+                "filename": "notes.txt",
+                "media_type": "text/plain",
+                "size_bytes": 5,
+            },
+            request=request,
+        )
+
+    client = WorkflowApiClient("https://aca.test", transport=httpx.MockTransport(handler))
+    upload = client.upload_bytes("notes.txt", b"hello", "text/plain", title="Agent notes")
+    assert upload.id == "upload-1"
+
+
+def test_request_json_exposes_authenticated_transport_without_client_internals() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/v1/kb/search"
+        assert request.url.params["limit"] == "2"
+        assert request.headers["X-Admin-Key"] == "secret"
+        assert request.content == b'{"query":"agents"}'
+        return httpx.Response(200, json={"data": [{"id": 1}]}, request=request)
+
+    client = WorkflowApiClient(
+        "https://aca.test",
+        admin_key="secret",
+        transport=httpx.MockTransport(handler),
+    )
+    result = client.request_json(
+        "POST", "/api/v1/kb/search", params={"limit": 2}, json={"query": "agents"}
+    )
+    assert result == {"data": [{"id": 1}]}
+
+
 def test_cursor_iteration_continues_without_duplication() -> None:
     cursors: list[str | None] = []
 
