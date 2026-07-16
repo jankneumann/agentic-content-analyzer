@@ -475,6 +475,6 @@
   Document registry extension, selection provenance, queue operations, external contracts, source testing, migration order, and removed legacy paths in project documentation.
   **Dependencies**: 10.7
 
-- [ ] 10.9 [M] Checkpoint: run full gates, review migration, verify cutover
+- [x] 10.9 [M] Checkpoint: run full gates, review migration, verify cutover
   Run unit, integration, contract, frontend, E2E, lint, type checks, OpenSpec validation, architecture validation, and schema upgrade/downgrade rehearsal.
   **Dependencies**: 10.3, 10.6, 10.7, 10.8
