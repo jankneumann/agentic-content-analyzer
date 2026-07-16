@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel
 
 from src.contracts.workflow_models import (
     AudioDigestRequest,
+    ContentQuery,
     DigestCreateRequest,
     OperationHandle,
     PipelineRequest,
@@ -35,13 +36,13 @@ async def _submit(
     request: BaseModel,
     operation_type: OperationType,
     idempotency_key: str | None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     payload = request.model_dump(mode="json", exclude_none=True)
     if runtime.transport_mode() is runtime.TransportMode.HTTP:
         client = runtime.create_workflow_client()
         try:
             method = getattr(client, _CLIENT_METHODS[operation_type])
-            return runtime.native_dict(method(payload, idempotency_key=idempotency_key))
+            return OperationHandle.model_validate(method(payload, idempotency_key=idempotency_key))
         finally:
             client.close()
     handle = await OperationService().submit(
@@ -49,16 +50,16 @@ async def _submit(
         payload,
         idempotency_key=idempotency_key,
     )
-    return runtime.native_dict(OperationHandle.model_validate(handle.model_dump(mode="json")))
+    return OperationHandle.model_validate(handle.model_dump(mode="json"))
 
 
 @runtime.tool_boundary
 async def summarize_pending(
     content_ids: list[int] | None = None,
-    query: dict[str, Any] | None = None,
+    query: ContentQuery | None = None,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     """Queue canonical summarization over IDs or a content query."""
     return await _submit(
         SummarizationRequest(
@@ -73,10 +74,10 @@ async def summarize_pending(
 
 @runtime.tool_boundary
 async def analyze_themes(
-    query: dict[str, Any],
+    query: ContentQuery,
     max_themes: int = 10,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     """Queue theme analysis over an explicit immutable content query."""
     return await _submit(
         ThemeAnalysisRequest(query=query, max_themes=max_themes),
@@ -90,10 +91,10 @@ async def create_digest(
     digest_type: Literal["daily", "weekly"],
     period_start: str,
     period_end: str,
-    query: dict[str, Any] | None = None,
+    query: ContentQuery | None = None,
     include_historical_context: bool = True,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     """Queue persisted daily or weekly digest generation."""
     return await _submit(
         DigestCreateRequest(
@@ -116,7 +117,7 @@ async def run_pipeline(
     sources: list[str] | None = None,
     continue_on_source_error: bool = True,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     """Queue the universal ingestion-to-digest pipeline."""
     return await _submit(
         PipelineRequest(
@@ -139,7 +140,7 @@ async def generate_podcast_script(
     custom_focus_topics: list[str] | None = None,
     custom_instructions: str | None = None,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     """Queue a persisted podcast script for a digest."""
     return await _submit(
         PodcastScriptRequest(
@@ -161,7 +162,7 @@ async def generate_podcast_audio(
     alex_voice: Literal["alex_male", "alex_female"] = "alex_male",
     sam_voice: Literal["sam_male", "sam_female"] = "sam_female",
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     """Queue persisted podcast audio generation."""
     return await _submit(
         PodcastAudioRequest(
@@ -182,7 +183,7 @@ async def generate_audio_digest(
     voice: str = "nova",
     speed: float = 1.0,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     """Queue persisted single-voice audio digest generation."""
     return await _submit(
         AudioDigestRequest(

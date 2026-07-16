@@ -276,12 +276,6 @@ async def ingest_reference(reference_id: int) -> Any:
 
 TOOLS = (
     search_knowledge_graph,
-    search_knowledge_base,
-    get_topic,
-    get_kb_index,
-    compile_knowledge_base,
-    get_content_references,
     extract_references,
     resolve_references,
-    ingest_reference,
 )
