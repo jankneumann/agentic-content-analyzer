@@ -166,10 +166,33 @@ def test_url_contract_preserves_routing_behavior_from_main() -> None:
 
 def test_operation_routes_cover_status_events_retry_and_cancel() -> None:
     paths = _openapi()["paths"]
+    assert "get" in paths["/api/v1/operations"]
     assert "get" in paths["/api/v1/operations/{operation_id}"]
     assert "get" in paths["/api/v1/operations/{operation_id}/events"]
     assert "post" in paths["/api/v1/operations/{operation_id}/retry"]
     assert "post" in paths["/api/v1/operations/{operation_id}/cancel"]
+
+
+def test_agent_facing_discovery_contracts_use_cursor_pages() -> None:
+    document = _openapi()
+    paths = document["paths"]
+    schemas = document["components"]["schemas"]
+
+    assert paths["/api/v1/operations"]["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/OperationPage"}
+    assert paths["/api/v1/configured-sources"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"] == {"$ref": "#/components/schemas/ConfiguredSourcePage"}
+    assert schemas["OperationPage"]["properties"]["next_cursor"] == {"type": ["string", "null"]}
+    configured = schemas["ConfiguredSource"]
+    assert "url" not in configured["required"]
+    assert set(configured["required"]) >= {
+        "key",
+        "command_key",
+        "source_type",
+        "configuration",
+    }
 
 
 def test_progress_event_schema_is_valid() -> None:

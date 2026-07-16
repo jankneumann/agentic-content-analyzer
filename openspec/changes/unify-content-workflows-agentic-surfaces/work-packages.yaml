@@ -510,6 +510,9 @@ packages:
     locks:
       files:
         - src/api/app.py
+        - src/services/capability_service.py
+        - src/config/sources.py
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/openapi/v1.yaml
       keys:
         - api:GET /api/v1/capabilities
         - api:POST /api/v1/ingestions
@@ -521,7 +524,16 @@ packages:
       write_allow:
         - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
         - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/openapi/v1.yaml
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/generated/models.py
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/generated/types.ts
+        - src/contracts/workflow_models.py
+        - src/services/capability_service.py
+        - src/config/sources.py
         - src/api/**
+        - tests/contract/test_canonical_workflow_contracts.py
+        - tests/services/test_capability_service.py
+        - tests/test_config/test_sources.py
         - tests/api/**
       read_allow: ["src/**", "tests/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
       deny: ["src/cli/**", "src/mcp/**", "src/mcp_server.py", "web/**"]

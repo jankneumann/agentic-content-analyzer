@@ -1,5 +1,5 @@
 // Generated from contracts/openapi/v1.yaml; do not edit.
-export const CONTRACT_SHA256 = "57871151c4da64e157c87d83fac71f35a93f47f6a28ef995f7f6f5948b2cbf7d" as const;
+export const CONTRACT_SHA256 = "f41871c40fc452f59b76cafe77a653a73883d6737ddf59902b7f51f0d47c1cb3" as const;
 
 export type OperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 export type OperationType = "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
@@ -47,6 +47,11 @@ export interface OperationHandle {
   created_at: string;
   started_at?: string | null;
   completed_at?: string | null;
+}
+
+export interface OperationPage {
+  data: Array<OperationHandle>;
+  next_cursor?: string | null;
 }
 
 export interface OperationEvent {
@@ -100,6 +105,22 @@ export interface CapabilityDocument {
   source_commands: Array<SourceCapability>;
   operation_types: Array<string>;
   resource_types: Array<string>;
+  next_cursor?: string | null;
+}
+
+export interface ConfiguredSource {
+  key: string;
+  command_key: string;
+  source_type: string;
+  name?: string | null;
+  enabled: boolean;
+  origin: "yaml" | "db";
+  configuration: Record<string, unknown>;
+}
+
+export interface ConfiguredSourcePage {
+  data: Array<ConfiguredSource>;
+  next_cursor?: string | null;
 }
 
 export interface ContentQuery {

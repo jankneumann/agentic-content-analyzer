@@ -20,6 +20,9 @@ paths:
       operationId: getCapabilities
       summary: Discover source, operation, resource, and transport capabilities
       tags: [capabilities]
+      parameters:
+        - $ref: "#/components/parameters/PageLimit"
+        - $ref: "#/components/parameters/PageCursor"
       responses:
         "200":
           description: Deployment capabilities
@@ -38,6 +41,24 @@ paths:
                       - { name: max_items, type: integer, required: false }
                 operation_types: [ingestion.execute, digest.create]
                 resource_types: [content, digest]
+                next_cursor: null
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/configured-sources:
+    get:
+      operationId: listConfiguredSources
+      summary: List configured ingestion sources without assuming locator fields
+      tags: [capabilities, ingestion]
+      parameters:
+        - $ref: "#/components/parameters/PageLimit"
+        - $ref: "#/components/parameters/PageCursor"
+      responses:
+        "200":
+          description: Configured source page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConfiguredSourcePage" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -306,6 +327,24 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFoundProblem" }
 
+  /api/v1/operations:
+    get:
+      operationId: listOperations
+      summary: List durable operations using an opaque keyset cursor
+      tags: [operations]
+      parameters:
+        - $ref: "#/components/parameters/PageLimit"
+        - $ref: "#/components/parameters/PageCursor"
+      responses:
+        "200":
+          description: Operation page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationProblem" }
+
   /api/v1/operations/{operation_id}/events:
     get:
       operationId: streamOperationEvents
@@ -377,6 +416,16 @@ components:
       name: X-Admin-Key
 
   parameters:
+    PageLimit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    PageCursor:
+      name: cursor
+      in: query
+      required: false
+      schema: { type: string }
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -583,6 +632,14 @@ components:
         started_at: { type: [string, "null"], format: date-time }
         completed_at: { type: [string, "null"], format: date-time }
 
+    OperationPage:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/OperationHandle" } }
+        next_cursor: { type: [string, "null"] }
+
     OperationEvent:
       type: object
       additionalProperties: false
@@ -686,6 +743,28 @@ components:
         source_commands: { type: array, items: { $ref: "#/components/schemas/SourceCapability" } }
         operation_types: { type: array, items: { type: string } }
         resource_types: { type: array, items: { type: string } }
+        next_cursor: { type: [string, "null"] }
+
+    ConfiguredSource:
+      type: object
+      additionalProperties: false
+      required: [key, command_key, source_type, enabled, origin, configuration]
+      properties:
+        key: { type: string }
+        command_key: { type: string }
+        source_type: { type: string }
+        name: { type: [string, "null"] }
+        enabled: { type: boolean }
+        origin: { type: string, enum: [yaml, db] }
+        configuration: { type: object, additionalProperties: true }
+
+    ConfiguredSourcePage:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/ConfiguredSource" } }
+        next_cursor: { type: [string, "null"] }
 
     ContentQuery:
       type: object
