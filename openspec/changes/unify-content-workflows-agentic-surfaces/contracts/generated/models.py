@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
-CONTRACT_SHA256 = "57871151c4da64e157c87d83fac71f35a93f47f6a28ef995f7f6f5948b2cbf7d"
+CONTRACT_SHA256 = "f41871c40fc452f59b76cafe77a653a73883d6737ddf59902b7f51f0d47c1cb3"
 
 OperationStatus = Literal["queued", "in_progress", "completed", "failed", "cancelled"]
 OperationType = Literal[
@@ -317,6 +317,11 @@ class OperationHandle(StrictModel):
     completed_at: datetime | None = None
 
 
+class OperationPage(StrictModel):
+    data: list[OperationHandle]
+    next_cursor: str | None = None
+
+
 class OperationEvent(StrictModel):
     schema_version: Literal[2] = 2
     event_id: str
@@ -368,6 +373,22 @@ class CapabilityDocument(StrictModel):
     source_commands: list[SourceCapability]
     operation_types: list[str]
     resource_types: list[str]
+    next_cursor: str | None = None
+
+
+class ConfiguredSource(StrictModel):
+    key: str
+    command_key: str
+    source_type: str
+    name: str | None = None
+    enabled: bool
+    origin: Literal["yaml", "db"]
+    configuration: dict[str, Any]
+
+
+class ConfiguredSourcePage(StrictModel):
+    data: list[ConfiguredSource]
+    next_cursor: str | None = None
 
 
 class ContentQuery(StrictModel):
