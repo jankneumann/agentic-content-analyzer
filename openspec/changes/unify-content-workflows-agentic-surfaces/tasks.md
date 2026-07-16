@@ -374,25 +374,25 @@
 - [x] 8.4 [XS] Checkpoint: run CLI tests, review diff, verify scope
   **Dependencies**: 8.2, 8.3
 
-- [ ] 8.5 [M] Write MCP conformance tests
+- [x] 8.5 [M] Write MCP conformance tests
   **Spec scenarios**: mcp-http-client.1-9, agentic-operations.8-9
   **Contracts**: `contracts/openapi/v1.yaml`
   **Design decisions**: D8, D9
   **Dependencies**: 1.2, 7.11
 
-- [ ] 8.6 [M] Extract bounded MCP tool modules
+- [x] 8.6 [M] Extract bounded MCP tool modules
   Split ingestion, content, workflow, review, operation, and knowledge tools behind a composition root without changing generated tool names unexpectedly.
   **Dependencies**: 8.5
 
-- [ ] 8.7 [M] Route every MCP tool through HTTP mode
+- [x] 8.7 [M] Route every MCP tool through HTTP mode
   Map all tools to the shared API client, enforce strict HTTP mode globally, and keep in-process mode on canonical application services.
   **Dependencies**: 8.5, 8.6
 
-- [ ] 8.8 [M] Implement MCP operation tools
+- [x] 8.8 [M] Implement MCP operation tools
   Add structured capability, status, wait, retry, and cancellation tools; return native objects; translate RFC 7807 failures to protocol errors.
   **Dependencies**: 8.5, 8.7
 
-- [ ] 8.9 [XS] Checkpoint: run MCP tests, review diff, verify scope
+- [x] 8.9 [XS] Checkpoint: run MCP tests, review diff, verify scope
   **Dependencies**: 8.6, 8.7, 8.8
 
 ## 9. Frontend Surface
