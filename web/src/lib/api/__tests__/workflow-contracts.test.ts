@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest"
 
 import { ApiClientError, apiClient } from "../client"
-import { getAllCapabilities, listAllOperations, submitIngestion } from "../workflows"
+import { getAllCapabilities, listAllOperations, submitDigest, submitIngestion } from "../workflows"
 
 describe("canonical workflow client", () => {
   beforeEach(() => vi.restoreAllMocks())
@@ -23,6 +23,34 @@ describe("canonical workflow client", () => {
     await submitIngestion({ kind: "url", url: "https://example.com" })
 
     expect(post).toHaveBeenCalledWith("/ingestions", { kind: "url", url: "https://example.com" }, undefined)
+  })
+
+  it("submits the canonical digest payload with idempotency", async () => {
+    const operation = {
+      schema_version: 2 as const,
+      operation_id: "op-digest-1",
+      operation_type: "digest.create" as const,
+      status: "queued" as const,
+      progress: 0,
+      message: "Queued",
+      cancellable: true,
+      retry_count: 0,
+      status_url: "/api/v1/operations/op-digest-1",
+      events_url: "/api/v1/operations/op-digest-1/events",
+      created_at: "2026-07-16T00:00:00Z",
+    }
+    const post = vi.spyOn(apiClient, "post").mockResolvedValue(operation)
+    const request = {
+      digest_type: "daily" as const,
+      period_start: "2026-07-15T00:00:00Z",
+      period_end: "2026-07-16T00:00:00Z",
+      include_historical_context: false,
+    }
+
+    await expect(submitDigest(request, { idempotencyKey: "digest-parity-1" })).resolves.toEqual(operation)
+    expect(post).toHaveBeenCalledWith("/digests", request, {
+      headers: { "Idempotency-Key": "digest-parity-1" },
+    })
   })
 
   it("hydrates operations across cursor pages", async () => {
