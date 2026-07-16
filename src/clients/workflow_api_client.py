@@ -92,6 +92,40 @@ class WorkflowApiClient:
             )
         return self._decode(response, UploadReference)
 
+    def upload_bytes(
+        self,
+        filename: str,
+        content: bytes,
+        media_type: str,
+        *,
+        title: str | None = None,
+        publication: str | None = None,
+    ) -> UploadReference:
+        """Upload caller-provided bytes without exposing the HTTP client."""
+        data = {
+            key: value
+            for key, value in {"title": title, "publication": publication}.items()
+            if value
+        }
+        response = self._client.post(
+            "/api/v1/uploads",
+            files={"file": (filename, content, media_type)},
+            data=data,
+        )
+        return self._decode(response, UploadReference)
+
+    def request_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        json: Any | None = None,
+    ) -> Any:
+        """Call an authenticated JSON endpoint with canonical Problem handling."""
+        response = self._client.request(method, path, params=params, json=json)
+        return self._decode_json(response)
+
     def submit_ingestion(
         self,
         command: IngestCommand | Mapping[str, Any],
@@ -248,6 +282,10 @@ class WorkflowApiClient:
 
     @staticmethod
     def _decode(response: httpx.Response, model: type[_ModelT]) -> _ModelT:
+        return model.model_validate(WorkflowApiClient._decode_json(response))
+
+    @staticmethod
+    def _decode_json(response: httpx.Response) -> Any:
         if response.is_error:
             try:
                 problem = Problem.model_validate(response.json())
@@ -260,4 +298,4 @@ class WorkflowApiClient:
                     instance=str(response.request.url),
                 )
             raise ProblemError(problem)
-        return model.model_validate(response.json())
+        return response.json()
