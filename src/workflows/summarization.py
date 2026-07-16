@@ -38,7 +38,11 @@ class SummarizationWorkflow:
             raise ValueError("Summarization requires exactly one of content_ids or query")
         handle = await self.operations.get(operation_id)
         if handle.resource is not None:
-            return handle.result or {"content_ids": [], "completed_ids": [], "failed_ids": []}
+            if handle.resource.type != "summary_batch" or handle.resource.id != str(operation_id):
+                raise ValueError("Operation is already attached to another resource")
+            if handle.result and handle.result.get("deferred") is not True:
+                await self._attach_completion(operation_id, handle.result)
+                return handle.result
 
         existing_result = getattr(handle, "result", None)
         if existing_result and "child_operation_ids" in existing_result:
@@ -59,16 +63,7 @@ class SummarizationWorkflow:
                 "completed_ids": [],
                 "failed_ids": [],
             }
-            await self.operations.attach_resource(
-                operation_id,
-                ResourceReference(
-                    type="summary_batch",
-                    id=str(operation_id),
-                    url=f"/api/v1/operations/{operation_id}",
-                ),
-            )
-            await self.operations.attach_result(operation_id, result)
-            await self.operations.update_progress(operation_id, 100, "Summarization complete")
+            await self._attach_completion(operation_id, result)
             return result
 
         await self.operations.update_progress(operation_id, 10, "Dispatching summary items")
@@ -83,22 +78,25 @@ class SummarizationWorkflow:
         result = await self.child_dispatcher(content_ids, **dispatch_options)
         normalized = {"content_ids": content_ids, **result}
         if normalized.get("deferred") is True:
-            await self.operations.attach_result(operation_id, normalized)
-            await self.operations.update_progress(
-                operation_id,
-                20,
-                f"Waiting for {len(normalized.get('child_operation_ids', []))} summary items",
-            )
             return normalized
-        resource = ResourceReference(
-            type="summary_batch",
-            id=str(operation_id),
-            url=f"/api/v1/operations/{operation_id}",
-        )
-        await self.operations.attach_resource(operation_id, resource)
-        await self.operations.attach_result(operation_id, normalized)
-        await self.operations.update_progress(operation_id, 100, "Summarization complete")
+        await self._attach_completion(operation_id, normalized)
         return normalized
+
+    async def _attach_completion(
+        self,
+        operation_id: str | int,
+        result: dict[str, Any],
+    ) -> None:
+        await self.operations.attach_completion(
+            operation_id,
+            result=result,
+            resource=ResourceReference(
+                type="summary_batch",
+                id=str(operation_id),
+                url=f"/api/v1/operations/{operation_id}",
+            ),
+            message="Summarization complete",
+        )
 
     async def _dispatch_children(
         self,

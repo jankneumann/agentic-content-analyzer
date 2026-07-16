@@ -16,6 +16,7 @@ async def test_summarization_dispatches_children_and_attaches_batch_result() -> 
         update_progress=AsyncMock(),
         attach_resource=AsyncMock(),
         attach_result=AsyncMock(),
+        attach_completion=AsyncMock(),
     )
     dispatcher = AsyncMock(return_value={"completed_ids": [7, 9], "failed_ids": []})
     workflow = SummarizationWorkflow(operation_service=operations, child_dispatcher=dispatcher)
@@ -24,10 +25,12 @@ async def test_summarization_dispatches_children_and_attaches_batch_result() -> 
 
     dispatcher.assert_awaited_once_with([9, 7], parent_operation_id=41, force=False)
     assert result == {"content_ids": [9, 7], "completed_ids": [7, 9], "failed_ids": []}
-    operations.attach_resource.assert_awaited_once_with(
-        "41", ResourceReference(type="summary_batch", id="41", url="/api/v1/operations/41")
+    operations.attach_completion.assert_awaited_once_with(
+        "41",
+        result=result,
+        resource=ResourceReference(type="summary_batch", id="41", url="/api/v1/operations/41"),
+        message="Summarization complete",
     )
-    operations.attach_result.assert_awaited_once_with("41", result)
 
 
 @pytest.mark.asyncio
@@ -47,6 +50,7 @@ async def test_summarization_does_not_complete_while_children_are_pending() -> N
         update_progress=AsyncMock(),
         attach_resource=AsyncMock(),
         attach_result=AsyncMock(),
+        attach_completion=AsyncMock(),
     )
     dispatcher = AsyncMock(
         return_value={
@@ -62,7 +66,8 @@ async def test_summarization_does_not_complete_while_children_are_pending() -> N
 
     assert result["deferred"] is True
     operations.attach_resource.assert_not_awaited()
-    operations.attach_result.assert_awaited_once_with("42", result)
+    operations.attach_result.assert_not_awaited()
+    operations.attach_completion.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -72,6 +77,7 @@ async def test_summarization_query_uses_pending_and_parsed_defaults() -> None:
         update_progress=AsyncMock(),
         attach_resource=AsyncMock(),
         attach_result=AsyncMock(),
+        attach_completion=AsyncMock(),
     )
     query_service = SimpleNamespace(resolve=Mock(return_value=[4]))
     workflow = SummarizationWorkflow(
@@ -105,6 +111,7 @@ async def test_summarization_reuses_checkpointed_query_ids_on_reentry() -> None:
         update_progress=AsyncMock(),
         attach_resource=AsyncMock(),
         attach_result=AsyncMock(),
+        attach_completion=AsyncMock(),
     )
     query_service = SimpleNamespace(resolve=Mock(side_effect=[[1, 2], [9]]))
     dispatcher = AsyncMock(
@@ -145,6 +152,7 @@ async def test_summarization_empty_query_completes_without_children() -> None:
         update_progress=AsyncMock(),
         attach_resource=AsyncMock(),
         attach_result=AsyncMock(),
+        attach_completion=AsyncMock(),
     )
     dispatcher = AsyncMock()
     workflow = SummarizationWorkflow(
@@ -157,5 +165,50 @@ async def test_summarization_empty_query_completes_without_children() -> None:
 
     assert result == {"content_ids": [], "completed_ids": [], "failed_ids": []}
     dispatcher.assert_not_awaited()
-    operations.attach_resource.assert_awaited_once()
-    operations.update_progress.assert_awaited_once_with("45", 100, "Summarization complete")
+    operations.attach_completion.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_summarization_resource_reentry_repairs_result_without_new_children() -> None:
+    checkpoint = {
+        "content_ids": [7],
+        "deferred": True,
+        "child_operation_ids": [101],
+        "completed_ids": [],
+        "failed_ids": [],
+    }
+    operations = SimpleNamespace(
+        get=AsyncMock(
+            return_value=SimpleNamespace(
+                resource=ResourceReference(
+                    type="summary_batch",
+                    id="46",
+                    url="/api/v1/operations/46",
+                ),
+                result=checkpoint,
+            )
+        ),
+        update_progress=AsyncMock(),
+        attach_result=AsyncMock(),
+        attach_completion=AsyncMock(),
+    )
+    dispatcher = AsyncMock(
+        return_value={
+            "deferred": False,
+            "child_operation_ids": [101],
+            "completed_ids": [7],
+            "failed_ids": [],
+        }
+    )
+    workflow = SummarizationWorkflow(operation_service=operations, child_dispatcher=dispatcher)
+
+    result = await workflow.execute("46", SummarizationRequest(content_ids=[7]))
+
+    assert result["completed_ids"] == [7]
+    dispatcher.assert_awaited_once_with(
+        [7],
+        parent_operation_id=46,
+        force=False,
+        existing_child_operation_ids=[101],
+    )
+    operations.attach_completion.assert_awaited_once()

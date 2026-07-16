@@ -429,5 +429,29 @@ async def test_status_read_reconciles_parent_after_failed_child(monkeypatch) -> 
     assert update_args[3] is True
 
 
+@pytest.mark.asyncio
+async def test_child_reconciliation_requeues_canonical_parent_for_finalization() -> None:
+    """A child must not complete a canonical parent before workflow re-entry."""
+
+    from src.queue import setup as queue_setup
+
+    conn = AsyncMock()
+    conn.fetchrow.return_value = {
+        "completed": 1,
+        "failed": 0,
+        "cancelled": 0,
+        "total": 1,
+    }
+
+    await queue_setup._reconcile_batch_parent_status(conn, 8123)
+
+    query = conn.execute.await_args.args[0]
+    assert "payload->>'operation_type' = 'summarization.run'" in query
+    assert "payload->'result'->'child_operation_ids' IS NOT NULL" in query
+    assert "THEN 'queued'" in query
+    assert "THEN status" in query
+    assert "THEN NULL" in query
+
+
 def test_cancelled_job_is_terminal() -> None:
     assert _job(status=JobStatus.CANCELLED).is_terminal is True

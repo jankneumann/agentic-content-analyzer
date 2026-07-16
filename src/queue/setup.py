@@ -938,8 +938,34 @@ async def _reconcile_batch_parent_status(
         """
         UPDATE pgqueuer_jobs
         SET payload = COALESCE(payload, '{}'::jsonb) || $2::jsonb,
-            status = CASE WHEN $3 THEN 'completed' ELSE status END,
-            completed_at = CASE WHEN $3 THEN NOW() ELSE completed_at END,
+            status = CASE
+                WHEN $3
+                    AND payload->>'operation_type' = 'summarization.run'
+                    AND payload->'result'->'child_operation_ids' IS NOT NULL
+                THEN 'queued'
+                WHEN $3 AND payload->>'operation_type' = 'summarization.run' THEN status
+                WHEN $3 THEN 'completed'
+                ELSE status
+            END,
+            execute_after = CASE
+                WHEN $3
+                    AND payload->>'operation_type' = 'summarization.run'
+                    AND payload->'result'->'child_operation_ids' IS NOT NULL
+                THEN NOW()
+                ELSE execute_after
+            END,
+            started_at = CASE
+                WHEN $3
+                    AND payload->>'operation_type' = 'summarization.run'
+                    AND payload->'result'->'child_operation_ids' IS NOT NULL
+                THEN NULL
+                ELSE started_at
+            END,
+            completed_at = CASE
+                WHEN $3 AND payload->>'operation_type' = 'summarization.run' THEN NULL
+                WHEN $3 THEN NOW()
+                ELSE completed_at
+            END,
             heartbeat_at = NOW()
         WHERE id = $1 AND status = 'in_progress'
         """,
@@ -959,7 +985,7 @@ async def _reconcile_batch_parent_status(
     )
     if is_terminal:
         logger.info(
-            f"Batch job {parent_job_id} completed: {completed} succeeded, "
+            f"Batch job {parent_job_id} children terminal: {completed} succeeded, "
             f"{failed} failed, {cancelled} cancelled"
         )
 
