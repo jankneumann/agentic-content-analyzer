@@ -437,20 +437,20 @@
 
 ## 10. End-to-End Validation
 
-- [ ] 10.1 [M] Write vertical fixture registry tests
+- [x] 10.1 [M] Write vertical fixture registry tests
   **Spec scenarios**: e2e-testing.1-2
   **Contracts**: `contracts/openapi/v1.yaml#/components/schemas/IngestCommand`, `contracts/db/seed.sql`
   **Design decisions**: D11
   **Dependencies**: 3.2, 2.5
 
-- [ ] 10.2 [M] Implement vertical source fixture library
+- [x] 10.2 [M] Implement vertical source fixture library
   Add deterministic fixtures for every registry descriptor and a shared harness from ingestion through podcast context assembly.
   **Dependencies**: 10.1, 5.9
 
-- [ ] 10.3 [XS] Checkpoint: run vertical source tests, review diff, verify scope
+- [x] 10.3 [XS] Checkpoint: run vertical source tests, review diff, verify scope
   **Dependencies**: 10.2
 
-- [ ] 10.4 [M] Add pairwise source matrix tests
+- [x] 10.4 [M] Add pairwise source matrix tests
   **Spec scenarios**: e2e-testing.3-4, content-provenance.1-6
   **Contracts**: `contracts/db/seed.sql`
   **Design decisions**: D11
@@ -465,13 +465,13 @@
 - [ ] 10.6 [XS] Checkpoint: run combination tests, review diff, verify scope
   **Dependencies**: 10.4, 10.5
 
-- [ ] 10.7 [M] Add workflow edge-case tests
+- [x] 10.7 [M] Add workflow edge-case tests
   **Spec scenarios**: e2e-testing.7-8, agentic-operations.4-7, job-management.2-5
   **Contracts**: `contracts/db/schema.sql`, `contracts/events/operation.progress.schema.json`
   **Design decisions**: D2, D3, D6, D12
   **Dependencies**: 10.2, 4.8
 
-- [ ] 10.8 [S] Update architecture documentation
+- [x] 10.8 [S] Update architecture documentation
   Document registry extension, selection provenance, queue operations, external contracts, source testing, migration order, and removed legacy paths in project documentation.
   **Dependencies**: 10.7
 
