@@ -7,7 +7,13 @@ import json
 from typer.testing import CliRunner
 
 from src.cli.app import app
-from src.cli.output import _set_json_mode, is_json_mode, output_result
+from src.cli.output import (
+    _set_json_mode,
+    is_direct_mode,
+    is_json_mode,
+    is_remote_db,
+    output_result,
+)
 
 runner = CliRunner()
 
@@ -36,6 +42,15 @@ class TestJsonMode:
     def test_json_mode_default_off(self):
         _set_json_mode(False)
         assert is_json_mode() is False
+
+    def test_repeated_invocations_reset_all_modes(self):
+        first = runner.invoke(app, ["--direct", "--remote-db", "operations", "--help"])
+        assert first.exit_code == 0
+        second = runner.invoke(app, ["operations", "--help"])
+        assert second.exit_code == 0
+        assert is_json_mode() is False
+        assert is_direct_mode() is False
+        assert is_remote_db() is False
 
     def test_json_mode_set(self):
         _set_json_mode(True)
@@ -79,8 +94,8 @@ class TestSubcommandGroups:
         result = runner.invoke(app, ["summarize", "--help"])
         assert result.exit_code == 0
 
-    def test_create_digest_group_exists(self):
-        result = runner.invoke(app, ["create-digest", "--help"])
+    def test_digest_group_exists(self):
+        result = runner.invoke(app, ["digest", "--help"])
         assert result.exit_code == 0
 
     def test_pipeline_group_exists(self):
@@ -91,16 +106,16 @@ class TestSubcommandGroups:
         result = runner.invoke(app, ["review", "--help"])
         assert result.exit_code == 0
 
-    def test_analyze_group_exists(self):
-        result = runner.invoke(app, ["analyze", "--help"])
+    def test_theme_group_exists(self):
+        result = runner.invoke(app, ["theme", "--help"])
         assert result.exit_code == 0
 
     def test_graph_group_exists(self):
         result = runner.invoke(app, ["graph", "--help"])
         assert result.exit_code == 0
 
-    def test_podcast_group_exists(self):
-        result = runner.invoke(app, ["podcast", "--help"])
+    def test_podcast_script_group_exists(self):
+        result = runner.invoke(app, ["podcast-script", "--help"])
         assert result.exit_code == 0
 
     def test_manage_group_exists(self):
