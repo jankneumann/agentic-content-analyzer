@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.mcp import content, ingestion, knowledge, operations, review, workflows
+from src.mcp_tools import content, ingestion, knowledge, operations, review, workflows
 
 TOOLSETS = (
     ingestion.TOOLS,

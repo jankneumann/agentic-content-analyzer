@@ -16,7 +16,7 @@ from src.contracts.workflow_models import (
     SummarizationRequest,
     ThemeAnalysisRequest,
 )
-from src.mcp import runtime
+from src.mcp_tools import runtime
 from src.models.jobs import OperationType
 from src.services.operation_service import OperationService
 

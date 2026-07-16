@@ -10,8 +10,8 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from src.mcp import content, ingestion, knowledge, operations, review, runtime, workflows
-from src.mcp.toolsets import CANONICAL_TOOL_NAMES, register_toolsets
+from src.mcp_tools import content, ingestion, knowledge, operations, review, runtime, workflows
+from src.mcp_tools.toolsets import CANONICAL_TOOL_NAMES, register_toolsets
 
 mcp = FastMCP(
     "Newsletter Aggregator",
