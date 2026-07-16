@@ -67,6 +67,15 @@ def _csv(value: str | None) -> list[str] | None:
     return [item.strip() for item in value.split(",") if item.strip()] if value else None
 
 
+def _resource_json(path: str, resource_name: str) -> Any:
+    try:
+        return runtime.request_json("GET", path)
+    except runtime.ProblemError as exc:
+        if exc.problem.status == 404:
+            raise runtime.ResourceNotFoundError(f"{resource_name} not found") from exc
+        raise
+
+
 @runtime.tool_boundary
 async def list_content(
     source_types: str | None = None,
@@ -128,7 +137,7 @@ async def get_content(content_id: int) -> ContentResponse:
     """Get one canonical content record by stable ID."""
     if runtime.transport_mode() is runtime.TransportMode.HTTP:
         return ContentResponse.model_validate(
-            runtime.request_json("GET", f"/api/v1/contents/{content_id}")
+            _resource_json(f"/api/v1/contents/{content_id}", f"Content {content_id}")
         )
     from src.services.content_service import ContentService
     from src.storage.database import get_db
@@ -136,7 +145,7 @@ async def get_content(content_id: int) -> ContentResponse:
     with get_db() as db:
         content = ContentService(db).get(content_id)
         if content is None:
-            raise ValueError(f"Content {content_id} not found")
+            raise runtime.ResourceNotFoundError(f"Content {content_id} not found")
         return ContentResponse.model_validate(content)
 
 
@@ -202,25 +211,43 @@ async def get_summary(summary_id: int) -> Any:
 async def get_digest(digest_id: int) -> DigestResource:
     if runtime.transport_mode() is runtime.TransportMode.HTTP:
         return DigestResource.model_validate(
-            runtime.request_json("GET", f"/api/v1/digests/{digest_id}")
+            _resource_json(f"/api/v1/digests/{digest_id}", f"Digest {digest_id}")
         )
-    from src.api.digest_routes import get_digest as api_get_digest
+    from src.services.review_service import ReviewService
 
-    result = await api_get_digest(digest_id, include_parsed_sections=False)
-    return DigestResource.model_validate(result.model_dump(mode="json"))
+    digest = await ReviewService().get_digest(digest_id)
+    if digest is None:
+        raise runtime.ResourceNotFoundError(f"Digest {digest_id} not found")
+    if digest.digest_type is None or digest.status is None:
+        raise RuntimeError(f"Digest {digest_id} has incomplete persisted metadata")
+    return DigestResource(
+        id=digest.id,
+        digest_type=digest.digest_type.value,
+        title=digest.title,
+        period_start=digest.period_start,
+        period_end=digest.period_end,
+        status=digest.status.value,
+        created_at=digest.created_at,
+        completed_at=digest.completed_at,
+        markdown_content=digest.markdown_content,
+        source_content_ids=digest.source_content_ids,
+        revision_count=digest.revision_count or 0,
+    )
 
 
 @runtime.tool_boundary
 async def get_podcast_script(script_id: int) -> PodcastScriptResource:
     if runtime.transport_mode() is runtime.TransportMode.HTTP:
         return PodcastScriptResource.model_validate(
-            runtime.request_json("GET", f"/api/v1/scripts/{script_id}")
+            _resource_json(f"/api/v1/scripts/{script_id}", f"Podcast script {script_id}")
         )
     from src.services.script_review_service import ScriptReviewService
 
-    return PodcastScriptResource.model_validate(
-        ScriptReviewService().get_script_for_review(script_id)
-    )
+    try:
+        result = ScriptReviewService().get_script_for_review(script_id)
+    except ValueError as exc:
+        raise runtime.ResourceNotFoundError(f"Podcast script {script_id} not found") from exc
+    return PodcastScriptResource.model_validate(result)
 
 
 @runtime.tool_boundary

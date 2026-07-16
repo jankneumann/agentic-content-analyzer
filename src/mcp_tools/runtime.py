@@ -25,6 +25,10 @@ class TransportMode(StrEnum):
     IN_PROCESS = "in_process"
 
 
+class ResourceNotFoundError(RuntimeError):
+    """A stable public resource identifier does not exist."""
+
+
 def strict_http_mode() -> bool:
     return os.environ.get("ACA_MCP_STRICT_HTTP", "").strip().lower() in {
         "1",
@@ -154,6 +158,10 @@ def tool_boundary[**P, T](
         except OperationConflictError as exc:
             raise protocol_error(
                 "operation_conflict", str(exc), title="Operation conflict", status=409
+            ) from exc
+        except ResourceNotFoundError as exc:
+            raise protocol_error(
+                "resource_not_found", str(exc), title="Resource not found", status=404
             ) from exc
         except TimeoutError as exc:
             raise protocol_error(
