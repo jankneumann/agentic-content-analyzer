@@ -6,11 +6,17 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from src.contracts.workflow_models import DigestCreateRequest
+from src.models.content import ContentSource
 from src.models.digest import Digest, DigestData, DigestStatus, DigestType
 from src.models.jobs import ResourceReference
-from src.models.query import ResolvedContentSet, SelectionPolicy, compute_selection_fingerprint
+from src.models.query import (
+    ResolvedContentItem,
+    ResolvedContentSet,
+    SelectionPolicy,
+    compute_selection_fingerprint,
+)
 from src.models.theme import ThemeAnalysisResult
-from src.workflows.digest import DigestWorkflow
+from src.workflows.digest import DigestWorkflow, validate_digest_provenance
 
 
 @pytest.mark.asyncio
@@ -71,11 +77,14 @@ async def test_digest_workflow_persists_exact_selection_and_attaches(db_session)
     )
     request = DigestCreateRequest(digest_type="daily", period_start=start, period_end=end)
 
-    record = await workflow.execute("61", request)
+    record = await workflow.execute("61", request, resolved_set=resolved)
 
     assert record.status == DigestStatus.PENDING_REVIEW
     assert record.operation_id == 61
     assert record.selection_fingerprint == resolved.fingerprint
+    resolver.resolve.assert_not_called()
+    assert theme_workflow.analyze_persisted.await_args.kwargs["resolved_set"] is resolved
+    assert creator.create_digest.await_args.args[1] is resolved
     creator.create_digest.assert_awaited_once()
     operations.attach_resource.assert_awaited_once_with(
         "61",
@@ -88,7 +97,7 @@ async def test_digest_workflow_persists_exact_selection_and_attaches(db_session)
             type="digest", id=str(record.id), url=f"/api/v1/digests/{record.id}"
         )
     )
-    repeated = await workflow.execute("61", request)
+    repeated = await workflow.execute("61", request, resolved_set=resolved)
     assert repeated.id == record.id
     assert creator.create_digest.await_count == 1
     assert operations.attach_resource.await_count == 1
@@ -99,7 +108,7 @@ async def test_digest_workflow_persists_exact_selection_and_attaches(db_session)
     )
     operations.get.return_value = SimpleNamespace(resource=None)
     with pytest.raises(ValueError, match="provenance"):
-        await workflow.execute("63", request)
+        await workflow.execute("63", request, resolved_set=resolved)
     mismatched = db_session.query(Digest).filter_by(operation_id=63).one()
     assert mismatched.status == DigestStatus.FAILED
 
@@ -175,3 +184,40 @@ async def test_digest_failure_keeps_reserved_failed_resource(db_session) -> None
             "62", DigestCreateRequest(digest_type="daily", period_start=start, period_end=end)
         )
     assert creator.create_digest.await_count == 1
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"newsletter_count": 0},
+        {"source_content_ids": None},
+        {"source_summary_ids": None},
+    ],
+)
+def test_digest_provenance_fails_closed_on_count_and_nullable_ids(updates: dict) -> None:
+    now = datetime(2026, 7, 1, tzinfo=UTC)
+    policy = SelectionPolicy(source_types=(ContentSource.RSS,))
+    item = ResolvedContentItem(
+        content_id=31,
+        summary_id=41,
+        source_type=ContentSource.RSS,
+        title="Existing",
+        selection_date=now,
+    )
+    resolved = ResolvedContentSet(
+        policy=policy,
+        items=(item,),
+        fingerprint=compute_selection_fingerprint(policy, [31], [41]),
+    )
+    candidate = SimpleNamespace(
+        source_content_ids=[31],
+        source_summary_ids=[41],
+        selection_fingerprint=resolved.fingerprint,
+        selection_policy=policy.model_dump(mode="json"),
+        newsletter_count=1,
+    )
+    for field, value in updates.items():
+        setattr(candidate, field, value)
+
+    with pytest.raises(ValueError, match="provenance"):
+        validate_digest_provenance(candidate, resolved)

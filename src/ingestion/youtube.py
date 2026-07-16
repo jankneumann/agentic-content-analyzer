@@ -1173,8 +1173,10 @@ class YouTubeContentIngestionService:
             resolved_sources = config.get_youtube_playlist_sources()
 
             if not resolved_sources:
-                # Fall back to legacy settings
-                legacy = settings.get_youtube_playlists()
+                from src.config.sources import has_active_sources_config
+
+                # A queued snapshot is authoritative, including an empty subtype.
+                legacy = [] if has_active_sources_config() else settings.get_youtube_playlists()
                 if legacy:
                     from src.config.sources import YouTubePlaylistSource as YTSource
 

@@ -72,6 +72,62 @@ def test_ingest_command_discriminator_is_complete() -> None:
     assert len(schema["oneOf"]) == len(SOURCE_KEYS)
 
 
+def test_scheduled_date_commands_support_an_absolute_lower_bound() -> None:
+    schemas = _openapi()["components"]["schemas"]
+    for name in (
+        "GmailIngestCommand",
+        "RssIngestCommand",
+        "BlogIngestCommand",
+        "SubstackIngestCommand",
+        "YouTubePlaylistIngestCommand",
+        "YouTubeRssIngestCommand",
+        "PodcastIngestCommand",
+        "ArxivSearchIngestCommand",
+        "HuggingFacePapersIngestCommand",
+    ):
+        schema = schemas[name]
+        properties = dict(schema.get("properties", {}))
+        for part in schema.get("allOf", []):
+            if "$ref" in part:
+                properties.update(schemas[part["$ref"].rsplit("/", 1)[-1]]["properties"])
+            else:
+                properties.update(part.get("properties", {}))
+        assert properties["after_date"] == {
+            "type": "string",
+            "format": "date-time",
+        }
+
+
+def test_scheduled_commands_support_an_immutable_source_snapshot() -> None:
+    schemas = _openapi()["components"]["schemas"]
+    for name in (
+        "GmailIngestCommand",
+        "RssIngestCommand",
+        "BlogIngestCommand",
+        "SubstackIngestCommand",
+        "YouTubePlaylistIngestCommand",
+        "YouTubeRssIngestCommand",
+        "PodcastIngestCommand",
+        "XSearchIngestCommand",
+        "PerplexitySearchIngestCommand",
+        "ScholarSearchIngestCommand",
+        "ArxivSearchIngestCommand",
+        "HuggingFacePapersIngestCommand",
+        "ReadwiseIngestCommand",
+    ):
+        schema = schemas[name]
+        properties = dict(schema.get("properties", {}))
+        for part in schema.get("allOf", []):
+            if "$ref" in part:
+                properties.update(schemas[part["$ref"].rsplit("/", 1)[-1]]["properties"])
+            else:
+                properties.update(part.get("properties", {}))
+        assert properties["configured_sources"] == {
+            "type": "array",
+            "items": {"type": "object", "additionalProperties": True},
+        }
+
+
 def test_operation_handle_contract_is_complete() -> None:
     schemas = _openapi()["components"]["schemas"]
     handle = schemas["OperationHandle"]

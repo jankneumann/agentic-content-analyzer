@@ -717,8 +717,12 @@ components:
     ConfiguredSourceCommandBase:
       type: object
       properties:
+        configured_sources:
+          type: array
+          items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1 }
         days_back: { type: integer, minimum: 0 }
+        after_date: { type: string, format: date-time }
         force_reprocess: { type: boolean, default: false }
 
     GmailIngestCommand:
@@ -729,9 +733,13 @@ components:
           required: [kind]
           properties:
             kind: { type: string, const: gmail }
+            configured_sources:
+              type: array
+              items: { type: object, additionalProperties: true }
             query: { type: string }
             max_items: { type: integer, minimum: 1 }
             days_back: { type: integer, minimum: 0 }
+            after_date: { type: string, format: date-time }
             force_reprocess: { type: boolean, default: false }
 
     RssIngestCommand:
@@ -740,8 +748,12 @@ components:
       required: [kind]
       properties:
         kind: { type: string, const: rss }
+        configured_sources:
+          type: array
+          items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1 }
         days_back: { type: integer, minimum: 0 }
+        after_date: { type: string, format: date-time }
         force_reprocess: { type: boolean, default: false }
 
     BlogIngestCommand:
@@ -750,8 +762,12 @@ components:
       required: [kind]
       properties:
         kind: { type: string, const: blog }
+        configured_sources:
+          type: array
+          items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1 }
         days_back: { type: integer, minimum: 0 }
+        after_date: { type: string, format: date-time }
         force_reprocess: { type: boolean, default: false }
 
     SubstackIngestCommand:
@@ -760,8 +776,12 @@ components:
       required: [kind]
       properties:
         kind: { type: string, const: substack }
+        configured_sources:
+          type: array
+          items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1 }
         days_back: { type: integer, minimum: 0 }
+        after_date: { type: string, format: date-time }
         force_reprocess: { type: boolean, default: false }
 
     YouTubePlaylistIngestCommand:
@@ -770,8 +790,12 @@ components:
       required: [kind]
       properties:
         kind: { type: string, const: youtube_playlist }
+        configured_sources:
+          type: array
+          items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1 }
         days_back: { type: integer, minimum: 0 }
+        after_date: { type: string, format: date-time }
         force_reprocess: { type: boolean, default: false }
         public_only: { type: boolean, default: false }
 
@@ -781,8 +805,12 @@ components:
       required: [kind]
       properties:
         kind: { type: string, const: youtube_rss }
+        configured_sources:
+          type: array
+          items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1 }
         days_back: { type: integer, minimum: 0 }
+        after_date: { type: string, format: date-time }
         force_reprocess: { type: boolean, default: false }
 
     PodcastIngestCommand:
@@ -791,8 +819,12 @@ components:
       required: [kind]
       properties:
         kind: { type: string, const: podcast }
+        configured_sources:
+          type: array
+          items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1 }
         days_back: { type: integer, minimum: 0 }
+        after_date: { type: string, format: date-time }
         force_reprocess: { type: boolean, default: false }
         transcribe: { type: boolean, default: true }
 
@@ -802,6 +834,9 @@ components:
       required: [kind]
       properties:
         kind: { type: string, const: x_search }
+        configured_sources:
+          type: array
+          items: { type: object, additionalProperties: true }
         prompt: { type: string }
         max_threads: { type: integer, minimum: 1 }
         force_reprocess: { type: boolean, default: false }
@@ -812,6 +847,9 @@ components:
       required: [kind]
       properties:
         kind: { type: string, const: perplexity_search }
+        configured_sources:
+          type: array
+          items: { type: object, additionalProperties: true }
         prompt: { type: string }
         max_items: { type: integer, minimum: 1 }
         recency: { type: string, enum: [hour, day, week, month] }
@@ -846,6 +884,9 @@ components:
       required: [kind]
       properties:
         kind: { type: string, const: scholar_search }
+        configured_sources:
+          type: array
+          items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1, default: 20 }
 
     ScholarPaperIngestCommand:
@@ -875,8 +916,12 @@ components:
       required: [kind]
       properties:
         kind: { type: string, const: arxiv_search }
+        configured_sources:
+          type: array
+          items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1, default: 20 }
         days_back: { type: integer, minimum: 0 }
+        after_date: { type: string, format: date-time }
         force_reprocess: { type: boolean, default: false }
         extract_pdf: { type: boolean, default: true }
 
@@ -896,8 +941,12 @@ components:
       required: [kind]
       properties:
         kind: { type: string, const: huggingface_papers }
+        configured_sources:
+          type: array
+          items: { type: object, additionalProperties: true }
         max_items: { type: integer, minimum: 1, default: 30 }
         days_back: { type: integer, minimum: 0 }
+        after_date: { type: string, format: date-time }
         force_reprocess: { type: boolean, default: false }
 
     ReadwiseIngestCommand:
@@ -906,6 +955,9 @@ components:
       required: [kind]
       properties:
         kind: { type: string, const: readwise }
+        configured_sources:
+          type: array
+          items: { type: object, additionalProperties: true }
         updated_after: { type: string, format: date-time }
         source_types: { type: array, items: { type: string } }
         include_deleted: { type: boolean, default: false }

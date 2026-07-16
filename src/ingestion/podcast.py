@@ -224,12 +224,9 @@ class PodcastContentIngestionService:
             if not force_reprocess:
                 source_ids = [f"podcast:{e['guid']}" for e in episodes]
                 if source_ids:
-                    # Use .in_() for O(1) bulk lookup
-                    # Only fetch source_id column to avoid loading full objects
-                    results = (
-                        db.query(Content.source_id).filter(Content.source_id.in_(source_ids)).all()
-                    )
-                    existing_source_ids = {row[0] for row in results}
+                    # Load entities so the ingestion receipt captures reused canonical IDs.
+                    results = db.query(Content).filter(Content.source_id.in_(source_ids)).all()
+                    existing_source_ids = {content.source_id for content in results}
 
             for episode in episodes:
                 guid = episode["guid"]

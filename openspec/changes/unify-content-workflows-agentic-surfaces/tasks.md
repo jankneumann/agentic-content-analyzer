@@ -225,25 +225,35 @@
 - [x] 5.15 [XS] Checkpoint: run audio workflow tests, review diff, verify scope
   **Dependencies**: 5.12, 5.14
 
-- [ ] 5.16 [M] Write pipeline workflow tests
+- [x] 5.16 [M] Write pipeline workflow tests
   **Spec scenarios**: pipeline.1-8
   **Contracts**: `contracts/openapi/v1.yaml#/components/schemas/PipelineRequest`
   **Design decisions**: D7
   **Dependencies**: 3.5, 5.2, 5.7
   Cover durable defer/resume at worker concurrency one, parent-scoped child reuse,
-  descriptor-owned scheduled command planning, and exact selection propagation.
+  descriptor-owned immutable scheduled command planning across multiple Gmail and YouTube subtypes,
+  raw and ORM deduplication receipts, cross-source canonical IDs, strict completion repair, and
+  exact selection propagation.
 
-- [ ] 5.17 [M] Implement PipelineWorkflow
+- [x] 5.17 [M] Implement PipelineWorkflow
   Create parent-child source jobs from registry descriptors, apply source filters,
   preserve partial failures, defer without occupying a worker while children run,
   resume from persisted checkpoints, resolve once, and return the persisted digest.
+  Scheduled commands retain absolute lower bounds and resolved source snapshots, deduplicated
+  ingestion receipts retain encountered canonical IDs across ORM and raw SQL paths including
+  academic cross-source duplicates, retries target only failed or cancelled checkpoint children,
+  and final projection is atomic and child-verified.
   **Dependencies**: 5.16, 5.4
 
-- [ ] 5.18 [XS] Checkpoint: run pipeline tests, review diff, verify scope
+- [x] 5.18 [XS] Checkpoint: run pipeline tests, review diff, verify scope
   **Dependencies**: 5.17
 
 - [ ] 5.19 [M] Write worker handler integration tests
-  Prove deferred workflows requeue their parent without occupying a worker slot, and prove `force_reprocess` reaches summarization execution rather than being ignored.
+  Prove at worker concurrency one that deferred workflows demote and requeue their parent so
+  child operations run without starvation. Prove ingestion handlers apply descriptor-owned retry
+  policy to HTTP 429 responses and retain diagnostics when retries are exhausted. Prove the digest
+  handler reconstructs and passes a serialized `resolved_set`, and prove `force_reprocess` reaches
+  summarization execution rather than being ignored.
   **Spec scenarios**: agentic-operations.3, job-management.3
   **Contracts**: `contracts/openapi/v1.yaml#/components/schemas/OperationHandle`
   **Design decisions**: D5, D6, D7
@@ -251,7 +261,10 @@
 
 - [ ] 5.20 [M] Register durable workflow handlers
   Register ingestion, summarization, theme, digest, pipeline, podcast script, podcast audio, and audio digest handlers against the application workflows.
-  A handler returning a deferred outcome MUST release and requeue the parent operation, and the summarization handler MUST honor `force_reprocess` for completed content.
+  A handler returning a deferred outcome MUST release and requeue the parent operation. The
+  ingestion handler MUST enforce `SourceRetryPolicy` for retryable responses and preserve terminal
+  failure diagnostics. The summarization handler MUST honor `force_reprocess` for completed
+  content, and the digest handler MUST validate and pass the pipeline's serialized exact selection.
   **Dependencies**: 5.19, 5.2, 5.4, 5.7, 5.9, 5.12, 5.14, 5.17
 
 - [ ] 5.21 [XS] Checkpoint: run worker integration tests, review diff, verify scope

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
 
 from src.config.sources import (
+    GmailSource,
     ReadwiseSource,
     RSSSource,
     SourcesConfig,
@@ -49,6 +51,8 @@ def test_default_registry_contains_complete_canonical_descriptor_set() -> None:
         assert descriptor.command_model.model_fields["kind"].default == descriptor.key
         assert descriptor.orchestrator is not None
         assert descriptor.emitted_sources
+        assert descriptor.retry_policy.max_attempts >= 1
+        assert 429 in descriptor.retry_policy.retryable_status_codes
         assert descriptor.transports == frozenset({"cli", "http", "mcp", "frontend"})
 
 
@@ -151,6 +155,92 @@ def test_scheduled_accessors_return_each_enabled_config_once() -> None:
         "perplexity_search",
     ]
     assert all(item.configuration["enabled"] for item in discovered)
+
+
+def test_registry_plans_typed_scheduled_commands_and_applies_source_filter() -> None:
+    config = SourcesConfig(
+        sources=[
+            RSSSource(url="https://example.com/one", max_entries=12),
+            RSSSource(url="https://example.com/two", max_entries=8),
+            WebSearchSource(provider="grok", prompt="first", max_threads=3),
+            WebSearchSource(provider="grok", prompt="second", max_threads=4),
+        ]
+    )
+
+    commands = SOURCE_REGISTRY.plan_scheduled_commands(
+        config,
+        sources=["rss", "x_search"],
+        period_start=datetime(2026, 7, 1, tzinfo=UTC),
+        period_end=datetime(2026, 7, 3, tzinfo=UTC),
+    )
+
+    assert [command.kind for command in commands] == ["rss", "x_search", "x_search"]
+    assert commands[0].model_dump(mode="json") == {
+        "kind": "rss",
+        "configured_sources": [
+            source.model_dump(mode="json") for source in config.get_rss_sources()
+        ],
+        "max_items": 12,
+        "days_back": None,
+        "after_date": "2026-07-01T00:00:00Z",
+        "force_reprocess": False,
+    }
+    assert [command.prompt for command in commands[1:]] == ["first", "second"]
+
+
+def test_registry_absolute_lower_bound_does_not_drift_while_command_is_queued() -> None:
+    config = SourcesConfig(sources=[RSSSource(url="https://example.com/feed")])
+
+    commands = SOURCE_REGISTRY.plan_scheduled_commands(
+        config,
+        sources=["rss"],
+        period_start=datetime(2026, 7, 1, tzinfo=UTC),
+        period_end=datetime(2026, 7, 2, tzinfo=UTC),
+    )
+
+    serialized = commands[0].model_dump(mode="json")
+    assert serialized["after_date"] == "2026-07-01T00:00:00Z"
+    assert serialized["days_back"] is None
+    assert serialized["configured_sources"][0]["url"] == "https://example.com/feed"
+
+    parsed_later = SOURCE_REGISTRY.parse_command(serialized)
+    assert parsed_later.after_date == datetime(2026, 7, 1, tzinfo=UTC)
+
+
+def test_registry_plans_each_configured_gmail_query() -> None:
+    config = SourcesConfig(
+        sources=[
+            GmailSource(query="label:first", max_results=5),
+            GmailSource(query="label:second", max_results=7),
+        ]
+    )
+
+    commands = SOURCE_REGISTRY.plan_scheduled_commands(
+        config,
+        sources=["gmail"],
+        period_start=datetime(2026, 7, 1, tzinfo=UTC),
+        period_end=datetime(2026, 7, 2, tzinfo=UTC),
+    )
+
+    assert [command.query for command in commands] == ["label:first", "label:second"]
+    assert [command.max_items for command in commands] == [5, 7]
+    assert [len(command.configured_sources or []) for command in commands] == [1, 1]
+
+
+def test_registry_rejects_disabled_unknown_and_unscheduled_pipeline_sources() -> None:
+    config = SourcesConfig(sources=[RSSSource(url="https://example.com", enabled=False)])
+    kwargs = {
+        "config": config,
+        "period_start": datetime(2026, 7, 1, tzinfo=UTC),
+        "period_end": datetime(2026, 7, 2, tzinfo=UTC),
+    }
+
+    with pytest.raises(ValueError, match="not enabled"):
+        SOURCE_REGISTRY.plan_scheduled_commands(sources=["rss"], **kwargs)
+    with pytest.raises(ValueError, match="Unknown ingestion source"):
+        SOURCE_REGISTRY.plan_scheduled_commands(sources=["nope"], **kwargs)
+    with pytest.raises(ValueError, match="not scheduled"):
+        SOURCE_REGISTRY.plan_scheduled_commands(sources=["url"], **kwargs)
 
 
 def test_loading_source_config_runs_registry_validation(tmp_path, monkeypatch) -> None:

@@ -57,6 +57,28 @@ def collect_content_references() -> Iterator[ContentReferences]:
         _ACTIVE_REFERENCES.reset(token)
 
 
+def record_content_reference(content_id: int, canonical_id: int | None = None) -> None:
+    """Record content found through a query path that does not load an ORM entity."""
+    collector = _ACTIVE_REFERENCES.get()
+    resolved_canonical_id = canonical_id or content_id
+    if (
+        collector is not None
+        and isinstance(content_id, int)
+        and content_id > 0
+        and isinstance(resolved_canonical_id, int)
+        and resolved_canonical_id > 0
+    ):
+        collector.record({content_id: resolved_canonical_id})
+
+
+def _record_loaded_content_reference(_session: Session, instance: object) -> None:
+    """Record existing content encountered while an ingestion command is active."""
+
+    if not isinstance(instance, Content):
+        return
+    record_content_reference(instance.id, instance.canonical_id)
+
+
 def _stage_session_content_references(session: Session, _flush_context: Any) -> None:
     collector = _ACTIVE_REFERENCES.get()
     if collector is None:
@@ -131,3 +153,4 @@ def _merge_staged(
 event.listen(Session, "after_flush", _stage_session_content_references)
 event.listen(Session, "after_commit", _commit_session_content_references)
 event.listen(Session, "after_rollback", _clear_session_content_references)
+event.listen(Session, "loaded_as_persistent", _record_loaded_content_reference)

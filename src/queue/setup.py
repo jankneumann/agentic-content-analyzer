@@ -712,6 +712,35 @@ async def enqueue_queue_job(
         return int(existing_id), False
 
 
+async def get_child_job_by_idempotency_key(
+    parent_job_id: int,
+    entrypoint: str,
+    idempotency_key: str,
+    *,
+    conn: asyncpg.Connection | None = None,
+) -> JobRecord | None:
+    """Find a parent-owned child in any lifecycle state for durable resume."""
+
+    async with _queue_connection(conn) as query_conn:
+        job_id = await query_conn.fetchval(
+            """
+            SELECT id
+            FROM pgqueuer_jobs
+            WHERE parent_job_id = $1
+              AND entrypoint = $2
+              AND idempotency_key = $3
+            ORDER BY id ASC
+            LIMIT 1
+            """,
+            parent_job_id,
+            entrypoint,
+            idempotency_key,
+        )
+        if job_id is None:
+            return None
+        return await get_job_status(int(job_id), conn=query_conn)
+
+
 async def enqueue_summarization_job(content_id: int) -> int | None:
     """Enqueue a content item for summarization.
 

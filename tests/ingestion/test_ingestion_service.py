@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
+from src.config.sources import load_sources_config
 from src.ingestion.commands import (
     ArxivPaperIngestCommand,
     ArxivSearchIngestCommand,
@@ -23,6 +24,7 @@ from src.ingestion.commands import (
 )
 from src.ingestion.content_references import (
     _commit_session_content_references,
+    _record_loaded_content_reference,
     _stage_session_content_references,
 )
 from src.ingestion.result import IngestionResponse, SourceFetchResult
@@ -36,12 +38,13 @@ def _response(
     source: str = "arxiv_paper",
     *,
     details: dict | None = None,
+    items_ingested: int = 1,
 ) -> IngestionResponse:
     return IngestionResponse(
         command=command,  # type: ignore[arg-type]
         source=source,  # type: ignore[arg-type]
         status="ok",
-        items_ingested=1,
+        items_ingested=items_ingested,
         details=details or {},
     )
 
@@ -112,6 +115,75 @@ def test_days_back_is_translated_to_an_aware_after_date() -> None:
     assert kwargs["max_entries_per_feed"] == 7
     assert before.timestamp() - (2 * 86400) <= kwargs["after_date"].timestamp()
     assert kwargs["after_date"].timestamp() <= after.timestamp() - (2 * 86400)
+
+
+def test_absolute_after_date_is_preserved_when_execution_is_delayed() -> None:
+    service = IngestionService()
+    lower_bound = datetime(2026, 7, 1, tzinfo=UTC)
+
+    with patch(
+        "src.ingestion.orchestrator.ingest_rss",
+        return_value=_response("ingest.rss", "rss"),
+    ) as orchestrator:
+        service.execute({"kind": "rss", "after_date": lower_bound})
+
+    assert orchestrator.call_args.kwargs["after_date"] == lower_bound
+
+
+def test_queued_source_snapshot_is_used_instead_of_current_configuration() -> None:
+    service = IngestionService()
+    observed_urls: list[str] = []
+
+    def execute_from_snapshot(**_kwargs):
+        observed_urls.extend(source.url for source in load_sources_config().get_rss_sources())
+        return _response("ingest.rss", "rss")
+
+    with patch(
+        "src.ingestion.orchestrator.ingest_rss",
+        side_effect=execute_from_snapshot,
+    ):
+        service.execute(
+            {
+                "kind": "rss",
+                "configured_sources": [{"type": "rss", "url": "https://queued.example/feed"}],
+            }
+        )
+
+    assert observed_urls == ["https://queued.example/feed"]
+
+
+def test_invalid_queued_source_snapshot_fails_before_dispatch() -> None:
+    service = IngestionService()
+
+    with (
+        patch("src.ingestion.orchestrator.ingest_rss") as orchestrator,
+        pytest.raises(ValidationError),
+    ):
+        service.execute(
+            {
+                "kind": "rss",
+                "configured_sources": [{"type": "rss"}],
+            }
+        )
+
+    orchestrator.assert_not_called()
+
+
+def test_queued_source_snapshot_must_match_command_descriptor() -> None:
+    service = IngestionService()
+
+    with (
+        patch("src.ingestion.orchestrator.ingest_rss") as orchestrator,
+        pytest.raises(ValueError, match="does not match command 'rss'"),
+    ):
+        service.execute(
+            {
+                "kind": "rss",
+                "configured_sources": [{"type": "podcast", "url": "https://example.com/feed"}],
+            }
+        )
+
+    orchestrator.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -322,6 +394,32 @@ def test_aggregate_rss_collects_committed_content_references() -> None:
         result = IngestionService().execute(RssIngestCommand())
 
     assert result.details["content_ids"] == [101]
+
+
+def test_deduplicated_rss_receipt_includes_preexisting_canonical_content() -> None:
+    service = MagicMock()
+    service.ingest_content.side_effect = lambda **_: (
+        _record_loaded_content_reference(
+            MagicMock(),
+            Content(
+                id=111,
+                source_type=ContentSource.RSS,
+                source_id="rss:existing",
+                title="Existing",
+                markdown_content="Body",
+                content_hash="existing",
+                status=ContentStatus.COMPLETED,
+                canonical_id=7,
+            ),
+        )
+        or _response("ingest.rss", "rss", items_ingested=0)
+    )
+
+    with patch("src.ingestion.rss.RSSContentIngestionService", return_value=service):
+        result = IngestionService().execute(RssIngestCommand())
+
+    assert result.items_ingested == 0
+    assert result.details["content_ids"] == [7]
 
 
 def test_response_alias_ids_are_normalized_to_collected_canonical_id() -> None:

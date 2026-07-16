@@ -1,5 +1,5 @@
 // Generated from contracts/openapi/v1.yaml; do not edit.
-export const CONTRACT_SHA256 = "5f07ac468bf37a86011b7560182ce5d3a9057b3bd654feaae1e20eef2aa26eaf" as const;
+export const CONTRACT_SHA256 = "57871151c4da64e157c87d83fac71f35a93f47f6a28ef995f7f6f5948b2cbf7d" as const;
 
 export type OperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 export type OperationType = "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
@@ -119,65 +119,82 @@ export interface ContentQuery {
 }
 
 export interface ConfiguredSourceCommandBase {
+  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
   days_back?: number;
+  after_date?: string;
   force_reprocess?: boolean;
 }
 
 export interface GmailIngestCommand extends ConfiguredSourceCommandBase {
   kind: "gmail";
+  configured_sources?: Array<Record<string, unknown>>;
   query?: string;
   max_items?: number;
   days_back?: number;
+  after_date?: string;
   force_reprocess?: boolean;
 }
 
 export interface RssIngestCommand {
   kind: "rss";
+  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
   days_back?: number;
+  after_date?: string;
   force_reprocess?: boolean;
 }
 
 export interface BlogIngestCommand {
   kind: "blog";
+  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
   days_back?: number;
+  after_date?: string;
   force_reprocess?: boolean;
 }
 
 export interface SubstackIngestCommand {
   kind: "substack";
+  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
   days_back?: number;
+  after_date?: string;
   force_reprocess?: boolean;
 }
 
 export interface YouTubePlaylistIngestCommand {
   kind: "youtube_playlist";
+  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
   days_back?: number;
+  after_date?: string;
   force_reprocess?: boolean;
   public_only?: boolean;
 }
 
 export interface YouTubeRssIngestCommand {
   kind: "youtube_rss";
+  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
   days_back?: number;
+  after_date?: string;
   force_reprocess?: boolean;
 }
 
 export interface PodcastIngestCommand {
   kind: "podcast";
+  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
   days_back?: number;
+  after_date?: string;
   force_reprocess?: boolean;
   transcribe?: boolean;
 }
 
 export interface XSearchIngestCommand {
   kind: "x_search";
+  configured_sources?: Array<Record<string, unknown>>;
   prompt?: string;
   max_threads?: number;
   force_reprocess?: boolean;
@@ -185,6 +202,7 @@ export interface XSearchIngestCommand {
 
 export interface PerplexitySearchIngestCommand {
   kind: "perplexity_search";
+  configured_sources?: Array<Record<string, unknown>>;
   prompt?: string;
   max_items?: number;
   recency?: "hour" | "day" | "week" | "month";
@@ -210,6 +228,7 @@ export interface UrlIngestCommand {
 
 export interface ScholarSearchIngestCommand {
   kind: "scholar_search";
+  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
 }
 
@@ -230,8 +249,10 @@ export interface ScholarReferencesIngestCommand {
 
 export interface ArxivSearchIngestCommand {
   kind: "arxiv_search";
+  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
   days_back?: number;
+  after_date?: string;
   force_reprocess?: boolean;
   extract_pdf?: boolean;
 }
@@ -245,13 +266,16 @@ export interface ArxivPaperIngestCommand {
 
 export interface HuggingFacePapersIngestCommand {
   kind: "huggingface_papers";
+  configured_sources?: Array<Record<string, unknown>>;
   max_items?: number;
   days_back?: number;
+  after_date?: string;
   force_reprocess?: boolean;
 }
 
 export interface ReadwiseIngestCommand {
   kind: "readwise";
+  configured_sources?: Array<Record<string, unknown>>;
   updated_after?: string;
   source_types?: Array<string>;
   include_deleted?: boolean;

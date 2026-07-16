@@ -452,6 +452,8 @@ class PerplexityContentIngestionService:
         """
         from sqlalchemy import text
 
+        from src.ingestion.content_references import record_content_reference
+
         # Level 1: exact source_id match
         existing = db.query(Content).filter(Content.source_id == source_id).first()
         if existing:
@@ -462,7 +464,8 @@ class PerplexityContentIngestionService:
             for citation_url in citations[:5]:  # Check first 5 citations for performance
                 row = db.execute(
                     text(
-                        "SELECT metadata_json->'citations' AS citations "
+                        "SELECT id, COALESCE(canonical_id, id) AS canonical_id, "
+                        "metadata_json->'citations' AS citations "
                         "FROM contents "
                         "WHERE CAST(source_type AS text) = :source_type "
                         "AND metadata_json->'citations' @> CAST(:citation_json AS jsonb) "
@@ -482,6 +485,7 @@ class PerplexityContentIngestionService:
                     )
                     overlap = len(set(citations) & set(existing_citations))
                     if overlap > len(citations) * 0.5:
+                        record_content_reference(row.id, row.canonical_id)
                         logger.debug(
                             f"Citation overlap detected: {overlap}/{len(citations)} "
                             f"({overlap / len(citations):.0%})"

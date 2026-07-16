@@ -25,6 +25,23 @@ from src.workflows.resource import recover_owned_resource
 from src.workflows.theme_analysis import ThemeAnalysisWorkflow
 
 
+def validate_digest_provenance(candidate: Any, resolved: ResolvedContentSet) -> None:
+    """Require a persisted or generated digest to match one exact selection."""
+
+    content_ids = candidate.source_content_ids
+    summary_ids = candidate.source_summary_ids
+    if (
+        content_ids is None
+        or summary_ids is None
+        or list(content_ids) != list(resolved.content_ids)
+        or list(summary_ids) != list(resolved.summary_ids)
+        or candidate.selection_fingerprint != resolved.fingerprint
+        or SelectionPolicy.model_validate(candidate.selection_policy) != resolved.policy
+        or candidate.newsletter_count != len(resolved.content_ids)
+    ):
+        raise ValueError("Digest provenance does not match resolved selection")
+
+
 class DigestWorkflow:
     """Persist exactly one digest from one resolved content snapshot."""
 
@@ -43,7 +60,13 @@ class DigestWorkflow:
         self.creator = creator or DigestCreator()
         self.session_factory = session_factory
 
-    async def execute(self, operation_id: str | int, request: DigestCreateRequest) -> Digest:
+    async def execute(
+        self,
+        operation_id: str | int,
+        request: DigestCreateRequest,
+        *,
+        resolved_set: ResolvedContentSet | None = None,
+    ) -> Digest:
         existing = await self._existing(operation_id)
         if existing is not None and existing.status not in {
             DigestStatus.GENERATING,
@@ -52,15 +75,19 @@ class DigestWorkflow:
             await self._attach_result(operation_id, existing)
             return existing
         if existing is None:
-            query_data = request.query.model_dump(mode="python") if request.query else {}
-            if query_data.get("start_date") is None:
-                query_data["start_date"] = request.period_start
-            if query_data.get("end_date") is None:
-                query_data["end_date"] = request.period_end
-            query = ContentQuery.model_validate(query_data)
-            resolved = self.resolver.resolve(query)
+            if resolved_set is None:
+                query_data = request.query.model_dump(mode="python") if request.query else {}
+                if query_data.get("start_date") is None:
+                    query_data["start_date"] = request.period_start
+                if query_data.get("end_date") is None:
+                    query_data["end_date"] = request.period_end
+                query = ContentQuery.model_validate(query_data)
+                resolved = self.resolver.resolve(query)
+            else:
+                resolved = resolved_set
+                query = ContentQuery.model_validate(resolved.policy.model_dump(mode="python"))
         else:
-            resolved = self.resolver.resolve(
+            resolved = resolved_set or self.resolver.resolve(
                 SelectionPolicy.model_validate(existing.selection_policy)
             )
             if (
@@ -155,13 +182,7 @@ class DigestWorkflow:
 
     @staticmethod
     def _validate_provenance(data: Any, resolved: ResolvedContentSet) -> None:
-        if (
-            list(data.source_content_ids or []) != list(resolved.content_ids)
-            or list(data.source_summary_ids) != list(resolved.summary_ids)
-            or data.selection_fingerprint != resolved.fingerprint
-            or SelectionPolicy.model_validate(data.selection_policy) != resolved.policy
-        ):
-            raise ValueError("Digest provenance does not match resolved selection")
+        validate_digest_provenance(data, resolved)
 
     @staticmethod
     def _apply(record: Digest, data: Any) -> None:

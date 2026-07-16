@@ -13,10 +13,12 @@ Covers:
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.ingestion.content_references import collect_content_references
 from src.ingestion.perplexity_search import (
     PerplexityClient,
     PerplexityContentIngestionService,
@@ -334,6 +336,21 @@ class TestPerplexityClient:
 
 
 class TestPerplexityContentIngestionService:
+    def test_citation_duplicate_records_canonical_content_receipt(self):
+        service = PerplexityContentIngestionService.__new__(PerplexityContentIngestionService)
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = None
+        db.execute.return_value.first.return_value = SimpleNamespace(
+            id=92,
+            canonical_id=8,
+            citations=["https://a.com"],
+        )
+
+        with collect_content_references() as references:
+            assert service._is_duplicate(db, "new-source", ["https://a.com"]) is True
+
+        assert references == {8}
+
     @patch("src.ingestion.perplexity_search.PerplexityClient")
     def test_init_creates_client(self, mock_client_cls):
         service = PerplexityContentIngestionService(api_key="sk-test", model="sonar-pro")
