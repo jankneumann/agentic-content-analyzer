@@ -127,5 +127,13 @@ class PodcastAudioWorkflow:
         )
 
     async def _attach_result(self, operation_id: str | int, record: Podcast) -> None:
-        await self.operations.attach_result(operation_id, {"podcast_id": record.id})
-        await self.operations.update_progress(operation_id, 100, "Podcast audio complete")
+        await self.operations.attach_completion(
+            operation_id,
+            result={"podcast_id": record.id},
+            resource=ResourceReference(
+                type="podcast",
+                id=str(record.id),
+                url=f"/api/v1/podcasts/{record.id}",
+            ),
+            message="Podcast audio complete",
+        )

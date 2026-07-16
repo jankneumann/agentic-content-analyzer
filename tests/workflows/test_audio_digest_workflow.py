@@ -28,7 +28,7 @@ async def test_audio_digest_uses_public_service_persists_and_attaches(db_session
         get=AsyncMock(return_value=SimpleNamespace(resource=None)),
         update_progress=AsyncMock(),
         attach_resource=AsyncMock(),
-        attach_result=AsyncMock(),
+        attach_completion=AsyncMock(),
     )
 
     @contextmanager
@@ -69,4 +69,4 @@ async def test_audio_digest_uses_public_service_persists_and_attaches(db_session
     assert repeated.id == record.id
     assert service.generate.await_count == 1
     assert operations.attach_resource.await_count == 1
-    assert operations.attach_result.await_count == 2
+    assert operations.attach_completion.await_count == 2

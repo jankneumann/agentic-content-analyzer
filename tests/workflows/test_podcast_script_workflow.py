@@ -40,7 +40,7 @@ async def test_podcast_script_workflow_persists_provenance_and_attaches(db_sessi
         get=AsyncMock(return_value=SimpleNamespace(resource=None)),
         update_progress=AsyncMock(),
         attach_resource=AsyncMock(),
-        attach_result=AsyncMock(),
+        attach_completion=AsyncMock(),
     )
 
     @contextmanager
@@ -77,4 +77,4 @@ async def test_podcast_script_workflow_persists_provenance_and_attaches(db_sessi
     assert repeated.id == record.id
     assert generator.generate_script.await_count == 1
     assert operations.attach_resource.await_count == 1
-    assert operations.attach_result.await_count == 2
+    assert operations.attach_completion.await_count == 2

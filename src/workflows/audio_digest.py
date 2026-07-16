@@ -133,8 +133,16 @@ class AudioDigestWorkflow:
         )
 
     async def _attach_result(self, operation_id: str | int, record: AudioDigest) -> None:
-        await self.operations.attach_result(operation_id, {"audio_digest_id": record.id})
-        await self.operations.update_progress(operation_id, 100, "Audio digest complete")
+        await self.operations.attach_completion(
+            operation_id,
+            result={"audio_digest_id": record.id},
+            resource=ResourceReference(
+                type="audio_digest",
+                id=str(record.id),
+                url=f"/api/v1/audio-digests/{record.id}",
+            ),
+            message="Audio digest complete",
+        )
 
     @staticmethod
     def _service_for(provider: str) -> AudioDigestService:

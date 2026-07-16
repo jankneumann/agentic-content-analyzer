@@ -148,6 +148,7 @@ class DigestWorkflow:
             theme_result = await self.theme_workflow.analyze_persisted(
                 WorkflowThemeRequest(query=workflow_query, max_themes=15),
                 resolved_set=resolved,
+                owner_operation_id=int(operation_id),
             )
             await self.operations.update_progress(operation_id, 50, "Generating digest")
             data = await self.creator.create_digest(
@@ -197,7 +198,6 @@ class DigestWorkflow:
         record.emerging_trends = [item.model_dump(mode="json") for item in data.emerging_trends]
         record.actionable_recommendations = data.actionable_recommendations
         record.sources = data.sources
-        record.newsletter_count = data.newsletter_count
         record.status = DigestStatus.PENDING_REVIEW
         record.completed_at = datetime.now(UTC)
         record.agent_framework = data.agent_framework
@@ -209,10 +209,6 @@ class DigestWorkflow:
         )
         record.markdown_content = data.markdown_content
         record.theme_tags = data.theme_tags
-        record.source_content_ids = data.source_content_ids
-        record.source_summary_ids = data.source_summary_ids
-        record.selection_fingerprint = data.selection_fingerprint
-        record.selection_policy = data.selection_policy
         record.historical_context = data.historical_context
         record.is_combined = data.is_combined
         record.child_digest_ids = data.child_digest_ids
@@ -229,8 +225,13 @@ class DigestWorkflow:
         )
 
     async def _attach_result(self, operation_id: str | int, record: Digest) -> None:
-        await self.operations.attach_result(
+        await self.operations.attach_completion(
             operation_id,
-            {"digest_id": record.id, "selection_fingerprint": record.selection_fingerprint},
+            result={"digest_id": record.id, "selection_fingerprint": record.selection_fingerprint},
+            resource=ResourceReference(
+                type="digest",
+                id=str(record.id),
+                url=f"/api/v1/digests/{record.id}",
+            ),
+            message="Digest complete",
         )
-        await self.operations.update_progress(operation_id, 100, "Digest complete")
