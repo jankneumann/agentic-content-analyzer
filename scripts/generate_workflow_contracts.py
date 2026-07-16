@@ -24,6 +24,7 @@ EVENT_SCHEMA = CONTRACTS / "events/operation.progress.schema.json"
 PYTHON_OUTPUT = CONTRACTS / "generated/models.py"
 RUNTIME_PYTHON_OUTPUT = ROOT / "src/contracts/workflow_models.py"
 TYPESCRIPT_OUTPUT = CONTRACTS / "generated/types.ts"
+RUNTIME_TYPESCRIPT_OUTPUT = ROOT / "web/src/generated/workflow-contracts.ts"
 
 
 def _ref_name(ref: str) -> str:
@@ -394,6 +395,7 @@ def main() -> int:
         PYTHON_OUTPUT: _format_python(_render_python(spec, digest)),
         RUNTIME_PYTHON_OUTPUT: _format_python(_render_python(spec, digest)),
         TYPESCRIPT_OUTPUT: _render_typescript(spec, digest),
+        RUNTIME_TYPESCRIPT_OUTPUT: _render_typescript(spec, digest),
     }
     if args.check:
         drift = {path: _diff(path, content) for path, content in outputs.items()}
