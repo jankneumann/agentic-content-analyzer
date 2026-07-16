@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import TypeAdapter
 from typer.testing import CliRunner
 
 from src.cli.app import app
@@ -14,6 +15,7 @@ from src.clients.workflow_api_client import ProblemError
 from src.contracts.workflow_models import (
     COMMAND_FIELD_SCHEMAS,
     CapabilityDocument,
+    IngestCommand,
     OperationHandle,
     OperationPage,
     Problem,
@@ -288,6 +290,37 @@ def test_cli_problem_translation_preserves_full_contract(
     result = CliRunner().invoke(app, ["--json", "ingest", "gmail"])
     assert result.exit_code == 1
     assert json.loads(result.stdout) == problem.model_dump(mode="json", exclude_none=True)
+    assert result.stderr == ""
+
+
+def test_local_validation_error_is_a_json_problem(monkeypatch: pytest.MonkeyPatch) -> None:
+    class ValidatingClient(FakeClient):
+        def submit_ingestion(
+            self, payload: dict[str, Any], *, idempotency_key: str | None = None
+        ) -> OperationHandle:
+            command = TypeAdapter(IngestCommand).validate_python(payload)
+            return super().submit_ingestion(
+                command.model_dump(mode="json", exclude_none=True),
+                idempotency_key=idempotency_key,
+            )
+
+    app_module = importlib.import_module("src.cli.app")
+    monkeypatch.setattr(app_module, "default_client_factory", ValidatingClient)
+    result = CliRunner().invoke(
+        app,
+        ["--json", "ingest", "x-search", "--prompt", "agents", "--max-threads", "0"],
+    )
+
+    assert result.exit_code == 2
+    problem = json.loads(result.stdout)
+    assert problem["code"] == "validation_error"
+    assert problem["errors"] == [
+        {
+            "path": ["x_search", "max_threads"],
+            "code": "greater_than_equal",
+            "message": "Input should be greater than or equal to 1",
+        }
+    ]
     assert result.stderr == ""
 
 
