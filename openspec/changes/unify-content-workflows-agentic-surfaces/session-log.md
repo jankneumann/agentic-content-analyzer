@@ -67,3 +67,41 @@ Planned a coordinated breaking migration that unifies source dispatch, canonical
 
 ### Context
 Gate 2 approved the complete domain registry and durable workflows plan for implementation. Coordinator issue seeding was attempted but deferred because the local bridge cannot reach the MCP-only coordinator transport; implementation will retry idempotently.
+
+---
+
+## Phase: Implementation (2026-07-16)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Route every long-running mutation through the PostgreSQL operation queue** `architectural: agentic-operations` — CLI, HTTP, MCP, and frontend now share durable submission, status, progress, retry, cancellation, idempotency, and resource projection semantics.
+2. **Keep source behavior registry-owned through every surface** `architectural: source-capability-registry` — All eighteen canonical source commands use typed descriptors for dispatch, scheduling, validation, discovery, and capability-driven UI controls.
+3. **Preserve work-package commits through rebase and fast-forward integration** — The package history remains available as granular implementation context while incorporating every commit from the latest main branch.
+
+### Trade-offs
+- Accepted a coordinated breaking cutover over compatibility adapters because all controlled interfaces now consume one generated contract and one durable workflow path.
+- Accepted deterministic provider fixtures for the exhaustive source matrix over live-provider calls because the matrix remains stable, repeatable, and able to assert exact provenance through podcast context assembly.
+
+### Open Questions
+- [ ] Choose the coordinated release number and maintenance window before production migration.
+
+### Completed Work
+- Implemented canonical provenance, content selection, source ingestion, durable workflow handlers, operation controls, and generated contracts.
+- Migrated CLI, HTTP, MCP, and frontend surfaces to the shared application services and PostgreSQL job queue.
+- Added end-to-end coverage for eighteen sources, 153 unordered source pairs, representative triples, and valid/invalid cross-interface parity.
+- Rehearsed the provenance schema upgrade, downgrade, and re-upgrade and completed all OpenSpec tasks.
+
+### Next Steps
+- Review and merge PR #445, then schedule the coordinated production cutover using the documented migration and rollback order.
+
+### Relevant Files
+- `src/ingestion/registry.py` — Canonical source capability and dispatch descriptors.
+- `src/services/operation_service.py` — Durable operation lifecycle shared by every interface.
+- `src/services/content_set_resolver.py` — Exact selection policy, provenance, and fingerprinting.
+- `src/mcp_tools/toolsets.py` — Typed agent-facing MCP tool composition.
+- `tests/contract/test_source_workflow_matrix.py` — Complete source combination coverage.
+- `tests/contract/test_cross_interface_workflows.py` — CLI, HTTP, MCP, and application parity coverage.
+
+### Context
+Implemented the approved coordinated migration end to end and integrated all work packages without squashing. Generated contracts, strict OpenSpec checks, architecture checks, changed-file lint and formatting, full source typing, frontend gates, migration rehearsal, and canonical workflow tests pass; live remote-provider suites remain environment-dependent by design.

@@ -77,13 +77,13 @@
 | WP-WF-004 | wp-workflows | provenance | high | fixed | Theme results must match the resolved content IDs, summary IDs, policy, and fingerprint before persistence. |
 | WP-WF-005 | wp-workflows | completion | medium | fixed | An empty summarization selection completes immediately without creating child operations. |
 | WP-WF-006 | wp-workflows | ownership | medium | fixed | Recovery atomically claims null legacy ownership with a conditional update and rejects resources owned by another operation. |
-| WP-PIPE-001 | wp-pipeline | deferral | high | assigned | Tasks 5.19-5.20 require typed handlers to release and requeue deferred parent operations. |
-| WP-PIPE-002 | wp-pipeline | force execution | medium | assigned | Tasks 5.19-5.20 require the summarization handler to honor `force_reprocess`. |
+| WP-PIPE-001 | wp-pipeline | deferral | high | fixed | Typed handlers release and requeue deferred parent operations so concurrency-one workers can execute children without starvation. |
+| WP-PIPE-002 | wp-pipeline | force execution | medium | fixed | The summarization handler preserves `force_reprocess` through durable payload reconstruction and execution. |
 | WP-PIPE-003 | wp-pipeline | scheduling | critical | fixed | Deferral demotes parent priority below child priority so concurrency-one workers claim child operations before the older parent. |
 | WP-PIPE-004 | wp-pipeline | provenance | high | fixed | Canonical ingestion receipt content IDs now bind exact summarization and resolved digest membership, including overlapping storage source types. |
 | WP-PIPE-005 | wp-pipeline | checkpointing | high | fixed | Source plans, child IDs, and resolved selections are persisted before later side effects and pipeline retries retain checkpoints while requeueing failed children. |
 | WP-PIPE-006 | wp-pipeline | idempotency | high | fixed | OperationService namespaces child idempotency keys by parent internally before global queue deduplication. |
-| WP-PIPE-007 | wp-pipeline | retry policy | high | assigned | Source retry metadata is declared by descriptors; tasks 5.19-5.20 must enforce it in typed ingestion handlers and retain exhaustion diagnostics. |
+| WP-PIPE-007 | wp-pipeline | retry policy | high | fixed | Typed ingestion handlers enforce descriptor-owned retry metadata and retain exhaustion diagnostics. |
 | WP-PIPE-008 | wp-pipeline | configuration | high | fixed | Every scheduled command serializes its validated resolved source entries, Gmail plans one command per query, and active YouTube snapshots suppress unrelated legacy subtype fallbacks. |
 | WP-PIPE-009 | wp-pipeline | retry lifecycle | high | fixed | Parent and checkpointed failed-stage retry transitions share one atomic SQL statement; tolerated source failures remain terminal and retained checkpoints refresh retried results. |
 | WP-PIPE-010 | wp-pipeline | completion | high | fixed | Final result, resource, and progress attach atomically; every completed re-entry verifies the recorded digest child status and resource before repairing projection. |
@@ -100,7 +100,6 @@
 
 - **Requirements traced**: 37/37
 - **Tests mapped**: 37 requirements have at least one test
-- **Evidence collected**: 17/37 requirements have pass/fail evidence
-- **Gaps identified**: Remaining work packages still need implementation files and validation evidence.
-- **Deferred items**: Worker enforcement of declared source retry policies and exact digest snapshots,
-  plus targetable command contracts for heterogeneous per-source configuration.
+- **Evidence collected**: 37/37 requirements have pass/fail evidence
+- **Gaps identified**: None.
+- **Deferred items**: None.
