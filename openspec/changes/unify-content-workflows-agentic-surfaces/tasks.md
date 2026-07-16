@@ -456,13 +456,13 @@
   **Design decisions**: D11
   **Dependencies**: 10.2
 
-- [ ] 10.5 [M] Add cross-interface parity tests
+- [x] 10.5 [M] Add cross-interface parity tests
   **Spec scenarios**: e2e-testing.5-6, source-capability-registry.6, mcp-http-client.1-8
   **Contracts**: `contracts/openapi/v1.yaml`
   **Design decisions**: D8, D9, D11
   **Dependencies**: 7.11, 8.4, 8.9, 9.9
 
-- [ ] 10.6 [XS] Checkpoint: run combination tests, review diff, verify scope
+- [x] 10.6 [XS] Checkpoint: run combination tests, review diff, verify scope
   **Dependencies**: 10.4, 10.5
 
 - [x] 10.7 [M] Add workflow edge-case tests
