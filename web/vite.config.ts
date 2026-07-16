@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -17,6 +17,10 @@ import path from 'path'
  * @see https://vite.dev/config/
  */
 export default defineConfig({
+  test: {
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    exclude: ['tests/e2e/**', 'node_modules/**', 'dist/**'],
+  },
   plugins: [
     // React plugin provides Fast Refresh and JSX transformation
     react(),

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest"
 
 import { ApiClientError, apiClient } from "../client"
-import { getAllCapabilities, submitIngestion } from "../workflows"
+import { getAllCapabilities, listAllOperations, submitIngestion } from "../workflows"
 
 describe("canonical workflow client", () => {
   beforeEach(() => vi.restoreAllMocks())
@@ -23,6 +23,14 @@ describe("canonical workflow client", () => {
     await submitIngestion({ kind: "url", url: "https://example.com" })
 
     expect(post).toHaveBeenCalledWith("/ingestions", { kind: "url", url: "https://example.com" }, undefined)
+  })
+
+  it("hydrates operations across cursor pages", async () => {
+    vi.spyOn(apiClient, "get")
+      .mockResolvedValueOnce({ data: [{ operation_id: "op-1" }], next_cursor: "next" })
+      .mockResolvedValueOnce({ data: [{ operation_id: "op-2" }], next_cursor: null })
+
+    expect((await listAllOperations()).map((operation) => operation.operation_id)).toEqual(["op-1", "op-2"])
   })
 
   it("retains the complete RFC 7807 problem", () => {

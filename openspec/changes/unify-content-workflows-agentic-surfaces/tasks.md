@@ -414,25 +414,25 @@
 - [x] 9.4 [XS] Checkpoint: run frontend contract tests, review diff, verify scope
   **Dependencies**: 9.2, 9.3
 
-- [ ] 9.5 [M] Write frontend workflow tests
+- [x] 9.5 [M] Write frontend workflow tests
   **Spec scenarios**: agentic-operations.1-7, source-configuration.1, e2e-testing.5-6
   **Contracts**: `contracts/openapi/v1.yaml`
   **Design decisions**: D8, D9
   **Dependencies**: 9.3
 
-- [ ] 9.6 [M] Implement capability-driven ingestion controls
+- [x] 9.6 [M] Implement capability-driven ingestion controls
   Render every source command from capability metadata with explicit components for uploads, identifiers, option sets, dates, and booleans.
   **Dependencies**: 9.5
 
-- [ ] 9.7 [M] Implement operation progress views
+- [x] 9.7 [M] Implement operation progress views
   Show durable status, SSE progress, errors, safe cancellation, retry actions, and reconnect behavior across all workflow screens.
   **Dependencies**: 9.5
 
-- [ ] 9.8 [M] Implement workflow resource navigation
+- [x] 9.8 [M] Implement workflow resource navigation
   Wire completed digest, theme, script, podcast, and audio resources into existing review, detail, and playback views.
   **Dependencies**: 9.5, 9.7
 
-- [ ] 9.9 [XS] Checkpoint: run frontend tests, review diff, verify scope
+- [x] 9.9 [XS] Checkpoint: run frontend tests, review diff, verify scope
   **Dependencies**: 9.6, 9.7, 9.8
 
 ## 10. End-to-End Validation

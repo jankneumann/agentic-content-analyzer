@@ -28,6 +28,7 @@ import type {
   Summary,
 } from "@/types"
 import type { ContentQuery } from "@/types/query"
+import type { OperationHandle } from "@/generated/workflow-contracts"
 
 /**
  * Parameters for content ingestion
@@ -173,8 +174,13 @@ export async function mergeContentDuplicate(
  */
 export async function ingestContents(
   params: IngestContentParams
-): Promise<IngestContentResponse> {
-  return apiClient.post<IngestContentResponse>("/contents/ingest", params)
+): Promise<OperationHandle> {
+  return apiClient.post<OperationHandle>("/ingestions", {
+    kind: params.source === "youtube" ? "youtube_playlist" : params.source,
+    max_items: params.max_results,
+    days_back: params.days_back,
+    force_reprocess: params.force_reprocess,
+  })
 }
 
 // ============================================================================
@@ -213,8 +219,8 @@ export interface SaveURLResponse {
  */
 export async function saveUrl(
   params: SaveURLParams
-): Promise<SaveURLResponse> {
-  return apiClient.post<SaveURLResponse>("/content/save-url", params)
+): Promise<OperationHandle> {
+  return apiClient.post<OperationHandle>("/ingestions", { kind: "url", ...params })
 }
 
 // ============================================================================
@@ -271,8 +277,13 @@ export interface ContentSummarizationProgressEvent {
  */
 export async function summarizeContents(
   params: SummarizeContentParams = {}
-): Promise<SummarizeContentResponse> {
-  return apiClient.post<SummarizeContentResponse>("/contents/summarize", params)
+): Promise<OperationHandle> {
+  const contentIds = params.content_ids?.length ? params.content_ids : undefined
+  return apiClient.post<OperationHandle>("/summarization-runs", {
+    content_ids: contentIds,
+    query: contentIds ? undefined : (params.query ?? {}),
+    force_reprocess: params.force,
+  })
 }
 
 /**
