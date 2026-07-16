@@ -245,18 +245,25 @@ def register_error_handlers(app: FastAPI) -> None:
                     for k, v in err.items()
                     if k != "ctx" and isinstance(v, (str, int, float, bool, list, dict, type(None)))
                 }
+                if "loc" in err:
+                    cleaned["loc"] = list(err["loc"])
                 safe.append(cleaned)
             return safe
+
+        def _public_path(error: dict[str, Any]) -> list[Any]:
+            path = list(error.get("loc", ()))
+            return path[1:] if path[:1] == ["body"] else path
 
         if _is_problem_path(request.url.path):
             body = _problem_body(
                 title="Unprocessable Entity",
                 status=422,
                 detail="Request validation failed",
+                code="validation_error",
             )
             body["errors"] = [
                 {
-                    "path": list(error.get("loc", ())),
+                    "path": _public_path(error),
                     "code": str(error.get("type", "validation_error")),
                     "message": str(error.get("msg", "Invalid value")),
                 }

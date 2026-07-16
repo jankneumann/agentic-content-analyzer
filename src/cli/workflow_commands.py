@@ -16,7 +16,7 @@ from rich.console import Console
 from rich.table import Table
 
 from src.clients.workflow_api_client import ProblemError, WorkflowApiClient
-from src.contracts.workflow_models import COMMAND_FIELD_SCHEMAS, OperationHandle
+from src.contracts.workflow_models import COMMAND_FIELD_SCHEMAS, OperationHandle, Problem
 
 ingest_app = typer.Typer(help="Submit a canonical ingestion operation.", no_args_is_help=True)
 summarize_app = typer.Typer(help="Submit summarization operations.", no_args_is_help=True)
@@ -69,6 +69,24 @@ def _emit_model(ctx: typer.Context, model: Any) -> None:
     Console().print(model.model_dump(mode="json", exclude_none=True))
 
 
+def _validation_problem(exc: ValidationError) -> Problem:
+    return Problem(
+        type="https://aca.rotkohl.ai/problems/validation_error",
+        title="Unprocessable Entity",
+        status=422,
+        detail="Request validation failed",
+        code="validation_error",
+        errors=[
+            {
+                "path": list(error.get("loc", ())),
+                "code": str(error.get("type", "validation_error")),
+                "message": str(error.get("msg", "Invalid value")),
+            }
+            for error in exc.errors()
+        ],
+    )
+
+
 def _run(ctx: typer.Context, action: Callable[[WorkflowApiClient], Any]) -> Any:
     state = get_state(ctx)
     try:
@@ -83,7 +101,14 @@ def _run(ctx: typer.Context, action: Callable[[WorkflowApiClient], Any]) -> Any:
                 typer.echo(f"Code: {exc.problem.code}", err=True)
         raise typer.Exit(1) from exc
     except ValidationError as exc:
-        typer.echo(str(exc), err=True)
+        problem = _validation_problem(exc)
+        if state.json_output:
+            typer.echo(problem.model_dump_json(exclude_none=True))
+        else:
+            typer.echo(f"{problem.title}: {problem.detail}", err=True)
+            for error in problem.errors or []:
+                path = ".".join(str(part) for part in error["path"])
+                typer.echo(f"{path}: {error['message']}", err=True)
         raise typer.Exit(2) from exc
     except (OSError, httpx.HTTPError) as exc:
         typer.echo(f"Workflow API unavailable: {exc}", err=True)

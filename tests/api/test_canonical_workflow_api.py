@@ -134,9 +134,22 @@ def test_ingestion_is_strict_queued_and_rejects_internal_snapshots(
         "/api/v1/ingestions",
         json={"kind": "gmail", "configured_sources": [{"query": "secret"}]},
     )
+    invalid = canonical_client.post(
+        "/api/v1/ingestions",
+        json={"kind": "x_search", "prompt": "agents", "max_threads": 0},
+    )
     assert response.status_code == 202
-    assert extra.status_code == internal.status_code == 422
+    assert extra.status_code == internal.status_code == invalid.status_code == 422
     assert extra.headers["content-type"].startswith("application/problem+json")
+    assert extra.json()["code"] == "validation_error"
+    assert {"path", "code", "message"} <= extra.json()["errors"][0].keys()
+    assert invalid.json()["errors"] == [
+        {
+            "path": ["x_search", "max_threads"],
+            "code": "greater_than_equal",
+            "message": "Input should be greater than or equal to 1",
+        }
+    ]
     operation_service.submit.assert_awaited_once()
     assert operation_service.submit.await_args.args[0] is OperationType.INGESTION_EXECUTE
     assert operation_service.submit.await_args.kwargs["idempotency_key"] == "paper-2401.12345"
