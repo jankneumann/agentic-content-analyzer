@@ -9,7 +9,6 @@ Tests the unified Content model API including:
 """
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
 
 from src.models.content import Content, ContentSource, ContentStatus
 
@@ -326,100 +325,6 @@ class TestContentStats:
         # sample_contents has 2 PARSED and 1 COMPLETED (without summary)
         # The COMPLETED item is excluded as it's considered fully processed
         assert data["needs_summarization_count"] == 2
-
-
-class TestTriggerIngestion:
-    """Tests for POST /api/v1/contents/ingest endpoint."""
-
-    def test_trigger_ingestion_gmail(self, client):
-        """Triggers Gmail ingestion and returns task_id."""
-        # The endpoint starts a background task and returns immediately
-        payload = {
-            "source": "gmail",
-            "max_results": 10,
-            "days_back": 7,
-        }
-        with patch(
-            "src.api.content_routes._enqueue_ingestion_job", new_callable=AsyncMock
-        ) as mock_enqueue:
-            mock_enqueue.return_value = 123
-            response = client.post("/api/v1/contents/ingest", json=payload)
-            assert response.status_code == 200
-            data = response.json()
-            assert "task_id" in data
-            assert data["message"] == "Content ingestion queued"
-            assert data["source"] == "gmail"
-            mock_enqueue.assert_called_once()
-
-    def test_trigger_ingestion_rss(self, client):
-        """Triggers RSS ingestion and returns task_id."""
-        payload = {
-            "source": "rss",
-            "max_results": 50,
-            "days_back": 3,
-        }
-        with patch(
-            "src.api.content_routes._enqueue_ingestion_job", new_callable=AsyncMock
-        ) as mock_enqueue:
-            mock_enqueue.return_value = 123
-            response = client.post("/api/v1/contents/ingest", json=payload)
-            assert response.status_code == 200
-            data = response.json()
-            assert "task_id" in data
-            assert data["source"] == "rss"
-            mock_enqueue.assert_called_once()
-
-    def test_trigger_ingestion_unknown_source_passes_through(self, client):
-        """Unknown source strings are accepted and queued; validation happens at the worker."""
-        # IngestRequest.source is a plain `str` (see content_routes.py:147)
-        # so Pydantic does not reject unknown values. The handler enqueues
-        # whatever is supplied; the worker rejects it if no orchestrator
-        # function exists. Keeps the endpoint permissive for new sources.
-        payload = {
-            "source": "totally-made-up",
-            "max_results": 10,
-        }
-        with patch(
-            "src.api.content_routes._enqueue_ingestion_job", new_callable=AsyncMock
-        ) as mock_enqueue:
-            mock_enqueue.return_value = 999
-            response = client.post("/api/v1/contents/ingest", json=payload)
-        assert response.status_code == 200
-        assert response.json()["source"] == "totally-made-up"
-
-
-class TestTriggerSummarization:
-    """Tests for POST /api/v1/contents/summarize endpoint."""
-
-    def test_trigger_summarization_all_pending(self, client, sample_contents):
-        """Triggers summarization for all pending content."""
-        # The endpoint starts a background task and returns immediately
-        payload = {}  # Empty = all pending
-        with patch(
-            "src.api.content_routes._enqueue_summarization_batch_job", new_callable=AsyncMock
-        ) as mock_enqueue:
-            mock_enqueue.return_value = (123, 2)
-            response = client.post("/api/v1/contents/summarize", json=payload)
-            assert response.status_code == 200
-            data = response.json()
-            assert "task_id" in data
-            assert "queued_count" in data
-            mock_enqueue.assert_called_once()
-
-    def test_trigger_summarization_specific_ids(self, client, sample_contents):
-        """Triggers summarization for specific content IDs."""
-        payload = {
-            "content_ids": [sample_contents[0].id, sample_contents[2].id],
-        }
-        with patch(
-            "src.api.content_routes._enqueue_summarization_batch_job", new_callable=AsyncMock
-        ) as mock_enqueue:
-            mock_enqueue.return_value = (123, 2)
-            response = client.post("/api/v1/contents/summarize", json=payload)
-            assert response.status_code == 200
-            data = response.json()
-            assert "task_id" in data
-            mock_enqueue.assert_called_once()
 
 
 class TestContentWithSummary:

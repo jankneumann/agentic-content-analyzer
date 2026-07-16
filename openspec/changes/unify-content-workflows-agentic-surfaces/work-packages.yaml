@@ -527,10 +527,14 @@ packages:
         - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/openapi/v1.yaml
         - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/generated/models.py
         - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/generated/types.ts
+        - scripts/generate_workflow_contracts.py
         - src/contracts/workflow_models.py
         - src/services/capability_service.py
         - src/config/sources.py
         - src/api/**
+        - src/templates/save.html
+        - src/templates/bookmarklet.html
+        - src/templates/shortcut.html
         - tests/contract/test_canonical_workflow_contracts.py
         - tests/services/test_capability_service.py
         - tests/test_config/test_sources.py

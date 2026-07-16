@@ -237,6 +237,10 @@ def _command_field_schemas(spec: dict[str, Any]) -> dict[str, dict[str, Any]]:
     result: dict[str, dict[str, Any]] = {}
     for key, ref in mapping.items():
         properties, required = resolve(schemas[_ref_name(ref)])
+        properties = {
+            name: schema for name, schema in properties.items() if not schema.get("x-internal")
+        }
+        required = [name for name in required if name in properties]
         result[key] = {"properties": properties, "required": required}
     return result
 
@@ -304,6 +308,8 @@ def _render_typescript(spec: dict[str, Any], digest: str) -> str:
         extends = f" extends {base}" if base != "StrictModel" else ""
         lines.extend(["", f"export interface {name}{extends} {{"])
         for field_name, field_schema in properties.items():
+            if field_schema.get("x-internal"):
+                continue
             optional = "" if field_name in required else "?"
             lines.append(f"  {field_name}{optional}: {_typescript_type(field_schema)};")
         lines.append("}")

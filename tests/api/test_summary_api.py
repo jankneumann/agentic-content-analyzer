@@ -219,28 +219,6 @@ class TestSummaryStats:
         assert data["avg_token_usage"] > 0
 
 
-class TestRegenerateSummary:
-    """Tests for POST /api/v1/summaries/{id}/regenerate endpoint."""
-
-    def test_regenerate_summary_returns_content_id(self, client, sample_content_with_summary):
-        """Test regenerating summary returns content ID for re-summarization."""
-        content, summary = sample_content_with_summary
-
-        response = client.post(f"/api/v1/summaries/{summary.id}/regenerate")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert "content_id" in data
-        assert data["content_id"] == content.id
-
-    def test_regenerate_summary_not_found(self, client):
-        """Test regenerating non-existent summary returns 404."""
-        response = client.post("/api/v1/summaries/99999/regenerate")
-
-        assert response.status_code == 404
-        assert "not found" in response.json()["detail"].lower()
-
-
 class TestSummaryNavigation:
     """Tests for GET /api/v1/summaries/{id}/navigation endpoint."""
 

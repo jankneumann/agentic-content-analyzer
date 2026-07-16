@@ -122,10 +122,13 @@ def test_scheduled_commands_support_an_immutable_source_snapshot() -> None:
                 properties.update(schemas[part["$ref"].rsplit("/", 1)[-1]]["properties"])
             else:
                 properties.update(part.get("properties", {}))
-        assert properties["configured_sources"] == {
-            "type": "array",
-            "items": {"type": "object", "additionalProperties": True},
+        assert properties["configured_sources"]["type"] == "array"
+        assert properties["configured_sources"]["items"] == {
+            "type": "object",
+            "additionalProperties": True,
         }
+        assert properties["configured_sources"]["readOnly"] is True
+        assert properties["configured_sources"]["x-internal"] is True
 
 
 def test_operation_handle_contract_is_complete() -> None:
@@ -249,3 +252,13 @@ def test_generated_python_contract_imports() -> None:
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     assert set(module.OperationType.__args__) == OPERATION_TYPES
+    assert all(
+        "configured_sources" not in command["properties"]
+        for command in module.COMMAND_FIELD_SCHEMAS.values()
+    )
+    assert "configured_sources" in module.GmailIngestCommand.model_fields
+
+
+def test_generated_typescript_omits_internal_scheduler_fields() -> None:
+    generated = (CONTRACTS / "generated/types.ts").read_text()
+    assert "configured_sources" not in generated
