@@ -110,34 +110,34 @@ class Topic(Base):
     name            = Column(String(500), not null)               # Display name
     category        = Column(Enum(ThemeCategory))                 # Reuse existing enum
     status          = Column(Enum(TopicStatus), default=DRAFT)
-    
+
     # LLM-compiled article content
     summary         = Column(Text)                                # 2-3 sentence summary
     article_md      = Column(Text)                                # Full markdown article
     article_version = Column(Integer, default=1)                  # Incremented on recompile
-    
+
     # Trend & scoring (promoted from ThemeData)
     trend           = Column(Enum(ThemeTrend))
     relevance_score = Column(Float)
     novelty_score   = Column(Float)
     mention_count   = Column(Integer, default=0)
-    
+
     # Evidence links
     source_content_ids   = Column(JSON)                           # Content items supporting this topic
     source_summary_ids   = Column(JSON)                           # Summaries referencing this topic
     source_theme_ids     = Column(JSON)                           # ThemeAnalysis records
-    
+
     # Relationships (denormalized for fast queries; canonical in graph)
     related_topic_ids    = Column(JSON)                           # List[int] — related Topic IDs
     parent_topic_id      = Column(FK → Topic, nullable)           # Hierarchy: "RAG" → parent "LLM"
     merged_into_id       = Column(FK → Topic, nullable)           # If status=MERGED
-    
+
     # Compilation metadata
     last_compiled_at     = Column(DateTime)
     last_evidence_at     = Column(DateTime)                       # Most recent source content date
     compilation_model    = Column(String(100))                    # Which LLM compiled it
     compilation_token_usage = Column(Integer)
-    
+
     # Timestamps
     created_at      = Column(DateTime)
     updated_at      = Column(DateTime)
@@ -493,11 +493,11 @@ The KB compilation step slots into the existing pipeline:
 
 ```bash
 # Existing pipeline
-aca pipeline daily    # ingest → summarize → theme-analyze → digest
+aca pipeline run --period daily --period-start START_ISO --period-end END_ISO
 
 # Enhanced pipeline
-aca pipeline daily    # ingest → summarize → theme-analyze → KB compile → digest
-                      #                                         ↑ NEW STEP
+aca pipeline run --period daily --period-start START_ISO --period-end END_ISO
+                      # ingest -> summarize -> theme-analyze -> KB compile -> digest
 ```
 
 The digest creator can then reference compiled topics for richer context:

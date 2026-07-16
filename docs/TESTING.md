@@ -5,7 +5,7 @@ This guide covers the testing infrastructure, patterns, and best practices for t
 ## Quick Reference
 
 ```bash
-# Run all tests (excludes integration and live_api by default)
+# Run fast tests (excludes integration, live_api, smoke, and contract by default)
 pytest
 
 # Run with coverage report
@@ -15,6 +15,7 @@ pytest --cov=src --cov-report=html
 pytest -m unit                    # Pure unit tests
 pytest -m integration             # Database integration tests
 pytest -m hoverfly                # Hoverfly HTTP simulation tests
+pytest -m contract                # OpenAPI and deterministic workflow contracts
 pytest -m "not slow"              # Skip slow tests
 pytest -m live_api                # Tests calling real APIs (costs money!)
 
@@ -31,13 +32,16 @@ Tests are organized by category using pytest markers:
 |--------|-------------|--------------|
 | `unit` | Pure unit tests | None |
 | `integration` | Database integration | PostgreSQL test database |
+| `contract` | Cross-layer and OpenAPI contracts | PostgreSQL test database |
 | `hoverfly` | HTTP simulation tests | Hoverfly (`make hoverfly-up`) |
 | `e2e` | End-to-end API tests | PostgreSQL, may mock external APIs |
 | `slow` | Tests > 1 second | Varies |
 | `live_api` | Calls real external APIs | API keys, costs money |
 | `crawl4ai` | Requires Crawl4AI setup | Browser, Crawl4AI |
 
-Default test run excludes `integration` and `live_api` tests.
+Default test run excludes `integration`, `live_api`, `smoke`, and `contract`
+tests. Run contract suites explicitly; passing a file path does not override the
+default marker expression.
 
 ## Test Database Setup
 
@@ -147,6 +151,7 @@ Sample test data is available in `tests/fixtures/`:
 
 ```
 tests/fixtures/
+├── sources/                     # Exact-key source fixtures and vertical harness
 ├── markdown/
 │   ├── sample_content.md    # Sample newsletter content
 │   ├── sample_summary.md    # Sample summary
@@ -182,6 +187,42 @@ from tests.fixtures import SAMPLE_CONTENT_MD, SAMPLE_NEWSLETTER_HTML
 # Use Path objects directly
 content = SAMPLE_CONTENT_MD.read_text()
 ```
+
+## Canonical Source Workflow Matrix
+
+`tests/contract/test_source_workflow_matrix.py` derives its cases from the
+executable `SOURCE_REGISTRY`. At module import it compares registry and fixture
+key sets, so a missing or extra fixture fails collection before any case runs.
+Do not maintain a separate expected source-key constant in the test.
+
+The network-free harness in `tests/fixtures/sources/` replaces only external
+source and model I/O. It still exercises registry command parsing and URL
+routing, persisted `Content` and `Summary` records, `ContentSetResolver`, exact
+digest provenance, and podcast context assembly.
+
+```bash
+# 18 vertical sources, 5 URL variants, 153 unordered pairs, and 2 triples
+pytest tests/contract/test_source_workflow_matrix.py -m contract --no-cov
+
+# Selection edges, force/idempotency, partial failure, controls, and v1 drain
+pytest tests/regression/test_canonical_workflow_edge_cases.py --no-cov
+
+# Application, CLI, HTTP, MCP, and frontend contract conformance
+pytest tests/contract/test_cross_interface_workflows.py -m contract --no-cov
+```
+
+Every source addition must update the OpenAPI discriminator, executable
+descriptor, deterministic fixture, generated contracts, and all interface
+projections in one change. The pair matrix must remain generated with
+`itertools.combinations`; do not sample pairs or hard-code a count. The two
+required triples are `gmail/rss/substack` and
+`scholar_search/arxiv_search/huggingface_papers`.
+
+Matrix assertions cover unique canonical content and summary IDs, selection
+fingerprints, exact digest provenance, duplicate aliases, source filters, null
+publication dates with explicit ingestion-date fallback,
+filtered/failed/missing-summary exclusions, partial failure, force,
+idempotency, cancellation, retry, and queue payload version 1 projection.
 
 ## Database Fixtures
 
