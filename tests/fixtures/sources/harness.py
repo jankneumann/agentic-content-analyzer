@@ -2,21 +2,30 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from sqlalchemy.orm import Session
 
-from src.ingestion.content_references import ContentReferences
+from src.ingestion.commands import IngestCommandBase
+from src.ingestion.content_references import ContentReferences, record_content_reference
 from src.ingestion.registry import SOURCE_REGISTRY, SourceRegistry
-from src.models.content import ContentSource
+from src.ingestion.result import IngestionResponse
+from src.ingestion.service import IngestionService
+from src.models.content import Content, ContentSource
 from src.models.digest import Digest
 from src.models.podcast import PodcastLength, PodcastRequest
 from src.models.query import ContentQuery, ResolvedContentSet, SelectionExclusionReason
+from src.models.summary import Summary
 from src.processors.podcast_script_generator import PodcastScriptGenerator
 from src.processors.provenance import ExactContentSetLoader
 from src.services.content_set_resolver import ContentSetResolver
+from src.services.upload_service import MaterializedUpload
 from tests.factories.content import ContentFactory
 from tests.factories.digest import DigestFactory
 from tests.factories.summary import SummaryFactory
@@ -34,6 +43,7 @@ class PersistedFixture:
     source: ContentSource
     content_id: int
     summary_id: int
+    ingestion: IngestionResponse
 
 
 @dataclass(frozen=True)
@@ -54,6 +64,24 @@ class _SessionDigestLoader:
         return self._loader.load_digest(digest_id, session=self._session)
 
 
+class _FixtureUploadService:
+    """Resolve the file command without touching durable or local storage."""
+
+    def __init__(self) -> None:
+        self.requested_ids: tuple[str, ...] = ()
+
+    @contextmanager
+    def materialize_sync(self, upload_ids: list[str]) -> Iterator[list[MaterializedUpload]]:
+        self.requested_ids = tuple(upload_ids)
+        yield [
+            MaterializedUpload(
+                path=Path("fixture-upload.md"),
+                title="Uploaded agent report",
+                publication="Fixture files",
+            )
+        ]
+
+
 class VerticalWorkflowHarness:
     """Exercise canonical runtime boundaries while replacing only external ingestion/LLM I/O."""
 
@@ -69,11 +97,17 @@ class VerticalWorkflowHarness:
         add_cross_source_alias: bool = False,
     ) -> VerticalWorkflowResult:
         persisted = tuple(
-            self._persist_fixture(key, SOURCE_FIXTURES[key], index)
+            self._ingest_fixture(key, SOURCE_FIXTURES[key], index)
             for index, key in enumerate(keys, start=1)
         )
         references = ContentReferences()
-        references.record({item.content_id: item.content_id for item in persisted})
+        references.record(
+            {
+                content_id: content_id
+                for item in persisted
+                for content_id in item.ingestion.details["content_ids"]
+            }
+        )
 
         if add_cross_source_alias:
             alias = ContentFactory(
@@ -128,29 +162,69 @@ class VerticalWorkflowHarness:
             canonical_references=frozenset(references),
         )
 
-    def _persist_fixture(self, key: str, fixture: SourceFixture, index: int) -> PersistedFixture:
+    def _ingest_fixture(self, key: str, fixture: SourceFixture, index: int) -> PersistedFixture:
         command = self.registry.parse_command(fixture.command)
         descriptor = self.registry.get(command.kind)
-        sources = descriptor.resolve_sources(command)
-        if len(sources) != 1:
-            raise AssertionError(f"Fixture '{key}' did not resolve to exactly one content source")
-        source = next(iter(sources))
+        created: tuple[Content, Summary, ContentSource] | None = None
+
+        def fixture_orchestrator(typed_command: IngestCommandBase) -> IngestionResponse:
+            nonlocal created
+            sources = descriptor.resolve_sources(typed_command)
+            if len(sources) != 1:
+                raise AssertionError(
+                    f"Fixture '{key}' did not resolve to exactly one content source"
+                )
+            source = next(iter(sources))
+            content = ContentFactory(
+                source_type=source,
+                source_id=f"fixture:{key}:{index}",
+                source_url=f"https://fixtures.test/{key}/{index}",
+                title=fixture.title,
+                publication=f"Fixture {key}",
+                published_date=PERIOD_START + timedelta(minutes=index),
+                ingested_at=PERIOD_START + timedelta(minutes=index),
+                markdown_content=f"# {fixture.title}\n\nDeterministic content for {key}.",
+            )
+            summary = SummaryFactory(
+                content=content,
+                content_id=content.id,
+                executive_summary=f"Persisted summary for {key}",
+            )
+            record_content_reference(content.id, content.canonical_id)
+            created = (content, summary, source)
+            return IngestionResponse(
+                command=fixture.response_command,
+                source=fixture.response_source,
+                status="ok",
+                items_ingested=1,
+                details={
+                    "content_id": content.id,
+                    "results": [{"content_id": content.id}],
+                },
+            )
+
+        fixture_registry = SourceRegistry([replace(descriptor, orchestrator=fixture_orchestrator)])
+        upload_service = _FixtureUploadService() if key == "files" else None
+        service = IngestionService(registry=fixture_registry, upload_service=upload_service)
+        if key == "files":
+            with patch(
+                "src.ingestion.orchestrator.ingest_files",
+                side_effect=lambda **_kwargs: fixture_orchestrator(command),
+            ):
+                response = service.execute(fixture.command)
+            assert upload_service is not None
+            assert upload_service.requested_ids == tuple(command.upload_ids)
+        else:
+            response = service.execute(fixture.command)
+
+        if created is None:
+            raise AssertionError(f"Fixture orchestrator '{key}' was not invoked")
+        content, summary, source = created
         route = str(descriptor.resolve_route(command))
-        content = ContentFactory(
-            source_type=source,
-            source_id=f"fixture:{key}:{index}",
-            source_url=f"https://fixtures.test/{key}/{index}",
-            title=fixture.title,
-            publication=f"Fixture {key}",
-            published_date=PERIOD_START + timedelta(minutes=index),
-            ingested_at=PERIOD_START + timedelta(minutes=index),
-            markdown_content=f"# {fixture.title}\n\nDeterministic content for {key}.",
-        )
-        summary = SummaryFactory(
-            content=content,
-            content_id=content.id,
-            executive_summary=f"Persisted summary for {key}",
-        )
+        assert response.details["command_key"] == key
+        assert response.details["resolved_route"] == route
+        assert response.details["emitted_sources"] == [source.value]
+        assert response.details["content_ids"] == [content.id]
         return PersistedFixture(
             key=key,
             command=command,
@@ -158,6 +232,7 @@ class VerticalWorkflowHarness:
             source=source,
             content_id=content.id,
             summary_id=summary.id,
+            ingestion=response,
         )
 
 

@@ -49,6 +49,14 @@ async def test_every_registry_source_reaches_persisted_podcast_context(
 
     assert result.persisted[0].key == source_key
     assert result.persisted[0].command.kind == source_key
+    assert result.persisted[0].ingestion.details == {
+        "content_id": result.persisted[0].content_id,
+        "results": [{"content_id": result.persisted[0].content_id}],
+        "command_key": source_key,
+        "resolved_route": result.persisted[0].route,
+        "emitted_sources": [result.persisted[0].source.value],
+        "content_ids": [result.persisted[0].content_id],
+    }
     assert result.resolved.eligible_content_count == 1
     assert result.resolved.eligible_summary_count == 1
     assert result.canonical_references == frozenset(result.resolved.content_ids)
