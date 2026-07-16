@@ -390,7 +390,9 @@ def main() -> int:
     args = parser.parse_args()
 
     spec = _validated_contract()
-    digest = hashlib.sha256(OPENAPI.read_bytes()).hexdigest()
+    # Path.read_text() applies universal newline translation, keeping the
+    # generated contract identity stable across Git CRLF checkouts.
+    digest = hashlib.sha256(OPENAPI.read_text().encode()).hexdigest()
     outputs = {
         PYTHON_OUTPUT: _format_python(_render_python(spec, digest)),
         RUNTIME_PYTHON_OUTPUT: _format_python(_render_python(spec, digest)),
