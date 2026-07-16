@@ -569,6 +569,7 @@ packages:
       task_ids: ["8.1", "8.2", "8.3", "8.4"]
     locks:
       files:
+        - src/clients/workflow_api_client.py
         - src/cli/api_client.py
         - src/cli/ingest_commands.py
         - src/cli/pipeline_commands.py
@@ -580,7 +581,9 @@ packages:
       write_allow:
         - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
         - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
+        - src/clients/**
         - src/cli/**
+        - tests/clients/**
         - tests/cli/**
       read_allow: ["src/**", "tests/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
       deny: ["src/api/**", "src/mcp/**", "src/mcp_server.py", "web/**"]
@@ -606,7 +609,7 @@ packages:
     task_type: mcp
     description: Split MCP modules, route all tools through HTTP mode, preserve in-process parity, and add structured operation tools.
     priority: 8
-    depends_on: [wp-http]
+    depends_on: [wp-http, wp-cli]
     inputs:
       task_ids: ["8.5", "8.6", "8.7", "8.8", "8.9"]
     locks:
@@ -661,6 +664,8 @@ packages:
       write_allow:
         - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
         - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
+        - Makefile
+        - scripts/generate_workflow_contracts.py
         - web/**
       read_allow: ["web/**", "src/api/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
       deny: ["src/**"]
