@@ -175,12 +175,4 @@ async def list_digests(
         return runtime.native(query.limit(limit).all())
 
 
-TOOLS = (
-    list_content,
-    get_content,
-    search_content,
-    get_summary,
-    list_digests,
-    get_digest,
-    get_podcast_script,
-)
+TOOLS = (search_content,)

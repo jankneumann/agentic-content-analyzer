@@ -39,12 +39,19 @@ async def finalize_review(
 
     result = await ReviewService().finalize_review(
         digest_id=digest_id,
-        action=action,
+        action="save-draft" if action == "request_revision" else action,
         revision_history=None,
         reviewer=reviewer,
         review_notes=review_notes,
     )
-    return runtime.native(result)
+    if result.id is None or result.status is None or result.reviewed_at is None:
+        raise RuntimeError("Review service returned an incomplete persisted digest")
+    return {
+        "digest_id": result.id,
+        "status": result.status.value,
+        "reviewed_by": result.reviewed_by,
+        "reviewed_at": result.reviewed_at.isoformat(),
+    }
 
 
 @runtime.tool_boundary
@@ -57,4 +64,4 @@ async def list_pending_podcast_reviews() -> Any:
     return runtime.native(await ScriptReviewService().list_pending_reviews())
 
 
-TOOLS = (list_pending_reviews, finalize_review, list_pending_podcast_reviews)
+TOOLS = (finalize_review,)

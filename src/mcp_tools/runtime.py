@@ -84,17 +84,31 @@ def native_dict(value: Any) -> dict[str, Any]:
 
 
 def configuration_error(message: str) -> McpError:
-    return protocol_error("mcp_http_configuration_error", message)
+    return protocol_error(
+        "mcp_http_configuration_error",
+        message,
+        title="MCP HTTP configuration error",
+        status=500,
+    )
 
 
-def protocol_error(code: str, message: str, *, data: Any | None = None) -> McpError:
-    from mcp.shared.exceptions import McpError
-    from mcp.types import ErrorData
-
-    payload = {"code": code}
-    if data is not None:
-        payload["details"] = native(data)
-    return McpError(ErrorData(code=-32000, message=message, data=payload))
+def protocol_error(
+    code: str,
+    message: str,
+    *,
+    title: str = "Tool execution failed",
+    status: int = 500,
+    errors: list[dict[str, Any]] | None = None,
+) -> McpError:
+    problem = Problem(
+        type=f"https://aca.example/problems/{code}",
+        title=title,
+        status=status,
+        detail=message,
+        code=code,
+        errors=errors,
+    )
+    return problem_error(problem)
 
 
 def problem_error(problem: Problem) -> McpError:
@@ -127,15 +141,33 @@ def tool_boundary[**P, T](
             raise problem_error(exc.problem) from exc
         except ValidationError as exc:
             raise protocol_error(
-                "validation_error", "Invalid tool input", data=exc.errors()
+                "validation_error",
+                "Invalid tool input",
+                title="Validation failed",
+                status=422,
+                errors=[dict(error) for error in exc.errors()],
             ) from exc
         except OperationNotFoundError as exc:
-            raise protocol_error("operation_not_found", str(exc)) from exc
+            raise protocol_error(
+                "operation_not_found", str(exc), title="Operation not found", status=404
+            ) from exc
         except OperationConflictError as exc:
-            raise protocol_error("operation_conflict", str(exc)) from exc
+            raise protocol_error(
+                "operation_conflict", str(exc), title="Operation conflict", status=409
+            ) from exc
         except TimeoutError as exc:
-            raise protocol_error("operation_timeout", str(exc)) from exc
-        except (httpx.HTTPError, RuntimeError, ValueError) as exc:
+            raise protocol_error(
+                "operation_timeout", str(exc), title="Operation timed out", status=504
+            ) from exc
+        except ValueError as exc:
+            raise protocol_error(
+                "validation_error", str(exc), title="Validation failed", status=422
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise protocol_error(
+                "upstream_http_error", str(exc), title="Upstream HTTP error", status=502
+            ) from exc
+        except RuntimeError as exc:
             raise protocol_error("tool_execution_error", str(exc)) from exc
 
     return guarded
@@ -151,22 +183,7 @@ def request_json(
     """Use the shared workflow client's authenticated HTTP transport."""
     client = create_workflow_client()
     try:
-        response = client._client.request(method, path, params=params, json=json)
-        if response.is_error:
-            try:
-                problem = Problem.model_validate(response.json())
-            except (ValueError, ValidationError):
-                problem = Problem(
-                    type="about:blank",
-                    title="HTTP request failed",
-                    status=response.status_code,
-                    detail=response.text or response.reason_phrase,
-                    instance=str(response.request.url),
-                )
-            raise ProblemError(problem)
-        if response.status_code == 204:
-            return None
-        return response.json()
+        return client.request_json(method, path, params=params, json=json)
     finally:
         client.close()
 

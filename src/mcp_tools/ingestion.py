@@ -23,15 +23,13 @@ def _payload(kind: str, **values: Any) -> dict[str, Any]:
     return {"kind": kind, **{key: value for key, value in values.items() if value is not None}}
 
 
-async def _submit(command: dict[str, Any], idempotency_key: str | None = None) -> dict[str, Any]:
+async def _submit(command: dict[str, Any], idempotency_key: str | None = None) -> OperationHandle:
     validated = _INGEST_COMMAND.validate_python(command)
     public_payload = validated.model_dump(mode="json", exclude_none=True)
     if runtime.transport_mode() is runtime.TransportMode.HTTP:
         client = runtime.create_workflow_client()
         try:
-            return runtime.native_dict(
-                client.submit_ingestion(public_payload, idempotency_key=idempotency_key)
-            )
+            return client.submit_ingestion(public_payload, idempotency_key=idempotency_key)
         finally:
             client.close()
 
@@ -48,7 +46,7 @@ async def _submit(command: dict[str, Any], idempotency_key: str | None = None) -
         public_payload,
         idempotency_key=idempotency_key,
     )
-    return runtime.native_dict(OperationHandle.model_validate(handle.model_dump(mode="json")))
+    return OperationHandle.model_validate(handle.model_dump(mode="json"))
 
 
 @runtime.tool_boundary
@@ -58,7 +56,7 @@ async def upload_content(
     media_type: str,
     title: str | None = None,
     publication: str | None = None,
-) -> dict[str, Any]:
+) -> UploadReference:
     """Store caller-provided bytes and return an upload ID for ``ingest_files``."""
     try:
         data = base64.b64decode(content_base64, validate=True)
@@ -67,16 +65,13 @@ async def upload_content(
     if runtime.transport_mode() is runtime.TransportMode.HTTP:
         client = runtime.create_workflow_client()
         try:
-            response = client._client.post(
-                "/api/v1/uploads",
-                files={"file": (filename, data, media_type)},
-                data={
-                    key: value
-                    for key, value in {"title": title, "publication": publication}.items()
-                    if value is not None
-                },
+            return client.upload_bytes(
+                filename,
+                data,
+                media_type,
+                title=title,
+                publication=publication,
             )
-            return runtime.native_dict(client._decode(response, UploadReference))
         finally:
             client.close()
     upload = await UploadService().store(
@@ -86,7 +81,7 @@ async def upload_content(
         title=title,
         publication=publication,
     )
-    return runtime.native_dict(upload)
+    return upload
 
 
 @runtime.tool_boundary
@@ -97,7 +92,7 @@ async def ingest_gmail(
     after_date: str | None = None,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _submit(
         _payload(
             "gmail",
@@ -119,7 +114,7 @@ async def _scheduled(
     force_reprocess: bool,
     idempotency_key: str | None,
     **extra: Any,
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _submit(
         _payload(
             kind,
@@ -140,7 +135,7 @@ async def ingest_rss(
     after_date: str | None = None,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _scheduled(
         "rss", max_items, days_back, after_date, force_reprocess, idempotency_key
     )
@@ -153,7 +148,7 @@ async def ingest_blog(
     after_date: str | None = None,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _scheduled(
         "blog", max_items, days_back, after_date, force_reprocess, idempotency_key
     )
@@ -166,7 +161,7 @@ async def ingest_substack(
     after_date: str | None = None,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _scheduled(
         "substack", max_items, days_back, after_date, force_reprocess, idempotency_key
     )
@@ -180,7 +175,7 @@ async def ingest_youtube_playlist(
     force_reprocess: bool = False,
     public_only: bool = False,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _scheduled(
         "youtube_playlist",
         max_items,
@@ -199,7 +194,7 @@ async def ingest_youtube_rss(
     after_date: str | None = None,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _scheduled(
         "youtube_rss", max_items, days_back, after_date, force_reprocess, idempotency_key
     )
@@ -213,7 +208,7 @@ async def ingest_podcast(
     force_reprocess: bool = False,
     transcribe: bool = True,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _scheduled(
         "podcast",
         max_items,
@@ -231,7 +226,7 @@ async def ingest_x_search(
     max_threads: int | None = None,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _submit(
         _payload(
             "x_search", prompt=prompt, max_threads=max_threads, force_reprocess=force_reprocess
@@ -248,7 +243,7 @@ async def ingest_perplexity_search(
     context_size: Literal["low", "medium", "high"] | None = None,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _submit(
         _payload(
             "perplexity_search",
@@ -265,7 +260,7 @@ async def ingest_perplexity_search(
 @runtime.tool_boundary
 async def ingest_files(
     upload_ids: list[str], force_reprocess: bool = False, idempotency_key: str | None = None
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _submit(
         _payload("files", upload_ids=upload_ids, force_reprocess=force_reprocess), idempotency_key
     )
@@ -280,7 +275,7 @@ async def ingest_url(
     routing_mode: Literal["auto", "webpage"] = "auto",
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _submit(
         _payload(
             "url",
@@ -298,14 +293,14 @@ async def ingest_url(
 @runtime.tool_boundary
 async def ingest_scholar_search(
     max_items: int = 20, idempotency_key: str | None = None
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _submit(_payload("scholar_search", max_items=max_items), idempotency_key)
 
 
 @runtime.tool_boundary
 async def ingest_scholar_paper(
     identifier: str, with_references: bool = False, idempotency_key: str | None = None
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _submit(
         _payload("scholar_paper", identifier=identifier, with_references=with_references),
         idempotency_key,
@@ -320,7 +315,7 @@ async def ingest_scholar_references(
     dry_run: bool = False,
     limit: int | None = None,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _submit(
         _payload(
             "scholar_references",
@@ -342,7 +337,7 @@ async def ingest_arxiv_search(
     force_reprocess: bool = False,
     extract_pdf: bool = True,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _submit(
         _payload(
             "arxiv_search",
@@ -362,7 +357,7 @@ async def ingest_arxiv_paper(
     extract_pdf: bool = True,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _submit(
         _payload(
             "arxiv_paper",
@@ -381,7 +376,7 @@ async def ingest_huggingface_papers(
     after_date: str | None = None,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _submit(
         _payload(
             "huggingface_papers",
@@ -402,7 +397,7 @@ async def ingest_readwise(
     max_books: int | None = None,
     force_reprocess: bool = False,
     idempotency_key: str | None = None,
-) -> dict[str, Any]:
+) -> OperationHandle:
     return await _submit(
         _payload(
             "readwise",
