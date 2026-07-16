@@ -180,6 +180,7 @@ function DigestsPage() {
         max_strategic_insights: params.max_strategic_insights,
         max_technical_developments: params.max_technical_developments,
         max_emerging_trends: params.max_emerging_trends,
+        content_query: params.content_query,
       },
       {
         onSuccess: (operation) => { addOperation(operation); toast.success("Digest queued") },

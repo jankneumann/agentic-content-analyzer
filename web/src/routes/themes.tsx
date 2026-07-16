@@ -75,9 +75,6 @@ function ThemesPage() {
         start_date: params.start_date,
         end_date: params.end_date,
         max_themes: params.max_themes,
-        min_newsletters: params.min_newsletters,
-        relevance_threshold: params.relevance_threshold,
-        include_historical_context: params.include_historical_context,
       },
       {
         onSuccess: (operation) => { addOperation(operation); toast.success("Theme analysis queued") },

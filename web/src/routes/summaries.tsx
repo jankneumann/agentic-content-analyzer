@@ -98,8 +98,6 @@ function SummariesPage() {
 
   // Content items that need summarization (don't have summaries yet)
   const pendingCount = contentStats?.needs_summarization_count ?? 0
-  // Failed content items that could be retried
-  const failedCount = contentStats?.failed_count ?? 0
 
   // Fetch selected summary details
   const { data: selectedSummary, isLoading: isLoadingSummary } = useSummary(
@@ -137,7 +135,6 @@ function SummariesPage() {
         content_ids: contentIds.length ? contentIds : undefined,
         query: params.content_query,
         force: params.force,
-        retry_failed: params.retry_failed,
       },
       {
         onSuccess: (operation) => { addOperation(operation); toast.success("Summarization queued") },
@@ -507,7 +504,6 @@ function SummariesPage() {
         onGenerate={handleGenerateSummaries}
         isGenerating={summarizeMutation.isPending || summarizeMutation.isProcessing}
         pendingCount={pendingCount}
-        failedCount={failedCount}
       />
     </PageContainer>
   )
