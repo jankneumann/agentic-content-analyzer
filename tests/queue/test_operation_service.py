@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import AsyncMock
 
+import asyncpg
 import pytest
 import yaml
 from jsonschema import Draft202012Validator
@@ -284,3 +286,246 @@ async def test_operation_listing_uses_opaque_keyset_cursor() -> None:
 def test_invalid_operation_cursor_is_rejected() -> None:
     with pytest.raises(ValueError, match="Invalid operation cursor"):
         OperationService._decode_cursor("not-a-valid-cursor")
+
+
+@pytest.mark.asyncio
+async def test_defer_atomically_checkpoints_and_requeues_parent() -> None:
+    service = OperationService()
+    queued = _row(8123, NOW)
+    queued["status"] = "queued"
+    queued["payload"]["result"] = {"stage": "ingestion"}
+    update = AsyncMock(return_value=queued)
+    service._update_returning = update  # type: ignore[method-assign]
+
+    handle = await service.defer(
+        "8123",
+        checkpoint={"stage": "ingestion"},
+        progress=10,
+        message="Waiting for source operations",
+    )
+
+    query, patch, operation_id = update.await_args.args
+    assert "status = 'queued'" in query
+    assert "execute_after" in query
+    assert "status = 'in_progress'" in query
+    assert "priority = LEAST(priority, -1)" in query
+    assert operation_id == 8123
+    assert __import__("json").loads(patch) == {
+        "result": {"stage": "ingestion"},
+        "progress": 10,
+        "message": "Waiting for source operations",
+    }
+    assert handle.status is OperationStatus.QUEUED
+
+
+@pytest.mark.asyncio
+async def test_attach_completion_atomically_persists_result_resource_and_progress() -> None:
+    service = OperationService()
+    completed = _row(8123, NOW)
+    completed["payload"].update(
+        {
+            "result": {"stage": "completed", "digest_id": 91},
+            "resource": {
+                "type": "digest",
+                "id": "91",
+                "url": "/api/v1/digests/91",
+            },
+            "progress": 100,
+            "message": "Pipeline complete",
+        }
+    )
+    update = AsyncMock(return_value=completed)
+    service._update_returning = update  # type: ignore[method-assign]
+    resource = ResourceReference(type="digest", id="91", url="/api/v1/digests/91")
+
+    await service.attach_completion(
+        "8123",
+        result={"stage": "completed", "digest_id": 91},
+        resource=resource,
+        message="Pipeline complete",
+    )
+
+    _query, patch, operation_id = update.await_args.args
+    assert operation_id == 8123
+    assert __import__("json").loads(patch) == {
+        "result": {"stage": "completed", "digest_id": 91},
+        "resource": resource.model_dump(mode="json"),
+        "progress": 100,
+        "message": "Pipeline complete",
+    }
+
+
+@pytest.mark.asyncio
+async def test_submit_child_reuses_terminal_parent_scoped_operation(monkeypatch) -> None:
+    service = OperationService()
+    existing = _job(
+        job_id=44,
+        entrypoint="ingestion.execute",
+        status=JobStatus.COMPLETED,
+        payload=OperationPayloadV2(
+            operation_type=OperationType.INGESTION_EXECUTE,
+            input={"kind": "rss"},
+        ).model_dump(mode="json"),
+    )
+    lookup = AsyncMock(return_value=existing)
+    enqueue = AsyncMock()
+    monkeypatch.setattr(
+        "src.services.operation_service.queue_setup.get_child_job_by_idempotency_key", lookup
+    )
+    monkeypatch.setattr("src.services.operation_service.queue_setup.enqueue_queue_job", enqueue)
+
+    handle = await service.submit_child(
+        "10",
+        OperationType.INGESTION_EXECUTE,
+        {"kind": "rss"},
+        idempotency_key="pipeline:10:source:rss:abc",
+    )
+
+    assert handle.operation_id == "44"
+    assert handle.status is OperationStatus.COMPLETED
+    lookup.assert_awaited_once_with(
+        10,
+        "ingestion.execute",
+        "parent:10:pipeline:10:source:rss:abc",
+        conn=None,
+    )
+    enqueue.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_submit_child_namespaces_caller_key_by_parent(monkeypatch) -> None:
+    service = OperationService()
+    lookup = AsyncMock(return_value=None)
+    enqueue = AsyncMock(side_effect=[(51, True), (52, True)])
+    get_operation = AsyncMock(
+        side_effect=[
+            OperationService.project(_job(job_id=51)),
+            OperationService.project(_job(job_id=52)),
+        ]
+    )
+    monkeypatch.setattr(
+        "src.services.operation_service.queue_setup.get_child_job_by_idempotency_key", lookup
+    )
+    monkeypatch.setattr("src.services.operation_service.queue_setup.enqueue_queue_job", enqueue)
+    monkeypatch.setattr(service, "get", get_operation)
+
+    for parent_id in (10, 11):
+        await service.submit_child(
+            parent_id,
+            OperationType.INGESTION_EXECUTE,
+            {"kind": "rss"},
+            idempotency_key="source:rss",
+        )
+
+    assert [call.kwargs["idempotency_key"] for call in enqueue.await_args_list] == [
+        "parent:10:source:rss",
+        "parent:11:source:rss",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_pipeline_retry_preserves_checkpoint_and_requeues_failed_children() -> None:
+    service = OperationService(connection=AsyncMock())
+    queued = _row(8123, NOW)
+    queued["entrypoint"] = OperationType.PIPELINE_RUN.value
+    queued["status"] = JobStatus.QUEUED.value
+    update = AsyncMock(return_value=queued)
+    service._update_returning = update  # type: ignore[method-assign]
+
+    await service.retry("8123")
+
+    query = update.await_args.args[0]
+    assert "WITH retried_children AS" in query
+    assert query.index("UPDATE pgqueuer_jobs AS child") < query.index(
+        "UPDATE pgqueuer_jobs AS parent"
+    )
+    assert "child.parent_job_id = $2" in query
+    assert "retry_child_operation_ids" in query
+    assert "child.status IN ('failed', 'cancelled')" in query
+    assert "child.id" in query
+    assert "parent.entrypoint = 'pipeline.run'" in query
+    assert "entrypoint = 'pipeline.run'" in query
+    assert "jsonb_build_object('result', parent.payload->'result')" in query
+
+
+@pytest.mark.asyncio
+async def test_pipeline_retry_requeues_only_checkpointed_failed_or_cancelled_children(
+    test_engine,
+) -> None:
+    parent_id = 9_008_123
+    tolerated_source_id = parent_id + 1
+    failed_summary_id = parent_id + 2
+    cancelled_digest_id = parent_id + 3
+    dsn = test_engine.url.render_as_string(hide_password=False)
+    conn = await asyncpg.connect(dsn)
+    try:
+        await conn.execute(
+            """
+            INSERT INTO pgqueuer_jobs (id, entrypoint, payload, status, completed_at)
+            VALUES ($1, 'pipeline.run', $2::jsonb, 'failed', NOW())
+            """,
+            parent_id,
+            json.dumps(
+                OperationPayloadV2(
+                    operation_type=OperationType.PIPELINE_RUN,
+                    input={"period": "daily"},
+                    result={
+                        "stage": "failed",
+                        "retry_child_operation_ids": [failed_summary_id, cancelled_digest_id],
+                    },
+                ).model_dump(mode="json")
+            ),
+        )
+        for child_id, operation_type in (
+            (tolerated_source_id, OperationType.INGESTION_EXECUTE),
+            (failed_summary_id, OperationType.SUMMARIZATION_RUN),
+            (cancelled_digest_id, OperationType.DIGEST_CREATE),
+        ):
+            child_status = "cancelled" if child_id == cancelled_digest_id else "failed"
+            await conn.execute(
+                """
+                INSERT INTO pgqueuer_jobs (
+                    id, entrypoint, payload, status, parent_job_id, completed_at
+                )
+                VALUES (
+                    $1,
+                    $2,
+                    $3::jsonb,
+                    $4,
+                    $5,
+                    NOW()
+                )
+                """,
+                child_id,
+                operation_type.value,
+                json.dumps(
+                    OperationPayloadV2(
+                        operation_type=operation_type,
+                        input={},
+                    ).model_dump(mode="json")
+                ),
+                child_status,
+                parent_id,
+            )
+
+        await OperationService(connection=conn).retry(parent_id)
+
+        statuses = {
+            int(row["id"]): row["status"]
+            for row in await conn.fetch(
+                "SELECT id, status FROM pgqueuer_jobs WHERE id = ANY($1::bigint[])",
+                [parent_id, tolerated_source_id, failed_summary_id, cancelled_digest_id],
+            )
+        }
+        assert statuses == {
+            parent_id: "queued",
+            tolerated_source_id: "failed",
+            failed_summary_id: "queued",
+            cancelled_digest_id: "queued",
+        }
+    finally:
+        await conn.execute(
+            "DELETE FROM pgqueuer_jobs WHERE id = ANY($1::bigint[])",
+            [tolerated_source_id, failed_summary_id, cancelled_digest_id, parent_id],
+        )
+        await conn.close()

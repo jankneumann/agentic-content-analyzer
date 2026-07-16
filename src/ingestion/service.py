@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
 
+from src.config.sources import SourcesConfig, use_sources_config
 from src.ingestion.commands import FilesIngestCommand, IngestCommandBase
 from src.ingestion.content_references import ContentReferences, collect_content_references
 from src.ingestion.registry import SOURCE_REGISTRY, SourceDescriptor, SourceRegistry
@@ -28,8 +30,24 @@ class IngestionService:
     def execute(self, command: IngestCommandBase | Mapping[str, Any]) -> IngestionResponse:
         typed_command = self.registry.parse_command(command)
         descriptor = self.registry.get(typed_command.kind)
+        configured_sources = getattr(typed_command, "configured_sources", None)
+        source_config = None
+        if configured_sources is not None:
+            if not configured_sources:
+                raise ValueError("Configured source snapshot cannot be empty")
+            source_config = SourcesConfig.model_validate({"sources": configured_sources})
+            for source in source_config.sources:
+                matched = self.registry.descriptor_for_config(source)
+                if matched is not descriptor:
+                    raise ValueError(
+                        f"Configured source type '{source.type}' does not match "
+                        f"command '{descriptor.key}'"
+                    )
 
-        with collect_content_references() as committed_content_ids:
+        config_context = (
+            use_sources_config(source_config) if source_config is not None else nullcontext()
+        )
+        with config_context, collect_content_references() as committed_content_ids:
             if isinstance(typed_command, FilesIngestCommand):
                 response = self._execute_files(descriptor, typed_command)
             else:

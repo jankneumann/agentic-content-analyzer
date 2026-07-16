@@ -151,6 +151,44 @@ class OperationService:
         )
         return await self.get(str(job_id))
 
+    async def submit_child(
+        self,
+        parent_operation_id: str | int,
+        operation_type: OperationType,
+        normalized_input: dict[str, Any],
+        *,
+        idempotency_key: str,
+        priority: int = 0,
+        cancellable: bool = True,
+    ) -> OperationHandle:
+        """Submit or recover one parent-scoped child, including terminal children."""
+
+        parent_job_id = self._parse_operation_id(parent_operation_id)
+        effective_key = f"parent:{parent_job_id}:{idempotency_key}"
+        existing = await queue_setup.get_child_job_by_idempotency_key(
+            parent_job_id,
+            operation_type.value,
+            effective_key,
+            conn=self._connection,
+        )
+        if existing is not None:
+            return self.project(existing)
+
+        payload = OperationPayloadV2(
+            operation_type=operation_type,
+            input=normalized_input,
+            cancellable=cancellable,
+        ).model_dump(mode="json")
+        job_id, _created = await queue_setup.enqueue_queue_job(
+            operation_type.value,
+            payload,
+            priority=priority,
+            parent_job_id=parent_job_id,
+            conn=self._connection,
+            idempotency_key=effective_key,
+        )
+        return await self.get(job_id)
+
     async def get(self, operation_id: str | int) -> OperationHandle:
         job_id = self._parse_operation_id(operation_id)
         return self.project(await self._get_job(job_id))
@@ -239,6 +277,39 @@ class OperationService:
         )
         return self._require_updated(row, operation_id, "cannot accept progress updates")
 
+    async def defer(
+        self,
+        operation_id: str | int,
+        *,
+        checkpoint: dict[str, Any],
+        progress: int,
+        message: str,
+    ) -> OperationHandle:
+        """Atomically checkpoint and release running work back to the queue."""
+
+        if progress < 0 or progress > 99:
+            raise ValueError("deferred progress must be between 0 and 99")
+        job_id = self._parse_operation_id(operation_id)
+        patch = json.dumps({"result": checkpoint, "progress": progress, "message": message})
+        row = await self._update_returning(
+            """
+            UPDATE pgqueuer_jobs
+            SET status = 'queued',
+                payload = COALESCE(payload, '{}'::jsonb) || $1::jsonb,
+                priority = LEAST(priority, -1),
+                execute_after = NOW() + INTERVAL '1 second',
+                started_at = NULL,
+                heartbeat_at = NOW()
+            WHERE id = $2 AND status = 'in_progress'
+            RETURNING id, entrypoint, status, payload, priority, error,
+                      retry_count, parent_job_id, heartbeat_at, created_at,
+                      started_at, completed_at
+            """,
+            patch,
+            job_id,
+        )
+        return self._require_updated(row, operation_id, "cannot be deferred")
+
     async def attach_resource(
         self,
         operation_id: str | int,
@@ -260,6 +331,40 @@ class OperationService:
             {"result": result},
             action="cannot attach a result",
         )
+
+    async def attach_completion(
+        self,
+        operation_id: str | int,
+        *,
+        result: dict[str, Any],
+        resource: ResourceReference,
+        message: str,
+    ) -> OperationHandle:
+        """Atomically project a workflow's final result, resource, and progress."""
+
+        job_id = self._parse_operation_id(operation_id)
+        patch = json.dumps(
+            {
+                "result": result,
+                "resource": resource.model_dump(mode="json"),
+                "progress": 100,
+                "message": message,
+            }
+        )
+        row = await self._update_returning(
+            """
+            UPDATE pgqueuer_jobs
+            SET payload = COALESCE(payload, '{}'::jsonb) || $1::jsonb,
+                heartbeat_at = NOW()
+            WHERE id = $2 AND status = 'in_progress'
+            RETURNING id, entrypoint, status, payload, priority, error,
+                      retry_count, parent_job_id, heartbeat_at, created_at,
+                      started_at, completed_at
+            """,
+            patch,
+            job_id,
+        )
+        return self._require_updated(row, operation_id, "cannot attach completion")
 
     async def cancel(self, operation_id: str | int) -> OperationHandle:
         """Cancel queued work or request cancellation of running work atomically."""
@@ -303,7 +408,7 @@ class OperationService:
         )
 
     async def retry(self, operation_id: str | int) -> OperationHandle:
-        """Requeue failed work while clearing all stale execution state."""
+        """Requeue failed work while retaining durable pipeline checkpoints."""
 
         job_id = self._parse_operation_id(operation_id)
         reset = {
@@ -317,16 +422,48 @@ class OperationService:
         try:
             row = await self._update_returning(
                 """
-                UPDATE pgqueuer_jobs
+                WITH retried_children AS (
+                    UPDATE pgqueuer_jobs AS child
+                    SET status = 'queued',
+                        payload = COALESCE(child.payload, '{}'::jsonb) || $1::jsonb,
+                        error = NULL,
+                        retry_count = child.retry_count + 1,
+                        started_at = NULL,
+                        completed_at = NULL,
+                        execute_after = NOW(),
+                        heartbeat_at = NOW()
+                    WHERE child.parent_job_id = $2
+                      AND child.status IN ('failed', 'cancelled')
+                      AND child.id = ANY (
+                          SELECT jsonb_array_elements_text(
+                              COALESCE(
+                                  pipeline_parent.payload->'result'->'retry_child_operation_ids',
+                                  '[]'::jsonb
+                              )
+                          )::bigint
+                          FROM pgqueuer_jobs AS pipeline_parent
+                          WHERE pipeline_parent.id = $2
+                            AND pipeline_parent.entrypoint = 'pipeline.run'
+                            AND pipeline_parent.status = 'failed'
+                      )
+                    RETURNING child.id
+                )
+                UPDATE pgqueuer_jobs AS parent
                 SET status = 'queued',
-                    payload = COALESCE(payload, '{}'::jsonb) || $1::jsonb,
+                    payload = (COALESCE(parent.payload, '{}'::jsonb) || $1::jsonb) ||
+                        CASE
+                            WHEN parent.entrypoint = 'pipeline.run'
+                                AND parent.payload->'result' IS NOT NULL
+                            THEN jsonb_build_object('result', parent.payload->'result')
+                            ELSE '{}'::jsonb
+                        END,
                     error = NULL,
                     retry_count = retry_count + 1,
                     started_at = NULL,
                     completed_at = NULL,
                     execute_after = NOW(),
                     heartbeat_at = NOW()
-                WHERE id = $2 AND status = 'failed'
+                WHERE parent.id = $2 AND parent.status = 'failed'
                 RETURNING id, entrypoint, status, payload, priority, error,
                           retry_count, parent_job_id, heartbeat_at, created_at,
                           started_at, completed_at

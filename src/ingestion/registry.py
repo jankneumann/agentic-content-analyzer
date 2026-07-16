@@ -55,6 +55,9 @@ type ConfigMatcher = Callable[[SourceBase], bool]
 type ConfigAccessor = Callable[[SourcesConfig], list[SourceBase]]
 type RouteResolver = Callable[[IngestCommandBase], str | RouteKind]
 type SourceResolver = Callable[[IngestCommandBase], frozenset[ContentSource]]
+type ScheduledCommandPlanner = Callable[
+    [tuple[SourceBase, ...], datetime, datetime], tuple[IngestCommandBase, ...]
+]
 
 
 @dataclass(frozen=True)
@@ -66,6 +69,14 @@ class SourceOptions:
 
 
 @dataclass(frozen=True)
+class SourceRetryPolicy:
+    max_attempts: int = 3
+    base_delay_seconds: float = 1.0
+    max_delay_seconds: float = 60.0
+    retryable_status_codes: frozenset[int] = field(default_factory=lambda: frozenset({429}))
+
+
+@dataclass(frozen=True)
 class SourceDescriptor:
     key: str
     display_name: str
@@ -73,6 +84,7 @@ class SourceDescriptor:
     orchestrator: Orchestrator
     emitted_sources: frozenset[ContentSource]
     scheduled: bool
+    scheduled_command_planner: ScheduledCommandPlanner | None = None
     aliases: frozenset[str] = field(default_factory=frozenset)
     removed_aliases: Mapping[str, str] = field(default_factory=dict)
     config_matcher: ConfigMatcher | None = None
@@ -80,6 +92,7 @@ class SourceDescriptor:
     route_resolver: RouteResolver | None = None
     source_resolver: SourceResolver | None = None
     options: SourceOptions = field(default_factory=SourceOptions)
+    retry_policy: SourceRetryPolicy = field(default_factory=SourceRetryPolicy)
     transports: frozenset[Transport] = field(
         default_factory=lambda: frozenset({"cli", "http", "mcp", "frontend"})
     )
@@ -96,6 +109,19 @@ class SourceDescriptor:
         if not resolved or not resolved.issubset(self.emitted_sources):
             raise ValueError(f"Descriptor '{self.key}' resolved undeclared emitted sources")
         return resolved
+
+    def plan_scheduled_commands(
+        self,
+        configured_sources: tuple[SourceBase, ...],
+        period_start: datetime,
+        period_end: datetime,
+    ) -> tuple[IngestCommandBase, ...]:
+        if not self.scheduled or self.scheduled_command_planner is None:
+            raise ValueError(f"Source '{self.key}' is not scheduled")
+        commands = self.scheduled_command_planner(configured_sources, period_start, period_end)
+        return tuple(
+            self.command_model.model_validate(command.model_dump()) for command in commands
+        )
 
 
 @dataclass(frozen=True)
@@ -219,6 +245,46 @@ class SourceRegistry:
     def configured_sources(self, config: SourcesConfig) -> list[ConfiguredSource]:
         return self.scheduled_sources(config)
 
+    def plan_scheduled_commands(
+        self,
+        config: SourcesConfig,
+        *,
+        sources: list[str] | None,
+        period_start: datetime,
+        period_end: datetime,
+    ) -> tuple[IngestCommandBase, ...]:
+        """Return descriptor-owned typed commands for one pipeline period."""
+
+        requested = list(dict.fromkeys(sources or []))
+        selected: tuple[SourceDescriptor, ...]
+        if requested:
+            descriptors: list[SourceDescriptor] = []
+            for key in requested:
+                try:
+                    descriptor = self.get(key)
+                except KeyError as exc:
+                    raise ValueError(exc.args[0]) from exc
+                if not descriptor.scheduled:
+                    raise ValueError(f"Source '{key}' is not scheduled")
+                descriptors.append(descriptor)
+            selected = tuple(descriptors)
+        else:
+            selected = self.scheduled_descriptors()
+
+        commands: list[IngestCommandBase] = []
+        for descriptor in selected:
+            if descriptor.config_accessor is None:
+                raise ValueError(f"Scheduled descriptor '{descriptor.key}' has no config accessor")
+            configured = tuple(descriptor.config_accessor(config))
+            if not configured:
+                if requested:
+                    raise ValueError(f"Scheduled source '{descriptor.key}' is not enabled")
+                continue
+            commands.extend(
+                descriptor.plan_scheduled_commands(configured, period_start, period_end)
+            )
+        return tuple(commands)
+
     def _validate(self) -> None:
         if not self._descriptors:
             raise ValueError("SourceRegistry requires at least one descriptor")
@@ -230,10 +296,18 @@ class SourceRegistry:
                 raise ValueError(f"Descriptor '{descriptor.key}' has no orchestrator")
             if not descriptor.emitted_sources:
                 raise ValueError(f"Descriptor '{descriptor.key}' has empty emitted_sources")
+            if descriptor.retry_policy.max_attempts < 1:
+                raise ValueError(
+                    f"Descriptor '{descriptor.key}' retry policy requires at least one attempt"
+                )
             if (descriptor.config_matcher is None) != (descriptor.config_accessor is None):
                 raise ValueError(
                     f"Descriptor '{descriptor.key}' must define both config matcher and accessor"
                 )
+            if descriptor.scheduled and descriptor.scheduled_command_planner is None:
+                raise ValueError(f"Scheduled descriptor '{descriptor.key}' has no command planner")
+            if not descriptor.scheduled and descriptor.scheduled_command_planner is not None:
+                raise ValueError(f"Unscheduled descriptor '{descriptor.key}' has a command planner")
             command_kind = descriptor.command_model.model_fields.get("kind")
             if command_kind is None or command_kind.default != descriptor.key:
                 raise ValueError(
@@ -308,6 +382,53 @@ def _get(config_method: str, *, provider: str | None = None) -> ConfigAccessor:
     return access
 
 
+def _bulk_plan(
+    command_model: type[IngestCommandBase],
+    fields: Callable[[tuple[SourceBase, ...], datetime], dict[str, Any]],
+) -> ScheduledCommandPlanner:
+    def plan(
+        sources: tuple[SourceBase, ...], period_start: datetime, _period_end: datetime
+    ) -> tuple[IngestCommandBase, ...]:
+        return (
+            command_model.model_validate(
+                {
+                    "kind": command_model.model_fields["kind"].default,
+                    "configured_sources": [source.model_dump(mode="json") for source in sources],
+                    **fields(sources, period_start),
+                }
+            ),
+        )
+
+    return plan
+
+
+def _each_plan(
+    command_model: type[IngestCommandBase],
+    fields: Callable[[SourceBase, datetime], dict[str, Any]],
+) -> ScheduledCommandPlanner:
+    def plan(
+        sources: tuple[SourceBase, ...], period_start: datetime, _period_end: datetime
+    ) -> tuple[IngestCommandBase, ...]:
+        kind = command_model.model_fields["kind"].default
+        return tuple(
+            command_model.model_validate(
+                {
+                    "kind": kind,
+                    "configured_sources": [source.model_dump(mode="json")],
+                    **fields(source, period_start),
+                }
+            )
+            for source in sources
+        )
+
+    return plan
+
+
+def _max_entries(sources: tuple[SourceBase, ...]) -> int | None:
+    values = [source.max_entries for source in sources if source.max_entries is not None]
+    return max(values) if values else None
+
+
 def _default_descriptors() -> tuple[SourceDescriptor, ...]:
     force_date = SourceOptions(supports_force=True, supports_date_range=True)
     force = SourceOptions(supports_force=True)
@@ -321,12 +442,20 @@ def _default_descriptors() -> tuple[SourceDescriptor, ...]:
                 lambda c: _compact(
                     query=c.query,
                     max_results=c.max_items,
-                    after_date=_after_date(c.days_back),
+                    after_date=c.after_date or _after_date(c.days_back),
                     force_reprocess=c.force_reprocess,
                 ),
             ),
             frozenset({ContentSource.GMAIL}),
             True,
+            scheduled_command_planner=_each_plan(
+                GmailIngestCommand,
+                lambda source, after_date: {
+                    "query": getattr(source, "query", None),
+                    "max_items": getattr(source, "max_results", None),
+                    "after_date": after_date,
+                },
+            ),
             config_matcher=_is(GmailSource),
             config_accessor=_get("get_gmail_sources"),
             options=force_date,
@@ -339,12 +468,19 @@ def _default_descriptors() -> tuple[SourceDescriptor, ...]:
                 "ingest_rss",
                 lambda c: _compact(
                     max_entries_per_feed=c.max_items,
-                    after_date=_after_date(c.days_back),
+                    after_date=c.after_date or _after_date(c.days_back),
                     force_reprocess=c.force_reprocess,
                 ),
             ),
             frozenset({ContentSource.RSS}),
             True,
+            scheduled_command_planner=_bulk_plan(
+                RssIngestCommand,
+                lambda sources, after_date: {
+                    "max_items": _max_entries(sources),
+                    "after_date": after_date,
+                },
+            ),
             config_matcher=_is(RSSSource),
             config_accessor=_get("get_rss_sources"),
             options=force_date,
@@ -357,12 +493,19 @@ def _default_descriptors() -> tuple[SourceDescriptor, ...]:
                 "ingest_blog",
                 lambda c: _compact(
                     max_entries_per_source=c.max_items,
-                    after_date=_after_date(c.days_back),
+                    after_date=c.after_date or _after_date(c.days_back),
                     force_reprocess=c.force_reprocess,
                 ),
             ),
             frozenset({ContentSource.BLOG}),
             True,
+            scheduled_command_planner=_bulk_plan(
+                BlogIngestCommand,
+                lambda sources, after_date: {
+                    "max_items": _max_entries(sources),
+                    "after_date": after_date,
+                },
+            ),
             config_matcher=_is(BlogSource),
             config_accessor=_get("get_blog_sources"),
             options=force_date,
@@ -375,12 +518,19 @@ def _default_descriptors() -> tuple[SourceDescriptor, ...]:
                 "ingest_substack",
                 lambda c: _compact(
                     max_entries_per_source=c.max_items,
-                    after_date=_after_date(c.days_back),
+                    after_date=c.after_date or _after_date(c.days_back),
                     force_reprocess=c.force_reprocess,
                 ),
             ),
             frozenset({ContentSource.SUBSTACK}),
             True,
+            scheduled_command_planner=_bulk_plan(
+                SubstackIngestCommand,
+                lambda sources, after_date: {
+                    "max_items": _max_entries(sources),
+                    "after_date": after_date,
+                },
+            ),
             config_matcher=_is(SubstackSource),
             config_accessor=_get("get_substack_sources"),
             options=force_date,
@@ -393,13 +543,23 @@ def _default_descriptors() -> tuple[SourceDescriptor, ...]:
                 "ingest_youtube_playlist",
                 lambda c: _compact(
                     max_videos=c.max_items,
-                    after_date=_after_date(c.days_back),
+                    after_date=c.after_date or _after_date(c.days_back),
                     force_reprocess=c.force_reprocess,
                     use_oauth=not c.public_only,
                 ),
             ),
             frozenset({ContentSource.YOUTUBE}),
             True,
+            scheduled_command_planner=_bulk_plan(
+                YouTubePlaylistIngestCommand,
+                lambda sources, after_date: {
+                    "max_items": _max_entries(sources),
+                    "after_date": after_date,
+                    "public_only": all(
+                        getattr(source, "visibility", "public") == "public" for source in sources
+                    ),
+                },
+            ),
             config_matcher=lambda source: isinstance(
                 source, (YouTubePlaylistSource, YouTubeChannelSource)
             ),
@@ -417,12 +577,19 @@ def _default_descriptors() -> tuple[SourceDescriptor, ...]:
                 "ingest_youtube_rss",
                 lambda c: _compact(
                     max_videos=c.max_items,
-                    after_date=_after_date(c.days_back),
+                    after_date=c.after_date or _after_date(c.days_back),
                     force_reprocess=c.force_reprocess,
                 ),
             ),
             frozenset({ContentSource.YOUTUBE}),
             True,
+            scheduled_command_planner=_bulk_plan(
+                YouTubeRssIngestCommand,
+                lambda sources, after_date: {
+                    "max_items": _max_entries(sources),
+                    "after_date": after_date,
+                },
+            ),
             config_matcher=_is(YouTubeRSSSource),
             config_accessor=_get("get_youtube_rss_sources"),
             options=force_date,
@@ -435,13 +602,23 @@ def _default_descriptors() -> tuple[SourceDescriptor, ...]:
                 "ingest_podcast",
                 lambda c: _compact(
                     max_entries_per_feed=c.max_items,
-                    after_date=_after_date(c.days_back),
+                    after_date=c.after_date or _after_date(c.days_back),
                     force_reprocess=c.force_reprocess,
                     transcribe=c.transcribe,
                 ),
             ),
             frozenset({ContentSource.PODCAST}),
             True,
+            scheduled_command_planner=_bulk_plan(
+                PodcastIngestCommand,
+                lambda sources, after_date: {
+                    "max_items": _max_entries(sources),
+                    "after_date": after_date,
+                    "transcribe": any(
+                        bool(getattr(source, "transcribe", True)) for source in sources
+                    ),
+                },
+            ),
             config_matcher=_is(PodcastSource),
             config_accessor=_get("get_podcast_sources"),
             options=force_date,
@@ -460,6 +637,13 @@ def _default_descriptors() -> tuple[SourceDescriptor, ...]:
             ),
             frozenset({ContentSource.XSEARCH}),
             True,
+            scheduled_command_planner=_each_plan(
+                XSearchIngestCommand,
+                lambda source, _after_date: {
+                    "prompt": getattr(source, "prompt", None),
+                    "max_threads": getattr(source, "max_threads", None),
+                },
+            ),
             removed_aliases={"xsearch": "use 'x_search'"},
             config_matcher=_websearch("grok"),
             config_accessor=_get("get_websearch_sources", provider="grok"),
@@ -481,6 +665,15 @@ def _default_descriptors() -> tuple[SourceDescriptor, ...]:
             ),
             frozenset({ContentSource.PERPLEXITY}),
             True,
+            scheduled_command_planner=_each_plan(
+                PerplexitySearchIngestCommand,
+                lambda source, _after_date: {
+                    "prompt": getattr(source, "prompt", None),
+                    "max_items": getattr(source, "max_results", None),
+                    "recency": getattr(source, "recency_filter", None),
+                    "context_size": getattr(source, "context_size", None),
+                },
+            ),
             removed_aliases={"perplexity-search": "use 'perplexity_search'"},
             config_matcher=_websearch("perplexity"),
             config_accessor=_get("get_websearch_sources", provider="perplexity"),
@@ -523,6 +716,10 @@ def _default_descriptors() -> tuple[SourceDescriptor, ...]:
             _dispatch("ingest_scholar", lambda c: {"max_entries": c.max_items}),
             frozenset({ContentSource.SCHOLAR}),
             True,
+            scheduled_command_planner=_bulk_plan(
+                ScholarSearchIngestCommand,
+                lambda sources, _after_date: {"max_items": _max_entries(sources) or 20},
+            ),
             removed_aliases={"scholar": "use 'scholar_search'"},
             config_matcher=_is(ScholarSource),
             config_accessor=_get("get_scholar_sources"),
@@ -570,13 +767,23 @@ def _default_descriptors() -> tuple[SourceDescriptor, ...]:
                 "ingest_arxiv",
                 lambda c: _compact(
                     max_results=c.max_items,
-                    after_date=_after_date(c.days_back),
+                    after_date=c.after_date or _after_date(c.days_back),
                     force_reprocess=c.force_reprocess,
                     no_pdf=not c.extract_pdf,
                 ),
             ),
             frozenset({ContentSource.ARXIV}),
             True,
+            scheduled_command_planner=_bulk_plan(
+                ArxivSearchIngestCommand,
+                lambda sources, after_date: {
+                    "max_items": _max_entries(sources) or 20,
+                    "after_date": after_date,
+                    "extract_pdf": any(
+                        bool(getattr(source, "pdf_extraction", True)) for source in sources
+                    ),
+                },
+            ),
             removed_aliases={"arxiv": "use 'arxiv_search'"},
             config_matcher=_is(ArxivSource),
             config_accessor=_get("get_arxiv_sources"),
@@ -607,12 +814,19 @@ def _default_descriptors() -> tuple[SourceDescriptor, ...]:
                 "ingest_huggingface_papers",
                 lambda c: _compact(
                     max_papers=c.max_items,
-                    after_date=_after_date(c.days_back),
+                    after_date=c.after_date or _after_date(c.days_back),
                     force_reprocess=c.force_reprocess,
                 ),
             ),
             frozenset({ContentSource.HUGGINGFACE_PAPERS}),
             True,
+            scheduled_command_planner=_bulk_plan(
+                HuggingFacePapersIngestCommand,
+                lambda sources, after_date: {
+                    "max_items": _max_entries(sources) or 30,
+                    "after_date": after_date,
+                },
+            ),
             removed_aliases={"huggingface-papers": "use 'huggingface_papers'"},
             config_matcher=_is(HuggingFacePapersSource),
             config_accessor=_get("get_huggingface_papers_sources"),
@@ -634,6 +848,15 @@ def _default_descriptors() -> tuple[SourceDescriptor, ...]:
             ),
             frozenset({ContentSource.READWISE}),
             True,
+            scheduled_command_planner=_bulk_plan(
+                ReadwiseIngestCommand,
+                lambda sources, after_date: {
+                    "updated_after": after_date,
+                    "source_types": getattr(sources[0], "source_types", None),
+                    "include_deleted": getattr(sources[0], "include_deleted", False),
+                    "max_books": getattr(sources[0], "max_entries", None),
+                },
+            ),
             config_matcher=_is(ReadwiseSource),
             config_accessor=_get("get_readwise_sources"),
             options=force_date,

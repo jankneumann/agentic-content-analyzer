@@ -6,10 +6,12 @@ xsearch-specific extras (``tool_calls_made``, ``threads_found``) live in
 """
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.ingestion.content_references import collect_content_references
 from src.ingestion.result import IngestionResponse
 from src.ingestion.xsearch import (
     GrokXClient,
@@ -313,6 +315,24 @@ class TestGrokXClient:
 
 
 class TestGrokXContentIngestionService:
+    def test_overlap_duplicate_records_canonical_content_receipt(self):
+        service = GrokXContentIngestionService.__new__(GrokXContentIngestionService)
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = None
+        db.execute.return_value.first.return_value = SimpleNamespace(id=91, canonical_id=7)
+        thread = XThreadData(
+            root_post_id="new-root",
+            thread_post_ids=["existing-post"],
+            author_handle="author",
+            posts=[XPostContent(text="Post", post_id="existing-post")],
+        )
+
+        with collect_content_references() as references:
+            assert service._is_duplicate(db, thread) is True
+
+        assert references == {7}
+        assert "FROM contents" in str(db.execute.call_args.args[0])
+
     @patch("src.ingestion.xsearch.get_db")
     @patch("src.ingestion.xsearch.GrokXClient")
     def test_ingest_with_custom_prompt(self, mock_client_cls, mock_get_db):

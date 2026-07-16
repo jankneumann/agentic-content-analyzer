@@ -9,6 +9,9 @@ Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmai
 """
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -280,6 +283,27 @@ class SourcesConfig(BaseModel):
     def get_readwise_sources(self) -> list[ReadwiseSource]:
         """Get all enabled Readwise sources."""
         return [s for s in self.sources if isinstance(s, ReadwiseSource) and s.enabled]
+
+
+_ACTIVE_SOURCES_CONFIG: ContextVar[SourcesConfig | None] = ContextVar(
+    "active_sources_config",
+    default=None,
+)
+
+
+@contextmanager
+def use_sources_config(config: SourcesConfig) -> Iterator[None]:
+    """Use an immutable queued source snapshot in the current execution context."""
+    token = _ACTIVE_SOURCES_CONFIG.set(config)
+    try:
+        yield
+    finally:
+        _ACTIVE_SOURCES_CONFIG.reset(token)
+
+
+def has_active_sources_config() -> bool:
+    """Return whether execution is bound to a queued source snapshot."""
+    return _ACTIVE_SOURCES_CONFIG.get() is not None
 
 
 # --- Source File Model (per-file schema) ---
@@ -622,6 +646,10 @@ def load_sources_config(
     Returns:
         SourcesConfig with validated sources
     """
+    active_config = _ACTIVE_SOURCES_CONFIG.get()
+    if active_config is not None:
+        return active_config
+
     dir_path = Path(sources_dir)
     file_path = Path(sources_file)
 

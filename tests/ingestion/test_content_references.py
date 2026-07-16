@@ -7,8 +7,10 @@ from unittest.mock import MagicMock
 from src.ingestion.content_references import (
     _clear_session_content_references,
     _commit_session_content_references,
+    _record_loaded_content_reference,
     _stage_session_content_references,
     collect_content_references,
+    record_content_reference,
 )
 from src.models.content import Content, ContentSource, ContentStatus
 
@@ -49,6 +51,20 @@ def _publish(*contents: Content) -> set[int]:
 
 def test_collector_publishes_only_committed_canonical_ids() -> None:
     assert _publish(_content(11), _content(12, canonical_id=7)) == {7, 11}
+
+
+def test_collector_records_preexisting_canonical_content_encountered_by_command() -> None:
+    with collect_content_references() as references:
+        _record_loaded_content_reference(MagicMock(), _content(12, canonical_id=7))
+
+    assert references == {7}
+
+
+def test_collector_records_content_from_non_orm_query_paths() -> None:
+    with collect_content_references() as references:
+        record_content_reference(12, 7)
+
+    assert references == {7}
 
 
 def test_collector_waits_for_outer_commit_after_savepoint_commit() -> None:

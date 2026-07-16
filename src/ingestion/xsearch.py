@@ -575,6 +575,8 @@ class GrokXContentIngestionService:
         """
         from sqlalchemy import text
 
+        from src.ingestion.content_references import record_content_reference
+
         source_id = f"xpost:{thread.root_post_id}"
 
         # Level 1: exact source_id match
@@ -588,7 +590,7 @@ class GrokXContentIngestionService:
         for post_id in thread.thread_post_ids:
             existing = db.execute(
                 text(
-                    "SELECT 1 FROM content "
+                    "SELECT id, COALESCE(canonical_id, id) AS canonical_id FROM contents "
                     "WHERE CAST(source_type AS text) = :source_type "
                     "AND metadata_json->'thread_post_ids' @> CAST(:post_id_json AS jsonb) "
                     "LIMIT 1"
@@ -599,6 +601,7 @@ class GrokXContentIngestionService:
                 },
             ).first()
             if existing:
+                record_content_reference(existing.id, existing.canonical_id)
                 return True
 
         return False

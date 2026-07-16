@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
-CONTRACT_SHA256 = "5f07ac468bf37a86011b7560182ce5d3a9057b3bd654feaae1e20eef2aa26eaf"
+CONTRACT_SHA256 = "57871151c4da64e157c87d83fac71f35a93f47f6a28ef995f7f6f5948b2cbf7d"
 
 OperationStatus = Literal["queued", "in_progress", "completed", "failed", "cancelled"]
 OperationType = Literal[
@@ -29,8 +29,13 @@ class StrictModel(BaseModel):
 COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "gmail": {
         "properties": {
+            "configured_sources": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
             "max_items": {"type": "integer", "minimum": 1},
             "days_back": {"type": "integer", "minimum": 0},
+            "after_date": {"type": "string", "format": "date-time"},
             "force_reprocess": {"type": "boolean", "default": False},
             "kind": {"type": "string", "const": "gmail"},
             "query": {"type": "string"},
@@ -40,8 +45,13 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "rss": {
         "properties": {
             "kind": {"type": "string", "const": "rss"},
+            "configured_sources": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
             "max_items": {"type": "integer", "minimum": 1},
             "days_back": {"type": "integer", "minimum": 0},
+            "after_date": {"type": "string", "format": "date-time"},
             "force_reprocess": {"type": "boolean", "default": False},
         },
         "required": ["kind"],
@@ -49,8 +59,13 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "blog": {
         "properties": {
             "kind": {"type": "string", "const": "blog"},
+            "configured_sources": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
             "max_items": {"type": "integer", "minimum": 1},
             "days_back": {"type": "integer", "minimum": 0},
+            "after_date": {"type": "string", "format": "date-time"},
             "force_reprocess": {"type": "boolean", "default": False},
         },
         "required": ["kind"],
@@ -58,8 +73,13 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "substack": {
         "properties": {
             "kind": {"type": "string", "const": "substack"},
+            "configured_sources": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
             "max_items": {"type": "integer", "minimum": 1},
             "days_back": {"type": "integer", "minimum": 0},
+            "after_date": {"type": "string", "format": "date-time"},
             "force_reprocess": {"type": "boolean", "default": False},
         },
         "required": ["kind"],
@@ -67,8 +87,13 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "youtube_playlist": {
         "properties": {
             "kind": {"type": "string", "const": "youtube_playlist"},
+            "configured_sources": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
             "max_items": {"type": "integer", "minimum": 1},
             "days_back": {"type": "integer", "minimum": 0},
+            "after_date": {"type": "string", "format": "date-time"},
             "force_reprocess": {"type": "boolean", "default": False},
             "public_only": {"type": "boolean", "default": False},
         },
@@ -77,8 +102,13 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "youtube_rss": {
         "properties": {
             "kind": {"type": "string", "const": "youtube_rss"},
+            "configured_sources": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
             "max_items": {"type": "integer", "minimum": 1},
             "days_back": {"type": "integer", "minimum": 0},
+            "after_date": {"type": "string", "format": "date-time"},
             "force_reprocess": {"type": "boolean", "default": False},
         },
         "required": ["kind"],
@@ -86,8 +116,13 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "podcast": {
         "properties": {
             "kind": {"type": "string", "const": "podcast"},
+            "configured_sources": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
             "max_items": {"type": "integer", "minimum": 1},
             "days_back": {"type": "integer", "minimum": 0},
+            "after_date": {"type": "string", "format": "date-time"},
             "force_reprocess": {"type": "boolean", "default": False},
             "transcribe": {"type": "boolean", "default": True},
         },
@@ -96,6 +131,10 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "x_search": {
         "properties": {
             "kind": {"type": "string", "const": "x_search"},
+            "configured_sources": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
             "prompt": {"type": "string"},
             "max_threads": {"type": "integer", "minimum": 1},
             "force_reprocess": {"type": "boolean", "default": False},
@@ -105,6 +144,10 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "perplexity_search": {
         "properties": {
             "kind": {"type": "string", "const": "perplexity_search"},
+            "configured_sources": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
             "prompt": {"type": "string"},
             "max_items": {"type": "integer", "minimum": 1},
             "recency": {"type": "string", "enum": ["hour", "day", "week", "month"]},
@@ -136,6 +179,10 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "scholar_search": {
         "properties": {
             "kind": {"type": "string", "const": "scholar_search"},
+            "configured_sources": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
             "max_items": {"type": "integer", "minimum": 1, "default": 20},
         },
         "required": ["kind"],
@@ -162,8 +209,13 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "arxiv_search": {
         "properties": {
             "kind": {"type": "string", "const": "arxiv_search"},
+            "configured_sources": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
             "max_items": {"type": "integer", "minimum": 1, "default": 20},
             "days_back": {"type": "integer", "minimum": 0},
+            "after_date": {"type": "string", "format": "date-time"},
             "force_reprocess": {"type": "boolean", "default": False},
             "extract_pdf": {"type": "boolean", "default": True},
         },
@@ -181,8 +233,13 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "huggingface_papers": {
         "properties": {
             "kind": {"type": "string", "const": "huggingface_papers"},
+            "configured_sources": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
             "max_items": {"type": "integer", "minimum": 1, "default": 30},
             "days_back": {"type": "integer", "minimum": 0},
+            "after_date": {"type": "string", "format": "date-time"},
             "force_reprocess": {"type": "boolean", "default": False},
         },
         "required": ["kind"],
@@ -190,6 +247,10 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
     "readwise": {
         "properties": {
             "kind": {"type": "string", "const": "readwise"},
+            "configured_sources": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
             "updated_after": {"type": "string", "format": "date-time"},
             "source_types": {"type": "array", "items": {"type": "string"}},
             "include_deleted": {"type": "boolean", "default": False},
@@ -357,65 +418,82 @@ class ContentQuery(StrictModel):
 
 
 class ConfiguredSourceCommandBase(StrictModel):
+    configured_sources: list[dict[str, Any]] | None = None
     max_items: int | None = Field(None, ge=1)
     days_back: int | None = Field(None, ge=0)
+    after_date: datetime | None = None
     force_reprocess: bool = False
 
 
 class GmailIngestCommand(ConfiguredSourceCommandBase):
     kind: Literal["gmail"] = "gmail"
+    configured_sources: list[dict[str, Any]] | None = None
     query: str | None = None
     max_items: int | None = Field(None, ge=1)
     days_back: int | None = Field(None, ge=0)
+    after_date: datetime | None = None
     force_reprocess: bool = False
 
 
 class RssIngestCommand(StrictModel):
     kind: Literal["rss"] = "rss"
+    configured_sources: list[dict[str, Any]] | None = None
     max_items: int | None = Field(None, ge=1)
     days_back: int | None = Field(None, ge=0)
+    after_date: datetime | None = None
     force_reprocess: bool = False
 
 
 class BlogIngestCommand(StrictModel):
     kind: Literal["blog"] = "blog"
+    configured_sources: list[dict[str, Any]] | None = None
     max_items: int | None = Field(None, ge=1)
     days_back: int | None = Field(None, ge=0)
+    after_date: datetime | None = None
     force_reprocess: bool = False
 
 
 class SubstackIngestCommand(StrictModel):
     kind: Literal["substack"] = "substack"
+    configured_sources: list[dict[str, Any]] | None = None
     max_items: int | None = Field(None, ge=1)
     days_back: int | None = Field(None, ge=0)
+    after_date: datetime | None = None
     force_reprocess: bool = False
 
 
 class YouTubePlaylistIngestCommand(StrictModel):
     kind: Literal["youtube_playlist"] = "youtube_playlist"
+    configured_sources: list[dict[str, Any]] | None = None
     max_items: int | None = Field(None, ge=1)
     days_back: int | None = Field(None, ge=0)
+    after_date: datetime | None = None
     force_reprocess: bool = False
     public_only: bool = False
 
 
 class YouTubeRssIngestCommand(StrictModel):
     kind: Literal["youtube_rss"] = "youtube_rss"
+    configured_sources: list[dict[str, Any]] | None = None
     max_items: int | None = Field(None, ge=1)
     days_back: int | None = Field(None, ge=0)
+    after_date: datetime | None = None
     force_reprocess: bool = False
 
 
 class PodcastIngestCommand(StrictModel):
     kind: Literal["podcast"] = "podcast"
+    configured_sources: list[dict[str, Any]] | None = None
     max_items: int | None = Field(None, ge=1)
     days_back: int | None = Field(None, ge=0)
+    after_date: datetime | None = None
     force_reprocess: bool = False
     transcribe: bool = True
 
 
 class XSearchIngestCommand(StrictModel):
     kind: Literal["x_search"] = "x_search"
+    configured_sources: list[dict[str, Any]] | None = None
     prompt: str | None = None
     max_threads: int | None = Field(None, ge=1)
     force_reprocess: bool = False
@@ -423,6 +501,7 @@ class XSearchIngestCommand(StrictModel):
 
 class PerplexitySearchIngestCommand(StrictModel):
     kind: Literal["perplexity_search"] = "perplexity_search"
+    configured_sources: list[dict[str, Any]] | None = None
     prompt: str | None = None
     max_items: int | None = Field(None, ge=1)
     recency: Literal["hour", "day", "week", "month"] | None = None
@@ -448,6 +527,7 @@ class UrlIngestCommand(StrictModel):
 
 class ScholarSearchIngestCommand(StrictModel):
     kind: Literal["scholar_search"] = "scholar_search"
+    configured_sources: list[dict[str, Any]] | None = None
     max_items: int = Field(20, ge=1)
 
 
@@ -468,8 +548,10 @@ class ScholarReferencesIngestCommand(StrictModel):
 
 class ArxivSearchIngestCommand(StrictModel):
     kind: Literal["arxiv_search"] = "arxiv_search"
+    configured_sources: list[dict[str, Any]] | None = None
     max_items: int = Field(20, ge=1)
     days_back: int | None = Field(None, ge=0)
+    after_date: datetime | None = None
     force_reprocess: bool = False
     extract_pdf: bool = True
 
@@ -483,13 +565,16 @@ class ArxivPaperIngestCommand(StrictModel):
 
 class HuggingFacePapersIngestCommand(StrictModel):
     kind: Literal["huggingface_papers"] = "huggingface_papers"
+    configured_sources: list[dict[str, Any]] | None = None
     max_items: int = Field(30, ge=1)
     days_back: int | None = Field(None, ge=0)
+    after_date: datetime | None = None
     force_reprocess: bool = False
 
 
 class ReadwiseIngestCommand(StrictModel):
     kind: Literal["readwise"] = "readwise"
+    configured_sources: list[dict[str, Any]] | None = None
     updated_after: datetime | None = None
     source_types: list[str] | None = None
     include_deleted: bool = False
