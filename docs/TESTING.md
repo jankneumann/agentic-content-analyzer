@@ -196,9 +196,11 @@ key sets, so a missing or extra fixture fails collection before any case runs.
 Do not maintain a separate expected source-key constant in the test.
 
 The network-free harness in `tests/fixtures/sources/` replaces only external
-source and model I/O. It still exercises registry command parsing and URL
-routing, persisted `Content` and `Summary` records, `ContentSetResolver`, exact
-digest provenance, and podcast context assembly.
+source and model I/O. Every fixture runs through `IngestionService.execute`
+with a descriptor-specific deterministic orchestrator, then asserts the
+normalized command key, route, emitted source, and canonical content receipt.
+It continues through persisted `Content` and `Summary` records,
+`ContentSetResolver`, exact digest provenance, and podcast context assembly.
 
 ```bash
 # 18 vertical sources, 5 URL variants, 153 unordered pairs, and 2 triples
