@@ -21,7 +21,7 @@ Run:
 from __future__ import annotations
 
 import os
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -315,35 +315,41 @@ def contract_schema(seeded_db):
     mock_get_db = _make_db_patcher(seeded_db)
     isolated_get_db = _make_isolated_db_patcher(seeded_db)
 
-    with (
+    patch_targets = (
         # Source-level patch — catches lazy imports inside service methods
         # (e.g., PromptService._get_override_from_db, SettingsService._get_override_from_db)
         # that do `from src.storage.database import get_db` at call time.
-        patch("src.storage.database.get_db", mock_get_db),
+        ("src.storage.database.get_db", mock_get_db),
         # Route-level patches — each route module has already imported get_db
         # at module load time, so the source patch alone doesn't cover them.
-        patch("src.api.audio_digest_routes.get_db", mock_get_db),
-        patch("src.api.summary_routes.get_db", mock_get_db),
-        patch("src.api.digest_routes.get_db", mock_get_db),
-        patch("src.api.podcast_routes.get_db", mock_get_db),
-        patch("src.api.script_routes.get_db", mock_get_db),
-        patch("src.api.chat_routes.get_db", mock_get_db),
-        patch("src.api.settings_routes.get_db", mock_get_db),
-        patch("src.api.settings_override_routes.get_db", mock_get_db),
-        patch("src.api.model_settings_routes.get_db", mock_get_db),
-        patch("src.api.voice_settings_routes.get_db", mock_get_db),
-        patch("src.api.content_routes.get_db", mock_get_db),
-        patch("src.api.source_routes.get_db", mock_get_db),
-        patch("src.api.upload_routes.get_db", mock_get_db),
-        patch("src.api.save_routes.get_db", mock_get_db),
-        patch("src.api.search_routes.get_db", mock_get_db),
-        patch("src.api.kb_routes.get_db", mock_get_db),
-        patch("src.api.shared_routes.get_db", mock_get_db),
+        ("src.api.audio_digest_routes.get_db", mock_get_db),
+        ("src.api.summary_routes.get_db", mock_get_db),
+        ("src.api.digest_routes.get_db", mock_get_db),
+        ("src.api.podcast_routes.get_db", mock_get_db),
+        ("src.api.script_routes.get_db", mock_get_db),
+        ("src.api.chat_routes.get_db", mock_get_db),
+        ("src.api.settings_routes.get_db", mock_get_db),
+        ("src.api.settings_override_routes.get_db", mock_get_db),
+        ("src.api.model_settings_routes.get_db", mock_get_db),
+        ("src.api.voice_settings_routes.get_db", mock_get_db),
+        ("src.api.content_routes.get_db", mock_get_db),
+        ("src.api.source_routes.get_db", mock_get_db),
+        ("src.api.upload_routes.get_db", mock_get_db),
+        ("src.api.save_routes.get_db", mock_get_db),
+        ("src.api.search_routes.get_db", mock_get_db),
+        ("src.api.kb_routes.get_db", mock_get_db),
+        ("src.api.shared_routes.get_db", mock_get_db),
+        ("src.api.evaluation_routes.get_db", mock_get_db),
         # ContentQueryService owns its context and may execute after earlier
         # fuzz requests have completed; keep that lifecycle truly isolated.
-        patch("src.services.content_query.get_db", isolated_get_db),
-        patch("src.services.script_review_service.get_db", mock_get_db),
-    ):
+        ("src.services.content_query.get_db", isolated_get_db),
+        ("src.services.script_review_service.get_db", mock_get_db),
+    )
+
+    with ExitStack() as stack:
+        for target, replacement in patch_targets:
+            stack.enter_context(patch(target, replacement))
+
         # AuthMiddleware gates /openapi.json behind owner-auth — supply the
         # admin-key header on schema fetch so Schemathesis can load the spec.
         # Per-request auth is also injected by tests/contract/test_*.py via
