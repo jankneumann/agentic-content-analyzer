@@ -213,7 +213,16 @@ async def mark_all_events_read() -> dict[str, Any]:
 # ============================================================================
 
 
-@router.get("/stream", dependencies=[Depends(verify_admin_key)])
+@router.get(
+    "/stream",
+    dependencies=[Depends(verify_admin_key)],
+    responses={
+        200: {
+            "description": "Server-sent notification events",
+            "content": {"text/event-stream": {"schema": {"type": "string"}}},
+        }
+    },
+)
 async def event_stream(
     request: Request,
 ) -> StreamingResponse:

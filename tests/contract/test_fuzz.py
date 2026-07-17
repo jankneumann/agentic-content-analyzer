@@ -69,7 +69,11 @@ def test_get_endpoints_no_500(case):
     Schemathesis generates schema-valid but randomized parameter values.
     Valid inputs should never produce 500 errors — only 2xx or 4xx.
     """
-    case.headers = {**(case.headers or {}), "X-Admin-Key": "test-admin-key"}
+    case.headers = {
+        **(case.headers or {}),
+        "X-Admin-Key": "test-admin-key",
+        "X-Forwarded-For": "127.0.0.1",
+    }
     response = _call_no_transport_error(case)
     assert response.status_code < 500, (
         f"Server error on GET {case.formatted_path}: {response.status_code} - {response.text[:500]}"
@@ -81,7 +85,11 @@ def test_get_endpoints_no_500(case):
 @hypothesis_settings(max_examples=15, deadline=None)
 def test_settings_endpoints_no_500(case):
     """Settings endpoints handle fuzzed inputs gracefully."""
-    case.headers = {**(case.headers or {}), "X-Admin-Key": "test-admin-key"}
+    case.headers = {
+        **(case.headers or {}),
+        "X-Admin-Key": "test-admin-key",
+        "X-Forwarded-For": "127.0.0.1",
+    }
     response = _call_no_transport_error(case)
     assert response.status_code < 500, (
         f"Server error on {case.method.upper()} {case.formatted_path}: "
@@ -94,7 +102,11 @@ def test_settings_endpoints_no_500(case):
 @hypothesis_settings(max_examples=15, deadline=None)
 def test_search_endpoint_no_500(case):
     """Search endpoint handles fuzzed queries without server errors."""
-    case.headers = {**(case.headers or {}), "X-Admin-Key": "test-admin-key"}
+    case.headers = {
+        **(case.headers or {}),
+        "X-Admin-Key": "test-admin-key",
+        "X-Forwarded-For": "127.0.0.1",
+    }
     response = _call_no_transport_error(case)
     assert response.status_code < 500, (
         f"Server error on {case.method.upper()} {case.formatted_path}: "
@@ -112,7 +124,11 @@ def test_mutating_endpoints_no_500(case):
     job retry, source management, and conversation operations.  LLM-calling
     and external-service endpoints are excluded via EXCLUDED_FUZZ_REGEX.
     """
-    case.headers = {**(case.headers or {}), "X-Admin-Key": "test-admin-key"}
+    case.headers = {
+        **(case.headers or {}),
+        "X-Admin-Key": "test-admin-key",
+        "X-Forwarded-For": "127.0.0.1",
+    }
     response = _call_no_transport_error(case)
     assert response.status_code < 500, (
         f"Server error on {case.method.upper()} {case.formatted_path}: "

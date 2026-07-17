@@ -64,6 +64,7 @@ EXCLUDED_COMMON_PATHS: list[str] = [
     r"/api/v1/content/\{content_id\}/status",
     r"/api/v1/chat/conversations/\{conversation_id\}/messages",
     r"/api/v1/chat/conversations/\{conversation_id\}/regenerate",
+    r"/api/v1/notifications/stream",
     r"/api/v1/summaries/preview",
     # Binary file serving / audio streaming
     r"/api/v1/files/",

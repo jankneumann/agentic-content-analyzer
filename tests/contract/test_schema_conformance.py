@@ -14,15 +14,43 @@ Run:
 
 from __future__ import annotations
 
+import re
+
 import pytest
 import schemathesis
 from hypothesis import settings as hypothesis_settings
 
+from src.api.app import app
 from tests.contract.conftest import EXCLUDED_COMMON_PATHS
 
 EXCLUDED_PATH_REGEX = "|".join(EXCLUDED_COMMON_PATHS)
 
 schema = schemathesis.pytest.from_fixture("contract_schema")
+
+
+@pytest.mark.contract
+def test_advertised_sse_endpoints_are_excluded_from_request_contract_tests():
+    """Every SSE route must be kept out of finite request/response fuzzing."""
+    sse_paths = {
+        path
+        for path, path_item in app.openapi()["paths"].items()
+        for operation in path_item.values()
+        if isinstance(operation, dict)
+        for response in operation.get("responses", {}).values()
+        if "text/event-stream" in response.get("content", {})
+    }
+
+    uncovered = {
+        path
+        for path in sse_paths
+        if not any(re.search(pattern, path) for pattern in EXCLUDED_COMMON_PATHS)
+    }
+
+    assert sse_paths, "OpenAPI must advertise at least one SSE endpoint"
+    assert not uncovered, (
+        "SSE endpoints must be added to EXCLUDED_COMMON_PATHS before contract fuzzing: "
+        f"{sorted(uncovered)}"
+    )
 
 
 @pytest.mark.contract
@@ -36,7 +64,11 @@ def test_get_endpoints_conform_to_schema(case):
     1. No 500 errors (server bugs)
     2. Successful responses (2xx) match the declared response schema
     """
-    case.headers = {**(case.headers or {}), "X-Admin-Key": "test-admin-key"}
+    case.headers = {
+        **(case.headers or {}),
+        "X-Admin-Key": "test-admin-key",
+        "X-Forwarded-For": "127.0.0.1",
+    }
 
     try:
         response = case.call()

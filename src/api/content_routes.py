@@ -6,6 +6,7 @@ listing, retrieving, creating, deleting, and ingesting content records.
 
 import asyncio
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -392,7 +393,7 @@ async def list_contents(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     sort_by: str = Query("ingested_at", description="Field to sort by"),
-    sort_order: str = Query("desc", description="Sort order: asc or desc"),
+    sort_order: Literal["asc", "desc"] = Query("desc", description="Sort order: asc or desc"),
 ) -> ContentListResponse:
     """
     List contents with optional filters.
