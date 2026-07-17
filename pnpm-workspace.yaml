@@ -11,3 +11,6 @@ overrides:
   # and <7.0.5 had CPU-exhaustion DoS. Pulled in via:
   #   vite-plugin-pwa > workbox-build > @rollup/plugin-terser > serialize-javascript
   serialize-javascript: ">=7.0.5"
+  # protobufjs <8.4.1 has descriptor code-generation and unbounded Any expansion
+  # flaws. Pulled in transitively via OpenTelemetry's OTLP transformer.
+  protobufjs: "8.4.1"
