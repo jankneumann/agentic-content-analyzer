@@ -105,3 +105,25 @@ Gate 2 approved the complete domain registry and durable workflows plan for impl
 
 ### Context
 Implemented the approved coordinated migration end to end and integrated all work packages without squashing. Generated contracts, strict OpenSpec checks, architecture checks, changed-file lint and formatting, full source typing, frontend gates, migration rehearsal, and canonical workflow tests pass; live remote-provider suites remain environment-dependent by design.
+
+---
+
+## Phase: Cleanup (2026-07-17)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Merge PR #445 with rebase semantics** `architectural: agentic-operations` — Preserved the feature's granular commit history on `main` while keeping the integration history linear.
+2. **Archive only after cross-surface and security validation** — Canonical workflow contracts, API tests, source-combination coverage, frontend tests, browser workflows, dependency audits, and the OpenSpec pre-merge gate passed before merge.
+
+### Completed Work
+- Addressed Codex review feedback and the high-severity `protobufjs` advisory before merge.
+- Merged PR #445 at `51289a65b253f83c081505cfa6c53556f8c1c6ef`.
+- Confirmed required GitHub checks passed and recorded validation evidence in `validation-report.md`.
+
+### Follow-up
+- Coordinate the production migration window and release number using the documented rollout and rollback order in GitHub issue #446.
+- Track remaining moderate dependency advisories and low-severity API hardening observations in GitHub issue #447.
+
+### Context
+The coordinated breaking migration is complete on `main`. CLI, HTTP, MCP, and frontend surfaces now share the source registry, canonical provenance contracts, workflow services, and PostgreSQL job queue.

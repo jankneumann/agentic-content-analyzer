@@ -239,34 +239,22 @@ The system SHALL provide `aca manage` subcommands for setup and operational task
 - **THEN** existing content without chunks SHALL be chunked and embedded
 - **AND** a summary of processed content, created chunks, and generated embeddings SHALL be displayed
 
-### Requirement: Backward compatibility
-Legacy entrypoints SHALL continue to work but emit deprecation warnings.
-
-#### Scenario: Legacy newsletter-cli alias
-- **WHEN** `newsletter-cli profile list` is executed
-- **THEN** the command SHALL work identically to `aca profile list`
-- **AND** a deprecation warning SHALL be emitted to stderr recommending `aca profile`
-
-#### Scenario: Legacy module entrypoint
-- **WHEN** `python -m src.ingestion.gmail` is executed
-- **THEN** the ingestion SHALL run (backward-compatible)
-- **AND** a deprecation warning SHALL be emitted recommending `aca ingest gmail`
-
 ### Requirement: CLI and API parity
-CLI command handlers SHALL call shared orchestrator functions from `src/ingestion/orchestrator.py` for all ingestion operations. API endpoints SHALL enqueue jobs that invoke the same orchestrator functions via the task worker.
 
-#### Scenario: Shared orchestrator functions
-- **GIVEN** a CLI command and API-triggered task worker job for the same ingestion source
+CLI workflow commands and HTTP endpoints SHALL construct the same typed application commands and submit them through the same job-backed application workflow services. Equivalent normalized inputs MUST produce the same operation type, validation behavior, idempotency semantics, and final resource contract.
+
+#### Scenario: Shared job-backed ingestion service
+- **GIVEN** a CLI command and HTTP request for the same ingestion source
 - **WHEN** both are invoked with equivalent inputs
-- **THEN** they SHALL call the same orchestrator function from `src/ingestion/orchestrator.py`
-- **AND** the CLI SHALL call the orchestrator function synchronously
-- **AND** the task worker SHALL call the orchestrator function via `asyncio.to_thread()`
+- **THEN** both submit the same discriminated ingestion command
+- **AND** both execute through `IngestionService` in a PostgreSQL worker
+- **AND** no source option is lost in either transport
+- **AND** URL auto-routing and forced-webpage mode produce equivalent normalized queue payloads
 
 #### Scenario: Adding a new ingestion source
-- **WHEN** a new ingestion source is added to the system
-- **THEN** a single orchestrator function SHALL be added to `src/ingestion/orchestrator.py`
-- **AND** CLI, pipeline, and task worker SHALL all call that function
-- **AND** no ingestion service wiring SHALL be duplicated across call sites
+- **WHEN** a new source descriptor and fixture are added
+- **THEN** generated CLI and HTTP contracts expose that source
+- **AND** no transport-specific dispatcher is added
 
 ### Requirement: Ingestion orchestrator module
 The system SHALL provide orchestrator functions in `src/ingestion/orchestrator.py` that encapsulate service instantiation and invocation for each ingestion source (gmail, rss, youtube, podcast, substack).
@@ -435,3 +423,25 @@ The system SHALL provide `aca prompts` subcommands for managing LLM prompt confi
 - **WHEN** `aca prompts show nonexistent.key` is executed
 - **THEN** an error message SHALL indicate the prompt key is not recognized
 - **AND** available keys SHALL be suggested
+
+### Requirement: Durable CLI workflow behavior
+
+Every long-running CLI workflow command SHALL submit an operation. Human output SHALL display operation and resource IDs; `--json` SHALL emit the canonical schema; `--wait` SHALL observe the operation until terminal status; and `--no-wait` SHALL return after durable submission.
+
+#### Scenario: CLI waits for digest resource
+- **WHEN** `aca digest create ... --wait --json` succeeds
+- **THEN** stdout contains the completed operation handle and persisted digest resource reference
+- **AND** progress output does not corrupt JSON stdout
+
+#### Scenario: CLI returns queued operation
+- **WHEN** a workflow command uses `--no-wait`
+- **THEN** it exits successfully after returning a queryable queued operation ID
+
+### Requirement: CLI capability discovery
+
+The CLI SHALL provide `aca capabilities` with human-readable and JSON output derived from the canonical capability document.
+
+#### Scenario: Agent discovers source command fields
+- **WHEN** `aca capabilities --json` is executed
+- **THEN** the result lists every canonical ingestion discriminator and its accepted fields
+- **AND** it lists supported operation and resource types
