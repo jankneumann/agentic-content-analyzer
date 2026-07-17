@@ -10,6 +10,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from src.models.topic import KBIndex, Topic, TopicStatus
 from src.services.knowledge_base import CompileSummary, KBCompileLockError
 
@@ -136,6 +138,11 @@ class TestListTopics:
         data = resp.json()
         assert len(data) == 1
         assert data[0]["status"] == "archived"
+
+    @pytest.mark.parametrize("field", ["category", "trend", "status"])
+    def test_list_rejects_postgres_nul_filters(self, client, field):
+        resp = client.get(f"/api/v1/kb/topics?{field}=invalid%00text")
+        assert resp.status_code == 422
 
     def test_list_pagination_limits(self, client, db_session):
         for idx in range(5):

@@ -271,9 +271,24 @@ def _unique_slug_for(db, name: str) -> str:
 
 @router.get("/topics", response_model=list[TopicSummary])
 async def list_topics(
-    category: str | None = Query(default=None, description="Filter by category"),
-    trend: str | None = Query(default=None, description="Filter by trend"),
-    status: str | None = Query(default=None, description="Filter by status"),
+    category: str | None = Query(
+        default=None,
+        max_length=50,
+        pattern=r"^[^\x00]*$",
+        description="Filter by category",
+    ),
+    trend: str | None = Query(
+        default=None,
+        max_length=50,
+        pattern=r"^[^\x00]*$",
+        description="Filter by trend",
+    ),
+    status: str | None = Query(
+        default=None,
+        max_length=50,
+        pattern=r"^[^\x00]*$",
+        description="Filter by status",
+    ),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> list[TopicSummary]:
