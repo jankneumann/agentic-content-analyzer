@@ -20,6 +20,19 @@
 - **Web**: FastAPI (APIs, web UI)
 - **Testing**: pytest
 
+## Contract Governance
+
+Durable executable contracts live under `openspec/contracts/`, parallel to the durable
+capability specifications in `openspec/specs/`. Content workflow contracts are owned by
+`openspec/contracts/content-workflows/` and include the OpenAPI document, progress event
+schema, database boundary, deterministic fixtures, and generated Python and TypeScript
+models.
+
+OpenSpec change directories may carry proposed contract deltas while work is active. When
+a change is archived, its contract copy becomes immutable historical evidence. Runtime
+code, generators, and tests must consume the durable contract registry instead of paths
+under `openspec/changes/` or `openspec/changes/archive/`.
+
 ## System Architecture
 
 ```
