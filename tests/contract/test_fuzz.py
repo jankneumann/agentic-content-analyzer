@@ -45,6 +45,14 @@ _FUZZ_ONLY_EXCLUSIONS: list[str] = [
 ]
 
 EXCLUDED_FUZZ_REGEX = "|".join(EXCLUDED_COMMON_PATHS + _FUZZ_ONLY_EXCLUSIONS)
+EXCLUDED_MUTATING_REGEX = "|".join(
+    EXCLUDED_COMMON_PATHS
+    + _FUZZ_ONLY_EXCLUSIONS
+    + [
+        # A non-empty initial message invokes the configured LLM provider.
+        r"/api/v1/chat/conversations$",
+    ]
+)
 
 schema = schemathesis.pytest.from_fixture("contract_schema")
 
@@ -121,7 +129,7 @@ def test_search_endpoint_no_500(case):
 
 
 @pytest.mark.contract
-@schema.exclude(path_regex=EXCLUDED_FUZZ_REGEX).exclude(method="GET").parametrize()
+@schema.exclude(path_regex=EXCLUDED_MUTATING_REGEX).exclude(method="GET").parametrize()
 @hypothesis_settings(
     max_examples=15,
     deadline=None,
