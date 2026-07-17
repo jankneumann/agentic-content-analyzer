@@ -68,6 +68,11 @@ class TestListContents:
         assert len(data["items"]) == 1
         assert "Vector" in data["items"][0]["title"]
 
+    def test_list_contents_rejects_invalid_filter_decision(self, client):
+        """Filter decisions are constrained before reaching PostgreSQL."""
+        response = client.get("/api/v1/contents", params={"filter_decision": "\x00"})
+        assert response.status_code == 422
+
     def test_list_contents_pagination(self, client, sample_contents):
         """Pagination works correctly."""
         # Get first page with page_size=2
@@ -188,6 +193,14 @@ class TestCreateContent:
             "markdown_content": "# Content",
         }
         response = client.post("/api/v1/contents", json=payload)
+        assert response.status_code == 422
+
+    def test_create_content_rejects_nul_characters(self, client):
+        """PostgreSQL-incompatible text is rejected at the API boundary."""
+        response = client.post(
+            "/api/v1/contents",
+            json={"title": "bad\x00title", "markdown_content": "# Content"},
+        )
         assert response.status_code == 422
 
     def test_create_content_duplicate_source_id(self, client, sample_content):

@@ -6,7 +6,13 @@ sources and content counts from the database.
 
 from unittest.mock import patch
 
-from src.config.sources import PodcastSource, RSSSource, SourcesConfig, YouTubePlaylistSource
+from src.config.sources import (
+    PodcastSource,
+    ReadwiseSource,
+    RSSSource,
+    SourcesConfig,
+    YouTubePlaylistSource,
+)
 
 
 class TestListSources:
@@ -97,6 +103,19 @@ class TestListSources:
         playlist_source = data["sources"][0]
         assert playlist_source["type"] == "youtube_playlist"
         assert playlist_source["url"] == "https://www.youtube.com/playlist?list=PLabc123"
+
+    def test_readwise_source_uses_stable_default_locator(self, client):
+        """Singleton sources without URLs expose their canonical locator."""
+        config = SourcesConfig(sources=[ReadwiseSource()])
+
+        with patch("src.api.source_routes.settings") as mock_settings:
+            mock_settings.get_sources_config.return_value = config
+            response = client.get("/api/v1/sources")
+
+        assert response.status_code == 200
+        readwise_source = response.json()["sources"][0]
+        assert readwise_source["url"] == "default"
+        assert readwise_source["source_key"] == "readwise:default"
 
     def test_includes_content_counts(self, client, sample_contents):
         """Content counts from database are included in response."""

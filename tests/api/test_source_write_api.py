@@ -91,6 +91,10 @@ class TestDelete:
         resp = client.delete("/api/v1/sources/blog:missing")
         assert resp.status_code == 404
 
+    def test_delete_rejects_nul_key(self, client):
+        resp = client.delete("/api/v1/sources/bad%00key")
+        assert resp.status_code == 422
+
 
 class TestEnableDisable:
     def test_disable_existing_source(self, client):

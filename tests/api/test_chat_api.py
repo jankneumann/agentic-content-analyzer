@@ -7,6 +7,8 @@ Tests the multi-provider chat service integration including:
 - Conversation management
 """
 
+import uuid
+
 import pytest
 
 from src.config.models import MODEL_REGISTRY
@@ -235,9 +237,14 @@ class TestConversationRetrieval:
 
     def test_get_conversation_not_found(self, client):
         """Test retrieving a non-existent conversation."""
-        response = client.get("/api/v1/chat/conversations/nonexistent-id")
+        response = client.get(f"/api/v1/chat/conversations/{uuid.uuid4()}")
 
         assert response.status_code == 404
+
+    def test_get_conversation_rejects_non_uuid_id(self, client):
+        """Malformed conversation IDs are rejected before database access."""
+        response = client.get("/api/v1/chat/conversations/not-a-uuid")
+        assert response.status_code == 422
 
 
 class TestSendMessage:
