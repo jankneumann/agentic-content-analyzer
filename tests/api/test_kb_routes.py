@@ -461,6 +461,10 @@ class TestIndex:
         assert data["index_type"] == "category_ml_ai"
         assert "Topic X" in data["content"]
 
+    def test_rejects_postgres_nul_category(self, client):
+        resp = client.get("/api/v1/kb/index?category=invalid%00text")
+        assert resp.status_code == 422
+
 
 # ---------------------------------------------------------------------- #
 # Query endpoint

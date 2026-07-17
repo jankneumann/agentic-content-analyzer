@@ -467,6 +467,8 @@ async def compile_kb() -> CompileResponse:
 async def get_index(
     category: str | None = Query(
         default=None,
+        max_length=50,
+        pattern=r"^[^\x00]*$",
         description="Return the category-specific index for this category",
     ),
 ) -> dict[str, Any]:
