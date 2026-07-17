@@ -199,8 +199,18 @@ async def get_task(task_id: str) -> TaskResponse:
 
 @router.get("/tasks", dependencies=[Depends(verify_admin_key)])
 async def list_tasks(
-    status: str | None = Query(default=None, description="Filter by status"),
-    persona: str | None = Query(default=None, description="Filter by persona"),
+    status: str | None = Query(
+        default=None,
+        max_length=50,
+        pattern=r"^[^\x00]*$",
+        description="Filter by status",
+    ),
+    persona: str | None = Query(
+        default=None,
+        max_length=200,
+        pattern=r"^[^\x00]*$",
+        description="Filter by persona",
+    ),
     limit: int = Query(default=50, ge=1, le=200, description="Max results"),
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
 ) -> list[TaskResponse]:
