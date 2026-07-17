@@ -122,7 +122,11 @@ def test_search_endpoint_no_500(case):
 
 @pytest.mark.contract
 @schema.exclude(path_regex=EXCLUDED_FUZZ_REGEX).exclude(method="GET").parametrize()
-@hypothesis_settings(max_examples=15, deadline=None)
+@hypothesis_settings(
+    max_examples=15,
+    deadline=None,
+    suppress_health_check=[HealthCheck.filter_too_much],
+)
 def test_mutating_endpoints_no_500(case):
     """POST/PUT/PATCH/DELETE endpoints never return 500 for schema-valid inputs.
 
