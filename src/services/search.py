@@ -17,7 +17,7 @@ import re
 import time
 from collections import defaultdict
 
-from sqlalchemy import select, text
+from sqlalchemy import Connection, select, text
 from sqlalchemy.orm import Session
 
 from src.config.settings import get_settings
@@ -86,16 +86,19 @@ class HybridSearchService:
         The request-scoped session is not thread-safe and is used concurrently
         by the vector search on the event-loop thread, so the threaded BM25
         call binds a fresh Session to the same bind as ``self._session``. In
-        production that bind is the engine, yielding an independent pooled
-        connection (true isolation); under the test harness it is the shared
-        test connection, so flushed-but-uncommitted fixtures stay visible.
+        If the request session itself is bound to an external Connection (as
+        transaction-isolated test harnesses commonly are), the worker binds to
+        that Connection's Engine instead. This preserves true isolation and
+        prevents closing the worker session from invalidating the request
+        connection.
 
         An injected strategy (dependency injection, e.g. tests) is used as-is —
         the caller owns its session lifecycle.
         """
         if self._bm25_injected:
             return self._bm25.search(query, limit, content_ids)
-        isolated = Session(bind=self._session.get_bind())
+        bind = self._session.get_bind()
+        isolated = Session(bind=bind.engine if isinstance(bind, Connection) else bind)
         try:
             return get_bm25_strategy(isolated).search(query, limit, content_ids)
         finally:

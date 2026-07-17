@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 import schemathesis
-from hypothesis import settings as hypothesis_settings
+from hypothesis import HealthCheck, settings as hypothesis_settings
 
 from tests.contract.conftest import EXCLUDED_COMMON_PATHS
 
@@ -40,6 +40,8 @@ _FUZZ_ONLY_EXCLUSIONS: list[str] = [
     r"/api/v1/content/save-url$",
     r"/api/v1/content/save-page$",
     r"/api/v1/documents/upload$",
+    # Requires a separately provisioned graph database.
+    r"/api/v1/graph/query$",
 ]
 
 EXCLUDED_FUZZ_REGEX = "|".join(EXCLUDED_COMMON_PATHS + _FUZZ_ONLY_EXCLUSIONS)
@@ -82,7 +84,11 @@ def test_get_endpoints_no_500(case):
 
 @pytest.mark.contract
 @schema.include(path_regex=r"^/api/v1/settings/").parametrize()
-@hypothesis_settings(max_examples=15, deadline=None)
+@hypothesis_settings(
+    max_examples=15,
+    deadline=None,
+    suppress_health_check=[HealthCheck.filter_too_much],
+)
 def test_settings_endpoints_no_500(case):
     """Settings endpoints handle fuzzed inputs gracefully."""
     case.headers = {

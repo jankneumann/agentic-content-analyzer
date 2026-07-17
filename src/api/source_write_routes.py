@@ -6,9 +6,9 @@ sources.d/ YAML defaults via load_sources_config(). Read access (overview with
 origin) lives in source_routes.py.
 """
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, Field
 
 from src.api.dependencies import verify_admin_key
@@ -20,6 +20,8 @@ logger = get_logger(__name__)
 
 # Shares the /api/v1/sources prefix with the read-only overview router.
 router = APIRouter(prefix="/api/v1/sources", tags=["sources"])
+
+SourceKey = Annotated[str, Path(min_length=1, pattern=r"^[^\x00]+$")]
 
 
 # ============================================================================
@@ -99,7 +101,7 @@ async def upsert_source(request: SourceUpsertRequest) -> SourceMutationResult:
 
 
 @router.delete("/{key:path}", dependencies=[Depends(verify_admin_key)])
-async def delete_source(key: str) -> dict:
+async def delete_source(key: SourceKey) -> dict:
     """Delete a source override (DB-origin) or remove a shadow (revert to YAML)."""
     with get_db() as db:
         service = SourceOverrideService(db)
@@ -112,7 +114,7 @@ async def delete_source(key: str) -> dict:
 @router.patch(
     "/{key:path}", response_model=SourceMutationResult, dependencies=[Depends(verify_admin_key)]
 )
-async def set_source_enabled(key: str, request: SourceEnabledRequest) -> SourceMutationResult:
+async def set_source_enabled(key: SourceKey, request: SourceEnabledRequest) -> SourceMutationResult:
     """Enable or disable a source.
 
     For a YAML-defined source with no override row, a self-describing shadow row

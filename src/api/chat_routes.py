@@ -10,9 +10,9 @@ import re
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import desc
@@ -39,6 +39,16 @@ router = APIRouter(
     dependencies=[Depends(verify_admin_key)],
 )
 logger = get_logger(__name__)
+
+ConversationId = Annotated[
+    str,
+    Path(
+        pattern=(
+            r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+            r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        )
+    ),
+]
 
 
 # ============================================================================
@@ -916,7 +926,7 @@ async def list_conversations(
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
-async def get_conversation(conversation_id: str) -> ConversationResponse:
+async def get_conversation(conversation_id: ConversationId) -> ConversationResponse:
     """Get a single conversation with all messages."""
     with get_db() as db:
         conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
@@ -992,7 +1002,7 @@ async def create_conversation(
 
 
 @router.delete("/conversations/{conversation_id}")
-async def delete_conversation(conversation_id: str) -> dict[str, str]:
+async def delete_conversation(conversation_id: ConversationId) -> dict[str, str]:
     """Delete a conversation."""
     with get_db() as db:
         conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
@@ -1008,7 +1018,7 @@ async def delete_conversation(conversation_id: str) -> dict[str, str]:
 
 @router.post("/conversations/{conversation_id}/messages")
 async def send_message(
-    conversation_id: str, body: SendMessageRequest, request: Request
+    conversation_id: ConversationId, body: SendMessageRequest, request: Request
 ) -> StreamingResponse:
     """Send a message and stream the response via SSE."""
 
@@ -1107,7 +1117,9 @@ async def send_message(
 
 
 @router.post("/conversations/{conversation_id}/regenerate")
-async def regenerate_last_message(conversation_id: str, request: Request) -> StreamingResponse:
+async def regenerate_last_message(
+    conversation_id: ConversationId, request: Request
+) -> StreamingResponse:
     """Regenerate the last assistant message."""
 
     # Rate limit check
@@ -1225,7 +1237,9 @@ async def regenerate_last_message(conversation_id: str, request: Request) -> Str
 
 
 @router.post("/conversations/{conversation_id}/apply-action")
-async def apply_action(conversation_id: str, request: ApplyActionRequest) -> dict[str, Any]:
+async def apply_action(
+    conversation_id: ConversationId, request: ApplyActionRequest
+) -> dict[str, Any]:
     """Apply a suggested action from a chat message."""
     with get_db() as db:
         conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
@@ -1287,7 +1301,7 @@ async def apply_action(conversation_id: str, request: ApplyActionRequest) -> dic
 
 @router.get("/conversations/{conversation_id}/messages", response_model=list[ChatMessageResponse])
 async def get_messages(
-    conversation_id: str,
+    conversation_id: ConversationId,
     limit: int = Query(50, ge=1, le=100),
     before: str | None = Query(None),
 ) -> list[ChatMessageResponse]:
@@ -1338,7 +1352,7 @@ class DebugContextResponse(BaseModel):
 
 
 @router.get("/conversations/{conversation_id}/context", response_model=DebugContextResponse)
-async def get_conversation_context(conversation_id: str) -> DebugContextResponse:
+async def get_conversation_context(conversation_id: ConversationId) -> DebugContextResponse:
     """Debug endpoint to view what context is sent to the LLM.
 
     Returns the system prompt, artifact content, and full context that would be

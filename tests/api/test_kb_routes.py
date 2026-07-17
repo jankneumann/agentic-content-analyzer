@@ -173,6 +173,11 @@ class TestGetTopic:
         resp = client.get("/api/v1/kb/topics/does-not-exist")
         assert resp.status_code == 404
 
+    def test_get_topic_rejects_invalid_slug(self, client):
+        """Malformed topic slugs are rejected before database access."""
+        resp = client.get("/api/v1/kb/topics/not_a_slug")
+        assert resp.status_code == 422
+
 
 # ---------------------------------------------------------------------- #
 # Topic create / update / archive

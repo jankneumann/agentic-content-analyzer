@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import Connection
 
 from src.models.search import SearchQuery, SearchResponse, SearchType
 from src.services.search import (
@@ -606,3 +607,19 @@ class TestBM25ThreadSafety:
         # No isolated session created when a strategy is injected.
         mock_session_cls.assert_not_called()
         assert results == [(2, 0.5, 20)]
+
+    @patch("src.services.search.get_bm25_strategy")
+    @patch("src.services.search.Session")
+    def test_external_connection_uses_owning_engine(self, mock_session_cls, mock_get_strategy):
+        """The worker never owns or closes the request session's connection."""
+        request_session = MagicMock()
+        connection = MagicMock(spec=Connection)
+        engine = MagicMock()
+        connection.engine = engine
+        request_session.get_bind.return_value = connection
+        mock_get_strategy.side_effect = [MagicMock(), MagicMock(search=MagicMock(return_value=[]))]
+
+        service = HybridSearchService(session=request_session, embedding_provider=MagicMock())
+        service._bm25_search_threadsafe("q", 10, None)
+
+        mock_session_cls.assert_called_once_with(bind=engine)

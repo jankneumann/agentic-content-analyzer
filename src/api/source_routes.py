@@ -13,6 +13,7 @@ from src.config.sources import (
     GmailSource,
     YouTubeChannelSource,
     YouTubePlaylistSource,
+    source_key,
 )
 from src.models.content import Content
 from src.storage.database import get_db
@@ -78,8 +79,10 @@ def _get_source_url(source) -> str:
     # ScholarSource and other query-based sources
     if hasattr(source, "query"):
         return source.query
-    # RSSSource, YouTubeRSSSource, PodcastSource all have .url
-    return source.url
+    # All remaining source types use the locator from their canonical natural
+    # key. This also covers singleton sources such as Readwise, which have no
+    # URL field and use the stable ``default`` locator.
+    return source_key(source).partition(":")[2]
 
 
 # ============================================================================

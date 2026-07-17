@@ -377,6 +377,14 @@ class TestDeviceRegistration:
         assert data["created_at"] != ""
         assert data["last_seen"] != ""
 
+    def test_register_device_rejects_nul_characters(self, client):
+        """Invalid device text is rejected before database access."""
+        resp = client.post(
+            "/api/v1/notifications/devices",
+            json={"platform": "web", "token": "bad\x00token", "delivery_method": "sse"},
+        )
+        assert resp.status_code == 422
+
     def test_register_device_upsert(self, client, db_session):
         """POST /devices with existing token updates instead of creating duplicate."""
         token = f"upsert-token-{uuid.uuid4().hex[:8]}"

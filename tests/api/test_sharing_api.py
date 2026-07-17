@@ -182,6 +182,14 @@ class TestSharedContentEndpoints:
         )
         assert response.status_code == 404
 
+    def test_shared_content_rejects_non_uuid_token(self, client):
+        """Malformed tokens are rejected before reaching the database."""
+        response = client.get(
+            "/shared/content/not-a-token",
+            headers={"X-Admin-Key": ""},
+        )
+        assert response.status_code == 422
+
     def test_shared_content_disabled(self, client, sample_content, db_session):
         """Disabled shared content returns 404."""
         resp = client.post(f"/api/v1/contents/{sample_content.id}/share")

@@ -28,7 +28,6 @@ from unittest.mock import patch
 
 import pytest
 import schemathesis
-from sqlalchemy import event
 from sqlalchemy.orm import Session, sessionmaker
 
 # Ensure contract tests never boot embedded worker during app import/lifespan.
@@ -155,34 +154,17 @@ def contract_db_engine():
 
 @pytest.fixture
 def contract_db_session(contract_db_engine) -> Session:
-    """Create a database session with auto-savepoint isolation.
+    """Create a database session with savepoint-isolated route transactions.
 
-    Uses SQLAlchemy's ``after_transaction_end`` event to automatically
-    restart savepoints whenever a route handler calls ``session.commit()``
-    or ``session.rollback()``.  This keeps the session perpetually inside
-    a savepoint so the outer transaction is never committed — allowing
-    full rollback at the end of the test.
+    SQLAlchemy's ``create_savepoint`` join mode keeps route-level commits and
+    rollbacks inside the externally owned test transaction. One fuzz request
+    therefore cannot invalidate the connection used by later requests.
     """
     connection = contract_db_engine.connect()
     transaction = connection.begin()
 
-    session_factory = sessionmaker(bind=connection)
+    session_factory = sessionmaker(bind=connection, join_transaction_mode="create_savepoint")
     session = session_factory()
-
-    # Start the first savepoint — all subsequent ones are auto-created
-    # by the event listener below.
-    session.begin_nested()
-
-    @event.listens_for(session, "after_transaction_end")
-    def _restart_savepoint(sess: Session, trans) -> None:  # type: ignore[no-untyped-def]
-        """Auto-restart a savepoint when one is committed or rolled back.
-
-        This keeps the session always inside a SAVEPOINT, so route handlers
-        that call session.commit() only release the current savepoint (not
-        the outer test transaction).
-        """
-        if trans.nested and not trans._parent.nested:  # type: ignore[union-attr]
-            sess.begin_nested()
 
     # Configure factories to use this session
     ContentFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
@@ -194,7 +176,6 @@ def contract_db_session(contract_db_engine) -> Session:
     ContentFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
     SummaryFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
     DigestFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
-    event.remove(session, "after_transaction_end", _restart_savepoint)
     session.close()
     if transaction.is_active:
         transaction.rollback()
@@ -293,13 +274,11 @@ def seeded_db(contract_db_session):
 def _make_db_patcher(session):
     """Create mock get_db context manager bound to the test session.
 
-    Savepoint isolation is handled by the ``contract_db_session`` fixture's
-    ``after_transaction_end`` event listener — the session is always inside
-    a SAVEPOINT that is auto-restarted after each commit or rollback.
+    Savepoint isolation is handled by SQLAlchemy's ``create_savepoint`` join
+    mode, which keeps the externally owned test transaction intact.
 
     If a route handler triggers a database error, we rollback the session
-    (releasing the current savepoint) so the event listener can create a
-    fresh one for the next request.
+    so the next request starts from a fresh savepoint.
     """
 
     @contextmanager
@@ -313,6 +292,19 @@ def _make_db_patcher(session):
     return mock_get_db
 
 
+def _make_isolated_db_patcher(session):
+    """Create a real per-call session for services that own their DB context."""
+    bind = session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+
+    @contextmanager
+    def isolated_get_db():
+        with Session(bind=engine) as isolated_session:
+            yield isolated_session
+
+    return isolated_get_db
+
+
 @pytest.fixture
 def contract_schema(seeded_db):
     """Load Schemathesis schema from the FastAPI ASGI app with DB patching.
@@ -321,6 +313,7 @@ def contract_schema(seeded_db):
     requests hit the test database with seeded data.
     """
     mock_get_db = _make_db_patcher(seeded_db)
+    isolated_get_db = _make_isolated_db_patcher(seeded_db)
 
     with (
         # Source-level patch — catches lazy imports inside service methods
@@ -344,6 +337,11 @@ def contract_schema(seeded_db):
         patch("src.api.upload_routes.get_db", mock_get_db),
         patch("src.api.save_routes.get_db", mock_get_db),
         patch("src.api.search_routes.get_db", mock_get_db),
+        patch("src.api.kb_routes.get_db", mock_get_db),
+        patch("src.api.shared_routes.get_db", mock_get_db),
+        # ContentQueryService owns its context and may execute after earlier
+        # fuzz requests have completed; keep that lifecycle truly isolated.
+        patch("src.services.content_query.get_db", isolated_get_db),
         patch("src.services.script_review_service.get_db", mock_get_db),
     ):
         # AuthMiddleware gates /openapi.json behind owner-auth — supply the
