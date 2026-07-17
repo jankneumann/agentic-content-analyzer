@@ -127,8 +127,8 @@ class PaginatedConversationsResponse(BaseModel):
 class CreateConversationRequest(BaseModel):
     """Request to create a new conversation."""
 
-    artifact_type: str = Field(..., alias="artifact_type")
-    artifact_id: str = Field(..., alias="artifact_id")
+    artifact_type: Literal["summary", "digest", "script"] = Field(..., alias="artifact_type")
+    artifact_id: int = Field(..., ge=1, alias="artifact_id")
     initial_message: str | None = Field(None, alias="initial_message")
     title: str | None = None
 
@@ -885,8 +885,8 @@ async def get_chat_config() -> ChatConfigResponse:
 
 @router.get("/conversations", response_model=PaginatedConversationsResponse)
 async def list_conversations(
-    artifact_type: str | None = Query(None),
-    artifact_id: str | None = Query(None),
+    artifact_type: Literal["summary", "digest", "script"] | None = Query(None),
+    artifact_id: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
 ) -> PaginatedConversationsResponse:
@@ -897,7 +897,7 @@ async def list_conversations(
         if artifact_type:
             query = query.filter(Conversation.artifact_type == artifact_type)
         if artifact_id:
-            query = query.filter(Conversation.artifact_id == int(artifact_id))
+            query = query.filter(Conversation.artifact_id == artifact_id)
 
         total = query.count()
         conversations = (
@@ -950,7 +950,7 @@ async def create_conversation(
         conversation = Conversation(
             id=conv_id,
             artifact_type=body.artifact_type,
-            artifact_id=int(body.artifact_id),
+            artifact_id=body.artifact_id,
             title=body.title or f"Revision for {body.artifact_type} #{body.artifact_id}",
             is_active=True,
         )
