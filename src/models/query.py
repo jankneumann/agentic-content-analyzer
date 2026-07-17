@@ -9,7 +9,7 @@ import hashlib
 import json
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -42,6 +42,8 @@ LEGACY_SELECTION_POLICY_JSON = json.dumps(
     ensure_ascii=True,
 )
 
+QueryText = Annotated[str, Field(max_length=500, pattern=r"^[^\x00]*$")]
+
 
 def legacy_selection_policy() -> dict[str, object]:
     """Mark records created without a resolved content set as incomplete."""
@@ -65,12 +67,12 @@ class ContentQuery(BaseModel):
 
     source_types: list[ContentSource] | None = None
     statuses: list[ContentStatus] | None = None
-    publications: list[str] | None = None
-    publication_search: str | None = None
+    publications: list[QueryText] | None = None
+    publication_search: QueryText | None = None
     start_date: datetime | None = None
     end_date: datetime | None = None
     date_basis: DateBasis = DateBasis.PUBLISHED_DATE
-    search: str | None = None
+    search: QueryText | None = None
     limit: int | None = Field(default=None, gt=0)
     sort_by: str = Field(default="published_date")
     sort_order: str = Field(default="desc", pattern="^(asc|desc)$")

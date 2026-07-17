@@ -340,6 +340,7 @@ def contract_schema(seeded_db):
         ("src.api.kb_routes.get_db", mock_get_db),
         ("src.api.shared_routes.get_db", mock_get_db),
         ("src.api.evaluation_routes.get_db", mock_get_db),
+        ("src.api.agent_routes.get_db", mock_get_db),
         # ContentQueryService owns its context and may execute after earlier
         # fuzz requests have completed; keep that lifecycle truly isolated.
         ("src.services.content_query.get_db", isolated_get_db),

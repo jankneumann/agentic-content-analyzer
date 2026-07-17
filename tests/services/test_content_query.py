@@ -67,6 +67,18 @@ class TestContentQueryModel:
         q = ContentQuery(limit=50)
         assert q.limit == 50
 
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("publication_search", "invalid\x00text"),
+            ("search", "invalid\x00text"),
+            ("publications", ["invalid\x00text"]),
+        ],
+    )
+    def test_rejects_postgres_nul_text(self, field, value):
+        with pytest.raises(ValidationError):
+            ContentQuery(**{field: value})
+
     def test_full_query(self):
         """All fields populated."""
         q = ContentQuery(
