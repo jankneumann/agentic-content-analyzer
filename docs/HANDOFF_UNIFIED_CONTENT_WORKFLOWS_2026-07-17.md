@@ -1,42 +1,44 @@
 # Unified Content Workflows Handoff
 
-Last updated: 2026-07-17 09:32 EDT
+Last updated: 2026-07-17 19:20 EDT
 
-## Objective
+## Outcome
 
-Finish the post-merge closure work for the unified content workflow architecture. The
-original effort unified ingestion, provenance, summarization, digest generation, podcast
-generation, durable operations, and the CLI, HTTP, MCP, worker, and frontend surfaces.
+The unified content workflow refactoring and its post-merge contract stabilization are
+complete on `main`. The durable workflow contracts are now independent of archived
+OpenSpec changes, the full API contract/fuzz suite is bounded and green, and the Tauri
+desktop matrix passes on all supported runners.
 
-The coordinated breaking migration was accepted. All surfaces should use the shared job
-queue. Merge commits should preserve individual commit history; use rebase merges.
+The iOS workflow now completes dependency installation, the web contract/build, and
+Capacitor synchronization. TestFlight deployment remains separate follow-up work because
+the repository does not yet contain a Fastlane `Gemfile` and the required signing/App
+Store Connect secrets are not configured.
 
 ## Repository State
 
 - Repository: `jankneumann/agentic-content-analyzer`
-- Original implementation: PR [#445](https://github.com/jankneumann/agentic-content-analyzer/pull/445), merged
-- Current follow-up: PR [#449](https://github.com/jankneumann/agentic-content-analyzer/pull/449)
-- Current branch: `openspec/durable-workflow-contracts--ci-fix`
-- Current worktree: `.git-worktrees/durable-workflow-contracts/ci-fix`
-- Durable-contract commit before this handoff: `59e26573`
-- Primary tracking issue: [#448](https://github.com/jankneumann/agentic-content-analyzer/issues/448)
-- Rollout issue: [#446](https://github.com/jankneumann/agentic-content-analyzer/issues/446)
+- Original implementation: PR [#445](https://github.com/jankneumann/agentic-content-analyzer/pull/445)
+- Durable contract refactor: PR [#449](https://github.com/jankneumann/agentic-content-analyzer/pull/449), merge `7b682598`
+- CI and runner repair: PR [#450](https://github.com/jankneumann/agentic-content-analyzer/pull/450), merge `15104d75`
+- Contract and iOS dependency repair: PR [#451](https://github.com/jankneumann/agentic-content-analyzer/pull/451), merge `3940812a`
+- iOS Node upgrade: PR [#452](https://github.com/jankneumann/agentic-content-analyzer/pull/452), merge `cc20191d`
+- Final agent-task query validation: PR [#454](https://github.com/jankneumann/agentic-content-analyzer/pull/454), merge `c8ef6747`
+- Primary tracking issue: [#448](https://github.com/jankneumann/agentic-content-analyzer/issues/448), closed with validation evidence
+- TestFlight follow-up: [#453](https://github.com/jankneumann/agentic-content-analyzer/issues/453)
+- Production rollout: [#446](https://github.com/jankneumann/agentic-content-analyzer/issues/446)
 - Security follow-up: [#447](https://github.com/jankneumann/agentic-content-analyzer/issues/447)
 
-The root checkout is an unrelated dirty checkout on `temp-merge-431`. It contains untracked
-`.pnpm-store/` and `openspec/changes/add-gemini-batch-processing/`. Do not modify, clean,
-stage, or revert those paths. Continue from the worktree above.
+The root checkout remains an unrelated dirty checkout on `temp-merge-431`; its untracked
+files were not modified. This work was completed in
+`.git-worktrees/durable-workflow-contracts/ci-fix`.
 
-There is no Beads database in the worktree. `bd sync` reports `no beads database found`;
-GitHub issues are the current durable task record. No child agent is still running.
+There is no Beads database in this checkout. `bd sync` reports
+`no beads database found`; GitHub issues are the durable task record.
 
-## Completed Work
+## Delivered Architecture
 
-PR #449 establishes `openspec/contracts/content-workflows/` as the durable executable
-contract registry, parallel to `openspec/specs/` and outside the OpenSpec change/archive
-lifecycle.
-
-The registry contains:
+`openspec/contracts/content-workflows/` is the durable executable contract registry,
+parallel to `openspec/specs/` and outside the OpenSpec change/archive lifecycle. It owns:
 
 - `openapi/v1.yaml`
 - `events/operation.progress.schema.json`
@@ -44,156 +46,70 @@ The registry contains:
 - generated Python and TypeScript models
 - registry and lifecycle documentation
 
-The generator and live tests now use the durable registry. Archived contract files remain
-an immutable historical snapshot. Live application code, generators, and tests must not
-depend on `openspec/changes/` or `openspec/changes/archive/`.
+Live code, generators, and tests no longer depend on `openspec/changes/` or
+`openspec/changes/archive/`. Archived contract files remain immutable historical
+snapshots.
 
-Relevant files:
+Key implementation and documentation files include:
 
 - `openspec/contracts/README.md`
 - `openspec/contracts/content-workflows/README.md`
 - `scripts/generate_workflow_contracts.py`
 - `tests/contract/test_canonical_workflow_contracts.py`
+- `tests/contract/conftest.py`
 - `tests/queue/test_operation_service.py`
 - `tests/services/test_capability_service.py`
 - `docs/ARCHITECTURE.md`
 
+## Stabilization Work
+
+The follow-up PRs resolved all failures exposed by running the durable OpenAPI contract
+against the live application:
+
+- excluded streaming SSE and health-only endpoints from ordinary request/response fuzzing
+  and added regression coverage for SSE discovery
+- bounded the GitHub contract job and pinned Hypothesis/Schemathesis to lockfile versions
+- repaired evaluation, agent, chat, settings, pricing, source, search, knowledge-base,
+  topic, and operation boundary behavior
+- constrained query parameters so invalid and NUL-containing values are rejected before
+  reaching PostgreSQL
+- fixed iOS workflow directory handling, frozen dependency installation, uv availability,
+  and Node 22 compatibility
+- moved the unavailable Tauri Intel runner from `macos-13` to `macos-15-intel`
+
 ## Validation Evidence
 
-Local validation passed:
+Local validation included:
 
 - `make workflow-contracts-check`
-- Focused contract, operation projection, and capability tests: 16 passed
-- Services-stack CI shard: 1605 passed, 3 skipped, 4 deselected
-- Rest CI shard: 2131 tests selected, exit 0
+- focused contract, operation, capability, upload, evaluation, and agent route tests
+- complete contract/fuzz runs against a disposable PostgreSQL database
 - Ruff check and format check
-- Git diff checks
-- Pre-commit hooks, including MyPy and secret scanning
+- MyPy and pre-commit hooks
+- `git diff --check`
 
-PR #449 GitHub CI is green for:
+GitHub validation:
 
-- cold-start migration and boot
-- dependency audits
-- lint and type checking
-- secret scanning
-- API, CLI, rest, and services-stack test shards
-- profile validation
+- PR #454 CI run [29619378527](https://github.com/jankneumann/agentic-content-analyzer/actions/runs/29619378527): all jobs passed, including the full contract/fuzz job
+- PR #454 security run [29619378530](https://github.com/jankneumann/agentic-content-analyzer/actions/runs/29619378530): Python and Node audits plus secret scan passed
+- Final `main` CI run [29620163060](https://github.com/jankneumann/agentic-content-analyzer/actions/runs/29620163060): all jobs passed, including the full contract/fuzz job
+- Tauri run [29614600618](https://github.com/jankneumann/agentic-content-analyzer/actions/runs/29614600618): Linux, Windows, Intel macOS, and Apple Silicon macOS passed
+- iOS run [29618584088](https://github.com/jankneumann/agentic-content-analyzer/actions/runs/29618584088): dependency install, web contract/build, and Capacitor sync passed; deployment stopped at the unconfigured Fastlane/signing boundary tracked by #453
 
-The two shards previously broken by archived contract paths, `rest` and `services-stack`,
-both pass in GitHub CI.
+## Remaining Work
 
-## Current Merge Blocker
+No refactoring or contract-stabilization work remains.
 
-The `contract-test` job in Actions run
-[29581840339](https://github.com/jankneumann/agentic-content-analyzer/actions/runs/29581840339)
-is still in progress after every other job completed. Job ID: `87889156321`.
+1. Complete TestFlight signing and Fastlane setup in #453. Add a `Gemfile` or remove the
+   `bundle exec` mismatch, configure signing/App Store Connect credentials, add a clear
+   preflight, and prove a signed IPA upload.
+2. Execute the coordinated production cutover in #446 only with explicit deployment
+   authority. It was intentionally not performed during this refactoring session.
+3. Address the non-blocking dependency and API hardening work in #447.
 
-The known cause is ordinary Schemathesis request/response fuzzing entering the infinite SSE
-endpoint `/api/v1/notifications/stream`. `tests/contract/conftest.py` documents SSE
-exclusions but does not include that route. The CI job also has no explicit timeout, so the
-GitHub default permits a six-hour hang.
+## Restart Context
 
-The previous partial contract log also reported failures for:
-
-- `GET /api/v1/chat/conversations`
-- `GET /api/v1/settings/overrides`
-- `GET /api/v1/pricing/neon/compare`
-- `GET /api/v1/sources`
-- `GET /api/v1/search`
-
-Do not merge PR #449 until the contract job completes successfully. There are currently no
-review comments, requested changes, or merge conflicts.
-
-## Recommended Contract Fix
-
-Keep this fix on PR #449 because it directly unblocks validation of the durable contracts:
-
-1. Cancel the currently hanging Actions run.
-2. Add `/api/v1/notifications/stream` to `EXCLUDED_COMMON_PATHS`.
-3. Add a regression guard that discovers every OpenAPI response advertising
-   `text/event-stream` and asserts that the route matches a common exclusion.
-4. Add a bounded `timeout-minutes` value to the `contract-test` job in
-   `.github/workflows/ci.yml`; 20 to 30 minutes is sufficient.
-5. Run the complete contract suite and resolve or explicitly classify the five failures
-   listed above. Do not merely exclude ordinary JSON endpoints to make the gate green.
-6. Commit, rebase onto the latest `origin/main`, push, and watch PR #449 checks.
-
-Suggested restart commands:
-
-```bash
-cd ~/Coding/agentic-newsletter-aggregator/.git-worktrees/durable-workflow-contracts/ci-fix
-git status --short --branch
-git pull --rebase origin main
-gh pr checks 449
-gh run cancel 29581840339
-```
-
-For local contract validation, start the worktree Postgres service on host port `55432` so
-the root checkout port `5432` service is not disturbed. Use the test database credentials
-declared in `docker-compose.yml`, migrate it with Alembic, and run:
-
-```bash
-POSTGRES_PORT=55432 docker compose up -d postgres
-.venv/bin/alembic upgrade head
-.venv/bin/pytest tests/contract/ -m contract -v --no-cov --tb=short
-POSTGRES_PORT=55432 docker compose down -v
-```
-
-Set `DATABASE_URL`, `APP_SECRET_KEY`, and the other contract-test environment variables as
-declared in `.github/workflows/ci.yml` before migration and testing. The worktree-local
-`.venv` already exists but is ignored by Git.
-
-## Separate Workflow Health PR
-
-After the contract fix is pushed, create a small branch from current `main` for the two
-unrelated workflow defects. Do not expand PR #449 with these changes.
-
-### iOS
-
-The latest iOS run
-[29552072426](https://github.com/jankneumann/agentic-content-analyzer/actions/runs/29552072426)
-fails because `.github/workflows/ios-build.yml` sets the default working directory to
-`web`, then runs `cd web && ...` again.
-
-Fix both install/build steps to run directly from `web`, and use:
-
-```bash
-pnpm install --frozen-lockfile
-pnpm build
-```
-
-### Tauri Intel
-
-The current main Tauri run
-[29552072445](https://github.com/jankneumann/agentic-content-analyzer/actions/runs/29552072445)
-and four predecessors remain queued because `macos-13` has no available runner. Linux,
-Windows, and Apple Silicon all pass. Replace `macos-13` with the currently supported
-`macos-15-intel` label, then cancel stale queued runs after the replacement is pushed.
-
-## Completion Order
-
-1. Make PR #449 contract tests bounded and green.
-2. Rebase-merge PR #449 and verify the resulting main run.
-3. Land the separate iOS/Tauri workflow-health PR and verify both workflows.
-4. Close #448 only after the full contract suite and workflows pass.
-5. Execute the coordinated production cutover tracked by #446.
-6. Address the non-blocking dependency and API hardening findings in #447.
-
-## Final Session Checklist
-
-Before ending the next session:
-
-```bash
-git status
-git add docs/HANDOFF_UNIFIED_CONTENT_WORKFLOWS_2026-07-17.md
-bd sync
-git commit -m "docs: add unified workflow handoff"
-git pull --rebase origin main
-git push
-git status
-```
-
-`bd sync` is expected to fail until a Beads database is configured; record the result and
-continue with the GitHub issue update. Confirm the branch reports that it is up to date
-with its remote and update the relevant issue with validation evidence and any remaining
-blocker.
+A future session should start from current `origin/main`, not from the historical feature
+branches. Before taking rollout action, read #446 and verify the current CI state. For iOS
+deployment, work exclusively from #453 and treat credentials/signing as the primary
+blocker rather than reopening the completed workflow refactor.
