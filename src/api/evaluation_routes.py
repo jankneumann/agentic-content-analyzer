@@ -8,11 +8,15 @@ Endpoints:
     PUT    /api/v1/evaluation/routing-config/{step} — Update routing config
 """
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.api.dependencies import verify_admin_key
 from src.storage.database import get_db
+
+EvaluationText = Annotated[str, Field(max_length=200, pattern=r"^[^\x00]*$")]
 
 router = APIRouter(
     prefix="/api/v1/evaluation",
@@ -29,10 +33,10 @@ router = APIRouter(
 class DatasetCreateRequest(BaseModel):
     """Request to create an evaluation dataset."""
 
-    step: str = Field(..., description="Pipeline step name")
-    name: str | None = Field(None, description="Optional dataset name")
-    strong_model: str = Field("claude-sonnet-4-5", description="Strong model ID")
-    weak_model: str = Field("claude-haiku-4-5", description="Weak model ID")
+    step: EvaluationText = Field(..., description="Pipeline step name")
+    name: EvaluationText | None = Field(None, description="Optional dataset name")
+    strong_model: EvaluationText = Field("claude-sonnet-4-5", description="Strong model ID")
+    weak_model: EvaluationText = Field("claude-haiku-4-5", description="Weak model ID")
 
 
 class DatasetResponse(BaseModel):
@@ -95,7 +99,7 @@ class RoutingConfigUpdateRequest(BaseModel):
 
 
 @router.get("/datasets", response_model=DatasetListResponse)
-async def list_datasets(step: str | None = None):
+async def list_datasets(step: EvaluationText | None = None):
     """List evaluation datasets, optionally filtered by step."""
     from src.services.evaluation_service import EvaluationService
 
@@ -145,7 +149,7 @@ async def create_dataset(request: DatasetCreateRequest):
 
 
 @router.get("/report", response_model=EvaluationReportResponse)
-async def get_report(step: str | None = None):
+async def get_report(step: EvaluationText | None = None):
     """Generate cost savings report from routing decisions."""
     from src.services.evaluation_service import EvaluationService
 

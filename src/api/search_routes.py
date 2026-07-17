@@ -8,6 +8,7 @@ vector, or hybrid search methods.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
@@ -19,6 +20,7 @@ from src.models.search import (
     SearchFilter,
     SearchQuery,
     SearchResponse,
+    SearchText,
     SearchType,
 )
 from src.services.search import HybridSearchService
@@ -36,14 +38,23 @@ router = APIRouter(
 
 @router.get("", response_model=SearchResponse)
 async def search_get(
-    q: str = Query(..., min_length=1, description="Search query text"),
+    q: Annotated[
+        SearchText,
+        Query(min_length=1, description="Search query text"),
+    ],
     type: SearchType = Query(default=SearchType.HYBRID, description="Search method"),
     limit: int = Query(default=20, ge=1, le=100, description="Results per page"),
     offset: int = Query(default=0, ge=0, description="Pagination offset"),
-    source_type: list[str] | None = Query(default=None, description="Filter by source types"),
+    source_type: Annotated[
+        list[SearchText] | None,
+        Query(description="Filter by source types"),
+    ] = None,
     date_from: datetime | None = Query(default=None, description="Filter: published after"),
     date_to: datetime | None = Query(default=None, description="Filter: published before"),
-    publication: list[str] | None = Query(default=None, description="Filter by publications"),
+    publication: Annotated[
+        list[SearchText] | None,
+        Query(description="Filter by publications"),
+    ] = None,
 ) -> SearchResponse:
     """Simple search via query parameters.
 
