@@ -28,14 +28,9 @@ from src.models.jobs import (
 from src.services.operation_service import OperationService
 
 NOW = datetime(2026, 7, 13, 10, 0, tzinfo=UTC)
-CONTRACT_MODELS = (
-    Path(__file__).parents[2]
-    / "openspec/changes/unify-content-workflows-agentic-surfaces/contracts/generated/models.py"
-)
-OPENAPI_CONTRACT = (
-    Path(__file__).parents[2]
-    / "openspec/changes/unify-content-workflows-agentic-surfaces/contracts/openapi/v1.yaml"
-)
+CONTRACTS = Path(__file__).parents[2] / "openspec/contracts/content-workflows"
+CONTRACT_MODELS = CONTRACTS / "generated/models.py"
+OPENAPI_CONTRACT = CONTRACTS / "openapi/v1.yaml"
 
 
 def _contract_models() -> ModuleType:

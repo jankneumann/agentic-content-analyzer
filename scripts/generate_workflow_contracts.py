@@ -17,8 +17,7 @@ import yaml
 from jsonschema.validators import validator_for
 
 ROOT = Path(__file__).resolve().parents[1]
-CHANGE = ROOT / "openspec/changes/unify-content-workflows-agentic-surfaces"
-CONTRACTS = CHANGE / "contracts"
+CONTRACTS = ROOT / "openspec/contracts/content-workflows"
 OPENAPI = CONTRACTS / "openapi/v1.yaml"
 EVENT_SCHEMA = CONTRACTS / "events/operation.progress.schema.json"
 PYTHON_OUTPUT = CONTRACTS / "generated/models.py"

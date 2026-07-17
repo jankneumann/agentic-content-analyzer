@@ -13,8 +13,7 @@ import yaml
 from jsonschema.validators import validator_for
 
 ROOT = Path(__file__).parents[2]
-CHANGE = ROOT / "openspec/changes/unify-content-workflows-agentic-surfaces"
-CONTRACTS = CHANGE / "contracts"
+CONTRACTS = ROOT / "openspec/contracts/content-workflows"
 OPENAPI_PATH = CONTRACTS / "openapi/v1.yaml"
 GENERATOR = ROOT / "scripts/generate_workflow_contracts.py"
 
@@ -53,6 +52,11 @@ OPERATION_TYPES = {
 
 def _openapi() -> dict:
     return cast(dict[str, Any], yaml.safe_load(OPENAPI_PATH.read_text()))
+
+
+def test_contract_source_is_outside_change_lifecycle() -> None:
+    relative_path = CONTRACTS.relative_to(ROOT / "openspec")
+    assert relative_path.parts == ("contracts", "content-workflows")
 
 
 def test_openapi_contract_is_valid() -> None:

@@ -16,9 +16,8 @@ from src.ingestion.registry import SOURCE_REGISTRY
 from src.ingestion.service import IngestionService
 from src.services.capability_service import CapabilityService
 
-CONTRACT = Path(
-    "openspec/changes/unify-content-workflows-agentic-surfaces/contracts/openapi/v1.yaml"
-)
+ROOT = Path(__file__).resolve().parents[2]
+CONTRACT = ROOT / "openspec/contracts/content-workflows/openapi/v1.yaml"
 
 
 def test_capabilities_match_openapi_discriminator_and_fields() -> None:
