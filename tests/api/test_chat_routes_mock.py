@@ -18,6 +18,7 @@ client = TestClient(app)
 # every request from this file must include the matching header to clear the
 # middleware before the route-level mocks even matter.
 _AUTH_HEADERS = {"X-Admin-Key": "test-admin-key"}
+_CONVERSATION_ID = "00000000-0000-0000-0000-000000000000"
 
 
 def test_send_message_rate_limit_exceeded():
@@ -28,7 +29,7 @@ def test_send_message_rate_limit_exceeded():
         mock_limiter.get_retry_after.return_value = 30
 
         response = client.post(
-            "/api/v1/chat/conversations/123/messages",
+            f"/api/v1/chat/conversations/{_CONVERSATION_ID}/messages",
             json={"content": "Hello"},
             headers=_AUTH_HEADERS,
         )
@@ -50,7 +51,7 @@ def test_send_message_rate_limit_ok():
         # But importantly, NOT 429
         try:
             response = client.post(
-                "/api/v1/chat/conversations/123/messages",
+                f"/api/v1/chat/conversations/{_CONVERSATION_ID}/messages",
                 json={"content": "Hello"},
             )
             assert response.status_code != 429
@@ -66,7 +67,7 @@ def test_regenerate_rate_limit_exceeded():
         mock_limiter.get_retry_after.return_value = 15
 
         response = client.post(
-            "/api/v1/chat/conversations/123/regenerate",
+            f"/api/v1/chat/conversations/{_CONVERSATION_ID}/regenerate",
             headers=_AUTH_HEADERS,
         )
 
