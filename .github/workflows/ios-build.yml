@@ -134,10 +134,10 @@ jobs:
       # 3. Install dependencies + build web assets
       # --------------------------------------------------
       - name: Install dependencies
-        run: cd web && pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build web app
-        run: cd web && pnpm build
+        run: pnpm build
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL || 'https://api.example.com' }}
 
