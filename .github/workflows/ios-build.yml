@@ -118,6 +118,9 @@ jobs:
         with:
           version: 9
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
       - name: Get pnpm store directory
         id: pnpm-cache
         shell: bash
