@@ -6,11 +6,12 @@ All summaries are now linked to Content records (unified model).
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 from sqlalchemy import func
 
 from src.models.content import Content, ContentStatus
@@ -25,6 +26,17 @@ router = APIRouter(prefix="/api/v1/summaries", tags=["summaries"])
 
 # Allowed fields for sorting
 SUMMARY_SORT_FIELDS = {"id", "content_id", "model_used", "created_at"}
+
+
+def _validate_timezone_offset(value: datetime) -> datetime:
+    """Reject offsets outside ISO 8601's range before PostgreSQL sees them."""
+    offset = value.utcoffset()
+    if offset is not None and abs(offset) > timedelta(hours=14):
+        raise ValueError("timezone offset must be between -14:00 and +14:00")
+    return value
+
+
+PostgresSafeDateTime = Annotated[datetime, AfterValidator(_validate_timezone_offset)]
 
 
 # ============================================================================
@@ -152,8 +164,8 @@ class CommitPreviewRequest(BaseModel):
 async def list_summaries(
     content_id: int | None = Query(None, description="Filter by content"),
     model_used: str | None = Query(None, description="Filter by model"),
-    start_date: datetime | None = Query(None, description="Filter after this date"),
-    end_date: datetime | None = Query(None, description="Filter before this date"),
+    start_date: PostgresSafeDateTime | None = Query(None, description="Filter after this date"),
+    end_date: PostgresSafeDateTime | None = Query(None, description="Filter before this date"),
     sort_by: str = Query("created_at", description="Field to sort by"),
     sort_order: str = Query("desc", description="Sort order: asc or desc"),
     limit: int = Query(20, ge=1, le=100),
@@ -354,8 +366,8 @@ async def get_summary(
 async def get_summary_navigation(
     summary_id: int,
     model_used: str | None = Query(None, description="Filter by model"),
-    start_date: datetime | None = Query(None, description="Filter after this date"),
-    end_date: datetime | None = Query(None, description="Filter before this date"),
+    start_date: PostgresSafeDateTime | None = Query(None, description="Filter after this date"),
+    end_date: PostgresSafeDateTime | None = Query(None, description="Filter before this date"),
     sort_by: str = Query("created_at", description="Field to sort by"),
     sort_order: str = Query("desc", description="Sort order (asc or desc)"),
 ) -> NavigationResponse:

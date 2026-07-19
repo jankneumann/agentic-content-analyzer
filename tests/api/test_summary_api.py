@@ -5,6 +5,8 @@ Updated to use unified Content model (not legacy Newsletter).
 
 from datetime import UTC, datetime
 
+import pytest
+
 from src.config.models import MODEL_REGISTRY
 from src.models.content import Content, ContentSource, ContentStatus
 from src.models.summary import Summary
@@ -70,6 +72,27 @@ class TestListSummaries:
         data = response.json()
         assert data["total"] == 1
         assert data["items"][0]["content_id"] == content_id
+
+    @pytest.mark.parametrize(
+        "parameter,value",
+        [
+            ("start_date", "8948-04-25T14:27:29.191146-17:25"),
+            ("end_date", "2337-11-28T07:20:31.390868+22:23"),
+        ],
+    )
+    def test_list_summaries_rejects_unsupported_timezone_offsets(
+        self, client, monkeypatch, parameter, value
+    ):
+        """Timezone offsets PostgreSQL cannot represent are rejected before querying."""
+
+        def fail_if_database_is_opened():
+            raise AssertionError("invalid datetime reached the database")
+
+        monkeypatch.setattr("src.api.summary_routes.get_db", fail_if_database_is_opened)
+
+        response = client.get("/api/v1/summaries", params={parameter: value})
+
+        assert response.status_code == 422
 
     def _create_contents_with_summaries(self, db_session, count: int = 2) -> list[Content]:
         """Helper to create content with associated summaries."""
@@ -272,3 +295,24 @@ class TestSummaryNavigation:
         response = client.get("/api/v1/summaries/99999/navigation")
 
         assert response.status_code == 404
+
+    @pytest.mark.parametrize(
+        "parameter,value",
+        [
+            ("start_date", "8948-04-25T14:27:29.191146-17:25"),
+            ("end_date", "2337-11-28T07:20:31.390868+22:23"),
+        ],
+    )
+    def test_navigation_rejects_unsupported_timezone_offsets(
+        self, client, monkeypatch, parameter, value
+    ):
+        """Navigation applies the same PostgreSQL-safe datetime contract."""
+
+        def fail_if_database_is_opened():
+            raise AssertionError("invalid datetime reached the database")
+
+        monkeypatch.setattr("src.api.summary_routes.get_db", fail_if_database_is_opened)
+
+        response = client.get("/api/v1/summaries/1/navigation", params={parameter: value})
+
+        assert response.status_code == 422
