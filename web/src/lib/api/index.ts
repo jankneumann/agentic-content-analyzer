@@ -13,6 +13,7 @@ export { queryKeys } from "./query-keys"
 // SSE utilities
 export { subscribeToProgress, waitForProgress } from "./sse"
 export type { ProgressEvent, SSEOptions } from "./sse"
+export * from "./workflows"
 
 // Auth
 export { checkSession, login, logout, isAuthEnabled } from "./auth"

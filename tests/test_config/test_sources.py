@@ -6,6 +6,7 @@ import yaml
 from src.config.sources import (
     GmailSource,
     PodcastSource,
+    ReadwiseSource,
     RSSSource,
     SourceDefaults,
     SourcesConfig,
@@ -16,6 +17,7 @@ from src.config.sources import (
     load_sources_directory,
     load_sources_from_legacy,
     load_sources_yaml,
+    source_key,
 )
 
 # --- Fixtures ---
@@ -48,6 +50,9 @@ class TestSourceModels:
         assert s.enabled is True
         assert s.tags == []
         assert s.name is None
+
+    def test_unnamed_readwise_has_stable_singleton_key(self):
+        assert source_key(ReadwiseSource()) == "readwise:default"
 
     def test_rss_source_with_metadata(self):
         s = RSSSource(

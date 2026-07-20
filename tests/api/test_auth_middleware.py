@@ -174,7 +174,8 @@ class TestProtectedEndpoints:
         resp = production_client.get(_PROTECTED_ENDPOINT)
         assert resp.status_code == 401
         body = resp.json()
-        assert "authentication required" in body["error"].lower()
+        assert "authentication required" in body["title"].lower()
+        assert body["type"].endswith("authentication-required")
 
     def test_wrong_admin_key_returns_403(self, production_client):
         """Request with wrong X-Admin-Key returns 403 (invalid, not missing)."""
@@ -206,8 +207,8 @@ class TestProtectedEndpoints:
         """401 response matches the standard error format."""
         resp = production_client.get(_PROTECTED_ENDPOINT)
         body = resp.json()
-        assert "error" in body
-        assert "detail" in body
+        assert {"type", "title", "status", "detail"} <= body.keys()
+        assert resp.headers["content-type"].startswith("application/problem+json")
 
 
 # ===========================================================================

@@ -14,7 +14,7 @@ class TestShortcutPageEndpoint:
         """Page contains the API endpoint URL for configuration."""
         response = client.get("/api/v1/content/shortcut")
         assert response.status_code == 200
-        assert "/api/v1/content/save-url" in response.text
+        assert "/api/v1/ingestions" in response.text
 
     def test_shortcut_page_contains_setup_instructions(self, client):
         """Page contains setup instructions."""
@@ -27,4 +27,5 @@ class TestShortcutPageEndpoint:
         """Page shows the JSON body structure for the API call."""
         response = client.get("/api/v1/content/shortcut")
         assert response.status_code == 200
-        assert "ios_shortcut" in response.text
+        assert '"kind": "url"' in response.text
+        assert "operation_id" in response.text

@@ -9,9 +9,9 @@ compile attempt returns 409.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.api.dependencies import verify_admin_key
@@ -34,6 +34,8 @@ router = APIRouter(
     tags=["knowledge-base"],
     dependencies=[Depends(verify_admin_key)],
 )
+
+TopicSlug = Annotated[str, Path(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")]
 
 
 # =========================================================================
@@ -269,9 +271,24 @@ def _unique_slug_for(db, name: str) -> str:
 
 @router.get("/topics", response_model=list[TopicSummary])
 async def list_topics(
-    category: str | None = Query(default=None, description="Filter by category"),
-    trend: str | None = Query(default=None, description="Filter by trend"),
-    status: str | None = Query(default=None, description="Filter by status"),
+    category: str | None = Query(
+        default=None,
+        max_length=50,
+        pattern=r"^[^\x00]*$",
+        description="Filter by category",
+    ),
+    trend: str | None = Query(
+        default=None,
+        max_length=50,
+        pattern=r"^[^\x00]*$",
+        description="Filter by trend",
+    ),
+    status: str | None = Query(
+        default=None,
+        max_length=50,
+        pattern=r"^[^\x00]*$",
+        description="Filter by status",
+    ),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> list[TopicSummary]:
@@ -301,7 +318,7 @@ async def list_topics(
 
 
 @router.get("/topics/{slug}", response_model=TopicResponse)
-async def get_topic(slug: str) -> TopicResponse:
+async def get_topic(slug: TopicSlug) -> TopicResponse:
     """Fetch a single topic including its compiled article."""
     with get_db() as db:
         topic = db.query(Topic).filter_by(slug=slug).first()
@@ -334,7 +351,7 @@ async def create_topic(body: TopicCreate) -> TopicResponse:
 
 
 @router.patch("/topics/{slug}", response_model=TopicResponse)
-async def update_topic(slug: str, body: TopicUpdate) -> TopicResponse:
+async def update_topic(slug: TopicSlug, body: TopicUpdate) -> TopicResponse:
     """Update mutable fields on a topic."""
     with get_db() as db:
         topic = db.query(Topic).filter_by(slug=slug).first()
@@ -370,7 +387,7 @@ async def update_topic(slug: str, body: TopicUpdate) -> TopicResponse:
 
 @router.delete("/topics/{slug}", status_code=204)
 @audited(operation="topics.delete")
-async def archive_topic(slug: str) -> Response:
+async def archive_topic(slug: TopicSlug) -> Response:
     """Soft-delete a topic by setting status=archived.
 
     The underlying data change is a `status = ARCHIVED` flag flip, not a row
@@ -395,7 +412,7 @@ async def archive_topic(slug: str) -> Response:
     "/topics/{slug}/notes",
     response_model=list[TopicNoteResponse],
 )
-async def list_topic_notes(slug: str) -> list[TopicNoteResponse]:
+async def list_topic_notes(slug: TopicSlug) -> list[TopicNoteResponse]:
     """List all notes attached to a topic."""
     with get_db() as db:
         topic = db.query(Topic).filter_by(slug=slug).first()
@@ -416,7 +433,7 @@ async def list_topic_notes(slug: str) -> list[TopicNoteResponse]:
     status_code=201,
 )
 async def create_topic_note(
-    slug: str,
+    slug: TopicSlug,
     body: TopicNoteCreate,
 ) -> TopicNoteResponse:
     """Create a new note on a topic."""
@@ -465,6 +482,8 @@ async def compile_kb() -> CompileResponse:
 async def get_index(
     category: str | None = Query(
         default=None,
+        max_length=50,
+        pattern=r"^[^\x00]*$",
         description="Return the category-specific index for this category",
     ),
 ) -> dict[str, Any]:

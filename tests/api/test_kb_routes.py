@@ -10,6 +10,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from src.models.topic import KBIndex, Topic, TopicStatus
 from src.services.knowledge_base import CompileSummary, KBCompileLockError
 
@@ -137,6 +139,11 @@ class TestListTopics:
         assert len(data) == 1
         assert data[0]["status"] == "archived"
 
+    @pytest.mark.parametrize("field", ["category", "trend", "status"])
+    def test_list_rejects_postgres_nul_filters(self, client, field):
+        resp = client.get(f"/api/v1/kb/topics?{field}=invalid%00text")
+        assert resp.status_code == 422
+
     def test_list_pagination_limits(self, client, db_session):
         for idx in range(5):
             _make_topic(
@@ -172,6 +179,11 @@ class TestGetTopic:
     def test_get_missing_topic_404(self, client):
         resp = client.get("/api/v1/kb/topics/does-not-exist")
         assert resp.status_code == 404
+
+    def test_get_topic_rejects_invalid_slug(self, client):
+        """Malformed topic slugs are rejected before database access."""
+        resp = client.get("/api/v1/kb/topics/not_a_slug")
+        assert resp.status_code == 422
 
 
 # ---------------------------------------------------------------------- #
@@ -455,6 +467,10 @@ class TestIndex:
         data = resp.json()
         assert data["index_type"] == "category_ml_ai"
         assert "Topic X" in data["content"]
+
+    def test_rejects_postgres_nul_category(self, client):
+        resp = client.get("/api/v1/kb/index?category=invalid%00text")
+        assert resp.status_code == 422
 
 
 # ---------------------------------------------------------------------- #

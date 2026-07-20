@@ -21,7 +21,8 @@ class TestAudioDigestGeneratorInitialization:
         mock_settings.get_effective_voice.return_value = "nova"
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
-        mock_tts_service.return_value._provider = mock_provider
+        mock_tts_service.return_value.supports_ssml = mock_provider.supports_ssml.return_value
+        mock_tts_service.return_value.synthesize_voice = mock_provider.synthesize
 
         generator = AudioDigestGenerator()
 
@@ -37,7 +38,8 @@ class TestAudioDigestGeneratorInitialization:
         mock_settings.get_effective_voice.return_value = "nova"
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
-        mock_tts_service.return_value._provider = mock_provider
+        mock_tts_service.return_value.supports_ssml = mock_provider.supports_ssml.return_value
+        mock_tts_service.return_value.synthesize_voice = mock_provider.synthesize
 
         generator = AudioDigestGenerator(voice="onyx")
 
@@ -50,7 +52,8 @@ class TestAudioDigestGeneratorInitialization:
         mock_settings.get_effective_voice.return_value = "nova"
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = True
-        mock_tts_service.return_value._provider = mock_provider
+        mock_tts_service.return_value.supports_ssml = mock_provider.supports_ssml.return_value
+        mock_tts_service.return_value.synthesize_voice = mock_provider.synthesize
 
         generator = AudioDigestGenerator(provider="elevenlabs")
 
@@ -64,7 +67,8 @@ class TestAudioDigestGeneratorInitialization:
         mock_settings.get_effective_voice.return_value = "nova"
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
-        mock_tts_service.return_value._provider = mock_provider
+        mock_tts_service.return_value.supports_ssml = mock_provider.supports_ssml.return_value
+        mock_tts_service.return_value.synthesize_voice = mock_provider.synthesize
 
         generator = AudioDigestGenerator(speed=1.5)
 
@@ -118,7 +122,8 @@ class TestAudioDigestGeneratorGenerate:
         mock_settings.get_effective_voice.return_value = "nova"
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
-        mock_tts.return_value._provider = mock_provider
+        mock_tts.return_value.supports_ssml = mock_provider.supports_ssml.return_value
+        mock_tts.return_value.synthesize_voice = mock_provider.synthesize
 
         # Configure mock session to return None for digest
         mock_session = MagicMock()
@@ -145,7 +150,8 @@ class TestAudioDigestGeneratorGenerate:
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
         mock_provider.synthesize = AsyncMock(return_value=b"fake_audio_data")
-        mock_tts.return_value._provider = mock_provider
+        mock_tts.return_value.supports_ssml = mock_provider.supports_ssml.return_value
+        mock_tts.return_value.synthesize_voice = mock_provider.synthesize
 
         mock_storage = MagicMock()
         mock_storage.save = AsyncMock(return_value="audio-digests/test.mp3")
@@ -190,7 +196,8 @@ class TestAudioDigestGeneratorGenerate:
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
         mock_provider.synthesize = AsyncMock(return_value=b"audio_data")
-        mock_tts.return_value._provider = mock_provider
+        mock_tts.return_value.supports_ssml = mock_provider.supports_ssml.return_value
+        mock_tts.return_value.synthesize_voice = mock_provider.synthesize
 
         mock_storage = MagicMock()
         mock_storage.save = AsyncMock(return_value="path.mp3")
@@ -236,7 +243,8 @@ class TestAudioDigestGeneratorGenerate:
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
         mock_provider.synthesize = AsyncMock(side_effect=Exception("TTS API error"))
-        mock_tts.return_value._provider = mock_provider
+        mock_tts.return_value.supports_ssml = mock_provider.supports_ssml.return_value
+        mock_tts.return_value.synthesize_voice = mock_provider.synthesize
 
         mock_digest = MagicMock()
         mock_digest.id = 1
@@ -272,7 +280,8 @@ class TestAudioDigestGeneratorGenerate:
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
         mock_provider.synthesize = AsyncMock(return_value=b"audio_data")
-        mock_tts.return_value._provider = mock_provider
+        mock_tts.return_value.supports_ssml = mock_provider.supports_ssml.return_value
+        mock_tts.return_value.synthesize_voice = mock_provider.synthesize
 
         mock_storage = MagicMock()
         mock_storage.save = AsyncMock(return_value="path.mp3")
@@ -350,7 +359,8 @@ class TestAudioDigestGeneratorLongText:
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
         mock_provider.synthesize = AsyncMock(return_value=b"chunk_audio")
-        mock_tts.return_value._provider = mock_provider
+        mock_tts.return_value.supports_ssml = mock_provider.supports_ssml.return_value
+        mock_tts.return_value.synthesize_voice = mock_provider.synthesize
 
         mock_storage = MagicMock()
         mock_storage.save = AsyncMock(return_value="path.mp3")
@@ -402,7 +412,8 @@ class TestAudioDigestGeneratorLongText:
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
         mock_provider.synthesize = AsyncMock(return_value=b"chunk_audio")
-        mock_tts.return_value._provider = mock_provider
+        mock_tts.return_value.supports_ssml = mock_provider.supports_ssml.return_value
+        mock_tts.return_value.synthesize_voice = mock_provider.synthesize
 
         mock_storage = MagicMock()
         mock_storage.save = AsyncMock(return_value="path.mp3")
@@ -449,7 +460,8 @@ class TestAudioDigestGeneratorLongText:
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
         mock_provider.synthesize = AsyncMock(return_value=b"chunk_audio")
-        mock_tts.return_value._provider = mock_provider
+        mock_tts.return_value.supports_ssml = mock_provider.supports_ssml.return_value
+        mock_tts.return_value.synthesize_voice = mock_provider.synthesize
 
         mock_storage = MagicMock()
         mock_storage.save = AsyncMock(return_value="path.mp3")
@@ -525,7 +537,8 @@ class TestAudioDigestGeneratorVoicePresets:
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
         mock_provider.synthesize = AsyncMock(return_value=b"audio")
-        mock_tts.return_value._provider = mock_provider
+        mock_tts.return_value.supports_ssml = mock_provider.supports_ssml.return_value
+        mock_tts.return_value.synthesize_voice = mock_provider.synthesize
 
         mock_storage = MagicMock()
         mock_storage.save = AsyncMock(return_value="path.mp3")
@@ -565,7 +578,8 @@ class TestAudioDigestGeneratorHelperMethods:
         mock_settings.get_effective_voice.return_value = "nova"
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
-        mock_tts.return_value._provider = mock_provider
+        mock_tts.return_value.supports_ssml = mock_provider.supports_ssml.return_value
+        mock_tts.return_value.synthesize_voice = mock_provider.synthesize
 
         mock_audio_digest = MagicMock()
         mock_audio_digest.id = 100
@@ -589,7 +603,8 @@ class TestAudioDigestGeneratorHelperMethods:
         mock_settings.get_effective_voice.return_value = "nova"
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
-        mock_tts.return_value._provider = mock_provider
+        mock_tts.return_value.supports_ssml = mock_provider.supports_ssml.return_value
+        mock_tts.return_value.synthesize_voice = mock_provider.synthesize
 
         mock_session = MagicMock()
         mock_session.query.return_value.filter.return_value.first.return_value = None
@@ -610,7 +625,8 @@ class TestAudioDigestGeneratorHelperMethods:
         mock_settings.get_effective_voice.return_value = "nova"
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
-        mock_tts.return_value._provider = mock_provider
+        mock_tts.return_value.supports_ssml = mock_provider.supports_ssml.return_value
+        mock_tts.return_value.synthesize_voice = mock_provider.synthesize
 
         mock_digests = [MagicMock() for _ in range(3)]
 
@@ -640,7 +656,8 @@ class TestAudioDigestGeneratorHelperMethods:
         mock_settings.get_effective_voice.return_value = "nova"
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
-        mock_tts.return_value._provider = mock_provider
+        mock_tts.return_value.supports_ssml = mock_provider.supports_ssml.return_value
+        mock_tts.return_value.synthesize_voice = mock_provider.synthesize
 
         mock_digests = [MagicMock() for _ in range(2)]
 
@@ -710,7 +727,8 @@ class TestAudioDigestGeneratorStorageBucket:
         mock_provider = MagicMock()
         mock_provider.supports_ssml.return_value = False
         mock_provider.synthesize = AsyncMock(return_value=b"audio")
-        mock_tts.return_value._provider = mock_provider
+        mock_tts.return_value.supports_ssml = mock_provider.supports_ssml.return_value
+        mock_tts.return_value.synthesize_voice = mock_provider.synthesize
 
         mock_storage = MagicMock()
         mock_storage.save = AsyncMock(return_value="path.mp3")

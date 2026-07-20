@@ -352,28 +352,40 @@ class PerplexityContentIngestionService:
             try:
                 db.begin_nested()  # SAVEPOINT
 
-                if not force_reprocess and self._is_duplicate(db, source_id, response.citations):
+                existing = None
+                duplicate = False
+                if force_reprocess:
+                    existing = (
+                        db.query(Content)
+                        .filter(
+                            Content.source_type == ContentSource.PERPLEXITY,
+                            Content.source_id == source_id,
+                        )
+                        .first()
+                    )
+                elif self._is_duplicate(db, source_id, response.citations):
                     logger.debug(f"Skipping duplicate: {source_id}")
                     items_skipped += 1
-                else:
-                    # Determine title from first line of content
+                    duplicate = True
+                if not duplicate:
+                    if existing is None:
+                        content = Content(
+                            source_type=ContentSource.PERPLEXITY,
+                            source_id=source_id,
+                        )
+                        db.add(content)
+                    else:
+                        content = existing
                     first_line = response.content.strip().split("\n")[0][:120]
-                    title = first_line if first_line else "Perplexity Web Search"
-
-                    content = Content(
-                        source_type=ContentSource.PERPLEXITY,
-                        source_id=source_id,
-                        title=title,
-                        author="Perplexity AI",
-                        publication="Web Search",
-                        published_date=datetime.now(UTC),
-                        markdown_content=markdown_content,
-                        content_hash=generate_markdown_hash(markdown_content),
-                        status=ContentStatus.PENDING,
-                        metadata_json=metadata,
-                        ingested_at=datetime.now(UTC),
-                    )
-                    db.add(content)
+                    content.title = first_line or "Perplexity Web Search"
+                    content.author = "Perplexity AI"
+                    content.publication = "Web Search"
+                    content.published_date = datetime.now(UTC)
+                    content.markdown_content = markdown_content
+                    content.content_hash = generate_markdown_hash(markdown_content)
+                    content.status = ContentStatus.PENDING
+                    content.metadata_json = metadata
+                    content.ingested_at = datetime.now(UTC)
                     db.flush()
                     items_ingested += 1
                     logger.info(
@@ -440,6 +452,8 @@ class PerplexityContentIngestionService:
         """
         from sqlalchemy import text
 
+        from src.ingestion.content_references import record_content_reference
+
         # Level 1: exact source_id match
         existing = db.query(Content).filter(Content.source_id == source_id).first()
         if existing:
@@ -450,7 +464,8 @@ class PerplexityContentIngestionService:
             for citation_url in citations[:5]:  # Check first 5 citations for performance
                 row = db.execute(
                     text(
-                        "SELECT metadata_json->'citations' AS citations "
+                        "SELECT id, COALESCE(canonical_id, id) AS canonical_id, "
+                        "metadata_json->'citations' AS citations "
                         "FROM contents "
                         "WHERE CAST(source_type AS text) = :source_type "
                         "AND metadata_json->'citations' @> CAST(:citation_json AS jsonb) "
@@ -470,6 +485,7 @@ class PerplexityContentIngestionService:
                     )
                     overlap = len(set(citations) & set(existing_citations))
                     if overlap > len(citations) * 0.5:
+                        record_content_reference(row.id, row.canonical_id)
                         logger.debug(
                             f"Citation overlap detected: {overlap}/{len(citations)} "
                             f"({overlap / len(citations):.0%})"

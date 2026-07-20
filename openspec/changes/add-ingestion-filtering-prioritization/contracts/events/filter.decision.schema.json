@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aca.example/contracts/events/filter.decision.schema.json",
+  "title": "IngestionFilterDecision",
+  "description": "Event emitted by IngestionFilterService after a filter evaluation completes. Recorded as a Langfuse span and optionally as an internal event.",
+  "type": "object",
+  "required": [
+    "content_id",
+    "source_type",
+    "persona_id",
+    "decision",
+    "tier",
+    "score",
+    "reason",
+    "decided_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "content_id": {
+      "type": "integer",
+      "description": "Primary key of the contents row this decision applies to"
+    },
+    "source_type": {
+      "type": "string",
+      "description": "ContentSource enum value (rss, gmail, youtube, ...)"
+    },
+    "persona_id": {
+      "type": "string",
+      "description": "Persona against which relevance was evaluated"
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["keep", "skip"]
+    },
+    "tier": {
+      "type": "string",
+      "enum": ["heuristic", "embedding", "llm"]
+    },
+    "score": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "reason": {
+      "type": "string",
+      "description": "Short machine-parseable token, e.g. 'embedding.similarity:0.72' or 'heuristic.must_exclude:press release'"
+    },
+    "priority_bucket": {
+      "type": ["string", "null"],
+      "enum": ["high", "normal", "low", null]
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "llm_tokens": {
+      "type": ["integer", "null"],
+      "description": "Present only when tier == 'llm'"
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false,
+      "description": "True when evaluation did not persist status=FILTERED_OUT"
+    },
+    "decided_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

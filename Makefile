@@ -1,6 +1,6 @@
 # Makefile for common development tasks
 
-.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai falkordb-up falkordb-down test-e2e-live tauri-setup tauri-dev tauri-build tauri-icons test-tauri mcp-install mcp-install-claude mcp-install-codex mcp-install-desktop mcp-install-claude-desktop mcp-install-codex-desktop mcp-uninstall mcp-uninstall-desktop mcp-uninstall-claude-desktop mcp-uninstall-codex-desktop
+.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format workflow-contracts workflow-contracts-check db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai falkordb-up falkordb-down test-e2e-live tauri-setup tauri-dev tauri-build tauri-icons test-tauri mcp-install mcp-install-claude mcp-install-codex mcp-install-desktop mcp-install-claude-desktop mcp-install-codex-desktop mcp-uninstall mcp-uninstall-desktop mcp-uninstall-claude-desktop mcp-uninstall-codex-desktop
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -46,6 +46,12 @@ test:  ## Run tests
 
 test-cov:  ## Run tests with coverage report
 	pytest --cov=src --cov-report=term-missing --cov-report=html
+
+workflow-contracts:  ## Validate and regenerate canonical workflow models
+	uv run --frozen --extra dev python scripts/generate_workflow_contracts.py
+
+workflow-contracts-check:  ## Validate canonical workflow models and fail on drift
+	uv run --frozen --extra dev python scripts/generate_workflow_contracts.py --check
 
 test-cold:  ## Drop test DB + run pytest in CI-like cold-start state. Override test selection with ARGS=...
 	@set -e; \

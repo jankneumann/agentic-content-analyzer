@@ -18,7 +18,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import desc, func
 
 from src.api.dependencies import verify_admin_key
@@ -74,6 +74,13 @@ class DeviceRegistrationRequest(BaseModel):
     platform: str = Field(..., min_length=1, max_length=50)
     token: str = Field(..., min_length=1, max_length=500)
     delivery_method: str = Field(default="sse", max_length=50)
+
+    @model_validator(mode="after")
+    def reject_nul_characters(self) -> DeviceRegistrationRequest:
+        """Reject device text PostgreSQL cannot represent."""
+        if any("\x00" in value for value in (self.platform, self.token, self.delivery_method)):
+            raise ValueError("device fields must not contain NUL characters")
+        return self
 
 
 class DeviceRegistrationResponse(BaseModel):
@@ -213,7 +220,16 @@ async def mark_all_events_read() -> dict[str, Any]:
 # ============================================================================
 
 
-@router.get("/stream", dependencies=[Depends(verify_admin_key)])
+@router.get(
+    "/stream",
+    dependencies=[Depends(verify_admin_key)],
+    responses={
+        200: {
+            "description": "Server-sent notification events",
+            "content": {"text/event-stream": {"schema": {"type": "string"}}},
+        }
+    },
+)
 async def event_stream(
     request: Request,
 ) -> StreamingResponse:

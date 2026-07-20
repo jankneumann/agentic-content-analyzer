@@ -4,32 +4,27 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime
 from typing import TYPE_CHECKING
-
-from anthropic import Anthropic
 
 from src.telemetry.decorators import observe
 
 if TYPE_CHECKING:
-    from src.models.query import ContentQuery
+    from src.models.query import ResolvedContentSet
 
 from src.config import settings
 from src.config.models import ModelConfig, ModelStep, Provider
-from src.models.content import Content, ContentStatus
 from src.models.digest import (
-    Digest,
     DigestData,
     DigestRequest,
     DigestSection,
-    DigestStatus,
     DigestType,
 )
 from src.models.summary import Summary
 from src.models.theme import ThemeAnalysisRequest, ThemeData
+from src.processors.provenance import ExactContentSetLoader, ProvenanceViolationError
 from src.processors.theme_analyzer import ThemeAnalyzer
+from src.services.llm_router import LLMRouter
 from src.services.prompt_service import PromptService
-from src.storage.database import get_db
 from src.utils.digest_markdown import (
     extract_digest_theme_tags,
     extract_source_content_ids,
@@ -53,6 +48,8 @@ class DigestCreator:
         model_config: ModelConfig | None = None,
         model: str | None = None,
         prompt_service: PromptService | None = None,
+        content_loader: ExactContentSetLoader | None = None,
+        llm_router: LLMRouter | None = None,
     ):
         """
         Initialize digest creator.
@@ -70,7 +67,10 @@ class DigestCreator:
 
         # Get model for digest creation step (or use override)
         self.model = model or model_config.get_model_for_step(ModelStep.DIGEST_CREATION)
+        self.model_used = self.model
         self.prompt_service = prompt_service or PromptService()
+        self.content_loader = content_loader or ExactContentSetLoader()
+        self.llm_router = llm_router or LLMRouter(model_config)
 
         # Determine framework based on model family
         model_family = model_config.get_family(self.model)
@@ -88,6 +88,9 @@ class DigestCreator:
     async def create_digest(
         self,
         request: DigestRequest,
+        resolved_set: ResolvedContentSet,
+        *,
+        themes: list[ThemeData] | None = None,
     ) -> DigestData:
         """
         Create a digest for the specified time period.
@@ -99,69 +102,62 @@ class DigestCreator:
             Generated digest
         """
         start_time = time.time()
+        self.model_used = self.model
+        self.provider_used = None
+        self.input_tokens = 0
+        self.output_tokens = 0
+        self.model_version = None
         logger.info(
             f"Creating {request.digest_type.value} digest "
             f"from {request.period_start} to {request.period_end}"
         )
 
-        # 1. Run theme analysis for the period
-        theme_request = ThemeAnalysisRequest(
-            start_date=request.period_start,
-            end_date=request.period_end,
-            max_themes=15,  # Get enough themes to work with
-            relevance_threshold=0.3,
-        )
+        loaded_items = self.content_loader.load(resolved_set)
+        contents = [
+            {
+                "id": item.content.id,
+                "title": item.content.title,
+                "publication": item.content.publication,
+                "published_date": resolved_item.selection_date,
+                "url": item.content.source_url,
+                "source_type": item.content.source_type.value,
+            }
+            for item, resolved_item in zip(loaded_items, resolved_set.items, strict=True)
+        ]
+        summaries = [item.summary for item in loaded_items]
 
-        analyzer = ThemeAnalyzer(model_config=self.model_config, prompt_service=self.prompt_service)
-        theme_result = await analyzer.analyze_themes(
-            theme_request,
-            include_historical_context=request.include_historical_context,
-        )
-
-        if theme_result.content_count == 0:
+        if not contents:
             logger.warning("No content found in period")
-            return self._create_empty_digest(request)
+            return self._create_empty_digest(request, resolved_set)
 
-        logger.info(
-            f"Analyzed {theme_result.content_count} content items, "
-            f"found {theme_result.total_themes} themes"
-        )
-
-        # 2. Get content items for source references
-        contents = await self._fetch_contents(
-            request.period_start,
-            request.period_end,
-            content_query=request.content_query,
-        )
-
-        logger.info(f"Found {len(contents)} content items")
-
-        # 2b. Fetch summaries for content items
-        content_ids = [c["id"] for c in contents]
-
-        with get_db() as db:
-            summaries = (
-                db.query(Summary).filter(Summary.content_id.in_(content_ids)).all()
-                if content_ids
-                else []
+        if themes is None:
+            theme_request = ThemeAnalysisRequest(
+                start_date=request.period_start,
+                end_date=request.period_end,
+                max_themes=15,
+                relevance_threshold=0.3,
             )
-
-        logger.info(f"Fetched {len(summaries)} summaries for {len(contents)} content items")
-
-        # Check for missing summaries
-        summary_content_ids = {s.content_id for s in summaries if s.content_id}
-        missing_content_ids = [c["id"] for c in contents if c["id"] not in summary_content_ids]
-
-        if missing_content_ids:
-            logger.warning(
-                f"{len(missing_content_ids)} content items do not have summaries yet. "
-                f"They will be skipped. Run content summarization first."
+            analyzer = ThemeAnalyzer(
+                model_config=self.model_config,
+                prompt_service=self.prompt_service,
+                content_loader=self.content_loader,
+                llm_router=self.llm_router,
             )
+            theme_result = await analyzer.analyze_themes(
+                theme_request,
+                resolved_set,
+                include_historical_context=request.include_historical_context,
+            )
+            themes = theme_result.themes
+
+        self._validate_theme_provenance(themes, resolved_set)
+        logger.info("Creating digest from %s exact content/summary pairs", len(contents))
 
         # 3. Check token budget and determine if hierarchical digest is needed
         needs_hierarchy, budget_info = await self._check_token_budget(
             contents=contents,
-            themes=theme_result.themes,
+            themes=themes,
+            summaries=summaries,
         )
 
         # 4. Create digest (hierarchical or single, based on token budget)
@@ -182,7 +178,7 @@ class DigestCreator:
             digest = await self._create_hierarchical_digest(
                 request=request,
                 contents=contents,
-                themes=theme_result.themes,
+                themes=themes,
                 batches=batches,
                 summaries=summaries,
             )
@@ -193,7 +189,7 @@ class DigestCreator:
 
             digest_content = await self._generate_digest_content(
                 request=request,
-                themes=theme_result.themes,
+                themes=themes,
                 contents=contents,
                 summaries=summaries,
             )
@@ -211,20 +207,25 @@ class DigestCreator:
                 sources=self._build_sources(contents),
                 newsletter_count=len(contents),  # Content count
                 agent_framework=self.framework,
-                model_used=self.model,
+                model_used=self.model_used,
                 model_version=self.model_version,
             )
 
         # 5. Set processing time
         processing_time = time.time() - start_time
         digest.processing_time_seconds = processing_time
+        digest.source_content_ids = list(resolved_set.content_ids)
+        digest.source_summary_ids = list(resolved_set.summary_ids)
+        digest.selection_policy = resolved_set.policy.model_dump(mode="json")
+        digest.selection_fingerprint = resolved_set.fingerprint
+        digest.newsletter_count = resolved_set.eligible_content_count
 
         # 6. Enrich with markdown content and theme tags
         digest = self._enrich_digest_data(digest)
 
         logger.info(
             f"Digest created successfully in {processing_time:.2f}s "
-            f"({theme_result.content_count} content items)"
+            f"({resolved_set.eligible_content_count} content items)"
         )
 
         return digest
@@ -233,6 +234,7 @@ class DigestCreator:
         self,
         contents: list[dict],
         themes: list[ThemeData],
+        summaries: list[Summary],
     ) -> tuple[bool, dict]:
         """
         Check if contents fit in token budget.
@@ -265,17 +267,6 @@ class DigestCreator:
             provider=provider,
             context_window_percentage=0.5,  # Use 50% of context window
         )
-
-        # Fetch summaries for more accurate token estimation
-        summaries = []
-        try:
-            content_ids = [c["id"] for c in contents]
-            with get_db() as db:
-                summaries = db.query(Summary).filter(Summary.content_id.in_(content_ids)).all()
-            logger.debug(f"Loaded {len(summaries)} summaries for token estimation")
-        except Exception as e:
-            logger.warning(f"Failed to load summaries for token estimation: {e}")
-            summaries = []
 
         # Estimate tokens for all content (including summaries)
         estimated_tokens = counter.estimate_content_batch_tokens(
@@ -403,10 +394,8 @@ class DigestCreator:
         """
         Create hierarchical digest from content batches.
 
-        Flow:
-        1. For each batch, create sub-digest and save to DB
-        2. Combine all sub-digests into parent digest
-        3. Save parent with child references
+        Sub-digests are transient generation data. The workflow owns persistence
+        and reserves exactly one final digest resource.
 
         Args:
             request: Digest generation request
@@ -424,7 +413,7 @@ class DigestCreator:
             f"Creating hierarchical digest with {len(batches)} sub-digests "
             f"from {len(contents)} content items"
         )
-        sub_digest_ids = []
+        sub_digests: list[DigestData] = []
 
         # Create sub-digests for each batch
         for i, batch in enumerate(batches, 1):
@@ -457,66 +446,38 @@ class DigestCreator:
                     sources=self._build_sources(batch),
                     newsletter_count=len(batch),
                     agent_framework=self.framework,
-                    model_used=self.model,
+                    model_used=self.model_used,
                     model_version=self.model_version,
                 )
 
-                # Save to database immediately
-                with get_db() as db:
-                    # Convert to dict, removing fields that aren't in DB model yet
-                    sub_digest_dict = sub_digest.model_dump()
-                    # Remove fields that will be added by database
-                    sub_digest_dict.pop("processing_time_seconds", None)
-
-                    db_sub_digest = Digest(**sub_digest_dict)
-                    db_sub_digest.status = DigestStatus.COMPLETED
-                    db_sub_digest.completed_at = datetime.utcnow()
-
-                    db.add(db_sub_digest)
-                    db.commit()
-                    db.refresh(db_sub_digest)
-                    sub_digest_ids.append(db_sub_digest.id)
-
-                logger.info(
-                    f"Sub-digest {i}/{len(batches)} created successfully (ID: {db_sub_digest.id})"
-                )
+                sub_digests.append(sub_digest)
+                logger.info("Sub-digest %s/%s generated", i, len(batches))
 
             except Exception as e:
                 logger.error(f"Failed to create sub-digest {i}/{len(batches)}: {e}")
-                # Clean up any sub-digests created so far
-                if sub_digest_ids:
-                    logger.warning(f"Cleaning up {len(sub_digest_ids)} sub-digests due to error")
-                    with get_db() as db:
-                        db.query(Digest).filter(Digest.id.in_(sub_digest_ids)).delete(
-                            synchronize_session=False
-                        )
-                        db.commit()
                 raise Exception(f"Hierarchical digest creation failed: {e}")
 
         # Combine sub-digests into parent digest
-        logger.info(f"Combining {len(sub_digest_ids)} sub-digests into parent digest")
+        logger.info(f"Combining {len(sub_digests)} sub-digests into parent digest")
         combined_digest = await self._combine_sub_digests(
             request=request,
-            sub_digest_ids=sub_digest_ids,
+            sub_digests=sub_digests,
             contents=contents,
         )
 
         # Set hierarchy metadata
         combined_digest.is_combined = True
-        combined_digest.child_digest_ids = sub_digest_ids
-        combined_digest.source_digest_count = len(sub_digest_ids)
+        combined_digest.child_digest_ids = []
+        combined_digest.source_digest_count = len(sub_digests)
 
-        logger.info(
-            f"Hierarchical digest created successfully with {len(sub_digest_ids)} "
-            f"sub-digests (IDs: {sub_digest_ids})"
-        )
+        logger.info(f"Hierarchical digest created successfully with {len(sub_digests)} sub-digests")
 
         return combined_digest
 
     async def _combine_sub_digests(
         self,
         request: DigestRequest,
-        sub_digest_ids: list[int],
+        sub_digests: list[DigestData],
         contents: list[dict],
     ) -> DigestData:
         """
@@ -530,7 +491,7 @@ class DigestCreator:
 
         Args:
             request: Original digest request
-            sub_digest_ids: List of sub-digest database IDs
+            sub_digests: Transient sub-digest generation results
             contents: Full list of all content items (for sources)
 
         Returns:
@@ -539,16 +500,7 @@ class DigestCreator:
         Raises:
             Exception: If all providers fail
         """
-        logger.info(f"Combining {len(sub_digest_ids)} sub-digests via LLM synthesis")
-
-        # Load sub-digests from database
-        with get_db() as db:
-            sub_digests = db.query(Digest).filter(Digest.id.in_(sub_digest_ids)).all()
-
-        if len(sub_digests) != len(sub_digest_ids):
-            raise ValueError(
-                f"Expected {len(sub_digest_ids)} sub-digests, found {len(sub_digests)}"
-            )
+        logger.info(f"Combining {len(sub_digests)} sub-digests via LLM synthesis")
 
         # Build combination prompt
         prompt = self._build_combination_prompt(
@@ -556,100 +508,35 @@ class DigestCreator:
             sub_digests=sub_digests,
         )
 
-        # Call LLM with provider failover (same pattern as _generate_digest_content)
-        providers = self.model_config.get_providers_for_model(self.model)
-        last_error = None
-
-        for provider_config in providers:
-            # Only use Anthropic providers for now (Claude models)
-            if provider_config.provider != Provider.ANTHROPIC:
-                continue
-
-            try:
-                logger.info(
-                    f"Attempting combination with provider: {provider_config.provider.value}"
-                )
-
-                client = Anthropic(api_key=provider_config.api_key)
-                provider_model_id = self.model_config.get_provider_model_id(
-                    self.model, provider_config.provider
-                )
-
-                # Get system prompt for digest creation
-                system_prompt = self.prompt_service.get_pipeline_prompt("digest_creation")
-
-                response = client.messages.create(
-                    model=provider_model_id,
-                    max_tokens=12000,
-                    temperature=0.4,
-                    system=system_prompt,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-
-                # Parse response (same format as regular digest)
-                raw_content = response.content[0].text.strip()
-                logger.debug(f"Received LLM response: {raw_content[:200]}...")
-
-                # Try to extract JSON from markdown code blocks if present
-                if "```json" in raw_content:
-                    start = raw_content.find("```json") + 7
-                    end = raw_content.find("```", start)
-                    raw_content = raw_content[start:end].strip()
-                elif "```" in raw_content:
-                    start = raw_content.find("```") + 3
-                    end = raw_content.find("```", start)
-                    raw_content = raw_content[start:end].strip()
-
-                digest_json = json.loads(raw_content)
-
-                # Convert sections to DigestSection objects
-                strategic_insights = [
+        try:
+            digest_json = await self._route_json(prompt, max_tokens=12000, temperature=0.4)
+            return DigestData(
+                digest_type=request.digest_type,
+                period_start=request.period_start,
+                period_end=request.period_end,
+                title=digest_json["title"],
+                executive_overview=digest_json["executive_overview"],
+                strategic_insights=[
                     DigestSection(**section)
                     for section in digest_json.get("strategic_insights", [])
-                ]
-                technical_developments = [
+                ],
+                technical_developments=[
                     DigestSection(**section)
                     for section in digest_json.get("technical_developments", [])
-                ]
-                emerging_trends = [
+                ],
+                emerging_trends=[
                     DigestSection(**section) for section in digest_json.get("emerging_trends", [])
-                ]
-
-                # Build combined digest
-                combined_digest = DigestData(
-                    digest_type=request.digest_type,  # DAILY or WEEKLY, not SUB_DIGEST
-                    period_start=request.period_start,
-                    period_end=request.period_end,
-                    title=digest_json["title"],
-                    executive_overview=digest_json["executive_overview"],
-                    strategic_insights=strategic_insights,
-                    technical_developments=technical_developments,
-                    emerging_trends=emerging_trends,
-                    actionable_recommendations=digest_json["actionable_recommendations"],
-                    sources=self._build_sources(contents),
-                    newsletter_count=len(contents),
-                    agent_framework=self.framework,
-                    model_used=self.model,
-                    model_version=self.model_version,
-                )
-
-                logger.info(
-                    f"Successfully combined sub-digests using {provider_config.provider.value}"
-                )
-                self.provider_used = provider_config.provider
-
-                return combined_digest
-
-            except Exception as e:
-                last_error = e
-                logger.error(
-                    f"Provider {provider_config.provider.value} failed during combination: {e}"
-                )
-                continue
-
-        # All providers failed - fallback to first sub-digest with warning
-        logger.error(f"All providers failed during combination. Last error: {last_error}")
-        logger.warning("Falling back to first sub-digest as combined digest (degraded mode)")
+                ],
+                actionable_recommendations=digest_json["actionable_recommendations"],
+                sources=self._build_sources(contents),
+                newsletter_count=len(contents),
+                agent_framework=self.framework,
+                model_used=self.model_used,
+                model_version=self.model_version,
+            )
+        except Exception as exc:
+            logger.error("Digest combination failed through LLMRouter: %s", exc)
+            logger.warning("Falling back to first sub-digest as combined digest (degraded mode)")
 
         # Convert first sub-digest to DigestData
         first_sub = sub_digests[0]
@@ -659,14 +546,14 @@ class DigestCreator:
             period_end=request.period_end,
             title=first_sub.title.replace(f" - Part 1 of {len(sub_digests)}", ""),
             executive_overview=first_sub.executive_overview,
-            strategic_insights=[DigestSection(**s) for s in first_sub.strategic_insights],
-            technical_developments=[DigestSection(**s) for s in first_sub.technical_developments],
-            emerging_trends=[DigestSection(**s) for s in first_sub.emerging_trends],
+            strategic_insights=first_sub.strategic_insights,
+            technical_developments=first_sub.technical_developments,
+            emerging_trends=first_sub.emerging_trends,
             actionable_recommendations=first_sub.actionable_recommendations,
             sources=self._build_sources(contents),
             newsletter_count=len(contents),
             agent_framework=self.framework,
-            model_used=self.model,
+            model_used=self.model_used,
             model_version=self.model_version,
         )
 
@@ -675,7 +562,7 @@ class DigestCreator:
     def _build_combination_prompt(
         self,
         request: DigestRequest,
-        sub_digests: list[Digest],
+        sub_digests: list[DigestData],
     ) -> str:
         """
         Build prompt for combining sub-digests.
@@ -765,7 +652,7 @@ Return a JSON object with the following structure:
 Output only the JSON object, no additional text.
 """
 
-    def _format_sections_for_prompt(self, sections: list[dict]) -> str:
+    def _format_sections_for_prompt(self, sections: list[DigestSection] | list[dict]) -> str:
         """
         Format digest sections for inclusion in combination prompt.
 
@@ -780,7 +667,8 @@ Output only the JSON object, no additional text.
 
         formatted = []
         for i, section in enumerate(sections, 1):
-            formatted.append(f"{i}. {section.get('title', 'Untitled')}")
+            title = section.get("title", "Untitled") if isinstance(section, dict) else section.title
+            formatted.append(f"{i}. {title}")
 
         return "\n".join(formatted)
 
@@ -808,93 +696,8 @@ Output only the JSON object, no additional text.
             theme_count=len(themes),
         )
 
-        # Call LLM with provider failover
         try:
-            providers = self.model_config.get_providers_for_model(self.model)
-        except ValueError as e:
-            logger.error(f"No providers configured for model {self.model}: {e}")
-            raise RuntimeError(f"No providers available for digest generation: {e}")
-
-        # Filter for Anthropic-compatible providers
-        anthropic_providers = [p for p in providers if p.provider == Provider.ANTHROPIC]
-
-        if not anthropic_providers:
-            logger.error(f"No Anthropic-compatible providers for model {self.model}")
-            raise RuntimeError("No Anthropic providers available for digest generation")
-
-        # Try each provider in order
-        response = None
-        last_error = None
-
-        for provider_config in anthropic_providers:
-            try:
-                logger.info(f"Trying provider: {provider_config.provider.value}")
-                client = Anthropic(api_key=provider_config.api_key)
-
-                # Get provider-specific model ID for API call
-                provider_model_id = self.model_config.get_provider_model_id(
-                    self.model, provider_config.provider
-                )
-
-                # Get system prompt for digest creation
-                system_prompt = self.prompt_service.get_pipeline_prompt("digest_creation")
-
-                response = client.messages.create(
-                    model=provider_model_id,
-                    max_tokens=12000,  # Longer for full digest
-                    temperature=0.4,  # Slightly higher for narrative flow
-                    system=system_prompt,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-
-                # Track provider and token usage
-                self.provider_used = provider_config.provider
-                self.input_tokens = response.usage.input_tokens
-                self.output_tokens = response.usage.output_tokens
-                self.model_version = self.model_config.get_model_version(
-                    self.model, self.provider_used
-                )
-
-                break  # Success
-
-            except Exception as e:
-                error_msg = f"Error with provider {provider_config.provider.value}: {e!s}"
-                logger.error(error_msg)
-                last_error = str(e)
-                continue
-
-        if response is None:
-            error_msg = f"All providers failed. Last error: {last_error}"
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
-
-        # Calculate actual cost
-        cost = self.model_config.calculate_cost(
-            model_id=self.model,
-            input_tokens=self.input_tokens,
-            output_tokens=self.output_tokens,
-            provider=self.provider_used,
-        )
-
-        logger.info(
-            f"Digest generation completed, "
-            f"tokens: {self.input_tokens + self.output_tokens}, "
-            f"cost: ${cost:.4f}, "
-            f"provider: {self.provider_used.value}"
-        )
-
-        # Parse response
-        try:
-            response_text = response.content[0].text.strip()
-
-            # Remove markdown code blocks if present
-            if response_text.startswith("```"):
-                lines = response_text.split("\n")
-                response_text = "\n".join(lines[1:-1])
-                if response_text.startswith("json"):
-                    response_text = response_text[4:].strip()
-
-            digest_json = json.loads(response_text)
+            digest_json = await self._route_json(prompt, max_tokens=12000, temperature=0.4)
 
             # Convert sections to DigestSection objects
             digest_json["strategic_insights"] = [
@@ -911,7 +714,6 @@ Output only the JSON object, no additional text.
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse digest JSON: {e}")
-            logger.debug(f"Response: {response_text[:500]}")
             # Return minimal digest
             return {
                 "title": f"{request.digest_type.value.title()} Digest",
@@ -921,6 +723,51 @@ Output only the JSON object, no additional text.
                 "emerging_trends": [],
                 "actionable_recommendations": {},
             }
+
+    async def _route_json(
+        self,
+        user_prompt: str,
+        *,
+        max_tokens: int,
+        temperature: float,
+    ) -> dict:
+        """Route one digest generation call and preserve provider usage metadata."""
+
+        response = await self.llm_router.generate(
+            model=self.model,
+            system_prompt=self.prompt_service.get_pipeline_prompt("digest_creation"),
+            user_prompt=user_prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            step=ModelStep.DIGEST_CREATION,
+        )
+        self.provider_used = response.provider
+        self.input_tokens += response.input_tokens
+        self.output_tokens += response.output_tokens
+        self.model_version = response.model_version
+        self.model_used = response.selected_model or self.model
+        cost = self.model_config.calculate_cost(
+            model_id=self.model_used,
+            input_tokens=response.input_tokens,
+            output_tokens=response.output_tokens,
+            provider=response.provider,
+        )
+        logger.info(
+            "Digest LLM call completed: model=%s provider=%s tokens=%s cost=$%.4f",
+            self.model_used,
+            response.provider.value if response.provider else "unknown",
+            response.input_tokens + response.output_tokens,
+            cost,
+        )
+        raw_content = response.text.strip()
+        if "```json" in raw_content:
+            start = raw_content.find("```json") + 7
+            end = raw_content.find("```", start)
+            raw_content = raw_content[start:end].strip()
+        elif raw_content.startswith("```"):
+            lines = raw_content.split("\n")
+            raw_content = "\n".join(lines[1:-1]).removeprefix("json").strip()
+        return json.loads(raw_content)
 
     def _build_themes_context(self, themes: list[ThemeData]) -> str:
         """Build context string from themes."""
@@ -1023,87 +870,6 @@ Output only the JSON object, no additional text.
             max_followup_prompts=str(request.max_followup_prompts),
         )
 
-    async def _fetch_contents(
-        self,
-        start_date: datetime,
-        end_date: datetime,
-        status_filter: list[ContentStatus] | None = None,
-        content_query: ContentQuery | None = None,
-    ) -> list[dict]:
-        """
-        Fetch content records for the time period.
-
-        Uses the unified Content model instead of Newsletter.
-        When content_query is provided, uses ContentQueryService for
-        filtered selection with merge semantics for dates and statuses.
-
-        Args:
-            start_date: Period start date
-            end_date: Period end date
-            status_filter: Optional list of content statuses to include
-                          (default: COMPLETED only)
-            content_query: Optional ContentQuery for content selection override
-
-        Returns:
-            List of content dicts with standard fields
-        """
-        if content_query is not None:
-            from src.services.content_query import ContentQueryService
-
-            # Merge semantics: period dates as fallbacks, COMPLETED as default status
-            if not content_query.start_date:
-                content_query = content_query.model_copy(update={"start_date": start_date})
-            if not content_query.end_date:
-                content_query = content_query.model_copy(update={"end_date": end_date})
-            if not content_query.statuses:
-                content_query = content_query.model_copy(
-                    update={"statuses": [ContentStatus.COMPLETED]}
-                )
-
-            svc = ContentQueryService()
-            with get_db() as db:
-                query = svc.build_query(db, content_query)
-                contents = query.all()
-
-                return [
-                    {
-                        "id": c.id,
-                        "title": c.title,
-                        "publication": c.publication,
-                        "published_date": c.published_date,
-                        "url": c.source_url,
-                        "source_type": c.source_type.value,
-                    }
-                    for c in contents
-                ]
-
-        if status_filter is None:
-            status_filter = [ContentStatus.COMPLETED]
-
-        with get_db() as db:
-            contents = (
-                db.query(Content)
-                .filter(
-                    Content.published_date >= start_date,
-                    Content.published_date <= end_date,
-                    Content.status.in_(status_filter),
-                )
-                .order_by(Content.published_date.desc())
-                .all()
-            )
-
-            return [
-                {
-                    "id": c.id,
-                    "title": c.title,
-                    "publication": c.publication,
-                    "published_date": c.published_date,
-                    "url": c.source_url,
-                    "source_type": c.source_type.value,
-                }
-                for c in contents
-            ]
-
     def _build_sources(self, contents: list[dict]) -> list[dict]:
         """
         Build sources list for digest.
@@ -1127,7 +893,9 @@ Output only the JSON object, no additional text.
             sources.append(source)
         return sources
 
-    def _create_empty_digest(self, request: DigestRequest) -> DigestData:
+    def _create_empty_digest(
+        self, request: DigestRequest, resolved_set: ResolvedContentSet
+    ) -> DigestData:
         """Create an empty digest when no content found."""
         return DigestData(
             digest_type=request.digest_type,
@@ -1137,5 +905,30 @@ Output only the JSON object, no additional text.
             executive_overview="No content was published during this period.",
             newsletter_count=0,
             agent_framework=self.framework,
-            model_used=self.model,
+            model_used=self.model_used,
+            source_content_ids=[],
+            source_summary_ids=[],
+            selection_fingerprint=resolved_set.fingerprint,
+            selection_policy=resolved_set.policy.model_dump(mode="json"),
         )
+
+    def _validate_theme_provenance(
+        self,
+        themes: list[ThemeData],
+        resolved_set: ResolvedContentSet,
+    ) -> None:
+        """Reject themes that reference content outside the digest selection."""
+
+        available = set(resolved_set.content_ids)
+        outside = sorted(
+            {
+                content_id
+                for theme in themes
+                for content_id in theme.content_ids
+                if content_id not in available
+            }
+        )
+        if outside:
+            raise ProvenanceViolationError(
+                f"theme provenance contains content outside resolved set: {outside}"
+            )

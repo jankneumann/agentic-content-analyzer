@@ -1,0 +1,136 @@
+# Work Packages: db-source-overrides
+# Tier: coordinated. Parallel packages have non-overlapping write_allow scopes.
+
+packages:
+  - id: wp-contracts
+    name: "Contracts — DB schema + OpenAPI"
+    description: "Validate the source_overrides DB contract and the /api/v1/sources OpenAPI contract."
+    tasks: ["0.1"]
+    priority: 1
+    dependencies: []
+    scope:
+      write_allow:
+        - "openspec/changes/db-source-overrides/contracts/**"
+      read_allow: ["**"]
+    verification: tier_c
+
+  - id: wp-backend-core
+    name: "Backend core — key helper, model, migration, service, merge"
+    description: >
+      Natural-key helper + origin field in src/config/sources.py, the
+      source_overrides model + Alembic migration, SourceOverrideService with
+      validation/upsert/enable-disable, and the fail-open DB merge inside
+      load_sources_config().
+    tasks: ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8"]
+    priority: 2
+    dependencies: ["wp-contracts"]
+    scope:
+      write_allow:
+        - "src/config/sources.py"
+        - "src/models/source_override.py"
+        - "src/services/source_override_service.py"
+        - "alembic/versions/**"
+        - "tests/config/**"
+        - "tests/models/**"
+        - "tests/services/**"
+      read_allow: ["**"]
+      deny:
+        - "src/api/**"
+        - "src/cli/**"
+        - "web/**"
+    verification: tier_b
+    locks:
+      files:
+        - "src/config/sources.py"
+      keys:
+        - "db:schema:source_overrides"
+        - "py:src/config/sources.py:load_sources_config"
+      ttl_minutes: 180
+      reason: "Backend core: schema + source resolution merge"
+
+  - id: wp-backend-api
+    name: "Backend API — write routes + overview origin"
+    description: "Source write endpoints under /api/v1/sources and origin field on the overview."
+    tasks: ["2.1", "2.2"]
+    priority: 3
+    dependencies: ["wp-backend-core"]
+    scope:
+      write_allow:
+        - "src/api/source_routes.py"
+        - "src/api/source_write_routes.py"
+        - "src/api/app.py"
+        - "tests/api/**"
+      read_allow: ["**"]
+      deny:
+        - "src/cli/**"
+        - "web/**"
+    verification: tier_b
+    locks:
+      keys:
+        - "api:POST /api/v1/sources"
+        - "api:DELETE /api/v1/sources/{key}"
+      ttl_minutes: 120
+      reason: "Source write API"
+
+  - id: wp-cli
+    name: "CLI — aca sources commands"
+    description: "Dual-mode aca sources add/list/remove/enable/disable + ApiClient methods."
+    tasks: ["3.1", "3.2"]
+    priority: 3
+    dependencies: ["wp-backend-core", "wp-backend-api"]
+    scope:
+      write_allow:
+        - "src/cli/source_commands.py"
+        - "src/cli/api_client.py"
+        - "src/cli/main.py"
+        - "tests/cli/**"
+      read_allow: ["**"]
+      deny:
+        - "web/**"
+    verification: tier_b
+    locks:
+      keys:
+        - "cli:aca sources"
+      ttl_minutes: 120
+      reason: "Source CLI"
+
+  - id: wp-web
+    name: "Web — /settings/sources tab"
+    description: "SourcesConfigurator, route, api module, hooks, types, nav tab."
+    tasks: ["4.1", "4.2"]
+    priority: 3
+    dependencies: ["wp-backend-api"]
+    scope:
+      write_allow:
+        - "web/src/routes/settings/sources.tsx"
+        - "web/src/routes/settings.tsx"
+        - "web/src/components/settings/SourcesConfigurator.tsx"
+        - "web/src/lib/api/sources.ts"
+        - "web/src/lib/api/query-keys.ts"
+        - "web/src/hooks/use-settings.ts"
+        - "web/src/types/settings.ts"
+        - "web/src/lib/navigation.ts"
+        - "web/tests/**"
+      read_allow: ["**"]
+      deny:
+        - "src/**"
+    verification: tier_b
+    locks:
+      keys:
+        - "web:route:/settings/sources"
+      ttl_minutes: 120
+      reason: "Source settings UI"
+
+  - id: wp-integration
+    name: "Integration — e2e acceptance, docs, validation"
+    description: "End-to-end normaltech.ai acceptance, docs, full suite + openspec validate."
+    tasks: ["5.1", "5.2"]
+    priority: 4
+    dependencies: ["wp-backend-core", "wp-backend-api", "wp-cli", "wp-web"]
+    scope:
+      write_allow:
+        - "tests/**"
+        - "docs/**"
+        - "CLAUDE.md"
+      read_allow: ["**"]
+    verification: tier_a

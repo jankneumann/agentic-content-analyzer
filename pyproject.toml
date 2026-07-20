@@ -22,7 +22,14 @@ dependencies = [
     "asyncpg>=0.31.0",    # Async PostgreSQL driver (for PGQueuer)
 
     # Web Framework
-    "fastapi>=0.109.0",
+    # Cap FastAPI/Starlette to the last known-good line: newer releases
+    # (fastapi>=0.129 / starlette>=0.51) changed app/router internals so that
+    # include_router() registers no routes — the app starts with only its
+    # default/docs routes. CI installs unpinned (`uv pip install -e .[dev]`),
+    # so these upper bounds are what hold the resolution back from the break.
+    # Remove once the app is verified against the newer Starlette.
+    "fastapi>=0.109.0,<0.140",
+    "starlette<0.51",
     "uvicorn[standard]>=0.27.0",
     "python-multipart>=0.0.6",  # Required for FastAPI file uploads
 

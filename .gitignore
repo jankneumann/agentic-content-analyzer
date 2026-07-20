@@ -234,7 +234,6 @@ web/node_modules/
 *.tsbuildinfo
 
 # Package manager
-pnpm-lock.yaml
 package-lock.json
 yarn.lock
 
@@ -279,3 +278,6 @@ artifacts/
 # Tauri
 web/src-tauri/target/
 web/src-tauri/gen/
+
+# Generated architecture analysis artifacts (regenerate via /refresh-architecture)
+docs/architecture-analysis/

@@ -277,13 +277,13 @@ from src.models.content import Content, ContentSource, ContentStatus  # noqa: E4
 
 @pytest.fixture
 def references_v2_db(monkeypatch, db_session):
-    """Patch the new ``src.api.routes.reference_routes`` module's ``get_db``."""
+    """Patch the shared reference workflow service's database dependency."""
 
     @contextmanager
     def _fake_get_db():
         yield db_session
 
-    monkeypatch.setattr("src.api.routes.reference_routes.get_db", _fake_get_db)
+    monkeypatch.setattr("src.services.reference_workflow_service.get_db", _fake_get_db)
     return _fake_get_db
 
 

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.config.models import MODEL_REGISTRY, Provider, ProviderConfig
+from src.models.query import ResolvedContentSet, SelectionPolicy, compute_selection_fingerprint
 from src.models.theme import (
     ThemeAnalysisRequest,
     ThemeCategory,
@@ -111,7 +112,8 @@ def mock_llm_response_text() -> str:
       "Context windows expanding significantly",
       "Cost per token decreasing",
       "Multimodal capabilities improving"
-    ]
+    ],
+    "content_ids": [1, 3]
   },
   {
     "name": "Vector Databases",
@@ -128,7 +130,8 @@ def mock_llm_response_text() -> str:
     "key_points": [
       "Hybrid search combining vector and keyword",
       "Performance critical for production"
-    ]
+    ],
+    "content_ids": [2]
   }
 ]
 ```"""
@@ -180,30 +183,25 @@ async def test_analyze_themes_insufficient_newsletters():
         min_newsletters=5,
     )
 
+    policy = SelectionPolicy(start_date=request.start_date, end_date=request.end_date)
+    resolved = ResolvedContentSet(
+        policy=policy,
+        fingerprint=compute_selection_fingerprint(policy, [], []),
+    )
+    loader = MagicMock()
+    loader.load.return_value = ()
+
     with patch("src.processors.theme_analyzer.LLMRouter"):
-        with patch("src.processors.theme_analyzer.GraphitiClient") as mock_graphiti:
-            # GraphitiClient.create is an async classmethod
-            mock_graphiti.create = AsyncMock(return_value=mock_graphiti.return_value)
-            mock_graphiti.return_value.close = MagicMock()
-
-            with patch("src.processors.theme_analyzer.get_db") as mock_get_db:
-                mock_db = MagicMock()
-                # Return only 2 newsletters (less than min_newsletters=5)
-                mock_query = MagicMock()
-                mock_query.filter.return_value.order_by.return_value.all.return_value = [
-                    MagicMock(id=1, title="Test")
-                ] * 2
-                mock_db.query.return_value = mock_query
-                mock_get_db.return_value.__enter__.return_value = mock_db
-
-                analyzer = ThemeAnalyzer()
-                result = await analyzer.analyze_themes(request)
+        analyzer = ThemeAnalyzer(content_loader=loader)
+        analyzer._get_client = AsyncMock(return_value=None)
+        result = await analyzer.analyze_themes(request, resolved)
 
     # Should return empty result
     assert result.content_count == 0
     assert result.total_themes == 0
     assert len(result.themes) == 0
     assert result.model_used == analyzer.model
+    loader.load.assert_called_once_with(resolved)
 
 
 def test_build_summary_context(sample_newsletters, sample_summaries):
@@ -214,6 +212,7 @@ def test_build_summary_context(sample_newsletters, sample_summaries):
 
         # Check all newsletters are included
         assert "Tech Weekly - AI Advances" in context
+        assert "Content ID: 1" in context
         assert "Data News - Vector Databases" in context
         assert "AI Digest - LLM Updates" in context
 
@@ -255,6 +254,7 @@ def test_build_theme_extraction_prompt():
         assert "up to 10 distinct themes" in prompt
         assert "relevance_score >= 0.5" in prompt
         assert "JSON array" in prompt
+        assert "content_ids" in prompt
         assert "ml_ai" in prompt
         assert "emerging" in prompt
 
@@ -367,7 +367,7 @@ async def test_extract_themes_providers_failover(
                     text="[]",  # Empty JSON for simplicity
                     input_tokens=100,
                     output_tokens=50,
-                    provider=Provider.GOOGLE_VERTEX,
+                    provider=Provider.MICROSOFT_AZURE,
                     model_version="test-version",
                 ),
             ]
@@ -378,7 +378,7 @@ async def test_extract_themes_providers_failover(
         # Configure multiple providers including new ones
         providers = [
             ProviderConfig(provider=Provider.AWS_BEDROCK, api_key=""),
-            ProviderConfig(provider=Provider.GOOGLE_VERTEX, api_key=""),
+            ProviderConfig(provider=Provider.MICROSOFT_AZURE, api_key=""),
         ]
         analyzer.model_config.get_providers_for_model = MagicMock(return_value=providers)
         analyzer.model_config.calculate_cost = MagicMock(return_value=0.0015)
@@ -397,4 +397,4 @@ async def test_extract_themes_providers_failover(
         # Check providers used
         calls = mock_router_instance.generate.call_args_list
         assert calls[0].kwargs["provider"] == Provider.AWS_BEDROCK
-        assert calls[1].kwargs["provider"] == Provider.GOOGLE_VERTEX
+        assert calls[1].kwargs["provider"] == Provider.MICROSOFT_AZURE

@@ -41,9 +41,11 @@ from src.models.evaluation import (
     RoutingDecision,
     RoutingMode,
 )
+from src.models.filter_feedback_event import FilterFeedbackEvent
 from src.models.highlight import Highlight, HighlightResponse, HighlightSource, HighlightTargetKind
 from src.models.image import Image, ImageSource
 from src.models.notification import DeviceRegistration, NotificationEvent, NotificationEventType
+from src.models.persona_filter_profile import PersonaFilterProfile
 from src.models.podcast import Podcast, PodcastLength, PodcastScriptRecord, PodcastStatus
 from src.models.revision import RevisionContext, RevisionResult, RevisionTurn
 from src.models.search import (
@@ -57,6 +59,8 @@ from src.models.search import (
     SearchType,
 )
 from src.models.settings import PromptOverride
+from src.models.settings_override import SettingsOverride
+from src.models.source_override import SourceOverride
 from src.models.summary import NewsletterSummary, Summary, SummaryData
 from src.models.theme import ThemeAnalysis
 from src.models.topic import KBIndex, Topic, TopicNote, TopicNoteType, TopicStatus
@@ -171,6 +175,11 @@ __all__ = [
     "Preference",
     # Settings
     "PromptOverride",
+    "SettingsOverride",
+    "SourceOverride",
+    # Ingestion filter
+    "PersonaFilterProfile",
+    "FilterFeedbackEvent",
     # YouTube
     "YouTubeTranscript",
     "TranscriptSegment",

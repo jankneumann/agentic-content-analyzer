@@ -76,6 +76,7 @@ dependencies = [
     { name = "rich" },
     { name = "sendgrid" },
     { name = "sqlalchemy" },
+    { name = "starlette" },
     { name = "substack-api" },
     { name = "tavily-python" },
     { name = "tiktoken" },
@@ -134,7 +135,7 @@ vault = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.13.0" },
     { name = "anthropic", specifier = ">=0.40.0" },
-    { name = "asyncpg", specifier = ">=0.30.0" },
+    { name = "asyncpg", specifier = ">=0.31.0" },
     { name = "beautifulsoup4", specifier = ">=4.12.0" },
     { name = "braintrust", marker = "extra == 'braintrust'", specifier = ">=0.0.160" },
     { name = "cohere", marker = "extra == 'embeddings'", specifier = ">=5.0.0" },
@@ -142,11 +143,11 @@ requires-dist = [
     { name = "docling", specifier = ">=2.60.0" },
     { name = "docling", extras = ["ocr"], marker = "extra == 'ocr'", specifier = ">=2.60.0" },
     { name = "factory-boy", marker = "extra == 'dev'", specifier = ">=3.3.0" },
-    { name = "fastapi", specifier = ">=0.109.0" },
+    { name = "fastapi", specifier = ">=0.109.0,<0.129" },
     { name = "feedparser", specifier = ">=6.0.11" },
     { name = "google-api-python-client", specifier = ">=2.116.0" },
     { name = "google-auth", specifier = ">=2.27.0" },
-    { name = "google-auth-httplib2", specifier = ">=0.2.0" },
+    { name = "google-auth-httplib2", specifier = ">=0.3.1" },
     { name = "google-auth-oauthlib", specifier = ">=1.2.0" },
     { name = "google-cloud-aiplatform", marker = "extra == 'image-generation'", specifier = ">=1.38.0" },
     { name = "google-genai", specifier = ">=1.0.0" },
@@ -171,7 +172,7 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-logging", specifier = ">=0.41b0" },
     { name = "opentelemetry-instrumentation-sqlalchemy", specifier = ">=0.41b0" },
     { name = "opentelemetry-sdk", specifier = ">=1.20.0" },
-    { name = "pgqueuer", specifier = ">=0.25.0" },
+    { name = "pgqueuer", specifier = ">=0.26.3" },
     { name = "pgvector", specifier = ">=0.3.0" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.7.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.6.0" },
@@ -196,6 +197,7 @@ requires-dist = [
     { name = "sendgrid", specifier = ">=6.11.0" },
     { name = "sentence-transformers", marker = "extra == 'embeddings'", specifier = ">=2.2.0" },
     { name = "sqlalchemy", specifier = ">=2.0.0" },
+    { name = "starlette", specifier = "<0.51" },
     { name = "substack-api", specifier = ">=1.1.3" },
     { name = "tavily-python", specifier = ">=0.3.0" },
     { name = "tiktoken", specifier = ">=0.5.0" },
@@ -205,7 +207,7 @@ requires-dist = [
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.27.0" },
     { name = "voyageai", marker = "extra == 'embeddings'", specifier = ">=0.2.0" },
-    { name = "xai-sdk", specifier = ">=1.3.1" },
+    { name = "xai-sdk", specifier = ">=1.11.0" },
     { name = "youtube-transcript-api", specifier = ">=0.6.0" },
 ]
 provides-extras = ["dev", "ocr", "braintrust", "metrics", "vault", "embeddings", "image-generation", "crawl4ai", "kreuzberg"]
@@ -462,15 +464,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/be/a5/8e3f9b6771b0b408517c82d97aed8f2036509bc247d46114925e32fe33f0/asttokens-3.0.1.tar.gz", hash = "sha256:71a4ee5de0bde6a31d64f6b13f2293ac190344478f081c3d1bccfcf5eacb0cb7", size = 62308, upload-time = "2025-11-15T16:43:48.578Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d2/39/e7eaf1799466a4aef85b6a4fe7bd175ad2b1c6345066aa33f1f58d4b18d0/asttokens-3.0.1-py3-none-any.whl", hash = "sha256:15a3ebc0f43c2d0a50eeafea25e19046c68398e487b9f1f5b517f7c0f40f976a", size = 27047, upload-time = "2025-11-15T16:43:16.109Z" },
-]
-
-[[package]]
-name = "async-timeout"
-version = "5.0.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a5/ae/136395dfbfe00dfc94da3f3e136d0b13f394cba8f4841120e34226265780/async_timeout-5.0.1.tar.gz", hash = "sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3", size = 9274, upload-time = "2024-11-06T16:41:39.6Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fe/ba/e2081de779ca30d473f21f5b30e0e737c438205440784c7dfc81efc2b029/async_timeout-5.0.1-py3-none-any.whl", hash = "sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c", size = 6233, upload-time = "2024-11-06T16:41:37.9Z" },
 ]
 
 [[package]]
@@ -1734,15 +1727,15 @@ requests = [
 
 [[package]]
 name = "google-auth-httplib2"
-version = "0.3.0"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-auth" },
     { name = "httplib2" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d5/ad/c1f2b1175096a8d04cf202ad5ea6065f108d26be6fc7215876bde4a7981d/google_auth_httplib2-0.3.0.tar.gz", hash = "sha256:177898a0175252480d5ed916aeea183c2df87c1f9c26705d74ae6b951c268b0b", size = 11134, upload-time = "2025-12-15T22:13:51.825Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1c/b3/f192c8bc7e41e0ebdbd95afcae4783417a34b6a6af62d22daf22c3fd38fc/google_auth_httplib2-0.4.0.tar.gz", hash = "sha256:d5b030a204b7a4b4d553ba9ca701b62481ee2b74419325580be70f7d85ffed35", size = 11161, upload-time = "2026-05-07T08:03:46.878Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/99/d5/3c97526c8796d3caf5f4b3bed2b05e8a7102326f00a334e7a438237f3b22/google_auth_httplib2-0.3.0-py3-none-any.whl", hash = "sha256:426167e5df066e3f5a0fc7ea18768c08e7296046594ce4c8c409c2457dd1f776", size = 9529, upload-time = "2025-12-15T22:13:51.048Z" },
+    { url = "https://files.pythonhosted.org/packages/97/be/954c35a62b9e31de66b0a43c225c9b6bb9e0f98d6b1dc110a2308e3644f5/google_auth_httplib2-0.4.0-py3-none-any.whl", hash = "sha256:8e55cfafa3358cba85f6cad4a886138e88e158d71e7e5c9ee5936a5c1507fb91", size = 9529, upload-time = "2026-05-07T08:02:12.375Z" },
 ]
 
 [[package]]
@@ -4061,11 +4054,10 @@ wheels = [
 
 [[package]]
 name = "pgqueuer"
-version = "0.25.3"
+version = "1.0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
-    { name = "async-timeout" },
     { name = "croniter" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -4073,9 +4065,9 @@ dependencies = [
     { name = "typer" },
     { name = "uvloop", marker = "sys_platform != 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/db/16/0b7e68597d10110283bf98679aa72139ab43415215f1adc7fa03035373ab/pgqueuer-0.25.3.tar.gz", hash = "sha256:542f109073ed7266dfca890dda0dc234b980d1ccd8e9a3bd18fd1a6580c1a7e4", size = 322103, upload-time = "2025-12-03T08:05:48.101Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6b/ce/6213b0c74e80fef5a619581a2e0c163e11f1fc7eea383ff4888b93a48bc8/pgqueuer-1.0.2.tar.gz", hash = "sha256:fe418d594f9eca6ca6e4110c9eda89a0fa75126acef2079906f460d8a4384b9e", size = 372447, upload-time = "2026-05-29T21:00:04.938Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/35/7d/450c3a013c47b517c99bd76ee05c0a5de2acae14065ffa40c3fa7c199ff3/pgqueuer-0.25.3-py3-none-any.whl", hash = "sha256:0dc29f95d6eec6809d54b954185239c9f9fd2af8567493beaae8245bf1f768c3", size = 69407, upload-time = "2025-12-03T08:05:46.836Z" },
+    { url = "https://files.pythonhosted.org/packages/06/fd/d3050244871bf576946c4104a7bbf30fbccf41c884f11cae0cfbeb219c37/pgqueuer-1.0.2-py3-none-any.whl", hash = "sha256:15ecaf21aa01b3e59fa7ff965caa5a747f46b9d7921f0a14639ddfdd0bef2dc1", size = 97503, upload-time = "2026-05-29T21:00:03.287Z" },
 ]
 
 [[package]]
@@ -6828,7 +6820,7 @@ wheels = [
 
 [[package]]
 name = "xai-sdk"
-version = "1.7.0"
+version = "1.17.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -6840,9 +6832,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1c/3e/cf9ffdf444ec3d495b8f4a6b3934c86088900aeb131cf2d81535b218e615/xai_sdk-1.7.0.tar.gz", hash = "sha256:649e7c3bff01510326f13a709dff824256fcdfd2850e21606d25870208989bd1", size = 390582, upload-time = "2026-02-18T20:53:23.352Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0d/79/722beabb2ffbac413e4e776230ee56db2710e83c02f038f5769f9da748c1/xai_sdk-1.17.0.tar.gz", hash = "sha256:ec695ad8b459a4080c01f6e7bb8abf38ed6a4ec69532bfdd73c4de14db1d485c", size = 452803, upload-time = "2026-06-12T03:44:13.329Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3c/e9/e0fb57dc5b2580aa6390a836cf81d507f8017888ab8197600489118cc677/xai_sdk-1.7.0-py3-none-any.whl", hash = "sha256:332672c46ee73a7aad9b05e82db5a5044174bb3f5f038a7acf703f0b0ce6bad0", size = 241650, upload-time = "2026-02-18T20:53:22.016Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/ad/99ad3209727f6e0e280681c05aa6a49feb130926d939bdb4767ee825b0da/xai_sdk-1.17.0-py3-none-any.whl", hash = "sha256:88a6a53181fa13d55662e3296dafd2a3cf258803450b7d82c7318b8c64e8a485", size = 273997, upload-time = "2026-06-12T03:44:11.828Z" },
 ]
 
 [[package]]

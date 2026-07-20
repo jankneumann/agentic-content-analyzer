@@ -70,25 +70,49 @@ async def _claim_jobs(
     return [dict(row) for row in rows]
 
 
-async def _complete_job(conn: asyncpg.Connection, job_id: int) -> None:
-    """Mark a job as completed."""
-    await conn.execute(
+async def _complete_job(conn: asyncpg.Connection, job_id: int) -> bool:
+    """Mark uncancelled active work completed without overwriting terminal state."""
+    completed_id = await conn.fetchval(
         """
         UPDATE pgqueuer_jobs
         SET status = 'completed', completed_at = NOW(), heartbeat_at = NOW()
         WHERE id = $1
+          AND status = 'in_progress'
+          AND NOT COALESCE((payload->>'cancel_requested')::boolean, FALSE)
+        RETURNING id
         """,
         job_id,
     )
+    return completed_id is not None
+
+
+async def _checkpoint_job_cancellation(conn: asyncpg.Connection, job_id: int) -> bool:
+    """Resolve a cancellation that raced the handler's final safe checkpoint."""
+
+    row = await conn.fetchrow(
+        """
+        UPDATE pgqueuer_jobs
+        SET status = 'cancelled',
+            payload = COALESCE(payload, '{}'::jsonb) || '{"message":"Cancelled"}'::jsonb,
+            completed_at = NOW(),
+            heartbeat_at = NOW()
+        WHERE id = $1
+          AND status = 'in_progress'
+          AND COALESCE((payload->>'cancel_requested')::boolean, FALSE)
+        RETURNING id
+        """,
+        job_id,
+    )
+    return row is not None
 
 
 async def _fail_job(conn: asyncpg.Connection, job_id: int, error: str) -> None:
-    """Mark a job as failed with an error message."""
+    """Mark an active job failed without overwriting a terminal state."""
     await conn.execute(
         """
         UPDATE pgqueuer_jobs
         SET status = 'failed', error = $2, completed_at = NOW(), heartbeat_at = NOW()
-        WHERE id = $1
+        WHERE id = $1 AND status = 'in_progress'
         """,
         job_id,
         error[:1000],  # Truncate long error messages
@@ -209,14 +233,22 @@ async def _process_job(
 
         await touch_job_heartbeat(job_id)
         await handler(job_id, payload)
-        await _complete_job(conn, job_id)
-        logger.info(f"Job {job_id} ({entrypoint}) completed")
-        await _emit_job_notification(job_id, entrypoint, payload)
+        if await _complete_job(conn, job_id):
+            logger.info(f"Job {job_id} ({entrypoint}) completed")
+            await _emit_job_notification(job_id, entrypoint, payload)
+        elif await _checkpoint_job_cancellation(conn, job_id):
+            logger.info(f"Job {job_id} ({entrypoint}) cancelled before completion")
+        else:
+            logger.info(f"Job {job_id} ({entrypoint}) reached a terminal state in its handler")
     except Exception as e:
         logger.error(f"Job {job_id} ({entrypoint}) failed: {e}", exc_info=True)
-        generic_error = "Job failed due to an internal error"
-        await _fail_job(conn, job_id, generic_error)
-        await _emit_job_notification(job_id, entrypoint, payload, error=generic_error)
+        from src.queue.workflow_handlers import WorkflowHandlerError
+
+        persisted_error = (
+            str(e) if isinstance(e, WorkflowHandlerError) else "Job failed due to an internal error"
+        )
+        await _fail_job(conn, job_id, persisted_error)
+        await _emit_job_notification(job_id, entrypoint, payload, error=persisted_error)
     finally:
         heartbeat_task.cancel()
         await asyncio.gather(heartbeat_task, return_exceptions=True)
@@ -307,6 +339,24 @@ async def run_worker(
         await conn.close()
 
 
+def _prepare_forced_summary(content_id: int) -> None:
+    """Remove an existing summary so the item processor performs fresh work."""
+
+    from src.models.content import Content, ContentStatus
+    from src.models.summary import Summary
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        content = db.get(Content, content_id)
+        if content is None:
+            raise ValueError(f"Content {content_id} not found")
+        db.query(Summary).filter(Summary.content_id == content_id).delete(synchronize_session=False)
+        content.status = ContentStatus.PARSED
+        content.error_message = None
+        content.processed_at = None
+        db.commit()
+
+
 def register_all_handlers() -> None:
     """Register all job handlers.
 
@@ -317,6 +367,9 @@ def register_all_handlers() -> None:
     _register_content_handlers()
     _register_reference_handlers()
     _register_agent_handlers()
+    from src.queue.workflow_handlers import register_canonical_workflow_handlers
+
+    register_canonical_workflow_handlers(register_handler)
     logger.info(f"Registered {len(_handlers)} job handlers: {list(_handlers.keys())}")
 
 
@@ -376,8 +429,12 @@ def _register_content_handlers() -> None:
         content_id = payload.get("content_id")
         if not content_id:
             raise ValueError("Missing content_id")
+        force_reprocess = bool(payload.get("force_reprocess", payload.get("force", False)))
 
         await update_job_progress(job_id, 10, "Starting summarization")
+
+        if force_reprocess:
+            await _asyncio.to_thread(_prepare_forced_summary, content_id)
 
         RATE_LIMIT_BACKOFF_DELAYS = [5, 10, 20]
         last_error: Exception | None = None
@@ -525,6 +582,7 @@ def _register_content_handlers() -> None:
                     **({"title": payload["title"]} if "title" in payload else {}),
                     **({"tags": payload["tags"]} if "tags" in payload else {}),
                     **({"notes": payload["notes"]} if "notes" in payload else {}),
+                    **({"auto_route": payload["auto_route"]} if "auto_route" in payload else {}),
                 },
             ),
             "huggingface_papers": (

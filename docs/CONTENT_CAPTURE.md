@@ -126,6 +126,25 @@ Content-Type: application/json
 }
 ```
 
+### Auto-routing
+
+Saved URLs are **auto-routed** to the appropriate ingest handler based on the
+URL shape (`src/ingestion/url_router.py`, `classify_url`):
+
+| URL shape | Route | Handler |
+|-----------|-------|---------|
+| `youtube.com/watch?v=…`, `youtu.be/…` | `youtube_video` | YouTube transcript/analysis; fills this row in place |
+| `youtube.com/playlist?list=…` | `youtube_playlist` | Playlist ingestion (entries become their own rows; this row becomes a receipt) |
+| `…/feed`, `*.rss`, `*.atom`, `?feed=…`, `*.substack.com/feed` | `rss_feed` | RSS ingestion (entries become their own rows; this row becomes a receipt) |
+| anything else | `webpage` | Generic Trafilatura extraction (unchanged) |
+
+Classification is deterministic and network-free (URL patterns only). The
+chosen route is recorded on the row's `metadata_json.route`, and the response
+`message` names the route (e.g. `"URL saved. Routed to youtube_video ingestion."`).
+
+The same routing powers the CLI: `aca ingest url <url>` routes by default; pass
+`--no-route` to force generic web-page extraction regardless of the URL.
+
 ## Save Page API (Full Page Capture)
 
 The Chrome extension uses this endpoint when full page capture is enabled:

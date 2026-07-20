@@ -7,7 +7,7 @@
  * Route: /themes
  */
 
-import { useEffect, useRef, useState } from "react"
+import { useState } from "react"
 import { createRoute } from "@tanstack/react-router"
 import { BarChart3, LayoutGrid, Network, Table2, RefreshCw, Loader2, CheckCircle, History, Clock } from "lucide-react"
 import { toast } from "sonner"
@@ -43,22 +43,11 @@ export const ThemesRoute = createRoute({
 
 function ThemesPage() {
   const [showAnalyzeDialog, setShowAnalyzeDialog] = useState(false)
-  const [currentAnalysisId, setCurrentAnalysisId] = useState<number | null>(null)
+  const [currentAnalysisId] = useState<number | null>(null)
   const [selectedHistoryId, setSelectedHistoryId] = useState<number | null>(null)
   const [view, setView] = useState<ThemeView>("cards")
   const [graphTab, setGraphTab] = useState<GraphTab>("network")
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  // Clean up polling interval on unmount
-  useEffect(() => {
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current)
-      }
-    }
-  }, [])
-
-  const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
+  const { addOperation } = useBackgroundTasks()
   const analyzeMutation = useAnalyzeThemes()
   const { data: analysisStatus } = useAnalysisStatus(currentAnalysisId)
   const { data: latestAnalysis, refetch: refetchLatest } = useLatestAnalysis()
@@ -81,78 +70,20 @@ function ThemesPage() {
   const handleAnalyze = (params: ThemeAnalysisParams) => {
     setShowAnalyzeDialog(false)
 
-    const taskId = addTask({
-      type: "themes",
-      title: "Analyze Themes",
-      message: "Starting theme analysis...",
-    })
-
     analyzeMutation.mutate(
       {
         start_date: params.start_date,
         end_date: params.end_date,
         max_themes: params.max_themes,
-        min_newsletters: params.min_newsletters,
-        relevance_threshold: params.relevance_threshold,
-        include_historical_context: params.include_historical_context,
       },
       {
-        onSuccess: (response) => {
-          if (response.analysis_id) {
-            setCurrentAnalysisId(response.analysis_id)
-            updateTask(taskId, { progress: 20, message: "Analyzing newsletters..." })
-
-            // Poll for completion
-            let pollCount = 0
-            const maxPolls = 120 // 10 minutes max (5s intervals)
-
-            pollIntervalRef.current = setInterval(async () => {
-              pollCount++
-              const progressPercent = Math.min(20 + pollCount * 0.6, 95)
-              updateTask(taskId, {
-                progress: Math.round(progressPercent),
-                message:
-                  pollCount < 15
-                    ? "Fetching newsletter summaries..."
-                    : pollCount < 30
-                      ? "Querying knowledge graph..."
-                      : pollCount < 60
-                        ? "Extracting themes with AI..."
-                        : pollCount < 90
-                          ? "Adding historical context..."
-                          : "Finalizing analysis...",
-              })
-
-              // Check analysis status
-              const result = await refetchLatest()
-              const completed = result.data && "themes" in result.data
-
-              if (completed || pollCount >= maxPolls) {
-                if (pollIntervalRef.current) {
-                  clearInterval(pollIntervalRef.current)
-                  pollIntervalRef.current = null
-                }
-                setCurrentAnalysisId(null)
-
-                if (completed && "themes" in result.data) {
-                  completeTask(taskId, `Found ${result.data.total_themes} themes`)
-                  toast.success(`Theme analysis complete: ${result.data.total_themes} themes identified`)
-                } else {
-                  updateTask(taskId, { progress: 95, message: "Analysis may still be running..." })
-                }
-              }
-            }, 5000)
-          }
-        },
+        onSuccess: (operation) => { addOperation(operation); toast.success("Theme analysis queued") },
         onError: (err) => {
           const errorMsg = err instanceof Error ? err.message : "Unknown error"
-          failTask(taskId, errorMsg)
           toast.error(`Failed to analyze themes: ${errorMsg}`)
         },
       }
     )
-
-    updateTask(taskId, { progress: 10, message: "Queuing analysis..." })
   }
 
   return (

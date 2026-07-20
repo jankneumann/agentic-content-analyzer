@@ -292,9 +292,9 @@
             } catch { return []; }
         }
 
-        function addRecentSave(url, title, contentId) {
+        function addRecentSave(url, title, operationId) {
             const saves = loadRecentSaves();
-            saves.unshift({ url: url, title: title || url, contentId: contentId, time: Date.now() });
+            saves.unshift({ url: url, title: title || url, operationId: operationId, time: Date.now() });
             if (saves.length > MAX_RECENT) saves.length = MAX_RECENT;
             localStorage.setItem(RECENT_KEY, JSON.stringify(saves));
             renderRecentSaves();
@@ -353,13 +353,13 @@
             try {
                 const formData = new FormData(form);
                 const data = {
+                    kind: 'url',
                     url: formData.get('url'),
                     title: formData.get('title') || null,
-                    excerpt: formData.get('excerpt') || null,
-                    source: 'web_save_page'
+                    notes: formData.get('excerpt') || null
                 };
 
-                const response = await fetch(API_BASE + '/api/v1/content/save-url', {
+                const response = await fetch(API_BASE + '/api/v1/ingestions', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -370,10 +370,8 @@
                 const result = await response.json();
 
                 if (response.ok) {
-                    const contentId = Number(result.content_id);
-                    const msg = result.duplicate
-                        ? 'URL already saved (ID: ' + contentId + '). '
-                        : 'Saved! Content ID: ' + contentId + '. Extraction in progress. ';
+                    const operationId = String(result.operation_id);
+                    const msg = 'Queued! Operation ID: ' + operationId + '. ';
 
                     showStatusWithContent('success', function(el) {
                         el.appendChild(document.createTextNode(msg));
@@ -388,7 +386,7 @@
                     submitBtn.disabled = true;
 
                     // Track in recent saves
-                    addRecentSave(data.url, data.title, result.content_id);
+                    addRecentSave(data.url, data.title, operationId);
                 } else {
                     throw new Error(result.detail || 'Save failed');
                 }

@@ -18,10 +18,10 @@ import type {
   ScriptListItem,
   ScriptReviewStatistics,
   GenerateScriptRequest,
-  GenerateScriptResponse,
 } from "@/types"
 import type { ScriptDetail } from "@/types/review"
 import type { SortOrder } from "@/types"
+import type { OperationHandle, PodcastScriptRequest } from "@/generated/workflow-contracts"
 
 /**
  * Script filters for list queries
@@ -141,8 +141,9 @@ export async function fetchScriptSection(
  */
 export async function generateScript(
   request: GenerateScriptRequest
-): Promise<GenerateScriptResponse> {
-  return apiClient.post<GenerateScriptResponse>("/scripts/generate", request)
+): Promise<OperationHandle> {
+  const canonical: PodcastScriptRequest = { digest_id: request.digest_id, length: request.length, enable_web_search: request.enable_web_search, custom_focus_topics: request.custom_focus_topics }
+  return apiClient.post<OperationHandle>("/podcast-scripts", canonical)
 }
 
 /**
@@ -160,11 +161,7 @@ export async function regenerateScript(
   script_id: number
   message: string
 }> {
-  return apiClient.post<{
-    status: string
-    script_id: number
-    message: string
-  }>(`/scripts/${scriptId}/regenerate`, { conversation_id: conversationId })
+  throw new Error(`Script regeneration is unavailable after the workflow migration (${scriptId}, ${conversationId})`)
 }
 
 /**

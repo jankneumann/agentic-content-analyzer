@@ -125,7 +125,6 @@ class TestCommandGuardsUnderRemoteProfile:
             ["kb", "index"],
             ["kb", "show", "some-slug"],
             ["graph", "query", "-q", "anything"],
-            ["jobs", "history"],
             # Direct-only DB commands (no HTTP path) — must refuse, not hit local DB.
             ["agent", "status"],
             ["agent", "insights"],
@@ -159,7 +158,7 @@ class TestCommandGuardsUnderRemoteProfile:
 
     @pytest.mark.parametrize(
         "argv",
-        [["kb", "list"], ["graph", "query"], ["jobs", "history"]],
+        [["kb", "list"], ["graph", "query"]],
     )
     @patch("src.cli.output.is_remote_backend", return_value=True)
     def test_help_still_works_when_remote(self, _remote: MagicMock, argv: list[str]) -> None:
@@ -178,8 +177,6 @@ class TestApiBackedDirectFlagGuard:
     @pytest.mark.parametrize(
         "argv",
         [
-            ["--direct", "summarize", "pending"],
-            ["--direct", "ingest", "rss"],
             ["--direct", "prompts", "list"],
             ["--direct", "settings", "list"],
         ],

@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from src.config.settings import settings
@@ -76,6 +77,7 @@ class FileContentIngestionService:
         prefer_structured: bool = False,
         ocr_needed: bool = False,
         format_hint: str | None = None,
+        force_reprocess: bool = False,
     ) -> Content:
         """Ingest a file and create a Content record.
 
@@ -111,7 +113,7 @@ class FileContentIngestionService:
 
         # Check for existing duplicate
         existing = self._find_duplicate(file_hash)
-        if existing:
+        if existing and not force_reprocess:
             logger.info(f"Found existing content with hash {file_hash[:8]}...")
             return self._create_duplicate_link(existing, file_path, publication)
 
@@ -125,7 +127,7 @@ class FileContentIngestionService:
         )
 
         # Create content record
-        content = self._create_content(
+        parsed_content = self._create_content(
             doc_content=doc_content,
             file_path=file_path,
             file_hash=file_hash,
@@ -133,7 +135,11 @@ class FileContentIngestionService:
             title_override=title,
         )
 
-        self.db.add(content)
+        if existing is not None:
+            content = self._update_content(existing, parsed_content)
+        else:
+            content = parsed_content
+            self.db.add(content)
         self.db.commit()
         self.db.refresh(content)
 
@@ -156,6 +162,7 @@ class FileContentIngestionService:
         publication: str | None = None,
         title: str | None = None,
         format_hint: str | None = None,
+        force_reprocess: bool = False,
     ) -> Content:
         """Ingest raw bytes and create a Content record.
 
@@ -187,7 +194,7 @@ class FileContentIngestionService:
 
         # Check for existing duplicate
         existing = self._find_duplicate(file_hash)
-        if existing:
+        if existing and not force_reprocess:
             logger.info(f"Found existing content with hash {file_hash[:8]}...")
             return self._create_duplicate_link(existing, Path(filename), publication)
 
@@ -200,7 +207,7 @@ class FileContentIngestionService:
         doc_content = await self.router.parse(file_bytes, format_hint=format_hint)  # type: ignore[arg-type]
 
         # Create content record
-        content = self._create_content(
+        parsed_content = self._create_content(
             doc_content=doc_content,
             file_path=Path(filename),
             file_hash=file_hash,
@@ -208,7 +215,11 @@ class FileContentIngestionService:
             title_override=title,
         )
 
-        self.db.add(content)
+        if existing is not None:
+            content = self._update_content(existing, parsed_content)
+        else:
+            content = parsed_content
+            self.db.add(content)
         self.db.commit()
         self.db.refresh(content)
 
@@ -228,11 +239,18 @@ class FileContentIngestionService:
         return await asyncio.to_thread(calculate_file_hash_sync, file_path)
 
     def _find_duplicate(self, file_hash: str) -> Content | None:
-        """Find existing content with the same file hash."""
+        """Find the canonical upload with the same raw file digest."""
         return (
             self.db.query(Content)
-            .filter(Content.content_hash == file_hash)
             .filter(Content.source_type == ContentSource.FILE_UPLOAD)
+            .filter(Content.canonical_id.is_(None))
+            .filter(
+                or_(
+                    Content.source_id == f"file:{file_hash}",
+                    Content.metadata_json["file_sha256"].as_string() == file_hash,
+                    Content.source_id.like(f"file_{file_hash[:16]}_%"),
+                )
+            )
             .first()
         )
 
@@ -300,8 +318,7 @@ class FileContentIngestionService:
         if not title:
             title = file_path.stem
 
-        # Generate unique source_id from hash and timestamp
-        source_id = f"file_{file_hash[:16]}_{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+        source_id = f"file:{file_hash}"
 
         # Generate content hash from markdown (for future dedup by content)
         markdown_hash = generate_markdown_hash(doc_content.markdown_content)
@@ -324,6 +341,7 @@ class FileContentIngestionService:
             links_json=doc_content.links,
             metadata_json={
                 "filename": file_path.name,
+                "file_sha256": file_hash,
                 "source_format": doc_content.source_format.value
                 if doc_content.source_format
                 else None,
@@ -341,6 +359,31 @@ class FileContentIngestionService:
             status=ContentStatus.PARSED,
             ingested_at=datetime.now(UTC),
         )
+
+    @staticmethod
+    def _update_content(existing: Content, parsed: Content) -> Content:
+        """Replace parsed fields while preserving the canonical row identity."""
+        for name in (
+            "source_url",
+            "title",
+            "author",
+            "publication",
+            "published_date",
+            "markdown_content",
+            "tables_json",
+            "links_json",
+            "metadata_json",
+            "raw_content",
+            "raw_format",
+            "parser_used",
+            "parser_version",
+            "content_hash",
+            "status",
+            "ingested_at",
+        ):
+            setattr(existing, name, getattr(parsed, name))
+        existing.canonical_id = None
+        return existing
 
     def get_supported_formats(self) -> list[str]:
         """Get list of supported file formats."""

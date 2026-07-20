@@ -166,18 +166,10 @@ function PodcastsPage() {
   )
   const { data: scripts } = useScripts({ status: "script_approved" })
   const generateMutation = useGenerateAudio()
-  const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
+  const { addOperation } = useBackgroundTasks()
 
   const handleGenerateAudio = (params: AudioGenerationParams) => {
-    // Close dialog immediately - task runs in background
     setShowGenerateDialog(false)
-
-    // Add background task
-    const taskId = addTask({
-      type: "audio",
-      title: "Generate Podcast Audio",
-      message: "Starting audio generation...",
-    })
 
     generateMutation.mutate(
       {
@@ -187,68 +179,13 @@ function PodcastsPage() {
         sam_voice: params.sam_voice,
       },
       {
-        onSuccess: () => {
-          // API returns "queued" - actual work happens in background
-          // Poll for completion by checking podcast list
-          updateTask(taskId, { progress: 20, message: "Processing script sections..." })
-
-          let pollCount = 0
-          const maxPolls = 120 // 10 minutes max (5s intervals) - audio gen is slow
-
-          const pollInterval = setInterval(async () => {
-            pollCount++
-            const progressPercent = Math.min(20 + pollCount * 0.6, 95)
-            updateTask(taskId, {
-              progress: Math.round(progressPercent),
-              message:
-                pollCount < 15
-                  ? "Processing script sections..."
-                  : pollCount < 30
-                    ? "Generating audio segments..."
-                    : pollCount < 60
-                      ? "Synthesizing voices..."
-                      : pollCount < 90
-                        ? "Combining audio tracks..."
-                        : "Encoding final audio...",
-            })
-
-            const result = await refetch()
-            // Look for a podcast that just completed or is generating for this script
-            const newPodcast = result.data?.find(
-              (p) => p.script_id === params.script_id && p.status === "completed"
-            )
-            const generatingPodcast = result.data?.find(
-              (p) => p.script_id === params.script_id && p.status === "generating"
-            )
-            const failedPodcast = result.data?.find(
-              (p) => p.script_id === params.script_id && p.status === "failed"
-            )
-
-            if (newPodcast || failedPodcast || pollCount >= maxPolls) {
-              clearInterval(pollInterval)
-              if (newPodcast) {
-                completeTask(taskId, "Audio generated successfully")
-                toast.success("Podcast audio generated")
-              } else if (failedPodcast) {
-                failTask(taskId, failedPodcast.error_message ?? "Audio generation failed")
-                toast.error(`Audio generation failed: ${failedPodcast.error_message}`)
-              } else if (!generatingPodcast) {
-                // No generating podcast found after timeout
-                updateTask(taskId, { progress: 95, message: "Generation may still be in progress..." })
-              }
-            }
-          }, 5000)
-        },
+        onSuccess: (operation) => { addOperation(operation); toast.success("Podcast audio queued") },
         onError: (err) => {
           const errorMsg = err instanceof Error ? err.message : "Unknown error"
-          failTask(taskId, errorMsg)
           toast.error(`Failed to generate audio: ${errorMsg}`)
         },
       }
     )
-
-    // Update progress indicator
-    updateTask(taskId, { progress: 10, message: "Queuing audio generation..." })
   }
 
   return (

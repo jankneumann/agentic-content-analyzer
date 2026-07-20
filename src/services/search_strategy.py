@@ -10,6 +10,7 @@ The factory auto-detects pg_search availability at runtime.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Protocol, runtime_checkable
 
 from sqlalchemy import text
@@ -18,6 +19,18 @@ from sqlalchemy.orm import Session
 from src.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_paradedb_query(query: str) -> str:
+    """Convert API free text into terms safe for ParadeDB's query parser.
+
+    The ``@@@`` operator accepts Tantivy query syntax, so punctuation in
+    otherwise valid user input can accidentally become malformed syntax.
+    Search API queries are plain text, not a query-language surface; retaining
+    word characters and treating punctuation as separators matches that
+    contract and the native PostgreSQL fallback's ``plainto_tsquery`` behavior.
+    """
+    return " ".join(re.sub(r"[^\w]+", " ", query).split())
 
 
 @runtime_checkable
@@ -67,7 +80,8 @@ class ParadeDBBM25Strategy:
         limit: int = 100,
         content_ids: list[int] | None = None,
     ) -> list[tuple[int, float, int]]:
-        if not query.strip():
+        query = _normalize_paradedb_query(query)
+        if not query:
             return []
 
         if content_ids:

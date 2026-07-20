@@ -1,0 +1,777 @@
+schema_version: 1
+
+feature:
+  id: unify-content-workflows-agentic-surfaces
+  title: Unified content workflows and agentic surfaces
+  plan_revision: 1
+  created_by: codex
+  created_at: "2026-07-13T00:00:00Z"
+
+contracts:
+  revision: 1
+  openapi:
+    primary: openspec/changes/unify-content-workflows-agentic-surfaces/contracts/openapi/v1.yaml
+    files:
+      - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/openapi/v1.yaml
+  generated:
+    pydantic_dir: openspec/changes/unify-content-workflows-agentic-surfaces/contracts/generated
+    typescript_dir: openspec/changes/unify-content-workflows-agentic-surfaces/contracts/generated
+
+defaults:
+  priority: 5
+  lock_ttl_minutes: 180
+  timeout_minutes: 240
+  retry_budget: 1
+  verification_tier_required: A
+  min_trust_level: 2
+
+packages:
+  - package_id: wp-contracts
+    title: Contract validation and generation
+    task_type: contracts
+    description: Validate OpenAPI, database, event, and generated type contracts; add reproducible generation and drift gates.
+    priority: 1
+    depends_on: []
+    inputs:
+      task_ids: ["1.1", "1.2", "1.3"]
+    locks:
+      files:
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/openapi/v1.yaml
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/db/schema.sql
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/events/operation.progress.schema.json
+      keys:
+        - contract:openapi/v1.yaml
+        - contract:db/provenance
+        - event:operation.progress
+      ttl_minutes: 120
+      reason: Freeze canonical coordination contracts before implementation.
+    scope:
+      write_allow:
+        - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
+        - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/**
+        - tests/contract/test_canonical_workflow_contracts.py
+        - scripts/generate_workflow_contracts.py
+        - Makefile
+      read_allow: ["**"]
+      deny: ["src/**", "web/**"]
+    worktree: { name: wp-contracts, mode: isolated }
+    timeout_minutes: 120
+    retry_budget: 1
+    min_trust_level: 2
+    verification:
+      tier_required: C
+      steps:
+        - name: contract-tests
+          kind: command
+          command: uv run pytest tests/contract/test_canonical_workflow_contracts.py --no-cov
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-contracts/pytest.txt]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, contract_revision]
+
+  - package_id: wp-data-provenance
+    title: Canonical content provenance
+    task_type: data_model
+    description: Add provenance storage, legacy backfills, immutable selection models, and ContentSetResolver semantics.
+    priority: 2
+    depends_on: [wp-contracts]
+    inputs:
+      task_ids: ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6"]
+    locks:
+      files:
+        - src/models/digest.py
+        - src/models/podcast.py
+        - src/models/query.py
+        - src/models/theme.py
+        - src/services/content_query.py
+      keys:
+        - db:migration-slot
+        - db:schema:digests
+        - db:schema:podcast_scripts
+        - db:schema:theme_analyses
+        - feature:unify-content-workflows-agentic-surfaces:provenance
+      ttl_minutes: 240
+      reason: Own schema and canonical resolver changes.
+    scope:
+      write_allow:
+        - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
+        - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
+        - alembic/versions/**
+        - src/models/digest.py
+        - src/models/podcast.py
+        - src/models/query.py
+        - src/models/theme.py
+        - src/services/content_query.py
+        - src/services/content_set_resolver.py
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/db/schema.sql
+        - tests/contract/test_canonical_workflow_contracts.py
+        - tests/migrations/test_workflow_provenance.py
+        - tests/services/test_content_set_resolver.py
+      read_allow: ["src/**", "tests/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
+      deny: ["src/api/**", "src/cli/**", "src/mcp/**", "web/**"]
+    worktree: { name: wp-data-provenance, mode: isolated }
+    timeout_minutes: 360
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: A
+      steps:
+        - name: provenance-tests
+          kind: command
+          command: uv run pytest tests/migrations/test_workflow_provenance.py tests/services/test_content_set_resolver.py --no-cov
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-data-provenance/pytest.txt]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, migration_revision, test_count]
+
+  - package_id: wp-source-registry
+    title: Source registry and ingestion service
+    task_type: backend
+    description: Implement the executable source registry, typed dispatch, capability projection, and durable upload references.
+    priority: 2
+    depends_on: [wp-contracts]
+    inputs:
+      task_ids: ["3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7", "3.8", "3.9", "3.10", "3.11"]
+    locks:
+      files:
+        - src/ingestion/orchestrator.py
+        - src/config/sources.py
+      keys:
+        - feature:unify-content-workflows-agentic-surfaces:registry
+        - contract:source-registry
+      ttl_minutes: 300
+      reason: Sole ownership of source dispatch and capability descriptors.
+    scope:
+      write_allow:
+        - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
+        - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
+        - openspec/changes/unify-content-workflows-agentic-surfaces/work-packages.yaml
+        - scripts/generate_workflow_contracts.py
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/**
+        - src/contracts/**
+        - src/ingestion/**
+        - src/config/sources.py
+        - src/services/capability_service.py
+        - src/services/upload_service.py
+        - tests/ingestion/**
+        - tests/test_ingestion/test_xsearch.py
+        - tests/test_ingestion/test_perplexity_search.py
+        - tests/services/test_capability_service.py
+        - tests/services/test_upload_service.py
+      read_allow: ["src/**", "tests/**", "sources.d/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
+      deny: ["src/api/**", "src/cli/**", "src/mcp/**", "src/processors/**", "web/**"]
+    worktree: { name: wp-source-registry, mode: isolated }
+    timeout_minutes: 480
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: A
+      steps:
+        - name: source-tests
+          kind: command
+          command: uv run pytest tests/ingestion tests/services/test_capability_service.py tests/services/test_upload_service.py --no-cov
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-source-registry/pytest.txt]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, source_keys, test_count]
+
+  - package_id: wp-operation-core
+    title: PostgreSQL operation core
+    task_type: backend
+    description: Project queue jobs as operations with idempotency, events, waiting, retry, cancellation, and versioned payload compatibility.
+    priority: 2
+    depends_on: [wp-contracts]
+    inputs:
+      task_ids: ["4.1", "4.2", "4.3", "4.7", "4.8", "4.9"]
+    locks:
+      files:
+        - src/models/jobs.py
+        - src/queue/setup.py
+        - src/queue/worker.py
+        - src/services/operation_service.py
+      keys:
+        - db:schema:pgqueuer_jobs
+        - event:operation.progress
+        - feature:unify-content-workflows-agentic-surfaces:operations
+      ttl_minutes: 300
+      reason: Own universal operation state and queue controls.
+    scope:
+      write_allow:
+        - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
+        - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
+        - src/models/jobs.py
+        - src/queue/setup.py
+        - src/queue/worker.py
+        - src/services/operation_service.py
+        - tests/queue/test_operation_service.py
+        - tests/queue/test_operation_controls.py
+      read_allow: ["src/**", "tests/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
+      deny: ["src/api/**", "src/cli/**", "src/mcp/**", "web/**"]
+    worktree: { name: wp-operation-core, mode: isolated }
+    timeout_minutes: 360
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: A
+      steps:
+        - name: operation-tests
+          kind: command
+          command: uv run pytest tests/queue/test_operation_service.py tests/queue/test_operation_controls.py --no-cov
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-operation-core/pytest.txt]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, operation_types, test_count]
+
+  - package_id: wp-processors
+    title: Provenance and provider processor boundaries
+    task_type: backend
+    description: Constrain theme, digest, and podcast processors to resolved provenance; migrate LLM calls and audio generation to public abstractions.
+    priority: 3
+    depends_on: [wp-data-provenance]
+    inputs:
+      task_ids: ["2.7", "2.8", "2.9", "2.10", "2.11", "6.1", "6.2", "6.3", "6.4", "6.5", "6.6", "6.7", "6.8"]
+    locks:
+      files:
+        - src/processors/theme_analyzer.py
+        - src/processors/digest_creator.py
+        - src/processors/podcast_script_generator.py
+        - src/processors/digest_reviser.py
+        - src/processors/script_reviser.py
+        - src/processors/historical_context.py
+        - src/processors/audio_digest_generator.py
+        - src/processors/podcast_creator.py
+        - src/processors/provenance.py
+        - src/delivery/tts_service.py
+        - src/delivery/audio_generator_v2.py
+        - src/services/podcast_audio_service.py
+        - src/services/audio_digest_service.py
+        - src/api/audio_digest_routes.py
+        - src/api/podcast_routes.py
+        - src/api/theme_routes.py
+        - src/services/llm_router.py
+        - src/config/models.py
+        - settings/prompts.yaml
+      keys:
+        - feature:unify-content-workflows-agentic-surfaces:processors
+      ttl_minutes: 360
+      reason: Sole ownership of processor provenance and provider migration.
+    scope:
+      write_allow:
+        - openspec/changes/unify-content-workflows-agentic-surfaces/work-packages.yaml
+        - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
+        - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
+        - src/processors/**
+        - src/services/podcast_audio_service.py
+        - src/services/audio_digest_service.py
+        - src/api/audio_digest_routes.py
+        - src/api/podcast_routes.py
+        - src/api/theme_routes.py
+        - src/services/llm_router.py
+        - src/config/models.py
+        - src/delivery/tts_service.py
+        - src/delivery/audio_generator_v2.py
+        - settings/prompts.yaml
+        - tests/processors/**
+        - tests/test_processors/**
+        - tests/test_delivery/test_tts_service.py
+        - tests/services/test_public_audio_services.py
+        - tests/services/test_llm_router_routing.py
+        - tests/api/test_script_security.py
+        - tests/api/conftest.py
+      read_allow: ["src/**", "tests/**", "settings/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
+      deny: ["src/cli/**", "src/mcp/**", "src/ingestion/**", "web/**"]
+    worktree: { name: wp-processors, mode: isolated }
+    timeout_minutes: 480
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: A
+      steps:
+        - name: processor-tests
+          kind: command
+          command: uv run pytest tests/processors tests/test_processors tests/services/test_public_audio_services.py tests/services/test_llm_router_routing.py tests/test_services/test_llm_router.py tests/agents/test_llm_router_extensions.py tests/api/test_audio_digest_api.py tests/api/test_podcast_api.py tests/api/test_script_security.py tests/api/test_theme_api.py --no-cov
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-processors/pytest.txt]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, provenance_invariants, test_count]
+
+  - package_id: wp-workflows
+    title: Durable application workflows
+    task_type: backend
+    description: Implement durable summarization, theme, digest, podcast script, podcast audio, and audio digest workflows.
+    priority: 4
+    depends_on: [wp-data-provenance, wp-operation-core, wp-processors]
+    inputs:
+      task_ids: ["5.1", "5.2", "5.3", "5.4", "5.5", "5.6", "5.7", "5.8", "5.9", "5.10", "5.11", "5.12", "5.13", "5.14", "5.15"]
+    locks:
+      files:
+        - alembic/versions/d4e5f6a7b8c9_add_workflow_provenance.py
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/db/schema.sql
+        - src/models/digest.py
+        - src/models/podcast.py
+        - src/workflows/digest.py
+        - src/workflows/podcast_script.py
+      keys:
+        - feature:unify-content-workflows-agentic-surfaces:workflows
+      ttl_minutes: 360
+      reason: Own durable resource-producing workflow services.
+    scope:
+      write_allow:
+        - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
+        - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
+        - alembic/versions/d4e5f6a7b8c9_add_workflow_provenance.py
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/db/schema.sql
+        - src/models/audio_digest.py
+        - src/models/digest.py
+        - src/models/podcast.py
+        - src/models/theme.py
+        - src/workflows/__init__.py
+        - src/workflows/resource.py
+        - src/workflows/summarization.py
+        - src/workflows/theme_analysis.py
+        - src/workflows/digest.py
+        - src/workflows/podcast_script.py
+        - src/workflows/podcast_audio.py
+        - src/workflows/audio_digest.py
+        - tests/workflows/test_summarization_workflow.py
+        - tests/workflows/test_resource.py
+        - tests/workflows/test_theme_analysis_workflow.py
+        - tests/workflows/test_digest_workflow.py
+        - tests/workflows/test_podcast_script_workflow.py
+        - tests/workflows/test_podcast_audio_workflow.py
+        - tests/workflows/test_audio_digest_workflow.py
+        - tests/migrations/test_workflow_provenance.py
+      read_allow: ["src/**", "tests/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
+      deny: ["src/workflows/pipeline.py", "src/api/**", "src/cli/**", "src/mcp/**", "web/**"]
+    worktree: { name: wp-workflows, mode: isolated }
+    timeout_minutes: 480
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: A
+      steps:
+        - name: workflow-tests
+          kind: command
+          command: uv run pytest tests/workflows --ignore=tests/workflows/test_pipeline_workflow.py tests/migrations/test_workflow_provenance.py --no-cov
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-workflows/pytest.txt]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, workflow_types, test_count]
+
+  - package_id: wp-pipeline
+    title: Canonical durable pipeline
+    task_type: backend
+    description: Replace all pipeline drivers with one parent-child job workflow using registry sources and shared workflows.
+    priority: 5
+    depends_on: [wp-source-registry, wp-operation-core, wp-workflows]
+    inputs:
+      task_ids: ["5.16", "5.17", "5.18"]
+    locks:
+      files:
+        - src/workflows/pipeline.py
+        - src/pipeline/runner.py
+        - src/services/operation_service.py
+        - src/queue/setup.py
+        - src/ingestion/registry.py
+        - src/ingestion/content_references.py
+        - src/ingestion/service.py
+        - src/ingestion/xsearch.py
+        - src/ingestion/perplexity_search.py
+        - src/ingestion/podcast.py
+        - src/ingestion/scholar.py
+        - src/ingestion/youtube.py
+        - src/config/sources.py
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/openapi/v1.yaml
+        - src/contracts/workflow_models.py
+        - src/workflows/digest.py
+      keys:
+        - feature:unify-content-workflows-agentic-surfaces:pipeline
+      ttl_minutes: 300
+      reason: Sole ownership of pipeline orchestration replacement.
+    scope:
+      write_allow:
+        - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
+        - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
+        - src/workflows/pipeline.py
+        - src/pipeline/**
+        - src/services/operation_service.py
+        - src/queue/setup.py
+        - src/ingestion/registry.py
+        - src/ingestion/content_references.py
+        - src/ingestion/service.py
+        - src/ingestion/xsearch.py
+        - src/ingestion/perplexity_search.py
+        - src/ingestion/podcast.py
+        - src/ingestion/scholar.py
+        - src/ingestion/youtube.py
+        - src/config/sources.py
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/openapi/v1.yaml
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/generated/models.py
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/generated/types.ts
+        - src/contracts/workflow_models.py
+        - src/workflows/digest.py
+        - tests/pipeline/**
+        - tests/workflows/test_pipeline_workflow.py
+        - tests/workflows/test_digest_workflow.py
+        - tests/queue/test_operation_service.py
+        - tests/ingestion/test_content_references.py
+        - tests/ingestion/test_ingestion_service.py
+        - tests/ingestion/test_source_registry.py
+        - tests/test_ingestion/test_xsearch.py
+        - tests/test_ingestion/test_perplexity_search.py
+        - tests/test_ingestion/test_podcast.py
+        - tests/test_ingestion/test_scholar.py
+        - tests/test_ingestion/test_youtube_sources.py
+        - tests/test_config/test_sources.py
+        - tests/contract/test_canonical_workflow_contracts.py
+      read_allow: ["src/**", "tests/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
+      deny: ["src/api/**", "src/cli/**", "src/mcp/**", "web/**"]
+    worktree: { name: wp-pipeline, mode: isolated }
+    timeout_minutes: 360
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: A
+      steps:
+        - name: pipeline-tests
+          kind: command
+          command: uv run pytest tests/pipeline tests/workflows/test_pipeline_workflow.py tests/queue/test_operation_service.py tests/ingestion/test_content_references.py tests/ingestion/test_ingestion_service.py tests/ingestion/test_source_registry.py tests/test_ingestion/test_xsearch.py tests/test_ingestion/test_perplexity_search.py tests/test_ingestion/test_podcast.py tests/test_ingestion/test_scholar.py tests/test_ingestion/test_youtube_sources.py tests/test_config/test_sources.py tests/contract/test_canonical_workflow_contracts.py --no-cov
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-pipeline/pytest.txt]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, pipeline_stages, test_count]
+
+  - package_id: wp-worker-integration
+    title: Worker workflow integration
+    task_type: integration
+    description: Implement the typed handler registry, register every operation workflow, and validate resource attachment before completion.
+    priority: 6
+    depends_on: [wp-source-registry, wp-operation-core, wp-workflows, wp-pipeline]
+    inputs:
+      task_ids: ["4.4", "4.5", "4.6", "5.19", "5.20", "5.21"]
+    locks:
+      files:
+        - src/queue/worker.py
+        - src/queue/workflow_handlers.py
+      keys:
+        - feature:unify-content-workflows-agentic-surfaces:workers
+      ttl_minutes: 240
+      reason: Sole ownership of worker registration and workflow bindings.
+    scope:
+      write_allow:
+        - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
+        - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
+        - src/queue/worker.py
+        - src/queue/workflow_handlers.py
+        - tests/queue/test_workflow_handler_registry.py
+        - tests/queue/test_workflow_handlers.py
+      read_allow: ["src/**", "tests/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
+      deny: ["src/queue/setup.py", "src/api/**", "src/cli/**", "src/mcp/**", "web/**"]
+    worktree: { name: wp-worker-integration, mode: isolated }
+    timeout_minutes: 300
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: A
+      steps:
+        - name: worker-tests
+          kind: command
+          command: uv run pytest tests/queue/test_workflow_handler_registry.py tests/queue/test_workflow_handlers.py --no-cov
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-worker-integration/pytest.txt]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, registered_handlers, test_count]
+
+  - package_id: wp-http
+    title: Canonical HTTP workflow surface
+    task_type: api
+    description: Implement uploads, typed ingestion, operations, capabilities, workflow submission, SSE, problems, and legacy route removal.
+    priority: 7
+    depends_on: [wp-worker-integration]
+    inputs:
+      task_ids: ["7.1", "7.2", "7.3", "7.4", "7.5", "7.6", "7.7", "7.8", "7.9", "7.10", "7.11"]
+    locks:
+      files:
+        - src/api/app.py
+        - src/services/capability_service.py
+        - src/config/sources.py
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/openapi/v1.yaml
+      keys:
+        - api:GET /api/v1/capabilities
+        - api:POST /api/v1/ingestions
+        - api:GET /api/v1/operations/{operation_id}
+        - api:POST /api/v1/digests
+      ttl_minutes: 360
+      reason: Sole ownership of the breaking HTTP cutover.
+    scope:
+      write_allow:
+        - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
+        - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/openapi/v1.yaml
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/generated/models.py
+        - openspec/changes/unify-content-workflows-agentic-surfaces/contracts/generated/types.ts
+        - scripts/generate_workflow_contracts.py
+        - src/contracts/workflow_models.py
+        - src/services/capability_service.py
+        - src/config/sources.py
+        - src/api/**
+        - src/templates/save.html
+        - src/templates/bookmarklet.html
+        - src/templates/shortcut.html
+        - tests/contract/test_canonical_workflow_contracts.py
+        - tests/services/test_capability_service.py
+        - tests/test_config/test_sources.py
+        - tests/test_shortcut_page.py
+        - tests/api/**
+      read_allow: ["src/**", "tests/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
+      deny: ["src/cli/**", "src/mcp/**", "src/mcp_server.py", "web/**"]
+    worktree: { name: wp-http, mode: isolated }
+    timeout_minutes: 480
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: A
+      steps:
+        - name: api-tests
+          kind: command
+          command: uv run pytest tests/api --no-cov
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-http/pytest.txt]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, openapi_operations, test_count]
+
+  - package_id: wp-cli
+    title: Canonical CLI workflow surface
+    task_type: cli
+    description: Replace direct workflows with typed operation submission, upload support, waiting, JSON contracts, and capability discovery.
+    priority: 8
+    depends_on: [wp-http]
+    inputs:
+      task_ids: ["8.1", "8.2", "8.3", "8.4"]
+    locks:
+      files:
+        - src/clients/workflow_api_client.py
+        - src/cli/api_client.py
+        - src/cli/ingest_commands.py
+        - src/cli/pipeline_commands.py
+      keys:
+        - feature:unify-content-workflows-agentic-surfaces:cli
+      ttl_minutes: 300
+      reason: Sole ownership of CLI breaking migration.
+    scope:
+      write_allow:
+        - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
+        - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
+        - src/clients/**
+        - src/cli/**
+        - tests/clients/**
+        - tests/cli/**
+      read_allow: ["src/**", "tests/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
+      deny: ["src/api/**", "src/mcp/**", "src/mcp_server.py", "web/**"]
+    worktree: { name: wp-cli, mode: isolated }
+    timeout_minutes: 360
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: A
+      steps:
+        - name: cli-tests
+          kind: command
+          command: uv run pytest tests/cli --no-cov
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-cli/pytest.txt]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, cli_commands, test_count]
+
+  - package_id: wp-mcp
+    title: Canonical MCP workflow surface
+    task_type: mcp
+    description: Split MCP modules, route all tools through HTTP mode, preserve in-process parity, and add structured operation tools.
+    priority: 8
+    depends_on: [wp-http, wp-cli]
+    inputs:
+      task_ids: ["8.5", "8.6", "8.7", "8.8", "8.9"]
+    locks:
+      files:
+        - src/mcp_server.py
+      keys:
+        - feature:unify-content-workflows-agentic-surfaces:mcp
+      ttl_minutes: 360
+      reason: Sole ownership of MCP module and tool migration.
+    scope:
+      write_allow:
+        - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
+        - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
+        - src/mcp_server.py
+        - src/mcp_tools/**
+        - src/services/reference_workflow_service.py
+        - src/api/routes/reference_routes.py
+        - tests/api/test_reference_routes.py
+        - tests/mcp/**
+      read_allow: ["src/**", "tests/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
+      deny: ["src/api/**", "src/cli/**", "web/**"]
+    worktree: { name: wp-mcp, mode: isolated }
+    timeout_minutes: 480
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: A
+      steps:
+        - name: mcp-tests
+          kind: command
+          command: uv run pytest tests/mcp --no-cov
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-mcp/pytest.txt]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, mcp_tools, test_count]
+
+  - package_id: wp-frontend
+    title: Canonical frontend workflow surface
+    task_type: frontend
+    description: Generate frontend contracts, render capability-driven ingestion, show durable progress, and navigate persisted results.
+    priority: 8
+    depends_on: [wp-http]
+    inputs:
+      task_ids: ["9.1", "9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8", "9.9"]
+    locks:
+      files:
+        - web/src/lib/api.ts
+      keys:
+        - feature:unify-content-workflows-agentic-surfaces:frontend
+      ttl_minutes: 360
+      reason: Sole ownership of frontend contract and workflow migration.
+    scope:
+      write_allow:
+        - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
+        - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
+        - Makefile
+        - scripts/generate_workflow_contracts.py
+        - web/**
+      read_allow: ["web/**", "src/api/**", "openspec/changes/unify-content-workflows-agentic-surfaces/**"]
+      deny: ["src/**"]
+    worktree: { name: wp-frontend, mode: isolated }
+    timeout_minutes: 480
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: A
+      steps:
+        - name: frontend-tests
+          kind: command
+          command: cd web && pnpm test -- --run && pnpm typecheck && pnpm build
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-frontend/vitest.txt]
+            result_keys: [test_count, build_passed]
+    outputs:
+      result_keys: [files_modified, generated_types, test_count]
+
+  - package_id: wp-e2e
+    title: Source matrix and interface parity
+    task_type: testing
+    description: Add vertical source fixtures, pairwise and triple coverage, cross-interface parity, edge cases, migration tests, and documentation.
+    priority: 9
+    depends_on: [wp-cli, wp-mcp, wp-frontend]
+    inputs:
+      task_ids: ["10.1", "10.2", "10.3", "10.4", "10.5", "10.6", "10.7", "10.8"]
+    locks:
+      files:
+        - docs/ARCHITECTURE.md
+        - docs/DEVELOPMENT.md
+      keys:
+        - feature:unify-content-workflows-agentic-surfaces:testing
+      ttl_minutes: 360
+      reason: Own cross-package behavioral validation and documentation.
+    scope:
+      write_allow:
+        - openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md
+        - openspec/changes/unify-content-workflows-agentic-surfaces/change-context.md
+        - tests/e2e/**
+        - tests/regression/**
+        - tests/fixtures/sources/**
+        - tests/contract/test_source_workflow_matrix.py
+        - tests/contract/test_cross_interface_workflows.py
+        - docs/**
+        - CLAUDE.md
+      read_allow: ["**"]
+      deny: ["src/**", "web/**"]
+    worktree: { name: wp-e2e, mode: isolated }
+    timeout_minutes: 480
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: A
+      steps:
+        - name: e2e-contract-tests
+          kind: command
+          command: uv run pytest tests/contract/test_source_workflow_matrix.py tests/contract/test_cross_interface_workflows.py tests/regression --no-cov
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-e2e/pytest.txt]
+            result_keys: [test_count, source_count, pair_count]
+    outputs:
+      result_keys: [files_modified, source_count, pair_count, test_count]
+
+  - package_id: wp-integration
+    title: Coordinated cutover validation
+    task_type: integrate
+    description: Merge completed packages, resolve shared wiring, run full quality gates, rehearse migration rollback, and verify coordinated cutover readiness.
+    priority: 10
+    depends_on: [wp-worker-integration, wp-e2e]
+    inputs:
+      task_ids: ["10.9"]
+    locks:
+      files: []
+      keys:
+        - feature:unify-content-workflows-agentic-surfaces:cutover
+      ttl_minutes: 480
+      reason: Final integration and cutover gate.
+    scope:
+      write_allow: ["**"]
+      read_allow: ["**"]
+      deny: []
+    worktree: { name: wp-integration, mode: shared }
+    timeout_minutes: 720
+    retry_budget: 0
+    min_trust_level: 3
+    verification:
+      tier_required: A
+      steps:
+        - name: full-quality-gates
+          kind: command
+          command: uv run pytest --no-cov && uv run ruff check src tests && uv run mypy src && cd web && pnpm test -- --run && pnpm typecheck && pnpm build
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-integration/quality-gates.txt]
+            result_keys: [test_count, lint_passed, typecheck_passed, build_passed]
+        - name: migration-rehearsal
+          kind: manual
+          manual_instructions: Rehearse upgrade, version 1 queue drain, version 2 execution, downgrade, and application rollback against an isolated production-shaped database.
+          evidence:
+            artifacts: [artifacts/wp-integration/migration-rehearsal.md]
+            result_keys: [upgrade_passed, rollback_passed]
+    outputs:
+      result_keys: [merge_commit, test_count, cutover_ready]

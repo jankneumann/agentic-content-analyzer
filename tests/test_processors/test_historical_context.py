@@ -122,7 +122,7 @@ def mock_llm_evolution_response() -> str:
 
 def test_historical_context_analyzer_initialization():
     """Test HistoricalContextAnalyzer initialization."""
-    with patch("src.processors.historical_context.Anthropic") as mock_anthropic:
+    with patch("src.processors.historical_context.LLMRouter") as mock_anthropic:
         analyzer = HistoricalContextAnalyzer()
 
         # Model should be from registry and configured for historical_context step
@@ -133,7 +133,7 @@ def test_historical_context_analyzer_initialization():
 
 def test_historical_context_analyzer_custom_model():
     """Test initialization with custom model."""
-    with patch("src.processors.historical_context.Anthropic"):
+    with patch("src.processors.historical_context.LLMRouter"):
         analyzer = HistoricalContextAnalyzer(model="claude-opus-4-5-20251101")
 
         assert analyzer.model == "claude-opus-4-5-20251101"
@@ -146,15 +146,18 @@ async def test_enrich_themes_with_history_success(
     """Test successful theme enrichment with historical context."""
     mock_client = MagicMock()
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=mock_llm_evolution_response)]
-    mock_client.messages.create.return_value = mock_response
+    mock_response.text = mock_llm_evolution_response
+    mock_response.input_tokens = 10
+    mock_response.output_tokens = 5
+    mock_response.provider = None
+    mock_client.generate = AsyncMock(return_value=mock_response)
 
     mock_graphiti = AsyncMock()
     mock_graphiti.get_historical_theme_mentions = AsyncMock(return_value=sample_historical_mentions)
     mock_graphiti.get_theme_evolution_timeline = AsyncMock(return_value=sample_timeline)
     mock_graphiti.close = MagicMock()
 
-    with patch("src.processors.historical_context.Anthropic") as mock_anthropic_class:
+    with patch("src.processors.historical_context.LLMRouter") as mock_anthropic_class:
         mock_anthropic_class.return_value = mock_client
 
         with patch("src.processors.historical_context.GraphitiClient") as mock_graphiti_class:
@@ -192,7 +195,7 @@ async def test_enrich_themes_with_history_no_history(sample_themes):
     mock_graphiti.get_historical_theme_mentions = AsyncMock(return_value=[])
     mock_graphiti.close = MagicMock()
 
-    with patch("src.processors.historical_context.Anthropic") as mock_anthropic_class:
+    with patch("src.processors.historical_context.LLMRouter") as mock_anthropic_class:
         mock_anthropic_class.return_value = mock_client
 
         with patch("src.processors.historical_context.GraphitiClient") as mock_graphiti_class:
@@ -220,14 +223,17 @@ async def test_analyze_theme_evolution_with_history(
     """Test theme evolution analysis with historical data."""
     mock_client = MagicMock()
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=mock_llm_evolution_response)]
-    mock_client.messages.create.return_value = mock_response
+    mock_response.text = mock_llm_evolution_response
+    mock_response.input_tokens = 10
+    mock_response.output_tokens = 5
+    mock_response.provider = None
+    mock_client.generate = AsyncMock(return_value=mock_response)
 
     mock_graphiti = AsyncMock()
     mock_graphiti.get_historical_theme_mentions = AsyncMock(return_value=sample_historical_mentions)
     mock_graphiti.get_theme_evolution_timeline = AsyncMock(return_value=sample_timeline)
 
-    with patch("src.processors.historical_context.Anthropic") as mock_anthropic_class:
+    with patch("src.processors.historical_context.LLMRouter") as mock_anthropic_class:
         mock_anthropic_class.return_value = mock_client
 
         with patch("src.processors.historical_context.GraphitiClient") as mock_graphiti_class:
@@ -259,7 +265,7 @@ async def test_analyze_theme_evolution_no_history():
     mock_graphiti.get_historical_theme_mentions = AsyncMock(return_value=[])
 
     with (
-        patch("src.processors.historical_context.Anthropic"),
+        patch("src.processors.historical_context.LLMRouter"),
         patch("src.processors.historical_context.GraphitiClient") as mock_graphiti_class,
     ):
         mock_graphiti_class.return_value = mock_graphiti
@@ -282,7 +288,7 @@ async def test_analyze_theme_evolution_no_history():
 
 def test_extract_recent_mentions(sample_historical_mentions):
     """Test extracting recent mentions from raw data."""
-    with patch("src.processors.historical_context.Anthropic"):
+    with patch("src.processors.historical_context.LLMRouter"):
         analyzer = HistoricalContextAnalyzer()
         mentions = analyzer._extract_recent_mentions(sample_historical_mentions)
 
@@ -309,7 +315,7 @@ def test_extract_recent_mentions_long_content():
         }
     ]
 
-    with patch("src.processors.historical_context.Anthropic"):
+    with patch("src.processors.historical_context.LLMRouter"):
         analyzer = HistoricalContextAnalyzer()
         result = analyzer._extract_recent_mentions(mentions)
 
@@ -320,7 +326,7 @@ def test_extract_recent_mentions_long_content():
 
 def test_extract_recent_mentions_empty():
     """Test extracting from empty mentions list."""
-    with patch("src.processors.historical_context.Anthropic"):
+    with patch("src.processors.historical_context.LLMRouter"):
         analyzer = HistoricalContextAnalyzer()
         mentions = analyzer._extract_recent_mentions([])
 
@@ -332,10 +338,13 @@ async def test_analyze_evolution_with_llm_success(sample_timeline, mock_llm_evol
     """Test LLM-based evolution analysis."""
     mock_client = MagicMock()
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=mock_llm_evolution_response)]
-    mock_client.messages.create.return_value = mock_response
+    mock_response.text = mock_llm_evolution_response
+    mock_response.input_tokens = 10
+    mock_response.output_tokens = 5
+    mock_response.provider = None
+    mock_client.generate = AsyncMock(return_value=mock_response)
 
-    with patch("src.processors.historical_context.Anthropic") as mock_anthropic_class:
+    with patch("src.processors.historical_context.LLMRouter") as mock_anthropic_class:
         mock_anthropic_class.return_value = mock_client
 
         analyzer = HistoricalContextAnalyzer()
@@ -353,18 +362,18 @@ async def test_analyze_evolution_with_llm_success(sample_timeline, mock_llm_evol
     assert stance == "From cautious exploration to confident adoption"
 
     # Verify LLM was called with correct prompt
-    mock_client.messages.create.assert_called_once()
-    call_args = mock_client.messages.create.call_args
+    mock_client.generate.assert_awaited_once()
+    call_args = mock_client.generate.call_args
     # Model should be from registry
     assert call_args[1]["model"] in MODEL_REGISTRY
     assert call_args[1]["temperature"] == 0.3
-    assert "Large Language Models" in call_args[1]["messages"][0]["content"]
+    assert "Large Language Models" in call_args[1]["user_prompt"]
 
 
 @pytest.mark.asyncio
 async def test_analyze_evolution_with_llm_no_timeline():
     """Test evolution analysis with empty timeline."""
-    with patch("src.processors.historical_context.Anthropic"):
+    with patch("src.processors.historical_context.LLMRouter"):
         analyzer = HistoricalContextAnalyzer()
         summary, discussions, stance = await analyzer._analyze_evolution_with_llm(
             theme_name="Test Theme",
@@ -382,10 +391,13 @@ async def test_analyze_evolution_with_llm_invalid_json():
     """Test handling of invalid JSON from LLM."""
     mock_client = MagicMock()
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="This is not valid JSON")]
-    mock_client.messages.create.return_value = mock_response
+    mock_response.text = "This is not valid JSON"
+    mock_response.input_tokens = 10
+    mock_response.output_tokens = 5
+    mock_response.provider = None
+    mock_client.generate = AsyncMock(return_value=mock_response)
 
-    with patch("src.processors.historical_context.Anthropic") as mock_anthropic_class:
+    with patch("src.processors.historical_context.LLMRouter") as mock_anthropic_class:
         mock_anthropic_class.return_value = mock_client
 
         analyzer = HistoricalContextAnalyzer()
@@ -412,10 +424,13 @@ async def test_analyze_evolution_with_llm_no_markdown():
 
     mock_client = MagicMock()
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=mock_response_no_markdown)]
-    mock_client.messages.create.return_value = mock_response
+    mock_response.text = mock_response_no_markdown
+    mock_response.input_tokens = 10
+    mock_response.output_tokens = 5
+    mock_response.provider = None
+    mock_client.generate = AsyncMock(return_value=mock_response)
 
-    with patch("src.processors.historical_context.Anthropic") as mock_anthropic_class:
+    with patch("src.processors.historical_context.LLMRouter") as mock_anthropic_class:
         mock_anthropic_class.return_value = mock_client
 
         analyzer = HistoricalContextAnalyzer()
@@ -432,7 +447,7 @@ async def test_analyze_evolution_with_llm_no_markdown():
 
 def test_build_timeline_context(sample_timeline):
     """Test building timeline context for LLM."""
-    with patch("src.processors.historical_context.Anthropic"):
+    with patch("src.processors.historical_context.LLMRouter"):
         analyzer = HistoricalContextAnalyzer()
         context = analyzer._build_timeline_context(sample_timeline)
 
@@ -450,7 +465,7 @@ def test_build_timeline_context(sample_timeline):
 
 def test_build_timeline_context_empty():
     """Test building timeline context with no data."""
-    with patch("src.processors.historical_context.Anthropic"):
+    with patch("src.processors.historical_context.LLMRouter"):
         analyzer = HistoricalContextAnalyzer()
         context = analyzer._build_timeline_context([])
 
@@ -469,7 +484,7 @@ def test_build_timeline_context_truncates_long_timeline():
         for i in range(1, 16)
     ]
 
-    with patch("src.processors.historical_context.Anthropic"):
+    with patch("src.processors.historical_context.LLMRouter"):
         analyzer = HistoricalContextAnalyzer()
         context = analyzer._build_timeline_context(long_timeline)
 
@@ -491,7 +506,7 @@ def test_generate_continuity_text_new_theme():
         recent_mentions=[],
     )
 
-    with patch("src.processors.historical_context.Anthropic"):
+    with patch("src.processors.historical_context.LLMRouter"):
         analyzer = HistoricalContextAnalyzer()
         text = analyzer._generate_continuity_text(
             theme_name="New Theme",
@@ -515,7 +530,7 @@ def test_generate_continuity_text_emerging():
         recent_mentions=[],
     )
 
-    with patch("src.processors.historical_context.Anthropic"):
+    with patch("src.processors.historical_context.LLMRouter"):
         analyzer = HistoricalContextAnalyzer()
         text = analyzer._generate_continuity_text(
             theme_name="Emerging Theme",
@@ -540,7 +555,7 @@ def test_generate_continuity_text_growing():
         recent_mentions=[],
     )
 
-    with patch("src.processors.historical_context.Anthropic"):
+    with patch("src.processors.historical_context.LLMRouter"):
         analyzer = HistoricalContextAnalyzer()
         text = analyzer._generate_continuity_text(
             theme_name="Growing Theme",
@@ -565,7 +580,7 @@ def test_generate_continuity_text_established():
         recent_mentions=[],
     )
 
-    with patch("src.processors.historical_context.Anthropic"):
+    with patch("src.processors.historical_context.LLMRouter"):
         analyzer = HistoricalContextAnalyzer()
         text = analyzer._generate_continuity_text(
             theme_name="Established Theme",
@@ -590,7 +605,7 @@ def test_generate_continuity_text_declining():
         recent_mentions=[],
     )
 
-    with patch("src.processors.historical_context.Anthropic"):
+    with patch("src.processors.historical_context.LLMRouter"):
         analyzer = HistoricalContextAnalyzer()
         text = analyzer._generate_continuity_text(
             theme_name="Declining Theme",
@@ -615,7 +630,7 @@ def test_generate_continuity_text_one_off():
         recent_mentions=[],
     )
 
-    with patch("src.processors.historical_context.Anthropic"):
+    with patch("src.processors.historical_context.LLMRouter"):
         analyzer = HistoricalContextAnalyzer()
         text = analyzer._generate_continuity_text(
             theme_name="Recurring Theme",
