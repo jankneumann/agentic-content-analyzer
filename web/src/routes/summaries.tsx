@@ -18,7 +18,6 @@ import {
   Zap,
   Eye,
   AlertCircle,
-  Loader2,
   FileSearch,
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
@@ -95,12 +94,10 @@ function SummariesPage() {
   const { data: stats } = useSummaryStats()
   const { data: contentStats } = useContentStats()
   const summarizeMutation = useSummarizeContents()
-  const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
+  const { addOperation } = useBackgroundTasks()
 
   // Content items that need summarization (don't have summaries yet)
   const pendingCount = contentStats?.needs_summarization_count ?? 0
-  // Failed content items that could be retried
-  const failedCount = contentStats?.failed_count ?? 0
 
   // Fetch selected summary details
   const { data: selectedSummary, isLoading: isLoadingSummary } = useSummary(
@@ -131,63 +128,22 @@ function SummariesPage() {
   }
 
   const handleGenerateSummaries = (params: SummaryGenerationParams) => {
-    // Close dialog immediately - task runs in background
     setShowGenerateDialog(false)
-
-    // Convert newsletter_ids to content_ids for the new API
-    // The dialog still uses newsletter_ids for now, but we pass empty array
-    // to summarize all pending content
     const contentIds = params.newsletter_ids.length > 0 ? params.newsletter_ids : []
-    const count = contentIds.length || (pendingCount + (params.retry_failed ? failedCount : 0))
-
-    // Add background task
-    const taskId = addTask({
-      type: "summary",
-      title: `Summarize ${count} content item${count !== 1 ? "s" : ""}`,
-      message: "Starting summarization...",
-    })
-
-    // Track progress from SSE via mutation's progress state
-    let lastProgress = 0
-    const progressInterval = setInterval(() => {
-      if (summarizeMutation.progress) {
-        const p = summarizeMutation.progress
-        if (p.progress !== lastProgress) {
-          lastProgress = p.progress
-          updateTask(taskId, {
-            progress: p.progress,
-            message: p.message || `Processing ${p.processed || 0}/${p.total || count}...`
-          })
-        }
-      }
-    }, 500)
-
     summarizeMutation.mutate(
       {
-        content_ids: contentIds,
+        content_ids: contentIds.length ? contentIds : undefined,
         query: params.content_query,
         force: params.force,
-        retry_failed: params.retry_failed,
       },
       {
-        onSuccess: (result) => {
-          clearInterval(progressInterval)
-          const completed = result?.completed ?? count
-          completeTask(taskId, `Summarization complete: ${completed} summaries created`)
-          toast.success(`Summarized ${completed} content items`)
-          refetch()
-        },
+        onSuccess: (operation) => { addOperation(operation); toast.success("Summarization queued") },
         onError: (err) => {
-          clearInterval(progressInterval)
           const errorMsg = err instanceof Error ? err.message : "Unknown error"
-          failTask(taskId, errorMsg)
           toast.error(`Failed to summarize: ${errorMsg}`)
         },
       }
     )
-
-    // Update progress indicator
-    updateTask(taskId, { progress: 5, message: "Queuing summarization..." })
   }
 
   return (
@@ -207,27 +163,6 @@ function SummariesPage() {
         </div>
       }
     >
-      {/* Progress indicator */}
-      {summarizeMutation.isProcessing && summarizeMutation.progress && (
-        <Card className="border-primary/50 bg-primary/5">
-          <CardContent className="py-4">
-            <div className="flex items-center gap-4">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              <div className="flex-1">
-                <p className="text-sm font-medium">
-                  Summarizing content... ({summarizeMutation.progress.progress}%)
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {summarizeMutation.progress.message}
-                </p>
-              </div>
-              <Badge variant="outline">
-                {summarizeMutation.progress.processed ?? 0} / {summarizeMutation.progress.total ?? 0}
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Stats cards */}
       {stats && (
@@ -569,7 +504,6 @@ function SummariesPage() {
         onGenerate={handleGenerateSummaries}
         isGenerating={summarizeMutation.isPending || summarizeMutation.isProcessing}
         pendingCount={pendingCount}
-        failedCount={failedCount}
       />
     </PageContainer>
   )

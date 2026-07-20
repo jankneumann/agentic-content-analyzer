@@ -1,0 +1,1186 @@
+openapi: 3.1.0
+info:
+  title: ACA Canonical Workflow API
+  version: 2.0.0
+  description: |
+    Coordinated breaking replacement for ingestion, summarization, theme,
+    digest, pipeline, podcast, and audio mutation contracts. All mutations
+    return a durable OperationHandle backed by pgqueuer_jobs.
+servers:
+  - url: http://localhost:8000
+    description: Local development
+  - url: https://api.aca.rotkohl.ai
+    description: Production
+security:
+  - AdminKey: []
+
+paths:
+  /api/v1/capabilities:
+    get:
+      operationId: getCapabilities
+      summary: Discover source, operation, resource, and transport capabilities
+      tags: [capabilities]
+      parameters:
+        - $ref: "#/components/parameters/PageLimit"
+        - $ref: "#/components/parameters/PageCursor"
+      responses:
+        "200":
+          description: Deployment capabilities
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CapabilityDocument" }
+              example:
+                contract_version: "2.0.0"
+                source_commands:
+                  - key: rss
+                    display_name: RSS
+                    emitted_sources: [rss]
+                    scheduled: true
+                    transports: [cli, http, mcp, frontend]
+                    fields:
+                      - { name: max_items, type: integer, required: false }
+                operation_types: [ingestion.execute, digest.create]
+                resource_types: [content, digest]
+                next_cursor: null
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/configured-sources:
+    get:
+      operationId: listConfiguredSources
+      summary: List configured ingestion sources without assuming locator fields
+      tags: [capabilities, ingestion]
+      parameters:
+        - $ref: "#/components/parameters/PageLimit"
+        - $ref: "#/components/parameters/PageCursor"
+      responses:
+        "200":
+          description: Configured source page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConfiguredSourcePage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/uploads:
+    post:
+      operationId: createUpload
+      summary: Upload a document for a subsequent files ingestion command
+      tags: [uploads]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                title: { type: string }
+                publication: { type: string }
+            example:
+              title: Architecture notes
+              publication: Internal
+      responses:
+        "201":
+          description: Durable upload reference
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UploadReference" }
+              example:
+                id: upl_01JABCDEF
+                filename: architecture.pdf
+                media_type: application/pdf
+                size_bytes: 18432
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/ProblemResponse" }
+        "422": { $ref: "#/components/responses/ValidationProblem" }
+
+  /api/v1/ingestions:
+    post:
+      operationId: submitIngestion
+      summary: Submit one typed ingestion command
+      tags: [operations, ingestion]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IngestCommand" }
+            example:
+              kind: arxiv_paper
+              identifier: "2401.12345"
+              extract_pdf: true
+              force_reprocess: false
+      responses:
+        "202":
+          $ref: "#/components/responses/AcceptedOperation"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/ConflictProblem" }
+        "422": { $ref: "#/components/responses/ValidationProblem" }
+
+  /api/v1/summarization-runs:
+    post:
+      operationId: submitSummarization
+      summary: Submit summarization for a content query or explicit IDs
+      tags: [operations, summarization]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SummarizationRequest" }
+            example:
+              query: { source_types: [rss], limit: 25 }
+              force_reprocess: false
+      responses:
+        "202": { $ref: "#/components/responses/AcceptedOperation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationProblem" }
+
+  /api/v1/theme-analyses:
+    post:
+      operationId: submitThemeAnalysis
+      summary: Submit theme analysis over one canonical resolved content set
+      tags: [operations, themes]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ThemeAnalysisRequest" }
+            example:
+              query:
+                start_date: "2026-07-06T00:00:00Z"
+                end_date: "2026-07-13T00:00:00Z"
+                date_basis: published_date
+              max_themes: 10
+      responses:
+        "202": { $ref: "#/components/responses/AcceptedOperation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationProblem" }
+
+  /api/v1/digests:
+    post:
+      operationId: submitDigest
+      summary: Submit durable digest creation
+      tags: [operations, digests]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DigestCreateRequest" }
+            example:
+              digest_type: weekly
+              period_start: "2026-07-06T00:00:00Z"
+              period_end: "2026-07-13T00:00:00Z"
+              query: { source_types: [gmail, rss], date_basis: published_date }
+              include_historical_context: true
+      responses:
+        "202": { $ref: "#/components/responses/AcceptedOperation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/ConflictProblem" }
+        "422": { $ref: "#/components/responses/ValidationProblem" }
+
+  /api/v1/pipeline-runs:
+    post:
+      operationId: submitPipeline
+      summary: Submit the canonical ingest-to-digest pipeline
+      tags: [operations, pipeline]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PipelineRequest" }
+            example:
+              period: daily
+              period_start: "2026-07-12T00:00:00Z"
+              period_end: "2026-07-13T00:00:00Z"
+              sources: [gmail, rss, readwise]
+              continue_on_source_error: true
+      responses:
+        "202": { $ref: "#/components/responses/AcceptedOperation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationProblem" }
+
+  /api/v1/podcast-scripts:
+    post:
+      operationId: submitPodcastScript
+      summary: Submit podcast script creation from persisted digest provenance
+      tags: [operations, podcasts]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PodcastScriptRequest" }
+            example:
+              digest_id: 42
+              length: standard
+              enable_web_search: true
+              custom_focus_topics: [agentic systems]
+      responses:
+        "202": { $ref: "#/components/responses/AcceptedOperation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/ConflictProblem" }
+        "422": { $ref: "#/components/responses/ValidationProblem" }
+
+  /api/v1/podcasts:
+    post:
+      operationId: submitPodcastAudio
+      summary: Submit audio generation for an approved podcast script
+      tags: [operations, podcasts]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PodcastAudioRequest" }
+            example:
+              script_id: 77
+              voice_provider: openai_tts
+              alex_voice: alex_male
+              sam_voice: sam_female
+      responses:
+        "202": { $ref: "#/components/responses/AcceptedOperation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/ConflictProblem" }
+        "422": { $ref: "#/components/responses/ValidationProblem" }
+
+  /api/v1/audio-digests:
+    post:
+      operationId: submitAudioDigest
+      summary: Submit single-voice audio digest generation
+      tags: [operations, audio-digests]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AudioDigestRequest" }
+            example:
+              digest_id: 42
+              provider: openai
+              voice: nova
+              speed: 1.1
+      responses:
+        "202": { $ref: "#/components/responses/AcceptedOperation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/ConflictProblem" }
+        "422": { $ref: "#/components/responses/ValidationProblem" }
+
+  /api/v1/operations/{operation_id}:
+    get:
+      operationId: getOperation
+      summary: Get operation state, optionally waiting for change or completion
+      tags: [operations]
+      parameters:
+        - $ref: "#/components/parameters/OperationId"
+        - name: wait_seconds
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, maximum: 30, default: 0 }
+          example: 10
+      responses:
+        "200":
+          description: Current operation state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationHandle" }
+              example:
+                schema_version: 2
+                operation_id: "8123"
+                operation_type: digest.create
+                status: completed
+                progress: 100
+                message: Digest created
+                cancellable: false
+                retry_count: 0
+                status_url: /api/v1/operations/8123
+                events_url: /api/v1/operations/8123/events
+                resource: { type: digest, id: "42", url: /api/v1/digests/42 }
+                result: { selection_fingerprint: "b6d81b360a5672d80c27430f39153e2c" }
+                problem: null
+                created_at: "2026-07-13T10:00:00Z"
+                started_at: "2026-07-13T10:00:01Z"
+                completed_at: "2026-07-13T10:01:12Z"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFoundProblem" }
+
+  /api/v1/operations:
+    get:
+      operationId: listOperations
+      summary: List durable operations using an opaque keyset cursor
+      tags: [operations]
+      parameters:
+        - $ref: "#/components/parameters/PageLimit"
+        - $ref: "#/components/parameters/PageCursor"
+      responses:
+        "200":
+          description: Operation page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationProblem" }
+
+  /api/v1/operations/{operation_id}/events:
+    get:
+      operationId: streamOperationEvents
+      summary: Stream operation progress events
+      tags: [operations]
+      parameters:
+        - $ref: "#/components/parameters/OperationId"
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema: { type: string }
+          example: "8123:4"
+      responses:
+        "200":
+          description: Server-sent operation events
+          content:
+            text/event-stream:
+              schema: { $ref: "#/components/schemas/OperationEvent" }
+              example: "id: 8123:5\nevent: progress\ndata: {\"operation_id\":\"8123\",\"status\":\"in_progress\",\"progress\":65,\"message\":\"Creating digest\"}\n\n"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFoundProblem" }
+
+  /api/v1/operations/{operation_id}/retry:
+    post:
+      operationId: retryOperation
+      summary: Retry a failed operation
+      tags: [operations]
+      parameters:
+        - $ref: "#/components/parameters/OperationId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+            example: {}
+      responses:
+        "202": { $ref: "#/components/responses/AcceptedOperation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFoundProblem" }
+        "409": { $ref: "#/components/responses/ConflictProblem" }
+
+  /api/v1/operations/{operation_id}/cancel:
+    post:
+      operationId: cancelOperation
+      summary: Cancel a queued operation or request safe running cancellation
+      tags: [operations]
+      parameters:
+        - $ref: "#/components/parameters/OperationId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+            example: {}
+      responses:
+        "202": { $ref: "#/components/responses/AcceptedOperation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFoundProblem" }
+        "409": { $ref: "#/components/responses/ConflictProblem" }
+
+components:
+  securitySchemes:
+    AdminKey:
+      type: apiKey
+      in: header
+      name: X-Admin-Key
+
+  parameters:
+    PageLimit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    PageCursor:
+      name: cursor
+      in: query
+      required: false
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string, minLength: 8, maxLength: 200 }
+      example: "weekly-2026-07-06-gmail-rss"
+    OperationId:
+      name: operation_id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[0-9]+$" }
+      example: "8123"
+
+  responses:
+    AcceptedOperation:
+      description: Durable operation accepted or existing idempotent operation returned
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/OperationHandle" }
+          example:
+            schema_version: 2
+            operation_id: "8123"
+            operation_type: digest.create
+            status: queued
+            progress: 0
+            message: Queued
+            cancellable: true
+            retry_count: 0
+            status_url: /api/v1/operations/8123
+            events_url: /api/v1/operations/8123/events
+            resource: null
+            result: null
+            problem: null
+            created_at: "2026-07-13T10:00:00Z"
+            started_at: null
+            completed_at: null
+    ProblemResponse:
+      description: RFC 7807 problem
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example:
+            type: https://aca.rotkohl.ai/problems/request-failed
+            title: Request failed
+            status: 400
+            detail: The request could not be completed
+    Unauthorized:
+      description: Authentication is required
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example:
+            type: https://aca.rotkohl.ai/problems/unauthorized
+            title: Unauthorized
+            status: 401
+            detail: Valid credentials are required
+    Forbidden:
+      description: Credentials do not authorize the operation
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example:
+            type: https://aca.rotkohl.ai/problems/forbidden
+            title: Forbidden
+            status: 403
+            detail: The supplied credentials are not authorized
+    ValidationProblem:
+      description: Request validation failed
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example:
+            type: https://aca.rotkohl.ai/problems/validation
+            title: Validation failed
+            status: 422
+            detail: arxiv_paper.identifier is required
+            errors:
+              - { path: [identifier], code: missing, message: Field required }
+    ConflictProblem:
+      description: Current resource or operation state conflicts with the request
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example:
+            type: https://aca.rotkohl.ai/problems/operation-conflict
+            title: Operation conflict
+            status: 409
+            detail: Completed operations cannot be cancelled
+    NotFoundProblem:
+      description: Requested operation or resource was not found
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example:
+            type: https://aca.rotkohl.ai/problems/not-found
+            title: Not found
+            status: 404
+            detail: Operation 8123 was not found
+
+  schemas:
+    Problem:
+      type: object
+      additionalProperties: false
+      required: [type, title, status, detail]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer, minimum: 400, maximum: 599 }
+        detail: { type: string }
+        instance: { type: [string, "null"] }
+        code: { type: [string, "null"] }
+        errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [path, code, message]
+            properties:
+              path: { type: array, items: { type: [string, integer] } }
+              code: { type: string }
+              message: { type: string }
+
+    ResourceReference:
+      type: object
+      additionalProperties: false
+      required: [type, id, url]
+      properties:
+        type:
+          type: string
+          enum: [content, ingestion_run, summary_batch, theme_analysis, digest, pipeline_run, podcast_script, podcast, audio_digest]
+        id: { type: string }
+        url: { type: string }
+
+    IngestionResult:
+      type: object
+      additionalProperties: false
+      required: [command_key, resolved_route, emitted_sources, items_ingested, content_ids]
+      properties:
+        command_key: { type: string }
+        resolved_route: { type: string }
+        emitted_sources:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string }
+        items_ingested: { type: integer, minimum: 0 }
+        content_ids:
+          type: array
+          uniqueItems: true
+          items: { type: integer, minimum: 1 }
+        warnings: { type: array, items: { type: string } }
+        details: { type: object, additionalProperties: true }
+
+    OperationHandle:
+      type: object
+      additionalProperties: false
+      x-operation-result-schemas:
+        ingestion.execute: { $ref: "#/components/schemas/IngestionResult" }
+      required:
+        - schema_version
+        - operation_id
+        - operation_type
+        - status
+        - progress
+        - message
+        - cancellable
+        - retry_count
+        - status_url
+        - events_url
+        - created_at
+      properties:
+        schema_version: { type: integer, const: 2 }
+        operation_id: { type: string }
+        operation_type:
+          type: string
+          enum:
+            - ingestion.execute
+            - summarization.run
+            - theme_analysis.create
+            - digest.create
+            - pipeline.run
+            - podcast_script.create
+            - podcast_audio.create
+            - audio_digest.create
+        status: { type: string, enum: [queued, in_progress, completed, failed, cancelled] }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        message: { type: string }
+        cancellable: { type: boolean }
+        retry_count: { type: integer, minimum: 0 }
+        status_url: { type: string }
+        events_url: { type: string }
+        resource:
+          anyOf:
+            - { $ref: "#/components/schemas/ResourceReference" }
+            - { type: "null" }
+        result:
+          type: [object, "null"]
+          additionalProperties: true
+        problem:
+          anyOf:
+            - { $ref: "#/components/schemas/Problem" }
+            - { type: "null" }
+        created_at: { type: string, format: date-time }
+        started_at: { type: [string, "null"], format: date-time }
+        completed_at: { type: [string, "null"], format: date-time }
+
+    OperationPage:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/OperationHandle" } }
+        next_cursor: { type: [string, "null"] }
+
+    OperationEvent:
+      type: object
+      additionalProperties: false
+      required: [schema_version, event_id, operation_id, operation_type, status, progress, message, occurred_at]
+      properties:
+        schema_version: { type: integer, const: 2 }
+        event_id: { type: string }
+        operation_id: { type: string }
+        operation_type:
+          type: string
+          enum:
+            - ingestion.execute
+            - summarization.run
+            - theme_analysis.create
+            - digest.create
+            - pipeline.run
+            - podcast_script.create
+            - podcast_audio.create
+            - audio_digest.create
+        status: { type: string, enum: [queued, in_progress, completed, failed, cancelled] }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        message: { type: string }
+        resource:
+          anyOf:
+            - { $ref: "#/components/schemas/ResourceReference" }
+            - { type: "null" }
+        problem:
+          anyOf:
+            - { $ref: "#/components/schemas/Problem" }
+            - { type: "null" }
+        occurred_at: { type: string, format: date-time }
+
+    UploadReference:
+      type: object
+      additionalProperties: false
+      required: [id, filename, media_type, size_bytes]
+      properties:
+        id: { type: string }
+        filename: { type: string }
+        media_type: { type: string }
+        size_bytes: { type: integer, minimum: 0 }
+        title: { type: [string, "null"] }
+        publication: { type: [string, "null"] }
+
+    CapabilityField:
+      type: object
+      additionalProperties: false
+      required: [name, type, required]
+      properties:
+        name: { type: string }
+        type: { type: string }
+        required: { type: boolean }
+        description: { type: [string, "null"] }
+        format: { type: [string, "null"] }
+        enum: { type: array, items: { type: string } }
+        default: {}
+        constraints:
+          type: object
+          additionalProperties: true
+          default: {}
+
+    SourceCapability:
+      type: object
+      additionalProperties: false
+      required:
+        - key
+        - display_name
+        - emitted_sources
+        - scheduled
+        - transports
+        - supports_force
+        - supports_date_range
+        - supports_preview
+        - requires_identifier
+        - fields
+      properties:
+        key: { type: string }
+        display_name: { type: string }
+        emitted_sources:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string }
+        scheduled: { type: boolean }
+        supports_force: { type: boolean }
+        supports_date_range: { type: boolean }
+        supports_preview: { type: boolean }
+        requires_identifier: { type: boolean }
+        transports:
+          type: array
+          items: { type: string, enum: [cli, http, mcp, frontend] }
+          uniqueItems: true
+        fields: { type: array, items: { $ref: "#/components/schemas/CapabilityField" } }
+
+    CapabilityDocument:
+      type: object
+      additionalProperties: false
+      required: [contract_version, source_commands, operation_types, resource_types]
+      properties:
+        contract_version: { type: string }
+        source_commands: { type: array, items: { $ref: "#/components/schemas/SourceCapability" } }
+        operation_types: { type: array, items: { type: string } }
+        resource_types: { type: array, items: { type: string } }
+        next_cursor: { type: [string, "null"] }
+
+    ConfiguredSource:
+      type: object
+      additionalProperties: false
+      required: [key, command_key, source_type, enabled, origin, configuration]
+      properties:
+        key: { type: string }
+        command_key: { type: string }
+        source_type: { type: string }
+        name: { type: [string, "null"] }
+        enabled: { type: boolean }
+        origin: { type: string, enum: [yaml, db] }
+        configuration: { type: object, additionalProperties: true }
+
+    ConfiguredSourcePage:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/ConfiguredSource" } }
+        next_cursor: { type: [string, "null"] }
+
+    ContentQuery:
+      type: object
+      additionalProperties: false
+      properties:
+        source_types:
+          type: array
+          items:
+            type: string
+            enum: [gmail, rss, file_upload, youtube, podcast, substack, manual, webpage, xsearch, perplexity, blog, scholar, arxiv, huggingface_papers, readwise, other]
+        statuses:
+          type: array
+          items: { type: string, enum: [pending, parsing, parsed, processing, completed, failed, filtered_out] }
+        publications: { type: array, items: { type: string } }
+        publication_search: { type: string }
+        start_date: { type: string, format: date-time }
+        end_date: { type: string, format: date-time }
+        date_basis: { type: string, enum: [published_date, ingested_at], default: published_date }
+        search: { type: string }
+        limit: { type: integer, minimum: 1 }
+        sort_by:
+          type: string
+          enum: [id, title, source_type, publication, status, published_date, ingested_at]
+          default: published_date
+        sort_order: { type: string, enum: [asc, desc], default: desc }
+        canonical_only: { type: boolean, default: true }
+        require_summary: { type: boolean, default: true }
+
+    ConfiguredSourceCommandBase:
+      type: object
+      properties:
+        configured_sources:
+          type: array
+          readOnly: true
+          x-internal: true
+          items: { type: object, additionalProperties: true }
+        max_items: { type: integer, minimum: 1 }
+        days_back: { type: integer, minimum: 0 }
+        after_date: { type: string, format: date-time }
+        force_reprocess: { type: boolean, default: false }
+
+    GmailIngestCommand:
+      allOf:
+        - { $ref: "#/components/schemas/ConfiguredSourceCommandBase" }
+        - type: object
+          additionalProperties: false
+          required: [kind]
+          properties:
+            kind: { type: string, const: gmail }
+            configured_sources:
+              type: array
+              readOnly: true
+              x-internal: true
+              items: { type: object, additionalProperties: true }
+            query: { type: string }
+            max_items: { type: integer, minimum: 1 }
+            days_back: { type: integer, minimum: 0 }
+            after_date: { type: string, format: date-time }
+            force_reprocess: { type: boolean, default: false }
+
+    RssIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, const: rss }
+        configured_sources:
+          type: array
+          readOnly: true
+          x-internal: true
+          items: { type: object, additionalProperties: true }
+        max_items: { type: integer, minimum: 1 }
+        days_back: { type: integer, minimum: 0 }
+        after_date: { type: string, format: date-time }
+        force_reprocess: { type: boolean, default: false }
+
+    BlogIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, const: blog }
+        configured_sources:
+          type: array
+          readOnly: true
+          x-internal: true
+          items: { type: object, additionalProperties: true }
+        max_items: { type: integer, minimum: 1 }
+        days_back: { type: integer, minimum: 0 }
+        after_date: { type: string, format: date-time }
+        force_reprocess: { type: boolean, default: false }
+
+    SubstackIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, const: substack }
+        configured_sources:
+          type: array
+          readOnly: true
+          x-internal: true
+          items: { type: object, additionalProperties: true }
+        max_items: { type: integer, minimum: 1 }
+        days_back: { type: integer, minimum: 0 }
+        after_date: { type: string, format: date-time }
+        force_reprocess: { type: boolean, default: false }
+
+    YouTubePlaylistIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, const: youtube_playlist }
+        configured_sources:
+          type: array
+          readOnly: true
+          x-internal: true
+          items: { type: object, additionalProperties: true }
+        max_items: { type: integer, minimum: 1 }
+        days_back: { type: integer, minimum: 0 }
+        after_date: { type: string, format: date-time }
+        force_reprocess: { type: boolean, default: false }
+        public_only: { type: boolean, default: false }
+
+    YouTubeRssIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, const: youtube_rss }
+        configured_sources:
+          type: array
+          readOnly: true
+          x-internal: true
+          items: { type: object, additionalProperties: true }
+        max_items: { type: integer, minimum: 1 }
+        days_back: { type: integer, minimum: 0 }
+        after_date: { type: string, format: date-time }
+        force_reprocess: { type: boolean, default: false }
+
+    PodcastIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, const: podcast }
+        configured_sources:
+          type: array
+          readOnly: true
+          x-internal: true
+          items: { type: object, additionalProperties: true }
+        max_items: { type: integer, minimum: 1 }
+        days_back: { type: integer, minimum: 0 }
+        after_date: { type: string, format: date-time }
+        force_reprocess: { type: boolean, default: false }
+        transcribe: { type: boolean, default: true }
+
+    XSearchIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, const: x_search }
+        configured_sources:
+          type: array
+          readOnly: true
+          x-internal: true
+          items: { type: object, additionalProperties: true }
+        prompt: { type: string }
+        max_threads: { type: integer, minimum: 1 }
+        force_reprocess: { type: boolean, default: false }
+
+    PerplexitySearchIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, const: perplexity_search }
+        configured_sources:
+          type: array
+          readOnly: true
+          x-internal: true
+          items: { type: object, additionalProperties: true }
+        prompt: { type: string }
+        max_items: { type: integer, minimum: 1 }
+        recency: { type: string, enum: [hour, day, week, month] }
+        context_size: { type: string, enum: [low, medium, high] }
+        force_reprocess: { type: boolean, default: false }
+
+    FilesIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, upload_ids]
+      properties:
+        kind: { type: string, const: files }
+        upload_ids: { type: array, minItems: 1, items: { type: string } }
+        force_reprocess: { type: boolean, default: false }
+
+    UrlIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, url]
+      properties:
+        kind: { type: string, const: url }
+        url: { type: string, format: uri }
+        title: { type: string }
+        tags: { type: array, items: { type: string } }
+        notes: { type: string }
+        routing_mode: { type: string, enum: [auto, webpage], default: auto }
+        force_reprocess: { type: boolean, default: false }
+
+    ScholarSearchIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, const: scholar_search }
+        configured_sources:
+          type: array
+          readOnly: true
+          x-internal: true
+          items: { type: object, additionalProperties: true }
+        max_items: { type: integer, minimum: 1, default: 20 }
+
+    ScholarPaperIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, identifier]
+      properties:
+        kind: { type: string, const: scholar_paper }
+        identifier: { type: string, minLength: 1 }
+        with_references: { type: boolean, default: false }
+
+    ScholarReferencesIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, const: scholar_references }
+        after: { type: string, format: date-time }
+        before: { type: string, format: date-time }
+        source_types: { type: array, items: { type: string } }
+        dry_run: { type: boolean, default: false }
+        limit: { type: integer, minimum: 1 }
+
+    ArxivSearchIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, const: arxiv_search }
+        configured_sources:
+          type: array
+          readOnly: true
+          x-internal: true
+          items: { type: object, additionalProperties: true }
+        max_items: { type: integer, minimum: 1, default: 20 }
+        days_back: { type: integer, minimum: 0 }
+        after_date: { type: string, format: date-time }
+        force_reprocess: { type: boolean, default: false }
+        extract_pdf: { type: boolean, default: true }
+
+    ArxivPaperIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, identifier]
+      properties:
+        kind: { type: string, const: arxiv_paper }
+        identifier: { type: string, minLength: 1 }
+        extract_pdf: { type: boolean, default: true }
+        force_reprocess: { type: boolean, default: false }
+
+    HuggingFacePapersIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, const: huggingface_papers }
+        configured_sources:
+          type: array
+          readOnly: true
+          x-internal: true
+          items: { type: object, additionalProperties: true }
+        max_items: { type: integer, minimum: 1, default: 30 }
+        days_back: { type: integer, minimum: 0 }
+        after_date: { type: string, format: date-time }
+        force_reprocess: { type: boolean, default: false }
+
+    ReadwiseIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, const: readwise }
+        configured_sources:
+          type: array
+          readOnly: true
+          x-internal: true
+          items: { type: object, additionalProperties: true }
+        updated_after: { type: string, format: date-time }
+        source_types: { type: array, items: { type: string } }
+        include_deleted: { type: boolean, default: false }
+        max_books: { type: integer, minimum: 1 }
+        force_reprocess: { type: boolean, default: false }
+
+    IngestCommand:
+      oneOf:
+        - { $ref: "#/components/schemas/GmailIngestCommand" }
+        - { $ref: "#/components/schemas/RssIngestCommand" }
+        - { $ref: "#/components/schemas/BlogIngestCommand" }
+        - { $ref: "#/components/schemas/SubstackIngestCommand" }
+        - { $ref: "#/components/schemas/YouTubePlaylistIngestCommand" }
+        - { $ref: "#/components/schemas/YouTubeRssIngestCommand" }
+        - { $ref: "#/components/schemas/PodcastIngestCommand" }
+        - { $ref: "#/components/schemas/XSearchIngestCommand" }
+        - { $ref: "#/components/schemas/PerplexitySearchIngestCommand" }
+        - { $ref: "#/components/schemas/FilesIngestCommand" }
+        - { $ref: "#/components/schemas/UrlIngestCommand" }
+        - { $ref: "#/components/schemas/ScholarSearchIngestCommand" }
+        - { $ref: "#/components/schemas/ScholarPaperIngestCommand" }
+        - { $ref: "#/components/schemas/ScholarReferencesIngestCommand" }
+        - { $ref: "#/components/schemas/ArxivSearchIngestCommand" }
+        - { $ref: "#/components/schemas/ArxivPaperIngestCommand" }
+        - { $ref: "#/components/schemas/HuggingFacePapersIngestCommand" }
+        - { $ref: "#/components/schemas/ReadwiseIngestCommand" }
+      discriminator:
+        propertyName: kind
+        mapping:
+          gmail: "#/components/schemas/GmailIngestCommand"
+          rss: "#/components/schemas/RssIngestCommand"
+          blog: "#/components/schemas/BlogIngestCommand"
+          substack: "#/components/schemas/SubstackIngestCommand"
+          youtube_playlist: "#/components/schemas/YouTubePlaylistIngestCommand"
+          youtube_rss: "#/components/schemas/YouTubeRssIngestCommand"
+          podcast: "#/components/schemas/PodcastIngestCommand"
+          x_search: "#/components/schemas/XSearchIngestCommand"
+          perplexity_search: "#/components/schemas/PerplexitySearchIngestCommand"
+          files: "#/components/schemas/FilesIngestCommand"
+          url: "#/components/schemas/UrlIngestCommand"
+          scholar_search: "#/components/schemas/ScholarSearchIngestCommand"
+          scholar_paper: "#/components/schemas/ScholarPaperIngestCommand"
+          scholar_references: "#/components/schemas/ScholarReferencesIngestCommand"
+          arxiv_search: "#/components/schemas/ArxivSearchIngestCommand"
+          arxiv_paper: "#/components/schemas/ArxivPaperIngestCommand"
+          huggingface_papers: "#/components/schemas/HuggingFacePapersIngestCommand"
+          readwise: "#/components/schemas/ReadwiseIngestCommand"
+
+    SummarizationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        content_ids: { type: array, minItems: 1, items: { type: integer, minimum: 1 } }
+        query: { $ref: "#/components/schemas/ContentQuery" }
+        force_reprocess: { type: boolean, default: false }
+      oneOf:
+        - required: [content_ids]
+        - required: [query]
+
+    ThemeAnalysisRequest:
+      type: object
+      additionalProperties: false
+      required: [query]
+      properties:
+        query: { $ref: "#/components/schemas/ContentQuery" }
+        max_themes: { type: integer, minimum: 1, maximum: 50, default: 10 }
+
+    DigestCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [digest_type, period_start, period_end]
+      properties:
+        digest_type: { type: string, enum: [daily, weekly] }
+        period_start: { type: string, format: date-time }
+        period_end: { type: string, format: date-time }
+        query: { $ref: "#/components/schemas/ContentQuery" }
+        include_historical_context: { type: boolean, default: true }
+
+    PipelineRequest:
+      type: object
+      additionalProperties: false
+      required: [period, period_start, period_end]
+      properties:
+        period: { type: string, enum: [daily, weekly] }
+        period_start: { type: string, format: date-time }
+        period_end: { type: string, format: date-time }
+        sources: { type: array, uniqueItems: true, items: { type: string } }
+        continue_on_source_error: { type: boolean, default: true }
+
+    PodcastScriptRequest:
+      type: object
+      additionalProperties: false
+      required: [digest_id]
+      properties:
+        digest_id: { type: integer, minimum: 1 }
+        length: { type: string, enum: [brief, standard, extended], default: standard }
+        enable_web_search: { type: boolean, default: true }
+        custom_focus_topics: { type: array, items: { type: string } }
+        custom_instructions: { type: string }
+
+    PodcastAudioRequest:
+      type: object
+      additionalProperties: false
+      required: [script_id]
+      properties:
+        script_id: { type: integer, minimum: 1 }
+        voice_provider: { type: string, enum: [elevenlabs, google_tts, aws_polly, openai_tts], default: openai_tts }
+        alex_voice: { type: string, enum: [alex_male, alex_female], default: alex_male }
+        sam_voice: { type: string, enum: [sam_male, sam_female], default: sam_female }
+
+    AudioDigestRequest:
+      type: object
+      additionalProperties: false
+      required: [digest_id]
+      properties:
+        digest_id: { type: integer, minimum: 1 }
+        provider: { type: string, default: openai }
+        voice: { type: string, default: nova }
+        speed: { type: number, minimum: 0.5, maximum: 2.0, default: 1.0 }

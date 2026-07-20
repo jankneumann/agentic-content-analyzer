@@ -951,10 +951,11 @@ TTS providers have character limits per API call. The `TextChunker` class automa
 #### Create Audio Digest
 
 ```http
-POST /api/v1/digests/{digest_id}/audio
+POST /api/v1/audio-digests
 Content-Type: application/json
 
 {
+  "digest_id": 123,
   "voice": "nova",
   "speed": 1.0,
   "provider": "openai"
@@ -964,13 +965,17 @@ Content-Type: application/json
 **Response:**
 ```json
 {
-  "id": 42,
-  "digest_id": 123,
-  "voice": "nova",
-  "speed": 1.0,
-  "provider": "openai",
-  "status": "pending",
-  "created_at": "2025-01-15T10:00:00Z"
+  "schema_version": 2,
+  "operation_id": "42",
+  "operation_type": "audio_digest.create",
+  "status": "queued",
+  "progress": 0,
+  "message": "Queued",
+  "cancellable": true,
+  "retry_count": 0,
+  "status_url": "/api/v1/operations/42",
+  "events_url": "/api/v1/operations/42/events",
+  "created_at": "2026-07-16T10:00:00Z"
 }
 ```
 
@@ -1037,32 +1042,27 @@ Available voices for OpenAI TTS:
 
 ### Usage Examples
 
-**Python (direct):**
+**Python application boundary:**
 ```python
-from src.processors.audio_digest_generator import AudioDigestGenerator
+from src.models.jobs import OperationType
+from src.services.operation_service import OperationService
 
-generator = AudioDigestGenerator(
-    provider="openai",
-    voice="nova",
-    speed=1.0,
+handle = await OperationService().submit(
+    OperationType.AUDIO_DIGEST_CREATE,
+    {"digest_id": 123, "provider": "openai", "voice": "nova", "speed": 1.0},
 )
-
-audio_digest = await generator.generate(
-    digest_id=123,
-    progress_callback=lambda cur, total, msg: print(f"{cur}% - {msg}")
-)
-print(f"Audio URL: {audio_digest.audio_url}")
+print(handle.status_url)
 ```
 
 **API (via frontend or curl):**
 ```bash
 # Generate audio digest
-curl -X POST "http://localhost:8000/api/v1/digests/123/audio" \
+curl -X POST "http://localhost:8000/api/v1/audio-digests" \
   -H "Content-Type: application/json" \
-  -d '{"voice": "nova", "speed": 1.25}'
+  -d '{"digest_id": 123, "voice": "nova", "speed": 1.25}'
 
-# Check status
-curl "http://localhost:8000/api/v1/audio-digests/42"
+# Check the returned operation, then follow its resource reference
+curl "http://localhost:8000/api/v1/operations/42?wait_seconds=30"
 
 # Stream audio
 curl "http://localhost:8000/api/v1/audio-digests/42/stream" -o digest.mp3

@@ -90,6 +90,7 @@ class LLMResponse:
     input_tokens: int = 0
     output_tokens: int = 0
     provider: Provider | None = None
+    selected_model: str | None = None
     model_version: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
     raw_response: Any = None  # Provider-specific response for advanced usage
@@ -168,7 +169,13 @@ class LLMRouter:
             ValueError: If specified provider doesn't support the model
         """
         if provider is None:
-            return self.get_default_provider(model)
+            try:
+                configured = self.model_config.get_providers_for_model(model)
+            except ValueError:
+                if self.model_config.has_configured_providers() is True:
+                    raise
+                configured = []
+            return configured[0].provider if configured else self.get_default_provider(model)
 
         # Validate that the model is available on the specified provider
         try:
@@ -179,6 +186,36 @@ class LLMRouter:
                 f"Model '{model}' is not available on provider '{provider.value}'. "
                 f"Available providers: {self.get_available_providers(model)}"
             ) from e
+
+    def get_provider_candidates(
+        self,
+        model: str,
+        provider: Provider | None = None,
+    ) -> tuple[Provider, ...]:
+        """Return configured providers in priority order for one model.
+
+        Explicit selection is strict. Configurations without provider entries retain
+        the historical family default so local/test setups remain compatible.
+        """
+
+        if provider is not None:
+            try:
+                self.model_config.get_provider_model_config(model, provider)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Model '{model}' is not available on provider '{provider.value}'. "
+                    f"Available providers: {self.get_available_providers(model)}"
+                ) from exc
+            return (provider,)
+
+        try:
+            configured = self.model_config.get_providers_for_model(model)
+        except ValueError:
+            if self.model_config.has_configured_providers() is True:
+                raise
+            configured = []
+        candidates = tuple(config.provider for config in configured)
+        return candidates or (self.resolve_provider(model),)
 
     def get_available_providers(self, model: str) -> list[Provider]:
         """Get all providers that support a model.
@@ -271,29 +308,36 @@ class LLMRouter:
                     model,
                 )
 
-        resolved_provider = self.resolve_provider(model, provider)
-        logger.info(f"Generating with model={model}, provider={resolved_provider.value}")
-
         start_time = time.monotonic()
-
-        if resolved_provider == Provider.GOOGLE_AI:
-            response = await self._generate_gemini(
-                model, resolved_provider, system_prompt, user_prompt, max_tokens, temperature
-            )
-        elif resolved_provider in (
-            Provider.ANTHROPIC,
-            Provider.AWS_BEDROCK,
-            Provider.GOOGLE_VERTEX,
-        ):
-            response = await self._generate_anthropic(
-                model, resolved_provider, system_prompt, user_prompt, max_tokens, temperature
-            )
-        elif resolved_provider in (Provider.OPENAI, Provider.MICROSOFT_AZURE):
-            response = await self._generate_openai(
-                model, resolved_provider, system_prompt, user_prompt, max_tokens, temperature
-            )
-        else:
-            raise ValueError(f"Unsupported provider: {resolved_provider}")
+        response: LLMResponse | None = None
+        resolved_provider: Provider | None = None
+        last_error: Exception | None = None
+        for candidate in self.get_provider_candidates(model, provider):
+            try:
+                logger.info("Generating with model=%s, provider=%s", model, candidate.value)
+                response = await self._generate_for_provider(
+                    model,
+                    candidate,
+                    system_prompt,
+                    user_prompt,
+                    max_tokens,
+                    temperature,
+                )
+                resolved_provider = candidate
+                break
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "Generation failed with model=%s provider=%s: %s",
+                    model,
+                    candidate.value,
+                    exc,
+                )
+        if response is None or resolved_provider is None:
+            if last_error is not None:
+                raise last_error
+            raise RuntimeError(f"No provider candidates available for model '{model}'")
+        response.selected_model = model
 
         duration_ms = (time.monotonic() - start_time) * 1000
         self._trace_llm_call(
@@ -312,6 +356,29 @@ class LLMRouter:
 
         return response
 
+    async def _generate_for_provider(
+        self,
+        model: str,
+        provider: Provider,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> LLMResponse:
+        if provider == Provider.GOOGLE_AI:
+            return await self._generate_gemini(
+                model, provider, system_prompt, user_prompt, max_tokens, temperature
+            )
+        if provider in (Provider.ANTHROPIC, Provider.AWS_BEDROCK, Provider.GOOGLE_VERTEX):
+            return await self._generate_anthropic(
+                model, provider, system_prompt, user_prompt, max_tokens, temperature
+            )
+        if provider in (Provider.OPENAI, Provider.MICROSOFT_AZURE):
+            return await self._generate_openai(
+                model, provider, system_prompt, user_prompt, max_tokens, temperature
+            )
+        raise ValueError(f"Unsupported provider: {provider}")
+
     async def generate_with_tools(
         self,
         model: str,
@@ -328,6 +395,7 @@ class LLMRouter:
         reflection_prompt: str | None = None,
         memory_context: list[Any] | None = None,
         cost_limit: float | None = None,
+        step: ModelStep | None = None,
     ) -> LLMResponse:
         """Generate with tool use in an agentic loop.
 
@@ -352,14 +420,12 @@ class LLMRouter:
             cost_limit: Maximum USD cost for this generation. If exceeded, returns
                 partial results. Tracks cost via input/output token counts and
                 model pricing. (agentic-analysis.18, agentic-analysis.21)
+            step: Optional pipeline step for dynamic model routing and decision telemetry.
 
         Returns:
             LLMResponse with final text and usage stats
         """
         import time
-
-        resolved_provider = self.resolve_provider(model, provider)
-        logger.info(f"Generating with tools: model={model}, provider={resolved_provider.value}")
 
         # Inject memory context into user prompt (not system prompt) to maintain
         # trust boundary — memory entries may contain user-influenced content.
@@ -375,50 +441,57 @@ class LLMRouter:
             memory_text += "---\n"
             user_prompt = memory_text + "\n" + user_prompt
 
+        routing_decision = None
+        if step is not None and self.model_config.is_dynamic_routing_enabled(step):
+            routing_config = self.model_config.get_routing_config(step)
+            if (
+                self.complexity_router is not None
+                and routing_config.strong_model
+                and routing_config.weak_model
+            ):
+                routing_decision = self.complexity_router.classify(
+                    prompt=user_prompt,
+                    step=step.value,
+                    strong_model=routing_config.strong_model,
+                    weak_model=routing_config.weak_model,
+                    threshold=routing_config.threshold,
+                )
+                model = routing_decision.model_selected
+
         start_time = time.monotonic()
 
-        if resolved_provider == Provider.GOOGLE_AI:
-            response = await self._generate_gemini_with_tools(
-                model,
-                resolved_provider,
-                system_prompt,
-                user_prompt,
-                tools,
-                tool_executor,
-                max_tokens,
-                temperature,
-                max_iterations,
-            )
-        elif resolved_provider in (
-            Provider.ANTHROPIC,
-            Provider.AWS_BEDROCK,
-            Provider.GOOGLE_VERTEX,
-        ):
-            response = await self._generate_anthropic_with_tools(
-                model,
-                resolved_provider,
-                system_prompt,
-                user_prompt,
-                tools,
-                tool_executor,
-                max_tokens,
-                temperature,
-                max_iterations,
-            )
-        elif resolved_provider in (Provider.OPENAI, Provider.MICROSOFT_AZURE):
-            response = await self._generate_openai_with_tools(
-                model,
-                resolved_provider,
-                system_prompt,
-                user_prompt,
-                tools,
-                tool_executor,
-                max_tokens,
-                temperature,
-                max_iterations,
-            )
-        else:
-            raise ValueError(f"Unsupported provider: {resolved_provider}")
+        response: LLMResponse | None = None
+        resolved_provider: Provider | None = None
+        last_error: Exception | None = None
+        for candidate in self.get_provider_candidates(model, provider):
+            try:
+                logger.info("Generating with tools: model=%s, provider=%s", model, candidate.value)
+                response = await self._generate_with_tools_for_provider(
+                    model,
+                    candidate,
+                    system_prompt,
+                    user_prompt,
+                    tools,
+                    tool_executor,
+                    max_tokens,
+                    temperature,
+                    max_iterations,
+                )
+                resolved_provider = candidate
+                break
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "Tool generation failed with model=%s provider=%s: %s",
+                    model,
+                    candidate.value,
+                    exc,
+                )
+        if response is None or resolved_provider is None:
+            if last_error is not None:
+                raise last_error
+            raise RuntimeError(f"No provider candidates available for model '{model}'")
+        response.selected_model = model
 
         # Cost limit check
         if cost_limit is not None:
@@ -441,6 +514,8 @@ class LLMRouter:
                     max_tokens=max_tokens,
                     metadata={"tool_count": len(tools), "cost_limit_exceeded": True},
                 )
+                if routing_decision is not None:
+                    self._log_routing_decision(routing_decision, response)
                 return response
 
         # Reflection step (agentic-analysis.18)
@@ -454,6 +529,7 @@ class LLMRouter:
                 max_tokens=max_tokens,
                 temperature=temperature,
             )
+            response.selected_model = model
 
         duration_ms = (time.monotonic() - start_time) * 1000
         self._trace_llm_call(
@@ -470,8 +546,41 @@ class LLMRouter:
                 "reflection": enable_reflection,
             },
         )
+        if routing_decision is not None:
+            self._log_routing_decision(routing_decision, response)
 
         return response
+
+    async def _generate_with_tools_for_provider(
+        self,
+        model: str,
+        provider: Provider,
+        system_prompt: str,
+        user_prompt: str,
+        tools: list[ToolDefinition],
+        tool_executor: ToolExecutor,
+        max_tokens: int,
+        temperature: float,
+        max_iterations: int,
+    ) -> LLMResponse:
+        args = (
+            model,
+            provider,
+            system_prompt,
+            user_prompt,
+            tools,
+            tool_executor,
+            max_tokens,
+            temperature,
+            max_iterations,
+        )
+        if provider == Provider.GOOGLE_AI:
+            return await self._generate_gemini_with_tools(*args)
+        if provider in (Provider.ANTHROPIC, Provider.AWS_BEDROCK, Provider.GOOGLE_VERTEX):
+            return await self._generate_anthropic_with_tools(*args)
+        if provider in (Provider.OPENAI, Provider.MICROSOFT_AZURE):
+            return await self._generate_openai_with_tools(*args)
+        raise ValueError(f"Unsupported provider: {provider}")
 
     async def generate_with_planning(
         self,
@@ -950,29 +1059,36 @@ class LLMRouter:
         """
         import time
 
-        resolved_provider = self.resolve_provider(model, provider)
-        logger.info(f"Generating (sync) with model={model}, provider={resolved_provider.value}")
-
         start_time = time.monotonic()
-
-        if resolved_provider == Provider.GOOGLE_AI:
-            response = self._generate_gemini_sync(
-                model, resolved_provider, system_prompt, user_prompt, max_tokens, temperature
-            )
-        elif resolved_provider in (
-            Provider.ANTHROPIC,
-            Provider.AWS_BEDROCK,
-            Provider.GOOGLE_VERTEX,
-        ):
-            response = self._generate_anthropic_sync(
-                model, resolved_provider, system_prompt, user_prompt, max_tokens, temperature
-            )
-        elif resolved_provider in (Provider.OPENAI, Provider.MICROSOFT_AZURE):
-            response = self._generate_openai_sync(
-                model, resolved_provider, system_prompt, user_prompt, max_tokens, temperature
-            )
-        else:
-            raise ValueError(f"Unsupported provider: {resolved_provider}")
+        response: LLMResponse | None = None
+        resolved_provider: Provider | None = None
+        last_error: Exception | None = None
+        for candidate in self.get_provider_candidates(model, provider):
+            try:
+                logger.info("Generating (sync) with model=%s, provider=%s", model, candidate.value)
+                response = self._generate_sync_for_provider(
+                    model,
+                    candidate,
+                    system_prompt,
+                    user_prompt,
+                    max_tokens,
+                    temperature,
+                )
+                resolved_provider = candidate
+                break
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "Sync generation failed with model=%s provider=%s: %s",
+                    model,
+                    candidate.value,
+                    exc,
+                )
+        if response is None or resolved_provider is None:
+            if last_error is not None:
+                raise last_error
+            raise RuntimeError(f"No provider candidates available for model '{model}'")
+        response.selected_model = model
 
         duration_ms = (time.monotonic() - start_time) * 1000
         self._trace_llm_call(
@@ -986,6 +1102,29 @@ class LLMRouter:
         )
 
         return response
+
+    def _generate_sync_for_provider(
+        self,
+        model: str,
+        provider: Provider,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> LLMResponse:
+        if provider == Provider.GOOGLE_AI:
+            return self._generate_gemini_sync(
+                model, provider, system_prompt, user_prompt, max_tokens, temperature
+            )
+        if provider in (Provider.ANTHROPIC, Provider.AWS_BEDROCK, Provider.GOOGLE_VERTEX):
+            return self._generate_anthropic_sync(
+                model, provider, system_prompt, user_prompt, max_tokens, temperature
+            )
+        if provider in (Provider.OPENAI, Provider.MICROSOFT_AZURE):
+            return self._generate_openai_sync(
+                model, provider, system_prompt, user_prompt, max_tokens, temperature
+            )
+        raise ValueError(f"Unsupported provider: {provider}")
 
     def _generate_anthropic_sync(
         self,

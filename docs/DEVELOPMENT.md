@@ -22,40 +22,43 @@ make dev-stop
 
 ### Content Ingestion
 
-All ingestion uses the unified Content model.
+All ingestion uses strict registry commands, the unified Content model, and the
+durable HTTP workflow API. The CLI requires a reachable API; `--direct` does not
+bypass queue submission.
 
 ```bash
-# Fetch content from Gmail newsletters
 aca ingest gmail
-
-# Fetch content from RSS feeds
 aca ingest rss
-
-# Fetch content from YouTube playlists
-aca ingest youtube
-
-# Force reprocess existing content
-aca ingest gmail --force
-aca ingest rss --force
+aca ingest youtube-playlist --max-items 5
+aca ingest x-search --prompt "agent releases" --max-threads 3
+aca ingest files report.pdf
+aca ingest url https://example.com/article
+aca ingest rss --force-reprocess
 ```
+
+Run `aca capabilities --json` for the registry-derived command and field
+contract. Multiword CLI commands use hyphens; request discriminators use
+underscores.
 
 ### Processing
 
 ```bash
-# Summarize all pending content
-aca summarize pending
+# Summarize pending content and wait for the durable operation
+aca summarize run --wait
 
 # Or via API:
-curl -X POST http://localhost:8000/api/v1/contents/summarize
+curl -X POST http://localhost:8000/api/v1/summarization-runs \
+  -H 'Content-Type: application/json' -d '{}'
 
 # Create a daily digest
-aca create-digest daily
-
-# Create a weekly digest
-aca create-digest weekly
+aca digest create --type daily \
+  --period-start 2026-07-15T00:00:00Z \
+  --period-end 2026-07-16T00:00:00Z
 
 # Run full pipeline (ingest → summarize → digest)
-aca pipeline daily
+aca pipeline run --period daily \
+  --period-start 2026-07-15T00:00:00Z \
+  --period-end 2026-07-16T00:00:00Z --wait
 ```
 
 ### Review Workflow
@@ -104,11 +107,11 @@ See [Review System Documentation](REVIEW_SYSTEM.md) for detailed guide.
 Generate single-voice narration from approved digests:
 
 ```bash
-# Via API (recommended - uses background tasks):
+# Via canonical API (returns an OperationHandle):
 # Generate audio digest for digest #42
-curl -X POST "http://localhost:8000/api/v1/digests/42/audio" \
+curl -X POST "http://localhost:8000/api/v1/audio-digests" \
   -H "Content-Type: application/json" \
-  -d '{"voice": "nova", "speed": 1.0}'
+  -d '{"digest_id": 42, "voice": "nova", "speed": 1.0}'
 
 # List all audio digests
 curl "http://localhost:8000/api/v1/audio-digests/"
@@ -161,24 +164,18 @@ WORKER_CONCURRENCY=8 aca worker start
 
 Both modes can run simultaneously — `SELECT FOR UPDATE SKIP LOCKED` prevents double-claiming. To run only standalone workers, set `WORKER_ENABLED=false`.
 
-**Job management:**
+**Operation management:**
 ```bash
-# List jobs in queue
-aca jobs list
-aca jobs list --status failed
-aca jobs list --entrypoint summarize_content
-
-# View job details
-aca jobs show 123
-
-# Retry failed jobs
-aca jobs retry 123           # Single job
-aca jobs retry --failed      # All failed jobs
-
-# Cleanup old completed jobs
-aca jobs cleanup --older-than 30d
-aca jobs cleanup --older-than 7d --dry-run  # Preview what would be deleted
+aca operations list
+aca operations get 123
+aca operations wait 123 --timeout 300
+aca operations retry 123
+aca operations cancel 123
 ```
+
+`OperationService` is the only application boundary for workflow submission
+and controls. New producers must enqueue one of the canonical operation types;
+they must not accept arbitrary entrypoints or execute workflow services inline.
 
 ### API Server
 
@@ -193,16 +190,18 @@ uvicorn src.api.app:app --reload
 # - Swagger UI: http://localhost:8000/docs
 # - ReDoc: http://localhost:8000/redoc
 
-# Key API endpoints:
-# - GET  /api/v1/contents         - List content
-# - POST /api/v1/contents/ingest  - Trigger ingestion
-# - POST /api/v1/contents/summarize - Trigger summarization
-# - GET  /api/v1/summaries        - List summaries
-# - GET  /api/v1/digests          - List digests
-# - GET  /api/v1/scripts          - List podcast scripts
-# - GET  /api/v1/podcasts         - List podcasts
-# - GET  /api/v1/audio-digests/   - List audio digests
-# - POST /api/v1/digests/{id}/audio - Generate audio digest
+# Canonical workflow endpoints:
+# - POST /api/v1/ingestions
+# - POST /api/v1/uploads
+# - POST /api/v1/summarization-runs
+# - POST /api/v1/theme-analyses
+# - POST /api/v1/digests
+# - POST /api/v1/pipeline-runs
+# - POST /api/v1/podcast-scripts
+# - POST /api/v1/podcasts
+# - POST /api/v1/audio-digests
+# - GET/POST /api/v1/operations[/{id}[/events|retry|cancel]]
+# - GET /api/v1/capabilities
 #
 # All list endpoints support sorting via query parameters:
 # - sort_by: Field to sort by (varies by endpoint)
@@ -1033,14 +1032,17 @@ with get_db() as db:
 
 ### Force Reprocess Flag
 
-Provide `--force` flag in CLI scripts for reprocessing:
+Force is part of the strict command or workflow request and must survive durable
+serialization:
 
 ```python
-@click.command()
-@click.option('--force', is_flag=True, help='Force reprocess existing content')
-def ingest(force: bool):
-    service = GmailContentIngestionService(force_reprocess=force)
-    count = service.ingest_content()
+command = SOURCE_REGISTRY.parse_command(
+    {"kind": "rss", "force_reprocess": True}
+)
+handle = await OperationService().submit(
+    OperationType.INGESTION_EXECUTE,
+    command.model_dump(mode="json", exclude_none=True),
+)
 ```
 
 **Use cases**:
@@ -1154,14 +1156,9 @@ Common issues when running job queue workers:
 
 **Diagnosing job failures**:
 ```bash
-# List failed jobs
-aca jobs list --status failed
-
-# View error details for a specific job
-aca jobs show 123
-
-# Retry after fixing the issue
-aca jobs retry 123
+aca operations list
+aca operations get 123
+aca operations retry 123
 ```
 
 **Environment variables for workers**:
@@ -1185,7 +1182,10 @@ await asyncio.to_thread(sync_func, kwarg=value)
 await asyncio.to_thread(lambda: sync_func(kwarg=value))
 ```
 
-**Background tasks**: Use FastAPI's `BackgroundTasks` for fire-and-forget operations.
+**Workflow background work**: Submit through `OperationService`. FastAPI
+`BackgroundTasks` is not an allowed execution path for ingestion, processing,
+digest, pipeline, podcast, or audio mutations because it has no shared durable
+status, retry, cancellation, or idempotency contract.
 
 **SSE for progress**: Use `StreamingResponse` with `text/event-stream` for real-time progress updates.
 

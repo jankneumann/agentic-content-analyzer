@@ -49,17 +49,18 @@ make dev-bg        # Start frontend + backend in background
 make dev-logs      # View logs
 make dev-stop      # Stop servers
 
-# Full pipeline
-aca pipeline daily                     # Ingest -> summarize -> digest
+# Full durable pipeline
+aca pipeline run --period daily --period-start 2026-07-15T00:00:00Z --period-end 2026-07-16T00:00:00Z --wait
 
 # Content ingestion
-aca ingest gmail|rss|substack|youtube|podcast|xsearch|perplexity-search|scholar
+aca ingest gmail|rss|substack|youtube-playlist|podcast|x-search|perplexity-search|scholar-search
 aca ingest files <path...>             # Local files
 aca ingest url <url>                   # Direct URL
 
 # Processing
-aca summarize pending                  # Summarize pending content
-aca create-digest daily|weekly         # Create digest
+aca summarize run --wait               # Summarize pending content
+aca digest create --type daily --period-start 2026-07-15T00:00:00Z --period-end 2026-07-16T00:00:00Z
+aca operations list                    # Observe durable work
 
 # Agentic analysis
 aca agent task "prompt"                # Submit analysis task
@@ -130,6 +131,8 @@ See [docs/MODEL_CONFIGURATION.md](docs/MODEL_CONFIGURATION.md) for full list.
 
 **Source DB overrides** — Sources can also be added/edited/disabled at runtime (no YAML commit) via database overrides merged on top of the YAML defaults inside `load_sources_config()` (`src/config/sources.py`). Precedence is DB over YAML, keyed by the natural key `<type>:<locator>` (`source_key()`); a DB row with `enabled:false` shadows its YAML twin. Storage: `source_overrides` table + `SourceOverrideService` (validates each `config` against the `Source` union). Manage via CLI `aca sources add|list|remove|enable|disable`, the `/api/v1/sources` write endpoints (admin-key), or the web **Settings → Sources** tab. The merge fails open to YAML-only when the DB is unavailable.
 
+**Canonical workflows** — CLI, HTTP, MCP, and frontend mutations submit the same eight operation types to `OperationService`; none may execute ingestion, summarization, digest, pipeline, or audio work inline. Extend ingestion only through `src/ingestion/registry.py`, then update the generated contracts and the exact-key fixture registry in `tests/fixtures/sources/`. Digest and podcast code must consume the immutable `ResolvedContentSet` and persisted content/summary IDs rather than re-querying a period.
+
 ## Critical Gotchas (Top 10)
 
 The full list is in [docs/GOTCHAS.md](docs/GOTCHAS.md). These are the ones that waste the most time:
@@ -151,7 +154,8 @@ The full list is in [docs/GOTCHAS.md](docs/GOTCHAS.md). These are the ones that 
 | Middleware order is LIFO (outer-first-call) | `app.add_middleware(X)` PREPENDS X to the outer stack. Order-in-code = trace, audit, auth, CORS ⇒ runtime outer→inner = trace → audit → auth → CORS. Getting this wrong means 401/403 audit-log rows go missing. See `src/api/app.py` + `tests/api/test_audit_ordering.py`. |
 | pg_cron + Railway managed PG | `current_setting('app.*')` GUC variables are restricted. For values that must persist across restarts (e.g., retention days), interpolate the value into the SQL at Alembic migration time — see `alembic/versions/b7a1c9d5e2f0_add_audit_log_table.py` for the pattern. |
 | `admin_key_fp` is always-fingerprint | Compute SHA-256 last-8 from the raw `X-Admin-Key` header whenever present, including invalid keys. NULL only when the header is absent. Lets you correlate credential-probing attempts from a single attacker. |
-| MCP tools use new OpenAPI shapes | Breaking change from legacy `{scanned, references_found, dry_run}` etc. The 4 refactored tools return OpenAPI-aligned shapes in BOTH HTTP and in-process modes. External consumers (only `agentic-assistant`) must migrate — see `openspec/changes/cloud-db-source-of-truth/MIGRATION.md`. |
+| MCP tools use canonical structured contracts | All MCP toolsets select one transport mode for the process, return native OpenAPI-aligned objects, and raise typed protocol errors. HTTP mode must never fall back to local persistence. External consumers (only `agentic-assistant`) must migrate from legacy response shapes — see `openspec/changes/cloud-db-source-of-truth/MIGRATION.md`. |
+| Workflow mutations are always durable | Use `OperationService` or the canonical `/api/v1/*` submission routes. Do not restore direct CLI execution, `BackgroundTasks`, legacy `/contents/*` mutations, or transport-owned source maps. |
 | `ruff S608` on multi-line SQL strings | `# noqa: S608` span is single-line. Prefer single-line f-strings so the noqa covers the violation line, OR put the noqa on the LINE where `SELECT`/`DELETE` appears — not the closing paren line. Otherwise you get a RUF100 "unused noqa" flip-flop. |
 
 ## Quick Links by Task

@@ -17,10 +17,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.ingestion.content_references import collect_content_references
 from src.ingestion.scholar import (
     ScholarContentIngestionService,
     ScholarPaperResult,
@@ -394,14 +396,14 @@ class TestCheckCrossSourceDuplicate:
     def test_doi_match(self):
         paper = _make_paper(external_ids={"DOI": "10.123/test"})
         db = MagicMock()
-        db.execute.return_value.first.return_value = (1,)
+        db.execute.return_value.first.return_value = SimpleNamespace(id=1, canonical_id=1)
 
         assert self.service._check_cross_source_duplicate(paper, db) is True
 
     def test_arxiv_match(self):
         paper = _make_paper(external_ids={"ArXiv": "2301.12345"})
         db = MagicMock()
-        db.execute.return_value.first.return_value = (1,)
+        db.execute.return_value.first.return_value = SimpleNamespace(id=1, canonical_id=1)
 
         assert self.service._check_cross_source_duplicate(paper, db) is True
 
@@ -423,11 +425,21 @@ class TestCheckCrossSourceDuplicate:
         paper = _make_paper(external_ids={"DOI": "10.123/test", "ArXiv": "2301.12345"})
         db = MagicMock()
         # First call (DOI) returns a match
-        db.execute.return_value.first.return_value = (1,)
+        db.execute.return_value.first.return_value = SimpleNamespace(id=1, canonical_id=1)
 
         assert self.service._check_cross_source_duplicate(paper, db) is True
         # Only one execute call (DOI), arXiv not checked
         assert db.execute.call_count == 1
+
+    def test_match_records_canonical_content_receipt(self):
+        paper = _make_paper(external_ids={"ArXiv": "2301.12345"})
+        db = MagicMock()
+        db.execute.return_value.first.return_value = SimpleNamespace(id=17, canonical_id=7)
+
+        with collect_content_references() as references:
+            assert self.service._check_cross_source_duplicate(paper, db) is True
+
+        assert references == {7}
 
 
 # ---------------------------------------------------------------------------
@@ -572,7 +584,7 @@ class TestIngestFromSearch:
         mock_get_db.return_value.__enter__ = MagicMock(return_value=db)
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
         # Cross-source dup found
-        db.execute.return_value.first.return_value = (1,)
+        db.execute.return_value.first.return_value = SimpleNamespace(id=1, canonical_id=1)
 
         source = _make_source()
         result = await self.service.ingest_from_search(source)
@@ -619,7 +631,7 @@ class TestIngestPaper:
         mock_get_db.return_value.__enter__ = MagicMock(return_value=db)
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
         # Cross-source dup found
-        db.execute.return_value.first.return_value = (1,)
+        db.execute.return_value.first.return_value = SimpleNamespace(id=1, canonical_id=1)
 
         result = await self.service.ingest_paper("abc123")
 

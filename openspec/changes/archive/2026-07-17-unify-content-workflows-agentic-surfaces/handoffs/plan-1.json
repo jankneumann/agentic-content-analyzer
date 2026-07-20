@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-07-14T01:21:43.998125+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Planned a coordinated breaking migration that unifies source dispatch, canonical content provenance, durable PostgreSQL operations, and CLI/HTTP/MCP/frontend workflows. Gate 1 selected the domain registry and durable workflows approach; strict OpenSpec and package validations pass.",
+    "completed_work": [],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Use executable source registry",
+        "rationale": "One descriptor owns typed dispatch, scheduling, discovery, and surface coverage for every source.",
+        "capability": "source-capability-registry",
+        "supersedes": null
+      },
+      {
+        "title": "Resolve canonical summarized content once",
+        "rationale": "Immutable half-open published-date selections and fingerprints prevent theme, digest, and podcast provenance drift.",
+        "capability": "content-provenance",
+        "supersedes": null
+      },
+      {
+        "title": "Use pgqueuer_jobs for every long mutation",
+        "rationale": "The existing durable queue supplies one operation ledger, idempotency, progress, retry, and cancellation without a second store.",
+        "capability": "agentic-operations",
+        "supersedes": null
+      },
+      {
+        "title": "Coordinate a breaking cross-interface cutover",
+        "rationale": "All controlled clients can converge on discriminated commands, structured operations, and generated frontend contracts without legacy adapters.",
+        "capability": "agentic-operations",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Obtain Gate 2 approval.",
+      "Seed coordinator tasks after approval.",
+      "Start wp-contracts, then execute the validated dependency DAG."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/unify-content-workflows-agentic-surfaces/proposal.md",
+        "description": "Gate 1 approved proposal"
+      },
+      {
+        "path": "openspec/changes/unify-content-workflows-agentic-surfaces/design.md",
+        "description": "Selected architecture and migration decisions"
+      },
+      {
+        "path": "openspec/changes/unify-content-workflows-agentic-surfaces/tasks.md",
+        "description": "Test-first implementation checklist"
+      },
+      {
+        "path": "openspec/changes/unify-content-workflows-agentic-surfaces/work-packages.yaml",
+        "description": "Validated coordinated execution DAG"
+      },
+      {
+        "path": "openspec/changes/unify-content-workflows-agentic-surfaces/contracts/openapi/v1.yaml",
+        "description": "Canonical workflow HTTP contract"
+      }
+    ]
+  }
+}

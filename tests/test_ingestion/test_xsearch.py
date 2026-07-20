@@ -6,10 +6,12 @@ xsearch-specific extras (``tool_calls_made``, ``threads_found``) live in
 """
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.ingestion.content_references import collect_content_references
 from src.ingestion.result import IngestionResponse
 from src.ingestion.xsearch import (
     GrokXClient,
@@ -20,7 +22,7 @@ from src.ingestion.xsearch import (
     format_thread_markdown,
     thread_to_content_data,
 )
-from src.models.content import ContentSource
+from src.models.content import Content, ContentSource, ContentStatus
 
 
 def _xsearch_response(
@@ -313,6 +315,24 @@ class TestGrokXClient:
 
 
 class TestGrokXContentIngestionService:
+    def test_overlap_duplicate_records_canonical_content_receipt(self):
+        service = GrokXContentIngestionService.__new__(GrokXContentIngestionService)
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = None
+        db.execute.return_value.first.return_value = SimpleNamespace(id=91, canonical_id=7)
+        thread = XThreadData(
+            root_post_id="new-root",
+            thread_post_ids=["existing-post"],
+            author_handle="author",
+            posts=[XPostContent(text="Post", post_id="existing-post")],
+        )
+
+        with collect_content_references() as references:
+            assert service._is_duplicate(db, thread) is True
+
+        assert references == {7}
+        assert "FROM contents" in str(db.execute.call_args.args[0])
+
     @patch("src.ingestion.xsearch.get_db")
     @patch("src.ingestion.xsearch.GrokXClient")
     def test_ingest_with_custom_prompt(self, mock_client_cls, mock_get_db):
@@ -412,6 +432,42 @@ class TestGrokXContentIngestionService:
         mock_db.rollback.assert_called_once()
         # commit for the good thread
         mock_db.commit.assert_called_once()
+
+    @patch("src.ingestion.xsearch.get_db")
+    @patch("src.ingestion.xsearch.GrokXClient")
+    def test_force_reprocess_updates_existing_thread_in_place(
+        self,
+        mock_client_cls,
+        mock_get_db,
+        sample_thread,
+    ):
+        existing = Content(
+            id=51,
+            source_type=ContentSource.XSEARCH,
+            source_id="xpost:12345",
+            title="Old",
+            markdown_content="Old",
+            content_hash="old",
+            status=ContentStatus.COMPLETED,
+        )
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = existing
+        mock_get_db.return_value.__enter__.return_value = db
+        mock_get_db.return_value.__exit__.return_value = False
+        client = MagicMock()
+        client.search.return_value = ("thread", 1)
+        client.parse_threads_from_response.return_value = [sample_thread]
+        mock_client_cls.return_value = client
+
+        result = GrokXContentIngestionService(api_key="key").ingest_threads(
+            prompt="test",
+            force_reprocess=True,
+        )
+
+        assert result.items_ingested == 1
+        assert existing.id == 51
+        assert existing.title.startswith("@testuser:")
+        db.add.assert_not_called()
 
     @patch("src.ingestion.xsearch.get_db")
     @patch("src.ingestion.xsearch.GrokXClient")

@@ -7,7 +7,7 @@ Used by model, voice, and other settings domains.
 
 import re
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.api.dependencies import verify_admin_key
@@ -65,7 +65,9 @@ class SettingsOverrideUpdateResponse(BaseModel):
     response_model=SettingsOverrideListResponse,
     dependencies=[Depends(verify_admin_key)],
 )
-async def list_overrides(prefix: str = "") -> SettingsOverrideListResponse:
+async def list_overrides(
+    prefix: str = Query(default="", max_length=200, pattern=r"^[^\x00]*$"),
+) -> SettingsOverrideListResponse:
     """List settings overrides, optionally filtered by key prefix.
 
     Query params:

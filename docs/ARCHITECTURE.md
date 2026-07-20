@@ -20,6 +20,19 @@
 - **Web**: FastAPI (APIs, web UI)
 - **Testing**: pytest
 
+## Contract Governance
+
+Durable executable contracts live under `openspec/contracts/`, parallel to the durable
+capability specifications in `openspec/specs/`. Content workflow contracts are owned by
+`openspec/contracts/content-workflows/` and include the OpenAPI document, progress event
+schema, database boundary, deterministic fixtures, and generated Python and TypeScript
+models.
+
+OpenSpec change directories may carry proposed contract deltas while work is active. When
+a change is archived, its contract copy becomes immutable historical evidence. Runtime
+code, generators, and tests must consume the durable contract registry instead of paths
+under `openspec/changes/` or `openspec/changes/archive/`.
+
 ## System Architecture
 
 ```
@@ -31,6 +44,8 @@ src/
     google/         # Google ADK agents
     microsoft/      # MS Agent Framework agents
   ingestion/        # Content fetching and parsing
+    registry.py     # Executable source descriptors and capability projection
+    service.py      # Typed command validation and dispatch
     gmail.py        # Gmail API integration
     rss.py          # RSS feed parser (Substack, etc.)
     youtube.py      # YouTube playlist/transcript ingestion
@@ -50,6 +65,10 @@ src/
     router.py       # Parser routing and fallback
   services/         # Business logic
     content_service.py    # Content CRUD and deduplication
+    content_set_resolver.py # Immutable summary-backed workflow selection
+    operation_service.py  # Durable submission, observation, retry, cancellation
+  workflows/        # Durable orchestration for every resource-producing workflow
+  clients/          # Transport-neutral canonical HTTP client
   storage/          # Data persistence
     database.py     # PostgreSQL
     graphiti_client.py  # Graphiti MCP integration (Neo4j/FalkorDB via GraphDBProvider)
@@ -66,7 +85,7 @@ src/
     summary_markdown.py   # Summary markdown templates
     digest_markdown.py    # Digest markdown templates
     content_hash.py       # Content deduplication hashing
-  tasks/            # Queue task handlers
+  queue/            # PostgreSQL queue, workers, and canonical workflow handlers
   api/              # FastAPI app
   config/           # Configuration
     models.py       # Model registry and configuration
@@ -78,12 +97,28 @@ src/
 
 ### Content Processing Pipeline
 
-1. **Ingestion**: Fetch from Gmail/Substack/YouTube → Parse content → Store raw
-2. **Summarization**: Individual content → Structured summary → Extract entities
+1. **Ingestion**: Parse a registry command, fetch content, canonicalize aliases, and persist markdown
+2. **Summarization**: Process selected canonical content into persisted summaries
 3. **Knowledge Graph**: Store entities/relationships in Graphiti (concepts, temporal evolution)
 4. **Theme Analysis**: Query Graphiti for common themes, trending topics, historical context
-5. **Digest Generation**: Multi-audience formatting (CTO strategy + developer tactics)
-6. **Delivery**: Email/web with daily/weekly schedules
+5. **Digest Generation**: Persist an immutable content/summary selection and generate against it
+6. **Podcast Generation**: Assemble context only from the digest's persisted provenance
+7. **Delivery**: Email/web with daily/weekly schedules
+
+### Canonical Workflow Boundary
+
+CLI, HTTP, MCP, and the frontend share the OpenAPI models under
+`src/contracts/` and submit through the canonical HTTP routes. Every mutation
+returns an `OperationHandle`; actual work runs only through the PostgreSQL job
+queue. `OperationService` is the application boundary for submission, status,
+bounded waiting, progress events, retry, and cancellation.
+
+The eight stable operation types are `ingestion.execute`, `summarization.run`,
+`theme_analysis.create`, `digest.create`, `pipeline.run`,
+`podcast_script.create`, `podcast_audio.create`, and `audio_digest.create`.
+Successful resource-producing operations attach a typed resource reference.
+All interfaces expose the same RFC 7807 problem, operation, capability, and
+resource contracts.
 
 ### Knowledge Graph (Graphiti) Usage
 
@@ -154,6 +189,9 @@ Note: `NewsletterSummary` is a backwards-compatible alias for `Summary`.
 - **markdown_content**: Complete digest as structured markdown
 - **theme_tags**: Aggregated theme tags from summaries
 - **source_content_ids**: List of Content IDs used in digest
+- **source_summary_ids**: Exact persisted summaries paired with source content
+- **selection_policy**: Normalized query policy, including the explicit date basis
+- **selection_fingerprint**: Stable hash of policy and ordered content/summary IDs
 - Strategic insights (CTO-level)
 - Technical developments (practitioner-level)
 - Emerging trends with historical context
@@ -200,6 +238,27 @@ Content can embed references to tables and images:
 The `render_with_embeds()` utility replaces these with actual content.
 
 ## Ingestion Services
+
+### Executable Source Registry
+
+`src/ingestion/registry.py` is the single source of truth for ingestion command
+models, aliases, configured-source accessors, scheduled planning, retry policy,
+emitted content sources, URL routing, and transport availability.
+`IngestionService` parses the discriminated command through this registry before
+dispatch. Capabilities, CLI command discovery, MCP tools, frontend forms, and
+the deterministic source matrix derive from the same descriptors.
+
+To add a source:
+
+1. Add its strict command model to the OpenAPI contract and regenerate models.
+2. Add one executable `SourceDescriptor`, including scheduled/config behavior.
+3. Add the adapter and normalized `IngestionResponse` behavior.
+4. Add the exact-key deterministic fixture in `tests/fixtures/sources/`.
+5. Run registry, contract, interface-parity, and source-matrix tests.
+
+Registry and fixture key sets must be identical. The `url` descriptor is one
+command with deterministic routes for webpage, YouTube video, YouTube playlist,
+RSS, and forced webpage ingestion.
 
 ### Gmail Ingestion (`GmailContentIngestionService`)
 - Uses Gmail API with OAuth2 credentials
@@ -332,7 +391,7 @@ All parsers implement `DocumentParser` interface from `src/parsers/base.py`:
 
 ## Job Queue Architecture
 
-The system uses a PostgreSQL-based job queue for reliable background processing with transactional guarantees. Jobs are stored in the `pgqueuer_jobs` table and claimed using `SELECT FOR UPDATE SKIP LOCKED` for safe concurrent processing.
+The system uses a PostgreSQL-based job queue for every workflow mutation. Jobs are stored in the `pgqueuer_jobs` table and claimed using `SELECT FOR UPDATE SKIP LOCKED` for safe concurrent processing. Interfaces never replace queue work with in-process execution or FastAPI background tasks.
 
 ### Architecture Diagram
 
@@ -363,11 +422,11 @@ The system uses a PostgreSQL-based job queue for reliable background processing 
                                     ┌───────────┴───────────┐
                                     │    Task Handlers      │
                                     │                       │
-                                    │ • summarize_content   │
-                                    │ • ingest_content      │
-                                    │ • extract_url_content │
-                                    │ • process_content     │
-                                    │ • scan_newsletters    │
+                                    │ • ingestion.execute   │
+                                    │ • summarization.run   │
+                                    │ • digest.create       │
+                                    │ • pipeline.run        │
+                                    │ • podcast/audio       │
                                     └───────────────────────┘
 ```
 
@@ -408,9 +467,10 @@ aca worker start --concurrency 10   # Custom concurrency
 ### Job Lifecycle
 
 ```
-QUEUED → IN_PROGRESS → COMPLETED
-              │
-              └──(error)──→ FAILED ──(retry)──→ QUEUED
+QUEUED -> IN_PROGRESS -> COMPLETED
+   |           |
+   |           +-> FAILED -> QUEUED (retry)
+   +--------------> CANCELLED
 ```
 
 ### Job Claiming
@@ -432,24 +492,39 @@ RETURNING id, entrypoint, payload
 
 The worker also uses `LISTEN/NOTIFY` on the `pgqueuer` channel for immediate wakeup when new jobs are enqueued, falling back to polling every 5 seconds.
 
-### Job Management
+### Operation Management
 
 ```bash
-# List jobs with optional filters
-aca jobs list
-aca jobs list --status failed
-aca jobs list --entrypoint summarize_content
-
-# View job details
-aca jobs show 123
-
-# Retry failed jobs
-aca jobs retry 123
-aca jobs retry --failed  # Retry all failed
-
-# Cleanup old completed jobs
-aca jobs cleanup --older-than 30d
+# Observe and control the shared operation contract
+aca operations list
+aca operations get 123
+aca operations wait 123 --timeout 300
+aca operations retry 123
+aca operations cancel 123
 ```
+
+Submission is idempotent for equivalent normalized input unless an explicit
+`Idempotency-Key` is supplied. Queued cancellation is atomic; running work
+checks cancellation at workflow checkpoints. Retry resets transient control
+state while retaining normalized input and any durable pipeline checkpoint.
+Workers accept payload schema versions 1 and 2 during the coordinated migration,
+while every interface emits only version 2.
+
+### Coordinated Cutover and Rollback
+
+Deploy in this order: additive database migrations, workers that accept queue
+payload versions 1 and 2, API, MCP, CLI package, then frontend. Stop legacy
+producers before waiting for version 1 jobs to drain. Verify no queued or active
+version 1 payloads remain before removing compatibility handlers in a later
+release.
+
+The breaking cutover removes direct CLI workflow dispatch, transport-owned
+source maps, volatile task polling, and legacy mutations such as
+`POST /contents/ingest`, `POST /contents/summarize`, digest/script regeneration,
+and direct audio generation. There is no automatic fallback to those paths.
+Rollback restores the prior application release while retaining the additive
+provenance columns and the worker's version 1 compatibility. Do not downgrade
+the database until the old application has been verified against those columns.
 
 ## Scalability Considerations
 
@@ -463,6 +538,32 @@ aca jobs cleanup --older-than 30d
 
 ## API Endpoints
 
+### Read APIs
+
+Content, summary, digest, script, podcast, audio, review, and source management
+retain their GET/detail endpoints. Workflow mutation paths are canonical and
+separate from read resources.
+
+### Canonical Workflow API
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/ingestions` | Submit one strict registry ingestion command |
+| POST | `/uploads` | Persist an upload reference for a later files command |
+| POST | `/summarization-runs` | Submit summary work for IDs or a query |
+| POST | `/theme-analyses` | Submit theme analysis |
+| POST | `/digests` | Submit digest creation |
+| POST | `/pipeline-runs` | Submit the durable ingest-to-digest pipeline |
+| POST | `/podcast-scripts` | Submit digest-bound script generation |
+| POST | `/podcasts` | Submit approved-script audio generation |
+| POST | `/audio-digests` | Submit digest narration |
+| GET | `/operations` | Cursor-page operations |
+| GET | `/operations/{id}` | Read or bounded-wait for an operation |
+| GET | `/operations/{id}/events` | Resume named SSE progress events |
+| POST | `/operations/{id}/retry` | Retry failed durable work |
+| POST | `/operations/{id}/cancel` | Cancel or request cancellation |
+| GET | `/capabilities` | Cursor-page registry and transport capabilities |
+
 ### Content API (`/api/v1/contents`)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -473,8 +574,6 @@ aca jobs cleanup --older-than 30d
 | GET | `/contents/stats` | Statistics by source type and status |
 | GET | `/contents/{id}/duplicates` | Find duplicate content |
 | POST | `/contents/{id}/merge/{duplicate_id}` | Merge duplicate records |
-| POST | `/contents/ingest` | Trigger background ingestion |
-| GET | `/contents/ingest/status/{task_id}` | SSE progress stream |
 
 ### Summary API (`/api/v1/summaries`)
 | Method | Endpoint | Description |
@@ -482,7 +581,6 @@ aca jobs cleanup --older-than 30d
 | GET | `/summaries` | List summaries with pagination |
 | GET | `/summaries/{id}` | Get summary detail with markdown_content |
 | GET | `/summaries/by-content/{content_id}` | Get summary by content ID |
-| POST | `/summaries/trigger` | Trigger summarization |
 | GET | `/summaries/stats` | Summary statistics |
 
 ### Newsletter API (`/api/v1/newsletters`) - REMOVED

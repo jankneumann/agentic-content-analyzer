@@ -11,6 +11,7 @@ from src.ingestion.podcast import (
     PodcastClient,
     PodcastContentIngestionService,
 )
+from src.models.content import Content, ContentSource, ContentStatus
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -398,9 +399,16 @@ class TestPodcastIngestion:
         mock_db.__enter__ = MagicMock(return_value=mock_db)
         mock_db.__exit__ = MagicMock(return_value=False)
         mock_get_db.return_value = mock_db
-        # Return an existing source_id (dedup hit)
-        # Bulk check returns list of tuples: [("podcast:ep-existing",)]
-        mock_db.query.return_value.filter.return_value.all.return_value = [("podcast:ep-existing",)]
+        existing = Content(
+            id=41,
+            source_type=ContentSource.PODCAST,
+            source_id="podcast:ep-existing",
+            title="Existing",
+            markdown_content="Existing",
+            content_hash="existing",
+            status=ContentStatus.COMPLETED,
+        )
+        mock_db.query.return_value.filter.return_value.all.return_value = [existing]
 
         service = PodcastContentIngestionService()
         service.client.fetch_feed.return_value = [
@@ -423,6 +431,7 @@ class TestPodcastIngestion:
         result = service.ingest_feed("https://example.com/feed.xml")
 
         assert result.items_fetched == 0
+        mock_db.query.assert_called_once_with(Content)
         mock_db.add.assert_not_called()
 
     @patch.object(PodcastContentIngestionService, "__init__", _mock_service_init)

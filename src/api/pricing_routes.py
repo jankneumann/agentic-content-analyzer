@@ -52,18 +52,30 @@ async def predict_monthly_costs(
     # Neon
     neon_plan: str | None = Query(None, description="Neon plan: free, launch, or scale"),
     neon_compute_hours_per_day: float | None = Query(
-        None, description="Average daily Neon compute hours"
+        None, ge=0, le=24, description="Average daily Neon compute hours"
     ),
-    neon_storage_gb: float | None = Query(None, description="Neon storage in GB"),
-    neon_pitr_gb: float | None = Query(None, description="Neon PITR history storage in GB"),
-    neon_snapshot_gb: float | None = Query(None, description="Neon snapshot storage in GB"),
+    neon_storage_gb: float | None = Query(
+        None, ge=0, le=1_000_000, description="Neon storage in GB"
+    ),
+    neon_pitr_gb: float | None = Query(
+        None, ge=0, le=1_000_000, description="Neon PITR history storage in GB"
+    ),
+    neon_snapshot_gb: float | None = Query(
+        None, ge=0, le=1_000_000, description="Neon snapshot storage in GB"
+    ),
     # Resend
     resend_plan: str | None = Query(None, description="Resend plan: free, pro, or scale"),
-    emails_per_month: int | None = Query(None, description="Expected emails per month"),
+    emails_per_month: int | None = Query(
+        None, ge=0, le=1_000_000_000, description="Expected emails per month"
+    ),
     # LLM
-    content_items_per_day: int = Query(10, description="Content items ingested per day"),
-    digests_per_week: int = Query(2, description="Digests generated per week"),
-    youtube_videos_per_week: int = Query(5, description="YouTube videos processed per week"),
+    content_items_per_day: int = Query(
+        10, ge=0, le=1_000_000, description="Content items ingested per day"
+    ),
+    digests_per_week: int = Query(2, ge=0, le=1_000_000, description="Digests generated per week"),
+    youtube_videos_per_week: int = Query(
+        5, ge=0, le=1_000_000, description="YouTube videos processed per week"
+    ),
 ) -> CostPrediction:
     """Predict total monthly costs across Neon, Resend, and LLM services.
 
@@ -100,10 +112,16 @@ async def predict_monthly_costs(
 )
 async def estimate_neon_cost(
     plan: str | None = Query(None, description="Neon plan tier"),
-    compute_hours_per_day: float | None = Query(None, description="Average daily compute hours"),
-    storage_gb: float | None = Query(None, description="Storage in GB"),
-    pitr_gb: float | None = Query(None, description="PITR history storage in GB"),
-    snapshot_gb: float | None = Query(None, description="Snapshot storage in GB"),
+    compute_hours_per_day: float | None = Query(
+        None, ge=0, le=24, description="Average daily compute hours"
+    ),
+    storage_gb: float | None = Query(None, ge=0, le=1_000_000, description="Storage in GB"),
+    pitr_gb: float | None = Query(
+        None, ge=0, le=1_000_000, description="PITR history storage in GB"
+    ),
+    snapshot_gb: float | None = Query(
+        None, ge=0, le=1_000_000, description="Snapshot storage in GB"
+    ),
 ) -> NeonCostBreakdown:
     """Estimate monthly Neon Postgres costs for the given usage profile."""
     service = _get_service()
@@ -126,7 +144,9 @@ async def estimate_neon_cost(
 )
 async def estimate_resend_cost(
     plan: str | None = Query(None, description="Resend plan tier"),
-    emails_per_month: int | None = Query(None, description="Expected monthly email volume"),
+    emails_per_month: int | None = Query(
+        None, ge=0, le=1_000_000_000, description="Expected monthly email volume"
+    ),
 ) -> ResendCostBreakdown:
     """Estimate monthly Resend email delivery costs for the given volume."""
     service = _get_service()
@@ -150,10 +170,16 @@ async def estimate_resend_cost(
     summary="Compare Neon plans for a usage profile",
 )
 async def compare_neon_plans(
-    compute_hours_per_day: float | None = Query(None, description="Average daily compute hours"),
-    storage_gb: float | None = Query(None, description="Storage in GB"),
-    pitr_gb: float | None = Query(None, description="PITR history storage in GB"),
-    snapshot_gb: float | None = Query(None, description="Snapshot storage in GB"),
+    compute_hours_per_day: float | None = Query(
+        None, ge=0, le=24, description="Average daily compute hours"
+    ),
+    storage_gb: float | None = Query(None, ge=0, le=1_000_000, description="Storage in GB"),
+    pitr_gb: float | None = Query(
+        None, ge=0, le=1_000_000, description="PITR history storage in GB"
+    ),
+    snapshot_gb: float | None = Query(
+        None, ge=0, le=1_000_000, description="Snapshot storage in GB"
+    ),
 ) -> PlanComparison:
     """Compare costs across all Neon plans for the same usage profile.
 
@@ -174,7 +200,9 @@ async def compare_neon_plans(
     summary="Compare Resend plans for an email volume",
 )
 async def compare_resend_plans(
-    emails_per_month: int | None = Query(None, description="Expected monthly email volume"),
+    emails_per_month: int | None = Query(
+        None, ge=0, le=1_000_000_000, description="Expected monthly email volume"
+    ),
 ) -> PlanComparison:
     """Compare costs across all Resend plans for the same email volume.
 

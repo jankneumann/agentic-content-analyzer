@@ -13,10 +13,12 @@ Covers:
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.ingestion.content_references import collect_content_references
 from src.ingestion.perplexity_search import (
     PerplexityClient,
     PerplexityContentIngestionService,
@@ -26,6 +28,7 @@ from src.ingestion.perplexity_search import (
     _format_citations_markdown,
     _generate_source_id,
 )
+from src.models.content import Content, ContentSource, ContentStatus
 
 # ---------------------------------------------------------------------------
 # PerplexityResponse model
@@ -333,6 +336,21 @@ class TestPerplexityClient:
 
 
 class TestPerplexityContentIngestionService:
+    def test_citation_duplicate_records_canonical_content_receipt(self):
+        service = PerplexityContentIngestionService.__new__(PerplexityContentIngestionService)
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = None
+        db.execute.return_value.first.return_value = SimpleNamespace(
+            id=92,
+            canonical_id=8,
+            citations=["https://a.com"],
+        )
+
+        with collect_content_references() as references:
+            assert service._is_duplicate(db, "new-source", ["https://a.com"]) is True
+
+        assert references == {8}
+
     @patch("src.ingestion.perplexity_search.PerplexityClient")
     def test_init_creates_client(self, mock_client_cls):
         service = PerplexityContentIngestionService(api_key="sk-test", model="sonar-pro")
@@ -475,11 +493,23 @@ class TestPerplexityContentIngestionService:
 
     @patch("src.ingestion.perplexity_search.get_db")
     @patch("src.ingestion.perplexity_search.PerplexityClient")
-    def test_ingest_content_force_reprocess_bypasses_dedup(self, mock_client_cls, mock_get_db):
-        """force_reprocess=True should skip dedup check."""
+    def test_ingest_content_force_reprocess_updates_existing_in_place(
+        self, mock_client_cls, mock_get_db
+    ):
+        """force_reprocess=True preserves the canonical identity."""
         mock_db = MagicMock()
         mock_get_db.return_value.__enter__ = MagicMock(return_value=mock_db)
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
+        existing = Content(
+            id=52,
+            source_type=ContentSource.PERPLEXITY,
+            source_id=_generate_source_id(["https://a.com"]),
+            title="Old",
+            markdown_content="Old",
+            content_hash="old",
+            status=ContentStatus.COMPLETED,
+        )
+        mock_db.query.return_value.filter.return_value.first.return_value = existing
 
         mock_response = PerplexityResponse(
             content="Force reprocessed.", citations=["https://a.com"], model="sonar"
@@ -496,8 +526,9 @@ class TestPerplexityContentIngestionService:
             result = service.ingest_content(force_reprocess=True)
 
         assert result.items_ingested == 1
-        # _is_duplicate should NOT have been called
-        mock_db.query.return_value.filter.return_value.first.assert_not_called()
+        assert existing.id == 52
+        assert existing.markdown_content.startswith("Force reprocessed.")
+        mock_db.add.assert_not_called()
 
     @patch("src.ingestion.perplexity_search.PerplexityClient")
     def test_close_delegates_to_client(self, mock_client_cls):

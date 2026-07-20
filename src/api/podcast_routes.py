@@ -9,7 +9,6 @@ Provides REST endpoints for:
 
 import os
 from datetime import datetime
-from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -18,11 +17,13 @@ from pydantic import BaseModel, Field
 from src.api.dependencies import verify_admin_key
 from src.models.podcast import (
     Podcast,
+    PodcastScript,
     PodcastScriptRecord,
     PodcastStatus,
     VoicePersona,
     VoiceProvider,
 )
+from src.services.podcast_audio_service import PodcastAudioService
 from src.storage.database import get_db
 from src.utils.logging import get_logger
 
@@ -121,9 +122,6 @@ async def generate_audio_task(
     logger.info(f"Starting audio generation for script {script_id}, podcast {podcast_id}")
 
     try:
-        from src.delivery.audio_generator import PodcastAudioGenerator
-        from src.models.podcast import PodcastScript
-
         # Get the script
         with get_db() as db:
             script_record = (
@@ -142,27 +140,23 @@ async def generate_audio_task(
         # Parse script
         script = PodcastScript(**script_data)
 
-        # Generate audio
-        generator = PodcastAudioGenerator(
+        artifact = await PodcastAudioService().generate(
+            script,
+            podcast_id=podcast_id,
             provider=voice_provider,
             alex_voice=alex_voice,
             sam_voice=sam_voice,
+            speed=1.0,
         )
-
-        # Create output directory (fast local I/O, acceptable in async context)
-        output_dir = Path("output/podcasts")
-        output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = output_dir / f"podcast_{podcast_id}.mp3"
-
-        # Generate audio
-        metadata = await generator.generate_podcast(script, str(output_path))
 
         # Update podcast record
         with get_db() as db:
             podcast = db.query(Podcast).filter(Podcast.id == podcast_id).first()
-            podcast.audio_url = str(output_path)
-            podcast.duration_seconds = metadata.duration_seconds
-            podcast.file_size_bytes = metadata.file_size_bytes
+            podcast.audio_url = artifact.storage_path
+            podcast.audio_format = artifact.audio_format
+            podcast.duration_seconds = artifact.duration_seconds
+            podcast.file_size_bytes = artifact.file_size_bytes
+            podcast.voice_config = artifact.voice_config
             podcast.status = "completed"
             podcast.completed_at = datetime.utcnow()
 

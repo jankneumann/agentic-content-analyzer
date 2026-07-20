@@ -20,14 +20,22 @@ def test_predict_monthly_costs_invalid_parameters_security(auth_headers, monkeyp
     # Verify the global dependency or admin keys are appropriately mocked
     monkeypatch.setenv("ADMIN_KEYS", "test-admin-key")
 
-    response = client.get(
-        "/api/v1/pricing/predict?neon_plan=invalid_plan",
-        headers=auth_headers
-    )
+    response = client.get("/api/v1/pricing/predict?neon_plan=invalid_plan", headers=auth_headers)
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Invalid pricing parameters provided"
     assert "Unknown Neon plan" not in response.text
+
+
+def test_predict_monthly_costs_rejects_non_finite_usage(auth_headers, monkeypatch):
+    monkeypatch.setenv("ADMIN_KEYS", "test-admin-key")
+
+    response = client.get(
+        "/api/v1/pricing/predict?neon_storage_gb=inf",
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
 
 
 def test_estimate_neon_cost_invalid_parameters_security(auth_headers, monkeypatch):
@@ -36,10 +44,7 @@ def test_estimate_neon_cost_invalid_parameters_security(auth_headers, monkeypatc
     """
     monkeypatch.setenv("ADMIN_KEYS", "test-admin-key")
 
-    response = client.get(
-        "/api/v1/pricing/neon?plan=invalid_plan",
-        headers=auth_headers
-    )
+    response = client.get("/api/v1/pricing/neon?plan=invalid_plan", headers=auth_headers)
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Invalid pricing parameters provided"
@@ -52,10 +57,7 @@ def test_estimate_resend_cost_invalid_parameters_security(auth_headers, monkeypa
     """
     monkeypatch.setenv("ADMIN_KEYS", "test-admin-key")
 
-    response = client.get(
-        "/api/v1/pricing/resend?plan=invalid_plan",
-        headers=auth_headers
-    )
+    response = client.get("/api/v1/pricing/resend?plan=invalid_plan", headers=auth_headers)
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Invalid pricing parameters provided"

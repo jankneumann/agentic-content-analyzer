@@ -106,44 +106,6 @@ class TestDigestStatistics:
         assert data["approved"] == 1  # One approved
 
 
-class TestGenerateDigest:
-    """Tests for POST /api/v1/digests/generate endpoint."""
-
-    def test_generate_digest_daily(self, client):
-        """Test generating daily digest returns queued status."""
-        response = client.post(
-            "/api/v1/digests/generate",
-            json={"digest_type": "daily"},
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "queued"
-        assert "daily" in data["message"].lower()
-
-    def test_generate_digest_weekly(self, client):
-        """Test generating weekly digest returns queued status."""
-        response = client.post(
-            "/api/v1/digests/generate",
-            json={"digest_type": "weekly"},
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "queued"
-        assert "weekly" in data["message"].lower()
-
-    def test_generate_digest_invalid_type(self, client):
-        """Test generating with invalid type returns 400."""
-        response = client.post(
-            "/api/v1/digests/generate",
-            json={"digest_type": "invalid"},
-        )
-
-        assert response.status_code == 400
-        assert "invalid" in response.json()["detail"].lower()
-
-
 class TestSubmitReview:
     """Tests for POST /api/v1/digests/{id}/review endpoint."""
 

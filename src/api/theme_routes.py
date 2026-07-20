@@ -11,12 +11,14 @@ from typing import Annotated
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from src.models.query import ContentQuery
 from src.models.theme import (
     AnalysisStatus,
     ThemeAnalysis,
     ThemeAnalysisRequest,
 )
 from src.processors.theme_analyzer import ThemeAnalyzer
+from src.services.content_set_resolver import ContentSetResolver
 from src.storage.database import get_db
 from src.utils.logging import get_logger
 
@@ -112,9 +114,15 @@ async def run_theme_analysis(
 
         logger.info(f"Starting theme analysis {analysis_id}")
 
+        with get_db() as db:
+            resolved_set = ContentSetResolver().resolve(
+                ContentQuery(start_date=request.start_date, end_date=request.end_date),
+                session=db,
+            )
         analyzer = ThemeAnalyzer()
         result = await analyzer.analyze_themes(
             request=request,
+            resolved_set=resolved_set,
             include_historical_context=include_historical,
         )
 
@@ -128,6 +136,9 @@ async def run_theme_analysis(
             record.status = AnalysisStatus.COMPLETED
             record.content_count = result.content_count
             record.content_ids = result.content_ids
+            record.summary_ids = result.summary_ids
+            record.selection_policy = result.selection_policy
+            record.selection_fingerprint = result.selection_fingerprint
             record.themes = [t.model_dump(mode="json") for t in result.themes]
             record.total_themes = result.total_themes
             record.emerging_themes_count = result.emerging_themes_count

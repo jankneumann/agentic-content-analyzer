@@ -383,6 +383,7 @@ def ingest_podcast(
     max_entries_per_feed: int = 10,
     after_date: datetime | None = None,
     force_reprocess: bool = False,
+    transcribe: bool | None = None,
 ) -> IngestionResponse:
     """Ingest episodes from configured podcast feeds.
 
@@ -397,10 +398,14 @@ def ingest_podcast(
     from src.ingestion.podcast import PodcastContentIngestionService
 
     service = PodcastContentIngestionService()
+    kwargs: dict[str, Any] = {}
+    if transcribe is not None:
+        kwargs["transcribe"] = transcribe
     return service.ingest_all_feeds(
         max_entries_per_feed=max_entries_per_feed,
         after_date=after_date,
         force_reprocess=force_reprocess,
+        **kwargs,
     )
 
 
@@ -1024,6 +1029,7 @@ def ingest_url(
     tags: list[str] | None = None,
     notes: str | None = None,
     auto_route: bool = True,
+    force_reprocess: bool = False,
 ) -> IngestionResponse:
     """Ingest a single submitted URL, auto-routing it to the right handler.
 
@@ -1058,16 +1064,25 @@ def ingest_url(
     kind = classify_url(url) if auto_route else RouteKind.WEBPAGE
 
     if kind == RouteKind.YOUTUBE_VIDEO:
-        return _ingest_routed_youtube_video(url, tags, notes)
+        return _ingest_routed_youtube_video(url, tags, notes, force_reprocess)
     if kind == RouteKind.YOUTUBE_PLAYLIST:
-        return _ingest_routed_youtube_playlist(url, tags, notes)
+        return _ingest_routed_youtube_playlist(url, tags, notes, force_reprocess)
     if kind == RouteKind.RSS_FEED:
-        return _ingest_routed_rss(url, tags, notes)
-    return _ingest_webpage(url=url, title=title, tags=tags, notes=notes)
+        return _ingest_routed_rss(url, tags, notes, force_reprocess)
+    return _ingest_webpage(
+        url=url,
+        title=title,
+        tags=tags,
+        notes=notes,
+        force_reprocess=force_reprocess,
+    )
 
 
 def _ingest_routed_youtube_video(
-    url: str, tags: list[str] | None, notes: str | None
+    url: str,
+    tags: list[str] | None,
+    notes: str | None,
+    force_reprocess: bool = False,
 ) -> IngestionResponse:
     """Route a shared YouTube video URL to YouTube ingestion."""
     import asyncio
@@ -1076,13 +1091,21 @@ def _ingest_routed_youtube_video(
 
     async def _run() -> IngestionResponse:
         service = YouTubeContentIngestionService()
-        return await service.ingest_video(url, tags=tags, notes=notes)
+        return await service.ingest_video(
+            url,
+            tags=tags,
+            notes=notes,
+            force_reprocess=force_reprocess,
+        )
 
     return asyncio.run(_run())
 
 
 def _ingest_routed_youtube_playlist(
-    url: str, tags: list[str] | None, notes: str | None
+    url: str,
+    tags: list[str] | None,
+    notes: str | None,
+    force_reprocess: bool = False,
 ) -> IngestionResponse:
     """Route a shared YouTube playlist URL to playlist ingestion."""
     import asyncio
@@ -1109,7 +1132,7 @@ def _ingest_routed_youtube_playlist(
 
     async def _run():
         service = YouTubeContentIngestionService()
-        return await service.ingest_playlist(playlist_id)
+        return await service.ingest_playlist(playlist_id, force_reprocess=force_reprocess)
 
     result = asyncio.run(_run())  # SourceFetchResult
     items = result.items_fetched
@@ -1132,7 +1155,12 @@ def _ingest_routed_youtube_playlist(
     )
 
 
-def _ingest_routed_rss(url: str, tags: list[str] | None, notes: str | None) -> IngestionResponse:
+def _ingest_routed_rss(
+    url: str,
+    tags: list[str] | None,
+    notes: str | None,
+    force_reprocess: bool = False,
+) -> IngestionResponse:
     """Route a shared feed URL to RSS feed ingestion.
 
     A feed expands to many items, so there is no single ``content_id`` to
@@ -1147,7 +1175,7 @@ def _ingest_routed_rss(url: str, tags: list[str] | None, notes: str | None) -> I
     service = RSSContentIngestionService()
     try:
         source = RSSSource(url=url, tags=tags or [])
-        resp = service.ingest_content(sources=[source])
+        resp = service.ingest_content(sources=[source], force_reprocess=force_reprocess)
     finally:
         service.close()
 
@@ -1175,6 +1203,7 @@ def _ingest_webpage(
     title: str | None = None,
     tags: list[str] | None = None,
     notes: str | None = None,
+    force_reprocess: bool = False,
 ) -> IngestionResponse:
     """Ingest a single URL as a generic web page (Trafilatura extraction).
 
@@ -1204,7 +1233,7 @@ def _ingest_webpage(
     with get_db() as db:
         # Check for duplicate
         existing = db.query(Content).filter(Content.source_url == url).first()
-        if existing:
+        if existing and not force_reprocess:
             logger.info(f"URL already exists: content_id={existing.id}, url={url}")
             return IngestionResponse(
                 command="ingest.url",
@@ -1219,26 +1248,31 @@ def _ingest_webpage(
                 },
             )
 
-        # Build metadata
-        metadata: dict = {"capture_source": "cli"}
+        metadata: dict = dict(existing.metadata_json or {}) if existing else {}
+        metadata["capture_source"] = "cli"
         if tags:
             metadata["tags"] = tags
         if notes:
             metadata["notes"] = notes
 
-        content = Content(
-            source_type=ContentSource.WEBPAGE,
-            source_id=f"webpage:{url}",
-            source_url=url,
-            title=title or url,
-            markdown_content="",
-            content_hash=generate_markdown_hash(""),
-            status=ContentStatus.PENDING,
-            metadata_json=metadata,
-            ingested_at=datetime.now(UTC),
-        )
-
-        db.add(content)
+        if existing:
+            existing.title = title or existing.title
+            existing.metadata_json = metadata
+            existing.status = ContentStatus.PENDING
+            content = existing
+        else:
+            content = Content(
+                source_type=ContentSource.WEBPAGE,
+                source_id=f"webpage:{url}",
+                source_url=url,
+                title=title or url,
+                markdown_content="",
+                content_hash=generate_markdown_hash(""),
+                status=ContentStatus.PENDING,
+                metadata_json=metadata,
+                ingested_at=datetime.now(UTC),
+            )
+            db.add(content)
         db.commit()
         db.refresh(content)
 
@@ -1298,6 +1332,7 @@ def ingest_files(
     paths: list[Path],
     publication: str | None = None,
     title: str | None = None,
+    force_reprocess: bool = False,
 ) -> IngestionResponse:
     """Ingest one or more local files into the content pipeline.
 
@@ -1351,7 +1386,12 @@ def ingest_files(
                 router = ParserRouter(markitdown_parser=markitdown)
                 service = FileContentIngestionService(router=router, db=db)
                 content = asyncio.run(
-                    service.ingest_file(path, publication=publication, title=title)
+                    service.ingest_file(
+                        path,
+                        publication=publication,
+                        title=title,
+                        force_reprocess=force_reprocess,
+                    )
                 )
             items_ingested += 1
             results.append(

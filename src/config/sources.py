@@ -9,6 +9,9 @@ Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmai
 """
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -306,6 +309,27 @@ class SourcesConfig(BaseModel):
         return [s for s in self.sources if isinstance(s, ReadwiseSource) and s.enabled]
 
 
+_ACTIVE_SOURCES_CONFIG: ContextVar[SourcesConfig | None] = ContextVar(
+    "active_sources_config",
+    default=None,
+)
+
+
+@contextmanager
+def use_sources_config(config: SourcesConfig) -> Iterator[None]:
+    """Use an immutable queued source snapshot in the current execution context."""
+    token = _ACTIVE_SOURCES_CONFIG.set(config)
+    try:
+        yield
+    finally:
+        _ACTIVE_SOURCES_CONFIG.reset(token)
+
+
+def has_active_sources_config() -> bool:
+    """Return whether execution is bound to a queued source snapshot."""
+    return _ACTIVE_SOURCES_CONFIG.get() is not None
+
+
 # --- Source File Model (per-file schema) ---
 
 
@@ -523,7 +547,7 @@ _LOCATOR_FIELDS: dict[str, str | None] = {
     "huggingface_papers": "url",
     "arxiv": "search_query",
     "websearch": "prompt",
-    "readwise": None,  # effectively a singleton; keyed by name
+    "readwise": None,  # singleton; unnamed instances use the stable default locator
 }
 
 
@@ -550,6 +574,8 @@ def source_key(source: dict[str, Any] | SourceBase) -> str:
     if not locator:
         # Fallbacks: a url if present, otherwise the human name.
         locator = data.get("url") or data.get("name")
+    if not locator and stype == "readwise":
+        locator = "default"
     if not locator:
         raise ValueError(f"cannot derive source key for type={stype!r}: no locator field")
 
@@ -646,6 +672,10 @@ def load_sources_config(
     Returns:
         SourcesConfig with validated sources
     """
+    active_config = _ACTIVE_SOURCES_CONFIG.get()
+    if active_config is not None:
+        return active_config
+
     dir_path = Path(sources_dir)
     file_path = Path(sources_file)
 
@@ -660,4 +690,8 @@ def load_sources_config(
 
     # Overlay database overrides on top of the YAML/legacy baseline. Fails open
     # to the YAML-only config when the database is unavailable.
-    return _apply_db_source_overrides(config)
+    config = _apply_db_source_overrides(config)
+    from src.ingestion.registry import SOURCE_REGISTRY
+
+    SOURCE_REGISTRY.validate_config(config)
+    return config

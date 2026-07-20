@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.routing import APIRouter
 
 from src.api.agent_routes import router as agent_router
 from src.api.audio_digest_routes import router as audio_digest_router
@@ -21,6 +22,7 @@ from src.api.evaluation_routes import router as evaluation_router
 from src.api.files_routes import router as files_router
 from src.api.health_routes import router as health_router
 from src.api.image_generation_routes import router as image_generation_router
+from src.api.ingestion_routes import router as ingestion_router
 from src.api.job_routes import router as job_router
 from src.api.kb_routes import router as kb_router
 from src.api.middleware.audit import AuditMiddleware
@@ -32,8 +34,8 @@ from src.api.model_registry_routes import router as model_registry_router
 from src.api.model_settings_routes import router as model_settings_router
 from src.api.notification_preferences_routes import router as notification_preferences_router
 from src.api.notification_routes import router as notification_router
+from src.api.operation_routes import router as operation_router
 from src.api.otel_proxy_routes import router as otel_proxy_router
-from src.api.pipeline_routes import router as pipeline_router
 from src.api.podcast_routes import router as podcast_router
 from src.api.pricing_routes import router as pricing_router
 from src.api.reference_routes import router as reference_router
@@ -58,6 +60,7 @@ from src.api.upload_routes import router as upload_router
 from src.api.voice_cleanup_routes import router as voice_cleanup_router
 from src.api.voice_settings_routes import router as voice_settings_router
 from src.api.voice_stream_routes import router as voice_stream_router
+from src.api.workflow_routes import router as workflow_router
 from src.config import settings
 
 
@@ -188,13 +191,68 @@ register_error_handlers(app)
 
 # Include routers
 app.include_router(auth_router)  # Auth endpoints (login, logout, session)
-app.include_router(audio_digest_router)
-app.include_router(content_router)
-app.include_router(summary_router)
-app.include_router(script_router)
-app.include_router(digest_router)
-app.include_router(podcast_router)
-app.include_router(theme_router)
+app.include_router(operation_router)
+app.include_router(ingestion_router)
+app.include_router(workflow_router)
+
+
+def _without_legacy_mutations(router: APIRouter, retired: set[tuple[str, str]]) -> APIRouter:
+    """Compose resource reads/reviews without retired workflow mutations."""
+    filtered = APIRouter()
+    filtered.routes.extend(
+        route
+        for route in router.routes
+        if not any((route.path, method) in retired for method in getattr(route, "methods", set()))
+    )
+    return filtered
+
+
+app.include_router(
+    _without_legacy_mutations(audio_digest_router, {("/api/v1/digests/{digest_id}/audio", "POST")})
+)
+app.include_router(
+    _without_legacy_mutations(
+        content_router,
+        {
+            ("/api/v1/contents/ingest", "POST"),
+            ("/api/v1/contents/ingest/status/{task_id}", "GET"),
+            ("/api/v1/contents/summarize", "POST"),
+            ("/api/v1/contents/summarize/status/{task_id}", "GET"),
+        },
+    )
+)
+app.include_router(
+    _without_legacy_mutations(
+        summary_router,
+        {
+            ("/api/v1/summaries/{summary_id}/regenerate", "POST"),
+            ("/api/v1/summaries/{summary_id}/regenerate-with-feedback", "POST"),
+            ("/api/v1/summaries/{summary_id}/commit-preview", "POST"),
+        },
+    )
+)
+app.include_router(
+    _without_legacy_mutations(
+        script_router,
+        {
+            ("/api/v1/scripts/generate", "POST"),
+            ("/api/v1/scripts/{script_id}/regenerate", "POST"),
+        },
+    )
+)
+app.include_router(
+    _without_legacy_mutations(
+        digest_router,
+        {
+            ("/api/v1/digests/generate", "POST"),
+            ("/api/v1/digests/{digest_id}/regenerate", "POST"),
+        },
+    )
+)
+app.include_router(
+    _without_legacy_mutations(podcast_router, {("/api/v1/podcasts/generate", "POST")})
+)
+app.include_router(_without_legacy_mutations(theme_router, {("/api/v1/themes/analyze", "POST")}))
 app.include_router(chat_router)
 app.include_router(settings_router)
 app.include_router(settings_override_router)
@@ -206,20 +264,29 @@ app.include_router(voice_cleanup_router)
 app.include_router(voice_stream_router)  # WebSocket voice streaming (cloud STT)
 app.include_router(connection_status_router)  # Redirects to /api/v1/status/connections
 app.include_router(status_router)  # System status endpoints
-app.include_router(upload_router)
+app.include_router(_without_legacy_mutations(upload_router, {("/api/v1/documents/upload", "POST")}))
 app.include_router(files_router)
-app.include_router(save_router)  # Mobile content capture
+app.include_router(
+    _without_legacy_mutations(
+        save_router,
+        {
+            ("/api/v1/content/save-url", "POST"),
+            ("/api/v1/content/save-page", "POST"),
+        },
+    )
+)
 app.include_router(source_router)
 app.include_router(source_write_router)  # Source override write endpoints (add/delete/enable)
 app.include_router(health_router)  # Health and readiness probes
-app.include_router(job_router)  # Job queue management
+app.include_router(
+    _without_legacy_mutations(job_router, {("/api/v1/jobs/{job_id}/retry", "POST")})
+)  # Legacy queue reads retained during coordinated cutover
 app.include_router(search_router)  # Hybrid document search
 app.include_router(image_generation_router)  # AI image generation
 app.include_router(share_router)  # Share management (enable/disable/status)
 app.include_router(shared_router)  # Public shared content (no auth)
 app.include_router(notification_router)  # Notification events and SSE stream
 app.include_router(notification_preferences_router)  # Notification preferences
-app.include_router(pipeline_router)  # Pipeline execution (daily/weekly)
 app.include_router(reference_router)  # Content reference tracking
 app.include_router(otel_proxy_router)  # Frontend OTLP trace proxy
 app.include_router(agent_router)  # Agentic analysis (tasks, insights, approvals)

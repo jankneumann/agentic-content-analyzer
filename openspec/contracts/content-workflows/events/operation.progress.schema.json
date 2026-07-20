@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aca.rotkohl.ai/schemas/events/operation.progress.v2.json",
+  "title": "OperationProgressEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "operation_id",
+    "operation_type",
+    "status",
+    "progress",
+    "message",
+    "occurred_at"
+  ],
+  "properties": {
+    "schema_version": { "const": 2 },
+    "event_id": { "type": "string", "minLength": 1 },
+    "operation_id": { "type": "string", "pattern": "^[0-9]+$" },
+    "operation_type": {
+      "enum": [
+        "ingestion.execute",
+        "summarization.run",
+        "theme_analysis.create",
+        "digest.create",
+        "pipeline.run",
+        "podcast_script.create",
+        "podcast_audio.create",
+        "audio_digest.create"
+      ]
+    },
+    "status": {
+      "enum": ["queued", "in_progress", "completed", "failed", "cancelled"]
+    },
+    "progress": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "message": { "type": "string" },
+    "resource": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["type", "id", "url"],
+      "properties": {
+        "type": { "type": "string" },
+        "id": { "type": "string" },
+        "url": { "type": "string" }
+      }
+    },
+    "problem": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    },
+    "occurred_at": { "type": "string", "format": "date-time" }
+  },
+  "examples": [
+    {
+      "schema_version": 2,
+      "event_id": "8123:5",
+      "operation_id": "8123",
+      "operation_type": "digest.create",
+      "status": "in_progress",
+      "progress": 65,
+      "message": "Creating digest",
+      "resource": null,
+      "problem": null,
+      "occurred_at": "2026-07-13T10:00:42Z"
+    }
+  ]
+}

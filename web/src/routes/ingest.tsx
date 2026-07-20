@@ -1,486 +1,468 @@
-/**
- * Ingest Configuration Page
- *
- * Full-page interface for configuring and triggering content ingestion
- * from all supported sources. Replaces the compact IngestContentsDialog
- * with a spacious layout that scales to many source types.
- *
- * Route: /ingest
- */
-
-import { useState } from "react"
-import { createRoute, useNavigate } from "@tanstack/react-router"
-import {
-  Download,
-  Mail,
-  Rss,
-  Youtube,
-  Mic,
-  Link,
-  Globe,
-  Search,
-  Loader2,
-  ArrowLeft,
-  BookOpen,
-  GraduationCap,
-} from "lucide-react"
+import * as React from "react"
+import { createRoute } from "@tanstack/react-router"
+import { useMutation, useQuery } from "@tanstack/react-query"
+import { CalendarRange, FileUp, Loader2, Play, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 
 import { Route as rootRoute } from "./__root"
 import { PageContainer } from "@/components/layout"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Slider } from "@/components/ui/slider"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { useIngestContents, useSaveUrl } from "@/hooks/use-contents"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 import { useBackgroundTasks } from "@/contexts/BackgroundTasksContext"
-import type { ContentSource } from "@/types"
-import type { IngestContentParams } from "@/lib/api/contents"
+import type {
+  CapabilityField,
+  IngestCommand,
+  SourceCapability,
+} from "@/generated/workflow-contracts"
+import {
+  getAllCapabilities,
+  submitIngestion,
+  submitPipeline,
+  uploadFile,
+} from "@/lib/api/workflows"
 
-/**
- * Route definition
- */
 export const IngestRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "ingest",
   component: IngestPage,
 })
 
-/**
- * Source configuration metadata
- */
-interface SourceConfig {
-  key: ContentSource
-  label: string
-  description: string
-  icon: React.ReactNode
-  maxResultsLabel: string
-  maxResultsMax: number
-  supportsIngest: boolean
+type FormValues = Record<string, string | boolean | number | Array<string>>
+const INTERNAL_FIELDS = new Set(["kind", "configured_sources"])
+
+function initialValues(source: SourceCapability): FormValues {
+  return Object.fromEntries(
+    source.fields
+      .filter(
+        (field) =>
+          !INTERNAL_FIELDS.has(field.name) && field.default !== undefined
+      )
+      .map((field) => [field.name, field.default as FormValues[string]])
+  )
 }
 
-const SOURCE_CONFIGS: SourceConfig[] = [
-  {
-    key: "gmail",
-    label: "Gmail",
-    description: "Fetch newsletters from your Gmail inbox. Requires Gmail API credentials.",
-    icon: <Mail className="h-5 w-5" />,
-    maxResultsLabel: "Maximum emails",
-    maxResultsMax: 200,
-    supportsIngest: true,
-  },
-  {
-    key: "rss",
-    label: "RSS Feeds",
-    description: "Fetch articles from configured RSS/Atom feeds defined in sources.d/rss.yaml.",
-    icon: <Rss className="h-5 w-5" />,
-    maxResultsLabel: "Maximum articles",
-    maxResultsMax: 200,
-    supportsIngest: true,
-  },
-  {
-    key: "substack",
-    label: "Substack",
-    description: "Fetch paid Substack subscriptions via browser session. Configured in sources.d/rss.yaml.",
-    icon: <BookOpen className="h-5 w-5" />,
-    maxResultsLabel: "Maximum articles",
-    maxResultsMax: 200,
-    supportsIngest: true,
-  },
-  {
-    key: "youtube",
-    label: "YouTube",
-    description: "Fetch video transcripts from configured playlists and RSS feeds in sources.d/.",
-    icon: <Youtube className="h-5 w-5" />,
-    maxResultsLabel: "Maximum videos",
-    maxResultsMax: 100,
-    supportsIngest: true,
-  },
-  {
-    key: "podcast",
-    label: "Podcasts",
-    description: "Fetch episode transcripts from configured podcast feeds in sources.d/podcasts.yaml.",
-    icon: <Mic className="h-5 w-5" />,
-    maxResultsLabel: "Maximum episodes",
-    maxResultsMax: 200,
-    supportsIngest: true,
-  },
-  {
-    key: "xsearch",
-    label: "X / Twitter Search",
-    description: "Search X/Twitter via xAI Grok API for AI-related threads and discussions.",
-    icon: <Search className="h-5 w-5" />,
-    maxResultsLabel: "Maximum threads",
-    maxResultsMax: 50,
-    supportsIngest: true,
-  },
-  {
-    key: "perplexity",
-    label: "Perplexity Web Search",
-    description: "AI-powered web search via Perplexity Sonar API with citations and source extraction.",
-    icon: <Globe className="h-5 w-5" />,
-    maxResultsLabel: "Maximum results",
-    maxResultsMax: 50,
-    supportsIngest: true,
-  },
-  {
-    key: "blog",
-    label: "Blog Posts",
-    description: "Scrape and ingest blog posts from configured blog sources.",
-    icon: <BookOpen className="h-5 w-5" />,
-    maxResultsLabel: "Maximum posts",
-    maxResultsMax: 100,
-    supportsIngest: true,
-  },
-  {
-    key: "scholar",
-    label: "Academic Papers",
-    description: "Fetch and analyze academic papers from Google Scholar, arXiv, and Semantic Scholar.",
-    icon: <GraduationCap className="h-5 w-5" />,
-    maxResultsLabel: "Maximum papers",
-    maxResultsMax: 50,
-    supportsIngest: true,
-  },
-  {
-    key: "arxiv",
-    label: "arXiv Papers",
-    description: "Ingest papers from arXiv with full PDF text extraction. Configure categories in sources.d/arxiv.yaml.",
-    icon: <Download className="h-5 w-5" />,
-    maxResultsLabel: "Maximum papers",
-    maxResultsMax: 100,
-    supportsIngest: true,
-  },
-  {
-    key: "huggingface_papers",
-    label: "HuggingFace Papers",
-    description: "Fetch community-curated daily papers from HuggingFace (huggingface.co/papers). Includes abstracts and arXiv links.",
-    icon: <Download className="h-5 w-5" />,
-    maxResultsLabel: "Maximum papers",
-    maxResultsMax: 100,
-    supportsIngest: true,
-  },
-]
-
-/**
- * Per-source form state
- */
-interface SourceFormState {
-  maxResults: number
-  daysBack: number
-  forceReprocess: boolean
-}
-
-const DEFAULT_FORM_STATE: SourceFormState = {
-  maxResults: 50,
-  daysBack: 7,
-  forceReprocess: false,
-}
-
-/**
- * Ingest configuration page component
- */
-function IngestPage() {
-  const navigate = useNavigate()
-  const ingestMutation = useIngestContents()
-  const saveUrlMutation = useSaveUrl()
-  const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
-
-  // Per-source form state
-  const [formStates, setFormStates] = useState<Record<string, SourceFormState>>({})
-
-  // URL input state
-  const [urlInput, setUrlInput] = useState("")
-  const [urlError, setUrlError] = useState("")
-
-  // Track which sources are currently ingesting
-  const [ingestingSources, setIngestingSources] = useState<Set<string>>(new Set())
-
-  const getFormState = (sourceKey: string): SourceFormState => {
-    return formStates[sourceKey] ?? DEFAULT_FORM_STATE
-  }
-
-  const updateFormState = (sourceKey: string, updates: Partial<SourceFormState>) => {
-    setFormStates((prev) => ({
-      ...prev,
-      [sourceKey]: { ...getFormState(sourceKey), ...updates },
-    }))
-  }
-
-  const validateUrl = (value: string): boolean => {
-    if (!value.trim()) {
-      setUrlError("URL is required")
-      return false
-    }
-    try {
-      const parsed = new URL(value.trim())
-      if (!parsed.protocol.startsWith("http")) {
-        setUrlError("URL must start with http:// or https://")
-        return false
-      }
-    } catch {
-      setUrlError("Please enter a valid URL")
-      return false
-    }
-    setUrlError("")
-    return true
-  }
-
-  const handleIngest = (source: ContentSource, config: SourceConfig) => {
-    const state = getFormState(source)
-
-    setIngestingSources((prev) => new Set(prev).add(source))
-
-    const taskId = addTask({
-      type: "ingest",
-      title: `Ingest from ${config.label}`,
-      message: "Starting ingestion...",
-    })
-
-    const params: IngestContentParams = {
-      source,
-      max_results: state.maxResults,
-      days_back: state.daysBack,
-      force_reprocess: state.forceReprocess,
-    }
-
-    ingestMutation.mutate(params, {
-      onSuccess: () => {
-        updateTask(taskId, { progress: 20, message: `Fetching from ${config.label}...` })
-
-        let pollCount = 0
-        const maxPolls = 60
-
-        const pollInterval = setInterval(() => {
-          pollCount++
-          const progressPercent = Math.min(20 + pollCount * 1.3, 95)
-          updateTask(taskId, {
-            progress: Math.round(progressPercent),
-            message:
-              pollCount < 10
-                ? `Connecting to ${config.label}...`
-                : pollCount < 20
-                  ? "Fetching content..."
-                  : pollCount < 30
-                    ? "Processing content..."
-                    : "Finalizing ingestion...",
-          })
-
-          if (pollCount >= maxPolls) {
-            clearInterval(pollInterval)
-            setIngestingSources((prev) => {
-              const next = new Set(prev)
-              next.delete(source)
-              return next
-            })
-            completeTask(taskId, "Ingestion completed")
-            toast.success(`Ingestion from ${config.label} completed`)
-          }
-        }, 5000)
-
-        // Clear ingesting state after a reasonable time
-        setTimeout(() => {
-          setIngestingSources((prev) => {
-            const next = new Set(prev)
-            next.delete(source)
-            return next
-          })
-        }, 10000)
-      },
-      onError: (err) => {
-        setIngestingSources((prev) => {
-          const next = new Set(prev)
-          next.delete(source)
-          return next
-        })
-        const errorMsg = err instanceof Error ? err.message : "Unknown error"
-        failTask(taskId, errorMsg)
-        toast.error(`Failed to ingest from ${config.label}: ${errorMsg}`)
-      },
-    })
-
-    updateTask(taskId, { progress: 10, message: "Queuing ingestion..." })
-    toast.info(`Ingestion from ${config.label} started`, {
-      description: "Check background tasks for progress.",
-    })
-  }
-
-  const handleSaveUrl = () => {
-    if (!validateUrl(urlInput)) return
-
-    saveUrlMutation.mutate(
-      { url: urlInput.trim() },
-      {
-        onSuccess: (data) => {
-          if (data.duplicate) {
-            toast.info("URL already saved", {
-              description: `Content ID: ${data.content_id}`,
-            })
-          } else {
-            toast.success("URL saved for extraction", {
-              description: `Content ID: ${data.content_id}`,
-            })
-          }
-          setUrlInput("")
-        },
-        onError: (err) => {
-          const errorMsg = err instanceof Error ? err.message : "Unknown error"
-          toast.error(`Failed to save URL: ${errorMsg}`)
-        },
-      }
+function InputField({
+  field,
+  value,
+  onChange,
+}: {
+  field: CapabilityField
+  value: FormValues[string] | undefined
+  onChange: (value: FormValues[string] | undefined) => void
+}) {
+  const id = `source-field-${field.name}`
+  const label = field.name
+    .split("_")
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(" ")
+  if (field.type === "boolean")
+    return (
+      <div className="flex items-start gap-2">
+        <Checkbox
+          id={id}
+          checked={Boolean(value)}
+          onCheckedChange={(checked) => onChange(checked === true)}
+        />
+        <div>
+          <Label htmlFor={id}>{label}</Label>
+          {field.description && (
+            <p className="text-muted-foreground text-xs">{field.description}</p>
+          )}
+        </div>
+      </div>
     )
-  }
+  if (field.enum?.length)
+    return (
+      <div className="space-y-1.5">
+        <Label htmlFor={id}>
+          {label}
+          {field.required ? " *" : ""}
+        </Label>
+        <Select value={String(value ?? "")} onValueChange={onChange}>
+          <SelectTrigger id={id}>
+            <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
+          </SelectTrigger>
+          <SelectContent>
+            {field.enum.map((option) => (
+              <SelectItem key={option} value={option}>
+                {option.replaceAll("_", " ")}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    )
+  if (field.type === "array")
+    return (
+      <div className="space-y-1.5">
+        <Label htmlFor={id}>
+          {label}
+          {field.required ? " *" : ""}
+        </Label>
+        <Textarea
+          id={id}
+          value={Array.isArray(value) ? value.join("\n") : ""}
+          onChange={(event) =>
+            onChange(
+              event.target.value
+                .split("\n")
+                .map((item) => item.trim())
+                .filter(Boolean)
+            )
+          }
+          placeholder="One value per line"
+        />
+      </div>
+    )
+  if (["prompt", "notes", "custom_instructions"].includes(field.name))
+    return (
+      <div className="space-y-1.5">
+        <Label htmlFor={id}>
+          {label}
+          {field.required ? " *" : ""}
+        </Label>
+        <Textarea
+          id={id}
+          required={field.required}
+          value={String(value ?? "")}
+          onChange={(event) => onChange(event.target.value || undefined)}
+        />
+      </div>
+    )
+  const numeric = field.type === "integer" || field.type === "number"
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>
+        {label}
+        {field.required ? " *" : ""}
+      </Label>
+      <Input
+        id={id}
+        type={
+          field.format === "date-time"
+            ? "datetime-local"
+            : numeric
+              ? "number"
+              : field.format === "uri"
+                ? "url"
+                : "text"
+        }
+        required={field.required}
+        value={value === undefined ? "" : String(value)}
+        min={
+          numeric && field.constraints?.minimum !== undefined
+            ? Number(field.constraints.minimum)
+            : undefined
+        }
+        max={
+          numeric && field.constraints?.maximum !== undefined
+            ? Number(field.constraints.maximum)
+            : undefined
+        }
+        onChange={(event) =>
+          onChange(
+            event.target.value === ""
+              ? undefined
+              : numeric
+                ? Number(event.target.value)
+                : event.target.value
+          )
+        }
+        aria-describedby={field.description ? `${id}-help` : undefined}
+      />
+      {field.description && (
+        <p id={`${id}-help`} className="text-muted-foreground text-xs">
+          {field.description}
+        </p>
+      )}
+    </div>
+  )
+}
 
+function SourceForm({ source }: { source: SourceCapability }) {
+  const { addOperation } = useBackgroundTasks()
+  const [values, setValues] = React.useState<FormValues>(() =>
+    initialValues(source)
+  )
+  const [files, setFiles] = React.useState<File[]>([])
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        kind: source.key,
+        ...values,
+      } as unknown as IngestCommand
+      if (source.key === "files") {
+        const uploads = await Promise.all(files.map((file) => uploadFile(file)))
+        return submitIngestion({
+          kind: "files",
+          upload_ids: uploads.map((upload) => upload.id),
+          force_reprocess: Boolean(values.force_reprocess),
+        })
+      }
+      return submitIngestion(payload)
+    },
+    onSuccess: (operation) => {
+      addOperation(operation)
+      toast.success(`${source.display_name} ingestion queued`)
+    },
+    onError: (error) =>
+      toast.error(
+        error instanceof Error ? error.message : "Unable to submit ingestion"
+      ),
+  })
+  const visibleFields = source.fields.filter(
+    (field) => !INTERNAL_FIELDS.has(field.name) && field.name !== "upload_ids"
+  )
+  const invalid =
+    visibleFields.some((field) => {
+      const value = values[field.name]
+      if (
+        field.required &&
+        (value === undefined ||
+          value === "" ||
+          (Array.isArray(value) && value.length === 0))
+      )
+        return true
+      if (
+        typeof value === "number" &&
+        field.constraints?.minimum !== undefined &&
+        value < Number(field.constraints.minimum)
+      )
+        return true
+      return false
+    }) ||
+    (source.key === "files" && files.length === 0)
+  return (
+    <form
+      className="border-b py-4 last:border-b-0"
+      onSubmit={(event) => {
+        event.preventDefault()
+        mutation.mutate()
+      }}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="font-medium">{source.display_name}</h2>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {source.emitted_sources.map((item) => (
+              <Badge key={item} variant="secondary">
+                {item}
+              </Badge>
+            ))}
+            {source.scheduled && <Badge variant="outline">scheduled</Badge>}
+          </div>
+        </div>
+        <Button
+          type="submit"
+          size="sm"
+          disabled={invalid || mutation.isPending}
+        >
+          {mutation.isPending ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Play className="mr-2 h-4 w-4" />
+          )}
+          Run
+        </Button>
+      </div>
+      {source.key === "files" && (
+        <div className="mt-4 space-y-1.5">
+          <Label htmlFor="ingestion-files">Files *</Label>
+          <Input
+            id="ingestion-files"
+            type="file"
+            multiple
+            onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
+          />
+          <p className="text-muted-foreground text-xs">
+            {files.length
+              ? `${files.length} selected`
+              : "Uploads are stored before the durable ingestion operation is submitted."}
+          </p>
+        </div>
+      )}
+      {visibleFields.length > 0 && (
+        <div className="mt-4 grid min-h-24 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {visibleFields.map((field) => (
+            <InputField
+              key={field.name}
+              field={field}
+              value={values[field.name]}
+              onChange={(value) =>
+                setValues((current) => {
+                  const next = { ...current }
+                  if (value === undefined) delete next[field.name]
+                  else next[field.name] = value
+                  return next
+                })
+              }
+            />
+          ))}
+        </div>
+      )}
+    </form>
+  )
+}
+
+function PipelineForm() {
+  const { addOperation } = useBackgroundTasks()
+  const today = new Date().toISOString().slice(0, 10)
+  const [period, setPeriod] = React.useState<"daily" | "weekly">("daily")
+  const [end, setEnd] = React.useState(today)
+  const mutation = useMutation({
+    mutationFn: () => {
+      const periodEnd = new Date(`${end}T23:59:59Z`)
+      const periodStart = new Date(periodEnd)
+      periodStart.setUTCDate(
+        periodStart.getUTCDate() - (period === "daily" ? 1 : 7)
+      )
+      return submitPipeline({
+        period,
+        period_start: periodStart.toISOString(),
+        period_end: periodEnd.toISOString(),
+        continue_on_source_error: true,
+      })
+    },
+    onSuccess: (operation) => {
+      addOperation(operation)
+      toast.success("Pipeline queued")
+    },
+    onError: (error) =>
+      toast.error(
+        error instanceof Error ? error.message : "Unable to submit pipeline"
+      ),
+  })
+  return (
+    <section className="mb-6 border-b pb-5">
+      <div className="flex items-center gap-2">
+        <CalendarRange className="h-5 w-5" />
+        <h2 className="font-medium">Full pipeline</h2>
+      </div>
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="pipeline-period">Period</Label>
+          <Select
+            value={period}
+            onValueChange={(value) => setPeriod(value as "daily" | "weekly")}
+          >
+            <SelectTrigger id="pipeline-period" className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="daily">Daily</SelectItem>
+              <SelectItem value="weekly">Weekly</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="pipeline-end">Period ending</Label>
+          <Input
+            id="pipeline-end"
+            type="date"
+            value={end}
+            onChange={(event) => setEnd(event.target.value)}
+          />
+        </div>
+        <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+          {mutation.isPending ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="mr-2 h-4 w-4" />
+          )}
+          Run pipeline
+        </Button>
+      </div>
+    </section>
+  )
+}
+
+function IngestPage() {
+  const capabilities = useQuery({
+    queryKey: ["workflow-capabilities"],
+    queryFn: getAllCapabilities,
+    staleTime: 5 * 60_000,
+  })
+  const [selectedSource, setSelectedSource] = React.useState<string>()
+  const frontendSources =
+    capabilities.data?.source_commands.filter((source) =>
+      source.transports.includes("frontend")
+    ) ?? []
+  const activeSource =
+    frontendSources.find((source) => source.key === selectedSource) ??
+    frontendSources[0]
   return (
     <PageContainer
-      title="Ingest Content"
-      description="Configure and trigger content ingestion from all available sources"
-      actions={
-        <Button variant="outline" onClick={() => navigate({ to: "/contents" })}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Contents
-        </Button>
-      }
+      title="Ingestion"
+      description="Submit durable source and pipeline operations"
     >
-      {/* Direct URL Section */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Link className="h-5 w-5 text-muted-foreground" />
-            <CardTitle className="text-base">Save URL</CardTitle>
-          </div>
-          <CardDescription>
-            Submit a URL directly for content extraction. The system will fetch, parse, and store the content.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-3">
-            <div className="flex-1 space-y-1">
-              <Input
-                type="url"
-                placeholder="https://example.com/article"
-                value={urlInput}
-                onChange={(e) => { setUrlInput(e.target.value); setUrlError("") }}
-                onKeyDown={(e) => { if (e.key === "Enter") handleSaveUrl() }}
-              />
-              {urlError && (
-                <p className="text-xs text-destructive">{urlError}</p>
+      {capabilities.isLoading && (
+        <div className="flex items-center gap-2 py-8" role="status">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          Loading source capabilities
+        </div>
+      )}
+      {capabilities.isError && (
+        <div className="border-destructive border p-4" role="alert">
+          <p className="font-medium">Capabilities unavailable</p>
+          <p className="text-muted-foreground text-sm">
+            {capabilities.error.message}
+          </p>
+          <Button
+            className="mt-3"
+            variant="outline"
+            onClick={() => void capabilities.refetch()}
+          >
+            Retry
+          </Button>
+        </div>
+      )}
+      {capabilities.data && (
+        <>
+          <PipelineForm />
+          <section aria-labelledby="source-operations">
+            <div className="flex items-center gap-2">
+              <FileUp className="h-5 w-5" />
+              <h2 id="source-operations" className="font-medium">
+                Source operation
+              </h2>
+            </div>
+            <div className="mt-3 max-w-sm space-y-1.5">
+              <Label htmlFor="source-command">Source</Label>
+              <Select
+                value={activeSource?.key}
+                onValueChange={setSelectedSource}
+              >
+                <SelectTrigger id="source-command">
+                  <SelectValue placeholder="Select a source" />
+                </SelectTrigger>
+                <SelectContent>
+                  {frontendSources.map((source) => (
+                    <SelectItem key={source.key} value={source.key}>
+                      {source.display_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="mt-2 min-h-64">
+              {activeSource && (
+                <SourceForm key={activeSource.key} source={activeSource} />
               )}
             </div>
-            <Button onClick={handleSaveUrl} disabled={saveUrlMutation.isPending}>
-              {saveUrlMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="mr-2 h-4 w-4" />
-              )}
-              Save URL
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Separator />
-
-      {/* Source Cards Grid */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {SOURCE_CONFIGS.map((config) => {
-          const state = getFormState(config.key)
-          const isIngesting = ingestingSources.has(config.key)
-
-          return (
-            <Card key={config.key}>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="text-muted-foreground">{config.icon}</div>
-                    <CardTitle className="text-base">{config.label}</CardTitle>
-                  </div>
-                  <Badge variant="outline" className="text-xs">
-                    Source
-                  </Badge>
-                </div>
-                <CardDescription>{config.description}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                {/* Max Results */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm">{config.maxResultsLabel}</Label>
-                    <span className="text-sm font-medium tabular-nums">{state.maxResults}</span>
-                  </div>
-                  <Slider
-                    value={[state.maxResults]}
-                    onValueChange={([v]) => updateFormState(config.key, { maxResults: v })}
-                    min={10}
-                    max={config.maxResultsMax}
-                    step={10}
-                  />
-                </div>
-
-                {/* Days Back */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm">Days back</Label>
-                    <span className="text-sm font-medium tabular-nums">{state.daysBack} days</span>
-                  </div>
-                  <Slider
-                    value={[state.daysBack]}
-                    onValueChange={([v]) => updateFormState(config.key, { daysBack: v })}
-                    min={1}
-                    max={90}
-                    step={1}
-                  />
-                </div>
-
-                {/* Force Reprocess */}
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`force-reprocess-${config.key}`}
-                    checked={state.forceReprocess}
-                    onCheckedChange={(checked) =>
-                      updateFormState(config.key, { forceReprocess: checked === true })
-                    }
-                  />
-                  <label
-                    htmlFor={`force-reprocess-${config.key}`}
-                    className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                  >
-                    Force reprocess existing content
-                  </label>
-                </div>
-
-                {/* Ingest Button */}
-                <Button
-                  className="w-full"
-                  onClick={() => handleIngest(config.key, config)}
-                  disabled={isIngesting}
-                >
-                  {isIngesting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Ingesting...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="mr-2 h-4 w-4" />
-                      Ingest from {config.label}
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
-          )
-        })}
-      </div>
+          </section>
+        </>
+      )}
     </PageContainer>
   )
 }

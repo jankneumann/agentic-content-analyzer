@@ -189,8 +189,8 @@
             <div class="code-block">Content-Type: application/json</div>
             <p><strong>Request Body (JSON):</strong></p>
             <div class="code-block">{
-  "url": [Shortcut Input],
-  "source": "ios_shortcut"
+  "kind": "url",
+  "url": [Shortcut Input]
 }</div>
             <p>For the <code>"url"</code> value, use the <strong>Shortcut Input</strong> variable (tap the field and select it from the variable list).</p>
         </div>
@@ -200,7 +200,7 @@
         <span class="step-number">4</span>
         <span class="step-title">Show confirmation</span>
         <div class="step-content">
-            <p>Add a <strong>Show Result</strong> action and set it to display the output from the previous step. This will show a confirmation when the URL is saved successfully.</p>
+            <p>Add a <strong>Show Result</strong> action and display <code>operation_id</code> from the previous step. This confirms the durable ingestion operation was queued.</p>
         </div>
     </div>
 
@@ -230,7 +230,7 @@
 
     <script>
         const BASE_URL = {{ api_base_url | tojson }};
-        document.getElementById('api-url').textContent = BASE_URL + '/api/v1/content/save-url';
+        document.getElementById('api-url').textContent = BASE_URL + '/api/v1/ingestions';
     </script>
 </body>
 </html>

@@ -11,7 +11,12 @@ import pytest
 from google.auth.exceptions import RefreshError
 from googleapiclient.errors import HttpError
 
-from src.config.sources import YouTubeChannelSource, YouTubePlaylistSource
+from src.config.sources import (
+    SourcesConfig,
+    YouTubeChannelSource,
+    YouTubePlaylistSource,
+    use_sources_config,
+)
 from src.ingestion.youtube import (
     SourceFetchResult,
     YouTubeClient,
@@ -354,6 +359,31 @@ class TestYouTubeSourceResolution:
         mock_ingest.assert_called_once()
         assert mock_ingest.call_args.kwargs["playlist_id"] == "PL_legacy"
         assert total == 1
+
+    @pytest.mark.asyncio
+    @patch("src.ingestion.youtube.settings")
+    @patch.object(YouTubeClient, "__init__", _mock_init)
+    @patch.object(YouTubeContentIngestionService, "ingest_playlist", new_callable=AsyncMock)
+    async def test_channel_only_snapshot_does_not_fall_back_to_legacy_playlists(
+        self,
+        mock_ingest,
+        mock_settings,
+    ):
+        config = SourcesConfig(
+            sources=[YouTubeChannelSource(channel_id="UC_queued", name="Queued channel")]
+        )
+        mock_settings.get_sources_config.return_value = config
+        mock_settings.get_youtube_playlists.return_value = [
+            {"id": "PL_legacy", "description": "Legacy Playlist"}
+        ]
+        service = YouTubeContentIngestionService()
+
+        with use_sources_config(config):
+            response = await service.ingest_all_playlists()
+
+        assert response.items_ingested == 0
+        mock_settings.get_youtube_playlists.assert_not_called()
+        mock_ingest.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

@@ -482,27 +482,41 @@ class GrokXContentIngestionService:
                 try:
                     db.begin_nested()  # SAVEPOINT — wraps dedup + insert
 
-                    if not force_reprocess and self._is_duplicate(db, thread):
+                    source_id = f"xpost:{thread.root_post_id}"
+                    existing = None
+                    if force_reprocess:
+                        existing = (
+                            db.query(Content)
+                            .filter(
+                                Content.source_type == ContentSource.XSEARCH,
+                                Content.source_id == source_id,
+                            )
+                            .first()
+                        )
+                    elif self._is_duplicate(db, thread):
                         logger.debug(f"Skipping duplicate: {thread.root_post_id}")
                         items_skipped += 1
                         continue
 
                     content_data = thread_to_content_data(thread, search_prompt, tool_calls)
-                    content = Content(
-                        source_type=content_data.source_type,
-                        source_id=content_data.source_id,
-                        source_url=content_data.source_url,
-                        title=content_data.title,
-                        author=content_data.author,
-                        publication=content_data.publication,
-                        published_date=content_data.published_date,
-                        markdown_content=content_data.markdown_content,
-                        content_hash=generate_markdown_hash(content_data.markdown_content),
-                        status=ContentStatus.PENDING,
-                        metadata_json=content_data.metadata_json,
-                        ingested_at=datetime.now(UTC),
-                    )
-                    db.add(content)
+                    if existing is None:
+                        content = Content(
+                            source_type=content_data.source_type,
+                            source_id=content_data.source_id,
+                        )
+                        db.add(content)
+                    else:
+                        content = existing
+                    content.source_url = content_data.source_url
+                    content.title = content_data.title
+                    content.author = content_data.author
+                    content.publication = content_data.publication
+                    content.published_date = content_data.published_date
+                    content.markdown_content = content_data.markdown_content
+                    content.content_hash = generate_markdown_hash(content_data.markdown_content)
+                    content.status = ContentStatus.PENDING
+                    content.metadata_json = content_data.metadata_json
+                    content.ingested_at = datetime.now(UTC)
                     db.flush()
                     items_ingested += 1
                     logger.info(
@@ -561,6 +575,8 @@ class GrokXContentIngestionService:
         """
         from sqlalchemy import text
 
+        from src.ingestion.content_references import record_content_reference
+
         source_id = f"xpost:{thread.root_post_id}"
 
         # Level 1: exact source_id match
@@ -574,7 +590,7 @@ class GrokXContentIngestionService:
         for post_id in thread.thread_post_ids:
             existing = db.execute(
                 text(
-                    "SELECT 1 FROM content "
+                    "SELECT id, COALESCE(canonical_id, id) AS canonical_id FROM contents "
                     "WHERE CAST(source_type AS text) = :source_type "
                     "AND metadata_json->'thread_post_ids' @> CAST(:post_id_json AS jsonb) "
                     "LIMIT 1"
@@ -585,6 +601,7 @@ class GrokXContentIngestionService:
                 },
             ).first()
             if existing:
+                record_content_reference(existing.id, existing.canonical_id)
                 return True
 
         return False

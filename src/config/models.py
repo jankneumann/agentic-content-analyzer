@@ -405,6 +405,11 @@ class ModelConfig:
         self._providers = providers or []
         self._routing_configs = self._load_routing_configs()
 
+    def has_configured_providers(self) -> bool:
+        """Return whether explicit provider priority configuration is present."""
+
+        return bool(self._providers)
+
     def _load_routing_configs(self) -> dict[str, RoutingConfig]:
         """Load routing configuration from YAML, with env var and DB overrides.
 

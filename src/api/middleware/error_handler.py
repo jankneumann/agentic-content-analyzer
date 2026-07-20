@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DataError, IntegrityError
 
+from src.services.operation_service import OperationConflictError, OperationNotFoundError
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -26,6 +27,18 @@ logger = get_logger(__name__)
 # (with prefix semantics only where the new endpoint has sub-paths like
 # `/lint/fix` under `/lint`).
 _PROBLEM_PATH_PREFIXES = (
+    "/api/v1/capabilities",
+    "/api/v1/configured-sources",
+    "/api/v1/uploads",
+    "/api/v1/ingestions",
+    "/api/v1/summarization-runs",
+    "/api/v1/theme-analyses",
+    "/api/v1/pipeline-runs",
+    "/api/v1/podcast-scripts",
+    "/api/v1/podcasts",
+    "/api/v1/digests",
+    "/api/v1/audio-digests",
+    "/api/v1/operations",
     "/api/v1/kb/search",
     "/api/v1/kb/lint",  # covers /lint and /lint/fix
     "/api/v1/graph/query",
@@ -41,16 +54,24 @@ def _is_problem_path(path: str) -> bool:
 
 
 def _problem_body(
-    *, title: str, status: int, detail: str | None = None, instance: str | None = None
+    *,
+    title: str,
+    status: int,
+    detail: str | None = None,
+    instance: str | None = None,
+    code: str | None = None,
 ) -> dict[str, Any]:
-    body: dict[str, Any] = {"title": title, "status": status}
-    if detail is not None:
-        body["detail"] = detail
+    slug = code or title.lower().replace(" ", "-")
+    body: dict[str, Any] = {
+        "type": f"https://aca.rotkohl.ai/problems/{slug}",
+        "title": title,
+        "status": status,
+        "detail": detail or title,
+    }
     if instance is not None:
         body["instance"] = instance
-    trace_id = _get_trace_id()
-    if trace_id is not None:
-        body["trace_id"] = trace_id
+    if code is not None:
+        body["code"] = code
     return body
 
 
@@ -91,6 +112,17 @@ def register_error_handlers(app: FastAPI) -> None:
             f"Database rejected input: {exc.orig}",
             extra={"path": request.url.path},
         )
+        if _is_problem_path(request.url.path):
+            return JSONResponse(
+                status_code=422,
+                content=_problem_body(
+                    title="Unprocessable Entity",
+                    status=422,
+                    detail="Invalid parameter value",
+                    instance=request.url.path,
+                ),
+                media_type="application/problem+json",
+            )
         return JSONResponse(
             status_code=422,
             content={
@@ -111,6 +143,17 @@ def register_error_handlers(app: FastAPI) -> None:
             f"Database constraint violation: {exc.orig}",
             extra={"path": request.url.path},
         )
+        if _is_problem_path(request.url.path):
+            return JSONResponse(
+                status_code=409,
+                content=_problem_body(
+                    title="Conflict",
+                    status=409,
+                    detail="Operation conflicts with existing data",
+                    instance=request.url.path,
+                ),
+                media_type="application/problem+json",
+            )
         return JSONResponse(
             status_code=409,
             content={
@@ -131,6 +174,17 @@ def register_error_handlers(app: FastAPI) -> None:
             f"asyncpg rejected input: {exc}",
             extra={"path": request.url.path},
         )
+        if _is_problem_path(request.url.path):
+            return JSONResponse(
+                status_code=422,
+                content=_problem_body(
+                    title="Unprocessable Entity",
+                    status=422,
+                    detail="Invalid parameter value",
+                    instance=request.url.path,
+                ),
+                media_type="application/problem+json",
+            )
         return JSONResponse(
             status_code=422,
             content={
@@ -191,16 +245,30 @@ def register_error_handlers(app: FastAPI) -> None:
                     for k, v in err.items()
                     if k != "ctx" and isinstance(v, (str, int, float, bool, list, dict, type(None)))
                 }
+                if "loc" in err:
+                    cleaned["loc"] = list(err["loc"])
                 safe.append(cleaned)
             return safe
+
+        def _public_path(error: dict[str, Any]) -> list[Any]:
+            path = list(error.get("loc", ()))
+            return path[1:] if path[:1] == ["body"] else path
 
         if _is_problem_path(request.url.path):
             body = _problem_body(
                 title="Unprocessable Entity",
                 status=422,
                 detail="Request validation failed",
+                code="validation_error",
             )
-            body["errors"] = _safe_errors(exc.errors())
+            body["errors"] = [
+                {
+                    "path": _public_path(error),
+                    "code": str(error.get("type", "validation_error")),
+                    "message": str(error.get("msg", "Invalid value")),
+                }
+                for error in _safe_errors(exc.errors())
+            ]
             return JSONResponse(
                 status_code=422, content=body, media_type="application/problem+json"
             )
@@ -231,3 +299,54 @@ def register_error_handlers(app: FastAPI) -> None:
         if trace_id:
             body_legacy["trace_id"] = trace_id
         return JSONResponse(status_code=500, content=body_legacy)
+
+    @app.exception_handler(OperationNotFoundError)
+    async def operation_not_found_handler(
+        request: Request, exc: OperationNotFoundError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content=_problem_body(
+                title="Not Found",
+                status=404,
+                detail=str(exc),
+                instance=request.url.path,
+                code="operation-not-found",
+            ),
+            media_type="application/problem+json",
+        )
+
+    @app.exception_handler(OperationConflictError)
+    async def operation_conflict_handler(
+        request: Request, exc: OperationConflictError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content=_problem_body(
+                title="Operation Conflict",
+                status=409,
+                detail=str(exc),
+                instance=request.url.path,
+                code="operation-conflict",
+            ),
+            media_type="application/problem+json",
+        )
+
+    @app.exception_handler(ValueError)
+    async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
+        if _is_problem_path(request.url.path):
+            return JSONResponse(
+                status_code=422,
+                content=_problem_body(
+                    title="Unprocessable Entity",
+                    status=422,
+                    detail=str(exc),
+                    instance=request.url.path,
+                    code="invalid-request",
+                ),
+                media_type="application/problem+json",
+            )
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Internal Server Error", "detail": "An internal error occurred"},
+        )

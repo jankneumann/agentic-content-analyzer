@@ -14,6 +14,11 @@ from src.services.search import (
 # --- Unit tests for helper functions ---
 
 
+def test_search_query_rejects_postgres_nul_text():
+    with pytest.raises(ValueError):
+        SearchQuery(query="invalid\x00text")
+
+
 class TestExtractQueryTerms:
     def test_basic_terms(self):
         terms = _extract_query_terms("machine learning models")

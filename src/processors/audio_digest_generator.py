@@ -67,7 +67,7 @@ class AudioDigestGenerator:
         self.tts = TTSService(provider=voice_provider)
 
         # Check SSML support for text preparation
-        self.use_ssml = self.tts._provider.supports_ssml()
+        self.use_ssml = self.tts.supports_ssml
         self.text_preparer = DigestTextPreparer(use_ssml=self.use_ssml)
 
         logger.info(
@@ -214,7 +214,7 @@ class AudioDigestGenerator:
         if progress_callback:
             progress_callback(50, 100, "Synthesizing single chunk...")
 
-        audio_bytes = await self.tts._provider.synthesize(
+        audio_bytes = await self.tts.synthesize_voice(
             text=text,
             voice_id=voice_id,
             speed=self.speed,
@@ -250,7 +250,7 @@ class AudioDigestGenerator:
                 pct = 10 + int(80 * (i + 1) / len(chunks))
                 progress_callback(pct, 100, f"Synthesizing chunk {i + 1}/{len(chunks)}")
 
-            audio = await self.tts._provider.synthesize(
+            audio = await self.tts.synthesize_voice(
                 text=chunk.text,
                 voice_id=voice_id,
                 speed=self.speed,
