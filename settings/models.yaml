@@ -366,7 +366,8 @@ default_models:
   digest_creation: claude-sonnet-4-5  # Balanced quality/cost for long-form
   digest_revision: claude-sonnet-4-5  # Quality-critical for conversational refinement
   historical_context: claude-sonnet-4-5  # Good at temporal reasoning
-  youtube_processing: gemini-3.1-flash-lite  # Native YouTube support; flash-lite for cost (batchable)
+  youtube_processing: gemini-3.1-flash-lite  # Short-path native video (fps + timestamped segments); flash-lite for cost (batchable)
+  youtube_long_processing: gemini-3.1-flash-lite  # Long videos: grounding summary or per-segment processing
   youtube_rss_processing: gemini-3.1-flash-lite  # Lightweight processing for RSS-sourced YouTube content
   caption_proofreading: gemini-3.1-flash-lite  # Fast, cheap for caption cleanup
   entity_extraction: claude-haiku-4-5  # Structured extraction, cost-effective

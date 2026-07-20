@@ -84,7 +84,8 @@ class ModelStep(StrEnum):
     DIGEST_CREATION = "digest_creation"  # Digest generation
     DIGEST_REVISION = "digest_revision"  # Interactive digest revision
     HISTORICAL_CONTEXT = "historical_context"  # Historical context analysis
-    YOUTUBE_PROCESSING = "youtube_processing"  # YouTube video summarization
+    YOUTUBE_PROCESSING = "youtube_processing"  # YouTube video summarization (short path)
+    YOUTUBE_LONG_PROCESSING = "youtube_long_processing"  # Long videos: grounding/segments
     YOUTUBE_RSS_PROCESSING = "youtube_rss_processing"  # YouTube RSS feed processing
     CAPTION_PROOFREADING = "caption_proofreading"  # Caption/transcript proofreading
     ENTITY_EXTRACTION = "entity_extraction"  # Entity extraction for knowledge graph
@@ -357,6 +358,9 @@ class ModelConfig:
             or DEFAULT_MODELS["historical_context"],
             ModelStep.YOUTUBE_PROCESSING: youtube_processing
             or DEFAULT_MODELS["youtube_processing"],
+            ModelStep.YOUTUBE_LONG_PROCESSING: DEFAULT_MODELS.get(
+                "youtube_long_processing", DEFAULT_MODELS["youtube_processing"]
+            ),
             ModelStep.YOUTUBE_RSS_PROCESSING: youtube_rss_processing
             or DEFAULT_MODELS["youtube_rss_processing"],
             ModelStep.CAPTION_PROOFREADING: caption_proofreading

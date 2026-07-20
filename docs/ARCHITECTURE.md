@@ -282,6 +282,21 @@ RSS, and forced webpage ingestion.
 - Playlist config file: `youtube_playlists.txt` with `PLAYLIST_ID | description` format
 - API key fallback: `settings.get_youtube_api_key()` returns YOUTUBE_API_KEY or falls back to GOOGLE_API_KEY
 
+**Duration-routed processing** (`src/ingestion/youtube_routing.py`): videos are
+filtered by topic (title/description) and length (`min/max_duration_seconds`),
+then routed by duration relative to `long_video_threshold_seconds` (default 2700 = 45 min):
+- **Short (< threshold)**: Gemini file-uri call with `video_fps` (default 0.1 ≈
+  1 frame/10s) and a timestamped-segment + transcription prompt.
+- **Long (>= threshold)**: configurable `long_video_strategy` — `grounding`
+  (default; URL-in-prompt + Google Search, cheap, no SDK video part) or
+  `segments` (split into overlapping windows via `start_offset`/`end_offset`,
+  process each, stitch). Long videos exceeded the 1M context at the old 1-fps
+  default (~57 min); routing fixes that.
+- Duration probe ladder: video dict → Data API `videos.list(contentDetails)` →
+  `yt-dlp` → unknown (`unknown_duration_strategy`, default `short`).
+- All routing fields are per-source in `sources.d/` and apply to playlist,
+  channel, and RSS paths. Inference is AI Studio (`GOOGLE_API_KEY`) only.
+
 ### Podcast Ingestion (`PodcastContentIngestionService`)
 - Fetches podcast RSS feeds via feedparser
 - **3-tier transcript extraction**:

@@ -39,11 +39,11 @@ jobs:
           # CVE-2026-1839: transformers Trainer._load_rng_state() RCE — we only use
           # sentence-transformers for inference (embedding generation), never training.
           # The Trainer class is never instantiated; transformers is a transitive dep.
-          # CVE-2026-3219, CVE-2026-6357: pip itself (runner-bundled pip 26.0.1, fix in
-          # 26.1). Self-update / archive-confusion CVEs in the runner's tooling, not in
-          # our project's resolved dependency set.
-          pip-audit --desc on --ignore-vuln CVE-2026-1839 --ignore-vuln CVE-2026-3219 --ignore-vuln CVE-2026-6357 --format json --output pip-audit-results.json || true
-          pip-audit --desc on --ignore-vuln CVE-2026-1839 --ignore-vuln CVE-2026-3219 --ignore-vuln CVE-2026-6357
+          # CVE-2026-3219, CVE-2026-6357, PYSEC-2026-196: pip itself (runner-bundled
+          # pip; fixes in 26.1 / 26.1.2). Self-update / archive-confusion / entry-point
+          # path CVEs in the runner's tooling, not in our project's resolved dependency set.
+          pip-audit --desc on --ignore-vuln CVE-2026-1839 --ignore-vuln CVE-2026-3219 --ignore-vuln CVE-2026-6357 --ignore-vuln PYSEC-2026-196 --format json --output pip-audit-results.json || true
+          pip-audit --desc on --ignore-vuln CVE-2026-1839 --ignore-vuln CVE-2026-3219 --ignore-vuln CVE-2026-6357 --ignore-vuln PYSEC-2026-196
         continue-on-error: false
 
   dependency-audit-node:

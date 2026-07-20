@@ -346,6 +346,34 @@ class YouTubeClient:
         logger.info(f"Found {len(videos)} videos in playlist {playlist_id}")
         return videos[:max_results]
 
+    def get_video_durations(self, video_ids: list[str]) -> dict[str, int]:
+        """Resolve durations (seconds) for video ids via the Data API.
+
+        Uses ``videos().list(part="contentDetails")`` batched up to 50 ids per
+        call (1 quota unit each). Returns a ``{video_id: seconds}`` map; ids that
+        fail to resolve are simply absent so callers can fall back.
+        """
+        from src.ingestion.youtube_routing import parse_iso8601_duration
+
+        durations: dict[str, int] = {}
+        if not video_ids:
+            return durations
+
+        for start in range(0, len(video_ids), 50):
+            batch = video_ids[start : start + 50]
+            try:
+                response = (
+                    self.service.videos().list(part="contentDetails", id=",".join(batch)).execute()
+                )
+            except HttpError as e:
+                logger.warning(f"Duration probe failed for batch {batch[:3]}...: {e}")
+                continue
+            for item in response.get("items", []):
+                seconds = parse_iso8601_duration(item.get("contentDetails", {}).get("duration"))
+                if seconds is not None:
+                    durations[item["id"]] = seconds
+        return durations
+
     def get_video_metadata(self, video_id: str) -> dict[str, Any] | None:
         """Fetch metadata for a single video via the YouTube Data API.
 
@@ -582,10 +610,107 @@ Be thorough and detailed — capture everything discussed. Do NOT editorialize, 
 Format as clean markdown with headers for major topic transitions."""
 
 
+# Short-path prompt — timestamped segment boundaries + transcription (citable output)
+GEMINI_TIMESTAMPED_EXTRACTION_PROMPT = """Analyze this video and produce TIMESTAMPED SEGMENTS covering the entire video in order.
+
+For each coherent segment, output:
+## [HH:MM:SS - HH:MM:SS] <short segment title>
+- A faithful transcription of what is said in that window (not a summary)
+- Visuals, demos, code, or on-screen text shown
+- Any products, tools, companies, papers, numbers, or benchmarks mentioned
+
+Rules:
+- Cover the whole video in chronological order; do not skip sections.
+- Use real timestamps from the video for each segment boundary.
+- Do NOT editorialize or summarize — a separate step handles that.
+
+Format as clean markdown."""
+
+
+# Long-path grounding prompt — URL is embedded; Gemini grounds via Google Search
+GEMINI_GROUNDING_EXTRACTION_PROMPT = """Using Google Search grounding, produce a detailed, factual account of this YouTube video:
+
+{video_url}
+
+Cover the main topics, technical details, arguments, people/products/papers mentioned,
+and any notable numbers or benchmarks. Prefer information specific to THIS video
+(its description, transcript, chapters, and discussion) over generic background.
+Do NOT editorialize or summarize for relevance — capture the substance.
+
+Format as clean markdown."""
+
+
+def _probe_duration_yt_dlp(video_id: str) -> int | None:
+    """Best-effort duration probe via yt-dlp when no Data API key is available.
+
+    Returns seconds, or None if yt-dlp is unavailable or the probe fails. Never
+    raises — duration stays "unknown" and the routing fallback takes over.
+    """
+    try:
+        import yt_dlp  # type: ignore[import-untyped]
+    except Exception:
+        logger.debug("yt-dlp not installed; skipping duration fallback")
+        return None
+    try:
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        with yt_dlp.YoutubeDL({"quiet": True, "skip_download": True, "no_warnings": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+        duration = info.get("duration") if isinstance(info, dict) else None
+        return int(duration) if duration else None
+    except Exception as e:
+        logger.debug(f"yt-dlp duration probe failed for {video_id}: {e}")
+        return None
+
+
+async def _resolve_duration(client: YouTubeClient, video: dict[str, Any]) -> int | None:
+    """Resolve a video's duration (seconds) for routing.
+
+    Precedence: a duration already on the video dict → Data API ``videos.list``
+    → yt-dlp → unknown (None). Never raises.
+    """
+    existing = video.get("duration_seconds")
+    if existing:
+        return int(existing)
+
+    video_id = video["video_id"]
+    try:
+        durations = await asyncio.to_thread(client.get_video_durations, [video_id])
+        if video_id in durations:
+            return durations[video_id]
+    except Exception as e:
+        logger.debug(f"Data API duration probe failed for {video_id}: {e}")
+
+    return await asyncio.to_thread(_probe_duration_yt_dlp, video_id)
+
+
+def _content_filter_from_source(source: Any) -> Any:
+    """Build a ContentRelevanceFilter from a source's content_filter_* fields.
+
+    Returns None when the source declares no filtering, so callers can cheaply
+    skip the topic gate.
+    """
+    strategy = getattr(source, "content_filter_strategy", None)
+    topics = getattr(source, "content_filter_topics", None)
+    if not strategy or strategy == "none" or not topics:
+        return None
+    from src.services.content_filter import ContentRelevanceFilter
+
+    return ContentRelevanceFilter(
+        strategy=strategy,
+        topics=topics,
+        excerpt_chars=getattr(source, "content_filter_excerpt_chars", None) or 1000,
+    )
+
+
 async def _extract_video_content_with_gemini(
     video_url: str,
     model_step: str,
     gemini_resolution: str = "default",
+    *,
+    user_prompt: str = GEMINI_VIDEO_EXTRACTION_PROMPT,
+    fps: float | None = None,
+    start_offset: str | None = None,
+    end_offset: str | None = None,
 ) -> str | None:
     """Extract video content using Gemini native YouTube video processing.
 
@@ -593,6 +718,11 @@ async def _extract_video_content_with_gemini(
         video_url: YouTube video URL.
         model_step: ModelStep value to use for model selection.
         gemini_resolution: Resolution setting (low, medium, high, default).
+        user_prompt: Extraction prompt (defaults to comprehensive coverage; the
+            short path passes the timestamped-segment prompt).
+        fps: Frame sampling rate (frames/second); None uses Gemini's default.
+        start_offset: Clip start duration string (e.g. "0s") for segmenting.
+        end_offset: Clip end duration string (e.g. "2700s") for segmenting.
 
     Returns:
         Extracted content as markdown text, or None on failure.
@@ -616,17 +746,21 @@ async def _extract_video_content_with_gemini(
         response = await router.generate_with_video(
             model=model,
             system_prompt="You are a video content analyst. Extract detailed content from YouTube videos.",
-            user_prompt=GEMINI_VIDEO_EXTRACTION_PROMPT,
+            user_prompt=user_prompt,
             video_url=video_url,
             media_resolution=resolution,
             max_tokens=8192,
             temperature=0.3,
+            fps=fps,
+            start_offset=start_offset,
+            end_offset=end_offset,
         )
 
         if response.text and len(response.text) > 100:
             logger.info(
                 f"Gemini extracted {len(response.text)} chars from {video_url} "
-                f"(model={model}, resolution={gemini_resolution})"
+                f"(model={model}, resolution={gemini_resolution}, fps={fps}, "
+                f"offsets=({start_offset}, {end_offset}))"
             )
             return response.text
 
@@ -636,6 +770,78 @@ async def _extract_video_content_with_gemini(
     except Exception as e:
         logger.warning(f"Gemini video extraction failed for {video_url}: {e}")
         return None
+
+
+async def _extract_long_video_with_grounding(
+    video_url: str,
+    model_step: str = "youtube_long_processing",
+) -> str | None:
+    """Long-video path: URL-in-prompt + Google Search grounding (no SDK video part)."""
+    from src.config.models import ModelStep, get_model_config
+    from src.services.llm_router import LLMRouter
+
+    if not os.environ.get("GOOGLE_API_KEY"):
+        logger.debug("GOOGLE_API_KEY not set, skipping grounding extraction")
+        return None
+    try:
+        model_config = get_model_config()
+        model = model_config.get_model_for_step(ModelStep(model_step))
+        router = LLMRouter(model_config)
+        response = await router.generate_with_grounding(
+            model=model,
+            system_prompt="You are a video content analyst. Extract detailed content from YouTube videos.",
+            user_prompt=GEMINI_GROUNDING_EXTRACTION_PROMPT.format(video_url=video_url),
+            max_tokens=8192,
+            temperature=0.3,
+        )
+        if response.text and len(response.text) > 100:
+            logger.info(f"Grounding extracted {len(response.text)} chars from {video_url}")
+            return response.text
+        logger.warning(f"Grounding returned insufficient content for {video_url}")
+        return None
+    except Exception as e:
+        logger.warning(f"Grounding extraction failed for {video_url}: {e}")
+        return None
+
+
+async def _extract_long_video_with_segments(
+    video_url: str,
+    duration_seconds: int,
+    *,
+    window_seconds: int,
+    overlap_seconds: int,
+    gemini_resolution: str = "default",
+    fps: float | None = None,
+    model_step: str = "youtube_long_processing",
+) -> str | None:
+    """Long-video path: split into windows, process each natively, stitch results."""
+    from src.ingestion.youtube_routing import plan_segments
+
+    segments = plan_segments(duration_seconds, window_seconds, overlap_seconds)
+    if not segments:
+        return None
+
+    parts: list[str] = []
+    for seg in segments:
+        text = await _extract_video_content_with_gemini(
+            video_url=video_url,
+            model_step=model_step,
+            gemini_resolution=gemini_resolution,
+            user_prompt=GEMINI_TIMESTAMPED_EXTRACTION_PROMPT,
+            fps=fps,
+            start_offset=seg.start_offset,
+            end_offset=seg.end_offset,
+        )
+        if text:
+            header = (
+                f"<!-- segment {seg.index + 1}/{len(segments)}: "
+                f"{seg.start_seconds}s-{seg.end_seconds}s -->"
+            )
+            parts.append(f"{header}\n{text}")
+
+    if not parts:
+        return None
+    return "\n\n".join(parts)
 
 
 class YouTubeContentIngestionService:
@@ -795,6 +1001,14 @@ class YouTubeContentIngestionService:
         gemini_resolution: str = "default",
         proofread: bool = True,
         hint_terms: list[str] | None = None,
+        video_fps: float | None = 0.1,
+        long_video_threshold_seconds: int = 2700,
+        long_video_strategy: str = "grounding",
+        segment_overlap_seconds: int = 15,
+        unknown_duration_strategy: str = "short",
+        min_duration_seconds: int | None = None,
+        max_duration_seconds: int | None = None,
+        content_filter: Any = None,
     ) -> bool:
         """Process a single video from a playlist.
 
@@ -809,6 +1023,15 @@ class YouTubeContentIngestionService:
             gemini_resolution: Resolution for Gemini (low, medium, high, default).
             proofread: Run LLM proofreading on auto-generated captions.
             hint_terms: Per-playlist hint terms for proofreading.
+            video_fps: Frame sampling rate for the short path (~0.1 = 1 frame/10s).
+            long_video_threshold_seconds: Boundary (>=) to the long-video path.
+            long_video_strategy: "grounding" (default) or "segments" for long videos.
+            segment_overlap_seconds: Overlap between windows for the segments strategy.
+            unknown_duration_strategy: Routing when duration cannot be resolved.
+            min_duration_seconds: Drop videos shorter than this (length filter).
+            max_duration_seconds: Drop videos longer than this (length filter).
+            content_filter: Optional ContentRelevanceFilter applied to title +
+                description before processing.
 
         Returns:
             True if video was ingested/updated, False if skipped/failed.
@@ -835,6 +1058,16 @@ class YouTubeContentIngestionService:
                     logger.debug(f"Video already exists: {video['title']}")
                     return False
 
+                # --- Topic filter (title + description) before any processing ---
+                if content_filter is not None and getattr(content_filter, "enabled", False):
+                    fr = content_filter.is_relevant(
+                        title=video.get("title", ""),
+                        content=video.get("description", ""),
+                    )
+                    if not fr.relevant:
+                        logger.info(f"Filtered out by topic: {video.get('title')!r}")
+                        return False
+
                 video_url = f"https://www.youtube.com/watch?v={video['video_id']}"
                 processing_method = "transcript"
                 parser_used = "youtube_transcript_api"
@@ -846,17 +1079,55 @@ class YouTubeContentIngestionService:
                 segment_count = 0
                 duration_seconds = 0.0
 
-                # --- Path 1: Gemini native video extraction ---
-                if gemini_summary:
-                    gemini_content = await _extract_video_content_with_gemini(
-                        video_url=video_url,
-                        model_step="youtube_processing",
-                        gemini_resolution=gemini_resolution,
+                # --- Duration probe + routing ---
+                from src.ingestion.youtube_routing import Route, decide_route
+
+                probed_duration = await _resolve_duration(self.client, video)
+                route = decide_route(
+                    probed_duration,
+                    long_video_threshold_seconds=long_video_threshold_seconds,
+                    long_video_strategy=long_video_strategy,
+                    min_duration_seconds=min_duration_seconds,
+                    max_duration_seconds=max_duration_seconds,
+                    unknown_duration_strategy=unknown_duration_strategy,
+                )
+                if route == Route.FILTERED:
+                    logger.info(
+                        f"Filtered out by length/route (duration={probed_duration}s): "
+                        f"{video.get('title')!r}"
                     )
+                    return False
+
+                # --- Path 1: Gemini native video extraction (duration-routed) ---
+                if gemini_summary:
+                    gemini_content = None
+                    if route == Route.SHORT:
+                        gemini_content = await _extract_video_content_with_gemini(
+                            video_url=video_url,
+                            model_step="youtube_processing",
+                            gemini_resolution=gemini_resolution,
+                            user_prompt=GEMINI_TIMESTAMPED_EXTRACTION_PROMPT,
+                            fps=video_fps,
+                        )
+                        processing_method = "gemini_short"
+                    elif route == Route.LONG_GROUNDING:
+                        gemini_content = await _extract_long_video_with_grounding(video_url)
+                        processing_method = "gemini_grounding"
+                    elif route == Route.LONG_SEGMENTS and probed_duration:
+                        gemini_content = await _extract_long_video_with_segments(
+                            video_url=video_url,
+                            duration_seconds=int(probed_duration),
+                            window_seconds=long_video_threshold_seconds,
+                            overlap_seconds=segment_overlap_seconds,
+                            gemini_resolution=gemini_resolution,
+                            fps=video_fps,
+                        )
+                        processing_method = "gemini_segments"
                     if gemini_content:
                         markdown_content = gemini_content
-                        processing_method = "gemini_native"
                         parser_used = "gemini"
+                        if probed_duration:
+                            duration_seconds = float(probed_duration)
 
                 # --- Path 2: Transcript-based extraction (fallback) ---
                 if markdown_content is None:
@@ -926,8 +1197,10 @@ class YouTubeContentIngestionService:
                     "processing_method": processing_method,
                     "thumbnail_url": video.get("thumbnail_url"),
                 }
-                if processing_method == "gemini_native":
+                if processing_method.startswith("gemini"):
                     metadata_json["gemini_resolution"] = gemini_resolution
+                    metadata_json["duration_seconds"] = duration_seconds
+                    metadata_json["video_fps"] = video_fps
                 else:
                     metadata_json.update(
                         {
@@ -1033,6 +1306,14 @@ class YouTubeContentIngestionService:
         gemini_resolution: str = "default",
         proofread: bool = True,
         hint_terms: list[str] | None = None,
+        video_fps: float | None = 0.1,
+        long_video_threshold_seconds: int = 2700,
+        long_video_strategy: str = "grounding",
+        segment_overlap_seconds: int = 15,
+        unknown_duration_strategy: str = "short",
+        min_duration_seconds: int | None = None,
+        max_duration_seconds: int | None = None,
+        content_filter: Any = None,
     ) -> SourceFetchResult:
         """Ingest content from a YouTube playlist as Content records.
 
@@ -1094,6 +1375,14 @@ class YouTubeContentIngestionService:
                     gemini_resolution=gemini_resolution,
                     proofread=proofread,
                     hint_terms=hint_terms,
+                    video_fps=video_fps,
+                    long_video_threshold_seconds=long_video_threshold_seconds,
+                    long_video_strategy=long_video_strategy,
+                    segment_overlap_seconds=segment_overlap_seconds,
+                    unknown_duration_strategy=unknown_duration_strategy,
+                    min_duration_seconds=min_duration_seconds,
+                    max_duration_seconds=max_duration_seconds,
+                    content_filter=content_filter,
                 )
 
         tasks = [process_with_limit(v) for v in videos]
@@ -1229,6 +1518,14 @@ class YouTubeContentIngestionService:
                         gemini_resolution=source.gemini_resolution,
                         proofread=source.proofread,
                         hint_terms=source.hint_terms if source.hint_terms else None,
+                        video_fps=source.video_fps,
+                        long_video_threshold_seconds=source.long_video_threshold_seconds,
+                        long_video_strategy=source.long_video_strategy,
+                        segment_overlap_seconds=source.segment_overlap_seconds,
+                        unknown_duration_strategy=source.unknown_duration_strategy,
+                        min_duration_seconds=source.min_duration_seconds,
+                        max_duration_seconds=source.max_duration_seconds,
+                        content_filter=_content_filter_from_source(source),
                     )
                     # Inner method built fetch_result with the playlist URL but
                     # doesn't know the configured display name — set it here.
@@ -1377,6 +1674,14 @@ class YouTubeContentIngestionService:
                         gemini_resolution=source.gemini_resolution,
                         proofread=source.proofread,
                         hint_terms=source.hint_terms if source.hint_terms else None,
+                        video_fps=source.video_fps,
+                        long_video_threshold_seconds=source.long_video_threshold_seconds,
+                        long_video_strategy=source.long_video_strategy,
+                        segment_overlap_seconds=source.segment_overlap_seconds,
+                        unknown_duration_strategy=source.unknown_duration_strategy,
+                        min_duration_seconds=source.min_duration_seconds,
+                        max_duration_seconds=source.max_duration_seconds,
+                        content_filter=_content_filter_from_source(source),
                     )
                     # Override URL/name so the envelope reports the channel
                     # the user configured (not the resolved uploads playlist).
@@ -1568,6 +1873,14 @@ class YouTubeRSSIngestionService:
         *,
         gemini_summary: bool = True,
         gemini_resolution: str = "low",
+        video_fps: float | None = 0.1,
+        long_video_threshold_seconds: int = 2700,
+        long_video_strategy: str = "grounding",
+        segment_overlap_seconds: int = 15,
+        unknown_duration_strategy: str = "short",
+        min_duration_seconds: int | None = None,
+        max_duration_seconds: int | None = None,
+        content_filter: Any = None,
     ) -> SourceFetchResult:
         """Ingest videos from a single YouTube RSS feed.
 
@@ -1613,6 +1926,14 @@ class YouTubeRSSIngestionService:
                     source_tags=source_tags,
                     gemini_summary=gemini_summary,
                     gemini_resolution=gemini_resolution,
+                    video_fps=video_fps,
+                    long_video_threshold_seconds=long_video_threshold_seconds,
+                    long_video_strategy=long_video_strategy,
+                    segment_overlap_seconds=segment_overlap_seconds,
+                    unknown_duration_strategy=unknown_duration_strategy,
+                    min_duration_seconds=min_duration_seconds,
+                    max_duration_seconds=max_duration_seconds,
+                    content_filter=content_filter,
                 )
 
         tasks = [process_one(v) for v in videos]
@@ -1653,15 +1974,26 @@ class YouTubeRSSIngestionService:
         source_tags: list[str] | None = None,
         gemini_summary: bool = True,
         gemini_resolution: str = "low",
+        video_fps: float | None = 0.1,
+        long_video_threshold_seconds: int = 2700,
+        long_video_strategy: str = "grounding",
+        segment_overlap_seconds: int = 15,
+        unknown_duration_strategy: str = "short",
+        min_duration_seconds: int | None = None,
+        max_duration_seconds: int | None = None,
+        content_filter: Any = None,
     ) -> bool:
         """Process a single video from an RSS feed.
 
-        Each call creates its own DB session for per-video isolation.
+        Each call creates its own DB session for per-video isolation. Applies the
+        same topic/length filtering and duration routing as the playlist path.
 
         Returns:
             True if video was ingested, False if skipped/failed.
         """
         try:
+            from src.ingestion.youtube_routing import Route, decide_route
+
             video_id = video["video_id"]
             source_id = f"youtube:{video_id}"
 
@@ -1677,6 +2009,16 @@ class YouTubeRSSIngestionService:
                         logger.debug(f"Skipping existing video: {video_id}")
                         return False
 
+                # Topic filter (title + description) before any processing
+                if content_filter is not None and getattr(content_filter, "enabled", False):
+                    fr = content_filter.is_relevant(
+                        title=video.get("title", ""),
+                        content=video.get("description", ""),
+                    )
+                    if not fr.relevant:
+                        logger.info(f"Filtered out by topic: {video.get('title')!r}")
+                        return False
+
                 video_url = f"https://www.youtube.com/watch?v={video_id}"
                 processing_method = "transcript"
                 parser_used = "youtube_transcript_api"
@@ -1685,16 +2027,50 @@ class YouTubeRSSIngestionService:
                 markdown_content = None
                 transcript_meta: dict[str, Any] | None = None
 
-                # --- Path 1: Gemini native video extraction ---
-                if gemini_summary:
-                    gemini_content = await _extract_video_content_with_gemini(
-                        video_url=video_url,
-                        model_step="youtube_rss_processing",
-                        gemini_resolution=gemini_resolution,
+                # Duration probe + routing
+                probed_duration = await _resolve_duration(self.client, video)
+                route = decide_route(
+                    probed_duration,
+                    long_video_threshold_seconds=long_video_threshold_seconds,
+                    long_video_strategy=long_video_strategy,
+                    min_duration_seconds=min_duration_seconds,
+                    max_duration_seconds=max_duration_seconds,
+                    unknown_duration_strategy=unknown_duration_strategy,
+                )
+                if route == Route.FILTERED:
+                    logger.info(
+                        f"Filtered out by length/route (duration={probed_duration}s): "
+                        f"{video.get('title')!r}"
                     )
+                    return False
+
+                # --- Path 1: Gemini native video extraction (duration-routed) ---
+                if gemini_summary:
+                    gemini_content = None
+                    if route == Route.SHORT:
+                        gemini_content = await _extract_video_content_with_gemini(
+                            video_url=video_url,
+                            model_step="youtube_rss_processing",
+                            gemini_resolution=gemini_resolution,
+                            user_prompt=GEMINI_TIMESTAMPED_EXTRACTION_PROMPT,
+                            fps=video_fps,
+                        )
+                        processing_method = "gemini_short"
+                    elif route == Route.LONG_GROUNDING:
+                        gemini_content = await _extract_long_video_with_grounding(video_url)
+                        processing_method = "gemini_grounding"
+                    elif route == Route.LONG_SEGMENTS and probed_duration:
+                        gemini_content = await _extract_long_video_with_segments(
+                            video_url=video_url,
+                            duration_seconds=int(probed_duration),
+                            window_seconds=long_video_threshold_seconds,
+                            overlap_seconds=segment_overlap_seconds,
+                            gemini_resolution=gemini_resolution,
+                            fps=video_fps,
+                        )
+                        processing_method = "gemini_segments"
                     if gemini_content:
                         markdown_content = gemini_content
-                        processing_method = "gemini_native"
                         parser_used = "gemini"
 
                 # --- Path 2: Transcript-based extraction (fallback) ---
@@ -1732,8 +2108,11 @@ class YouTubeRSSIngestionService:
                     "feed_url": feed_url,
                     "discovery_method": "rss",
                 }
-                if processing_method == "gemini_native":
+                if processing_method.startswith("gemini"):
                     metadata["gemini_resolution"] = gemini_resolution
+                    metadata["video_fps"] = video_fps
+                    if probed_duration:
+                        metadata["duration_seconds"] = probed_duration
                 elif transcript_meta is not None:
                     metadata.update(transcript_meta)
                 if source_name:
@@ -1829,6 +2208,14 @@ class YouTubeRSSIngestionService:
                         source_tags=source.tags if source.tags else None,
                         gemini_summary=source.gemini_summary,
                         gemini_resolution=source.gemini_resolution,
+                        video_fps=source.video_fps,
+                        long_video_threshold_seconds=source.long_video_threshold_seconds,
+                        long_video_strategy=source.long_video_strategy,
+                        segment_overlap_seconds=source.segment_overlap_seconds,
+                        unknown_duration_strategy=source.unknown_duration_strategy,
+                        min_duration_seconds=source.min_duration_seconds,
+                        max_duration_seconds=source.max_duration_seconds,
+                        content_filter=_content_filter_from_source(source),
                     )
                 except Exception as e:
                     logger.error(f"Error ingesting YouTube RSS feed {feed_label}: {e}")
