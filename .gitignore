@@ -232,6 +232,7 @@ node_modules/
 web/dist/
 web/node_modules/
 *.tsbuildinfo
+.pnpm-store/
 
 # Package manager
 package-lock.json
