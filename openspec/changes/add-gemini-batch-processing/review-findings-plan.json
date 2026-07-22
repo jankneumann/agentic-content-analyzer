@@ -1,0 +1,29 @@
+{
+  "review_type": "plan",
+  "target": "add-gemini-batch-processing",
+  "reviewer_vendor": "codex",
+  "findings": [
+    {
+      "id": 1,
+      "type": "architecture",
+      "criticality": "low",
+      "description": "FYI: The revised core-only scope aligns the persistence and provider boundaries with current code while explicitly deferring pre-persist ingestion redesign.",
+      "resolution": "Retain the scope split and follow-up issue references.",
+      "disposition": "accept",
+      "axis": "architecture",
+      "severity": "fyi",
+      "file_path": "openspec/changes/add-gemini-batch-processing/proposal.md"
+    },
+    {
+      "id": 2,
+      "type": "resilience",
+      "criticality": "low",
+      "description": "Optional: Keep the provider-accepted/local-commit orphan window visible in status documentation because the Gemini create API has no idempotency key.",
+      "resolution": "The design already documents the limitation; ensure implementation docs preserve it.",
+      "disposition": "accept",
+      "axis": "correctness",
+      "severity": "optional",
+      "file_path": "openspec/changes/add-gemini-batch-processing/design.md"
+    }
+  ]
+}
