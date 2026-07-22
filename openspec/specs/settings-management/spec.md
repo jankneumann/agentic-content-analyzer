@@ -526,3 +526,13 @@ The system SHALL register all four settings domains (prompts, models, voice, not
 - **AND** `registry.list_keys("voice")` SHALL return a non-empty list
 - **AND** `registry.list_keys("notifications")` SHALL return a non-empty list
 
+### Requirement: Batch settings use safe precedence
+
+Batch settings SHALL load safe YAML defaults and SHALL allow
+`GEMINI_BATCH_ENABLED` to override only the global switch.
+
+#### Scenario: Environment override is isolated
+
+- **GIVEN** `Settings(_env_file=None)` and no explicit batch environment value
+- **WHEN** settings are loaded
+- **THEN** Gemini batching SHALL be disabled

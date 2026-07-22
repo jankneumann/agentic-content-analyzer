@@ -114,3 +114,64 @@ Validation passed with documented repository-baseline exceptions. No production 
 
 ### Context
 Autopilot completed at pull-request submission. The implementation was not merged; #463 is the required human review and merge gate.
+
+---
+
+## Phase: Cleanup (2026-07-22)
+
+**Agent**: claude (merge-pull-requests → cleanup-feature) | **Session**: N/A
+
+### Decisions
+1. **Merged #463 with a merge commit, overriding the `openspec` rebase default** — GitHub
+   rejected rebase outright (`This branch can't be rebased`) because the branch contains
+   merge commits from integrating #457 and then `main`. A merge commit preserves the same
+   per-task history the rebase default exists to protect.
+2. **Fixed the reported P2 before merging rather than deferring it** — permanent submission
+   failures were requeued forever. Routed `ValueError` rejections to the bounded sync
+   fallback instead of `pending`. Chose `FALLBACK` over `FAILED` so the queue drains without
+   silently dropping user work.
+3. **Fixed an import-order test failure surfaced by this branch's first real CI run** — the
+   pre-existing `test_gemini_sync_creates_client_and_calls_api` patched
+   `sys.modules["google.genai"]`, which is never consulted once the submodule has been
+   imported anywhere in the process. This branch's `test_batch_disabled_regression.py`
+   imports it (by patching `"google.genai.Client"` by string), so a real client was built and
+   the shard died in `ssl.load_verify_locations`.
+4. **No staged rollout performed — deliberately, and this is not a skipped gate.** The
+   feature ships inert: `GEMINI_BATCH_ENABLED` and every per-step `batch_execution` mode
+   default to disabled, and no production call site opts in. There is no traffic to stage and
+   no flag to promote. `test_batch_disabled_regression.py` guards that behaviour is
+   byte-for-byte unchanged. The 5%→25%→50%→100% sequence applies when a step is first
+   enabled, not at this merge.
+
+### Alternatives Considered
+- Marking permanently-failed requests `FAILED` instead of `FALLBACK`: rejected — it would
+  have satisfied the review comment while discarding the work.
+- Deferring the P2 to a follow-up, since batch is disabled and the loop is unreachable:
+  rejected by the operator in favour of fixing it now.
+- Opening a replacement PR after #463 was auto-closed by its base branch's deletion:
+  rejected — recreating the base branch briefly preserved the review history and the
+  resolved Codex thread.
+
+### Trade-offs
+- Accepted a merge commit over rebase: loses linear history, keeps per-task commits and the
+  record of how the branch integrated its base.
+- Accepted classifying permanence by `ValueError` over introducing a dedicated exception
+  type: matches `submit_batch`'s documented contract and keeps the diff small, but it is a
+  structural rather than a typed signal.
+
+### Open Questions
+- [ ] Re-file the two preserved follow-ups (`agentic-newsletter-aggregator-0vd`, `-6bc`)
+      into the coordinator once it is reachable — it currently fails with
+      `No module named 'rich.traceback'`.
+- [ ] Replace the `ValueError` permanence check with a dedicated exception type before any
+      batch step is enabled.
+- [ ] A permanently unset `GOOGLE_API_KEY` still accumulates one failed job row per sweep,
+      because credential errors are deliberately retryable. Bounded per tick, but worth a
+      guard before enabling.
+
+### Context
+Merged via `/merge-pull-requests` as the second of a two-PR stack (#457 → #463). All 19
+tasks were complete, so no task migration was required; the two rollout follow-ups live in
+`follow-ups.md` rather than as unchecked tasks. All 12 CI checks passed on the branch's
+first real CI run, which only became possible once the base was retargeted from
+`agent/update-agent-skills` to `main`.

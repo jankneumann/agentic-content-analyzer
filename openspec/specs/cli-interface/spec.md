@@ -445,3 +445,13 @@ The CLI SHALL provide `aca capabilities` with human-readable and JSON output der
 - **WHEN** `aca capabilities --json` is executed
 - **THEN** the result lists every canonical ingestion discriminator and its accepted fields
 - **AND** it lists supported operation and resource types
+
+### Requirement: Gemini batch operator commands
+
+The CLI SHALL expose read-only `batch status` and SHALL support canonical root
+`--json` output without stray human-readable text.
+
+#### Scenario: JSON batch status is machine readable
+
+- **WHEN** a user runs `aca --json batch status`
+- **THEN** stdout SHALL contain exactly one valid JSON document
