@@ -6,6 +6,7 @@ for synchronous generation across all three provider families.
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -117,28 +118,33 @@ class TestGenerateSyncGeminiProvider:
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response
 
-        mock_genai_module = MagicMock()
-        mock_genai_module.Client.return_value = mock_client
+        # Patch the Client attribute rather than injecting a fake module into
+        # sys.modules. `_generate_gemini_sync` does `from google import genai`,
+        # which resolves via getattr(google, "genai") once the submodule has been
+        # imported anywhere in the process — at which point a sys.modules entry is
+        # never consulted and a real client would be constructed.
+        #
+        # Set the single env var rather than patching os.environ.get wholesale:
+        # that patch is process-wide, so any import triggered inside the block
+        # (google.genai pulls in websockets, which reads int-valued settings)
+        # receives the string too and fails.
+        with (
+            patch.dict(os.environ, {"GOOGLE_API_KEY": "fake-api-key"}),
+            patch("google.genai.Client", return_value=mock_client),
+        ):
+            result = router._generate_gemini_sync(
+                model="gemini-2.5-flash-lite",
+                provider=Provider.GOOGLE_AI,
+                system_prompt="System",
+                user_prompt="User",
+                max_tokens=4096,
+                temperature=0.0,
+            )
 
-        import sys
-
-        with patch("src.services.llm_router.os.environ.get", return_value="fake-api-key"):
-            with patch.dict(
-                sys.modules, {"google.genai": mock_genai_module, "google.genai.types": MagicMock()}
-            ):
-                result = router._generate_gemini_sync(
-                    model="gemini-2.5-flash-lite",
-                    provider=Provider.GOOGLE_AI,
-                    system_prompt="System",
-                    user_prompt="User",
-                    max_tokens=4096,
-                    temperature=0.0,
-                )
-
-                mock_client.models.generate_content.assert_called_once()
-                assert result.text == "Gemini output"
-                assert result.input_tokens == 300
-                assert result.output_tokens == 150
+        mock_client.models.generate_content.assert_called_once()
+        assert result.text == "Gemini output"
+        assert result.input_tokens == 300
+        assert result.output_tokens == 150
 
 
 class TestGenerateSyncOpenAIProvider:

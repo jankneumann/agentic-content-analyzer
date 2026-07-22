@@ -410,6 +410,23 @@ routing:
     weak_model: gemini-3.1-flash-lite
     threshold: 0.5
 
+# Batch execution (Gemini Batch API) — per-step opt-in, default OFF.
+# When batch.enabled is false, every step runs synchronously exactly as before.
+# Per-step mode 'batch' defers the Gemini call to a durable batch_requests row
+# that the batch_submit/batch_poll workers flush and reconcile (50% cheaper,
+# 24-48h turnaround). Only non-latency-sensitive steps should ever be 'batch'.
+batch:
+  enabled: false              # GEMINI_BATCH_ENABLED global kill-switch
+  flush_max_requests: 50      # flush a (step, model) group when it reaches this size
+  flush_max_wait_minutes: 60  # or when its oldest pending request is this old
+  fallback_max_attempts: 1    # bound synchronous recovery after terminal/partial jobs
+  inline_max_bytes: 18874368  # 18 MiB guard below the provider's 20 MB inline limit
+batch_execution:              # per-step execution mode; absent ⇒ sync
+  content_filtering: sync
+  caption_proofreading: sync
+  youtube_rss_processing: sync
+  youtube_processing: sync
+
 # Notes on provider tiers and pricing:
 # - Anthropic: Base pricing, direct API access
 # - AWS Bedrock: ~15% markup, pay-as-you-go "on-demand" tier

@@ -67,6 +67,56 @@ config = ModelConfig(summarization="claude-sonnet-4-5")
 
 ## Configuration Methods
 
+## Gemini Batch Infrastructure
+
+Gemini batch execution is an opt-in, deferred-processing path. It is disabled
+globally and every step remains synchronous by default. This change provides
+the reusable persistence, provider, maintenance, and reporting infrastructure;
+it does not switch any production pipeline call site to batch mode.
+
+Configure the safe defaults in `settings/models.yaml`:
+
+```yaml
+batch:
+  enabled: false
+  flush_max_requests: 50
+  flush_max_wait_minutes: 60
+  fallback_max_attempts: 1
+  inline_max_bytes: 18874368
+batch_execution:
+  content_filtering: sync
+  caption_proofreading: sync
+  youtube_rss_processing: sync
+  youtube_processing: sync
+```
+
+`GEMINI_BATCH_ENABLED` overrides `batch.enabled`, but a step is deferred only
+when its `batch_execution` value is also `batch`. Keep the global switch off
+until a workflow-specific rollout has defined how the owning content is gated
+and resumed.
+
+The maintenance loop groups pending requests by step and model, submits ripe
+groups, polls active Gemini jobs, reconciles results by `request_key`, and runs
+bounded synchronous fallback. One worker per PostgreSQL cluster wins a fixed
+advisory lock for each tick; other replicas skip it. The provider calls use
+`client.aio.batches.create/get` and inline requests only. Payloads at or above
+18 MiB are rejected before submission; JSONL file-mode and provider-file
+cleanup are intentionally deferred.
+
+Operational commands are read-only:
+
+```bash
+aca batch status
+aca --json batch status
+aca evaluate batch-savings
+aca --json evaluate batch-savings
+```
+
+The savings command is an estimate based on documented token assumptions,
+current model pricing, content counts, and a 50% batch multiplier. It does not
+submit work. To roll back runtime behavior, set `GEMINI_BATCH_ENABLED=false`;
+in-flight jobs remain persisted for inspection and reconciliation.
+
 ### 1. Environment-Based (Recommended for Production)
 
 Set model IDs via environment variables (defined in `.env`):

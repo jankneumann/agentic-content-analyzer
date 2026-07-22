@@ -16,6 +16,7 @@ from src.models.audio_digest import (
     AudioDigestStatus,
 )
 from src.models.base import Base
+from src.models.batch import BatchJob, BatchJobState, BatchRequest, BatchRequestStatus
 from src.models.chat import ArtifactType, ChatMessage, Conversation, MessageRole
 from src.models.chunk import ChunkType, DocumentChunk
 from src.models.content import Content, ContentSource, ContentStatus
@@ -75,6 +76,10 @@ from src.models.youtube import (
 __all__ = [
     # Base
     "Base",
+    "BatchJob",
+    "BatchJobState",
+    "BatchRequest",
+    "BatchRequestStatus",
     # Chunk
     "DocumentChunk",
     "ChunkType",

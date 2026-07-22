@@ -6,11 +6,12 @@ feature:
   plan_revision: 2
 
 contracts:
-  revision: 1
+  revision: 2
   openapi:
     primary: openspec/changes/add-gemini-batch-processing/contracts/README.md
     files:
       - openspec/changes/add-gemini-batch-processing/contracts/README.md
+      - openspec/changes/add-gemini-batch-processing/contracts/db/schema.sql
 
 defaults:
   priority: 3
@@ -33,6 +34,7 @@ packages:
         - src/models/batch.py
         - src/models/__init__.py
         - src/config/settings.py
+        - src/config/models.py
         - settings/models.yaml
       keys:
         - db:schema:batch_jobs
@@ -46,8 +48,10 @@ packages:
         - src/models/batch.py
         - src/models/__init__.py
         - src/config/settings.py
+        - src/config/models.py
         - settings/models.yaml
-        - tests/models/test_batch.py
+        - tests/test_models/test_batch.py
+        - tests/config/test_batch_config.py
         - tests/config/test_batch_settings.py
         - tests/migrations/test_batch_processing.py
       read_allow:
@@ -71,7 +75,7 @@ packages:
       steps:
         - name: persistence-tests
           kind: command
-          command: .venv/bin/pytest tests/models/test_batch.py tests/config/test_batch_settings.py tests/migrations/test_batch_processing.py --no-cov -q
+          command: .venv/bin/pytest tests/test_models/test_batch.py tests/config/test_batch_config.py tests/config/test_batch_settings.py tests/migrations/test_batch_processing.py --no-cov -q
           expect_exit_code: 0
           evidence:
             artifacts: []
@@ -98,7 +102,7 @@ packages:
         - src/services/llm_router.py
         - src/services/batch/types.py
         - src/services/batch/__init__.py
-        - tests/services/test_llm_router_batch.py
+        - tests/test_services/test_llm_router_batch.py
       read_allow:
         - src/**
         - tests/**
@@ -119,7 +123,7 @@ packages:
       steps:
         - name: router-tests
           kind: command
-          command: .venv/bin/pytest tests/services/test_llm_router_batch.py --no-cov -q
+          command: .venv/bin/pytest tests/test_services/test_llm_router_batch.py --no-cov -q
           expect_exit_code: 0
           evidence:
             artifacts: []
@@ -128,7 +132,7 @@ packages:
       result_keys: [files_modified, test_count]
 
   - package_id: wp-orchestration
-    title: Collector, submitter, poller, and queue handlers
+    title: Collector, submitter, poller, and worker maintenance
     task_type: implement
     description: Implement batch configuration, collection, handler registry, concurrency-safe submit/poll/reconcile/fallback, and leader-elected worker maintenance.
     role: backend-engineer
@@ -146,10 +150,12 @@ packages:
         - src/services/batch/config.py
         - src/services/batch/collector.py
         - src/services/batch/handlers.py
-        - src/services/batch/service.py
+        - src/services/batch/workers.py
         - src/queue/worker.py
-        - tests/services/batch/**
-        - tests/queue/test_batch_handlers.py
+        - tests/test_services/test_batch_collector.py
+        - tests/test_services/test_batch_workers.py
+        - tests/test_services/test_batch_disabled_regression.py
+        - tests/queue/test_batch_maintenance.py
       read_allow:
         - src/**
         - tests/**
@@ -170,7 +176,7 @@ packages:
       steps:
         - name: orchestration-tests
           kind: command
-          command: .venv/bin/pytest tests/services/batch tests/queue/test_batch_handlers.py --no-cov -q
+          command: .venv/bin/pytest tests/test_services/test_batch_collector.py tests/test_services/test_batch_workers.py tests/test_services/test_batch_disabled_regression.py tests/queue/test_batch_maintenance.py --no-cov -q
           expect_exit_code: 0
           evidence:
             artifacts: []
@@ -200,9 +206,9 @@ packages:
         - src/cli/app.py
         - src/cli/batch_commands.py
         - src/cli/evaluate_commands.py
-        - src/config/models.py
+        - src/services/batch/savings.py
         - tests/cli/test_batch_commands.py
-        - tests/cli/test_batch_savings.py
+        - tests/test_services/test_batch_savings.py
         - docs/MODEL_CONFIGURATION.md
         - CLAUDE.md
       read_allow:
@@ -226,7 +232,7 @@ packages:
       steps:
         - name: cli-tests
           kind: command
-          command: .venv/bin/pytest tests/cli/test_batch_commands.py tests/cli/test_batch_savings.py --no-cov -q
+          command: .venv/bin/pytest tests/cli/test_batch_commands.py tests/test_services/test_batch_savings.py --no-cov -q
           expect_exit_code: 0
           evidence:
             artifacts: []

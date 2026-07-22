@@ -29,6 +29,7 @@ from typer.core import TyperGroup
 
 from src.cli.agent_commands import app as agent_app
 from src.cli.auth_commands import app as auth_app
+from src.cli.batch_commands import app as batch_app
 from src.cli.curate_commands import app as curate_app
 from src.cli.deploy_commands import app as deploy_app
 from src.cli.edit_commands import app as edit_app
@@ -125,6 +126,7 @@ app.add_typer(sources_app, name="sources")
 app.add_typer(sync_app, name="sync")
 app.add_typer(worker_app, name="worker")
 app.add_typer(evaluate_app, name="evaluate")
+app.add_typer(batch_app, name="batch")
 app.add_typer(models_app, name="models")
 app.add_typer(kb_app, name="kb")
 app.add_typer(auth_app, name="auth")

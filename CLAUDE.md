@@ -123,6 +123,14 @@ MODEL_YOUTUBE_PROCESSING=gemini-2.5-flash
 
 See [docs/MODEL_CONFIGURATION.md](docs/MODEL_CONFIGURATION.md) for full list.
 
+**Gemini batch infrastructure** — Disabled by default. `GEMINI_BATCH_ENABLED`
+must be true and the relevant `settings/models.yaml` `batch_execution` mode must
+be `batch` before collection is enabled. No production step opts in yet. Worker
+maintenance is internal and protected by a PostgreSQL advisory lock; the CLI
+exposes read-only `aca batch status` and `aca evaluate batch-savings` commands.
+Phase 0 supports inline requests below 18 MiB only. See
+[docs/MODEL_CONFIGURATION.md#gemini-batch-infrastructure](docs/MODEL_CONFIGURATION.md#gemini-batch-infrastructure).
+
 **Settings** — YAML defaults in `settings/`: `prompts.yaml` (prompt templates), `models.yaml` (model registry + defaults), `voice.yaml` (TTS config), `notifications.yaml` (event toggles), `filtering.yaml` (ingestion filter). Loaded via `ConfigRegistry` (`src/config/config_registry.py`). Override precedence: env var > DB override > YAML default.
 
 **Ingestion filter** — Three-tier (heuristic → embedding → LLM) post-persist filter in `src/services/ingestion_filter.py`. Runs automatically after every adapter via the orchestrator hook (`src/ingestion/filter_hook.py`). Writes `filter_score`, `filter_decision`, `filter_tier`, `priority_bucket` on `Content`; skipped items get `status=FILTERED_OUT`. Distinct from `src/services/content_filter.py`, which is the pre-persist adapter-side keyword filter. CLI: `aca filter explain|rerun|stats`; `aca ingest --no-filter | --filter-dry-run`.

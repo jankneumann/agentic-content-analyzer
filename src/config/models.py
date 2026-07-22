@@ -49,6 +49,7 @@ import os
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -404,6 +405,66 @@ class ModelConfig:
 
         self._providers = providers or []
         self._routing_configs = self._load_routing_configs()
+        self._batch_config = self._load_batch_config()
+
+    def _load_models_yaml(self) -> dict[str, Any]:
+        """Load the raw models.yaml dict (ConfigRegistry, then direct file read)."""
+        try:
+            from src.config.config_registry import get_config_registry
+
+            return get_config_registry().get_raw("models") or {}
+        except Exception:
+            try:
+                settings_path = Path(__file__).parent.parent.parent / "settings" / "models.yaml"
+                if settings_path.exists():
+                    with open(settings_path) as f:
+                        return yaml.safe_load(f) or {}
+            except Exception:
+                pass
+            return {}
+
+    def _load_batch_config(self) -> dict[str, Any]:
+        """Load Gemini batch-execution config from YAML, env-overridable.
+
+        Resolution: ``GEMINI_BATCH_ENABLED`` env var (highest) > YAML ``batch:``
+        / ``batch_execution:`` sections > default (disabled, all steps sync).
+        """
+        yaml_data = self._load_models_yaml()
+        batch = yaml_data.get("batch", {}) or {}
+        execution = yaml_data.get("batch_execution", {}) or {}
+
+        enabled = bool(batch.get("enabled", False))
+        env_enabled = os.environ.get("GEMINI_BATCH_ENABLED")
+        if env_enabled is not None:
+            enabled = env_enabled.strip().lower() in ("1", "true", "yes", "on")
+
+        return {
+            "enabled": enabled,
+            "flush_max_requests": int(batch.get("flush_max_requests", 50)),
+            "flush_max_wait_minutes": int(batch.get("flush_max_wait_minutes", 60)),
+            "fallback_max_attempts": int(batch.get("fallback_max_attempts", 1)),
+            "inline_max_bytes": int(batch.get("inline_max_bytes", 18 * 1024 * 1024)),
+            "execution": {str(k): str(v) for k, v in execution.items()},
+        }
+
+    def is_batch_enabled(self, step: ModelStep) -> bool:
+        """Whether a step should defer its LLM call to the Gemini Batch API.
+
+        Requires BOTH the global ``batch.enabled`` switch AND the step's
+        ``batch_execution`` mode being ``batch``. Defaults to False (sync) so
+        the synchronous path is unchanged unless explicitly opted in.
+        """
+        if not self._batch_config.get("enabled", False):
+            return False
+        return bool(self._batch_config.get("execution", {}).get(step.value) == "batch")
+
+    @property
+    def batch_config(self) -> dict[str, Any]:
+        """Return safe batch thresholds, fallback bound, size limit, and modes."""
+        return {
+            **self._batch_config,
+            "execution": dict(self._batch_config.get("execution", {})),
+        }
 
     def has_configured_providers(self) -> bool:
         """Return whether explicit provider priority configuration is present."""

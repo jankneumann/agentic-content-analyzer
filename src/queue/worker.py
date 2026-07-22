@@ -26,6 +26,11 @@ logger = get_logger(__name__)
 # Registry of entrypoint → async handler functions
 _handlers: dict[str, Callable[..., Coroutine[Any, Any, None]]] = {}
 
+# Internal maintenance is deliberately not a queue entrypoint: canonical
+# operations remain the only user-submittable workflow mutations.
+_BATCH_MAINTENANCE_ADVISORY_LOCK = 2_104_711_915
+_BATCH_MAINTENANCE_INTERVAL_SECONDS = 60.0
+
 
 def _sqlalchemy_url_to_asyncpg(url: str) -> str:
     if url.startswith("postgresql://"):
@@ -254,6 +259,44 @@ async def _process_job(
         await asyncio.gather(heartbeat_task, return_exceptions=True)
 
 
+async def _run_batch_maintenance_tick(conn: asyncpg.Connection) -> bool:
+    """Run one internal batch cycle when this worker wins leader election."""
+    from src.config.models import get_model_config
+
+    model_config = get_model_config()
+    config = model_config.batch_config
+    if not config.get("enabled", False):
+        return False
+
+    acquired = await conn.fetchval(
+        "SELECT pg_try_advisory_lock($1::bigint)",
+        _BATCH_MAINTENANCE_ADVISORY_LOCK,
+    )
+    if not acquired:
+        logger.debug("batch maintenance tick skipped; advisory lock held")
+        return False
+
+    try:
+        from src.services.batch.workers import run_batch_maintenance
+        from src.services.llm_router import LLMRouter
+        from src.storage.database import get_db
+
+        with get_db() as db:
+            await run_batch_maintenance(
+                db,
+                LLMRouter(model_config),
+                flush_max_requests=config["flush_max_requests"],
+                flush_max_wait_minutes=config["flush_max_wait_minutes"],
+                fallback_max_attempts=config["fallback_max_attempts"],
+            )
+        return True
+    finally:
+        await conn.execute(
+            "SELECT pg_advisory_unlock($1::bigint)",
+            _BATCH_MAINTENANCE_ADVISORY_LOCK,
+        )
+
+
 async def run_worker(
     *,
     concurrency: int = 5,
@@ -279,6 +322,7 @@ async def run_worker(
     await ensure_queue_schema_compatible()
 
     conn = await asyncpg.connect(asyncpg_url)
+    maintenance_conn = await asyncpg.connect(asyncpg_url)
 
     # Set up LISTEN for immediate job notification
     notify_event = asyncio.Event()
@@ -294,10 +338,29 @@ async def run_worker(
     await conn.add_listener("pgqueuer", _on_notify)
 
     active_tasks: set[asyncio.Task] = set()
+    maintenance_task: asyncio.Task[bool] | None = None
+    last_maintenance_at = float("-inf")
+    loop = asyncio.get_running_loop()
     logger.info(f"Embedded worker started (concurrency={concurrency})")
 
     try:
         while True:
+            if maintenance_task is not None and maintenance_task.done():
+                try:
+                    maintenance_task.result()
+                except Exception:
+                    logger.exception("batch maintenance tick failed")
+                maintenance_task = None
+
+            if (
+                maintenance_task is None
+                and loop.time() - last_maintenance_at >= _BATCH_MAINTENANCE_INTERVAL_SECONDS
+            ):
+                maintenance_task = asyncio.create_task(
+                    _run_batch_maintenance_tick(maintenance_conn)
+                )
+                last_maintenance_at = loop.time()
+
             # Clean up completed tasks
             done = {t for t in active_tasks if t.done()}
             for t in done:
@@ -335,8 +398,12 @@ async def run_worker(
             await asyncio.gather(*active_tasks, return_exceptions=True)
         raise
     finally:
+        if maintenance_task is not None:
+            maintenance_task.cancel()
+            await asyncio.gather(maintenance_task, return_exceptions=True)
         await conn.remove_listener("pgqueuer", _on_notify)
         await conn.close()
+        await maintenance_conn.close()
 
 
 def _prepare_forced_summary(content_id: int) -> None:

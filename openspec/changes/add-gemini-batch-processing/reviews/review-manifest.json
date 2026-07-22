@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "change_id": null,
-  "review_type": "plan",
-  "created_at": "2026-07-22T03:21:34Z",
+  "review_type": "implementation",
+  "created_at": "2026-07-22T03:56:48Z",
   "target": "cli-dispatch",
   "dispatches": [
     {
@@ -12,7 +12,7 @@
       "models_attempted": [
         "(default)"
       ],
-      "elapsed_seconds": 1.1550281250092667,
+      "elapsed_seconds": 1.0553369999979623,
       "error": "Unknown error",
       "error_class": "unknown"
     },
@@ -23,8 +23,8 @@
       "models_attempted": [
         "gemini-3-flash-preview"
       ],
-      "elapsed_seconds": 600.0243919590139,
-      "error": "Timeout after 600s",
+      "elapsed_seconds": 300.0278334580071,
+      "error": "Timeout after 300s",
       "error_class": "transient"
     }
   ],
