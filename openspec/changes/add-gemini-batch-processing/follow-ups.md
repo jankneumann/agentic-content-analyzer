@@ -41,6 +41,12 @@ covers the persist-first restructuring that makes batching those paths safe.
 ## Prerequisite before enabling any batch step
 
 Batch execution ships inert: `batch_execution` defaults to disabled globally and
-per step, and no production call site opts in. Both follow-ups above, and the
-submission-failure classification in `src/services/batch/workers.py`, must be
+per step, and no production call site opts in. Both follow-ups above must be
 settled before any step is switched on.
+
+Submission-failure classification was settled in `a780e1e7`: permanent
+`ValueError` rejections route to the bounded sync fallback instead of requeueing
+forever. Two residual sharp edges are worth closing before enabling a step —
+the permanent/retryable split keys off `ValueError` rather than a dedicated
+exception type, and a permanently unset `GOOGLE_API_KEY` still accumulates one
+failed job row per sweep because credential errors are deliberately retryable.
