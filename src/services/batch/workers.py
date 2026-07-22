@@ -36,6 +36,7 @@ class BatchSubmitSummary:
     jobs_failed: int = 0
     interrupted_jobs_recovered: int = 0
     requests_submitted: int = 0
+    requests_fallback: int = 0
     groups_held: int = 0
 
 
@@ -73,6 +74,21 @@ def _is_postgres(db: Session) -> bool:
 
 def _provider_error(exc: Exception) -> str:
     return f"{type(exc).__name__}: {exc}"[:2000]
+
+
+def _is_permanent_submission_error(exc: Exception) -> bool:
+    """Report whether a failed ``submit_batch`` call can never succeed as-is.
+
+    ``LLMRouter.submit_batch`` documents ``ValueError`` as its deterministic
+    rejection: an empty or duplicate request key, a model that does not resolve
+    to ``google_ai``, or an inline payload over the cap. Re-submitting the same
+    rows reproduces it exactly, so those requests must leave the pending queue.
+
+    A missing credential (``RuntimeError``) is deliberately treated as
+    retryable: the operator can export the key and the next sweep drains the
+    backlog without losing work.
+    """
+    return isinstance(exc, ValueError)
 
 
 def _recover_interrupted_submissions(db: Session, now: datetime) -> int:
@@ -200,6 +216,7 @@ async def run_batch_submit(
             provider_job_name = await router.submit_batch(model_id, requests)
         except Exception as exc:
             error = _provider_error(exc)
+            permanent = _is_permanent_submission_error(exc)
             failed_job = db.get(BatchJob, job_id)
             if failed_job is not None:
                 failed_job.state = BatchJobState.FAILED.value
@@ -207,13 +224,26 @@ async def run_batch_submit(
                 failed_job.completed_at = now
             rows = db.query(BatchRequestRow).filter(BatchRequestRow.id.in_(claimed_ids)).all()
             for row in rows:
-                if row.status == BatchRequestStatus.CLAIMED.value:
+                if row.status != BatchRequestStatus.CLAIMED.value:
+                    continue
+                if permanent:
+                    # Retrying is futile: the next sweep would reclaim the same
+                    # rows and fail identically, spawning a failed job per tick
+                    # forever. Route to the bounded sync fallback instead so the
+                    # queue drains and the work still completes.
+                    row.status = BatchRequestStatus.FALLBACK.value
+                    row.error = error
+                    summary.requests_fallback += 1
+                else:
                     row.status = BatchRequestStatus.PENDING.value
                     row.batch_job_id = None
                     row.error = error
             db.commit()
             summary.jobs_failed += 1
-            logger.warning("batch provider submission failed", extra={"job_id": job_id})
+            logger.warning(
+                "batch provider submission failed",
+                extra={"job_id": job_id, "permanent": permanent},
+            )
             continue
 
         submitted_job = db.get(BatchJob, job_id)

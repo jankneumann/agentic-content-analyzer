@@ -176,6 +176,45 @@ class TestSubmit:
         assert "provider unavailable" in job.error
 
     @pytest.mark.asyncio
+    async def test_permanent_failure_routes_requests_to_fallback(self, db):
+        """A deterministic rejection must leave the pending queue, not requeue."""
+        row = _seed_request(db, f"{STEP}:contents:1")
+
+        summary = await run_batch_submit(
+            db,
+            FakeRouter(submit_error=ValueError("inline payload exceeds cap")),
+            flush_max_requests=1,
+            flush_max_wait_minutes=60,
+        )
+
+        db.refresh(row)
+        job = db.query(BatchJob).one()
+        assert summary.jobs_failed == 1
+        assert summary.requests_fallback == 1
+        assert row.status == "fallback"
+        assert "inline payload exceeds cap" in row.error
+        assert job.state == "failed"
+
+    @pytest.mark.asyncio
+    async def test_permanent_failure_does_not_respawn_jobs_each_sweep(self, db):
+        """Regression: permanent errors used to requeue and loop forever.
+
+        Returning the rows to ``pending`` meant the next maintenance tick
+        reclaimed the identical rows and created another failed job, without
+        bound. Two sweeps must therefore produce exactly one failed job.
+        """
+        _seed_request(db, f"{STEP}:contents:1")
+        router = FakeRouter(submit_error=ValueError("unsupported provider"))
+
+        first = await run_batch_submit(db, router, flush_max_requests=1, flush_max_wait_minutes=60)
+        second = await run_batch_submit(db, router, flush_max_requests=1, flush_max_wait_minutes=60)
+
+        assert first.jobs_failed == 1
+        assert second.jobs_failed == 0
+        assert db.query(BatchJob).count() == 1
+        assert db.query(BatchRequestRow).filter_by(status="pending").count() == 0
+
+    @pytest.mark.asyncio
     async def test_fresh_submitting_job_is_not_recovered_as_interrupted(self, db):
         """A concurrent maintainer must not reclaim an in-flight provider call."""
         now = datetime.now(UTC)
