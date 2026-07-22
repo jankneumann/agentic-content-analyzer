@@ -1,15 +1,21 @@
 """CLI commands for curating ingestion sources.
 
 Usage:
-    aca curate rss                 # health-check rss.yaml (report only)
-    aca curate rss --apply         # disable dead feeds, fix Reddit URLs
-    aca curate rss --disable-stale # also disable feeds idle > --stale-days
-    aca curate blog                # validate blog discovery + overlap report
-    aca curate find-moved          # web-search for relocated feeds (report only)
-    aca curate find-moved --apply  # re-enable live-again feeds, rewrite moved URLs
+    aca curate rss                  # health-check rss.yaml (report only)
+    aca curate rss --apply          # disable dead feeds, fix Reddit URLs
+    aca curate rss --disable-stale  # also disable feeds idle > --stale-days
+    aca curate youtube-rss          # health-check youtube_rss.yaml (report only)
+    aca curate youtube-rss --apply  # disable dead channels, fix channel-page URLs
+    aca curate youtube-rss --via-api  # check via the YouTube Data API (needs a key)
+    aca curate blog                 # validate blog discovery + overlap report
+    aca curate find-moved           # web-search for relocated feeds (report only)
+    aca curate find-moved --apply   # re-enable live-again feeds, rewrite moved URLs
 
-Report-only by default; mutations are gated behind --apply and preserve
-comments/ordering via line-based edits (see src/services/source_curator.py).
+``rss`` and ``youtube-rss`` share one health-check/plan/apply engine (blog and
+YouTube channel feeds are both RSS/Atom); they differ only in which source file
+and source type they target. Report-only by default; mutations are gated behind
+--apply and preserve comments/ordering via line-based edits (see
+src/services/source_curator.py).
 """
 
 from __future__ import annotations
@@ -29,7 +35,12 @@ app = typer.Typer(
 )
 
 _RSS_FILE = Path("sources.d/rss.yaml")
+_YOUTUBE_RSS_FILE = Path("sources.d/youtube_rss.yaml")
 _BLOGS_FILE = Path("sources.d/blogs.yaml")
+
+# YouTube rate-limits aggressive concurrent fetches with 429s far sooner than
+# blog CDNs, so the youtube-rss command checks more gently by default.
+_YOUTUBE_DEFAULT_CONCURRENCY = 10
 
 
 def _load_sources():  # type: ignore[no-untyped-def]
@@ -84,75 +95,130 @@ def curate_rss(
     ] = 15.0,
 ) -> None:
     """Health-check RSS feeds and optionally disable dead ones / fix Reddit URLs."""
-    from src.services.source_curator import (
-        FeedStatus,
-        apply_plan_to_file,
-        build_curation_plan,
-        check_rss_feeds,
-    )
-
     sources = _load_sources().get_rss_sources()
     if not sources:
         output_result("No RSS sources found.", success=False)
         raise typer.Exit(1)
 
-    results = asyncio.run(
-        check_rss_feeds(sources, stale_days=stale_days, concurrency=concurrency, timeout=timeout)
-    )
-    plan = build_curation_plan(
-        results,
-        disable_empty=disable_empty,
+    _run_feed_curation(
+        sources,
+        file=file,
+        stale_days=stale_days,
         disable_stale=disable_stale,
+        disable_empty=disable_empty,
         disable_blocked=disable_blocked,
         fix_urls=fix_urls,
+        apply=apply,
+        concurrency=concurrency,
+        timeout=timeout,
     )
 
-    if not file.exists():
-        output_result(f"Source file not found: {file}", success=False)
+
+@app.command("youtube-rss")
+def curate_youtube_rss(
+    file: Annotated[
+        Path,
+        typer.Option("--file", help="YouTube RSS sources file to curate."),
+    ] = _YOUTUBE_RSS_FILE,
+    stale_days: Annotated[
+        int,
+        typer.Option("--stale-days", help="Flag channels with no upload in N days as stale."),
+    ] = 180,
+    disable_stale: Annotated[
+        bool,
+        typer.Option("--disable-stale", help="Also disable stale channels (off by default)."),
+    ] = False,
+    disable_empty: Annotated[
+        bool,
+        typer.Option(
+            "--disable-empty/--no-disable-empty",
+            help="Disable channels that return 200 but no videos (channel-page URLs fixed).",
+        ),
+    ] = True,
+    disable_blocked: Annotated[
+        bool,
+        typer.Option(
+            "--disable-blocked",
+            help="Also disable BLOCKED channels (403/429). Off by default — usually rate-limit.",
+        ),
+    ] = False,
+    fix_urls: Annotated[
+        bool,
+        typer.Option(
+            "--fix-urls/--no-fix-urls",
+            help="Rewrite channel-page URLs (/channel/UC...) to the videos.xml feed.",
+        ),
+    ] = True,
+    apply: Annotated[
+        bool,
+        typer.Option("--apply", help="Write changes to the file (default: dry-run report only)."),
+    ] = False,
+    concurrency: Annotated[
+        int,
+        typer.Option("--concurrency", help="Max concurrent feed fetches."),
+    ] = _YOUTUBE_DEFAULT_CONCURRENCY,
+    timeout: Annotated[
+        float,
+        typer.Option("--timeout", help="Per-feed fetch timeout in seconds."),
+    ] = 15.0,
+    via_api: Annotated[
+        bool | None,
+        typer.Option(
+            "--via-api/--via-rss",
+            help="Check through the YouTube Data API instead of the public feed. "
+            "Default: auto (API when a key is configured, else RSS).",
+        ),
+    ] = None,
+    use_oauth: Annotated[
+        bool,
+        typer.Option(
+            "--oauth",
+            help="Use OAuth instead of an API key (only needed for private playlists).",
+        ),
+    ] = False,
+) -> None:
+    """Health-check YouTube channel RSS feeds and optionally disable dead channels.
+
+    YouTube channel feeds (``youtube.com/feeds/videos.xml?channel_id=...``) are
+    ordinary Atom feeds, so by default this reuses the same engine as
+    ``curate rss``: deleted/terminated channels surface as FAIL_HTTP (404) and get
+    disabled; 429s are kept-flagged as rate-limiting (not dead); and a pasted
+    channel-page URL (``/channel/UC...``) is auto-rewritten to its feed.
+
+    The public feed endpoint is bot-blocked from datacenter IPs, so when a Data
+    API key (``YOUTUBE_API_KEY``/``GOOGLE_API_KEY``) is configured this checks via
+    the authenticated API instead — sidestepping the block and distinguishing
+    dead channels from throttling precisely. Force the transport with
+    ``--via-api`` / ``--via-rss``; non-YouTube feeds in the file fall back to a
+    plain fetch automatically.
+    """
+    sources = _load_sources().get_youtube_rss_sources()
+    if not sources:
+        output_result("No YouTube RSS sources found.", success=False)
         raise typer.Exit(1)
-    stats = apply_plan_to_file(file, plan, dry_run=not apply)
 
-    counts = {s.value: 0 for s in FeedStatus}
-    for r in results:
-        counts[r.status.value] += 1
+    # Auto: prefer the API when credentials exist (or OAuth requested), since the
+    # public feed is unreliable from server IPs; fall back to RSS otherwise.
+    if via_api is None:
+        from src.config.settings import get_settings
 
-    if is_json_mode():
-        output_result(
-            {
-                "file": str(file),
-                "applied": apply,
-                "checked": len(results),
-                "counts": counts,
-                "disabled": [
-                    {"name": h.name, "url": h.url, "reason": h.detail} for h in plan.disable
-                ],
-                "rewritten": [{"url": h.url, "new_url": new} for h, new in plan.rewrite],
-                "kept_flagged": [{"name": h.name, "url": h.url} for h in plan.keep_flagged],
-                "stats": stats,
-            }
-        )
-        return
+        via_api = use_oauth or bool(get_settings().get_youtube_api_key())
 
-    typer.echo(f"Checked {len(results)} feeds in {file}:")
-    typer.echo("  " + "  ".join(f"{k}={v}" for k, v in counts.items() if v))
-    _echo_group("Will disable" if not apply else "Disabled", plan.disable)
-    if plan.rewrite:
-        label = "Will fix URL" if not apply else "Fixed URL"
-        typer.echo(f"\n{label} ({len(plan.rewrite)}):")
-        for h, new in plan.rewrite:
-            typer.echo(f"  {h.url}\n    -> {new}")
-    if plan.keep_flagged:
-        typer.echo(f"\nKept (needs review, not auto-disabled) ({len(plan.keep_flagged)}):")
-        for h in plan.keep_flagged:
-            typer.echo(f"  [{h.detail}] {h.name}  {h.url}")
-
-    if apply:
-        verb = "Wrote" if stats["changed"] else "No changes to"
-        typer.echo(
-            f"\n{verb} {file} (disabled={stats['disabled']}, rewritten={stats['rewritten']})."
-        )
-    else:
-        typer.echo("\nDry run — re-run with --apply to write these changes.")
+    _run_feed_curation(
+        sources,
+        file=file,
+        stale_days=stale_days,
+        disable_stale=disable_stale,
+        disable_empty=disable_empty,
+        disable_blocked=disable_blocked,
+        fix_urls=fix_urls,
+        apply=apply,
+        concurrency=concurrency,
+        timeout=timeout,
+        feed_noun="channels",
+        via_api=via_api,
+        use_oauth=use_oauth,
+    )
 
 
 @app.command("blog")
@@ -327,6 +393,111 @@ def find_moved(
         )
     else:
         typer.echo("\nReport-only — verify each candidate, then re-run with --apply to write them.")
+
+
+def _run_feed_curation(
+    sources: list,
+    *,
+    file: Path,
+    stale_days: int,
+    disable_stale: bool,
+    disable_empty: bool,
+    disable_blocked: bool,
+    fix_urls: bool,
+    apply: bool,
+    concurrency: int,
+    timeout: float,
+    feed_noun: str = "feeds",
+    via_api: bool = False,
+    use_oauth: bool = False,
+) -> None:
+    """Shared health-check → plan → apply → report flow for RSS-style sources.
+
+    Drives both ``curate rss`` and ``curate youtube-rss``: the differences are
+    the source list/file handed in, the noun used in the report (``feeds`` vs
+    ``channels``), and the transport — ``via_api`` health-checks YouTube sources
+    through the authenticated Data API instead of fetching the public feed.
+    """
+    from src.services.source_curator import (
+        FeedStatus,
+        apply_plan_to_file,
+        build_curation_plan,
+    )
+
+    if via_api:
+        from src.services.source_curator import check_youtube_feeds_via_api
+
+        try:
+            results = check_youtube_feeds_via_api(
+                sources, stale_days=stale_days, use_oauth=use_oauth
+            )
+        except RuntimeError as exc:
+            output_result(str(exc), success=False)
+            raise typer.Exit(1)
+    else:
+        from src.services.source_curator import check_rss_feeds
+
+        results = asyncio.run(
+            check_rss_feeds(
+                sources, stale_days=stale_days, concurrency=concurrency, timeout=timeout
+            )
+        )
+    plan = build_curation_plan(
+        results,
+        disable_empty=disable_empty,
+        disable_stale=disable_stale,
+        disable_blocked=disable_blocked,
+        fix_urls=fix_urls,
+    )
+
+    if not file.exists():
+        output_result(f"Source file not found: {file}", success=False)
+        raise typer.Exit(1)
+    stats = apply_plan_to_file(file, plan, dry_run=not apply)
+
+    counts = {s.value: 0 for s in FeedStatus}
+    for r in results:
+        counts[r.status.value] += 1
+
+    if is_json_mode():
+        output_result(
+            {
+                "file": str(file),
+                "applied": apply,
+                "via": "youtube_api" if via_api else "rss",
+                "checked": len(results),
+                "counts": counts,
+                "disabled": [
+                    {"name": h.name, "url": h.url, "reason": h.detail} for h in plan.disable
+                ],
+                "rewritten": [{"url": h.url, "new_url": new} for h, new in plan.rewrite],
+                "kept_flagged": [{"name": h.name, "url": h.url} for h in plan.keep_flagged],
+                "stats": stats,
+            }
+        )
+        return
+
+    via = "YouTube Data API" if via_api else "RSS"
+    typer.echo(f"Checked {len(results)} {feed_noun} in {file} (via {via}):")
+    typer.echo("  " + "  ".join(f"{k}={v}" for k, v in counts.items() if v))
+    _echo_group("Will disable" if not apply else "Disabled", plan.disable)
+    if plan.rewrite:
+        label = "Will fix URL" if not apply else "Fixed URL"
+        typer.echo(f"\n{label} ({len(plan.rewrite)}):")
+        for h, new in plan.rewrite:
+            typer.echo(f"  {h.url}\n    -> {new}")
+    if plan.keep_flagged:
+        typer.echo(f"\nKept (needs review, not auto-disabled) ({len(plan.keep_flagged)}):")
+        for h in plan.keep_flagged:
+            typer.echo(f"  [{h.detail}] {h.name}  {h.url}")
+
+    if apply:
+        verb = "Wrote" if stats["changed"] else "No changes to"
+        typer.echo(
+            f"\n{verb} {file} (disabled={stats['disabled']}, rewritten={stats['rewritten']})."
+        )
+    else:
+        typer.echo("\nDry run — re-run with --apply to write these changes.")
 
 
 def _resolve_search_provider() -> object:

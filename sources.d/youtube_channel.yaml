@@ -9,6 +9,16 @@ defaults:
   gemini_summary: true
   gemini_resolution: low     # high-volume channels — keep cost low (matches old RSS path)
   proofread: true
+  # Duration routing (see redesign-youtube-ingestion-pipeline). Defaults shown;
+  # override per-source as needed. Carried over from youtube_rss.yaml, which these
+  # channels were migrated out of.
+  video_fps: 0.1                      # short-path frame sampling (~1 frame/10s); set null for Gemini default
+  long_video_threshold_seconds: 2700  # >= 45 min -> long path
+  long_video_strategy: grounding      # grounding (cheap, default) | segments (full fidelity)
+  segment_overlap_seconds: 15
+  unknown_duration_strategy: short
+  # min_duration_seconds: 120         # uncomment to drop very short clips
+  # max_duration_seconds: 14400       # uncomment to drop very long videos
   hint_terms:
     - Claude
     - Anthropic

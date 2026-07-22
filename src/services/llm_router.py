@@ -889,11 +889,15 @@ class LLMRouter:
         provider: Provider | None = None,
         max_tokens: int = 8192,
         temperature: float = 0.3,
+        *,
+        fps: float | None = None,
+        start_offset: str | None = None,
+        end_offset: str | None = None,
     ) -> LLMResponse:
         """Generate a response using a YouTube video URL as input.
 
-        Only supported with Gemini models. Uses Part.from_uri() to send
-        the video reference alongside the text prompt. Gemini processes the
+        Only supported with Gemini models. Sends the video reference (as a
+        ``file_data`` part) alongside the text prompt; Gemini processes the
         video natively (audio + visual).
 
         Args:
@@ -905,6 +909,10 @@ class LLMRouter:
             provider: Optional explicit provider. If None, uses family default.
             max_tokens: Maximum tokens to generate
             temperature: Sampling temperature
+            fps: Frame sampling rate (frames/second). ~0.1 == 1 frame / 10s.
+                None uses Gemini's default (1 fps). Lowering fps cuts frame tokens.
+            start_offset: Clip start as a duration string (e.g. "0s") for segmenting.
+            end_offset: Clip end as a duration string (e.g. "2700s") for segmenting.
 
         Returns:
             LLMResponse with generated text
@@ -924,7 +932,8 @@ class LLMRouter:
 
         logger.info(
             f"Generating with video: model={model}, video_url={video_url}, "
-            f"resolution={media_resolution}"
+            f"resolution={media_resolution}, fps={fps}, "
+            f"offsets=({start_offset}, {end_offset})"
         )
 
         start_time = time.monotonic()
@@ -938,6 +947,9 @@ class LLMRouter:
             media_resolution,
             max_tokens,
             temperature,
+            fps=fps,
+            start_offset=start_offset,
+            end_offset=end_offset,
         )
 
         duration_ms = (time.monotonic() - start_time) * 1000
@@ -949,7 +961,68 @@ class LLMRouter:
             response=response,
             duration_ms=duration_ms,
             max_tokens=max_tokens,
-            metadata={"video_url": video_url, "media_resolution": media_resolution},
+            metadata={
+                "video_url": video_url,
+                "media_resolution": media_resolution,
+                "fps": fps,
+                "start_offset": start_offset,
+                "end_offset": end_offset,
+            },
+        )
+
+        return response
+
+    async def generate_with_grounding(
+        self,
+        model: str,
+        system_prompt: str,
+        user_prompt: str,
+        provider: Provider | None = None,
+        max_tokens: int = 8192,
+        temperature: float = 0.3,
+    ) -> LLMResponse:
+        """Generate a response using Google Search grounding (Gemini only).
+
+        Used by the long-video path: the YouTube URL is embedded in
+        ``user_prompt`` and Gemini grounds its answer with Google Search rather
+        than ingesting the video as an SDK media part. Lower fidelity than native
+        video processing, but works without download and survives the context
+        limits that very long videos hit.
+
+        Raises:
+            ValueError: If model is not a Gemini model.
+        """
+        import time
+
+        resolved_provider = self.resolve_provider(model, provider)
+        if resolved_provider != Provider.GOOGLE_AI:
+            raise ValueError(
+                f"generate_with_grounding() only supports Gemini models (GOOGLE_AI provider), "
+                f"got provider={resolved_provider.value} for model={model}"
+            )
+
+        logger.info(f"Generating with Google Search grounding: model={model}")
+        start_time = time.monotonic()
+
+        response = await self._generate_gemini_with_grounding(
+            model,
+            resolved_provider,
+            system_prompt,
+            user_prompt,
+            max_tokens,
+            temperature,
+        )
+
+        duration_ms = (time.monotonic() - start_time) * 1000
+        self._trace_llm_call(
+            model=model,
+            provider=resolved_provider.value,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response=response,
+            duration_ms=duration_ms,
+            max_tokens=max_tokens,
+            metadata={"grounding": "google_search"},
         )
 
         return response
@@ -1522,11 +1595,18 @@ class LLMRouter:
         media_resolution: str | None,
         max_tokens: int,
         temperature: float,
+        *,
+        fps: float | None = None,
+        start_offset: str | None = None,
+        end_offset: str | None = None,
     ) -> LLMResponse:
         """Generate with Google Gemini API using a YouTube video URL.
 
-        Uses Part.from_uri() to send the video URL alongside the text prompt.
-        Gemini processes the video natively (audio + visual).
+        Builds a video ``Part`` (file_data + optional video_metadata) so the
+        URL is processed natively (audio + visual). ``fps`` and
+        ``start_offset``/``end_offset`` are passed via ``VideoMetadata`` —
+        ``Part.from_uri`` does not accept these, so the Part is constructed
+        explicitly.
 
         Args:
             model: Model ID
@@ -1537,6 +1617,9 @@ class LLMRouter:
             media_resolution: Resolution for video processing (low, medium, high, or None for default)
             max_tokens: Maximum tokens to generate
             temperature: Sampling temperature
+            fps: Frame sampling rate (frames/second); None uses Gemini's default.
+            start_offset: Clip start duration string (e.g. "0s") for segmenting.
+            end_offset: Clip end duration string (e.g. "2700s") for segmenting.
         """
         from google import genai
         from google.genai import types
@@ -1563,16 +1646,78 @@ class LLMRouter:
             media_resolution=resolved_resolution,
         )
 
-        # Build content parts: video URI + text prompt
-        video_part = types.Part.from_uri(
-            file_uri=video_url,
-            mime_type="video/mp4",
+        # Build the video part. fps/offsets require VideoMetadata, which
+        # Part.from_uri() does not accept — so construct the Part directly.
+        video_metadata = None
+        if fps is not None or start_offset is not None or end_offset is not None:
+            video_metadata = types.VideoMetadata(
+                fps=fps,
+                start_offset=start_offset,
+                end_offset=end_offset,
+            )
+        video_part = types.Part(
+            file_data=types.FileData(file_uri=video_url, mime_type="video/mp4"),
+            video_metadata=video_metadata,
         )
         contents = [video_part, user_prompt]
 
         response = client.models.generate_content(
             model=provider_model_id,
             contents=contents,
+            config=config,
+        )
+
+        text = ""
+        if response.candidates and response.candidates[0].content.parts:
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, "text") and part.text:
+                    text = part.text
+                    break
+
+        input_tokens = response.usage_metadata.prompt_token_count if response.usage_metadata else 0
+        output_tokens = (
+            response.usage_metadata.candidates_token_count if response.usage_metadata else 0
+        )
+
+        return LLMResponse(
+            text=text,
+            input_tokens=input_tokens or 0,
+            output_tokens=output_tokens or 0,
+            provider=provider,
+            model_version=self.model_config.get_model_version(model, provider),
+            raw_response=response,
+        )
+
+    async def _generate_gemini_with_grounding(
+        self,
+        model: str,
+        provider: Provider,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> LLMResponse:
+        """Generate with Google Gemini API using the Google Search grounding tool."""
+        from google import genai
+        from google.genai import types
+
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise RuntimeError("GOOGLE_API_KEY environment variable not set")
+
+        client = genai.Client(api_key=api_key)
+        provider_model_id = self.get_provider_model_id(model, provider)
+
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            max_output_tokens=max_tokens,
+            temperature=temperature,
+            tools=[types.Tool(google_search=types.GoogleSearch())],
+        )
+
+        response = client.models.generate_content(
+            model=provider_model_id,
+            contents=user_prompt,
             config=config,
         )
 

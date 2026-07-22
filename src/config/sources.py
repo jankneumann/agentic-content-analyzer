@@ -43,6 +43,14 @@ class SourceDefaults(BaseModel):
     gemini_resolution: str = "default"
     proofread: bool = True
     hint_terms: list[str] = []
+    # YouTube duration routing (see redesign-youtube-ingestion-pipeline)
+    min_duration_seconds: int | None = None  # drop videos shorter than this
+    max_duration_seconds: int | None = None  # drop videos longer than this
+    long_video_threshold_seconds: int = 2700  # 45-min boundary; >= goes long path
+    long_video_strategy: Literal["grounding", "segments"] = "grounding"
+    video_fps: float | None = 0.1  # short-path frame sampling (~1 frame/10s)
+    segment_overlap_seconds: int = 15  # overlap for the segments strategy
+    unknown_duration_strategy: Literal["short", "grounding", "segments", "skip"] = "short"
     # Podcast-specific defaults
     transcribe: bool = True
     stt_provider: Literal["openai", "local_whisper"] = "openai"
@@ -87,7 +95,23 @@ class RSSSource(SourceBase):
     url: str
 
 
-class YouTubePlaylistSource(SourceBase):
+class YouTubeDurationRoutingMixin(BaseModel):
+    """Duration-routing fields shared by all YouTube source types.
+
+    Defaults preserve the redesigned pipeline behavior: length filters off,
+    45-min long-video threshold, grounding for long videos, fps≈0.1 short path.
+    """
+
+    min_duration_seconds: int | None = None
+    max_duration_seconds: int | None = None
+    long_video_threshold_seconds: int = 2700
+    long_video_strategy: Literal["grounding", "segments"] = "grounding"
+    video_fps: float | None = 0.1
+    segment_overlap_seconds: int = 15
+    unknown_duration_strategy: Literal["short", "grounding", "segments", "skip"] = "short"
+
+
+class YouTubePlaylistSource(SourceBase, YouTubeDurationRoutingMixin):
     type: Literal["youtube_playlist"] = "youtube_playlist"
     id: str
     visibility: Literal["public", "private"] = "public"
@@ -97,7 +121,7 @@ class YouTubePlaylistSource(SourceBase):
     gemini_resolution: str = "default"
 
 
-class YouTubeChannelSource(SourceBase):
+class YouTubeChannelSource(SourceBase, YouTubeDurationRoutingMixin):
     type: Literal["youtube_channel"] = "youtube_channel"
     channel_id: str
     visibility: Literal["public", "private"] = "public"
@@ -108,7 +132,7 @@ class YouTubeChannelSource(SourceBase):
     gemini_resolution: str = "default"
 
 
-class YouTubeRSSSource(SourceBase):
+class YouTubeRSSSource(SourceBase, YouTubeDurationRoutingMixin):
     type: Literal["youtube_rss"] = "youtube_rss"
     url: str
     gemini_summary: bool = True
