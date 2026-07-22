@@ -14,3 +14,7 @@ risk_levels:
   delete_content: critical
   modify_agent_config: critical
   bulk_operations: critical
+  # Model-registry freshness (auto-update-model-registry)
+  model_pricing_update: low      # update cost/specs of existing models (auto-applies)
+  model_registry_add: medium     # add a newly-discovered model to the registry
+  model_default_swap: high       # change the model used for a pipeline step

@@ -30,6 +30,15 @@ schedules:
     description: "Knowledge graph maintenance and optimization"
     priority: low
 
+  refresh_models:
+    cron: "0 4 * * 1"  # weekly, Monday 04:00
+    task_type: maintenance
+    params:
+      actions: [refresh_models]  # discover catalogs + apply pricing diffs; defaults stay gated
+    description: "Model-registry freshness: catalog discovery + pricing refresh"
+    priority: low
+    enabled: false  # opt-in (Rule 4: safe default); enable once reviewed
+
   # ─── Analysis ──────────────────────────────────────────────
   # Same persona, different source scopes:
   trend_detection_tech:

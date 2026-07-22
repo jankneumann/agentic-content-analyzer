@@ -254,6 +254,10 @@ web/.vite/
 .gemini/settings.json
 .gemini/context.md
 
+# bd/beads issue tracker — retired 2026-05-09 (718726c6) in favour of the
+# coordinator MCP. Ignored so a stray `bd` invocation cannot re-scaffold it.
+.beads/
+
 # bv (beads viewer) local config and caches
 .bv/
 

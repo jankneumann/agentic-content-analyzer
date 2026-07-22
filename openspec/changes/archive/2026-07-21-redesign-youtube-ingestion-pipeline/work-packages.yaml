@@ -1,0 +1,41 @@
+packages:
+  - id: wp-main
+    name: "Redesign YouTube ingestion pipeline — full scope"
+    description: >
+      Duration-routed YouTube processing: length filtering with duration probing,
+      fps + timestamped-segment Gemini short path, and configurable
+      grounding/segments long path.
+    tasks:
+      - "1.1"
+      - "1.2"
+      - "1.3"
+      - "2.1"
+      - "2.2"
+      - "3.1"
+      - "3.2"
+      - "3.3"
+      - "3.4"
+      - "3.5"
+      - "3.6"
+      - "4.1"
+      - "4.2"
+      - "4.3"
+      - "4.4"
+    priority: 1
+    dependencies: []
+    scope:
+      write_allow:
+        - "src/ingestion/youtube.py"
+        - "src/services/llm_router.py"
+        - "src/config/sources.py"
+        - "src/config/models.py"
+        - "sources.d/**"
+        - "settings/models.yaml"
+        - "tests/**"
+        - "docs/ARCHITECTURE.md"
+        - "docs/SETUP.md"
+      read_allow:
+        - "src/**"
+        - "settings/**"
+        - "openspec/**"
+    verification: tier_b
