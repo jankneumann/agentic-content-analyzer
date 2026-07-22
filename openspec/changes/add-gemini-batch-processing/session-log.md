@@ -79,3 +79,24 @@ Replanned the stale broad rollout into inert Gemini batch infrastructure, adapte
 
 ### Context
 The second implementation-review round converged with no blocking findings. Structured findings are recorded in `review-findings-impl.json`; final deployed and repository-wide validation remains next.
+
+---
+
+## Phase: Validation (2026-07-22)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Use a migrated disposable PostgreSQL service as the deployment target** — The feature is backend infrastructure with no public API or UI, so migration, worker-adjacent tests, and read-only CLI smoke tests are the meaningful deployed checks.
+2. **Treat repository-wide live-integration and archived-fixture failures as baseline exceptions** — All feature, adjacent, security, migration, static, and spec gates pass; isolated reruns confirmed that apparent adjacent failures were test-order contamination.
+
+### Completed Work
+- Applied the entire Alembic chain to local PostgreSQL and confirmed one head.
+- Passed 107 focused, 313 broad, and 106 security tests.
+- Completed a repository-wide attempt with 5,382 passing tests.
+- Passed changed-file Ruff, changed-module mypy, strict OpenSpec, work-package, workflow-contract, and diff checks.
+- Smoked both read-only batch CLI commands against the migrated database.
+- Completed requirement traceability and architecture-impact artifacts.
+
+### Context
+Validation passed with documented repository-baseline exceptions. No production workflow behavior changed and no browser E2E surface exists for this core-only change.

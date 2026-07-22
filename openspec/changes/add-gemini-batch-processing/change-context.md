@@ -4,16 +4,16 @@
 
 | Req ID | Spec Source | Description | Contract Ref | Design Decision | Files Changed | Test(s) | Evidence |
 |--------|-------------|-------------|--------------|-----------------|---------------|---------|----------|
-| cli-interface.1 | `specs/cli-interface/spec.md` | Read-only batch operator commands | --- | D7, D8 | `src/cli/batch_commands.py`, `src/cli/evaluate_commands.py` | `tests/cli/test_batch_commands.py` | Pending final validation |
-| gemini-batch-execution.1 | `specs/gemini-batch-execution/spec.md` | Safe-default batch configuration | --- | D1, D8 | `src/config/settings.py`, `src/config/models.py`, `settings/models.yaml` | `tests/config/test_batch_config.py` | Pending final validation |
-| gemini-batch-execution.2 | `specs/gemini-batch-execution/spec.md` | Durable request collection | Database migration | D2, D3 | `src/models/batch.py`, `src/services/batch/collector.py`, `alembic/versions/1e6a460b6722_add_batch_execution_tables.py` | `tests/test_models/test_batch.py`, `tests/test_services/test_batch_collector.py`, `tests/migrations/test_batch_execution.py` | Pending final validation |
-| gemini-batch-execution.3 | `specs/gemini-batch-execution/spec.md` | Concurrency-safe submission | Database migration | D3, D4 | `src/services/batch/workers.py` | `tests/test_services/test_batch_workers.py` | Pending final validation |
-| gemini-batch-execution.4 | `specs/gemini-batch-execution/spec.md` | Metadata-keyed Gemini adapter | Official Gemini Batch API | D4, D5 | `src/services/llm_router.py`, `src/services/batch/types.py` | `tests/test_services/test_llm_router_batch.py` | Pending final validation |
-| gemini-batch-execution.5 | `specs/gemini-batch-execution/spec.md` | Idempotent reconciliation and bounded fallback | --- | D6 | `src/services/batch/handlers.py`, `src/services/batch/workers.py` | `tests/test_services/test_batch_workers.py` | Pending final validation |
-| gemini-batch-execution.6 | `specs/gemini-batch-execution/spec.md` | Observable batch operations | --- | D7 | `src/services/batch/workers.py`, `src/queue/worker.py`, `src/cli/batch_commands.py` | `tests/test_services/test_batch_workers.py`, `tests/cli/test_batch_commands.py` | Pending final validation |
-| gemini-batch-execution.7 | `specs/gemini-batch-execution/spec.md` | Reproducible read-only savings report | --- | D8 | `src/services/batch/savings.py`, `src/cli/evaluate_commands.py` | `tests/test_services/test_batch_savings.py`, `tests/cli/test_batch_commands.py` | Pending final validation |
-| llm-provider-routing.1 | `specs/llm-provider-routing/spec.md` | Gemini-only batch adapter | Official google-genai async API | D5 | `src/services/llm_router.py` | `tests/test_services/test_llm_router_batch.py` | Pending final validation |
-| settings-management.1 | `specs/settings-management/spec.md` | Safe batch settings precedence | --- | D8 | `src/config/settings.py`, `src/config/models.py`, `settings/models.yaml` | `tests/config/test_batch_config.py` | Pending final validation |
+| cli-interface.1 | `specs/cli-interface/spec.md` | Read-only batch operator commands | --- | D7, D8 | `src/cli/batch_commands.py`, `src/cli/evaluate_commands.py` | `tests/cli/test_batch_commands.py` | pass 5b45995e — local PostgreSQL CLI smoke |
+| gemini-batch-execution.1 | `specs/gemini-batch-execution/spec.md` | Safe-default batch configuration | --- | D1, D8 | `src/config/settings.py`, `src/config/models.py`, `settings/models.yaml` | `tests/config/test_batch_config.py` | pass 5b45995e — focused and broad suites |
+| gemini-batch-execution.2 | `specs/gemini-batch-execution/spec.md` | Durable request collection | Database migration | D2, D3 | `src/models/batch.py`, `src/services/batch/collector.py`, `alembic/versions/1e6a460b6722_add_batch_execution_tables.py` | `tests/test_models/test_batch.py`, `tests/test_services/test_batch_collector.py`, `tests/migrations/test_batch_processing.py` | pass 5b45995e — full local migration chain |
+| gemini-batch-execution.3 | `specs/gemini-batch-execution/spec.md` | Concurrency-safe submission | Database migration | D3, D4 | `src/services/batch/workers.py` | `tests/test_services/test_batch_workers.py` | pass 5b45995e — PostgreSQL-backed broad suite |
+| gemini-batch-execution.4 | `specs/gemini-batch-execution/spec.md` | Metadata-keyed Gemini adapter | Official Gemini Batch API | D4, D5 | `src/services/llm_router.py`, `src/services/batch/types.py` | `tests/test_services/test_llm_router_batch.py` | pass 5b45995e — mocked installed-SDK surface |
+| gemini-batch-execution.5 | `specs/gemini-batch-execution/spec.md` | Idempotent reconciliation and bounded fallback | --- | D6 | `src/services/batch/handlers.py`, `src/services/batch/workers.py` | `tests/test_services/test_batch_workers.py` | pass 5b45995e — interruption/savepoint regressions |
+| gemini-batch-execution.6 | `specs/gemini-batch-execution/spec.md` | Observable batch operations | --- | D7 | `src/services/batch/workers.py`, `src/queue/worker.py`, `src/cli/batch_commands.py` | `tests/test_services/test_batch_workers.py`, `tests/cli/test_batch_commands.py` | pass 5b45995e — CLI smoke and worker regressions |
+| gemini-batch-execution.7 | `specs/gemini-batch-execution/spec.md` | Reproducible read-only savings report | --- | D8 | `src/services/batch/savings.py`, `src/cli/evaluate_commands.py` | `tests/test_services/test_batch_savings.py`, `tests/cli/test_batch_commands.py` | pass 5b45995e — local PostgreSQL CLI smoke |
+| llm-provider-routing.1 | `specs/llm-provider-routing/spec.md` | Gemini-only batch adapter | Official google-genai async API | D5 | `src/services/llm_router.py` | `tests/test_services/test_llm_router_batch.py` | pass 5b45995e — 30 adapter tests |
+| settings-management.1 | `specs/settings-management/spec.md` | Safe batch settings precedence | --- | D8 | `src/config/settings.py`, `src/config/models.py`, `settings/models.yaml` | `tests/config/test_batch_config.py` | pass 5b45995e — `_env_file=None` coverage |
 
 ## Design Decision Trace
 
@@ -39,5 +39,6 @@
 
 - **Requirements traced**: 10/10
 - **Tests mapped**: 10/10
-- **Evidence collected**: pending final validation
+- **Evidence collected**: 10/10 requirements (`validation-report.md`)
+- **Evidence gaps**: 0
 - **Deferred items**: post-persist ingestion filter rollout, persist-first YouTube/caption rollout, provider file-mode lifecycle

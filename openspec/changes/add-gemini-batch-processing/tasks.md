@@ -46,9 +46,9 @@
 - [x] 5.1 Document configuration, latency, inline-size limitation, operations,
   fallback, scheduling, and rollback in `docs/MODEL_CONFIGURATION.md` and
   `CLAUDE.md`.
-- [ ] 5.2 Run scoped tests, model/config/CLI regressions, migration tests, Ruff,
+- [x] 5.2 Run scoped tests, model/config/CLI regressions, migration tests, Ruff,
   mypy on changed modules, strict OpenSpec validation, and full relevant tests.
-- [ ] 5.3 Update traceability/evidence artifacts and mark completed tasks.
+- [x] 5.3 Update traceability/evidence artifacts and mark completed tasks.
 
 ## Deferred to follow-up changes
 
