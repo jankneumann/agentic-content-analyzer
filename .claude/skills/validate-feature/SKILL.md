@@ -59,6 +59,21 @@ Use `docs/coordination-detection-template.md` as the shared detection preamble.
 - Execute hooks only when the matching `CAN_*` flag is `true`
 - If coordinator is unavailable, continue with standalone behavior
 
+## Local CLI Mutation Boundary
+
+Validation writes reports, evidence, logs, and sometimes follow-up artifacts. In
+local CLI execution, validation MUST run inside the feature worktree or another
+managed worktree before the first write:
+
+```bash
+eval "$(python3 "<skill-base-dir>/../worktree/scripts/worktree.py" setup "$CHANGE_ID")"
+cd "$WORKTREE_PATH"
+python3 "<skill-base-dir>/../shared/checkout_policy.py" require-mutation
+```
+
+Read-only CI status checks may inspect from the shared checkout, but any report
+or evidence file must be written in a worktree so it lands on the PR branch.
+
 ## Steps
 
 ### 0. Detect Coordinator and Recall Memory
@@ -239,7 +254,7 @@ export API_PROTECTED_ENDPOINT="${API_PROTECTED_ENDPOINT:-/api/v1/settings/prompt
 export API_CORS_ORIGIN="${API_CORS_ORIGIN:-http://localhost:5173}"
 
 # Run smoke tests
-SKILL_DIR="$(git rev-parse --show-toplevel)/skills/validate-feature"
+SKILL_DIR="<skill-base-dir>"
 pytest "$SKILL_DIR/scripts/smoke_tests/" -v --tb=short 2>&1
 SMOKE_EXIT=$?
 
@@ -277,7 +292,7 @@ Run generator-evaluator testing when interface descriptors exist for the project
 
 ```bash
 # Auto-detect gen-eval descriptors
-GENEVAL_DESCRIPTORS=$(find "$PROJECT_ROOT" -path "*/evaluation/gen_eval/descriptors/*.yaml" -type f 2>/dev/null)
+GENEVAL_DESCRIPTORS=$(find "$PROJECT_ROOT" -path "*/evaluation/descriptors/*.yaml" -type f 2>/dev/null)
 
 if [ -z "$GENEVAL_DESCRIPTORS" ]; then
   echo "SKIP: No gen-eval descriptors found. Skipping gen-eval phase."
@@ -300,11 +315,12 @@ else
 
   for DESCRIPTOR in $GENEVAL_DESCRIPTORS; do
     echo "  Descriptor: $DESCRIPTOR"
-    # Resolve the module root (parent of evaluation/) and cd into it
-    GENEVAL_MODULE_ROOT=$(dirname "$(dirname "$(dirname "$(dirname "$DESCRIPTOR")")")")
+    # Resolve the module root (parent of evaluation/) and cd into it.
+    # Descriptor is at <project>/evaluation/descriptors/<name>.yaml — 3 levels up.
+    GENEVAL_MODULE_ROOT=$(dirname "$(dirname "$(dirname "$DESCRIPTOR")")")
     GENEVAL_PYTHON="$GENEVAL_MODULE_ROOT/.venv/bin/python"
     if [ ! -f "$GENEVAL_PYTHON" ]; then GENEVAL_PYTHON="python3"; fi
-    (cd "$GENEVAL_MODULE_ROOT" && "$GENEVAL_PYTHON" -m evaluation.gen_eval \
+    (cd "$GENEVAL_MODULE_ROOT" && GEN_EVAL_DATA_DIR="$GENEVAL_MODULE_ROOT/evaluation" "$GENEVAL_PYTHON" -m gen_eval \
       --descriptor "$DESCRIPTOR" \
       $GENEVAL_MODE_FLAGS \
       --report-format both \
@@ -347,7 +363,7 @@ else
   echo "Running security scans against live deployment..."
 
   # Invoke the security-review orchestrator with the live API target
-  python3 skills/security-review/scripts/main.py \
+  python3 "<skill-base-dir>/../security-review/scripts/main.py" \
     --repo . \
     --out-dir docs/security-review \
     --zap-target "http://localhost:${AGENT_COORDINATOR_REST_PORT:-3000}" \
@@ -418,14 +434,15 @@ fi
 **Phase name:** `architecture`
 **Criticality:** Non-critical (continues on failure)
 
-Run architecture flow validation against the changed files:
+Run architecture flow validation and structural linters against the changed files:
 
 ```bash
 # Get changed files relative to main
 CHANGED_FILES=$(git diff --name-only main...HEAD | tr '\n' ',')
 
+# --- Sub-phase 1: Flow validation (validate_flows.py) ---
 if [ -f "<skill-base-dir>/../validate-flows/scripts/validate_flows.py" ] && [ -f "docs/architecture-analysis/architecture.graph.json" ]; then
-  echo "Running architecture validation on changed files..."
+  echo "Running architecture flow validation on changed files..."
   python3 "<skill-base-dir>/../validate-flows/scripts/validate_flows.py" \
     --graph docs/architecture-analysis/architecture.graph.json \
     --output docs/architecture-analysis/architecture.diagnostics.json \
@@ -445,13 +462,32 @@ if [ -f "<skill-base-dir>/../validate-flows/scripts/validate_flows.py" ] && [ -f
     ARCH_RESULT="fail"
   fi
 else
-  echo "SKIP: Architecture validation not available (missing scripts or artifacts)"
+  echo "SKIP: Architecture flow validation not available (missing scripts or artifacts)"
   echo "  Run 'make architecture' to generate architecture artifacts"
   ARCH_RESULT="skip"
 fi
+
+# --- Sub-phase 2: Structural linters (dependency direction, file-size, naming) ---
+echo "Running structural architecture linters..."
+LINTER_OUTPUT=$(python3 "<skill-base-dir>/scripts/run_architecture_linters.py" \
+  --files "$CHANGED_FILES" 2>&1)
+LINTER_EXIT=$?
+
+LINTER_FINDINGS=$(echo "$LINTER_OUTPUT" | head -1)  # JSON on stdout
+if [ $LINTER_EXIT -eq 0 ]; then
+  LINTER_RESULT="pass"
+else
+  LINTER_RESULT="fail"
+  # Merge linter findings into architecture phase result
+  if [ "$ARCH_RESULT" != "fail" ]; then
+    ARCH_RESULT="fail"
+  fi
+fi
+
+echo "Structural linters: $LINTER_RESULT"
 ```
 
-Report architecture diagnostics including broken flows, missing test coverage, orphaned code, and disconnected endpoints.
+Report architecture diagnostics including broken flows, missing test coverage, orphaned code, disconnected endpoints, dependency direction violations, oversized files, and naming convention issues. Structural linter findings are output in `review-findings.schema.json` format for integration with the consensus synthesizer.
 
 ### 7. Spec Compliance Phase (via Change Context)
 
@@ -530,7 +566,7 @@ This phase runs only when `work-packages.yaml` exists at `openspec/changes/<chan
 For each work package, validate its result (if `artifacts/<package-id>/work-queue-result.json` exists):
 
 ```bash
-skills/.venv/bin/python "<skill-base-dir>/../validate-packages/scripts/validate_work_result.py" \
+python3 "<skill-base-dir>/../validate-packages/scripts/validate_work_result.py" \
   artifacts/<package-id>/result.json
 ```
 
@@ -772,7 +808,7 @@ Construct a `PhaseRecord` for the `Validation` phase and call `write_both()`. Va
 ```bash
 python3 - <<'EOF'
 import sys
-sys.path.insert(0, "skills/session-log/scripts")
+sys.path.insert(0, "<skill-base-dir>/../session-log/scripts")
 from phase_record import PhaseRecord, Decision
 
 record = PhaseRecord(

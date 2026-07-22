@@ -26,7 +26,9 @@ Scripts live in `<agent-skills-dir>/merge-pull-requests/scripts/`. Each agent ru
 - **Codex**: `.codex/skills`
 - **Gemini**: `.gemini/skills`
 
-If scripts are missing, run `skills/install.sh` to sync them from the canonical `skills/` source.
+If scripts are missing, re-run the installer from a separate
+`agentic-coding-tools` source checkout; the installer is not shipped inside a
+consumer skill payload.
 
 ## Prerequisites
 
@@ -39,13 +41,49 @@ If scripts are missing, run `skills/install.sh` to sync them from the canonical 
 Before any other work, verify exclusive access — this skill merges into `main` and must not race other agents:
 
 ```bash
-python skills/shared/active_agents.py
+python3 "<skill-base-dir>/../shared/active_agents.py"
 ```
 
 - Exit `0`: no active agents → proceed.
 - Exit `1`: one or more active agents hold worktrees → **stop**, surface the list to the operator (the script's stdout already prints it), and ask whether to wait or pass `--force`. Never auto-force.
 
-An entry is "active" when it is pinned OR its `last_heartbeat` is within 1 hour. See `skills/shared/active_agents.py` and CLAUDE.md "Sync-Point Skills" for the contract; `docs/mental-models.md` gap G10 for the rationale.
+An entry is "active" when it is pinned OR its `last_heartbeat` is within 1 hour. See the co-installed `../shared/active_agents.py` helper and the consumer repository's coordination guidance for the contract.
+
+## Merge Backend Selection
+
+The skill automatically selects a merge backend based on environment capabilities:
+
+| Priority | Backend | Condition | Behavior |
+|----------|---------|-----------|----------|
+| 1 | **Coordinator Train** | Coordinator available + `CAN_QUEUE_WORK` | Speculative parallel testing via `compose_train` |
+| 2 | **GitHub Merge Queue** | GitHub merge queue enabled | Batched merging via `gh pr merge --merge-queue` |
+| 3 | **Direct Merge** | Fallback | Single PR via `gh pr merge` (existing behavior) |
+
+Detection is automatic via `detect_merge_backend()` in `merge_backend.py`. Solo-dev repos without coordinator or GitHub queue use Direct Merge — all existing behavior is preserved.
+
+## Post-Merge Pipeline
+
+After each successful merge (when `--pipeline` flag is used), three composable hooks run independently:
+
+1. **Metrics**: Emit a structured merge event to `docs/merge-logs/metrics.jsonl`
+2. **Auto Cascading Rebase**: Refresh up to 5 queued PRs with file overlap via GitHub Update Branch API (configurable via `MERGE_AUTO_REBASE_LIMIT`)
+3. **Auto Rollback**: Monitor main CI for 15 minutes; if failure overlaps with merged files, create and auto-merge a revert PR (configurable via `ROLLBACK_MONITOR_MINUTES`)
+
+A failure in one hook does not block the others.
+
+## Background Merge Watcher
+
+For continuous monitoring without operator invocation:
+
+```bash
+# Single pass (for Claude /loop)
+python merge_watcher.py tick
+
+# Polling loop (standalone)
+python merge_watcher.py run --interval 60
+```
+
+When the coordinator is available, the watcher runs as a background asyncio task (disable via `MERGE_WATCHER_DISABLED=1`).
 
 ## Steps
 
@@ -517,6 +555,7 @@ Merged local OpenSpec PRs eligible for post-merge cleanup:
 |----|-----------|--------|----------------|---------|
 | #42 | add-user-export | openspec/add-user-export | 2 worktree registry entries, 3 local branches | `/cleanup-feature add-user-export --post-merge --pr 42` |
 
+Before asking the operator to approve, invoke `/review-artifacts <change-id>` for each listed change-id so review artifacts are open in VS Code first.
 Ask the operator: Proceed with post-merge cleanup for these changes?
 Only run the listed cleanup commands after explicit approval.
 ```
@@ -555,6 +594,17 @@ After processing all PRs, present a summary:
 - Post-merge OpenSpec cleanup: #38 add-user-export (approved, completed)
 - Post-merge OpenSpec cleanup declined: #44 improve-validation-flow
 - Merge-time validation: #38 (deploy: pass, smoke: pass, security: skip, e2e: skip)
+- Auto-rebase: refreshed #45, #47 (2 overlapping PRs)
+- Auto-rollback: monitoring #42 (stable after 5 min)
+
+## Merge Metrics
+| Metric | Value |
+|--------|-------|
+| Merges | 2 |
+| Reverts | 0 |
+| Rebases | 2 |
+| Success Rate | 100% |
+| Backends | direct: 2 |
 ```
 
 ### 13. Append Merge Log

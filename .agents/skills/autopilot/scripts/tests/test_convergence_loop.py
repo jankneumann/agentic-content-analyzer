@@ -608,10 +608,11 @@ class TestMemoryCallbackCalled:
             )
 
         assert result.converged is True
-        memory_cb.assert_called_once()
-        call_arg = memory_cb.call_args[0][0]
+        assert memory_cb.call_count == 2
+        call_arg = memory_cb.call_args_list[0].args[0]
         assert "Round 1" in call_arg
         assert "0 blocking" in call_arg
+        assert '"convergence_status": "converged"' in memory_cb.call_args_list[1].args[0]
 
 
 class TestBuildReviewPrompt:

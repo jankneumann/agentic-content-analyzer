@@ -7,8 +7,8 @@ and author extraction used across discover, staleness, comment, and merge script
 import subprocess
 import sys
 
-GH_TIMEOUT = 180
-GIT_TIMEOUT = 180
+GH_TIMEOUT = 30
+GIT_TIMEOUT = 60
 
 
 def _truncate_cmd(parts: list[str], max_len: int = 200) -> str:
@@ -34,7 +34,7 @@ def check_gh():
         sys.exit(1)
 
     result = subprocess.run(
-        ["gh", "api", "user", "--jq", ".login"], capture_output=True, text=True,
+        ["gh", "auth", "status"], capture_output=True, text=True,
         check=False, timeout=GH_TIMEOUT,
     )
     if result.returncode != 0:
