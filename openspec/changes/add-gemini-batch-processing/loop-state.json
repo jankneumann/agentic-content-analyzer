@@ -2,7 +2,7 @@
   "blocking_findings": [],
   "change_id": "add-gemini-batch-processing",
   "cli_review_enabled": true,
-  "current_phase": "SUBMIT_PR",
+  "current_phase": "DONE",
   "error": null,
   "escalation_reason": null,
   "findings_trend": [
@@ -33,11 +33,12 @@
     "inline-impl-review-round1-20260722",
     "inline-impl-review-round2-20260722",
     "inline-validate-20260722",
-    "inline-val-review-20260722"
+    "inline-val-review-20260722",
+    "pr-463"
   ],
   "implementation_strategy": {},
   "iteration": 0,
-  "last_handoff_id": "inline-val-review-20260722",
+  "last_handoff_id": "pr-463",
   "max_phase_iterations": 3,
   "memory_ids": [],
   "package_authors": {},
@@ -93,13 +94,18 @@
       "at": "2026-07-22T04:21:56.682624+00:00",
       "outcome": "converged",
       "phase": "VAL_REVIEW"
+    },
+    {
+      "at": "2026-07-22T04:28:00.000000+00:00",
+      "outcome": "submitted",
+      "phase": "SUBMIT_PR"
     }
   ],
-  "phase_started_at": "2026-07-22T04:23:00.000000+00:00",
-  "previous_phase": "VAL_REVIEW",
+  "phase_started_at": "2026-07-22T04:28:00.000000+00:00",
+  "previous_phase": "SUBMIT_PR",
   "schema_version": 4,
   "started_at": "2026-07-22T01:11:52.146019+00:00",
-  "total_iterations": 11,
+  "total_iterations": 12,
   "val_review_enabled": true,
   "vendor_availability": {}
 }
