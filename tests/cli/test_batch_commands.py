@@ -10,6 +10,7 @@ import json
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
+from typer.main import get_command
 from typer.testing import CliRunner
 
 from src.cli.app import app
@@ -42,7 +43,7 @@ class TestBatchSavingsCLI:
             result = runner.invoke(app, ["--json", "evaluate", "batch-savings"])
 
         assert result.exit_code == 0, result.output
-        payload = json.loads(result.output.strip().splitlines()[-1])
+        payload = json.loads(result.output)
         assert payload["projection"] == "backfill"
         assert payload["discount"] == 0.5
         assert {"steps", "total_std_cost", "total_batch_cost", "total_savings"} <= payload.keys()
@@ -51,6 +52,8 @@ class TestBatchSavingsCLI:
         assert by_step["content_filtering"]["items"] == 200
         assert by_step["youtube_processing"]["items"] == 80
         assert payload["total_savings"] > 0
+        assert payload["assumptions"]["batch_discount"] == 0.5
+        assert payload["assumptions"]["token_estimates"]
 
     def test_human_output_has_total_row(self):
         mock_db = MagicMock()
@@ -80,7 +83,7 @@ class TestBatchStatusCLI:
             result = runner.invoke(app, ["--json", "batch", "status"])
 
         assert result.exit_code == 0, result.output
-        payload = json.loads(result.output.strip().splitlines()[-1])
+        payload = json.loads(result.output)
         assert payload["jobs"] == {"running": 2, "succeeded": 1}
         assert payload["requests"] == {"pending": 5, "submitted": 2}
 
@@ -95,3 +98,9 @@ class TestBatchStatusCLI:
         assert result.exit_code == 0, result.output
         assert "Batch jobs by state" in result.output
         assert "(none)" in result.output
+
+    def test_batch_cli_exposes_only_read_only_status(self):
+        root = get_command(app)
+        batch = root.commands["batch"]
+
+        assert set(batch.commands) == {"status"}

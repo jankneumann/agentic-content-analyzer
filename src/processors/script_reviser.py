@@ -8,8 +8,6 @@ import json
 import math
 from datetime import datetime
 
-from anthropic import Anthropic
-
 from src.config import settings
 from src.config.models import ModelConfig, ModelStep, Provider
 from src.models.podcast import (
@@ -19,6 +17,8 @@ from src.models.podcast import (
     PodcastSection,
     PodcastStatus,
 )
+from src.processors.provenance import DigestProvenanceError, ProvenanceViolationError
+from src.services.llm_router import LLMRouter
 from src.services.prompt_service import PromptService
 from src.storage.database import get_db
 from src.utils.logging import get_logger
@@ -40,6 +40,7 @@ class PodcastScriptReviser:
         model_config: ModelConfig | None = None,
         model: str | None = None,
         prompt_service: PromptService | None = None,
+        llm_router: LLMRouter | None = None,
     ):
         """Initialize script reviser.
 
@@ -53,7 +54,9 @@ class PodcastScriptReviser:
 
         self.model_config = model_config
         self.model = model or model_config.get_model_for_step(ModelStep.PODCAST_SCRIPT)
+        self.model_used = self.model
         self.prompt_service = prompt_service or PromptService()
+        self.llm_router = llm_router or LLMRouter(model_config)
 
         # Track usage
         self.provider_used: Provider | None = None
@@ -89,6 +92,7 @@ class PodcastScriptReviser:
 
         if not script_record.script_json:
             raise ValueError(f"Script {script_record.id} has no script_json content")
+        self._validate_record_provenance(script_record)
 
         # Parse the current script
         script = PodcastScript.model_validate(script_record.script_json)
@@ -106,6 +110,14 @@ class PodcastScriptReviser:
 
         # Call LLM for revision
         revised_section = await self._generate_revision(prompt)
+        outside = sorted(
+            set(revised_section.sources_cited)
+            - set(script_record.source_content_ids_available or [])
+        )
+        if outside:
+            raise ProvenanceViolationError(
+                f"Podcast revision citation is outside script provenance: {outside}"
+            )
 
         logger.info(
             f"Section {section_index} revised successfully. "
@@ -191,6 +203,10 @@ class PodcastScriptReviser:
 
             # Update record
             script_record.script_json = script.model_dump()
+            script_record.source_content_ids_cited = self._ordered_cited_ids(
+                script,
+                script_record.source_content_ids_available or [],
+            )
             script_record.word_count = total_words
             script_record.estimated_duration_seconds = script.estimated_duration_seconds
             script_record.revision_history = history
@@ -207,6 +223,18 @@ class PodcastScriptReviser:
 
             # Cast to correct type (db.refresh ensures it's populated)
             return script_record  # type: ignore[no-any-return]
+
+    @staticmethod
+    def _ordered_cited_ids(script: PodcastScript, available_ids: list[int]) -> list[int]:
+        """Return cited IDs in immutable available-source order."""
+
+        cited = {content_id for section in script.sections for content_id in section.sources_cited}
+        outside = sorted(cited - set(available_ids))
+        if outside:
+            raise ProvenanceViolationError(
+                f"Podcast script citation is outside script provenance: {outside}"
+            )
+        return [content_id for content_id in available_ids if content_id in cited]
 
     async def apply_multiple_revisions(
         self,
@@ -360,36 +388,24 @@ Respond with ONLY the JSON object, no additional text.
         Raises:
             RuntimeError: If LLM call fails or response cannot be parsed
         """
-        # Get provider and client
-        providers = self.model_config.get_providers_for_model(self.model)
-        anthropic_providers = [p for p in providers if p.provider == Provider.ANTHROPIC]
-
-        if not anthropic_providers:
-            raise RuntimeError(f"No Anthropic providers available for {self.model}")
-
-        provider_config = anthropic_providers[0]
-        client = Anthropic(api_key=provider_config.api_key)
-
-        provider_model_id = self.model_config.get_provider_model_id(
-            self.model, provider_config.provider
-        )
-
         try:
-            response = client.messages.create(
-                model=provider_model_id,
+            response = await self.llm_router.generate(
+                model=self.model,
                 system=self.prompt_service.get_pipeline_prompt("script_revision"),
-                messages=[{"role": "user", "content": prompt}],
+                user_prompt=prompt,
                 max_tokens=4000,
                 temperature=0.6,  # Moderate creativity for revisions
+                step=ModelStep.PODCAST_SCRIPT,
             )
 
             # Track usage
-            self.input_tokens += response.usage.input_tokens
-            self.output_tokens += response.usage.output_tokens
-            self.provider_used = provider_config.provider
+            self.input_tokens += response.input_tokens
+            self.output_tokens += response.output_tokens
+            self.provider_used = response.provider
+            self.model_used = response.selected_model or self.model
 
             # Parse response
-            raw_content = response.content[0].text.strip()
+            raw_content = response.text.strip()
 
             # Extract JSON from markdown if present
             if "```json" in raw_content:
@@ -429,6 +445,19 @@ Respond with ONLY the JSON object, no additional text.
         except Exception as e:
             logger.error(f"LLM revision failed: {e}")
             raise RuntimeError(f"LLM revision failed: {e}")
+
+    def _validate_record_provenance(self, script_record: PodcastScriptRecord) -> None:
+        if not script_record.selection_fingerprint:
+            raise DigestProvenanceError(
+                f"Podcast script {script_record.id} has incomplete legacy provenance",
+                resource_id=script_record.id,
+            )
+        available = script_record.source_content_ids_available
+        if available is None:
+            raise DigestProvenanceError(
+                f"Podcast script {script_record.id} has no available content snapshot",
+                resource_id=script_record.id,
+            )
 
     async def replace_section_dialogue(
         self,

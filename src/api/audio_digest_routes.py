@@ -13,6 +13,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from sqlalchemy import func
 
+from src.delivery.tts_service import TTSService
 from src.models.audio_digest import (
     AudioDigest,
     AudioDigestCreate,
@@ -22,7 +23,8 @@ from src.models.audio_digest import (
     AudioDigestStatus,
 )
 from src.models.digest import Digest
-from src.processors.audio_digest_generator import AudioDigestGenerator
+from src.models.podcast import VoiceProvider
+from src.services.audio_digest_service import AudioDigestService
 from src.services.file_storage import get_storage
 from src.storage.database import get_db
 from src.utils.logging import get_logger
@@ -64,49 +66,33 @@ async def _generate_audio_digest_task(
                 audio_digest.status = AudioDigestStatus.PROCESSING
                 db.commit()
 
-        # Create generator and generate audio
-        # Note: The generator creates its own AudioDigest record, so we need to
-        # update our existing record instead
-        generator = AudioDigestGenerator(
-            provider=provider,
-            voice=voice,
-            speed=speed,
-        )
-
-        # Load digest and prepare text
+        # Load the reserved resource's digest, then generate through the public
+        # persistence-free service boundary.
         with get_db() as db:
             digest = db.query(Digest).filter(Digest.id == digest_id).first()
             if not digest:
                 raise ValueError(f"Digest {digest_id} not found")
 
-            # Prepare text from digest
-            prepared_text = generator.text_preparer.prepare_digest(digest)
-            text_char_count = len(prepared_text)
-
-        # Resolve voice ID and synthesize
         from src.config import settings
 
         voice_id = settings.get_audio_digest_voice_id(voice)
-
-        # Import chunk threshold from generator
-        from src.processors.audio_digest_generator import SINGLE_CHUNK_THRESHOLD
-
-        if text_char_count <= SINGLE_CHUNK_THRESHOLD:
-            audio_bytes, chunk_count = await generator._synthesize_short(prepared_text, voice_id)
-        else:
-            audio_bytes, chunk_count = await generator._synthesize_long(prepared_text, voice_id)
-
-        # Upload to storage
-        storage = get_storage(bucket="audio-digests")
-        filename = f"audio_digest_{audio_digest_id}.mp3"
-        storage_path = await storage.save(
-            data=audio_bytes,
-            filename=filename,
-            content_type="audio/mpeg",
+        provider_map = {
+            "openai": VoiceProvider.OPENAI_TTS,
+            "openai_tts": VoiceProvider.OPENAI_TTS,
+            "elevenlabs": VoiceProvider.ELEVENLABS,
+            "google": VoiceProvider.GOOGLE_TTS,
+            "google_tts": VoiceProvider.GOOGLE_TTS,
+            "aws_polly": VoiceProvider.AWS_POLLY,
+        }
+        service = AudioDigestService(
+            tts=TTSService(provider=provider_map.get(provider, VoiceProvider.OPENAI_TTS))
         )
-
-        # Calculate duration estimate
-        estimated_duration = generator.text_preparer.estimate_duration(prepared_text)
+        artifact = await service.generate(
+            digest,
+            audio_digest_id=audio_digest_id,
+            voice_id=voice_id,
+            speed=speed,
+        )
 
         # Update the existing record with success
         from datetime import UTC, datetime
@@ -114,18 +100,18 @@ async def _generate_audio_digest_task(
         with get_db() as db:
             audio_digest = db.query(AudioDigest).filter(AudioDigest.id == audio_digest_id).first()
             if audio_digest:
-                audio_digest.audio_url = storage_path
-                audio_digest.duration_seconds = estimated_duration
-                audio_digest.file_size_bytes = len(audio_bytes)
-                audio_digest.text_char_count = text_char_count
-                audio_digest.chunk_count = chunk_count
+                audio_digest.audio_url = artifact.storage_path
+                audio_digest.duration_seconds = artifact.duration_seconds
+                audio_digest.file_size_bytes = artifact.file_size_bytes
+                audio_digest.text_char_count = artifact.text_char_count
+                audio_digest.chunk_count = artifact.chunk_count
                 audio_digest.status = AudioDigestStatus.COMPLETED
                 audio_digest.completed_at = datetime.now(UTC)
                 db.commit()
 
         logger.info(
             f"Audio digest {audio_digest_id} generated successfully: "
-            f"{len(audio_bytes) / 1024:.1f} KB, ~{estimated_duration:.0f}s"
+            f"{artifact.file_size_bytes / 1024:.1f} KB, ~{artifact.duration_seconds:.0f}s"
         )
 
         # Emit notification on success
@@ -137,11 +123,11 @@ async def _generate_audio_digest_task(
             await dispatcher.emit(
                 event_type=NotificationEventType.AUDIO_GENERATION,
                 title="Audio Digest Ready",
-                summary=f"Audio digest generated (~{estimated_duration:.0f}s).",
+                summary=f"Audio digest generated (~{artifact.duration_seconds:.0f}s).",
                 payload={
                     "audio_digest_id": audio_digest_id,
                     "digest_id": digest_id,
-                    "duration_seconds": estimated_duration,
+                    "duration_seconds": artifact.duration_seconds,
                     "url": f"/audio-digests/{audio_digest_id}",
                 },
             )

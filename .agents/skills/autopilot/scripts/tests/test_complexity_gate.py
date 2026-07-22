@@ -63,14 +63,15 @@ class TestSimpleFeature:
 
 class TestLOCThreshold:
     def test_loc_exceeds_threshold(self, tmp_path: Path) -> None:
-        """800 LOC -> force_required=True, warning."""
+        """800 LOC is reported to the judge without blocking execution."""
         packages = _make_packages(2, loc_each=400)
         wp_path = _write_yaml(tmp_path, {"packages": packages})
 
         result = assess_complexity(wp_path)
 
-        assert result.force_required is True
-        assert any("LOC estimate" in w and "800" in w for w in result.warnings)
+        assert result.force_required is False
+        assert result.signals["total_loc_estimate"] == 800
+        assert not any("LOC estimate" in w for w in result.warnings)
 
     def test_no_metadata_loc_check_passes(self, tmp_path: Path) -> None:
         """Packages without metadata -> LOC threshold not triggered."""
@@ -86,13 +87,13 @@ class TestLOCThreshold:
 
 class TestPackageThreshold:
     def test_packages_exceed_threshold(self, tmp_path: Path) -> None:
-        """6 packages -> force_required=True, warning."""
+        """6 packages add scheduling guidance without forcing execution."""
         packages = _make_packages(6, loc_each=50)
         wp_path = _write_yaml(tmp_path, {"packages": packages})
 
         result = assess_complexity(wp_path)
 
-        assert result.force_required is True
+        assert result.force_required is False
         assert any("Package count" in w and "6" in w for w in result.warnings)
 
     def test_integration_package_excluded_from_count(self, tmp_path: Path) -> None:
@@ -107,7 +108,7 @@ class TestPackageThreshold:
 
         result = assess_complexity(wp_path)
 
-        assert result.force_required is True
+        assert result.force_required is False
         assert any("Package count (5)" in w for w in result.warnings)
 
         # Now with 4 regular + 1 integration = 4 impl (within threshold)
@@ -124,26 +125,28 @@ class TestPackageThreshold:
 
 
 class TestForceFlag:
-    def test_force_bypasses_threshold(self, tmp_path: Path) -> None:
-        """800 LOC + force=True -> allowed=True (still has warnings)."""
+    def test_force_is_not_required_for_size_signal(self, tmp_path: Path) -> None:
+        """Size signals remain allowed regardless of the force flag."""
         packages = _make_packages(2, loc_each=400)
         wp_path = _write_yaml(tmp_path, {"packages": packages})
 
         result = assess_complexity(wp_path, force=True)
 
         assert result.allowed is True
-        assert result.force_required is True
-        assert len(result.warnings) > 0
+        assert result.force_required is False
+        assert result.signals["total_loc_estimate"] == 800
 
-    def test_force_not_provided_blocks(self, tmp_path: Path) -> None:
-        """800 LOC + force=False -> allowed=False."""
+    def test_broad_write_scope_requires_force(self, tmp_path: Path) -> None:
+        """Repository-wide writes remain the deterministic safety floor."""
         packages = _make_packages(2, loc_each=400)
+        packages[0]["scope"] = {"write_allow": ["**"]}
         wp_path = _write_yaml(tmp_path, {"packages": packages})
 
         result = assess_complexity(wp_path, force=False)
 
         assert result.allowed is False
         assert result.force_required is True
+        assert any("Broad write scope" in warning for warning in result.warnings)
 
 
 class TestSignalDetection:
@@ -208,8 +211,8 @@ class TestCombined:
 
         result = assess_complexity(wp_path)
 
-        assert result.force_required is True
+        assert result.force_required is False
         assert result.val_review_enabled is True
-        assert any("LOC" in w for w in result.warnings)
+        assert result.signals["total_loc_estimate"] == 1200
         assert any("Package count" in w for w in result.warnings)
         assert "db-migration-review" in result.checkpoints

@@ -7,17 +7,12 @@ Orchestrates the complete podcast creation workflow:
 This separation enables human review before expensive TTS synthesis.
 """
 
-import tempfile
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
-from pathlib import Path
 
 from src.config import settings
 from src.config.models import ModelConfig
-from src.delivery.audio_generator import (
-    PodcastAudioGenerator,
-)
 from src.models.podcast import (
     Podcast,
     PodcastRequest,
@@ -28,7 +23,7 @@ from src.models.podcast import (
     VoiceProvider,
 )
 from src.processors.podcast_script_generator import PodcastScriptGenerator
-from src.services.file_storage import get_storage
+from src.services.podcast_audio_service import PodcastAudioService
 from src.storage.database import get_db
 from src.utils.logging import get_logger
 
@@ -49,6 +44,7 @@ class PodcastCreator:
     def __init__(
         self,
         model_config: ModelConfig | None = None,
+        audio_service: PodcastAudioService | None = None,
     ):
         """Initialize podcast creator.
 
@@ -57,7 +53,7 @@ class PodcastCreator:
         """
         self.model_config = model_config or settings.get_model_config()
         self.script_generator = PodcastScriptGenerator(model_config=self.model_config)
-        self.audio_generator = None  # Initialized per request with voice config
+        self.audio_service = audio_service or PodcastAudioService()
 
         logger.info("Initialized PodcastCreator")
 
@@ -127,11 +123,18 @@ class PodcastCreator:
                 # Store which ones were actually fetched via get_content tool
                 # Note: DB column still named newsletter_ids_fetched for backwards compat
                 script_record.newsletter_ids_fetched = metadata.content_ids_fetched
+                script_record.source_content_ids_available = list(
+                    self.script_generator.available_content_ids
+                )
+                script_record.source_content_ids_cited = list(
+                    self.script_generator.cited_content_ids
+                )
+                script_record.selection_fingerprint = self.script_generator.selection_fingerprint
                 script_record.web_search_queries = metadata.web_searches
                 script_record.tool_call_count = metadata.tool_call_count
 
                 # Generation metadata
-                script_record.model_used = self.script_generator.model
+                script_record.model_used = self.script_generator.model_used
                 script_record.model_version = self.script_generator.model_version
                 script_record.token_usage = {
                     "input_tokens": self.script_generator.input_tokens,
@@ -237,62 +240,29 @@ class PodcastCreator:
             # Parse script
             script = PodcastScript.model_validate(script_record.script_json)
 
-            # Initialize audio generator with voice config
-            if use_v2_generator:
-                from src.delivery.audio_generator_v2 import PodcastAudioGeneratorV2
+            if not use_v2_generator:
+                raise ValueError("The legacy V1 podcast audio generator is no longer supported")
 
-                self.audio_generator = PodcastAudioGeneratorV2(
-                    provider=voice_provider,
-                    alex_voice=alex_voice,
-                    sam_voice=sam_voice,
-                    speed=speed,
-                )
-                logger.info(f"Using V2 audio generator (batched, ffmpeg-based, speed={speed}x)")
-            else:
-                self.audio_generator = PodcastAudioGenerator(
-                    provider=voice_provider,
-                    alex_voice=alex_voice,
-                    sam_voice=sam_voice,
-                )
-                logger.info("Using V1 audio generator (pydub-based, deprecated)")
-
-            # Generate audio to a temporary file first
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_file:
-                tmp_path = Path(tmp_file.name)
-
-            # Generate audio to temp file
-            audio_meta = await self.audio_generator.generate_audio(
+            artifact = await self.audio_service.generate(
                 script,
-                tmp_path,
+                podcast_id=podcast_id,
+                provider=voice_provider,
+                alex_voice=alex_voice,
+                sam_voice=sam_voice,
+                speed=speed,
                 progress_callback=progress_callback,
             )
-
-            # Upload to storage provider
-            storage = get_storage(bucket="podcasts")
-            filename = f"podcast_{podcast_id}.mp3"
-
-            # Read audio data from temp file (using Path.read_bytes for simplicity)
-            audio_data = tmp_path.read_bytes()
-
-            storage_path = await storage.save(
-                data=audio_data,
-                filename=filename,
-                content_type="audio/mpeg",
-            )
-
-            # Clean up temp file
-            tmp_path.unlink(missing_ok=True)
 
             generation_time = time.time() - start_time
 
             # Update podcast record
             with get_db() as db:
                 podcast = db.query(Podcast).filter(Podcast.id == podcast_id).first()
-                podcast.audio_url = storage_path  # Store the storage path, not local path
-                podcast.audio_format = audio_meta.format
-                podcast.duration_seconds = audio_meta.duration_seconds
-                podcast.file_size_bytes = audio_meta.file_size_bytes
-                podcast.voice_config = self.audio_generator.get_voice_config()
+                podcast.audio_url = artifact.storage_path
+                podcast.audio_format = artifact.audio_format
+                podcast.duration_seconds = artifact.duration_seconds
+                podcast.file_size_bytes = artifact.file_size_bytes
+                podcast.voice_config = artifact.voice_config
                 podcast.status = "completed"
                 podcast.completed_at = datetime.now(UTC)
 
@@ -309,9 +279,9 @@ class PodcastCreator:
 
             logger.info(
                 f"Podcast {podcast_id} generated successfully in {generation_time:.1f}s. "
-                f"Duration: {audio_meta.duration_seconds}s, "
-                f"Size: {audio_meta.file_size_bytes / 1024:.1f} KB, "
-                f"Storage: {storage_path}"
+                f"Duration: {artifact.duration_seconds}s, "
+                f"Size: {artifact.file_size_bytes / 1024:.1f} KB, "
+                f"Storage: {artifact.storage_path}"
             )
 
             return podcast

@@ -38,7 +38,10 @@ def db() -> Iterator[Session]:
 
 @pytest.fixture
 def collector() -> BatchCollector:
-    return BatchCollector(ModelConfig())
+    config = ModelConfig()
+    config._batch_config["enabled"] = True
+    config._batch_config["execution"][ModelStep.CONTENT_FILTERING.value] = "batch"
+    return BatchCollector(config)
 
 
 class TestEnqueue:
@@ -46,49 +49,90 @@ class TestEnqueue:
         row = collector.enqueue(
             db,
             ModelStep.CONTENT_FILTERING,
-            "contents",
             42,
             BatchRequest(key="ignored", contents="classify me", config={"temperature": 0.0}),
         )
         db.commit()
 
         assert row.status == "pending"
-        assert row.target_table == "contents"
-        assert row.target_id == "42"  # stringified PK
+        assert row.content_id == 42
         assert row.model_step == ModelStep.CONTENT_FILTERING.value
         assert row.model_id  # resolved from ModelConfig, non-empty
         assert row.request_payload == {"contents": "classify me", "config": {"temperature": 0.0}}
         assert row.batch_job_id is None  # not yet flushed into a job
 
-    def test_request_key_is_deterministic(self, collector):
-        key = collector.build_request_key(ModelStep.CONTENT_FILTERING, "contents", 7)
-        assert key == "content_filtering:contents:7"
+    def test_disabled_step_is_a_noop(self, db):
+        collector = BatchCollector(ModelConfig())
+
+        row = collector.enqueue(
+            db,
+            ModelStep.CONTENT_FILTERING,
+            7,
+            BatchRequest(key="ignored", contents="classify me"),
+        )
+
+        assert row is None
+        assert db.query(BatchRequestRow).count() == 0
 
     def test_enqueue_is_idempotent(self, db, collector):
         first = collector.enqueue(
-            db, ModelStep.CONTENT_FILTERING, "contents", 99, BatchRequest(key="", contents="a")
+            db, ModelStep.CONTENT_FILTERING, 99, BatchRequest(key="", contents="a")
         )
         second = collector.enqueue(
-            db, ModelStep.CONTENT_FILTERING, "contents", 99, BatchRequest(key="", contents="b")
+            db, ModelStep.CONTENT_FILTERING, 99, BatchRequest(key="", contents="b")
         )
         db.commit()
 
-        # Same row returned; no duplicate; original payload preserved.
+        # Same active row returned; no duplicate; original payload preserved.
         assert second.id == first.id
         assert db.query(BatchRequestRow).count() == 1
         assert first.request_payload["contents"] == "a"
 
     def test_row_visible_after_flush_same_txn(self, db, collector):
-        collector.enqueue(
-            db, ModelStep.CONTENT_FILTERING, "contents", 1, BatchRequest(key="", contents="x")
-        )
+        collector.enqueue(db, ModelStep.CONTENT_FILTERING, 1, BatchRequest(key="", contents="x"))
         # enqueue flushed — a query in the same uncommitted txn must see it.
-        found = (
-            db.query(BatchRequestRow)
-            .filter(BatchRequestRow.request_key == "content_filtering:contents:1")
-            .first()
-        )
+        found = db.query(BatchRequestRow).filter(BatchRequestRow.content_id == 1).first()
         assert found is not None
+
+    def test_terminal_request_does_not_block_new_collection(self, db, collector):
+        first = collector.enqueue(
+            db, ModelStep.CONTENT_FILTERING, 5, BatchRequest(key="", contents="first")
+        )
+        first.status = "succeeded"
+        db.commit()
+
+        second = collector.enqueue(
+            db, ModelStep.CONTENT_FILTERING, 5, BatchRequest(key="", contents="second")
+        )
+        db.commit()
+
+        assert second.id != first.id
+        assert second.request_key != first.request_key
+        assert db.query(BatchRequestRow).count() == 2
+
+    def test_standard_token_limit_config_is_not_mistaken_for_a_credential(self, db, collector):
+        row = collector.enqueue(
+            db,
+            ModelStep.CONTENT_FILTERING,
+            6,
+            BatchRequest(
+                key="",
+                contents="classify",
+                config={"max_output_tokens": 512},
+            ),
+        )
+
+        assert row is not None
+        assert row.request_payload["config"]["max_output_tokens"] == 512
+
+    def test_explicit_api_key_is_rejected(self, db, collector):
+        with pytest.raises(ValueError, match="credentials"):
+            collector.enqueue(
+                db,
+                ModelStep.CONTENT_FILTERING,
+                7,
+                BatchRequest(key="", contents="classify", config={"api_key": "secret"}),
+            )
 
 
 class TestResultHandlerRegistry:
@@ -96,7 +140,7 @@ class TestResultHandlerRegistry:
         registry = ResultHandlerRegistry()
 
         class _Handler:
-            def apply(self, db, target_id, result_text):
+            def apply(self, db, request, result_text):
                 return None
 
         handler = _Handler()
@@ -118,7 +162,7 @@ class TestResultHandlerRegistry:
             def __init__(self, tag):
                 self.tag = tag
 
-            def apply(self, db, target_id, result_text):
+            def apply(self, db, request, result_text):
                 return None
 
         registry.register(ModelStep.CONTENT_FILTERING, _H("first"))
@@ -128,3 +172,15 @@ class TestResultHandlerRegistry:
     def test_module_singleton_exists(self):
         # Phase modules register against this shared instance at import time.
         assert isinstance(result_handlers, ResultHandlerRegistry)
+
+    def test_registers_fallback_handler_independently(self):
+        registry = ResultHandlerRegistry()
+
+        class _Fallback:
+            async def fallback(self, db, request):
+                return "sync-result"
+
+        handler = _Fallback()
+        registry.register_fallback(ModelStep.CONTENT_FILTERING, handler)
+
+        assert registry.get_fallback(ModelStep.CONTENT_FILTERING) is handler

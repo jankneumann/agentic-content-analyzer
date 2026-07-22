@@ -151,7 +151,7 @@ If any phase **fails**, present findings and let the operator decide: fix, re-va
 **Programmatic enforcement** — run the gate check script before merge:
 
 ```bash
-python3 skills/validate-feature/scripts/gate_logic.py \
+python3 "<skill-base-dir>/../validate-feature/scripts/gate_logic.py" \
   openspec/changes/<change-id>/validation-report.md
 ```
 
@@ -166,7 +166,7 @@ If the gate halts:
 
 ```bash
 # Explicit user override (must be requested by user, never autonomous)
-python3 skills/validate-feature/scripts/gate_logic.py \
+python3 "<skill-base-dir>/../validate-feature/scripts/gate_logic.py" \
   openspec/changes/<change-id>/validation-report.md --force
 ```
 
@@ -215,7 +215,7 @@ The merge command integrates the pre-merge gate — it will refuse to merge unle
 
 ```bash
 # Via merge_pr.py with gate enforcement (preferred)
-python3 skills/merge-pull-requests/scripts/merge_pr.py merge <pr_number> \
+python3 "<skill-base-dir>/../merge-pull-requests/scripts/merge_pr.py" merge <pr_number> \
   --origin openspec \
   --validation-report openspec/changes/<change-id>/validation-report.md
 
@@ -226,7 +226,7 @@ gh pr merge "$FEATURE_BRANCH" --rebase --delete-branch
 
 **Explicit user override** (only when user explicitly requests):
 ```bash
-python3 skills/merge-pull-requests/scripts/merge_pr.py merge <pr_number> \
+python3 "<skill-base-dir>/../merge-pull-requests/scripts/merge_pr.py" merge <pr_number> \
   --origin openspec \
   --validation-report openspec/changes/<change-id>/validation-report.md \
   --force
@@ -451,6 +451,31 @@ openspec validate --strict
 
 This archives the change, merges delta specs, and validates repository integrity.
 
+**Regenerate the decision index (REQUIRED — in the SAME commit as the archive).**
+`docs/decisions/` is a derived artifact generated from `openspec/changes/` via
+In this source repository, the **source-contribution-only** command is
+`make decisions`; its implementation is the co-installed
+`<skill-base-dir>/../explore-feature/scripts/archive_index.py --emit-decisions`.
+Archiving moves `openspec/changes/<change-id>/` into `archive/<date>-<change-id>/`,
+which is exactly what makes the committed index stale. Regenerate it now and stage
+it so the refresh lands in the **same commit as the archive move** — never as a
+follow-up. Skip this and `main` fails the `validate-decision-index` CI job for every
+subsequent PR until someone notices (writer-drift: derived artifact + source mutation
+must be bound together). Run it after EITHER archive path above (preferred or CLI):
+
+```bash
+make decisions
+git add docs/decisions/
+```
+
+Before committing the archive, confirm there is no leftover drift:
+
+```bash
+make decisions && git diff --quiet -- docs/decisions/ \
+  && echo "decision index clean" \
+  || { echo "docs/decisions/ still drifting — stage it into the archive commit"; git add docs/decisions/; }
+```
+
 ### 7. Verify Archive
 
 ```bash
@@ -557,6 +582,7 @@ If `CAN_FEATURE_REGISTRY=true`, re-analyze conflicts for active features. Featur
 | "The pre-launch checklist is overkill for a small change" | Most rollback incidents come from "small" changes where the team waived a checklist item. The checklist's value is exactly that it doesn't bend for size. |
 | "Latency went up 60%, but it's still within SLO — we'll keep going" | A 60% jump is a regression even when it's inside SLO. SLOs are the *floor*, not the rollback threshold. The rollback threshold is the threshold. |
 | "We can skip archiving until tomorrow" | The archive step closes the loop on spec drift. Postponing it leaves `openspec/changes/<id>/` and `openspec/specs/` out of sync, which silently breaks the next agent's view of the world. |
+| "`make decisions` is a separate cleanup — I'll regenerate `docs/decisions/` later" | Later never comes in the same commit. The archive move stales the index the instant it lands; a deferred regen means `main` fails `validate-decision-index` and blocks every unrelated PR until someone bisects it (this is exactly the 2026-05-12 incident). The regen costs one command — bind it to the archive commit. |
 
 ## Red Flags
 
@@ -565,6 +591,7 @@ If `CAN_FEATURE_REGISTRY=true`, re-analyze conflicts for active features. Featur
 - The pre-launch checklist appears in the session log as "checked" but no artifact (CI link, scan output, validation report) is cited.
 - A rollback trigger fired but the flag was NOT flipped back — instead the team "kept watching".
 - The OpenSpec change-id is archived but `openspec validate --strict` was not re-run after the archive.
+- The change was archived but `make decisions` was not run (or `docs/decisions/` was not staged into the archive commit) — `main` will fail `validate-decision-index` on the next PR.
 - Open tasks were silently dropped (no migration to coordinator issues or follow-up proposal).
 
 ## Verification
@@ -572,6 +599,7 @@ If `CAN_FEATURE_REGISTRY=true`, re-analyze conflicts for active features. Featur
 1. The session log's Cleanup phase entry cites the rollout sequence (5%→25%→50%→100%) with timestamps for each stage promotion AND lists the metrics observed at each stage (error rate, p95, data-integrity count).
 2. Pre-launch checklist is recorded with a concrete artifact reference per item (CI run URL, security scan report path, validation-report.md, runbook link, dashboard link).
 3. `openspec validate --strict` was re-run AFTER `openspec archive` and exited zero. The output is captured in the cleanup transcript.
+3a. `make decisions` was run after the archive and `docs/decisions/` was staged into the same commit as the archive move; `git diff --quiet -- docs/decisions/` is clean before the commit (no pending regeneration).
 4. The feature flag (or equivalent traffic gate) is identified by name in the session log, with the kill-switch procedure documented.
 5. If a rollback trigger fired during rollout, an issue tagged `rollback-postmortem` exists and the flag is currently at 0%.
 6. Open tasks from `tasks.md` are accounted for: either all checked, or migrated to coordinator issues / follow-up proposal with a Migration Notes line in the original `tasks.md`.

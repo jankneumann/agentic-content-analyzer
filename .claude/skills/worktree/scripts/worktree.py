@@ -6,15 +6,15 @@ pin/unpin, list, and garbage collection. Outputs machine-parseable
 KEY=VALUE lines for shell eval.
 
 Usage:
-    python3 scripts/worktree.py setup <change-id> [--agent-id <id>] [--branch <name>] [--prefix <prefix>] [--no-bootstrap]
-    python3 scripts/worktree.py teardown <change-id> [--agent-id <id>] [--prefix <prefix>]
-    python3 scripts/worktree.py status [<change-id>] [--agent-id <id>]
-    python3 scripts/worktree.py detect
-    python3 scripts/worktree.py heartbeat <change-id> [--agent-id <id>]
-    python3 scripts/worktree.py list
-    python3 scripts/worktree.py pin <change-id> [--agent-id <id>]
-    python3 scripts/worktree.py unpin <change-id> [--agent-id <id>]
-    python3 scripts/worktree.py gc [--stale-after <duration>] [--force]
+    python3 "<skill-base-dir>/scripts/worktree.py" setup <change-id> [options]
+    python3 "<skill-base-dir>/scripts/worktree.py" teardown <change-id> [options]
+    python3 "<skill-base-dir>/scripts/worktree.py" status [<change-id>] [options]
+    python3 "<skill-base-dir>/scripts/worktree.py" detect
+    python3 "<skill-base-dir>/scripts/worktree.py" heartbeat <change-id> [options]
+    python3 "<skill-base-dir>/scripts/worktree.py" list
+    python3 "<skill-base-dir>/scripts/worktree.py" pin <change-id> [options]
+    python3 "<skill-base-dir>/scripts/worktree.py" unpin <change-id> [options]
+    python3 "<skill-base-dir>/scripts/worktree.py" gc [options]
 """
 
 from __future__ import annotations
@@ -99,6 +99,177 @@ def run_git(*args: str, cwd: str | None = None, check: bool = True) -> str:
             result.returncode, result.args, result.stdout, result.stderr,
         )
     return result.stdout.strip()
+
+
+def _git_ref_exists(main_repo: Path, ref: str) -> bool:
+    """Return true when a git ref exists in the repository."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", ref],
+        cwd=str(main_repo),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def _local_branch_exists(main_repo: Path, branch: str) -> bool:
+    return _git_ref_exists(main_repo, f"refs/heads/{branch}")
+
+
+def _remote_branch_exists(main_repo: Path, branch: str) -> bool:
+    return _git_ref_exists(main_repo, f"refs/remotes/origin/{branch}")
+
+
+def _existing_branch_start_point(main_repo: Path, branch: str) -> str | None:
+    """Return the best existing start point for a branch name."""
+    if _local_branch_exists(main_repo, branch):
+        return branch
+    if _remote_branch_exists(main_repo, branch):
+        return f"origin/{branch}"
+    return None
+
+
+def _invoking_feature_branch(cwd: str | None, exclude: set[str]) -> str | None:
+    """Return the invoking checkout's current branch if it is a viable parent.
+
+    In the coordinated workflow, ``worktree.py setup`` is invoked from the
+    feature-branch worktree, so its current branch is the real parent that agent
+    branches must start from (its HEAD is the base to preserve). Returns None
+    when the checkout is on ``main``, detached, or already on one of the
+    ``exclude`` branches (the agent branch itself or the computed parent name),
+    leaving the caller to fall back to ``main`` — the correct base for a
+    genuinely fresh feature with no prior work.
+    """
+    if not cwd:
+        return None
+    try:
+        current = (run_git("branch", "--show-current", cwd=cwd) or "").strip()
+    except subprocess.CalledProcessError:
+        return None
+    if not current or current == "main" or current in exclude:
+        return None
+    return current
+
+
+def _branch_creation_start_point(
+    main_repo: Path,
+    change_id: str,
+    branch: str,
+    agent_id: str | None = None,
+    prefix: str | None = None,
+    explicit: str | None = None,
+    branch_prefix: str | None = None,
+    invoking_cwd: str | None = None,
+) -> tuple[str, str]:
+    """Choose the start point for a newly-created worktree branch.
+
+    Agent branches are integration children, so when the parent feature/session
+    branch already exists locally or on origin, the child must start there. This
+    prevents merging an agent branch back into the feature branch from dragging
+    unrelated commits from main into the feature.
+    """
+    explicit_branch = (explicit or "").strip()
+
+    existing_same_name = _existing_branch_start_point(main_repo, branch)
+    if existing_same_name:
+        return existing_same_name, "remote" if existing_same_name.startswith("origin/") else "local"
+
+    if agent_id and branch_prefix != PROTOTYPE_BRANCH_PREFIX:
+        parent = resolve_parent_branch(change_id, prefix=prefix)
+        parent_start = _existing_branch_start_point(main_repo, parent)
+        if parent_start:
+            return parent_start, "parent"
+
+        if not explicit_branch:
+            # The named parent ref doesn't exist. Fabricating it from main would
+            # give the agent branch a stale base and drag main-only commits into
+            # the feature PR on merge-back. Prefer the feature branch the operator
+            # is actually on (the invoking checkout's HEAD): in the coordinated
+            # workflow setup runs from the feature-branch worktree. Fall back to
+            # main only when that checkout is on main/detached.
+            feature_branch = _invoking_feature_branch(
+                invoking_cwd, exclude={branch, parent}
+            )
+            base = feature_branch or "main"
+            source = "parent-created-from-feature" if feature_branch else "parent-created"
+            run_git("branch", parent, base, cwd=str(main_repo))
+            print(f"PARENT_BRANCH_CREATED={parent} (from {base})", file=sys.stderr)
+            return parent, source
+
+    return "main", "main"
+
+
+def _adopt_branch_in_isolated_checkout(args: argparse.Namespace, cwd: str) -> tuple[str, str] | None:
+    """Move a harness-provided checkout onto the branch setup would have made.
+
+    Cloud/harness worktrees are already filesystem-isolated, so we do not create
+    nested ``.git-worktrees``. Some harnesses, however, create that isolated
+    checkout from ``main``. For agent-scoped implementation work, that is not a
+    valid base: the child branch must start at the feature/session parent.
+    """
+    main_repo = resolve_main_repo(cwd)
+    change_id: str = args.change_id
+    agent_id: str | None = getattr(args, "agent_id", None)
+    prefix: str | None = getattr(args, "prefix", None)
+    branch_prefix: str | None = getattr(args, "branch_prefix", None)
+    explicit: str | None = getattr(args, "branch", None)
+    branch = resolve_branch(
+        change_id,
+        agent_id,
+        prefix,
+        explicit=explicit,
+        branch_prefix=branch_prefix,
+    )
+    current_branch = run_git("branch", "--show-current", cwd=cwd)
+    override = os.environ.get("OPENSPEC_BRANCH_OVERRIDE", "").strip()
+    explicit_branch = (explicit or "").strip()
+
+    if not agent_id and not explicit_branch and not override and branch_prefix is None:
+        return current_branch, None
+
+    if current_branch == branch:
+        return branch, None
+
+    start_point = _existing_branch_start_point(main_repo, branch)
+    if start_point:
+        run_git("checkout", "-B", branch, start_point, cwd=cwd)
+        return branch, f"existing:{start_point}"
+
+    if agent_id and branch_prefix != PROTOTYPE_BRANCH_PREFIX:
+        parent = resolve_parent_branch(change_id, prefix=prefix)
+        parent_start = _existing_branch_start_point(main_repo, parent)
+        if parent_start is None:
+            if explicit_branch:
+                # Explicit branch workflows outside OpenSpec feature branches
+                # may not have a resolvable parent; keep backward-compatible
+                # behavior and create from the current checkout below.
+                pass
+            else:
+                print(
+                    f"ERROR: isolated checkout is on '{current_branch}', but agent branch "
+                    f"'{branch}' must start from parent feature branch '{parent}', which "
+                    "does not exist locally or at origin.",
+                    file=sys.stderr,
+                )
+                print(
+                    "Hint: push/fetch the feature branch before dispatching sub-agents, "
+                    "or set OPENSPEC_BRANCH_OVERRIDE to the actual feature branch.",
+                    file=sys.stderr,
+                )
+                return None
+        else:
+            if _local_branch_exists(main_repo, branch):
+                run_git("checkout", branch, cwd=cwd)
+                return branch, "existing-agent"
+            run_git("checkout", "-B", branch, parent_start, cwd=cwd)
+            return branch, f"parent:{parent_start}"
+
+    if current_branch:
+        run_git("checkout", "-B", branch, cwd=cwd)
+        return branch, "current"
+
+    return current_branch, None
 
 
 def resolve_main_repo(cwd: str | None = None) -> Path:
@@ -203,9 +374,9 @@ def resolve_branch(
 
     1. **Explicit override** (highest precedence):
        - ``explicit`` — if passed, used verbatim as the final branch and returned
-         immediately, even when ``branch_prefix`` is also set. This preserves
-         backward compatibility with callers like ``openspec-beads-worktree``
-         that pre-compose their own fully-qualified task branches.
+         immediately, even when ``branch_prefix`` is also set. Useful for callers
+         that pre-compose their own fully-qualified task branches and need them
+         passed through untouched.
 
     2. **Branch-prefix scheme** (for prototype variants):
        - When ``branch_prefix='prototype'``, the result is
@@ -387,13 +558,18 @@ def cmd_setup(args: argparse.Namespace) -> int:
     """
     if _short_circuit_if_isolated("setup", agent_id=getattr(args, "agent_id", None)):
         # Emit the in-place checkout values so downstream `eval` + `cd` is a
-        # no-op. Branch override is preserved: if OPENSPEC_BRANCH_OVERRIDE
-        # is set, the harness is expected to have already checked it out.
+        # no-op. If the harness created this checkout from main, move it onto
+        # the branch setup would have created locally before returning.
         cwd = os.getcwd()
         toplevel = run_git("rev-parse", "--show-toplevel", cwd=cwd)
-        current_branch = run_git("branch", "--show-current", cwd=cwd)
+        adopted = _adopt_branch_in_isolated_checkout(args, cwd)
+        if adopted is None:
+            return 1
+        current_branch, adopted_source = adopted
         print(f"WORKTREE_PATH={toplevel}")
         print(f"WORKTREE_BRANCH={current_branch}")
+        if adopted_source:
+            print(f"BRANCH_ADOPTED_FROM={adopted_source}", file=sys.stderr)
         print("ISOLATION_PROVIDED=true", file=sys.stderr)
         return 0
 
@@ -441,15 +617,23 @@ def cmd_setup(args: argparse.Namespace) -> int:
     # Ensure we have latest main
     run_git("fetch", "origin", "main", cwd=str(main_repo), check=False)
 
-    # Create branch if it doesn't exist
-    try:
-        run_git(
-            "show-ref", "--verify", "--quiet", f"refs/heads/{branch}",
-            cwd=str(main_repo),
+    # Create branch if it doesn't exist. Agent-scoped branches are created from
+    # their parent feature branch when available, not from main.
+    if not _local_branch_exists(main_repo, branch):
+        start_point, start_source = _branch_creation_start_point(
+            main_repo,
+            change_id,
+            branch,
+            agent_id=agent_id,
+            prefix=prefix,
+            explicit=args.branch,
+            branch_prefix=branch_prefix,
+            invoking_cwd=cwd,
         )
-    except subprocess.CalledProcessError:
-        run_git("branch", branch, "main", cwd=str(main_repo))
+        run_git("branch", branch, start_point, cwd=str(main_repo))
         print(f"BRANCH_CREATED={branch}", file=sys.stderr)
+        print(f"BRANCH_START_POINT={start_point}", file=sys.stderr)
+        print(f"BRANCH_START_SOURCE={start_source}", file=sys.stderr)
 
     # Prune stale worktree entries (e.g., directory was deleted but git still tracks it)
     run_git("worktree", "prune", cwd=str(main_repo), check=False)
@@ -498,7 +682,10 @@ def cmd_setup(args: argparse.Namespace) -> int:
     # Bootstrap the worktree (copy .env, install deps, sync skills)
     bootstrapped = False
     if not args.no_bootstrap and not already_exists:
-        bootstrap_script = main_repo / "skills" / "worktree" / "scripts" / "worktree-bootstrap.sh"
+        # Resolve the co-installed helper from this skill's own directory.  In
+        # consumers the skills may live under .claude/skills or .agents/skills,
+        # and the main repository need not contain a canonical skills/ tree.
+        bootstrap_script = _installed_bootstrap_script()
         if bootstrap_script.is_file():
             print("Bootstrapping worktree...", file=sys.stderr)
             env = os.environ.copy()
@@ -518,6 +705,11 @@ def cmd_setup(args: argparse.Namespace) -> int:
     print(f"WORKTREE_BRANCH={branch}")
     print(f"BOOTSTRAPPED={'true' if bootstrapped else 'false'}")
     return 0
+
+
+def _installed_bootstrap_script() -> Path:
+    """Return the bootstrap script co-installed with this module."""
+    return Path(__file__).resolve().with_name("worktree-bootstrap.sh")
 
 
 def _deinit_submodules(wt_path: Path) -> None:
@@ -547,7 +739,13 @@ def cmd_teardown(args: argparse.Namespace) -> int:
     If the worktree contains initialized submodules, deinit them first.
     If plain removal still fails with the git-specific "working trees
     containing submodules" error, fall back to ``--force``. Other removal
-    errors (dirty tree, conflicting edits) are NOT force-overridden.
+    errors (dirty tree, conflicting edits) are NOT force-overridden unless
+    ``--force`` is explicitly passed.
+
+    ``--force``: Remove the registry entry and best-effort ``git worktree
+    remove`` even if the worktree path is dirty, missing, or already deleted.
+    Used by ``POST /agents/{id}/kick`` to clear stale entries regardless of
+    worktree state.
 
     Short-circuits to a silent no-op when the caller already has
     filesystem isolation (see ``EnvironmentProfile.detect``).
@@ -562,6 +760,7 @@ def cmd_teardown(args: argparse.Namespace) -> int:
     agent_id: str | None = getattr(args, "agent_id", None)
     prefix: str | None = args.prefix
     sibling: bool = bool(getattr(args, "sibling", False))
+    force: bool = bool(getattr(args, "force", False))
 
     wt_path = worktree_path(main_repo, change_id, agent_id, prefix, sibling=sibling)
 
@@ -578,6 +777,15 @@ def cmd_teardown(args: argparse.Namespace) -> int:
             wt_path = alt_path
 
     if not wt_path.is_dir():
+        if force:
+            # --force: registry entry may still exist even if the worktree
+            # directory is gone (e.g. after a manual rm). Clear it.
+            registry = load_registry(main_repo)
+            remove_entry(registry, change_id, agent_id)
+            save_registry(main_repo, registry)
+            print("REMOVED=true")
+            print(f"REMOVED_PATH={wt_path}")
+            return 0
         print(f"No worktree found for {change_id}"
               + (f" (agent: {agent_id})" if agent_id else ""),
               file=sys.stderr)
@@ -589,7 +797,11 @@ def cmd_teardown(args: argparse.Namespace) -> int:
 
     # Must run from main repo to remove worktree
     try:
-        run_git("worktree", "remove", str(wt_path), cwd=str(main_repo))
+        git_remove_args = ["worktree", "remove"]
+        if force:
+            git_remove_args.append("--force")
+        git_remove_args.append(str(wt_path))
+        run_git(*git_remove_args, cwd=str(main_repo))
     except subprocess.CalledProcessError as exc:
         stderr = (exc.stderr or "").strip()
         if _SUBMODULE_REMOVE_ERROR in stderr:
@@ -604,6 +816,12 @@ def cmd_teardown(args: argparse.Namespace) -> int:
             run_git(
                 "worktree", "remove", "--force", str(wt_path),
                 cwd=str(main_repo),
+            )
+        elif force:
+            # --force: log but continue to clear the registry entry
+            print(
+                f"git worktree remove --force failed (ignored by --force): {stderr}",
+                file=sys.stderr,
             )
         else:
             raise  # Other errors deserve operator attention
@@ -713,18 +931,37 @@ def cmd_heartbeat(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_list(_args: argparse.Namespace) -> int:
+def cmd_list(args: argparse.Namespace) -> int:
     """List all registered worktrees with staleness and pin indicators."""
     cwd = os.getcwd()
     main_repo = resolve_main_repo(cwd)
     registry = load_registry(main_repo)
 
+    json_output = getattr(args, "json_output", False)
+    now = datetime.now(timezone.utc)
+    stale_threshold_hours = 1.0
+
+    if json_output:
+        out = []
+        for entry in registry["entries"]:
+            hb = datetime.fromisoformat(entry["last_heartbeat"])
+            age_hours = (now - hb).total_seconds() / 3600
+            out.append({
+                "change_id": entry["change_id"],
+                "agent_id": entry.get("agent_id"),
+                "branch": entry["branch"],
+                "worktree_path": entry["worktree_path"],
+                "last_heartbeat": entry["last_heartbeat"],
+                "pinned": bool(entry.get("pinned")),
+                "is_stale": age_hours > stale_threshold_hours,
+                "age_hours": round(age_hours, 2),
+            })
+        print(json.dumps(out, indent=2))
+        return 0
+
     if not registry["entries"]:
         print("No active worktrees registered.")
         return 0
-
-    now = datetime.now(timezone.utc)
-    stale_threshold_hours = 1.0
 
     # Header
     print(f"{'CHANGE_ID':<30} {'AGENT_ID':<15} {'BRANCH':<40} {'STATUS':<20} {'PATH'}")
@@ -1012,6 +1249,14 @@ def main() -> int:
             "layouts coexisting for the same agent-id."
         ),
     )
+    teardown_parser.add_argument(
+        "--force", action="store_true",
+        help=(
+            "Remove the registry entry and best-effort git worktree remove "
+            "even if the worktree path is dirty, missing, or already deleted. "
+            "Used by POST /agents/{id}/kick to clear stale entries."
+        ),
+    )
     teardown_parser.set_defaults(func=cmd_teardown)
 
     # status
@@ -1048,6 +1293,14 @@ def main() -> int:
 
     # list
     list_parser = subparsers.add_parser("list", help="List registered worktrees")
+    list_parser.add_argument(
+        "--json", action="store_true", dest="json_output",
+        help=(
+            "Emit a JSON array of registry entries instead of the human-readable "
+            "table. Each entry includes change_id, agent_id, branch, "
+            "worktree_path, last_heartbeat, pinned, and is_stale."
+        ),
+    )
     list_parser.set_defaults(func=cmd_list)
 
     # pin

@@ -24,8 +24,26 @@ Optional flags:
 ## Prerequisites
 
 - A roadmap workspace with `roadmap.yaml` (from `/plan-roadmap`)
-- Shared runtime at `skills/roadmap-runtime/scripts/` (models, checkpoint, learning, context)
+- Shared runtime at `<skill-base-dir>/../roadmap-runtime/scripts/` (models, checkpoint, learning, context)
 - At least one vendor CLI available for `/implement-feature` invocation
+
+## Local CLI Mutation Boundary
+
+`autopilot-roadmap` writes checkpoint, roadmap status, learning entries, and may
+invoke implementation/validation skills for roadmap items. In local CLI
+execution, every mutating run MUST start from a managed worktree unless
+`--dry-run` is set.
+
+Before loading or updating the roadmap workspace, run:
+
+```bash
+CHANGE_ID="roadmap-<workspace-name>"
+eval "$(python3 "<skill-base-dir>/../worktree/scripts/worktree.py" setup "$CHANGE_ID")"
+cd "$WORKTREE_PATH"
+python3 "<skill-base-dir>/../shared/checkout_policy.py" require-mutation
+```
+
+`--dry-run` remains read-only and may run from the shared checkout.
 
 ## Input
 
@@ -66,7 +84,7 @@ The `dispatch_fn` receives `(item_id, phase, context)` and returns an outcome st
 ### 4. Handle Success
 
 On item completion:
-- Write a learning entry via `skills/roadmap-runtime/scripts/learning.py`
+- Write a learning entry via `<skill-base-dir>/../roadmap-runtime/scripts/learning.py`
 - Mark the item completed in the checkpoint
 - Run adaptive reprioritization (`replanner.replan()`) to adjust pending items
 - Advance to the next ready item
@@ -115,7 +133,7 @@ Workspace artifacts updated:
 
 ## Shared Runtime
 
-All data model operations use the shared runtime at `skills/roadmap-runtime/scripts/`:
+All data model operations use the shared runtime at `<skill-base-dir>/../roadmap-runtime/scripts/`:
 - `models.py` - Roadmap, Checkpoint, LearningEntry dataclasses
 - `checkpoint.py` - CheckpointManager for save/restore/advance
 - `learning.py` - Learning entry write/read/compact
@@ -128,11 +146,22 @@ All data model operations use the shared runtime at `skills/roadmap-runtime/scri
 1. **The orchestrating Claude Code agent**, via the `dispatch_fn` callback. `orchestrator.execute_roadmap()` hands `(item_id, phase, context)` tuples to the callback; the agent runs `/implement-feature` / `/validate-feature` / friends in response. The host agent is the LLM runtime; no external API key is required.
 2. **Deterministic code** — `replanner.replan()` (regex text matching over learning entries), `policy.evaluate_policy()` (arithmetic/rule-based vendor decisions).
 
-Any future work that needs semantic reasoning must be expressed as either (a) a new callback delegated to the host agent, or (b) a new dispatch phase routed through `/implement-feature`. Reaching for `llm_client.py` or an SDK like `anthropic` / `openai` / `google.generativeai` inside `skills/autopilot-roadmap/scripts/` is out of bounds and enforced by a guard test (`skills/tests/autopilot-roadmap/test_host_assisted_invariant.py`).
+Any future work that needs semantic reasoning must be expressed as either (a) a new callback delegated to the host agent, or (b) a new dispatch phase routed through `/implement-feature`. Reaching for `llm_client.py` or an SDK like `anthropic` / `openai` / `google.generativeai` inside `<skill-base-dir>/scripts/` is out of bounds and enforced by the **source-contribution-only** test `skills/tests/autopilot-roadmap/test_host_assisted_invariant.py`.
 
-The same principle applies to `skills/autopilot/scripts/`. The invariant exists because autopilot is typically invoked from a Claude Code session that already has a paid-for model loaded; routing reasoning through a second external API would double-bill and fragment the session's context.
+The same principle applies to `<skill-base-dir>/../autopilot/scripts/`. The invariant exists because autopilot is typically invoked from a Claude Code session that already has a paid-for model loaded; routing reasoning through a second external API would double-bill and fragment the session's context.
 
-The one intentional exception elsewhere in the codebase is `skills/parallel-infrastructure/scripts/review_dispatcher.py` (used by `parallel-review-plan` and `parallel-review-implementation`), where vendor diversity is the feature — multi-vendor review requires calling *different* models to get independent findings. That's not host-assistable by construction.
+The one intentional exception elsewhere in the installed payload is `<skill-base-dir>/../parallel-infrastructure/scripts/review_dispatcher.py` (used by `parallel-review-plan` and `parallel-review-implementation`), where vendor diversity is the feature — multi-vendor review requires calling *different* models to get independent findings. That's not host-assistable by construction.
+
+## Deferred: automated re-decomposition on `replan_required`
+
+The roadmap item status enum includes `replan_required`, but autopilot **does not act on it today** — `replanner.replan()` only nudges priorities of existing items (regex over learning entries), and the orchestrator never re-reads the source proposal. An item that genuinely needs re-decomposition currently requires a human to re-run `/plan-roadmap`.
+
+If we later want autopilot to re-decompose automatically when an item is flagged `replan_required`, that is the point at which a headless generation entry point in `plan-roadmap` earns its keep. The shape that respects this invariant:
+
+- A `<skill-base-dir>/../plan-roadmap/scripts/generate.py` that drives the deterministic loop — fill `templates/generation-prompt.md`, dispatch, run `decomposer.validate_roadmap()`, and re-dispatch with the error list up to a bounded retry — but takes an **injected runner callback** rather than calling any model itself (mirror `<skill-base-dir>/../autopilot/scripts/provider_dispatch.py::dispatch_phase(payload, runner=...)`).
+- Autopilot supplies that runner the same way it supplies `dispatch_fn`: the host agent (or a CLI dispatch via `review_dispatcher.py`) does the actual generation. No LLM SDK enters `<skill-base-dir>/scripts/`.
+
+Until that automation exists, `generate.py` would be solving for a caller that doesn't exist — decomposition stays interactive in `/plan-roadmap`, where the agent is already the control flow.
 
 ## Next Step
 

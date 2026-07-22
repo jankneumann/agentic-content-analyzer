@@ -125,6 +125,10 @@ class TestSettingsOverrideList:
         assert resp.status_code == 200
         assert resp.json()["overrides"] == []
 
+    def test_list_rejects_postgres_nul_prefix(self, client):
+        resp = client.get("/api/v1/settings/overrides?prefix=invalid%00text")
+        assert resp.status_code == 422
+
 
 class TestSettingsOverrideGet:
     """Test getting a single override."""

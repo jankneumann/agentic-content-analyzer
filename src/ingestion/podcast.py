@@ -224,12 +224,9 @@ class PodcastContentIngestionService:
             if not force_reprocess:
                 source_ids = [f"podcast:{e['guid']}" for e in episodes]
                 if source_ids:
-                    # Use .in_() for O(1) bulk lookup
-                    # Only fetch source_id column to avoid loading full objects
-                    results = (
-                        db.query(Content.source_id).filter(Content.source_id.in_(source_ids)).all()
-                    )
-                    existing_source_ids = {row[0] for row in results}
+                    # Load entities so the ingestion receipt captures reused canonical IDs.
+                    results = db.query(Content).filter(Content.source_id.in_(source_ids)).all()
+                    existing_source_ids = {content.source_id for content in results}
 
             for episode in episodes:
                 guid = episode["guid"]
@@ -332,6 +329,7 @@ class PodcastContentIngestionService:
         max_entries_per_feed: int = 10,
         after_date: datetime | None = None,
         force_reprocess: bool = False,
+        transcribe: bool | None = None,
     ) -> IngestionResponse:
         """Ingest episodes from multiple podcast feeds.
 
@@ -375,7 +373,7 @@ class PodcastContentIngestionService:
                     force_reprocess=force_reprocess,
                     source_name=source.name,
                     source_tags=source.tags if source.tags else None,
-                    transcribe=source.transcribe,
+                    transcribe=source.transcribe if transcribe is None else transcribe,
                     stt_provider=source.stt_provider,
                     languages=source.languages if source.languages else None,
                 )

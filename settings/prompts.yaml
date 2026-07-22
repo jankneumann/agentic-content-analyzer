@@ -212,6 +212,7 @@ pipeline:
          - Cross-functional impact (affects multiple teams)
       5. **Find related themes** - What other themes connect to this one?
       6. **Extract key points** - 2-4 bullet points about what the content says about this theme
+      7. **Attribute exact sources** - Include `content_ids` using only Content IDs shown in the summaries. Do not infer or invent IDs.
 
       # Output Format
 
@@ -224,6 +225,7 @@ pipeline:
           "description": "Brief 1-2 sentence description",
           "category": "ml_ai",
           "mention_count": 3,
+          "content_ids": [42, 17, 9],
           "trend": "emerging",
           "relevance_score": 0.85,
           "strategic_relevance": 0.9,
@@ -243,6 +245,7 @@ pipeline:
       # Guidelines
 
       - Focus on themes relevant to enterprise AI/data/engineering teams
+      - `mention_count` must equal the number of unique `content_ids`
       - Prioritize strategic significance over tactical details
       - Look for cross-cutting themes that appear in multiple content items
       - Identify emerging trends that leaders should know about

@@ -22,6 +22,7 @@ import type {
   DigestReviewRequest,
   DigestFilters,
 } from "@/types"
+import type { DigestCreateRequest, OperationHandle } from "@/generated/workflow-contracts"
 
 /**
  * Fetch list of digests
@@ -89,13 +90,18 @@ export async function fetchDigestSection(
  */
 export async function generateDigest(
   request: GenerateDigestRequest
-): Promise<{
-  status: string
-  message: string
-  period_start: string
-  period_end: string
-}> {
-  return apiClient.post("/digests/generate", request)
+): Promise<OperationHandle> {
+  if (!request.period_start || !request.period_end) throw new Error("Digest period is required")
+  const query = request.content_query
+    ? {
+        ...request.content_query,
+        sort_by: ["id", "title", "source_type", "publication", "status", "published_date", "ingested_at"].includes(request.content_query.sort_by ?? "")
+          ? request.content_query.sort_by as NonNullable<DigestCreateRequest["query"]>["sort_by"]
+          : undefined,
+      }
+    : undefined
+  const canonical: DigestCreateRequest = { digest_type: request.digest_type, period_start: request.period_start, period_end: request.period_end, query, include_historical_context: request.include_historical_context }
+  return apiClient.post("/digests", canonical)
 }
 
 /**
@@ -111,7 +117,7 @@ export async function regenerateDigest(
   message: string
   digest_id: number
 }> {
-  return apiClient.post(`/digests/${digestId}/regenerate`)
+  throw new Error(`Digest regeneration is unavailable after the workflow migration (${digestId})`)
 }
 
 /**

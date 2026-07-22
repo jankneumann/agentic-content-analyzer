@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -42,14 +42,25 @@ def _job(state_name: str, responses: list | None = None, error: str | None = Non
     return SimpleNamespace(name="batches/test-123", state=state, dest=dest, error=error)
 
 
+def _async_client() -> tuple[MagicMock, MagicMock]:
+    client = MagicMock()
+    batches = MagicMock()
+    batches.create = AsyncMock()
+    batches.get = AsyncMock()
+    client.aio.batches = batches
+    return client, batches
+
+
 class TestSubmitBatch:
     @pytest.mark.asyncio
     async def test_rejects_non_google_model(self, router):
-        with pytest.raises(ValueError, match="google_ai"):
-            await router.submit_batch(
-                "claude-sonnet-4-5",
-                [BatchRequest(key="k1", contents="hi")],
-            )
+        with patch("google.genai.Client") as client_factory:
+            with pytest.raises(ValueError, match="google_ai"):
+                await router.submit_batch(
+                    "claude-sonnet-4-5",
+                    [BatchRequest(key="k1", contents="hi")],
+                )
+        client_factory.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_rejects_empty_requests(self, router):
@@ -68,8 +79,8 @@ class TestSubmitBatch:
 
     @pytest.mark.asyncio
     async def test_submits_inline_with_request_key_metadata(self, router):
-        mock_client = MagicMock()
-        mock_client.batches.create.return_value = SimpleNamespace(name="batches/abc")
+        mock_client, batches = _async_client()
+        batches.create.return_value = SimpleNamespace(name="batches/abc")
         with (
             patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
@@ -83,8 +94,9 @@ class TestSubmitBatch:
             )
 
         assert job_name == "batches/abc"
-        mock_client.batches.create.assert_called_once()
-        kwargs = mock_client.batches.create.call_args.kwargs
+        batches.create.assert_awaited_once()
+        kwargs = batches.create.call_args.kwargs
+        assert kwargs["model"] == "gemini-2.5-flash-lite"
         src = kwargs["src"]
         assert len(src) == 2
         # Each inlined request must carry its request_key for reconciliation.
@@ -93,7 +105,7 @@ class TestSubmitBatch:
     @pytest.mark.asyncio
     async def test_rejects_oversized_inline_payload(self, router):
         big = "x" * (19 * 1024 * 1024)
-        mock_client = MagicMock()
+        mock_client, batches = _async_client()
         with (
             patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
@@ -103,15 +115,43 @@ class TestSubmitBatch:
                     "gemini-2.5-flash-lite",
                     [BatchRequest(key="k1", contents=big)],
                 )
-        mock_client.batches.create.assert_not_called()
+        batches.create.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_rejects_payload_at_configured_limit_using_utf8_bytes(self, router):
+        router.model_config._batch_config["inline_max_bytes"] = 100
+        mock_client, batches = _async_client()
+        with (
+            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch("google.genai.Client", return_value=mock_client),
+        ):
+            with pytest.raises(ValueError, match="inline cap"):
+                await router.submit_batch(
+                    "gemini-2.5-flash-lite",
+                    [BatchRequest(key="k1", contents="é" * 100)],
+                )
+        batches.create.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_rejects_duplicate_request_keys_before_client_creation(self, router):
+        with patch("google.genai.Client") as client_factory:
+            with pytest.raises(ValueError, match="duplicate request key"):
+                await router.submit_batch(
+                    "gemini-2.5-flash-lite",
+                    [
+                        BatchRequest(key="same", contents="one"),
+                        BatchRequest(key="same", contents="two"),
+                    ],
+                )
+        client_factory.assert_not_called()
 
 
 class TestPollBatch:
     @pytest.mark.asyncio
     async def test_success_returns_results_by_key_order_independent(self, router):
         # Responses come back in REVERSE order — reconciliation must use metadata.
-        mock_client = MagicMock()
-        mock_client.batches.get.return_value = _job(
+        mock_client, batches = _async_client()
+        batches.get.return_value = _job(
             "JOB_STATE_SUCCEEDED",
             responses=[_resp("answer two", "k2"), _resp("answer one", "k1")],
         )
@@ -126,11 +166,12 @@ class TestPollBatch:
         assert result.results_by_key == {"k1": "answer one", "k2": "answer two"}
         assert result.errors_by_key is None
         assert result.is_terminal is True
+        batches.get.assert_awaited_once_with(name="batches/test-123")
 
     @pytest.mark.asyncio
     async def test_partial_success_splits_results_and_errors(self, router):
-        mock_client = MagicMock()
-        mock_client.batches.get.return_value = _job(
+        mock_client, batches = _async_client()
+        batches.get.return_value = _job(
             "JOB_STATE_PARTIALLY_SUCCEEDED",
             responses=[_resp("ok", "k1"), _err_resp("k2", "safety block")],
         )
@@ -146,8 +187,8 @@ class TestPollBatch:
 
     @pytest.mark.asyncio
     async def test_failed_state_returns_no_results(self, router):
-        mock_client = MagicMock()
-        mock_client.batches.get.return_value = _job("JOB_STATE_FAILED", error="quota exceeded")
+        mock_client, batches = _async_client()
+        batches.get.return_value = _job("JOB_STATE_FAILED", error="quota exceeded")
         with (
             patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
@@ -161,8 +202,8 @@ class TestPollBatch:
 
     @pytest.mark.asyncio
     async def test_expired_state_is_terminal(self, router):
-        mock_client = MagicMock()
-        mock_client.batches.get.return_value = _job("JOB_STATE_EXPIRED")
+        mock_client, batches = _async_client()
+        batches.get.return_value = _job("JOB_STATE_EXPIRED")
         with (
             patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
@@ -175,8 +216,8 @@ class TestPollBatch:
 
     @pytest.mark.asyncio
     async def test_running_state_is_non_terminal(self, router):
-        mock_client = MagicMock()
-        mock_client.batches.get.return_value = _job("JOB_STATE_RUNNING")
+        mock_client, batches = _async_client()
+        batches.get.return_value = _job("JOB_STATE_RUNNING")
         with (
             patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
@@ -192,6 +233,50 @@ class TestPollBatch:
             os.environ.pop("GOOGLE_API_KEY", None)
             with pytest.raises(RuntimeError, match="GOOGLE_API_KEY"):
                 await router.poll_batch("batches/test-123")
+
+    @pytest.mark.asyncio
+    async def test_duplicate_response_key_is_an_error_not_last_write_wins(self, router):
+        mock_client, batches = _async_client()
+        batches.get.return_value = _job(
+            "JOB_STATE_SUCCEEDED",
+            responses=[_resp("first", "k1"), _resp("second", "k1")],
+        )
+        with (
+            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch("google.genai.Client", return_value=mock_client),
+        ):
+            result = await router.poll_batch("batches/test-123", expected_request_keys={"k1"})
+
+        assert result.results_by_key == {}
+        assert result.errors_by_key == {"k1": "duplicate batch response request_key"}
+
+    @pytest.mark.asyncio
+    async def test_missing_metadata_and_missing_expected_key_are_reported(self, router):
+        response = _resp("orphaned", "ignored")
+        response.metadata = {}
+        mock_client, batches = _async_client()
+        batches.get.return_value = _job("JOB_STATE_SUCCEEDED", responses=[response])
+        with (
+            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch("google.genai.Client", return_value=mock_client),
+        ):
+            result = await router.poll_batch("batches/test-123", expected_request_keys={"k1"})
+
+        assert result.errors_by_key == {"k1": "missing from batch response"}
+        assert result.unmatched_errors == ("batch response missing request_key metadata",)
+
+    @pytest.mark.asyncio
+    async def test_empty_generated_text_is_a_per_request_error(self, router):
+        mock_client, batches = _async_client()
+        batches.get.return_value = _job("JOB_STATE_SUCCEEDED", responses=[_resp("", "k1")])
+        with (
+            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch("google.genai.Client", return_value=mock_client),
+        ):
+            result = await router.poll_batch("batches/test-123")
+
+        assert result.results_by_key == {}
+        assert result.errors_by_key == {"k1": "batch response contained no text"}
 
 
 class TestStateMapping:

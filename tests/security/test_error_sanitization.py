@@ -168,12 +168,13 @@ class TestErrorSanitization:
         assert "my-secret-password-attempt" not in resp.text
 
     def test_error_response_has_structured_format(self, production_client):
-        """All auth error responses follow the structured {error, detail} format."""
+        """All auth errors use the public RFC 7807 problem contract."""
         # 401 from middleware
         resp = production_client.get("/api/v1/digests/")
         body = resp.json()
-        assert "error" in body, "401 response missing 'error' field"
-        assert "detail" in body, "401 response missing 'detail' field"
+        assert resp.headers["content-type"].startswith("application/problem+json")
+        assert body["status"] == 401
+        assert {"type", "title", "status", "detail"} <= body.keys()
 
         # 403 from middleware
         resp = production_client.get(
@@ -181,8 +182,9 @@ class TestErrorSanitization:
             headers={"X-Admin-Key": "wrong-key"},
         )
         body = resp.json()
-        assert "error" in body, "403 response missing 'error' field"
-        assert "detail" in body, "403 response missing 'detail' field"
+        assert resp.headers["content-type"].startswith("application/problem+json")
+        assert body["status"] == 403
+        assert {"type", "title", "status", "detail"} <= body.keys()
 
 
 # ===========================================================================

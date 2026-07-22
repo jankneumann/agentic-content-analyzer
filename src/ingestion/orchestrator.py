@@ -383,6 +383,7 @@ def ingest_podcast(
     max_entries_per_feed: int = 10,
     after_date: datetime | None = None,
     force_reprocess: bool = False,
+    transcribe: bool | None = None,
 ) -> IngestionResponse:
     """Ingest episodes from configured podcast feeds.
 
@@ -397,10 +398,14 @@ def ingest_podcast(
     from src.ingestion.podcast import PodcastContentIngestionService
 
     service = PodcastContentIngestionService()
+    kwargs: dict[str, Any] = {}
+    if transcribe is not None:
+        kwargs["transcribe"] = transcribe
     return service.ingest_all_feeds(
         max_entries_per_feed=max_entries_per_feed,
         after_date=after_date,
         force_reprocess=force_reprocess,
+        **kwargs,
     )
 
 
@@ -1023,8 +1028,184 @@ def ingest_url(
     title: str | None = None,
     tags: list[str] | None = None,
     notes: str | None = None,
+    auto_route: bool = True,
+    force_reprocess: bool = False,
 ) -> IngestionResponse:
-    """Ingest a single URL using the save-url workflow.
+    """Ingest a single submitted URL, auto-routing it to the right handler.
+
+    When ``auto_route`` is True (the default) the URL is classified via
+    :func:`src.ingestion.url_router.classify_url` and dispatched:
+
+    - YouTube video    -> YouTube transcript/analysis ingestion
+    - YouTube playlist -> playlist ingestion
+    - RSS / Atom feed  -> RSS feed ingestion
+    - anything else    -> generic web-page extraction (Trafilatura)
+
+    Set ``auto_route=False`` to force generic web-page extraction regardless of
+    the URL shape (the original ``aca ingest url`` behaviour).
+
+    All branches return the same canonical envelope (command='ingest.url',
+    source='url'); ``details.routed_to`` records which handler ran so callers
+    can render an appropriate message.
+
+    Args:
+        url: The URL to ingest.
+        title: Optional title override (web-page route only; URL used as fallback).
+        tags: Optional tags for the content.
+        notes: Optional user notes.
+        auto_route: Classify and route the URL (True) or always treat it as a
+            generic web page (False).
+
+    Returns:
+        Canonical IngestionResponse envelope (command='ingest.url', source='url').
+    """
+    from src.ingestion.url_router import RouteKind, classify_url
+
+    kind = classify_url(url) if auto_route else RouteKind.WEBPAGE
+
+    if kind == RouteKind.YOUTUBE_VIDEO:
+        return _ingest_routed_youtube_video(url, tags, notes, force_reprocess)
+    if kind == RouteKind.YOUTUBE_PLAYLIST:
+        return _ingest_routed_youtube_playlist(url, tags, notes, force_reprocess)
+    if kind == RouteKind.RSS_FEED:
+        return _ingest_routed_rss(url, tags, notes, force_reprocess)
+    return _ingest_webpage(
+        url=url,
+        title=title,
+        tags=tags,
+        notes=notes,
+        force_reprocess=force_reprocess,
+    )
+
+
+def _ingest_routed_youtube_video(
+    url: str,
+    tags: list[str] | None,
+    notes: str | None,
+    force_reprocess: bool = False,
+) -> IngestionResponse:
+    """Route a shared YouTube video URL to YouTube ingestion."""
+    import asyncio
+
+    from src.ingestion.youtube import YouTubeContentIngestionService
+
+    async def _run() -> IngestionResponse:
+        service = YouTubeContentIngestionService()
+        return await service.ingest_video(
+            url,
+            tags=tags,
+            notes=notes,
+            force_reprocess=force_reprocess,
+        )
+
+    return asyncio.run(_run())
+
+
+def _ingest_routed_youtube_playlist(
+    url: str,
+    tags: list[str] | None,
+    notes: str | None,
+    force_reprocess: bool = False,
+) -> IngestionResponse:
+    """Route a shared YouTube playlist URL to playlist ingestion."""
+    import asyncio
+
+    from src.ingestion.result import IngestionError, IngestionResponse, derive_status
+    from src.ingestion.youtube import YouTubeContentIngestionService
+    from src.utils.youtube_links import extract_playlist_id
+
+    playlist_id = extract_playlist_id(url)
+    if not playlist_id:
+        return IngestionResponse(
+            command="ingest.url",
+            source="url",
+            status="error",
+            errors=[
+                IngestionError(
+                    code="invalid_youtube_playlist",
+                    message=f"Could not extract a playlist id from: {url}",
+                    url=url,
+                )
+            ],
+            details={"routed_to": "youtube_playlist", "url": url},
+        )
+
+    async def _run():
+        service = YouTubeContentIngestionService()
+        return await service.ingest_playlist(playlist_id, force_reprocess=force_reprocess)
+
+    result = asyncio.run(_run())  # SourceFetchResult
+    items = result.items_fetched
+    return IngestionResponse(
+        command="ingest.url",
+        source="url",
+        status=derive_status(
+            items_ingested=items, items_failed=result.items_failed, errors=result.item_errors
+        ),
+        items_ingested=items,
+        items_failed=result.items_failed,
+        errors=result.item_errors,
+        details={
+            "routed_to": "youtube_playlist",
+            "url": url,
+            "playlist_id": playlist_id,
+            "content_id": None,
+            "items_ingested": items,
+        },
+    )
+
+
+def _ingest_routed_rss(
+    url: str,
+    tags: list[str] | None,
+    notes: str | None,
+    force_reprocess: bool = False,
+) -> IngestionResponse:
+    """Route a shared feed URL to RSS feed ingestion.
+
+    A feed expands to many items, so there is no single ``content_id`` to
+    return; ``details.items_ingested`` reports how many entries landed. User
+    ``notes`` have no per-entry home and are ignored for feeds; ``tags`` ride
+    along on the synthesised source so they attach to every ingested entry.
+    """
+    from src.config.sources import RSSSource
+    from src.ingestion.result import IngestionResponse
+    from src.ingestion.rss import RSSContentIngestionService
+
+    service = RSSContentIngestionService()
+    try:
+        source = RSSSource(url=url, tags=tags or [])
+        resp = service.ingest_content(sources=[source], force_reprocess=force_reprocess)
+    finally:
+        service.close()
+
+    return IngestionResponse(
+        command="ingest.url",
+        source="url",
+        status=resp.status,
+        items_ingested=resp.items_ingested,
+        items_skipped=resp.items_skipped,
+        items_failed=resp.items_failed,
+        errors=resp.errors,
+        warnings=resp.warnings,
+        details={
+            "routed_to": "rss_feed",
+            "url": url,
+            "content_id": None,
+            "items_ingested": resp.items_ingested,
+        },
+    )
+
+
+def _ingest_webpage(
+    *,
+    url: str,
+    title: str | None = None,
+    tags: list[str] | None = None,
+    notes: str | None = None,
+    force_reprocess: bool = False,
+) -> IngestionResponse:
+    """Ingest a single URL as a generic web page (Trafilatura extraction).
 
     Creates a Content record (source_type=WEBPAGE) and runs URL extraction
     synchronously. Deduplicates by source_url; a duplicate hit returns
@@ -1052,7 +1233,7 @@ def ingest_url(
     with get_db() as db:
         # Check for duplicate
         existing = db.query(Content).filter(Content.source_url == url).first()
-        if existing:
+        if existing and not force_reprocess:
             logger.info(f"URL already exists: content_id={existing.id}, url={url}")
             return IngestionResponse(
                 command="ingest.url",
@@ -1067,26 +1248,31 @@ def ingest_url(
                 },
             )
 
-        # Build metadata
-        metadata: dict = {"capture_source": "cli"}
+        metadata: dict = dict(existing.metadata_json or {}) if existing else {}
+        metadata["capture_source"] = "cli"
         if tags:
             metadata["tags"] = tags
         if notes:
             metadata["notes"] = notes
 
-        content = Content(
-            source_type=ContentSource.WEBPAGE,
-            source_id=f"webpage:{url}",
-            source_url=url,
-            title=title or url,
-            markdown_content="",
-            content_hash=generate_markdown_hash(""),
-            status=ContentStatus.PENDING,
-            metadata_json=metadata,
-            ingested_at=datetime.now(UTC),
-        )
-
-        db.add(content)
+        if existing:
+            existing.title = title or existing.title
+            existing.metadata_json = metadata
+            existing.status = ContentStatus.PENDING
+            content = existing
+        else:
+            content = Content(
+                source_type=ContentSource.WEBPAGE,
+                source_id=f"webpage:{url}",
+                source_url=url,
+                title=title or url,
+                markdown_content="",
+                content_hash=generate_markdown_hash(""),
+                status=ContentStatus.PENDING,
+                metadata_json=metadata,
+                ingested_at=datetime.now(UTC),
+            )
+            db.add(content)
         db.commit()
         db.refresh(content)
 
@@ -1146,6 +1332,7 @@ def ingest_files(
     paths: list[Path],
     publication: str | None = None,
     title: str | None = None,
+    force_reprocess: bool = False,
 ) -> IngestionResponse:
     """Ingest one or more local files into the content pipeline.
 
@@ -1199,7 +1386,12 @@ def ingest_files(
                 router = ParserRouter(markitdown_parser=markitdown)
                 service = FileContentIngestionService(router=router, db=db)
                 content = asyncio.run(
-                    service.ingest_file(path, publication=publication, title=title)
+                    service.ingest_file(
+                        path,
+                        publication=publication,
+                        title=title,
+                        force_reprocess=force_reprocess,
+                    )
                 )
             items_ingested += 1
             results.append(

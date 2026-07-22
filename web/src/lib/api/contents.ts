@@ -28,6 +28,7 @@ import type {
   Summary,
 } from "@/types"
 import type { ContentQuery } from "@/types/query"
+import type { OperationHandle } from "@/generated/workflow-contracts"
 
 /**
  * Parameters for content ingestion
@@ -173,8 +174,13 @@ export async function mergeContentDuplicate(
  */
 export async function ingestContents(
   params: IngestContentParams
-): Promise<IngestContentResponse> {
-  return apiClient.post<IngestContentResponse>("/contents/ingest", params)
+): Promise<OperationHandle> {
+  return apiClient.post<OperationHandle>("/ingestions", {
+    kind: params.source === "youtube" ? "youtube_playlist" : params.source,
+    max_items: params.max_results,
+    days_back: params.days_back,
+    force_reprocess: params.force_reprocess,
+  })
 }
 
 // ============================================================================
@@ -211,10 +217,14 @@ export interface SaveURLResponse {
  * @param params - URL and optional metadata
  * @returns Save result with content_id and status
  */
-export async function saveUrl(
-  params: SaveURLParams
-): Promise<SaveURLResponse> {
-  return apiClient.post<SaveURLResponse>("/content/save-url", params)
+export async function saveUrl(params: SaveURLParams): Promise<OperationHandle> {
+  return apiClient.post<OperationHandle>("/ingestions", {
+    kind: "url",
+    url: params.url,
+    title: params.title,
+    tags: params.tags,
+    notes: params.notes,
+  })
 }
 
 // ============================================================================
@@ -271,8 +281,13 @@ export interface ContentSummarizationProgressEvent {
  */
 export async function summarizeContents(
   params: SummarizeContentParams = {}
-): Promise<SummarizeContentResponse> {
-  return apiClient.post<SummarizeContentResponse>("/contents/summarize", params)
+): Promise<OperationHandle> {
+  const contentIds = params.content_ids?.length ? params.content_ids : undefined
+  return apiClient.post<OperationHandle>("/summarization-runs", {
+    content_ids: contentIds,
+    query: contentIds ? undefined : (params.query ?? {}),
+    force_reprocess: params.force,
+  })
 }
 
 /**
@@ -325,7 +340,10 @@ export function trackContentSummarization(
                   ) as ContentSummarizationProgressEvent
                   onProgress?.(event)
 
-                  if (event.status === "completed" || event.status === "error") {
+                  if (
+                    event.status === "completed" ||
+                    event.status === "error"
+                  ) {
                     resolve(event)
                     return
                   }

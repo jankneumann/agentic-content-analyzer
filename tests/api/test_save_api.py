@@ -9,130 +9,108 @@ Tests the mobile content capture API including:
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from src.models.content import Content, ContentSource, ContentStatus
 from src.utils.content_hash import generate_markdown_hash
 
 
-class TestSaveURLEndpoint:
-    """Tests for POST /api/v1/content/save-url."""
+def _use_session(session):
+    """A get_db() replacement that yields the test session."""
+    from contextlib import contextmanager
 
-    def test_save_url_creates_content(self, client, db_session):
-        """Successfully creates content record for new URL."""
-        with patch("src.api.save_routes._enqueue_extraction", new_callable=AsyncMock):
-            response = client.post(
-                "/api/v1/content/save-url",
-                json={
-                    "url": "https://example.com/article",
-                    "title": "Test Article",
-                    "source": "ios_shortcut",
-                },
-            )
+    @contextmanager
+    def _cm():
+        yield session
 
-        assert response.status_code == 201
-        data = response.json()
-        assert data["status"] == "queued"
-        assert data["duplicate"] is False
-        assert "content_id" in data
-        assert data["message"] == "URL saved. Content extraction in progress."
+    return _cm
 
-        # Verify content was created in database
-        content = db_session.query(Content).filter(Content.id == data["content_id"]).first()
-        assert content is not None
-        assert content.source_url == "https://example.com/article"
-        assert content.title == "Test Article"
-        assert content.status == ContentStatus.PENDING
-        assert content.source_type == ContentSource.WEBPAGE
-        # Verify NOT NULL fields are populated
-        assert content.source_id == "webpage:https://example.com/article"
-        assert content.markdown_content == ""
-        assert content.content_hash is not None and len(content.content_hash) == 64
 
-    def test_save_url_detects_duplicate(self, client, db_session):
-        """Returns existing content for duplicate URL."""
-        # Create existing content
-        existing = Content(
-            source_type=ContentSource.WEBPAGE,
-            source_id="webpage:https://example.com/existing",
-            source_url="https://example.com/existing",
-            title="Existing Article",
-            markdown_content="Existing content.",
-            content_hash=generate_markdown_hash("Existing content."),
-            status=ContentStatus.PARSED,
+class TestProcessRoutedSave:
+    """Background routing finalization, including failure surfacing."""
+
+    @pytest.mark.asyncio
+    async def test_youtube_no_content_marks_failed(self, db_session):
+        """A video that yields no transcript leaves the row FAILED, not PENDING."""
+        from unittest.mock import MagicMock
+
+        from src.api.save_routes import _process_routed_save
+        from src.ingestion.result import IngestionResponse
+
+        row = Content(
+            source_type=ContentSource.YOUTUBE,
+            source_id="youtube:dQw4w9WgXcQ",
+            source_url="https://youtu.be/dQw4w9WgXcQ",
+            title="Pending video",
+            markdown_content="",
+            content_hash=generate_markdown_hash(""),
+            status=ContentStatus.PENDING,
+            metadata_json={"route": "youtube_video"},
             ingested_at=datetime.now(UTC),
         )
-        db_session.add(existing)
+        db_session.add(row)
         db_session.commit()
-        existing_id = existing.id
+        content_id = row.id
 
-        # Try to save the same URL
-        with patch("src.api.save_routes._enqueue_extraction", new_callable=AsyncMock):
-            response = client.post(
-                "/api/v1/content/save-url",
-                json={"url": "https://example.com/existing"},
+        svc = MagicMock()
+        # No transcript / no Gemini -> ok envelope with nothing ingested.
+        svc.ingest_video = AsyncMock(
+            return_value=IngestionResponse(
+                command="ingest.url", source="url", status="ok", items_skipped=1
             )
+        )
+        with (
+            patch("src.ingestion.youtube.YouTubeContentIngestionService", return_value=svc),
+            patch("src.api.save_routes.get_db", _use_session(db_session)),
+        ):
+            await _process_routed_save(content_id)
 
-        assert response.status_code == 201
-        data = response.json()
-        assert data["status"] == "exists"
-        assert data["duplicate"] is True
-        assert data["content_id"] == existing_id
+        refreshed = db_session.query(Content).filter(Content.id == content_id).first()
+        assert refreshed.status == ContentStatus.FAILED
+        assert refreshed.error_message
 
-    def test_save_url_with_all_fields(self, client, db_session):
-        """Saves all optional fields to metadata."""
-        with patch("src.api.save_routes._enqueue_extraction", new_callable=AsyncMock):
-            response = client.post(
-                "/api/v1/content/save-url",
-                json={
-                    "url": "https://example.com/full-article",
-                    "title": "Full Article",
-                    "excerpt": "This is a selected excerpt from the page.",
-                    "tags": ["ai", "technology"],
-                    "notes": "Important article about AI trends.",
-                    "source": "bookmarklet",
-                },
+    @pytest.mark.asyncio
+    async def test_failed_feed_not_completed(self, db_session):
+        """An errored feed ingest marks the receipt FAILED, not COMPLETED."""
+        from unittest.mock import MagicMock
+
+        from src.api.save_routes import _process_routed_save
+        from src.ingestion.result import IngestionError, IngestionResponse
+
+        row = Content(
+            source_type=ContentSource.RSS,
+            source_id="feed:https://bad.example.com/feed",
+            source_url="https://bad.example.com/feed",
+            title="Pending feed",
+            markdown_content="",
+            content_hash=generate_markdown_hash(""),
+            status=ContentStatus.PENDING,
+            metadata_json={"route": "rss_feed"},
+            ingested_at=datetime.now(UTC),
+        )
+        db_session.add(row)
+        db_session.commit()
+        content_id = row.id
+
+        svc = MagicMock()
+        svc.ingest_content = MagicMock(
+            return_value=IngestionResponse(
+                command="ingest.rss",
+                source="rss",
+                status="error",
+                errors=[IngestionError(code="http_error", message="404 Not Found")],
             )
-
-        assert response.status_code == 201
-        data = response.json()
-
-        # Verify metadata was stored
-        content = db_session.query(Content).filter(Content.id == data["content_id"]).first()
-        assert content.metadata_json["excerpt"] == "This is a selected excerpt from the page."
-        assert content.metadata_json["tags"] == ["ai", "technology"]
-        assert content.metadata_json["notes"] == "Important article about AI trends."
-        assert content.metadata_json["capture_source"] == "bookmarklet"
-
-    def test_save_url_uses_url_as_title_when_not_provided(self, client, db_session):
-        """Uses URL as title when title not provided."""
-        with patch("src.api.save_routes._enqueue_extraction", new_callable=AsyncMock):
-            response = client.post(
-                "/api/v1/content/save-url",
-                json={"url": "https://example.com/no-title"},
-            )
-
-        assert response.status_code == 201
-        content = (
-            db_session.query(Content).filter(Content.id == response.json()["content_id"]).first()
         )
-        assert content.title == "https://example.com/no-title"
+        svc.close = MagicMock()
+        with (
+            patch("src.ingestion.rss.RSSContentIngestionService", return_value=svc),
+            patch("src.api.save_routes.get_db", _use_session(db_session)),
+        ):
+            await _process_routed_save(content_id)
 
-    def test_save_url_validates_url_format(self, client):
-        """Rejects invalid URL formats."""
-        response = client.post(
-            "/api/v1/content/save-url",
-            json={"url": "not-a-valid-url"},
-        )
-
-        assert response.status_code == 422  # Validation error
-
-    def test_save_url_requires_url_field(self, client):
-        """Requires url field in request body."""
-        response = client.post(
-            "/api/v1/content/save-url",
-            json={"title": "No URL provided"},
-        )
-
-        assert response.status_code == 422
+        refreshed = db_session.query(Content).filter(Content.id == content_id).first()
+        assert refreshed.status == ContentStatus.FAILED
+        assert "404" in (refreshed.error_message or "")
 
 
 class TestContentStatusEndpoint:
@@ -219,54 +197,29 @@ class TestContentStatusEndpoint:
 
 
 class TestSavePageEndpoint:
-    """Tests for GET /api/v1/content/save (web save page)."""
+    """Tests for the retained canonical web save page."""
 
-    def test_save_page_renders(self, client):
-        """Renders the save page HTML."""
+    def test_save_page_renders_canonical_ingestion_client(self, client):
         response = client.get("/api/v1/content/save")
 
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
+        assert "/api/v1/ingestions" in response.text
+        assert "operation_id" in response.text
 
-    def test_save_page_prefills_url(self, client):
-        """Pre-fills URL from query parameter."""
-        response = client.get("/api/v1/content/save?url=https://example.com/prefilled")
-
-        assert response.status_code == 200
-        assert "https://example.com/prefilled" in response.text
-
-    def test_save_page_prefills_title_and_excerpt(self, client):
-        """Pre-fills title and excerpt from query parameters."""
+    def test_save_page_prefills_and_escapes_values(self, client):
         response = client.get(
             "/api/v1/content/save"
             "?url=https://example.com/article"
-            "&title=Test%20Title"
+            "&title=%3Cscript%3Ealert(1)%3C/script%3E"
             "&excerpt=Selected%20text"
         )
 
         assert response.status_code == 200
-        assert "Test Title" in response.text
+        assert "https://example.com/article" in response.text
         assert "Selected text" in response.text
-
-    def test_save_page_escapes_special_characters(self, client):
-        """Verifies XSS protection via Jinja2 autoescaping."""
-        response = client.get(
-            '/api/v1/content/save?url=https://example.com/"onmouseover="alert(1)'
-            '&title=<script>alert("xss")</script>'
-        )
-
-        assert response.status_code == 200
-        # Raw script tag should not appear in output (Jinja2 escapes it)
         assert "<script>alert" not in response.text
-        # Escaped version should be present
         assert "&lt;script&gt;" in response.text or "&#" in response.text
-
-    def test_save_page_includes_api_base_url(self, client):
-        """Save page includes the API base URL for cross-origin support."""
-        response = client.get("/api/v1/content/save")
-
-        assert response.status_code == 200
-        assert "API_BASE" in response.text
 
 
 class TestBookmarkletPageEndpoint:
@@ -296,6 +249,32 @@ class TestBookmarkletPageEndpoint:
         assert "api_base_url" in response.text or "BASE_URL" in response.text
 
 
+class TestShortcutPageEndpoint:
+    def test_shortcut_uses_canonical_ingestion_contract(self, client):
+        response = client.get("/api/v1/content/shortcut")
+
+        assert response.status_code == 200
+        assert "/api/v1/ingestions" in response.text
+        assert '"kind": "url"' in response.text
+        assert "operation_id" in response.text
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/v1/content/save",
+        "/api/v1/content/bookmarklet",
+        "/api/v1/content/shortcut",
+    ],
+)
+def test_retained_capture_pages_do_not_reference_retired_mutations(client, path):
+    response = client.get(path)
+
+    assert response.status_code == 200
+    assert "/api/v1/content/save-url" not in response.text
+    assert "/api/v1/content/save-page" not in response.text
+
+
 class TestCORSConfiguration:
     """Tests for CORS configuration allowing mobile clients."""
 
@@ -311,193 +290,3 @@ class TestCORSConfiguration:
         # CORS middleware should include Access-Control-Allow-Origin for configured origins
         cors_header = response.headers.get("access-control-allow-origin")
         assert cors_header is not None, "CORS Access-Control-Allow-Origin header missing"
-
-
-class TestInputValidation:
-    """Tests for request validation edge cases."""
-
-    def test_save_url_rejects_oversized_tags(self, client):
-        """Rejects tags exceeding per-tag length limit."""
-        response = client.post(
-            "/api/v1/content/save-url",
-            json={
-                "url": "https://example.com/tag-test",
-                "tags": ["a" * 101],  # Exceeds 100 char limit
-            },
-        )
-
-        assert response.status_code == 422
-
-
-class TestEnqueueExtraction:
-    """Tests for the extraction enqueuing logic."""
-
-    def test_enqueue_uses_pgqueuer_when_available(self, client, db_session):
-        """Uses PGQueuer to enqueue extraction when available."""
-        mock_enqueue = AsyncMock(return_value=(100, True))
-
-        with patch("src.queue.setup.enqueue_queue_job", mock_enqueue):
-            response = client.post(
-                "/api/v1/content/save-url",
-                json={"url": "https://example.com/enqueue-test"},
-            )
-
-        assert response.status_code == 201
-        # Note: Due to background task execution, we can't easily verify the enqueue call
-        # in this test. The _enqueue_extraction function is tested separately.
-
-
-class TestSavePageEndpointAPI:
-    """Tests for POST /api/v1/content/save-page (client HTML capture)."""
-
-    def test_save_page_creates_content_with_html(self, client, db_session):
-        """Successfully creates content record with HTML payload."""
-        html_content = (
-            "<html><head><title>Test Article</title></head><body><p>Test content</p></body></html>"
-        )
-
-        with patch("src.api.save_routes._process_client_html", new_callable=AsyncMock):
-            response = client.post(
-                "/api/v1/content/save-page",
-                json={
-                    "url": "https://example.com/paywall-article",
-                    "html": html_content,
-                    "title": "Test Paywall Article",
-                    "source": "chrome_extension",
-                },
-            )
-
-        assert response.status_code == 201
-        data = response.json()
-        assert data["status"] == "queued"
-        assert data["duplicate"] is False
-        assert "content_id" in data
-        assert data["message"] == "Page saved. Content processing in progress."
-
-        # Verify content was created with correct metadata
-        content = db_session.query(Content).filter(Content.id == data["content_id"]).first()
-        assert content is not None
-        assert content.source_url == "https://example.com/paywall-article"
-        assert content.title == "Test Paywall Article"
-        assert content.status == ContentStatus.PENDING
-        assert content.source_type == ContentSource.WEBPAGE
-        assert content.metadata_json["capture_method"] == "client_html"
-        assert content.metadata_json["capture_source"] == "chrome_extension"
-
-    def test_save_page_rejects_missing_html(self, client):
-        """Rejects request without required html field."""
-        response = client.post(
-            "/api/v1/content/save-page",
-            json={
-                "url": "https://example.com/no-html",
-            },
-        )
-
-        assert response.status_code == 422  # Validation error
-
-    def test_save_page_rejects_missing_url(self, client):
-        """Rejects request without required url field."""
-        response = client.post(
-            "/api/v1/content/save-page",
-            json={
-                "html": "<html></html>",
-            },
-        )
-
-        assert response.status_code == 422  # Validation error
-
-    def test_save_page_detects_duplicate_url(self, client, db_session):
-        """Returns existing content for duplicate URL."""
-        # Create existing content
-        existing = Content(
-            source_type=ContentSource.WEBPAGE,
-            source_id="webpage:https://example.com/existing-page",
-            source_url="https://example.com/existing-page",
-            title="Existing Page",
-            markdown_content="Existing content.",
-            content_hash=generate_markdown_hash("Existing content."),
-            status=ContentStatus.PARSED,
-            ingested_at=datetime.now(UTC),
-        )
-        db_session.add(existing)
-        db_session.commit()
-        existing_id = existing.id
-
-        # Try to save the same URL with HTML
-        with patch("src.api.save_routes._process_client_html", new_callable=AsyncMock):
-            response = client.post(
-                "/api/v1/content/save-page",
-                json={
-                    "url": "https://example.com/existing-page",
-                    "html": "<html><body>Different content</body></html>",
-                },
-            )
-
-        assert response.status_code == 201
-        data = response.json()
-        assert data["status"] == "exists"
-        assert data["duplicate"] is True
-        assert data["content_id"] == existing_id
-
-    def test_save_page_with_all_optional_fields(self, client, db_session):
-        """Saves all optional fields to metadata."""
-        html_content = "<html><body><p>Full page content</p></body></html>"
-
-        with patch("src.api.save_routes._process_client_html", new_callable=AsyncMock):
-            response = client.post(
-                "/api/v1/content/save-page",
-                json={
-                    "url": "https://example.com/full-page",
-                    "html": html_content,
-                    "title": "Full Page Article",
-                    "excerpt": "Selected text from the page.",
-                    "tags": ["ai", "technology"],
-                    "notes": "Important article about AI.",
-                    "source": "chrome_extension",
-                },
-            )
-
-        assert response.status_code == 201
-        data = response.json()
-
-        # Verify all metadata was stored
-        content = db_session.query(Content).filter(Content.id == data["content_id"]).first()
-        assert content.metadata_json["capture_method"] == "client_html"
-        assert content.metadata_json["excerpt"] == "Selected text from the page."
-        assert content.metadata_json["tags"] == ["ai", "technology"]
-        assert content.metadata_json["notes"] == "Important article about AI."
-        assert content.metadata_json["capture_source"] == "chrome_extension"
-
-    def test_save_page_rejects_oversized_html(self, client):
-        """Rejects HTML payload exceeding 5 MB limit."""
-        # Create HTML larger than 5 MB
-        oversized_html = "<html>" + "x" * (5 * 1024 * 1024 + 1) + "</html>"
-
-        response = client.post(
-            "/api/v1/content/save-page",
-            json={
-                "url": "https://example.com/large-page",
-                "html": oversized_html,
-            },
-        )
-
-        assert response.status_code == 422  # Validation error for size constraint
-
-    def test_save_page_uses_url_as_title_when_not_provided(self, client, db_session):
-        """Uses URL as title when title not provided."""
-        html_content = "<html><body><p>Content</p></body></html>"
-
-        with patch("src.api.save_routes._process_client_html", new_callable=AsyncMock):
-            response = client.post(
-                "/api/v1/content/save-page",
-                json={
-                    "url": "https://example.com/no-title-page",
-                    "html": html_content,
-                },
-            )
-
-        assert response.status_code == 201
-        content = (
-            db_session.query(Content).filter(Content.id == response.json()["content_id"]).first()
-        )
-        assert content.title == "https://example.com/no-title-page"

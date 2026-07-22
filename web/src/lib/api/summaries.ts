@@ -14,7 +14,7 @@
  * const result = await triggerSummarization({ newsletterIds: ['id1', 'id2'] })
  */
 
-import { apiClient, API_BASE_URL } from "./client"
+import { apiClient } from "./client"
 import type {
   Summary,
   SummaryListItem,
@@ -23,6 +23,7 @@ import type {
   SummaryFilters,
   PaginatedResponse,
 } from "@/types"
+import type { OperationHandle } from "@/generated/workflow-contracts"
 
 // Re-export for convenience
 export type { SummaryFilters }
@@ -84,8 +85,15 @@ export async function fetchSummaryByNewsletter(
  */
 export async function triggerSummarization(
   request: SummarizeRequest
-): Promise<SummarizeResponse> {
-  return apiClient.post<SummarizeResponse>("/summaries/generate", request)
+): Promise<OperationHandle> {
+  const contentIds = request.content_ids?.length
+    ? request.content_ids.map(Number)
+    : undefined
+  return apiClient.post<OperationHandle>("/summarization-runs", {
+    content_ids: contentIds,
+    query: contentIds ? undefined : {},
+    force_reprocess: request.force,
+  })
 }
 
 /**
@@ -99,7 +107,9 @@ export async function triggerSummarization(
 export async function regenerateSummary(
   summaryId: string
 ): Promise<SummarizeResponse> {
-  return apiClient.post<SummarizeResponse>(`/summaries/${summaryId}/regenerate`)
+  throw new Error(
+    `Summary regeneration is unavailable after the workflow migration (${summaryId})`
+  )
 }
 
 /**
@@ -162,162 +172,10 @@ export async function fetchSummaryNavigation(
   summaryId: string,
   filters?: SummaryNavigationFilters
 ): Promise<SummaryNavigationInfo> {
-  return apiClient.get<SummaryNavigationInfo>(`/summaries/${summaryId}/navigation`, {
-    params: filters as Record<string, string | undefined>,
-  })
-}
-
-/**
- * Context selection for feedback-based regeneration
- */
-export interface ContextSelection {
-  text: string
-  source: "content" | "summary"
-}
-
-/**
- * Request for regenerating a summary with feedback
- */
-export interface RegenerateWithFeedbackRequest {
-  feedback?: string
-  contextSelections?: ContextSelection[]
-  previewOnly?: boolean
-}
-
-/**
- * Preview data returned from regeneration
- */
-export interface SummaryPreviewData {
-  executive_summary: string
-  key_themes: string[]
-  strategic_insights: string[]
-  technical_details: string[]
-  actionable_items: string[]
-  notable_quotes: string[]
-  model_used: string
-}
-
-/**
- * SSE progress event from regeneration
- */
-export interface RegenerationProgressEvent {
-  status: "processing" | "completed" | "error"
-  message?: string
-  progress?: number
-  preview?: SummaryPreviewData
-}
-
-/**
- * Regenerate a summary with user feedback using SSE streaming
- *
- * @param summaryId - Summary ID to regenerate
- * @param request - Feedback and context selections
- * @param onProgress - Callback for progress updates
- * @returns Promise that resolves with the preview data
- */
-export function regenerateSummaryWithFeedback(
-  summaryId: string,
-  request: RegenerateWithFeedbackRequest,
-  onProgress?: (event: RegenerationProgressEvent) => void
-): Promise<SummaryPreviewData | null> {
-  return new Promise((resolve, reject) => {
-    // Convert request to API format
-    const body = {
-      feedback: request.feedback,
-      context_selections: request.contextSelections?.map((ctx) => ({
-        text: ctx.text,
-        source: ctx.source,
-      })),
-      preview_only: request.previewOnly ?? true,
+  return apiClient.get<SummaryNavigationInfo>(
+    `/summaries/${summaryId}/navigation`,
+    {
+      params: filters as Record<string, string | undefined>,
     }
-
-    fetch(`${API_BASE_URL}/summaries/${summaryId}/regenerate-with-feedback`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-      },
-      body: JSON.stringify(body),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-        }
-
-        const reader = response.body?.getReader()
-        if (!reader) {
-          throw new Error("No response body")
-        }
-
-        const decoder = new TextDecoder()
-        let buffer = ""
-
-        const processStream = async () => {
-          while (true) {
-            const { done, value } = await reader.read()
-
-            if (done) break
-
-            buffer += decoder.decode(value, { stream: true })
-
-            // Process complete SSE messages
-            const lines = buffer.split("\n")
-            buffer = lines.pop() || "" // Keep incomplete line in buffer
-
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                try {
-                  const event = JSON.parse(line.slice(6)) as RegenerationProgressEvent
-                  onProgress?.(event)
-
-                  if (event.status === "completed" && event.preview) {
-                    resolve(event.preview)
-                    return
-                  }
-
-                  if (event.status === "error") {
-                    reject(new Error(event.message || "Regeneration failed"))
-                    return
-                  }
-                } catch {
-                  // Skip malformed JSON
-                }
-              }
-            }
-          }
-
-          // Stream ended without completion
-          resolve(null)
-        }
-
-        processStream().catch(reject)
-      })
-      .catch(reject)
-  })
-}
-
-/**
- * Request to commit a preview
- */
-export interface CommitPreviewRequest {
-  executive_summary: string
-  key_themes: string[]
-  strategic_insights: string[]
-  technical_details: string[]
-  actionable_items: string[]
-  notable_quotes: string[]
-}
-
-/**
- * Commit a previewed regeneration, replacing the current summary
- *
- * @param summaryId - Summary ID to update
- * @param preview - Preview data to commit
- * @returns Updated summary
- */
-export async function commitSummaryPreview(
-  summaryId: string,
-  preview: CommitPreviewRequest
-): Promise<Summary> {
-  return apiClient.post<Summary>(`/summaries/${summaryId}/commit-preview`, preview)
+  )
 }

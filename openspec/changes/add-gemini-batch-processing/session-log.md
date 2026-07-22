@@ -34,3 +34,28 @@
 
 ### Context
 Planned Gemini Batch API execution for non-latency-sensitive steps. Gate 1 selected Approach A (dedicated batch_jobs/batch_requests tables + flush/poll worker + per-step result handlers) for durability across the 24-48h batch window. Phased rollout: Phase 0 core infra (default OFF), then content_filtering, captions+yt-rss, then youtube_processing.
+
+---
+
+## Phase: Implementation Iteration 1 (2026-07-22)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Keep rollout core-only** — Current ingestion-filter and YouTube paths need workflow-specific persistence and resume designs.
+2. **Use internal leader election** — A PostgreSQL advisory lock preserves canonical operation types while selecting one maintenance worker.
+
+### Alternatives Considered
+- Ship production call-site batching now: rejected because The current code has gating and pre-persist lifecycle constraints that the old plan did not model.
+
+### Trade-offs
+- Accepted A documented provider-accepted/local-commit orphan window over Claiming exactly-once batch creation because The Gemini create API is non-idempotent and exposes no client idempotency key.
+
+### Completed Work
+- Replanned proposal and work packages
+- Implemented persistence/config/router/orchestration/CLI/docs
+- Fixed five implementation findings
+- Passed focused and broad regression tests
+
+### Context
+Replanned the stale broad rollout into inert Gemini batch infrastructure, adapted the prior implementation to current architecture, and fixed five review findings. Focused and broad regression suites now cover durable claims, async provider correlation, bounded fallback, advisory maintenance, read-only operations, and safe defaults.

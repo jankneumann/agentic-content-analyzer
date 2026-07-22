@@ -67,6 +67,18 @@ class TestContentQueryModel:
         q = ContentQuery(limit=50)
         assert q.limit == 50
 
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("publication_search", "invalid\x00text"),
+            ("search", "invalid\x00text"),
+            ("publications", ["invalid\x00text"]),
+        ],
+    )
+    def test_rejects_postgres_nul_text(self, field, value):
+        with pytest.raises(ValidationError):
+            ContentQuery(**{field: value})
+
     def test_full_query(self):
         """All fields populated."""
         q = ContentQuery(
@@ -194,6 +206,15 @@ class TestContentQueryServiceFilters:
         q = ContentQuery(end_date=datetime(2026, 1, 25, tzinfo=UTC))
         results = svc.build_query(db_session, q).all()
         assert len(results) == 2
+
+    def test_general_query_end_date_remains_inclusive(self, db_session):
+        at_end = ContentFactory.create(published_date=datetime(2026, 1, 25, tzinfo=UTC))
+        db_session.flush()
+
+        svc = ContentQueryService()
+        q = ContentQuery(end_date=datetime(2026, 1, 25, tzinfo=UTC))
+
+        assert at_end in svc.build_query(db_session, q).all()
 
     def test_filter_by_date_range(self, db_session):
         ContentFactory.create(published_date=datetime(2026, 1, 5, tzinfo=UTC))

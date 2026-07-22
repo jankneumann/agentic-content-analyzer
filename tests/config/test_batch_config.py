@@ -69,7 +69,8 @@ class TestBatchConfigThresholds:
         bc = cfg.batch_config
         assert bc["flush_max_requests"] == 50
         assert bc["flush_max_wait_minutes"] == 60
-        assert bc["fallback_on_expire"] is True
+        assert bc["fallback_max_attempts"] == 1
+        assert bc["inline_max_bytes"] == 18 * 1024 * 1024
 
     def test_batch_config_is_a_copy(self):
         """Mutating the returned dict must not corrupt internal state."""

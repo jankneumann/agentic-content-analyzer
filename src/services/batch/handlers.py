@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
     from src.config.models import ModelStep
+    from src.models.batch import BatchRequest
 
 logger = get_logger(__name__)
 
@@ -33,14 +34,23 @@ class ResultHandler(Protocol):
     corrupt the row or double-process it.
     """
 
-    def apply(self, db: Session, target_id: str, result_text: str) -> None:
-        """Write ``result_text`` back to the row identified by ``target_id``.
+    def apply(self, db: Session, request: BatchRequest, result_text: str) -> None:
+        """Write ``result_text`` back to the request's typed content target.
 
         Args:
             db: Active session (the poll worker's transaction).
-            target_id: Stringified primary key of the target row.
+            request: Durable request row, including its typed content target.
             result_text: The model output reconciled for this request.
         """
+        ...
+
+
+@runtime_checkable
+class FallbackHandler(Protocol):
+    """Re-executes one request through its domain's synchronous call path."""
+
+    async def fallback(self, db: Session, request: BatchRequest) -> str:
+        """Return the result text that should be applied to ``request``."""
         ...
 
 
@@ -49,6 +59,7 @@ class ResultHandlerRegistry:
 
     def __init__(self) -> None:
         self._handlers: dict[ModelStep, ResultHandler] = {}
+        self._fallback_handlers: dict[ModelStep, FallbackHandler] = {}
 
     def register(self, step: ModelStep, handler: ResultHandler) -> None:
         """Register (or replace) the handler for ``step``.
@@ -63,6 +74,16 @@ class ResultHandlerRegistry:
     def get(self, step: ModelStep) -> ResultHandler | None:
         """Return the handler for ``step``, or ``None`` if none is registered."""
         return self._handlers.get(step)
+
+    def register_fallback(self, step: ModelStep, handler: FallbackHandler) -> None:
+        """Register (or replace) the synchronous fallback for ``step``."""
+        if step in self._fallback_handlers:
+            logger.debug("overriding batch fallback handler", extra={"model_step": step.value})
+        self._fallback_handlers[step] = handler
+
+    def get_fallback(self, step: ModelStep) -> FallbackHandler | None:
+        """Return the fallback handler for ``step``, if one is registered."""
+        return self._fallback_handlers.get(step)
 
     def __contains__(self, step: ModelStep) -> bool:
         return step in self._handlers

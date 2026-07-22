@@ -104,6 +104,7 @@ def test_detect_coordination_partial_capabilities(monkeypatch) -> None:
             "/handoffs/write": {"status_code": 404, "data": {}, "error": "not found"},
             "/features/active": {"status_code": 404, "data": {}, "error": "not found"},
             "/merge-queue": {"status_code": 404, "data": {}, "error": "not found"},
+            "/issues/list": {"status_code": 404, "data": {}, "error": "not found"},
         }
         return responses[path]
 

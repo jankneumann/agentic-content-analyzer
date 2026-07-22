@@ -1,47 +1,54 @@
--- Contract: Gemini batch execution persistence (Approach A).
--- Authoritative DDL for the Alembic migration in task 0.1.1. The migration MUST
--- use a generated revision id (alembic revision -m ...), never a hand-crafted one.
+-- Contract: inert Gemini batch-execution persistence.
+-- The Alembic revision is authoritative executable DDL; this file documents
+-- the intended PostgreSQL shape reviewed with the OpenSpec change.
 
--- A submitted (or pending-submission) Gemini batch job.
 CREATE TABLE batch_jobs (
-    id                uuid PRIMARY KEY,
-    provider          varchar(20)  NOT NULL,          -- 'google_ai'
-    provider_job_name text,                            -- e.g. batches/123...; NULL until submitted
-    model_id          varchar(64)  NOT NULL,           -- logical id, e.g. gemini-3.1-flash-lite
+    id                varchar(36) PRIMARY KEY,
+    provider          varchar(20)  NOT NULL CHECK (provider = 'google_ai'),
+    provider_job_name text,
+    model_id          varchar(64)  NOT NULL,
     model_step        varchar(40)  NOT NULL,
-    state             varchar(24)  NOT NULL,           -- pending|running|succeeded|failed|expired|cancelled
+    state             varchar(24)  NOT NULL CHECK (
+        state IN ('submitting', 'pending', 'running', 'succeeded',
+                  'failed', 'cancelled', 'expired')
+    ),
     request_count     integer      NOT NULL DEFAULT 0,
     submitted_at      timestamptz,
     completed_at      timestamptz,
     error             text,
-    created_at        timestamptz  NOT NULL DEFAULT now()
+    created_at        timestamptz  NOT NULL DEFAULT now(),
+    updated_at        timestamptz  NOT NULL DEFAULT now()
 );
 CREATE INDEX ix_batch_jobs_open ON batch_jobs (state)
-    WHERE state IN ('pending', 'running');
+    WHERE state IN ('submitting', 'pending', 'running');
+CREATE UNIQUE INDEX uq_batch_jobs_provider_job_name
+    ON batch_jobs (provider_job_name)
+    WHERE provider_job_name IS NOT NULL;
 
--- One deferred LLM request, keyed to the row it reconciles back to.
 CREATE TABLE batch_requests (
-    id                uuid PRIMARY KEY,
-    request_key       varchar(64)  NOT NULL,           -- stable key echoed in the JSONL line
-    batch_job_id      uuid REFERENCES batch_jobs(id),  -- NULL until flushed into a job
+    id                varchar(36) PRIMARY KEY,
+    request_key       varchar(128) NOT NULL UNIQUE,
+    batch_job_id      varchar(36) REFERENCES batch_jobs(id) ON DELETE SET NULL,
     model_step        varchar(40)  NOT NULL,
     model_id          varchar(64)  NOT NULL,
-    target_table      varchar(40)  NOT NULL,           -- 'contents'
-    target_id         uuid         NOT NULL,           -- row to reconcile back to
-    request_payload   jsonb        NOT NULL,           -- serialized GenerateContentRequest
-    status            varchar(20)  NOT NULL,           -- pending|submitted|succeeded|failed|fallback
+    content_id        bigint REFERENCES contents(id) ON DELETE SET NULL,
+    request_payload   jsonb        NOT NULL,
+    status            varchar(20)  NOT NULL DEFAULT 'pending' CHECK (
+        status IN ('pending', 'claimed', 'submitted', 'succeeded',
+                   'fallback', 'failed')
+    ),
     result_text       text,
     error             text,
+    fallback_attempts integer      NOT NULL DEFAULT 0 CHECK (fallback_attempts >= 0),
     created_at        timestamptz  NOT NULL DEFAULT now(),
+    updated_at        timestamptz  NOT NULL DEFAULT now(),
     completed_at      timestamptz
 );
--- Flush worker scans pending requests by (step, model); partial index keeps it cheap.
-CREATE INDEX ix_batch_requests_pending ON batch_requests (model_step, model_id, created_at)
+CREATE INDEX ix_batch_requests_pending
+    ON batch_requests (model_step, model_id, created_at)
     WHERE status = 'pending';
 CREATE INDEX ix_batch_requests_job ON batch_requests (batch_job_id);
--- Reconciler looks up a request by the key returned in batch results.
-CREATE UNIQUE INDEX uq_batch_requests_key ON batch_requests (request_key);
-
--- Phase 3 only: new ContentStatus enum value for output-blocking steps.
--- Implemented as ALTER TYPE ... ADD VALUE (Top-10 gotcha #2), shown here for the contract.
--- ALTER TYPE contentstatus ADD VALUE IF NOT EXISTS 'PENDING_BATCH';
+CREATE UNIQUE INDEX uq_batch_requests_active_target
+    ON batch_requests (model_step, content_id)
+    WHERE content_id IS NOT NULL
+      AND status IN ('pending', 'claimed', 'submitted', 'fallback');

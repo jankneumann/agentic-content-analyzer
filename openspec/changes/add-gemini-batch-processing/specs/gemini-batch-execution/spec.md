@@ -2,128 +2,136 @@
 
 ## ADDED Requirements
 
-### Requirement: Opt-in per-step batch execution
+### Requirement: Safe-default batch configuration
 
-The system SHALL allow each Gemini-backed pipeline step to run in either `sync`
-or `batch` execution mode, configured via `batch_execution.<step>` in
-`settings/models.yaml` and globally gated by `batch.enabled`
-(`GEMINI_BATCH_ENABLED`). The default for every step SHALL be `sync`, and the
-default for `batch.enabled` SHALL be `false`.
+The system SHALL expose a global Gemini batch switch and per-step `sync|batch`
+execution modes. The global switch SHALL default false and every step SHALL
+default to `sync`.
 
-#### Scenario: Batch globally disabled preserves synchronous behavior
+#### Scenario: Disabled batching writes nothing
 
-- **WHEN** `batch.enabled` is `false`
-- **THEN** every Gemini step SHALL call `LLMRouter.generate*` synchronously
-  exactly as before
-- **AND** no `batch_requests` or `batch_jobs` rows SHALL be written
+- **WHEN** global batch execution is disabled
+- **THEN** `is_batch_enabled` SHALL return false for every step
+- **AND** collection SHALL write no `batch_requests` or `batch_jobs` rows
+- **AND** existing Gemini call paths SHALL remain unchanged
 
-#### Scenario: A step enabled for batch defers its LLM call
+### Requirement: Durable request collection
 
-- **GIVEN** `batch.enabled` is `true` and `batch_execution.content_filtering` is `batch`
-- **WHEN** the content filter evaluates a newly persisted `Content` row
-- **THEN** the system SHALL persist a `batch_requests` row with `status=pending`,
-  `model_step=content_filtering`, `target_table=contents`, and `target_id` of that row
-- **AND** the system SHALL NOT call Gemini synchronously for that item
+The collector SHALL persist unique, credential-free request payloads for integer
+`Content` targets and SHALL prevent duplicate active requests for the same
+`(model_step, content_id)`.
 
-#### Scenario: A step left in sync mode is unaffected by a peer in batch mode
+#### Scenario: Enabled step collects one request
 
-- **GIVEN** `batch_execution.content_filtering=batch` and `batch_execution.caption_proofreading=sync`
-- **WHEN** both steps run during ingestion
-- **THEN** caption proofreading SHALL execute synchronously
-- **AND** content filtering SHALL be deferred to a batch request
+- **GIVEN** batching is globally enabled and a step is configured `batch`
+- **WHEN** the collector receives a request for a content row
+- **THEN** it SHALL persist one `pending` request with a stable unique key
+- **AND** a repeated active collection for the same step and target SHALL reuse
+  or reject the existing request rather than create a second active request
 
-### Requirement: Batch submission and flush thresholds
+### Requirement: Concurrency-safe batch submission
 
-The `batch_submit` worker entrypoint SHALL group `pending` requests by
-`(model_step, model_id)` and submit a Gemini batch job when a group reaches
-`batch.flush_max_requests` items OR its oldest pending request exceeds
-`batch.flush_max_wait_minutes`. Submission SHALL record a `batch_jobs` row and
-set the submitted requests' `batch_job_id` and `status=submitted`.
+The submitter SHALL group pending requests by `(model_step, model_id)`, flush a
+group on configured count or age thresholds, and prevent concurrent workers from
+claiming the same request by using `FOR UPDATE SKIP LOCKED` and explicit claim
+states.
 
-#### Scenario: Group flushes on size threshold
+#### Scenario: Group flushes on count
 
-- **GIVEN** `batch.flush_max_requests` is 50 and 50 `pending` requests exist for `(content_filtering, gemini-3.1-flash-lite)`
-- **WHEN** `batch_submit` runs
-- **THEN** the system SHALL call `LLMRouter.submit_batch` once with those 50 requests
-- **AND** create one `batch_jobs` row with `request_count=50` and `state=running`
-- **AND** mark the 50 requests `status=submitted` with that `batch_job_id`
+- **GIVEN** a group has reached `flush_max_requests`
+- **WHEN** submission runs
+- **THEN** it SHALL create one local job, submit the claimed requests once in
+  that execution, record the provider job name, and mark them submitted
 
-#### Scenario: Group flushes on age threshold below size
+#### Scenario: Group flushes on age
 
-- **GIVEN** 3 `pending` requests, the oldest created `flush_max_wait_minutes + 1` ago
-- **WHEN** `batch_submit` runs
-- **THEN** the system SHALL submit those 3 requests rather than wait for the size threshold
+- **GIVEN** a non-empty group whose oldest request exceeds
+  `flush_max_wait_minutes`
+- **WHEN** submission runs
+- **THEN** it SHALL submit the group below the count threshold
 
-#### Scenario: Concurrent workers do not double-submit
+#### Scenario: Oversized inline group is not submitted
 
-- **WHEN** two workers run `batch_submit` simultaneously
-- **THEN** pending-request selection SHALL use `FOR UPDATE SKIP LOCKED`
-- **AND** each pending request SHALL be included in at most one batch job
+- **GIVEN** serialized inline requests meet or exceed `inline_max_bytes`
+- **WHEN** submission runs
+- **THEN** no provider create call SHALL occur
+- **AND** requests SHALL remain recoverable and the error SHALL be observable
 
-### Requirement: Result reconciliation to target rows
+### Requirement: Metadata-keyed Gemini provider adapter
 
-The `batch_poll` worker entrypoint SHALL poll non-terminal `batch_jobs` and, on
-`JOB_STATE_SUCCEEDED`, match each result by `request_key` to its `batch_requests`
-row, apply the registered `ResultHandler` for that `model_step` to the target
-row, and mark the request `status=succeeded`.
+The Gemini adapter SHALL use the asynchronous SDK, correlate inline responses by
+echoed `request_key` metadata, normalize provider states, and SHALL NOT silently
+pair results by list position.
 
-#### Scenario: Successful job updates the originating content row
+#### Scenario: Successful inline job returns keyed results
 
-- **GIVEN** a `succeeded` Gemini batch job for content-filtering requests
-- **WHEN** `batch_poll` reconciles a result whose `request_key` maps to `Content` X
-- **THEN** the content-filtering result handler SHALL write `filter_decision`,
-  `filter_score`, and the resulting `status` to `Content` X
-- **AND** mark the `batch_requests` row `status=succeeded` with `completed_at` set
-- **AND** the reconciled outcome SHALL equal the synchronous filter outcome for the same input
+- **WHEN** a succeeded provider job returns reordered inline responses
+- **THEN** each response SHALL map to its echoed request key
 
-### Requirement: Failure and expiry fallback
+#### Scenario: Duplicate or missing metadata is rejected
 
-The system SHALL detect batch jobs that reach `JOB_STATE_FAILED` or
-`JOB_STATE_EXPIRED` — and individual results that are missing or errored — mark
-the affected requests `status=fallback`, and re-execute them through the
-synchronous `LLMRouter` path, so that no item is left permanently unprocessed.
+- **WHEN** provider output omits a key or repeats a key
+- **THEN** the affected output SHALL be reported as an error
+- **AND** it SHALL NOT be applied to an arbitrary target
 
-#### Scenario: Expired job falls back to synchronous execution
+### Requirement: Idempotent reconciliation and bounded fallback
 
-- **GIVEN** a `batch_jobs` row that polls as `JOB_STATE_EXPIRED`
-- **WHEN** `batch_poll` processes it
-- **THEN** its still-incomplete `batch_requests` SHALL be marked `status=fallback`
-- **AND** each SHALL be re-run synchronously and its target row updated
-- **AND** the `batch_jobs` row SHALL be marked `state=expired` with `error` set
+Polling SHALL apply each successful result at most once. Failed, cancelled, or
+expired jobs and missing or errored individual results SHALL enter synchronous
+fallback. Fallback attempts SHALL be bounded and exhaustion SHALL produce a
+terminal failed request with a persisted error.
 
-### Requirement: Downstream gating for output-blocking steps
+#### Scenario: Duplicate poll is idempotent
 
-The system SHALL persist items awaiting a batch result for output-blocking steps
-(e.g. `youtube_processing`) with `ContentStatus.PENDING_BATCH`, and the
-summarization and digest-creation stages SHALL exclude `PENDING_BATCH` rows until
-reconciliation flips them to `PARSED`.
+- **GIVEN** a request is already succeeded
+- **WHEN** the same terminal provider job is polled again
+- **THEN** its handler SHALL NOT run a second time
 
-#### Scenario: Pending-batch YouTube item is excluded from the digest
+#### Scenario: Partial result falls back only the affected request
 
-- **GIVEN** a YouTube `Content` row with `status=PENDING_BATCH`
-- **WHEN** the daily digest stage selects eligible content
-- **THEN** that row SHALL NOT be included
-- **AND** after `batch_poll` reconciles it to `status=PARSED`, a subsequent digest run SHALL include it
+- **GIVEN** a succeeded job with one successful result and one missing result
+- **WHEN** reconciliation runs
+- **THEN** the successful request SHALL be applied and marked succeeded
+- **AND** only the missing request SHALL enter bounded fallback
 
-#### Scenario: Advisory step requires no pending-batch status
+#### Scenario: Terminal provider failure falls back
 
-- **GIVEN** `content_filtering` runs in batch mode (post-persist, advisory)
-- **WHEN** its request is deferred
-- **THEN** the `Content` row SHALL retain its normal ingestion status (not `PENDING_BATCH`)
-- **AND** remain eligible for downstream stages while unfiltered
+- **WHEN** a job reaches failed, cancelled, or expired
+- **THEN** every incomplete request SHALL enter bounded fallback
+- **AND** the local job SHALL preserve the normalized terminal state and error
 
-### Requirement: Batch cost-savings reporting
+#### Scenario: Fallback exhaustion is terminal
 
-The system SHALL provide `aca evaluate batch-savings` which estimates, per
-Gemini step, the standard-tier and 50%-batch-tier cost using model pricing,
-per-step token estimates, and actual `contents` volumes, in both a one-time
-backfill and a steady-state monthly projection. It SHALL support `--json` and
-SHALL NOT mutate any data.
+- **GIVEN** synchronous fallback has reached `fallback_max_attempts`
+- **WHEN** it fails again or remains incomplete
+- **THEN** the request SHALL be marked failed with an actionable error
 
-#### Scenario: Cost report prints per-step standard vs batch cost
+### Requirement: Batch operations are observable
 
-- **WHEN** a user runs `aca evaluate batch-savings`
-- **THEN** the system SHALL print, for each Gemini step, its model, standard
-  cost, and batch (half) cost
-- **AND** SHALL NOT write to the database
-- **AND** `--json` SHALL emit the same figures as a machine-readable object
+The system SHALL run periodic maintenance under a PostgreSQL advisory lock so
+only one worker submits and polls per tick. It SHALL expose read-only
+`aca batch status`. JSON output SHALL use the canonical root `--json` mode.
+
+#### Scenario: Concurrent worker ticks elect one maintainer
+
+- **WHEN** multiple workers reach the maintenance interval concurrently
+- **THEN** at most one SHALL hold the batch-maintenance advisory lock
+- **AND** workers that do not acquire it SHALL skip without error
+
+#### Scenario: Status is read-only
+
+- **WHEN** an operator runs `aca batch status`
+- **THEN** the command SHALL report counts and recent jobs without mutating them
+
+### Requirement: Batch savings report is reproducible and read-only
+
+`aca evaluate batch-savings` SHALL report standard and 50%-batch estimates from
+model pricing, exported per-step token assumptions, and database counts. It
+SHALL expose its assumptions, support root `--json`, and write no data.
+
+#### Scenario: JSON report includes assumptions
+
+- **WHEN** an operator runs `aca --json evaluate batch-savings`
+- **THEN** output SHALL include per-step counts, token assumptions, standard
+  cost, batch cost, and savings
+- **AND** the command SHALL not mutate the database

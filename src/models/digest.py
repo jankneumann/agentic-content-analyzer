@@ -5,11 +5,25 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
-from sqlalchemy import JSON, Boolean, Column, DateTime, Enum as SQLEnum, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    Column,
+    DateTime,
+    Enum as SQLEnum,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, relationship
 
 from src.models.base import Base
-from src.models.query import ContentQuery
+from src.models.query import (
+    LEGACY_SELECTION_POLICY_JSON,
+    ContentQuery,
+    legacy_selection_policy,
+)
 
 if TYPE_CHECKING:
     from src.models.audio_digest import AudioDigest
@@ -42,6 +56,7 @@ class Digest(Base):
     __tablename__ = "digests"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    operation_id = Column(BigInteger, nullable=True, unique=True, index=True)
     digest_type = Column(SQLEnum(DigestType), nullable=False, index=True)
 
     # Time period covered
@@ -64,6 +79,14 @@ class Digest(Base):
     markdown_content = Column(Text, nullable=True)  # Full markdown representation
     theme_tags = Column(JSON, nullable=True)  # List[str] - Extracted theme tags
     source_content_ids = Column(JSON, nullable=True)  # List[int] - Content IDs used in digest
+    source_summary_ids = Column(JSON, nullable=False, default=list, server_default="[]")
+    selection_fingerprint = Column(String(64), nullable=True, index=True)
+    selection_policy = Column(
+        JSON,
+        nullable=False,
+        default=legacy_selection_policy,
+        server_default=LEGACY_SELECTION_POLICY_JSON,
+    )
 
     # Metadata
     newsletter_count = Column(Integer, nullable=False)  # Legacy name, now represents content count
@@ -141,6 +164,9 @@ class DigestData(BaseModel):
     markdown_content: str | None = None
     theme_tags: list[str] | None = None
     source_content_ids: list[int] | None = None
+    source_summary_ids: list[int] = Field(default_factory=list)
+    selection_fingerprint: str | None = None
+    selection_policy: dict[str, object] = Field(default_factory=legacy_selection_policy)
 
     newsletter_count: int
     agent_framework: str

@@ -66,6 +66,10 @@ class TestListDatasets:
             assert response.status_code == 200
             mock_svc_cls.return_value.get_datasets.assert_called_once_with(step="summarization")
 
+    def test_rejects_postgres_nul_step(self, client):
+        response = client.get("/api/v1/evaluation/datasets?step=invalid%00text")
+        assert response.status_code == 422
+
 
 class TestCreateDataset:
     def test_creates_dataset(self, client):

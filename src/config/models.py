@@ -438,7 +438,8 @@ class ModelConfig:
             "enabled": enabled,
             "flush_max_requests": int(batch.get("flush_max_requests", 50)),
             "flush_max_wait_minutes": int(batch.get("flush_max_wait_minutes", 60)),
-            "fallback_on_expire": bool(batch.get("fallback_on_expire", True)),
+            "fallback_max_attempts": int(batch.get("fallback_max_attempts", 1)),
+            "inline_max_bytes": int(batch.get("inline_max_bytes", 18 * 1024 * 1024)),
             "execution": {str(k): str(v) for k, v in execution.items()},
         }
 
@@ -455,8 +456,13 @@ class ModelConfig:
 
     @property
     def batch_config(self) -> dict[str, Any]:
-        """Batch flush/fallback settings (enabled, thresholds, fallback_on_expire)."""
+        """Return safe batch thresholds, fallback bound, size limit, and modes."""
         return dict(self._batch_config)
+
+    def has_configured_providers(self) -> bool:
+        """Return whether explicit provider priority configuration is present."""
+
+        return bool(self._providers)
 
     def _load_routing_configs(self) -> dict[str, RoutingConfig]:
         """Load routing configuration from YAML, with env var and DB overrides.

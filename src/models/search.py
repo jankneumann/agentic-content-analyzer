@@ -7,8 +7,11 @@ and metadata about the search strategy used.
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Annotated
 
 from pydantic import BaseModel, Field
+
+SearchText = Annotated[str, Field(max_length=500, pattern=r"^[^\x00]*$")]
 
 
 class SearchType(StrEnum):
@@ -25,18 +28,18 @@ class SearchType(StrEnum):
 class SearchFilter(BaseModel):
     """Filters to narrow search results."""
 
-    source_types: list[str] | None = None  # e.g., ["gmail", "rss", "youtube"]
+    source_types: list[SearchText] | None = None  # e.g., ["gmail", "rss", "youtube"]
     date_from: datetime | None = None
     date_to: datetime | None = None
-    publications: list[str] | None = None
-    statuses: list[str] | None = None  # e.g., ["completed", "parsed"]
-    chunk_types: list[str] | None = None  # e.g., ["paragraph", "table", "code"]
+    publications: list[SearchText] | None = None
+    statuses: list[SearchText] | None = None  # e.g., ["completed", "parsed"]
+    chunk_types: list[SearchText] | None = None  # e.g., ["paragraph", "table", "code"]
 
 
 class SearchQuery(BaseModel):
     """Search query with optional filters and configuration."""
 
-    query: str = Field(..., min_length=1, description="Search query text")
+    query: SearchText = Field(..., min_length=1, description="Search query text")
     type: SearchType = Field(default=SearchType.HYBRID, description="Search method")
     filters: SearchFilter | None = None
     bm25_weight: float | None = None  # Override default weight

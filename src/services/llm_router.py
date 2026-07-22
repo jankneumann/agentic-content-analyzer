@@ -50,6 +50,7 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -91,6 +92,7 @@ class LLMResponse:
     input_tokens: int = 0
     output_tokens: int = 0
     provider: Provider | None = None
+    selected_model: str | None = None
     model_version: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
     raw_response: Any = None  # Provider-specific response for advanced usage
@@ -169,7 +171,13 @@ class LLMRouter:
             ValueError: If specified provider doesn't support the model
         """
         if provider is None:
-            return self.get_default_provider(model)
+            try:
+                configured = self.model_config.get_providers_for_model(model)
+            except ValueError:
+                if self.model_config.has_configured_providers() is True:
+                    raise
+                configured = []
+            return configured[0].provider if configured else self.get_default_provider(model)
 
         # Validate that the model is available on the specified provider
         try:
@@ -180,6 +188,36 @@ class LLMRouter:
                 f"Model '{model}' is not available on provider '{provider.value}'. "
                 f"Available providers: {self.get_available_providers(model)}"
             ) from e
+
+    def get_provider_candidates(
+        self,
+        model: str,
+        provider: Provider | None = None,
+    ) -> tuple[Provider, ...]:
+        """Return configured providers in priority order for one model.
+
+        Explicit selection is strict. Configurations without provider entries retain
+        the historical family default so local/test setups remain compatible.
+        """
+
+        if provider is not None:
+            try:
+                self.model_config.get_provider_model_config(model, provider)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Model '{model}' is not available on provider '{provider.value}'. "
+                    f"Available providers: {self.get_available_providers(model)}"
+                ) from exc
+            return (provider,)
+
+        try:
+            configured = self.model_config.get_providers_for_model(model)
+        except ValueError:
+            if self.model_config.has_configured_providers() is True:
+                raise
+            configured = []
+        candidates = tuple(config.provider for config in configured)
+        return candidates or (self.resolve_provider(model),)
 
     def get_available_providers(self, model: str) -> list[Provider]:
         """Get all providers that support a model.
@@ -272,29 +310,36 @@ class LLMRouter:
                     model,
                 )
 
-        resolved_provider = self.resolve_provider(model, provider)
-        logger.info(f"Generating with model={model}, provider={resolved_provider.value}")
-
         start_time = time.monotonic()
-
-        if resolved_provider == Provider.GOOGLE_AI:
-            response = await self._generate_gemini(
-                model, resolved_provider, system_prompt, user_prompt, max_tokens, temperature
-            )
-        elif resolved_provider in (
-            Provider.ANTHROPIC,
-            Provider.AWS_BEDROCK,
-            Provider.GOOGLE_VERTEX,
-        ):
-            response = await self._generate_anthropic(
-                model, resolved_provider, system_prompt, user_prompt, max_tokens, temperature
-            )
-        elif resolved_provider in (Provider.OPENAI, Provider.MICROSOFT_AZURE):
-            response = await self._generate_openai(
-                model, resolved_provider, system_prompt, user_prompt, max_tokens, temperature
-            )
-        else:
-            raise ValueError(f"Unsupported provider: {resolved_provider}")
+        response: LLMResponse | None = None
+        resolved_provider: Provider | None = None
+        last_error: Exception | None = None
+        for candidate in self.get_provider_candidates(model, provider):
+            try:
+                logger.info("Generating with model=%s, provider=%s", model, candidate.value)
+                response = await self._generate_for_provider(
+                    model,
+                    candidate,
+                    system_prompt,
+                    user_prompt,
+                    max_tokens,
+                    temperature,
+                )
+                resolved_provider = candidate
+                break
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "Generation failed with model=%s provider=%s: %s",
+                    model,
+                    candidate.value,
+                    exc,
+                )
+        if response is None or resolved_provider is None:
+            if last_error is not None:
+                raise last_error
+            raise RuntimeError(f"No provider candidates available for model '{model}'")
+        response.selected_model = model
 
         duration_ms = (time.monotonic() - start_time) * 1000
         self._trace_llm_call(
@@ -313,6 +358,29 @@ class LLMRouter:
 
         return response
 
+    async def _generate_for_provider(
+        self,
+        model: str,
+        provider: Provider,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> LLMResponse:
+        if provider == Provider.GOOGLE_AI:
+            return await self._generate_gemini(
+                model, provider, system_prompt, user_prompt, max_tokens, temperature
+            )
+        if provider in (Provider.ANTHROPIC, Provider.AWS_BEDROCK, Provider.GOOGLE_VERTEX):
+            return await self._generate_anthropic(
+                model, provider, system_prompt, user_prompt, max_tokens, temperature
+            )
+        if provider in (Provider.OPENAI, Provider.MICROSOFT_AZURE):
+            return await self._generate_openai(
+                model, provider, system_prompt, user_prompt, max_tokens, temperature
+            )
+        raise ValueError(f"Unsupported provider: {provider}")
+
     async def generate_with_tools(
         self,
         model: str,
@@ -329,6 +397,7 @@ class LLMRouter:
         reflection_prompt: str | None = None,
         memory_context: list[Any] | None = None,
         cost_limit: float | None = None,
+        step: ModelStep | None = None,
     ) -> LLMResponse:
         """Generate with tool use in an agentic loop.
 
@@ -353,14 +422,12 @@ class LLMRouter:
             cost_limit: Maximum USD cost for this generation. If exceeded, returns
                 partial results. Tracks cost via input/output token counts and
                 model pricing. (agentic-analysis.18, agentic-analysis.21)
+            step: Optional pipeline step for dynamic model routing and decision telemetry.
 
         Returns:
             LLMResponse with final text and usage stats
         """
         import time
-
-        resolved_provider = self.resolve_provider(model, provider)
-        logger.info(f"Generating with tools: model={model}, provider={resolved_provider.value}")
 
         # Inject memory context into user prompt (not system prompt) to maintain
         # trust boundary — memory entries may contain user-influenced content.
@@ -376,50 +443,57 @@ class LLMRouter:
             memory_text += "---\n"
             user_prompt = memory_text + "\n" + user_prompt
 
+        routing_decision = None
+        if step is not None and self.model_config.is_dynamic_routing_enabled(step):
+            routing_config = self.model_config.get_routing_config(step)
+            if (
+                self.complexity_router is not None
+                and routing_config.strong_model
+                and routing_config.weak_model
+            ):
+                routing_decision = self.complexity_router.classify(
+                    prompt=user_prompt,
+                    step=step.value,
+                    strong_model=routing_config.strong_model,
+                    weak_model=routing_config.weak_model,
+                    threshold=routing_config.threshold,
+                )
+                model = routing_decision.model_selected
+
         start_time = time.monotonic()
 
-        if resolved_provider == Provider.GOOGLE_AI:
-            response = await self._generate_gemini_with_tools(
-                model,
-                resolved_provider,
-                system_prompt,
-                user_prompt,
-                tools,
-                tool_executor,
-                max_tokens,
-                temperature,
-                max_iterations,
-            )
-        elif resolved_provider in (
-            Provider.ANTHROPIC,
-            Provider.AWS_BEDROCK,
-            Provider.GOOGLE_VERTEX,
-        ):
-            response = await self._generate_anthropic_with_tools(
-                model,
-                resolved_provider,
-                system_prompt,
-                user_prompt,
-                tools,
-                tool_executor,
-                max_tokens,
-                temperature,
-                max_iterations,
-            )
-        elif resolved_provider in (Provider.OPENAI, Provider.MICROSOFT_AZURE):
-            response = await self._generate_openai_with_tools(
-                model,
-                resolved_provider,
-                system_prompt,
-                user_prompt,
-                tools,
-                tool_executor,
-                max_tokens,
-                temperature,
-                max_iterations,
-            )
-        else:
-            raise ValueError(f"Unsupported provider: {resolved_provider}")
+        response: LLMResponse | None = None
+        resolved_provider: Provider | None = None
+        last_error: Exception | None = None
+        for candidate in self.get_provider_candidates(model, provider):
+            try:
+                logger.info("Generating with tools: model=%s, provider=%s", model, candidate.value)
+                response = await self._generate_with_tools_for_provider(
+                    model,
+                    candidate,
+                    system_prompt,
+                    user_prompt,
+                    tools,
+                    tool_executor,
+                    max_tokens,
+                    temperature,
+                    max_iterations,
+                )
+                resolved_provider = candidate
+                break
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "Tool generation failed with model=%s provider=%s: %s",
+                    model,
+                    candidate.value,
+                    exc,
+                )
+        if response is None or resolved_provider is None:
+            if last_error is not None:
+                raise last_error
+            raise RuntimeError(f"No provider candidates available for model '{model}'")
+        response.selected_model = model
 
         # Cost limit check
         if cost_limit is not None:
@@ -442,6 +516,8 @@ class LLMRouter:
                     max_tokens=max_tokens,
                     metadata={"tool_count": len(tools), "cost_limit_exceeded": True},
                 )
+                if routing_decision is not None:
+                    self._log_routing_decision(routing_decision, response)
                 return response
 
         # Reflection step (agentic-analysis.18)
@@ -455,6 +531,7 @@ class LLMRouter:
                 max_tokens=max_tokens,
                 temperature=temperature,
             )
+            response.selected_model = model
 
         duration_ms = (time.monotonic() - start_time) * 1000
         self._trace_llm_call(
@@ -471,8 +548,41 @@ class LLMRouter:
                 "reflection": enable_reflection,
             },
         )
+        if routing_decision is not None:
+            self._log_routing_decision(routing_decision, response)
 
         return response
+
+    async def _generate_with_tools_for_provider(
+        self,
+        model: str,
+        provider: Provider,
+        system_prompt: str,
+        user_prompt: str,
+        tools: list[ToolDefinition],
+        tool_executor: ToolExecutor,
+        max_tokens: int,
+        temperature: float,
+        max_iterations: int,
+    ) -> LLMResponse:
+        args = (
+            model,
+            provider,
+            system_prompt,
+            user_prompt,
+            tools,
+            tool_executor,
+            max_tokens,
+            temperature,
+            max_iterations,
+        )
+        if provider == Provider.GOOGLE_AI:
+            return await self._generate_gemini_with_tools(*args)
+        if provider in (Provider.ANTHROPIC, Provider.AWS_BEDROCK, Provider.GOOGLE_VERTEX):
+            return await self._generate_anthropic_with_tools(*args)
+        if provider in (Provider.OPENAI, Provider.MICROSOFT_AZURE):
+            return await self._generate_openai_with_tools(*args)
+        raise ValueError(f"Unsupported provider: {provider}")
 
     async def generate_with_planning(
         self,
@@ -878,29 +988,36 @@ class LLMRouter:
         """
         import time
 
-        resolved_provider = self.resolve_provider(model, provider)
-        logger.info(f"Generating (sync) with model={model}, provider={resolved_provider.value}")
-
         start_time = time.monotonic()
-
-        if resolved_provider == Provider.GOOGLE_AI:
-            response = self._generate_gemini_sync(
-                model, resolved_provider, system_prompt, user_prompt, max_tokens, temperature
-            )
-        elif resolved_provider in (
-            Provider.ANTHROPIC,
-            Provider.AWS_BEDROCK,
-            Provider.GOOGLE_VERTEX,
-        ):
-            response = self._generate_anthropic_sync(
-                model, resolved_provider, system_prompt, user_prompt, max_tokens, temperature
-            )
-        elif resolved_provider in (Provider.OPENAI, Provider.MICROSOFT_AZURE):
-            response = self._generate_openai_sync(
-                model, resolved_provider, system_prompt, user_prompt, max_tokens, temperature
-            )
-        else:
-            raise ValueError(f"Unsupported provider: {resolved_provider}")
+        response: LLMResponse | None = None
+        resolved_provider: Provider | None = None
+        last_error: Exception | None = None
+        for candidate in self.get_provider_candidates(model, provider):
+            try:
+                logger.info("Generating (sync) with model=%s, provider=%s", model, candidate.value)
+                response = self._generate_sync_for_provider(
+                    model,
+                    candidate,
+                    system_prompt,
+                    user_prompt,
+                    max_tokens,
+                    temperature,
+                )
+                resolved_provider = candidate
+                break
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "Sync generation failed with model=%s provider=%s: %s",
+                    model,
+                    candidate.value,
+                    exc,
+                )
+        if response is None or resolved_provider is None:
+            if last_error is not None:
+                raise last_error
+            raise RuntimeError(f"No provider candidates available for model '{model}'")
+        response.selected_model = model
 
         duration_ms = (time.monotonic() - start_time) * 1000
         self._trace_llm_call(
@@ -914,6 +1031,29 @@ class LLMRouter:
         )
 
         return response
+
+    def _generate_sync_for_provider(
+        self,
+        model: str,
+        provider: Provider,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> LLMResponse:
+        if provider == Provider.GOOGLE_AI:
+            return self._generate_gemini_sync(
+                model, provider, system_prompt, user_prompt, max_tokens, temperature
+            )
+        if provider in (Provider.ANTHROPIC, Provider.AWS_BEDROCK, Provider.GOOGLE_VERTEX):
+            return self._generate_anthropic_sync(
+                model, provider, system_prompt, user_prompt, max_tokens, temperature
+            )
+        if provider in (Provider.OPENAI, Provider.MICROSOFT_AZURE):
+            return self._generate_openai_sync(
+                model, provider, system_prompt, user_prompt, max_tokens, temperature
+            )
+        raise ValueError(f"Unsupported provider: {provider}")
 
     def _generate_anthropic_sync(
         self,
@@ -1377,15 +1517,11 @@ class LLMRouter:
     # ------------------------------------------------------------------
     # Batch execution (Phase 0 — Gemini Batch API)
     #
-    # These wrap ``client.batches.create`` / ``client.batches.get`` and reuse
+    # These wrap ``client.aio.batches.create`` / ``client.aio.batches.get`` and reuse
     # the same credential resolution as ``_generate_gemini``. They are inert
     # until ``batch.enabled`` is flipped on; nothing calls them on the
     # synchronous path. Phase 0 supports ``google_ai`` models only.
     # ------------------------------------------------------------------
-
-    #: Inline submissions must stay under the provider's ~20MB cap. We guard a
-    #: little below it; larger batches must use the input-file path (follow-up).
-    _INLINE_BATCH_BYTE_LIMIT: ClassVar[int] = 18 * 1024 * 1024
 
     @staticmethod
     def _extract_gemini_text(response: Any) -> str:
@@ -1464,6 +1600,12 @@ class LLMRouter:
         if not requests:
             raise ValueError("submit_batch requires at least one request")
 
+        request_keys = [request.key for request in requests]
+        if any(not key for key in request_keys):
+            raise ValueError("batch request key must not be empty")
+        if len(set(request_keys)) != len(request_keys):
+            raise ValueError("duplicate request key in batch submission")
+
         provider = self.resolve_provider(model, provider)
         if provider != Provider.GOOGLE_AI:
             raise ValueError(
@@ -1478,11 +1620,9 @@ class LLMRouter:
         if not api_key:
             raise RuntimeError("GOOGLE_API_KEY environment variable not set")
 
-        client = genai.Client(api_key=api_key)
         provider_model_id = self.get_provider_model_id(model, provider)
 
         inlined: list[types.InlinedRequest] = []
-        approx_bytes = 0
         for req in requests:
             config = types.GenerateContentConfig(**req.config) if req.config else None
             inlined.append(
@@ -1492,17 +1632,33 @@ class LLMRouter:
                     metadata={"request_key": req.key},
                 )
             )
-            approx_bytes += len(str(req.contents)) + len(str(req.config))
 
-        if approx_bytes > self._INLINE_BATCH_BYTE_LIMIT:
+        serialized = json.dumps(
+            [
+                request.model_dump(mode="json", by_alias=True, exclude_none=True)
+                for request in inlined
+            ],
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        inline_max_bytes = int(
+            self.model_config.batch_config.get("inline_max_bytes", 18 * 1024 * 1024)
+        )
+        if len(serialized) >= inline_max_bytes:
             # Input-file (JSONL upload) path is a documented follow-up; for now
             # fail loudly so the flush worker shrinks the group instead.
             raise ValueError(
-                f"Inline batch payload ~{approx_bytes} bytes exceeds the "
-                f"{self._INLINE_BATCH_BYTE_LIMIT}-byte inline cap; reduce batch size"
+                f"Inline batch payload is {len(serialized)} bytes and meets or exceeds the "
+                f"{inline_max_bytes}-byte inline cap; reduce batch size"
             )
 
-        job = client.batches.create(model=provider_model_id, src=inlined)
+        client = genai.Client(api_key=api_key)
+        # AsyncBatches.create/get are the non-blocking SDK boundary used by the
+        # worker maintenance tick.
+        # Source: https://googleapis.github.io/python-genai/genai.html#genai.batches.AsyncBatches
+        job = await client.aio.batches.create(model=provider_model_id, src=inlined)
+        if not getattr(job, "name", None):
+            raise RuntimeError("Gemini batch creation returned no provider job name")
         logger.info(
             "submitted gemini batch",
             extra={
@@ -1513,7 +1669,12 @@ class LLMRouter:
         )
         return str(job.name)
 
-    async def poll_batch(self, provider_job_name: str) -> BatchPollResult:
+    async def poll_batch(
+        self,
+        provider_job_name: str,
+        *,
+        expected_request_keys: set[str] | None = None,
+    ) -> BatchPollResult:
         """Poll one batch job and, on success, return its results keyed by request.
 
         Raises only on transport errors — ``FAILED``/``EXPIRED``/``CANCELLED``
@@ -1538,7 +1699,7 @@ class LLMRouter:
             raise RuntimeError("GOOGLE_API_KEY environment variable not set")
 
         client = genai.Client(api_key=api_key)
-        job = client.batches.get(name=provider_job_name)
+        job = await client.aio.batches.get(name=provider_job_name)
         state = self._map_batch_state(getattr(job, "state", None))
 
         if state != BatchState.SUCCEEDED:
@@ -1550,6 +1711,8 @@ class LLMRouter:
 
         results_by_key: dict[str, str] = {}
         errors_by_key: dict[str, str] = {}
+        unmatched_errors: list[str] = []
+        seen_keys: set[str] = set()
 
         dest = getattr(job, "dest", None)
         responses = getattr(dest, "inlined_responses", None) if dest else None
@@ -1557,18 +1720,36 @@ class LLMRouter:
             metadata = getattr(resp, "metadata", None) or {}
             key = metadata.get("request_key")
             if key is None:
-                logger.warning("batch response missing request_key; skipping")
+                message = "batch response missing request_key metadata"
+                logger.warning(message)
+                unmatched_errors.append(message)
                 continue
+            key = str(key)
+            if key in seen_keys:
+                results_by_key.pop(key, None)
+                errors_by_key[key] = "duplicate batch response request_key"
+                continue
+            seen_keys.add(key)
             resp_error = getattr(resp, "error", None)
             if resp_error is not None:
                 errors_by_key[key] = str(resp_error)
                 continue
-            results_by_key[key] = self._extract_gemini_text(getattr(resp, "response", None))
+            text = self._extract_gemini_text(getattr(resp, "response", None))
+            if not text:
+                errors_by_key[key] = "batch response contained no text"
+                continue
+            results_by_key[key] = text
+
+        for missing_key in (
+            (expected_request_keys or set()) - set(results_by_key) - set(errors_by_key)
+        ):
+            errors_by_key[missing_key] = "missing from batch response"
 
         return BatchPollResult(
             state=state,
             results_by_key=results_by_key,
             errors_by_key=errors_by_key or None,
+            unmatched_errors=tuple(unmatched_errors),
         )
 
     async def _generate_gemini_with_video(

@@ -167,6 +167,11 @@ class TestTaskEndpoints:
 
         assert resp.status_code == 200
 
+    @pytest.mark.parametrize("field", ["status", "persona"])
+    def test_list_tasks_rejects_postgres_nul_filters(self, client: TestClient, field: str):
+        resp = client.get(f"/api/v1/agent/tasks?{field}=invalid%00text")
+        assert resp.status_code == 422
+
     def test_cancel_task_invalid_uuid(self, client: TestClient):
         resp = client.delete("/api/v1/agent/task/nonexistent-id")
         assert resp.status_code == 422

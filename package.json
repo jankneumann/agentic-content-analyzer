@@ -1,0 +1,10 @@
+{
+  "name": "agentic-content-analyzer",
+  "private": true,
+  "pnpm": {
+    "overrides": {
+      "serialize-javascript": ">=7.0.5",
+      "protobufjs": "8.4.1"
+    }
+  }
+}

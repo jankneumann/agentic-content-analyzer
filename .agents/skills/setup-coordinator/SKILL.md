@@ -37,6 +37,14 @@ For cross-environment coordination, local agents switch to the HTTP transport vi
 - `--mode <auto|cli|web>` (default: `auto`)
 - `--http-url <url>` (for HTTP verification)
 - `--api-key <key>` (for HTTP verification)
+- `--coordinator-dir <path>` (optional external coordinator checkout for local
+  MCP setup; fallback `COORDINATOR_DIR`)
+
+Resolve `<skill-base-dir>` to the directory containing this loaded `SKILL.md`.
+The HTTP path is fully portable and requires only the co-installed
+`coordination-bridge` sibling. Local MCP registration is optional and requires
+an explicitly configured external coordinator checkout; this skill never
+assumes that `agent-coordinator/` was bundled into a consumer repository.
 
 ## Objectives
 
@@ -62,12 +70,23 @@ MODE=auto       # Parse --mode from $ARGUMENTS when provided
 ### 1a. Load Profile and Check Secrets
 
 ```bash
-cd agent-coordinator
+# Local source is required only when CLI/MCP checks are selected. Web mode is
+# independently runnable from an installed skill through the public HTTP API.
+COORDINATOR_DIR="${COORDINATOR_DIR:-}"
+if [ "$MODE" != "web" ]; then
+  if [ -z "$COORDINATOR_DIR" ] || [ ! -d "$COORDINATOR_DIR" ]; then
+    echo "Local MCP setup requires --coordinator-dir or COORDINATOR_DIR." >&2
+    echo "Use --mode web with COORDINATION_API_URL for a source-free setup." >&2
+    exit 2
+  fi
 
-# Check for .secrets.yaml — copy from template if missing
-if [ ! -f .secrets.yaml ]; then
-  cp .secrets.yaml.example .secrets.yaml
-  echo "Created .secrets.yaml from template — fill in real values before continuing."
+  if [ ! -f "$COORDINATOR_DIR/.secrets.yaml" ]; then
+    cp "$COORDINATOR_DIR/.secrets.yaml.example" "$COORDINATOR_DIR/.secrets.yaml"
+    echo "Created .secrets.yaml from template — fill in real values before continuing."
+  fi
+elif [ -z "${COORDINATION_API_URL:-}" ]; then
+  echo "Web setup requires COORDINATION_API_URL." >&2
+  exit 2
 fi
 
 # Profile loading happens automatically via config.py when COORDINATOR_PROFILE is set
@@ -84,22 +103,10 @@ Read `agents.yaml` to determine which agents need configuration:
 #### Local profile
 
 ```bash
-# Auto-start ParadeDB container if docker.auto_start is true in profile
-# The docker_manager module handles: detect runtime → start container → health wait
-cd agent-coordinator
-python3 -c "
-from src.docker_manager import start_container, wait_for_healthy
-from src.profile_loader import load_profile
-profile = load_profile('$PROFILE')
-docker_cfg = profile.get('docker', {})
-result = start_container(docker_cfg)
-print(result)
-if result.get('started') or result.get('already_running'):
-    runtime = result.get('runtime', 'docker')
-    name = docker_cfg.get('container_name', 'paradedb')
-    healthy = wait_for_healthy(runtime, name)
-    print(f'Healthy: {healthy}')
-"
+# The coordinator checkout owns its compose contract. Invoke it through its
+# public deployment surface instead of importing private src modules.
+docker compose --project-directory "$COORDINATOR_DIR" \
+  -f "$COORDINATOR_DIR/docker-compose.yml" up -d
 
 # Coordinator API health
 curl -s "http://localhost:${API_PORT:-8081}/health"
@@ -115,7 +122,8 @@ curl -s "$COORDINATION_API_URL/health"
 python3 "<skill-base-dir>/../coordination-bridge/scripts/coordination_bridge.py" detect
 ```
 
-If health fails, fix runtime first (start `docker compose up -d` in `agent-coordinator/` for ParadeDB Postgres, then run the API with `DB_BACKEND=postgres`).
+If health fails, fix the explicitly configured external runtime first (for
+example, run its documented compose/API startup with `DB_BACKEND=postgres`).
 
 ### 3. CLI Path (MCP) Setup and Verification
 
@@ -123,26 +131,32 @@ Run this section when mode is `auto` or `cli`.
 
 #### 3a. Register MCP server with CLI agents
 
-Use the Makefile targets to register with each CLI's native `mcp add` command:
+Use the explicitly configured coordinator checkout's public setup targets to
+register with each CLI's native `mcp add` command:
 
 ```bash
-cd agent-coordinator
-
 # Register with all CLI agents at once
-make mcp-setup
+make -C "$COORDINATOR_DIR" mcp-setup
 
 # Or register individually:
-make claude-mcp-setup   # claude mcp add-json --scope user
-make codex-mcp-setup    # codex mcp add --env ...
-make gemini-mcp-setup   # gemini mcp add --scope user --env ...
+make -C "$COORDINATOR_DIR" claude-mcp-setup
+make -C "$COORDINATOR_DIR" codex-mcp-setup
+make -C "$COORDINATOR_DIR" gemini-mcp-setup
 ```
 
 Each target registers the coordination MCP server with:
 - Absolute path to the venv Python binary (`.venv/bin/python -m src.coordination_mcp`)
 - `DB_BACKEND=postgres` and `POSTGRES_DSN` pointing to local ParadeDB
-- `AGENT_ID` and `AGENT_TYPE` for identity
+- Provider-specific identity by default:
+  - Claude Code: `AGENT_ID=claude-code-1`, `AGENT_TYPE=claude_code`
+  - Codex CLI: `AGENT_ID=codex-1`, `AGENT_TYPE=codex`
+  - Gemini CLI: `AGENT_ID=gemini-1`, `AGENT_TYPE=gemini`
 - `COORDINATION_API_URL` and `COORDINATION_API_KEY` (optional) — enables HTTP proxy fallback when the local DB is unavailable
 - Claude Code also gets `cwd` via `add-json` (Codex/Gemini don't need it — all file lookups use `Path(__file__)`)
+
+Pass `AGENT_ID=... AGENT_TYPE=...` to preserve the old behavior of using one
+identity for every target, or pass `CLAUDE_AGENT_ID`, `CODEX_AGENT_ID`, or
+`GEMINI_AGENT_ID` to override one provider only.
 
 Restart each CLI after registration to activate.
 
@@ -153,26 +167,30 @@ Restart each CLI after registration to activate.
 Lifecycle hooks auto-register agents on session start, report status after each turn (heartbeat), and deregister on exit. They install at **user scope** so they work from any repo:
 
 ```bash
-cd agent-coordinator
-
 # Install for all agents at once
-make hooks-setup
+make -C "$COORDINATOR_DIR" hooks-setup
 
 # Or individually:
-make claude-hooks-setup      # Merges hooks into ~/.claude/settings.json (SessionStart, Stop, SessionEnd)
-make codex-hooks-setup       # Writes ~/.codex/hooks.json (SessionStart, Stop, SessionEnd)
-make gemini-wrapper-install  # Symlinks gemini-coord to ~/.local/bin/
+make -C "$COORDINATOR_DIR" claude-hooks-setup
+make -C "$COORDINATOR_DIR" codex-hooks-setup
+make -C "$COORDINATOR_DIR" gemini-wrapper-install
 ```
 
 **How each agent gets lifecycle integration:**
 
 | Agent | Mechanism | Events |
 |-------|-----------|--------|
-| Claude Code | `~/.claude/settings.json` → `hooks` key | SessionStart, Stop, SubagentStop, SessionEnd |
-| Codex CLI | `~/.codex/hooks.json` | SessionStart, Stop, SessionEnd |
+| Claude Code | `~/.claude/settings.json` | SessionStart, Stop, SubagentStop, SessionEnd |
+| Codex CLI | `~/.codex/hooks.json` | SessionStart, Stop |
 | Gemini CLI | `gemini-coord` wrapper | register → run → report → deregister |
 
-Hook scripts and `gemini-coord` use absolute paths to the coordinator's `scripts/` directory, so they resolve correctly regardless of the current working directory. `COORDINATION_API_URL` and `COORDINATION_API_KEY` must be set as environment variables before starting the CLI — hooks and wrappers read these from the environment at runtime, just as cloud agents receive them via their runtime configuration.
+Hook scripts use absolute paths under `$COORDINATOR_DIR/scripts/`, so they
+resolve correctly regardless of the current working directory.
+The installed Claude and Codex commands do not set `AGENT_ID`, `AGENT_TYPE`,
+`COORDINATION_API_URL`, or `COORDINATION_API_KEY` inline. They inherit
+`COORDINATION_API_URL` and `COORDINATION_API_KEY` from the current run
+environment, and the coordinator resolves `agent_id` / `agent_type` from the
+API-key identity mapping when the key is bound in server config.
 
 For Gemini, use `gemini-coord` instead of bare `gemini` to get coordinator integration:
 ```bash
@@ -290,7 +308,9 @@ Expected detection result in integrated skills:
 
 If only some endpoints are available, keep `COORDINATOR_AVAILABLE=true` and set missing capabilities to `false`.
 
-See `docs/cloud-deployment.md` for full Railway setup instructions.
+For server deployment details, consult
+`$COORDINATOR_DIR/docs/cloud-deployment.md` in the explicitly configured
+external coordinator checkout.
 
 ### 5. Capability Summary and Hook Expectations
 
@@ -324,17 +344,23 @@ Common checks:
 
 ## Profile Configuration
 
-The coordinator uses YAML-based deployment profiles (`agent-coordinator/profiles/`) with inheritance and `${VAR}` secret interpolation from `.secrets.yaml`. Profiles inject defaults into `os.environ` — existing env vars always win.
+An external coordinator checkout uses YAML deployment profiles under
+`$COORDINATOR_DIR/profiles/`, with inheritance and `${VAR}` secret
+interpolation from `$COORDINATOR_DIR/.secrets.yaml`. Existing environment
+variables win.
 
 - `local.yaml`: MCP transport, Docker auto-start, ParadeDB on localhost
 - `railway.yaml`: HTTP transport, Railway cloud deployment
 - `base.yaml`: Shared defaults inherited by both
 
-Agent identity is declared in `agent-coordinator/agents.yaml` — the single source of truth for agent type, trust level, transport, capabilities, and API key mapping.
+Agent identity is declared by `AGENTS_YAML` when set, otherwise by
+`$COORDINATOR_DIR/agents.yaml` for explicitly configured local setup.
 
 ## Backend Note
 
-Cloud deployment uses Railway with ParadeDB Postgres. See `docs/cloud-deployment.md` for setup and `agent-coordinator/railway.toml` for configuration.
+Cloud deployment may use Railway with ParadeDB Postgres. Its deployment files
+belong to the external coordinator service, not this installed skill. Use
+`COORDINATION_API_URL` and `COORDINATION_API_KEY` to consume that service.
 
 ## Output
 

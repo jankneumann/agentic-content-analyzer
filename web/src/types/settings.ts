@@ -66,6 +66,62 @@ export interface VoiceSettingsResponse {
   valid_stt_model_sizes: string[]
 }
 
+// ── Ingestion Sources ──
+
+/** Supported ingestion source types (matches the backend Source union) */
+export type SourceType =
+  | "blog"
+  | "rss"
+  | "substack"
+  | "podcast"
+  | "youtube_playlist"
+  | "youtube_channel"
+  | "youtube_rss"
+  | "gmail"
+  | "scholar"
+  | "arxiv"
+  | "huggingface_papers"
+  | "websearch"
+
+/** A single configured ingestion source */
+export interface SourceInfo {
+  type: string
+  name: string | null
+  url: string
+  enabled: boolean
+  tags: string[]
+  origin: "yaml" | "db"
+  source_key: string | null
+}
+
+/** Overview of all configured sources with content counts */
+export interface SourcesOverview {
+  sources: SourceInfo[]
+  counts: Record<string, number>
+  total_sources: number
+  enabled_sources: number
+}
+
+/** Request body to add/update a source override */
+export interface SourceUpsertRequest {
+  config: Record<string, unknown>
+  description?: string
+}
+
+/** Result of a source mutation (create / enable / disable) */
+export interface SourceMutationResult {
+  source_key: string
+  version: number
+  origin: string
+  enabled: boolean
+}
+
+/** Result of a source deletion */
+export interface SourceDeleteResult {
+  source_key: string
+  deleted: boolean
+}
+
 /** Health status for a single service */
 export interface ServiceStatus {
   name: string

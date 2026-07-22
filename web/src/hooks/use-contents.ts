@@ -35,13 +35,10 @@ import {
   ingestContents,
   saveUrl,
   summarizeContents,
-  trackContentSummarization,
   type IngestContentParams,
   type SaveURLParams,
   type SummarizeContentParams,
-  type ContentSummarizationProgressEvent,
 } from "@/lib/api/contents"
-import { useState } from "react"
 import type { ContentFilters, ContentCreateRequest } from "@/types"
 
 /**
@@ -356,41 +353,9 @@ export function usePrefetchContent() {
  */
 export function useSummarizeContents() {
   const queryClient = useQueryClient()
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [progress, setProgress] = useState<ContentSummarizationProgressEvent | null>(null)
 
   const mutation = useMutation({
-    mutationFn: async (params: SummarizeContentParams) => {
-      // Start the summarization task
-      const response = await summarizeContents(params)
-
-      if (response.queued_count === 0) {
-        // No content to summarize
-        return {
-          status: "completed" as const,
-          progress: 100,
-          total: 0,
-          processed: 0,
-          completed: 0,
-          failed: 0,
-          current_content_id: null,
-          message: response.message,
-          started_at: new Date().toISOString(),
-        }
-      }
-
-      // Track progress via SSE
-      setIsProcessing(true)
-      try {
-        const finalEvent = await trackContentSummarization(
-          response.task_id,
-          (event) => setProgress(event)
-        )
-        return finalEvent
-      } finally {
-        setIsProcessing(false)
-      }
-    },
+    mutationFn: (params: SummarizeContentParams) => summarizeContents(params),
     onSuccess: () => {
       // Invalidate content list to show updated statuses
       queryClient.invalidateQueries({
@@ -404,18 +369,12 @@ export function useSummarizeContents() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.summaries.lists(),
       })
-      // Clear progress
-      setProgress(null)
-    },
-    onError: () => {
-      setIsProcessing(false)
-      setProgress(null)
     },
   })
 
   return {
     ...mutation,
-    isProcessing,
-    progress,
+    isProcessing: false,
+    progress: null,
   }
 }

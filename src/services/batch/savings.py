@@ -85,6 +85,24 @@ def compute_batch_savings(
     total_batch = round(sum(r.batch_cost for r in rows), 6)
     return {
         "discount": BATCH_DISCOUNT,
+        "assumptions": {
+            "batch_discount": BATCH_DISCOUNT,
+            "pricing_basis": "configured model input/output price per 1M tokens",
+            "volume_basis": (
+                "content rows for filtering; YouTube content rows for caption and video steps"
+            ),
+            "limitations": (
+                "planning estimate only; row counts do not identify borderline filters, "
+                "caption availability, or provider cache effects"
+            ),
+            "token_estimates": {
+                step.value: {
+                    "input_tokens_each": tokens[0],
+                    "output_tokens_each": tokens[1],
+                }
+                for step, tokens in STEP_TOKEN_ESTIMATES.items()
+            },
+        },
         "steps": [asdict(r) for r in rows],
         "total_std_cost": total_std,
         "total_batch_cost": total_batch,

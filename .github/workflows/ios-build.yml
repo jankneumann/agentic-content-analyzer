@@ -103,7 +103,7 @@ jobs:
       # 1. Checkout
       # --------------------------------------------------
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # --------------------------------------------------
       # 2. Setup Node.js + pnpm
@@ -111,12 +111,15 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
         with:
           version: 9
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
 
       - name: Get pnpm store directory
         id: pnpm-cache
@@ -124,7 +127,7 @@ jobs:
         run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
 
       - name: Cache pnpm dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-${{ hashFiles('web/package.json') }}
@@ -134,10 +137,10 @@ jobs:
       # 3. Install dependencies + build web assets
       # --------------------------------------------------
       - name: Install dependencies
-        run: cd web && pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build web app
-        run: cd web && pnpm build
+        run: pnpm build
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL || 'https://api.example.com' }}
 

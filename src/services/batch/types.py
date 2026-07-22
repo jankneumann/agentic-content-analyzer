@@ -2,7 +2,7 @@
 
 These are the *runtime* payloads the router speaks — distinct from the ORM rows
 in :mod:`src.models.batch`. A :class:`BatchRequest` here is what gets submitted
-to ``client.batches.create``; a persisted ``batch_requests`` row is what survives
+to ``client.aio.batches.create``; a persisted ``batch_requests`` row is what survives
 a worker restart. The collector serializes one into the other.
 
 ``key`` is the join key: it is stamped into each Gemini ``InlinedRequest.metadata``
@@ -79,6 +79,7 @@ class BatchPollResult:
     state: BatchState
     results_by_key: dict[str, str] | None = None
     errors_by_key: dict[str, str] | None = None
+    unmatched_errors: tuple[str, ...] = ()
     error: str | None = None
 
     @property

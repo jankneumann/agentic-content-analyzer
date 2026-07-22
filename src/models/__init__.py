@@ -16,7 +16,7 @@ from src.models.audio_digest import (
     AudioDigestStatus,
 )
 from src.models.base import Base
-from src.models.batch import BatchJob, BatchRequest
+from src.models.batch import BatchJob, BatchJobState, BatchRequest, BatchRequestStatus
 from src.models.chat import ArtifactType, ChatMessage, Conversation, MessageRole
 from src.models.chunk import ChunkType, DocumentChunk
 from src.models.content import Content, ContentSource, ContentStatus
@@ -60,6 +60,8 @@ from src.models.search import (
     SearchType,
 )
 from src.models.settings import PromptOverride
+from src.models.settings_override import SettingsOverride
+from src.models.source_override import SourceOverride
 from src.models.summary import NewsletterSummary, Summary, SummaryData
 from src.models.theme import ThemeAnalysis
 from src.models.topic import KBIndex, Topic, TopicNote, TopicNoteType, TopicStatus
@@ -75,7 +77,9 @@ __all__ = [
     # Base
     "Base",
     "BatchJob",
+    "BatchJobState",
     "BatchRequest",
+    "BatchRequestStatus",
     # Chunk
     "DocumentChunk",
     "ChunkType",
@@ -176,6 +180,8 @@ __all__ = [
     "Preference",
     # Settings
     "PromptOverride",
+    "SettingsOverride",
+    "SourceOverride",
     # Ingestion filter
     "PersonaFilterProfile",
     "FilterFeedbackEvent",

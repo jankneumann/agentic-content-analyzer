@@ -97,15 +97,12 @@ async def test_audio_generation_error_leakage(db_session, sample_digest):
     def mock_get_db():
         yield db_session
 
-    # PodcastAudioGenerator is imported lazily inside generate_audio_task,
-    # so patching the source module works here
     with (
-        patch("src.delivery.audio_generator.PodcastAudioGenerator") as MockGenerator,
+        patch("src.api.podcast_routes.PodcastAudioService") as MockService,
         patch("src.api.podcast_routes.get_db", side_effect=mock_get_db),
     ):
-        instance = MockGenerator.return_value
-        # Make generate_podcast raise an exception
-        instance.generate_podcast.side_effect = Exception(sensitive_info)
+        instance = MockService.return_value
+        instance.generate.side_effect = Exception(sensitive_info)
 
         # 3. Execute the task
         await generate_audio_task(

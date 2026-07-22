@@ -45,6 +45,11 @@ SANITIZER_SCRIPT = _THIS_DIR / "sanitize_session_log.py"
 _EXTRACT_PATH = _THIS_DIR / "extract_session_log.py"
 
 
+def _installed_bridge_path() -> Path:
+    """Return the coordination bridge in this installation's skills root."""
+    return Path(__file__).resolve().parents[2] / "coordination-bridge" / "scripts" / "coordination_bridge.py"
+
+
 def _load_extract() -> Any:
     spec = importlib.util.spec_from_file_location("_extract_session_log", _EXTRACT_PATH)
     if spec is None or spec.loader is None:  # pragma: no cover - defensive
@@ -101,6 +106,20 @@ class TradeOff:
 
 
 @dataclass
+class CapabilityGap:
+    """A capability gap observed during the phase.
+
+    Fields match the D4 shared tag schema so they can be emitted as
+    episodic memory entries with ``source:session-log``.
+    """
+
+    failure_type: str
+    capability_gap: str
+    affected_skill: str
+    severity: str
+
+
+@dataclass
 class PhaseWriteResult:
     """Outcome of `PhaseRecord.write_both()` — best-effort across three steps."""
 
@@ -128,6 +147,7 @@ class PhaseRecord:
     decisions: list[Decision] = field(default_factory=list)
     alternatives: list[Alternative] = field(default_factory=list)
     trade_offs: list[TradeOff] = field(default_factory=list)
+    capability_gaps: list[CapabilityGap] = field(default_factory=list)
     open_questions: list[str] = field(default_factory=list)
     completed_work: list[str] = field(default_factory=list)
     in_progress: list[str] = field(default_factory=list)
@@ -176,6 +196,15 @@ class PhaseRecord:
             lines.append("### Trade-offs")
             for t in self.trade_offs:
                 lines.append(f"- Accepted {t.accepted} over {t.over} because {t.reason}")
+            lines.append("")
+
+        if self.capability_gaps:
+            lines.append("### Capability Gaps Observed")
+            for gap in self.capability_gaps:
+                lines.append(
+                    f"- **{gap.failure_type}**: {gap.capability_gap} "
+                    f"(skill: {gap.affected_skill}, severity: {gap.severity})"
+                )
             lines.append("")
 
         if self.open_questions:
@@ -244,14 +273,15 @@ class PhaseRecord:
         phase_name: str,
         alternatives: list[Alternative] | None = None,
         trade_offs: list[TradeOff] | None = None,
+        capability_gaps: list[CapabilityGap] | None = None,
         open_questions: list[str] | None = None,
     ) -> PhaseRecord:
         """Reconstruct a PhaseRecord from a handoff payload.
 
         The handoff payload schema is a strict subset of PhaseRecord
-        (no alternatives / trade_offs / open_questions). Pass them
-        explicitly if you need to restore those fields from a side
-        channel; otherwise they default to empty.
+        (no alternatives / trade_offs / open_questions / capability_gaps).
+        Pass them explicitly if you need to restore those fields from a
+        side channel; otherwise they default to empty.
         """
         return cls(
             change_id=change_id,
@@ -262,6 +292,7 @@ class PhaseRecord:
             decisions=[Decision(**d) for d in payload.get("decisions", [])],
             alternatives=alternatives or [],
             trade_offs=trade_offs or [],
+            capability_gaps=capability_gaps or [],
             open_questions=open_questions or [],
             completed_work=list(payload.get("completed_work", [])),
             in_progress=list(payload.get("in_progress", [])),
@@ -435,28 +466,26 @@ class PhaseRecord:
 
     def _default_coordinator_writer(self) -> Any:
         """Locate `coordination_bridge.try_handoff_write` for production use."""
+        # Sibling skills share the same installed root in canonical,
+        # .claude/skills, and .agents/skills layouts.
+        candidate = _installed_bridge_path()
+        if candidate.exists():
+            spec = importlib.util.spec_from_file_location(
+                "_coordination_bridge", candidate
+            )
+            if spec is None or spec.loader is None:
+                return None
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return getattr(module, "try_handoff_write", None)
         try:
-            # Try import via sys.path first (typical install scenario)
+            # Compatibility for environments that install the bridge module
+            # directly on sys.path instead of syncing sibling skills.
             from coordination_bridge import try_handoff_write  # type: ignore[import-not-found]
 
             return try_handoff_write
         except ImportError:
             pass
-
-        # Fall back: locate the bridge by walking up to find skills/coordination-bridge
-        cur = _THIS_DIR
-        for _ in range(8):
-            cur = cur.parent
-            candidate = cur / "skills" / "coordination-bridge" / "scripts" / "coordination_bridge.py"
-            if candidate.exists():
-                spec = importlib.util.spec_from_file_location(
-                    "_coordination_bridge", candidate
-                )
-                if spec is None or spec.loader is None:
-                    return None
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-                return getattr(module, "try_handoff_write", None)
         return None
 
     def _extract_handoff_id(self, response: Any) -> str | None:
@@ -560,6 +589,9 @@ _TRADE_OFF_LINE_RE = re.compile(
     r"^-\s+Accepted\s+(.+?)\s+over\s+(.+?)\s+because\s+(.+)$"
 )
 _FILE_REF_LINE_RE = re.compile(r"^-\s+`([^`]+)`(?:\s+—\s+(.+))?$")
+_CAPABILITY_GAP_LINE_RE = re.compile(
+    r"^-\s+\*\*(.+?)\*\*:\s+(.+?)\s+\(skill:\s+(.+?),\s+severity:\s+(.+?)\)$"
+)
 
 
 def parse_markdown(text: str, *, change_id: str) -> PhaseRecord:
@@ -600,6 +632,9 @@ def parse_markdown(text: str, *, change_id: str) -> PhaseRecord:
     decisions = _parse_decisions(sections.get("Decisions", []))
     alternatives = _parse_alternatives(sections.get("Alternatives Considered", []))
     trade_offs = _parse_trade_offs(sections.get("Trade-offs", []))
+    capability_gaps = _parse_capability_gaps(
+        sections.get("Capability Gaps Observed", [])
+    )
     open_questions = _parse_bullet_list(
         sections.get("Open Questions", []), prefix="- [ ] "
     )
@@ -618,6 +653,7 @@ def parse_markdown(text: str, *, change_id: str) -> PhaseRecord:
         decisions=decisions,
         alternatives=alternatives,
         trade_offs=trade_offs,
+        capability_gaps=capability_gaps,
         open_questions=open_questions,
         completed_work=completed_work,
         in_progress=in_progress,
@@ -701,6 +737,22 @@ def _parse_trade_offs(lines: list[str]) -> list[TradeOff]:
     return out
 
 
+def _parse_capability_gaps(lines: list[str]) -> list[CapabilityGap]:
+    out: list[CapabilityGap] = []
+    for line in lines:
+        m = _CAPABILITY_GAP_LINE_RE.match(line.strip())
+        if m:
+            out.append(
+                CapabilityGap(
+                    failure_type=m.group(1).strip(),
+                    capability_gap=m.group(2).strip(),
+                    affected_skill=m.group(3).strip(),
+                    severity=m.group(4).strip(),
+                )
+            )
+    return out
+
+
 def _parse_bullet_list(lines: list[str], *, prefix: str = "- ") -> list[str]:
     out: list[str] = []
     for line in lines:
@@ -721,6 +773,7 @@ def _parse_relevant_files(lines: list[str]) -> list[FileRef]:
 
 __all__ = [
     "Alternative",
+    "CapabilityGap",
     "Decision",
     "FileRef",
     "PhaseRecord",

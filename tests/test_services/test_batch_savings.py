@@ -44,3 +44,23 @@ def test_zero_volume_is_zero_cost():
     assert result["total_std_cost"] == 0
     assert result["total_savings"] == 0
     assert all(r["items"] == 0 for r in result["steps"])
+
+
+def test_report_exports_reproducible_assumptions():
+    result = compute_batch_savings(ModelConfig(), {})
+
+    assert result["assumptions"] == {
+        "batch_discount": 0.5,
+        "pricing_basis": "configured model input/output price per 1M tokens",
+        "volume_basis": (
+            "content rows for filtering; YouTube content rows for caption and video steps"
+        ),
+        "limitations": (
+            "planning estimate only; row counts do not identify borderline filters, "
+            "caption availability, or provider cache effects"
+        ),
+        "token_estimates": {
+            step.value: {"input_tokens_each": values[0], "output_tokens_each": values[1]}
+            for step, values in STEP_TOKEN_ESTIMATES.items()
+        },
+    }

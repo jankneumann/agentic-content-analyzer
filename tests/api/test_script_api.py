@@ -201,26 +201,6 @@ class TestGetSectionDialogue:
         assert response.status_code == 404
 
 
-class TestGenerateScript:
-    """Tests for POST /api/v1/scripts/generate endpoint."""
-
-    def test_generate_script_returns_queued(self, client, sample_digest):
-        """Test generating script returns queued status."""
-        from unittest.mock import AsyncMock, patch
-
-        # Mock the background task so it doesn't actually run
-        with patch("src.api.script_routes.generate_script_task", new_callable=AsyncMock):
-            response = client.post(
-                "/api/v1/scripts/generate",
-                json={"digest_id": sample_digest.id, "length": "standard"},
-            )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "queued"
-        assert str(sample_digest.id) in data["message"]
-
-
 class TestSubmitScriptReview:
     """Tests for POST /api/v1/scripts/{id}/review endpoint."""
 

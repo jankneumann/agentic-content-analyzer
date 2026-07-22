@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine
@@ -41,13 +40,28 @@ def db() -> Iterator[Session]:
 
 
 class RecordingHandler:
-    """ResultHandler that records (target_id, text) applications."""
+    """ResultHandler that records (content_id, text) applications."""
 
     def __init__(self) -> None:
-        self.applied: list[tuple[str, str]] = []
+        self.applied: list[tuple[int | None, str]] = []
 
-    def apply(self, db, target_id, result_text):
-        self.applied.append((target_id, result_text))
+    def apply(self, db, request, result_text):
+        self.applied.append((request.content_id, result_text))
+
+
+class RecordingFallback:
+    def __init__(self, result: str = "sync-result") -> None:
+        self.result = result
+        self.requests: list[str] = []
+
+    async def fallback(self, db, request):
+        self.requests.append(request.request_key)
+        return self.result
+
+
+class FailingFallback:
+    async def fallback(self, db, request):
+        raise RuntimeError("temporary sync failure")
 
 
 def _seed_request(db, key, *, created_at=None, status="pending", contents="classify", config=None):
@@ -55,8 +69,7 @@ def _seed_request(db, key, *, created_at=None, status="pending", contents="class
         request_key=key,
         model_step=STEP,
         model_id=MODEL,
-        target_table="contents",
-        target_id=key.split(":")[-1],
+        content_id=int(key.split(":")[-1]),
         request_payload={"contents": contents, "config": config or {}},
         status=status,
     )
@@ -68,24 +81,22 @@ def _seed_request(db, key, *, created_at=None, status="pending", contents="class
 
 
 class FakeRouter:
-    def __init__(self, *, poll_result=None, generate_text="sync-result"):
+    def __init__(self, *, poll_result=None, on_submit=None, submit_error=None):
         self.submitted: list[tuple[str, list]] = []
         self._poll_result = poll_result
-        self._generate_text = generate_text
-        self.generate_calls: list[dict] = []
+        self._on_submit = on_submit
+        self._submit_error = submit_error
 
     async def submit_batch(self, model, requests, provider=None):
+        if self._on_submit is not None:
+            self._on_submit()
+        if self._submit_error is not None:
+            raise self._submit_error
         self.submitted.append((model, requests))
         return f"batches/job-{len(self.submitted)}"
 
-    async def poll_batch(self, provider_job_name):
+    async def poll_batch(self, provider_job_name, *, expected_request_keys=None):
         return self._poll_result
-
-    async def generate(
-        self, *, model, system_prompt, user_prompt, max_tokens=4096, temperature=0.7
-    ):
-        self.generate_calls.append({"model": model, "system": system_prompt, "user": user_prompt})
-        return SimpleNamespace(text=self._generate_text)
 
 
 class TestSubmit:
@@ -103,10 +114,111 @@ class TestSubmit:
         assert summary.requests_submitted == 3
         # one job row, all requests submitted + linked
         job = db.query(BatchJob).one()
-        assert job.state == BatchState.RUNNING.value
+        assert job.state == BatchState.PENDING.value
         assert job.request_count == 3
         assert db.query(BatchRequestRow).filter_by(status="submitted").count() == 3
         assert all(r.batch_job_id == job.id for r in db.query(BatchRequestRow).all())
+
+    @pytest.mark.asyncio
+    async def test_claims_are_committed_before_provider_submission(self, db):
+        row = _seed_request(db, f"{STEP}:contents:1")
+
+        def assert_claim_is_durable():
+            db.expire_all()
+            assert db.query(BatchJob).one().state == "submitting"
+            assert db.get(BatchRequestRow, row.id).status == "claimed"
+
+        await run_batch_submit(
+            db,
+            FakeRouter(on_submit=assert_claim_is_durable),
+            flush_max_requests=1,
+            flush_max_wait_minutes=60,
+        )
+
+    @pytest.mark.asyncio
+    async def test_transport_failure_releases_claims_and_preserves_failed_job(self, db):
+        row = _seed_request(db, f"{STEP}:contents:1")
+
+        summary = await run_batch_submit(
+            db,
+            FakeRouter(submit_error=RuntimeError("provider unavailable")),
+            flush_max_requests=1,
+            flush_max_wait_minutes=60,
+        )
+
+        db.refresh(row)
+        job = db.query(BatchJob).one()
+        assert summary.jobs_failed == 1
+        assert row.status == "pending"
+        assert row.batch_job_id is None
+        assert job.state == "failed"
+        assert "provider unavailable" in job.error
+
+    @pytest.mark.asyncio
+    async def test_fresh_submitting_job_is_not_recovered_as_interrupted(self, db):
+        """A concurrent maintainer must not reclaim an in-flight provider call."""
+        now = datetime.now(UTC)
+        row = _seed_request(db, f"{STEP}:contents:1", status="claimed")
+        job = BatchJob(
+            provider="google_ai",
+            model_id=MODEL,
+            model_step=STEP,
+            state="submitting",
+            request_count=1,
+            updated_at=now,
+        )
+        db.add(job)
+        db.flush()
+        row.batch_job_id = job.id
+        db.commit()
+        router = FakeRouter()
+
+        summary = await run_batch_submit(
+            db,
+            router,
+            flush_max_requests=1,
+            flush_max_wait_minutes=60,
+            now=now,
+        )
+
+        db.refresh(row)
+        db.refresh(job)
+        assert summary.interrupted_jobs_recovered == 0
+        assert router.submitted == []
+        assert row.status == "claimed"
+        assert job.state == "submitting"
+
+    @pytest.mark.asyncio
+    async def test_stale_submitting_job_is_recovered_and_resubmitted(self, db):
+        now = datetime.now(UTC)
+        row = _seed_request(db, f"{STEP}:contents:1", status="claimed")
+        job = BatchJob(
+            provider="google_ai",
+            model_id=MODEL,
+            model_step=STEP,
+            state="submitting",
+            request_count=1,
+            updated_at=now - timedelta(minutes=16),
+        )
+        db.add(job)
+        db.flush()
+        row.batch_job_id = job.id
+        db.commit()
+        router = FakeRouter()
+
+        summary = await run_batch_submit(
+            db,
+            router,
+            flush_max_requests=1,
+            flush_max_wait_minutes=60,
+            now=now,
+        )
+
+        db.refresh(job)
+        assert summary.interrupted_jobs_recovered == 1
+        assert summary.jobs_created == 1
+        assert len(router.submitted) == 1
+        assert job.state == "failed"
 
     @pytest.mark.asyncio
     async def test_holds_group_under_threshold(self, db):
@@ -168,7 +280,7 @@ class TestPollReconcile:
         summary = await run_batch_poll(db, router, registry=registry)
 
         assert summary.requests_reconciled == 2
-        assert sorted(handler.applied) == [("1", "label-1"), ("2", "label-2")]
+        assert sorted(handler.applied) == [(1, "label-1"), (2, "label-2")]
         assert db.query(BatchRequestRow).filter_by(status="succeeded").count() == 2
         assert db.query(BatchJob).one().state == BatchState.SUCCEEDED.value
 
@@ -259,10 +371,73 @@ class TestPollReconcile:
         db.refresh(r1)
         assert r1.status == "submitted"  # unchanged
 
+    @pytest.mark.asyncio
+    async def test_terminal_request_is_not_applied_twice(self, db):
+        row = _seed_request(db, f"{STEP}:contents:1", status="succeeded")
+        job = BatchJob(
+            provider="google_ai",
+            provider_job_name="batches/j1",
+            model_id=MODEL,
+            model_step=STEP,
+            state="running",
+            request_count=1,
+        )
+        db.add(job)
+        db.flush()
+        row.batch_job_id = job.id
+        db.commit()
+        handler = RecordingHandler()
+        registry = ResultHandlerRegistry()
+        registry.register(ModelStep.CONTENT_FILTERING, handler)
+
+        await run_batch_poll(
+            db,
+            FakeRouter(
+                poll_result=BatchPollResult(
+                    state=BatchState.SUCCEEDED,
+                    results_by_key={row.request_key: "duplicate"},
+                )
+            ),
+            registry=registry,
+        )
+
+        assert handler.applied == []
+
+    @pytest.mark.asyncio
+    async def test_missing_result_handler_routes_request_to_fallback(self, db):
+        row = _seed_request(db, f"{STEP}:contents:1", status="submitted")
+        job = BatchJob(
+            provider="google_ai",
+            provider_job_name="batches/j1",
+            model_id=MODEL,
+            model_step=STEP,
+            state="running",
+            request_count=1,
+        )
+        db.add(job)
+        db.flush()
+        row.batch_job_id = job.id
+        db.commit()
+
+        await run_batch_poll(
+            db,
+            FakeRouter(
+                poll_result=BatchPollResult(
+                    state=BatchState.SUCCEEDED,
+                    results_by_key={row.request_key: "unhandled"},
+                )
+            ),
+            registry=ResultHandlerRegistry(),
+        )
+
+        db.refresh(row)
+        assert row.status == "fallback"
+        assert "handler" in row.error
+
 
 class TestSyncFallback:
     @pytest.mark.asyncio
-    async def test_recovers_text_request_via_generate(self, db):
+    async def test_recovers_request_via_registered_fallback(self, db):
         row = _seed_request(
             db,
             f"{STEP}:contents:1",
@@ -274,48 +449,52 @@ class TestSyncFallback:
         registry = ResultHandlerRegistry()
         handler = RecordingHandler()
         registry.register(ModelStep.CONTENT_FILTERING, handler)
-        router = FakeRouter(generate_text="recovered-label")
+        fallback = RecordingFallback("recovered-label")
+        registry.register_fallback(ModelStep.CONTENT_FILTERING, fallback)
 
-        summary = await run_sync_fallback(db, router, registry=registry)
+        summary = await run_sync_fallback(db, registry=registry, fallback_max_attempts=2)
 
         assert summary.requests_recovered == 1
-        assert handler.applied == [("1", "recovered-label")]
-        assert router.generate_calls[0]["system"] == "You label."
-        assert router.generate_calls[0]["user"] == "classify this"
+        assert handler.applied == [(1, "recovered-label")]
+        assert fallback.requests == [row.request_key]
         db.refresh(row)
         assert row.status == "succeeded"
         assert row.result_text == "recovered-label"
 
     @pytest.mark.asyncio
-    async def test_non_text_contents_marked_failed(self, db):
-        row = _seed_request(
-            db, f"{STEP}:contents:9", status="fallback", contents=["video-part", "prompt"]
-        )
-        router = FakeRouter()
+    async def test_fallback_attempts_are_bounded(self, db):
+        row = _seed_request(db, f"{STEP}:contents:9", status="fallback")
+        registry = ResultHandlerRegistry()
+        registry.register(ModelStep.CONTENT_FILTERING, RecordingHandler())
+        registry.register_fallback(ModelStep.CONTENT_FILTERING, FailingFallback())
 
-        summary = await run_sync_fallback(db, router)
-
-        assert summary.requests_failed == 1
-        assert router.generate_calls == []  # never attempted
+        first = await run_sync_fallback(db, registry=registry, fallback_max_attempts=2)
         db.refresh(row)
+        assert first.requests_failed == 0
+        assert row.status == "fallback"
+        assert row.fallback_attempts == 1
+
+        second = await run_sync_fallback(db, registry=registry, fallback_max_attempts=2)
+        db.refresh(row)
+        assert second.requests_failed == 1
         assert row.status == "failed"
+        assert row.fallback_attempts == 2
 
     @pytest.mark.asyncio
     async def test_only_fallback_status_rows_processed(self, db):
         _seed_request(db, f"{STEP}:contents:1", status="pending")
         _seed_request(db, f"{STEP}:contents:2", status="succeeded")
-        router = FakeRouter()
-
-        summary = await run_sync_fallback(db, router)
+        summary = await run_sync_fallback(
+            db, registry=ResultHandlerRegistry(), fallback_max_attempts=1
+        )
 
         assert summary.requests_recovered == 0
-        assert router.generate_calls == []
 
 
 class TestEntrypointRegistration:
-    def test_batch_entrypoints_registered(self):
+    def test_batch_maintenance_does_not_register_free_form_entrypoints(self):
         from src.queue import worker
 
         worker.register_all_handlers()
-        assert "batch_submit" in worker._handlers
-        assert "batch_poll" in worker._handlers
+        assert "batch_submit" not in worker._handlers
+        assert "batch_poll" not in worker._handlers

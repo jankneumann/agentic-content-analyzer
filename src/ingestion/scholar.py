@@ -301,20 +301,29 @@ class ScholarContentIngestionService:
         doi = paper.external_ids.get("DOI")
         arxiv_id = paper.external_ids.get("ArXiv")
 
+        from src.ingestion.content_references import record_content_reference
+
+        statement = text(
+            "SELECT id, COALESCE(canonical_id, id) AS canonical_id "
+            "FROM contents WHERE metadata_json @> CAST(:val AS jsonb) LIMIT 1"
+        )
+
         if doi:
             result = db.execute(
-                text("SELECT id FROM contents WHERE metadata_json @> CAST(:val AS jsonb) LIMIT 1"),
+                statement,
                 {"val": json.dumps({"doi": doi})},
             ).first()
             if result:
+                record_content_reference(result.id, result.canonical_id)
                 return True
 
         if arxiv_id:
             result = db.execute(
-                text("SELECT id FROM contents WHERE metadata_json @> CAST(:val AS jsonb) LIMIT 1"),
+                statement,
                 {"val": json.dumps({"arxiv_id": arxiv_id})},
             ).first()
             if result:
+                record_content_reference(result.id, result.canonical_id)
                 return True
 
         return False

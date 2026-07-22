@@ -189,18 +189,10 @@ function ScriptsPage() {
   const approveMutation = useApproveScript()
   const rejectMutation = useRejectScript()
   const generateMutation = useGenerateScript()
-  const { addTask, updateTask, completeTask, failTask } = useBackgroundTasks()
+  const { addOperation } = useBackgroundTasks()
 
   const handleGenerateScript = (params: ScriptGenerationParams) => {
-    // Close dialog immediately - task runs in background
     setShowGenerateDialog(false)
-
-    // Add background task
-    const taskId = addTask({
-      type: "script",
-      title: `${params.length} Script`,
-      message: "Starting generation...",
-    })
 
     generateMutation.mutate(
       {
@@ -210,49 +202,13 @@ function ScriptsPage() {
         custom_focus_topics: params.custom_focus_topics,
       },
       {
-        onSuccess: () => {
-          // API returns "queued" - actual work happens in background
-          updateTask(taskId, { progress: 20, message: "Generating script content..." })
-
-          let pollCount = 0
-          const maxPolls = 60 // 5 minutes max
-
-          const pollInterval = setInterval(async () => {
-            pollCount++
-            const progressPercent = Math.min(20 + pollCount * 1.3, 95)
-            updateTask(taskId, {
-              progress: Math.round(progressPercent),
-              message: pollCount < 10 ? "Structuring dialogue..." :
-                       pollCount < 20 ? "Writing host segments..." :
-                       pollCount < 30 ? "Adding transitions..." : "Finalizing script..."
-            })
-
-            const result = await refetch()
-            const newScript = result.data?.find(
-              (s) => s.status === "script_pending_review" || s.status === "script_approved"
-            )
-
-            if (newScript || pollCount >= maxPolls) {
-              clearInterval(pollInterval)
-              if (newScript) {
-                completeTask(taskId, "Script generated successfully")
-                toast.success("Script generated")
-              } else {
-                updateTask(taskId, { progress: 95, message: "Generation in progress..." })
-              }
-            }
-          }, 5000)
-        },
+        onSuccess: (operation) => { addOperation(operation); toast.success("Podcast script queued") },
         onError: (err) => {
           const errorMsg = err instanceof Error ? err.message : "Unknown error"
-          failTask(taskId, errorMsg)
           toast.error(`Failed to generate script: ${errorMsg}`)
         },
       }
     )
-
-    // Update progress indicator
-    updateTask(taskId, { progress: 10, message: "Queuing generation..." })
   }
 
   const handleApprove = (scriptId: number) => {

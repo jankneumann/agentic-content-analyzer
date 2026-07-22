@@ -467,6 +467,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
     google_api_key: str | None = None
+    gemini_batch_enabled: bool = False  # Global kill switch; per-step modes remain in models.yaml
     tavily_api_key: str | None = None
     admin_api_key: str | None = None  # Protects sensitive endpoints
 

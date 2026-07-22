@@ -60,7 +60,7 @@ def test_state_save_load_roundtrip(tmp_path: Path) -> None:
 def test_initial_state_defaults() -> None:
     """A fresh LoopState has the expected default values."""
     state = LoopState()
-    assert state.schema_version == 1
+    assert state.schema_version == 4
     assert state.change_id == ""
     assert state.current_phase == "INIT"
     assert state.iteration == 0
@@ -87,9 +87,9 @@ def test_initial_state_defaults() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_transition_init_to_plan() -> None:
+def test_transition_init_to_gatekeeper() -> None:
     state = LoopState(current_phase="INIT")
-    assert transition(state, "next") == "PLAN"
+    assert transition(state, "next") == "GATEKEEPER"
 
 
 def test_transition_plan_review_converged() -> None:

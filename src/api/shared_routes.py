@@ -9,8 +9,9 @@ from __future__ import annotations
 import os
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Path as PathParam, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from markdown_it import MarkdownIt
@@ -33,6 +34,16 @@ templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
 
 # Markdown renderer
 _md = MarkdownIt("commonmark", {"html": False})
+
+ShareToken = Annotated[
+    str,
+    PathParam(
+        pattern=(
+            r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-"
+            r"[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        )
+    ),
+]
 
 
 def _get_client_ip(request: Request) -> str:
@@ -78,7 +89,7 @@ def _format_date(dt) -> str:
 
 
 @router.get("/content/{token}")
-async def get_shared_content(token: str, request: Request):
+async def get_shared_content(token: ShareToken, request: Request):
     """View shared content by token."""
     _check_rate_limit(request)
 
@@ -122,7 +133,7 @@ async def get_shared_content(token: str, request: Request):
 
 
 @router.get("/summary/{token}")
-async def get_shared_summary(token: str, request: Request):
+async def get_shared_summary(token: ShareToken, request: Request):
     """View shared summary by token."""
     _check_rate_limit(request)
 
@@ -176,7 +187,7 @@ async def get_shared_summary(token: str, request: Request):
 
 
 @router.get("/digest/{token}")
-async def get_shared_digest(token: str, request: Request):
+async def get_shared_digest(token: ShareToken, request: Request):
     """View shared digest by token."""
     _check_rate_limit(request)
 
@@ -236,7 +247,7 @@ async def get_shared_digest(token: str, request: Request):
 
 
 @router.get("/audio/{token}")
-async def get_shared_audio(token: str, request: Request):
+async def get_shared_audio(token: ShareToken, request: Request):
     """Stream audio for a shared digest.
 
     Serves the audio file directly instead of redirecting to the

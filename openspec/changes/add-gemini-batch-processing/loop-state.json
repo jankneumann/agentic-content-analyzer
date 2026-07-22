@@ -1,0 +1,74 @@
+{
+  "blocking_findings": [],
+  "change_id": "add-gemini-batch-processing",
+  "cli_review_enabled": true,
+  "current_phase": "IMPL_ITERATE",
+  "error": null,
+  "escalation_reason": null,
+  "findings_trend": [
+    0
+  ],
+  "force": false,
+  "gate_signals": {
+    "external_dep_count": 0,
+    "has_broad_write_scope": false,
+    "has_db_migration": false,
+    "has_proposal": true,
+    "has_security_signal": false,
+    "has_specs": true,
+    "has_tasks": true,
+    "has_work_packages": false,
+    "package_count": 0,
+    "total_loc_estimate": null
+  },
+  "gate_verdict": "proceed_with_review",
+  "handoff_ids": [
+    "inline-gatekeeper-20260722",
+    "inline-plan-iterate-20260722",
+    "inline-plan-review-20260722",
+    "inline-implement-20260722",
+    "inline-impl-iterate-20260722"
+  ],
+  "implementation_strategy": {},
+  "iteration": 0,
+  "last_handoff_id": "inline-impl-iterate-20260722",
+  "max_phase_iterations": 3,
+  "memory_ids": [],
+  "package_authors": {},
+  "packages_status": {},
+  "phase_archetype": null,
+  "phase_history": [
+    {
+      "at": "2026-07-22T01:12:20.245473+00:00",
+      "outcome": "proceed_with_review",
+      "phase": "GATEKEEPER"
+    },
+    {
+      "at": "2026-07-22T03:05:23.110124+00:00",
+      "outcome": "complete",
+      "phase": "PLAN_ITERATE"
+    },
+    {
+      "at": "2026-07-22T03:21:56.930186+00:00",
+      "outcome": "converged",
+      "phase": "PLAN_REVIEW"
+    },
+    {
+      "at": "2026-07-22T03:47:53.452375+00:00",
+      "outcome": "complete",
+      "phase": "IMPLEMENT"
+    },
+    {
+      "at": "2026-07-22T03:48:19.970577+00:00",
+      "outcome": "complete",
+      "phase": "IMPL_ITERATE"
+    }
+  ],
+  "phase_started_at": "2026-07-22T03:47:54.000000+00:00",
+  "previous_phase": null,
+  "schema_version": 4,
+  "started_at": "2026-07-22T01:11:52.146019+00:00",
+  "total_iterations": 6,
+  "val_review_enabled": true,
+  "vendor_availability": {}
+}

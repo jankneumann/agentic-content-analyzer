@@ -1,36 +1,25 @@
-/**
- * Background Tasks Indicator
- *
- * A persistent indicator that shows the status of background tasks.
- * Displays in the bottom-right corner of the screen.
- */
-
 import * as React from "react"
 import {
-  Loader2,
-  CheckCircle,
   AlertCircle,
-  X,
-  ChevronUp,
+  Ban,
+  CheckCircle2,
   ChevronDown,
-  FileText,
-  Mic,
-  Volume2,
-  Headphones,
-  Download,
-  Sparkles,
-  BarChart3,
+  ChevronUp,
+  Loader2,
+  RefreshCw,
+  RotateCcw,
+  X,
 } from "lucide-react"
-import { formatDistanceToNow } from "date-fns"
+import { useNavigate } from "@tanstack/react-router"
 
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
+import { Button } from "@/components/ui/button"
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import { Progress } from "@/components/ui/progress"
 import {
   Tooltip,
   TooltipContent,
@@ -38,236 +27,173 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import {
-  useBackgroundTasks,
   taskTypeLabels,
-  type TaskType,
+  useBackgroundTasks,
   type BackgroundTask,
 } from "@/contexts/BackgroundTasksContext"
+import { operationResourcePath } from "@/lib/operation-navigation"
 
-/**
- * Task type icons
- */
-const taskTypeIcons: Record<TaskType, React.ReactNode> = {
-  digest: <FileText className="h-4 w-4" />,
-  script: <Mic className="h-4 w-4" />,
-  summary: <Sparkles className="h-4 w-4" />,
-  audio: <Volume2 className="h-4 w-4" />,
-  "audio-digest": <Headphones className="h-4 w-4" />,
-  ingest: <Download className="h-4 w-4" />,
-  themes: <BarChart3 className="h-4 w-4" />,
+function StatusIcon({ task }: { task: BackgroundTask }) {
+  if (task.status === "queued" || task.status === "in_progress")
+    return <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+  if (task.status === "completed")
+    return <CheckCircle2 className="h-4 w-4" aria-hidden />
+  if (task.status === "cancelled")
+    return <Ban className="h-4 w-4" aria-hidden />
+  return <AlertCircle className="h-4 w-4" aria-hidden />
 }
 
-/**
- * Single task item component
- */
-function TaskItem({
-  task,
-  onRemove,
-}: {
-  task: BackgroundTask
-  onRemove: () => void
-}) {
-  const isActive = task.status === "running" || task.status === "pending"
-  const isCompleted = task.status === "completed"
-  const isFailed = task.status === "failed"
-
+function OperationItem({ task }: { task: BackgroundTask }) {
+  const navigate = useNavigate()
+  const { cancelTask, retryTask, removeTask } = useBackgroundTasks()
+  const active = task.status === "queued" || task.status === "in_progress"
+  const target = task.resource ? operationResourcePath(task.resource) : null
   return (
-    <div className="flex items-start gap-3 p-3 rounded-lg border bg-card">
-      {/* Icon */}
-      <div className="flex-shrink-0 mt-0.5">
-        {isActive ? (
-          <Loader2 className="h-4 w-4 animate-spin text-primary" />
-        ) : isCompleted ? (
-          <CheckCircle className="h-4 w-4 text-green-500" />
-        ) : (
-          <AlertCircle className="h-4 w-4 text-destructive" />
-        )}
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-muted-foreground">
-            {taskTypeIcons[task.type]}
-          </span>
-          <span className="font-medium text-sm truncate">{task.title}</span>
-          <Badge variant="outline" className="text-xs ml-auto flex-shrink-0">
-            {taskTypeLabels[task.type]}
-          </Badge>
-        </div>
-
-        <p className="text-xs text-muted-foreground mt-1 truncate">
-          {isFailed ? task.error : task.message}
-        </p>
-
-        {isActive && (
-          <div className="mt-2">
-            <Progress value={task.progress} className="h-1" />
-            <div className="flex justify-between mt-1">
-              <span className="text-xs text-muted-foreground">
-                {task.progress}%
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {formatDistanceToNow(task.startedAt, { addSuffix: true })}
-              </span>
-            </div>
+    <div className="border-b p-3 last:border-b-0" aria-live="polite">
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5" aria-label={task.status}>
+          <StatusIcon task={task} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium">
+              {taskTypeLabels[task.operation_type]}
+            </span>
+            <Badge variant="outline" className="text-xs">
+              {(task.status ?? "unknown").replace("_", " ")}
+            </Badge>
           </div>
-        )}
-
-        {!isActive && task.completedAt && (
-          <span className="text-xs text-muted-foreground mt-1 block">
-            {formatDistanceToNow(task.completedAt, { addSuffix: true })}
-          </span>
-        )}
+          <p className="text-muted-foreground mt-1 text-xs break-words">
+            {task.problem?.detail ?? task.message}
+          </p>
+          {active && (
+            <Progress
+              value={task.progress}
+              className="mt-2 h-1.5"
+              aria-label={`${task.progress}% complete`}
+            />
+          )}
+        </div>
+        <div className="flex shrink-0 gap-1">
+          {active && task.cancellable && (
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label="Cancel operation"
+              onClick={() => void cancelTask(task.operation_id)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+          {(task.status === "failed" || task.status === "cancelled") && (
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label="Retry operation"
+              onClick={() => void retryTask(task.operation_id)}
+            >
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+          )}
+          {target && (
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label="Open result"
+              onClick={() => void navigate({ to: target })}
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          )}
+          {!active && (
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label="Dismiss operation"
+              onClick={() => removeTask(task.operation_id)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
-
-      {/* Remove button (only for completed/failed) */}
-      {!isActive && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 flex-shrink-0"
-                onClick={onRemove}
-                aria-label={`Remove task: ${task.title}`}
-              >
-                <X className="h-3 w-3" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Remove task</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
     </div>
   )
 }
 
-/**
- * Background Tasks Indicator Component
- */
 export function BackgroundTasksIndicator() {
-  const {
-    tasks,
-    activeTasks,
-    completedTasks,
-    removeTask,
-    clearCompleted,
-    hasActiveTasks,
-  } = useBackgroundTasks()
-
-  const [isExpanded, setIsExpanded] = React.useState(false)
-
-  // Don't render if no tasks
-  if (tasks.length === 0) {
-    return null
-  }
-
-  // Calculate overall progress
-  const overallProgress =
-    activeTasks.length > 0
-      ? Math.round(
-          activeTasks.reduce((sum, t) => sum + t.progress, 0) / activeTasks.length
-        )
-      : 0
-
+  const { tasks, activeTasks, completedTasks, clearCompleted, hasActiveTasks } =
+    useBackgroundTasks()
+  const [expanded, setExpanded] = React.useState(false)
+  if (!tasks.length) return null
+  const progress = activeTasks.length
+    ? Math.round(
+        activeTasks.reduce((sum, task) => sum + task.progress, 0) /
+          activeTasks.length
+      )
+    : 100
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-80">
-      <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-        {/* Header / Trigger */}
-        <CollapsibleTrigger asChild>
-          <Button
-            variant="outline"
-            className="w-full justify-between bg-background shadow-lg border"
-          >
-            <div className="flex items-center gap-2">
-              {hasActiveTasks ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                  <span className="text-sm">
-                    {activeTasks.length} task{activeTasks.length !== 1 ? "s" : ""} running
-                  </span>
-                  <Badge variant="secondary" className="ml-1">
-                    {overallProgress}%
-                  </Badge>
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span className="text-sm">
-                    {completedTasks.length} task{completedTasks.length !== 1 ? "s" : ""} completed
-                  </span>
-                </>
-              )}
-            </div>
-            {isExpanded ? (
-              <ChevronDown className="h-4 w-4" />
-            ) : (
-              <ChevronUp className="h-4 w-4" />
-            )}
-          </Button>
-        </CollapsibleTrigger>
-
-        {/* Progress bar for collapsed state */}
-        {!isExpanded && hasActiveTasks && (
-          <Progress value={overallProgress} className="h-1 mt-1" />
-        )}
-
-        {/* Expanded content */}
-        <CollapsibleContent>
-          <div className="mt-2 bg-background border rounded-lg shadow-lg max-h-80 overflow-y-auto">
-            {/* Active tasks */}
-            {activeTasks.length > 0 && (
-              <div className="p-2 space-y-2">
-                <h4 className="text-xs font-medium text-muted-foreground px-1">
-                  Running
-                </h4>
-                {activeTasks.map((task) => (
-                  <TaskItem
-                    key={task.id}
-                    task={task}
-                    onRemove={() => removeTask(task.id)}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Completed tasks */}
-            {completedTasks.length > 0 && (
-              <div className="p-2 space-y-2 border-t">
-                <div className="flex items-center justify-between px-1">
-                  <h4 className="text-xs font-medium text-muted-foreground">
-                    Recent
-                  </h4>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 text-xs"
-                    onClick={clearCompleted}
-                  >
-                    Clear all
-                  </Button>
-                </div>
-                {completedTasks.slice(0, 5).map((task) => (
-                  <TaskItem
-                    key={task.id}
-                    task={task}
-                    onRemove={() => removeTask(task.id)}
-                  />
-                ))}
-                {completedTasks.length > 5 && (
-                  <p className="text-xs text-muted-foreground text-center py-1">
-                    +{completedTasks.length - 5} more
-                  </p>
+    <TooltipProvider>
+      <div className="fixed inset-x-3 bottom-[max(0.75rem,var(--safe-area-bottom))] z-50 sm:right-4 sm:left-auto sm:w-96">
+        <Collapsible
+          open={expanded}
+          onOpenChange={setExpanded}
+          className="bg-background overflow-hidden rounded-md border shadow-lg"
+        >
+          <CollapsibleTrigger asChild>
+            <Button
+              variant="ghost"
+              className="h-11 w-full justify-between rounded-none px-3"
+              aria-label="Toggle operations"
+            >
+              <span className="flex min-w-0 items-center gap-2 text-sm">
+                {hasActiveTasks ? (
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
                 )}
+                <span className="truncate">
+                  {hasActiveTasks
+                    ? `${activeTasks.length} operation${activeTasks.length === 1 ? "" : "s"} running`
+                    : `${completedTasks.length} recent operation${completedTasks.length === 1 ? "" : "s"}`}
+                </span>
+                {hasActiveTasks && (
+                  <Badge variant="secondary">{progress}%</Badge>
+                )}
+              </span>
+              {expanded ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronUp className="h-4 w-4" />
+              )}
+            </Button>
+          </CollapsibleTrigger>
+          {!expanded && hasActiveTasks && (
+            <Progress value={progress} className="h-1 rounded-none" />
+          )}
+          <CollapsibleContent>
+            <div className="max-h-[min(60vh,28rem)] overflow-y-auto border-t">
+              {tasks.slice(0, 20).map((task) => (
+                <OperationItem key={task.operation_id} task={task} />
+              ))}
+            </div>
+            {completedTasks.length > 0 && (
+              <div className="flex justify-end border-t p-2">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button size="sm" variant="ghost" onClick={clearCompleted}>
+                      Clear completed
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Remove terminal operations from this view
+                  </TooltipContent>
+                </Tooltip>
               </div>
             )}
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
-    </div>
+          </CollapsibleContent>
+        </Collapsible>
+      </div>
+    </TooltipProvider>
   )
 }

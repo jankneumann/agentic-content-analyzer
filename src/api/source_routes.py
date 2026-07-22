@@ -13,6 +13,7 @@ from src.config.sources import (
     GmailSource,
     YouTubeChannelSource,
     YouTubePlaylistSource,
+    source_key,
 )
 from src.models.content import Content
 from src.storage.database import get_db
@@ -34,6 +35,10 @@ class SourceInfo(BaseModel):
     url: str = Field(description="Source URL or identifier")
     enabled: bool = Field(description="Whether the source is enabled for ingestion")
     tags: list[str] = Field(default_factory=list, description="Tags for categorizing the source")
+    origin: str = Field(default="yaml", description="Where the source came from: 'yaml' or 'db'")
+    source_key: str | None = Field(
+        default=None, description="Natural key '<type>:<locator>' identifying the source"
+    )
 
 
 class SourcesOverview(BaseModel):
@@ -74,8 +79,10 @@ def _get_source_url(source) -> str:
     # ScholarSource and other query-based sources
     if hasattr(source, "query"):
         return source.query
-    # RSSSource, YouTubeRSSSource, PodcastSource all have .url
-    return source.url
+    # All remaining source types use the locator from their canonical natural
+    # key. This also covers singleton sources such as Readwise, which have no
+    # URL field and use the stable ``default`` locator.
+    return source_key(source).partition(":")[2]
 
 
 # ============================================================================
@@ -96,8 +103,14 @@ async def list_sources() -> SourcesOverview:
     config = settings.get_sources_config()
 
     # Build source info list from all configured sources
+    from src.config.sources import source_key as derive_source_key
+
     source_infos: list[SourceInfo] = []
     for source in config.sources:
+        try:
+            skey = derive_source_key(source)
+        except ValueError:
+            skey = None
         source_infos.append(
             SourceInfo(
                 type=source.type,
@@ -105,6 +118,8 @@ async def list_sources() -> SourcesOverview:
                 url=_get_source_url(source),
                 enabled=source.enabled,
                 tags=source.tags,
+                origin=getattr(source, "origin", "yaml"),
+                source_key=skey,
             )
         )
 

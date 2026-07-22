@@ -173,13 +173,15 @@ Run your first pipeline to populate it:
 
 ```bash
 # Ingest from pre-configured RSS feeds
-aca ingest rss --max 5
+aca ingest rss --max-items 5
 
 # Summarize the ingested content
-aca summarize pending
+aca summarize run --wait
 
 # Create your first daily digest
-aca create-digest daily
+aca digest create --type daily \
+  --period-start 2026-07-15T00:00:00Z \
+  --period-end 2026-07-16T00:00:00Z --wait
 ```
 
 Go back to the web UI. Your dashboard now shows content, summaries, and a digest ready for review.
@@ -361,7 +363,9 @@ The core workflow follows a three-stage pipeline:
 **Run it all in one command:**
 
 ```bash
-aca pipeline daily           # Ingest → Summarize → Digest
+aca pipeline run --period daily \
+  --period-start 2026-07-15T00:00:00Z \
+  --period-end 2026-07-16T00:00:00Z --wait
 ```
 
 Or step by step for more control — see the [CLI section](#command-line-interface).
@@ -535,7 +539,10 @@ Configure the system without touching config files:
 
 ## Command-Line Interface
 
-The `aca` CLI is available after activating your virtual environment. Every command supports `--help` for detailed options.
+The `aca` CLI is available after activating your virtual environment. Workflow
+commands use the configured HTTP API and return durable operation handles.
+Every command supports `--help`; `aca capabilities --json` exposes the current
+registry-derived command fields.
 
 ### Ingesting Content
 
@@ -544,11 +551,10 @@ The `aca` CLI is available after activating your virtual environment. Every comm
 aca ingest gmail                          # Gmail newsletters
 aca ingest rss                            # RSS feeds
 aca ingest substack                       # Substack paid subscriptions
-aca ingest youtube                        # All YouTube (playlists + RSS)
 aca ingest youtube-playlist               # YouTube playlists only (requires OAuth)
 aca ingest youtube-rss                    # YouTube RSS feeds only
 aca ingest podcast                        # Podcast feeds
-aca ingest xsearch                        # X/Twitter via Grok API
+aca ingest x-search                       # X/Twitter via Grok API
 aca ingest perplexity-search              # Perplexity Sonar web search
 
 # From specific content
@@ -556,19 +562,19 @@ aca ingest files report.pdf slides.pptx   # Local files
 aca ingest url https://example.com/post   # Direct URL
 
 # Common options (available on most ingest commands)
-  --max, -m INT       Maximum items to fetch
-  --days, -d INT      Only fetch from the last N days
-  --force, -f         Reprocess content already ingested
+  --max-items INT         Maximum items to fetch
+  --days-back INT         Only fetch from the last N days
+  --force-reprocess       Reprocess content already ingested
 ```
 
 Examples:
 
 ```bash
 # Ingest the last 3 days of RSS, max 20 per feed
-aca ingest rss --days 3 --max 20
+aca ingest rss --days-back 3 --max-items 20
 
 # Search X/Twitter with a custom prompt
-aca ingest xsearch --prompt "AI agent frameworks launched this week"
+aca ingest x-search --prompt "AI agent frameworks launched this week"
 
 # Search Perplexity for recent AI news
 aca ingest perplexity-search --prompt "AI regulation updates" --recency week
@@ -577,49 +583,43 @@ aca ingest perplexity-search --prompt "AI regulation updates" --recency week
 ### Summarizing Content
 
 ```bash
-# Summarize all pending content (queued for background processing)
-aca summarize pending
+# Summarize all pending eligible content
+aca summarize run --wait
 
-# Summarize with a limit
-aca summarize pending --limit 10
+# Summarize selected content IDs
+aca summarize run --content-id 42 --content-id 43 --wait
 
-# Summarize a specific item
-aca summarize id 42
-
-# Run synchronously (useful for debugging)
-aca summarize pending --sync
+# Force reprocessing through the durable queue
+aca summarize run --force-reprocess --wait
 ```
 
 ### Creating Digests
 
 ```bash
-# Daily digest for today
-aca create-digest daily
+# Daily digest for an explicit half-open period
+aca digest create --type daily \
+  --period-start 2026-07-15T00:00:00Z \
+  --period-end 2026-07-16T00:00:00Z --wait
 
-# Daily digest for a specific date
-aca create-digest daily --date 2026-02-27
-
-# Weekly digest for the current week
-aca create-digest weekly
-
-# Weekly digest for a specific week
-aca create-digest weekly --week 2026-02-23
+# Weekly digest
+aca digest create --type weekly \
+  --period-start 2026-07-09T00:00:00Z \
+  --period-end 2026-07-16T00:00:00Z --wait
 ```
 
 ### Running the Full Pipeline
 
 ```bash
-# Complete daily pipeline: ingest all sources → summarize → create digest
-aca pipeline daily
+# Complete daily pipeline: ingest enabled sources, summarize, create digest
+aca pipeline run --period daily \
+  --period-start 2026-07-15T00:00:00Z \
+  --period-end 2026-07-16T00:00:00Z --wait
 
-# Full pipeline for a specific date
-aca pipeline daily --date 2026-02-27
-
-# Weekly pipeline
-aca pipeline weekly
-
-# Wait for all background jobs to complete before returning
-aca pipeline daily --wait
+# Restrict scheduled source descriptors
+aca pipeline run --period weekly \
+  --period-start 2026-07-09T00:00:00Z \
+  --period-end 2026-07-16T00:00:00Z \
+  --source gmail --source rss --wait
 ```
 
 The pipeline runs all ingestion sources in parallel, then summarizes, then creates the digest.
@@ -643,24 +643,20 @@ aca review revise 15
 ### Analyzing Themes
 
 ```bash
-# Analyze themes from the last 7 days (default)
-aca analyze themes
-
-# Custom date range and parameters
-aca analyze themes --start 2026-02-01 --end 2026-02-28 --max-themes 20
+# Analyze themes using the shared content-query contract
+aca theme create --query-json \
+  '{"start_date":"2026-07-09T00:00:00Z","end_date":"2026-07-16T00:00:00Z"}' \
+  --max-themes 20 --wait
 ```
 
 ### Generating Podcasts
 
 ```bash
 # Generate a podcast script from an approved digest
-aca podcast generate --digest-id 15
+aca podcast-script create --digest-id 15 --wait
 
 # Choose script length
-aca podcast generate --digest-id 15 --length extended
-
-# List existing scripts
-aca podcast list-scripts
+aca podcast-script create --digest-id 15 --length extended --wait
 ```
 
 ### Managing Prompts
@@ -710,31 +706,16 @@ aca settings set model.summarization claude-sonnet-4-5
 aca settings reset model.summarization
 ```
 
-### Job Queue Management
+### Operation Management
 
 Background jobs are processed by an embedded worker that runs with the API server:
 
 ```bash
-# List recent jobs
-aca jobs list
-
-# Filter by status
-aca jobs list --status failed
-
-# View job details
-aca jobs show abc-123
-
-# Retry a failed job
-aca jobs retry abc-123
-
-# Retry all failed jobs
-aca jobs retry --failed
-
-# View job history
-aca jobs history --since 7d --type summarize
-
-# Clean up old completed jobs
-aca jobs cleanup --older-than 30d
+aca operations list
+aca operations get 123
+aca operations wait 123 --timeout 300
+aca operations retry 123
+aca operations cancel 123
 ```
 
 To run a standalone worker (for higher throughput):
@@ -1000,7 +981,9 @@ OBSERVABILITY_PROVIDER=opik          # or braintrust, otel, noop
 
 ```bash
 # Run the complete pipeline
-aca pipeline daily
+aca pipeline run --period daily \
+  --period-start 2026-07-15T00:00:00Z \
+  --period-end 2026-07-16T00:00:00Z --wait
 
 # Then open the web UI to review
 # http://localhost:5173/review
@@ -1032,7 +1015,7 @@ aca review list
 aca review revise 15                 # Type "done" to approve
 
 # 2. Generate the podcast script
-aca podcast generate --digest-id 15 --length standard
+aca podcast-script create --digest-id 15 --length standard --wait
 
 # 3. Review the script in the web UI at /scripts
 # 4. Approve the script
@@ -1042,8 +1025,8 @@ aca podcast generate --digest-id 15 --length standard
 ### Ingest a single article you found interesting
 
 ```bash
-aca ingest url https://example.com/great-article --tag ai --tag research
-aca summarize pending
+aca ingest url https://example.com/great-article --tags ai,research --wait
+aca summarize run --wait
 ```
 
 ### Search your content library

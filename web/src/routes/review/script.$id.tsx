@@ -22,7 +22,7 @@ import {
 } from "@/components/review"
 import { RevisionChatPanel } from "@/components/chat"
 import { ReviewProvider, useReviewContext } from "@/contexts/ReviewContext"
-import { useScript, useScriptNavigation, useRegenerateScript } from "@/hooks/use-scripts"
+import { useScript, useScriptNavigation } from "@/hooks/use-scripts"
 import { useDigest } from "@/hooks/use-digests"
 import { useChatConfig, useChatSession } from "@/hooks/use-chat"
 import { useTextSelection } from "@/hooks/use-text-selection"
@@ -218,15 +218,6 @@ function ScriptReviewContent({
   const activeScript = (previewScript as ScriptDetail) || initialScript
   const isPreviewMode = !!previewScriptId
 
-  // Regeneration hook
-  const { mutate: regenerate, isPending: isStartingRegeneration } = useRegenerateScript()
-
-  // Poll for preview status
-  const isGenerating = isStartingRegeneration || (
-    !!previewScript &&
-    (previewScript.status === 'script_generating' || previewScript.status === 'pending')
-  )
-
   // Poll handled by useScript refetchInterval
 
   // Chat config and model selection
@@ -288,33 +279,6 @@ function ScriptReviewContent({
     }
   }, [chat, selectedModel])
 
-  // Handle generating a preview (explicit button click)
-  const handleGeneratePreview = React.useCallback(() => {
-    if (!chat.conversationId) {
-      toast.error("No conversation started", {
-        description: "Please start a conversation before regenerating."
-      })
-      return
-    }
-
-    regenerate({
-      scriptId: initialScript.id,
-      conversationId: chat.conversationId,
-    }, {
-      onSuccess: (data) => {
-        setPreviewScriptId(data.script_id)
-        toast.info("Regeneration started", {
-          description: "Creating a preview based on your conversation..."
-        })
-      },
-      onError: (err) => {
-        toast.error("Regeneration failed", {
-          description: err instanceof Error ? err.message : "Unknown error"
-        })
-      }
-    })
-  }, [chat.conversationId, initialScript.id, regenerate])
-
   const handleAcceptPreview = React.useCallback(() => {
     if (previewScriptId) {
       navigate({ to: "/review/script/$id", params: { id: previewScriptId.toString() } })
@@ -367,8 +331,6 @@ function ScriptReviewContent({
           streamingContent={chat.streamingContent}
           error={chat.error}
           onSendMessage={handleSendMessage}
-          onGeneratePreview={handleGeneratePreview}
-          isGenerating={isGenerating}
           artifactType="script"
           isExpanded={isPanelExpanded}
           onToggle={() => setIsPanelExpanded(!isPanelExpanded)}

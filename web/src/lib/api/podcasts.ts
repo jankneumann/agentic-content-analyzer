@@ -21,6 +21,7 @@ import type {
   ApprovedScript,
   SortOrder,
 } from "@/types"
+import type { OperationHandle, PodcastAudioRequest } from "@/generated/workflow-contracts"
 
 /**
  * Podcast filters for list queries
@@ -89,13 +90,8 @@ export async function fetchPodcast(podcastId: number): Promise<PodcastDetail> {
  */
 export async function generateAudio(
   request: GenerateAudioAPIRequest
-): Promise<{
-  status: string
-  message: string
-  podcast_id: number
-  script_id: number
-}> {
-  return apiClient.post("/podcasts/generate", request)
+): Promise<OperationHandle> {
+  return apiClient.post("/podcasts", request as PodcastAudioRequest)
 }
 
 /**

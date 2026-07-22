@@ -6,16 +6,17 @@ batch pipeline. When ``is_batch_enabled(step)`` is true, a step calls
 is serialized into a ``batch_requests`` row and picked up later by the submit
 worker. When batching is off, no step touches this class at all.
 
-``request_key`` is derived deterministically from ``(step, target_table,
-target_id)`` so re-enqueueing the same target is idempotent — a re-run after a
-crash won't create duplicate batch rows or double-charge.
+An active-target unique index and lookup make re-enqueueing the same
+``(step, content_id)`` idempotent. Each new execution attempt gets a fresh
+``request_key`` for provider correlation.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import uuid
+from typing import TYPE_CHECKING, Any
 
-from src.models.batch import BatchRequest as BatchRequestRow
+from src.models.batch import BatchRequest as BatchRequestRow, BatchRequestStatus
 from src.services.batch.types import BatchRequest
 from src.utils.logging import get_logger
 
@@ -38,22 +39,36 @@ class BatchCollector:
         self.model_config = model_config
 
     @staticmethod
-    def build_request_key(step: ModelStep, target_table: str, target_id: object) -> str:
-        """Deterministic, idempotent key for a (step, row) pair.
+    def build_request_key(step: ModelStep, content_id: int) -> str:
+        """Return a provider correlation key unique to this execution attempt."""
+        return f"{step.value}:{content_id}:{uuid.uuid4().hex}"
 
-        Echoed into the Gemini request metadata and stored UNIQUE on the row,
-        so the same target enqueued twice collapses to one batch request.
-        """
-        return f"{step.value}:{target_table}:{target_id}"
+    @staticmethod
+    def _contains_credentials(value: Any) -> bool:
+        """Reject explicit credential fields before a payload reaches JSON storage."""
+        credential_keys = {"api_key", "apikey", "authorization", "credential", "secret", "token"}
+        if isinstance(value, dict):
+            return any(
+                (
+                    (normalized := str(key).lower().replace("-", "_")) in credential_keys
+                    or normalized.endswith(
+                        ("_api_key", "_credential", "_credentials", "_secret", "_token")
+                    )
+                )
+                or BatchCollector._contains_credentials(item)
+                for key, item in value.items()
+            )
+        if isinstance(value, (list, tuple)):
+            return any(BatchCollector._contains_credentials(item) for item in value)
+        return False
 
     def enqueue(
         self,
         db: Session,
         step: ModelStep,
-        target_table: str,
-        target_id: object,
+        content_id: int,
         request: BatchRequest,
-    ) -> BatchRequestRow:
+    ) -> BatchRequestRow | None:
         """Persist (or reuse) a ``pending`` batch request for one target row.
 
         The caller supplies the session so the enqueue shares the surrounding
@@ -64,8 +79,7 @@ class BatchCollector:
         Args:
             db: Active SQLAlchemy session (caller-owned transaction).
             step: Pipeline step — also selects the model id.
-            target_table: Table the reconciled result writes back to (e.g. ``"contents"``).
-            target_id: Primary key of the target row (stringified for storage).
+            content_id: Integer primary key of the Content row to reconcile.
             request: In-memory request payload (contents + config); its ``key``
                 field is advisory — the collector assigns the canonical key.
 
@@ -73,28 +87,48 @@ class BatchCollector:
             The persisted (or pre-existing) ``batch_requests`` ORM row, flushed
             so it is visible to subsequent queries in the same transaction.
         """
-        target_id_str = str(target_id)
-        request_key = self.build_request_key(step, target_table, target_id_str)
+        if not self.model_config.is_batch_enabled(step):
+            logger.debug("batch enqueue skipped", extra={"model_step": step.value})
+            return None
+        if isinstance(content_id, bool) or not isinstance(content_id, int):
+            raise TypeError("content_id must be an integer")
+        if self._contains_credentials(request.config):
+            raise ValueError("batch request config must not contain credentials")
 
+        active_statuses = tuple(
+            status.value
+            for status in (
+                BatchRequestStatus.PENDING,
+                BatchRequestStatus.CLAIMED,
+                BatchRequestStatus.SUBMITTED,
+                BatchRequestStatus.FALLBACK,
+            )
+        )
         existing = (
-            db.query(BatchRequestRow).filter(BatchRequestRow.request_key == request_key).first()
+            db.query(BatchRequestRow)
+            .filter(
+                BatchRequestRow.model_step == step.value,
+                BatchRequestRow.content_id == content_id,
+                BatchRequestRow.status.in_(active_statuses),
+            )
+            .first()
         )
         if existing is not None:
             logger.debug(
                 "batch enqueue idempotent hit",
-                extra={"request_key": request_key, "status": existing.status},
+                extra={"request_key": existing.request_key, "status": existing.status},
             )
             return existing
 
         model_id = self.model_config.get_model_for_step(step)
+        request_key = self.build_request_key(step, content_id)
         row = BatchRequestRow(
             request_key=request_key,
             model_step=step.value,
             model_id=model_id,
-            target_table=target_table,
-            target_id=target_id_str,
+            content_id=content_id,
             request_payload={"contents": request.contents, "config": request.config},
-            status="pending",
+            status=BatchRequestStatus.PENDING.value,
         )
         db.add(row)
         # Flush so a subsequent enqueue/select in the same txn sees this row

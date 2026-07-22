@@ -87,8 +87,8 @@ class HybridSearchService:
         by the vector search on the event-loop thread, so the threaded BM25
         call binds a fresh Session to the same bind as ``self._session``. In
         production that bind is the engine, yielding an independent pooled
-        connection (true isolation); under the test harness it is the shared
-        test connection, so flushed-but-uncommitted fixtures stay visible.
+        connection (true isolation); under a transaction-isolated test harness
+        it is the shared connection, so uncommitted fixture data remains visible.
 
         An injected strategy (dependency injection, e.g. tests) is used as-is —
         the caller owns its session lifecycle.

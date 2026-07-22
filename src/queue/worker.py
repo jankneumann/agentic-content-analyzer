@@ -26,6 +26,11 @@ logger = get_logger(__name__)
 # Registry of entrypoint → async handler functions
 _handlers: dict[str, Callable[..., Coroutine[Any, Any, None]]] = {}
 
+# Internal maintenance is deliberately not a queue entrypoint: canonical
+# operations remain the only user-submittable workflow mutations.
+_BATCH_MAINTENANCE_ADVISORY_LOCK = 2_104_711_915
+_BATCH_MAINTENANCE_INTERVAL_SECONDS = 60.0
+
 
 def _sqlalchemy_url_to_asyncpg(url: str) -> str:
     if url.startswith("postgresql://"):
@@ -70,25 +75,49 @@ async def _claim_jobs(
     return [dict(row) for row in rows]
 
 
-async def _complete_job(conn: asyncpg.Connection, job_id: int) -> None:
-    """Mark a job as completed."""
-    await conn.execute(
+async def _complete_job(conn: asyncpg.Connection, job_id: int) -> bool:
+    """Mark uncancelled active work completed without overwriting terminal state."""
+    completed_id = await conn.fetchval(
         """
         UPDATE pgqueuer_jobs
         SET status = 'completed', completed_at = NOW(), heartbeat_at = NOW()
         WHERE id = $1
+          AND status = 'in_progress'
+          AND NOT COALESCE((payload->>'cancel_requested')::boolean, FALSE)
+        RETURNING id
         """,
         job_id,
     )
+    return completed_id is not None
+
+
+async def _checkpoint_job_cancellation(conn: asyncpg.Connection, job_id: int) -> bool:
+    """Resolve a cancellation that raced the handler's final safe checkpoint."""
+
+    row = await conn.fetchrow(
+        """
+        UPDATE pgqueuer_jobs
+        SET status = 'cancelled',
+            payload = COALESCE(payload, '{}'::jsonb) || '{"message":"Cancelled"}'::jsonb,
+            completed_at = NOW(),
+            heartbeat_at = NOW()
+        WHERE id = $1
+          AND status = 'in_progress'
+          AND COALESCE((payload->>'cancel_requested')::boolean, FALSE)
+        RETURNING id
+        """,
+        job_id,
+    )
+    return row is not None
 
 
 async def _fail_job(conn: asyncpg.Connection, job_id: int, error: str) -> None:
-    """Mark a job as failed with an error message."""
+    """Mark an active job failed without overwriting a terminal state."""
     await conn.execute(
         """
         UPDATE pgqueuer_jobs
         SET status = 'failed', error = $2, completed_at = NOW(), heartbeat_at = NOW()
-        WHERE id = $1
+        WHERE id = $1 AND status = 'in_progress'
         """,
         job_id,
         error[:1000],  # Truncate long error messages
@@ -148,14 +177,6 @@ async def _emit_job_notification(
             "extract_url_content": (
                 NotificationEventType.BATCH_SUMMARY,
                 "URL content extracted",
-            ),
-            "batch_submit": (
-                NotificationEventType.BATCH_SUMMARY,
-                "Batch submit sweep complete",
-            ),
-            "batch_poll": (
-                NotificationEventType.BATCH_SUMMARY,
-                "Batch poll sweep complete",
             ),
         }
 
@@ -217,17 +238,63 @@ async def _process_job(
 
         await touch_job_heartbeat(job_id)
         await handler(job_id, payload)
-        await _complete_job(conn, job_id)
-        logger.info(f"Job {job_id} ({entrypoint}) completed")
-        await _emit_job_notification(job_id, entrypoint, payload)
+        if await _complete_job(conn, job_id):
+            logger.info(f"Job {job_id} ({entrypoint}) completed")
+            await _emit_job_notification(job_id, entrypoint, payload)
+        elif await _checkpoint_job_cancellation(conn, job_id):
+            logger.info(f"Job {job_id} ({entrypoint}) cancelled before completion")
+        else:
+            logger.info(f"Job {job_id} ({entrypoint}) reached a terminal state in its handler")
     except Exception as e:
         logger.error(f"Job {job_id} ({entrypoint}) failed: {e}", exc_info=True)
-        generic_error = "Job failed due to an internal error"
-        await _fail_job(conn, job_id, generic_error)
-        await _emit_job_notification(job_id, entrypoint, payload, error=generic_error)
+        from src.queue.workflow_handlers import WorkflowHandlerError
+
+        persisted_error = (
+            str(e) if isinstance(e, WorkflowHandlerError) else "Job failed due to an internal error"
+        )
+        await _fail_job(conn, job_id, persisted_error)
+        await _emit_job_notification(job_id, entrypoint, payload, error=persisted_error)
     finally:
         heartbeat_task.cancel()
         await asyncio.gather(heartbeat_task, return_exceptions=True)
+
+
+async def _run_batch_maintenance_tick(conn: asyncpg.Connection) -> bool:
+    """Run one internal batch cycle when this worker wins leader election."""
+    from src.config.models import get_model_config
+
+    model_config = get_model_config()
+    config = model_config.batch_config
+    if not config.get("enabled", False):
+        return False
+
+    acquired = await conn.fetchval(
+        "SELECT pg_try_advisory_lock($1::bigint)",
+        _BATCH_MAINTENANCE_ADVISORY_LOCK,
+    )
+    if not acquired:
+        logger.debug("batch maintenance tick skipped; advisory lock held")
+        return False
+
+    try:
+        from src.services.batch.workers import run_batch_maintenance
+        from src.services.llm_router import LLMRouter
+        from src.storage.database import get_db
+
+        with get_db() as db:
+            await run_batch_maintenance(
+                db,
+                LLMRouter(model_config),
+                flush_max_requests=config["flush_max_requests"],
+                flush_max_wait_minutes=config["flush_max_wait_minutes"],
+                fallback_max_attempts=config["fallback_max_attempts"],
+            )
+        return True
+    finally:
+        await conn.execute(
+            "SELECT pg_advisory_unlock($1::bigint)",
+            _BATCH_MAINTENANCE_ADVISORY_LOCK,
+        )
 
 
 async def run_worker(
@@ -255,6 +322,7 @@ async def run_worker(
     await ensure_queue_schema_compatible()
 
     conn = await asyncpg.connect(asyncpg_url)
+    maintenance_conn = await asyncpg.connect(asyncpg_url)
 
     # Set up LISTEN for immediate job notification
     notify_event = asyncio.Event()
@@ -270,10 +338,29 @@ async def run_worker(
     await conn.add_listener("pgqueuer", _on_notify)
 
     active_tasks: set[asyncio.Task] = set()
+    maintenance_task: asyncio.Task[bool] | None = None
+    last_maintenance_at = float("-inf")
+    loop = asyncio.get_running_loop()
     logger.info(f"Embedded worker started (concurrency={concurrency})")
 
     try:
         while True:
+            if maintenance_task is not None and maintenance_task.done():
+                try:
+                    maintenance_task.result()
+                except Exception:
+                    logger.exception("batch maintenance tick failed")
+                maintenance_task = None
+
+            if (
+                maintenance_task is None
+                and loop.time() - last_maintenance_at >= _BATCH_MAINTENANCE_INTERVAL_SECONDS
+            ):
+                maintenance_task = asyncio.create_task(
+                    _run_batch_maintenance_tick(maintenance_conn)
+                )
+                last_maintenance_at = loop.time()
+
             # Clean up completed tasks
             done = {t for t in active_tasks if t.done()}
             for t in done:
@@ -311,8 +398,30 @@ async def run_worker(
             await asyncio.gather(*active_tasks, return_exceptions=True)
         raise
     finally:
+        if maintenance_task is not None:
+            maintenance_task.cancel()
+            await asyncio.gather(maintenance_task, return_exceptions=True)
         await conn.remove_listener("pgqueuer", _on_notify)
         await conn.close()
+        await maintenance_conn.close()
+
+
+def _prepare_forced_summary(content_id: int) -> None:
+    """Remove an existing summary so the item processor performs fresh work."""
+
+    from src.models.content import Content, ContentStatus
+    from src.models.summary import Summary
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        content = db.get(Content, content_id)
+        if content is None:
+            raise ValueError(f"Content {content_id} not found")
+        db.query(Summary).filter(Summary.content_id == content_id).delete(synchronize_session=False)
+        content.status = ContentStatus.PARSED
+        content.error_message = None
+        content.processed_at = None
+        db.commit()
 
 
 def register_all_handlers() -> None:
@@ -325,50 +434,10 @@ def register_all_handlers() -> None:
     _register_content_handlers()
     _register_reference_handlers()
     _register_agent_handlers()
-    _register_batch_handlers()
+    from src.queue.workflow_handlers import register_canonical_workflow_handlers
+
+    register_canonical_workflow_handlers(register_handler)
     logger.info(f"Registered {len(_handlers)} job handlers: {list(_handlers.keys())}")
-
-
-def _register_batch_handlers() -> None:
-    """Register Gemini batch submit/poll sweep handlers.
-
-    These are inert until something enqueues ``batch_submit``/``batch_poll`` jobs
-    (a lightweight interval driver or pg_cron in Railway) AND ``batch.enabled``
-    is on — registering the handlers alone changes no runtime behavior. The
-    poll handler also runs the synchronous fallback so failed/expired/partial
-    requests never get permanently stuck.
-    """
-
-    @register_handler("batch_submit")
-    async def batch_submit(job_id: int, payload: dict) -> None:
-        from src.config.models import get_model_config
-        from src.services.batch.workers import run_batch_submit
-        from src.services.llm_router import LLMRouter
-        from src.storage.database import get_db
-
-        model_config = get_model_config()
-        cfg = model_config.batch_config
-        router = LLMRouter(model_config)
-        with get_db() as db:
-            await run_batch_submit(
-                db,
-                router,
-                flush_max_requests=cfg["flush_max_requests"],
-                flush_max_wait_minutes=cfg["flush_max_wait_minutes"],
-            )
-
-    @register_handler("batch_poll")
-    async def batch_poll(job_id: int, payload: dict) -> None:
-        from src.config.models import get_model_config
-        from src.services.batch.workers import run_batch_poll, run_sync_fallback
-        from src.services.llm_router import LLMRouter
-        from src.storage.database import get_db
-
-        model_config = get_model_config()
-        router = LLMRouter(model_config)
-        with get_db() as db:
-            await run_batch_poll(db, router)
-            await run_sync_fallback(db, router)
 
 
 def _register_content_handlers() -> None:
@@ -427,8 +496,12 @@ def _register_content_handlers() -> None:
         content_id = payload.get("content_id")
         if not content_id:
             raise ValueError("Missing content_id")
+        force_reprocess = bool(payload.get("force_reprocess", payload.get("force", False)))
 
         await update_job_progress(job_id, 10, "Starting summarization")
+
+        if force_reprocess:
+            await _asyncio.to_thread(_prepare_forced_summary, content_id)
 
         RATE_LIMIT_BACKOFF_DELAYS = [5, 10, 20]
         last_error: Exception | None = None
@@ -576,6 +649,7 @@ def _register_content_handlers() -> None:
                     **({"title": payload["title"]} if "title" in payload else {}),
                     **({"tags": payload["tags"]} if "tags" in payload else {}),
                     **({"notes": payload["notes"]} if "notes" in payload else {}),
+                    **({"auto_route": payload["auto_route"]} if "auto_route" in payload else {}),
                 },
             ),
             "huggingface_papers": (
