@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
+from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from typer.main import get_command
@@ -86,6 +88,48 @@ class TestBatchStatusCLI:
         payload = json.loads(result.output)
         assert payload["jobs"] == {"running": 2, "succeeded": 1}
         assert payload["requests"] == {"pending": 5, "submitted": 2}
+        assert payload["recent_jobs"] == []
+        mock_db.commit.assert_not_called()
+
+    def test_status_json_includes_bounded_recent_jobs(self):
+        mock_db = MagicMock()
+        grouped = mock_db.query.return_value.group_by.return_value
+        grouped.all.side_effect = [[], []]
+        ordered = mock_db.query.return_value.order_by.return_value
+        recent = ordered.limit.return_value
+        recent.all.return_value = [
+            SimpleNamespace(
+                id="job-1",
+                provider_job_name="batches/provider-1",
+                model_step="content_filtering",
+                model_id="gemini-2.5-flash-lite",
+                state="running",
+                request_count=3,
+                created_at=datetime(2026, 7, 22, tzinfo=UTC),
+                submitted_at=None,
+                completed_at=None,
+                error=None,
+            )
+        ]
+
+        with patch("src.storage.database.get_db", _fake_get_db(mock_db)):
+            result = runner.invoke(app, ["--json", "batch", "status"])
+
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["recent_jobs"][0] == {
+            "id": "job-1",
+            "provider_job_name": "batches/provider-1",
+            "model_step": "content_filtering",
+            "model_id": "gemini-2.5-flash-lite",
+            "state": "running",
+            "request_count": 3,
+            "created_at": "2026-07-22T00:00:00+00:00",
+            "submitted_at": None,
+            "completed_at": None,
+            "error": None,
+        }
+        ordered.limit.assert_called_once_with(10)
 
     def test_status_human_empty(self):
         mock_db = MagicMock()

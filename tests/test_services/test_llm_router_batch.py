@@ -48,6 +48,7 @@ def _async_client() -> tuple[MagicMock, MagicMock]:
     batches.create = AsyncMock()
     batches.get = AsyncMock()
     client.aio.batches = batches
+    client.aio.aclose = AsyncMock()
     return client, batches
 
 
@@ -101,6 +102,40 @@ class TestSubmitBatch:
         assert len(src) == 2
         # Each inlined request must carry its request_key for reconciliation.
         assert {r.metadata["request_key"] for r in src} == {"k1", "k2"}
+        mock_client.aio.aclose.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_closes_async_client_when_submission_fails(self, router):
+        mock_client, batches = _async_client()
+        batches.create.side_effect = RuntimeError("transport failed")
+        with (
+            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch("google.genai.Client", return_value=mock_client),
+            pytest.raises(RuntimeError, match="transport failed"),
+        ):
+            await router.submit_batch(
+                "gemini-2.5-flash-lite",
+                [BatchRequest(key="k1", contents="prompt")],
+            )
+
+        mock_client.aio.aclose.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_close_failure_does_not_discard_accepted_provider_job(self, router):
+        mock_client, batches = _async_client()
+        batches.create.return_value = SimpleNamespace(name="batches/accepted")
+        mock_client.aio.aclose.side_effect = RuntimeError("close failed")
+        with (
+            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch("google.genai.Client", return_value=mock_client),
+        ):
+            job_name = await router.submit_batch(
+                "gemini-2.5-flash-lite",
+                [BatchRequest(key="k1", contents="prompt")],
+            )
+
+        assert job_name == "batches/accepted"
+        mock_client.aio.aclose.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_rejects_oversized_inline_payload(self, router):
@@ -167,6 +202,20 @@ class TestPollBatch:
         assert result.errors_by_key is None
         assert result.is_terminal is True
         batches.get.assert_awaited_once_with(name="batches/test-123")
+        mock_client.aio.aclose.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_closes_async_client_when_poll_fails(self, router):
+        mock_client, batches = _async_client()
+        batches.get.side_effect = RuntimeError("transport failed")
+        with (
+            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch("google.genai.Client", return_value=mock_client),
+            pytest.raises(RuntimeError, match="transport failed"),
+        ):
+            await router.poll_batch("batches/test-123")
+
+        mock_client.aio.aclose.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_partial_success_splits_results_and_errors(self, router):

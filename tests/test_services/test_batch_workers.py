@@ -6,6 +6,7 @@ calls and returns canned batch results. No network, no Postgres.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
@@ -62,6 +63,26 @@ class RecordingFallback:
 class FailingFallback:
     async def fallback(self, db, request):
         raise RuntimeError("temporary sync failure")
+
+
+class PartialMutationHandler:
+    def apply(self, db, request, result_text):
+        request.result_text = "partial-write"
+        raise RuntimeError("handler failed after mutation")
+
+
+class FlushFailureHandler:
+    def apply(self, db, request, result_text):
+        db.add(
+            BatchRequestRow(
+                request_key=request.request_key,
+                model_step=request.model_step,
+                model_id=request.model_id,
+                request_payload={},
+                status="pending",
+            )
+        )
+        db.flush()
 
 
 def _seed_request(db, key, *, created_at=None, status="pending", contents="classify", config=None):
@@ -434,6 +455,44 @@ class TestPollReconcile:
         assert row.status == "fallback"
         assert "handler" in row.error
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("handler", [PartialMutationHandler(), FlushFailureHandler()])
+    async def test_handler_failure_rolls_back_partial_writes_and_keeps_session_usable(
+        self, db, handler
+    ):
+        row = _seed_request(db, f"{STEP}:contents:1", status="submitted")
+        job = BatchJob(
+            provider="google_ai",
+            provider_job_name="batches/j1",
+            model_id=MODEL,
+            model_step=STEP,
+            state="running",
+            request_count=1,
+        )
+        db.add(job)
+        db.flush()
+        row.batch_job_id = job.id
+        db.commit()
+        registry = ResultHandlerRegistry()
+        registry.register(ModelStep.CONTENT_FILTERING, handler)
+
+        summary = await run_batch_poll(
+            db,
+            FakeRouter(
+                poll_result=BatchPollResult(
+                    state=BatchState.SUCCEEDED,
+                    results_by_key={row.request_key: "result"},
+                )
+            ),
+            registry=registry,
+        )
+
+        db.refresh(row)
+        assert summary.requests_fallback == 1
+        assert row.status == "fallback"
+        assert row.result_text is None
+        assert db.query(BatchRequestRow).count() == 1
+
 
 class TestSyncFallback:
     @pytest.mark.asyncio
@@ -489,6 +548,36 @@ class TestSyncFallback:
         )
 
         assert summary.requests_recovered == 0
+
+    @pytest.mark.asyncio
+    async def test_attempt_is_committed_before_external_fallback_and_bounds_cancellation(self, db):
+        row = _seed_request(db, f"{STEP}:contents:10", status="fallback")
+        observed_attempts: list[int] = []
+
+        class CancellingFallback:
+            async def fallback(self, callback_db, request):
+                with Session(callback_db.get_bind()) as observer:
+                    observed_attempts.append(
+                        observer.get(BatchRequestRow, request.id).fallback_attempts
+                    )
+                raise asyncio.CancelledError
+
+        registry = ResultHandlerRegistry()
+        registry.register(ModelStep.CONTENT_FILTERING, RecordingHandler())
+        registry.register_fallback(ModelStep.CONTENT_FILTERING, CancellingFallback())
+
+        with pytest.raises(asyncio.CancelledError):
+            await run_sync_fallback(db, registry=registry, fallback_max_attempts=1)
+
+        db.expire_all()
+        assert observed_attempts == [1]
+        assert db.get(BatchRequestRow, row.id).fallback_attempts == 1
+
+        summary = await run_sync_fallback(db, registry=registry, fallback_max_attempts=1)
+        db.refresh(row)
+        assert summary.requests_failed == 1
+        assert row.status == "failed"
+        assert observed_attempts == [1]
 
 
 class TestEntrypointRegistration:

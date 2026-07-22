@@ -1544,6 +1544,14 @@ class LLMRouter:
         return ""
 
     @staticmethod
+    async def _close_gemini_async_client(client: Any) -> None:
+        """Release SDK transport resources without masking the batch outcome."""
+        try:
+            await client.aio.aclose()
+        except Exception:
+            logger.warning("failed to close Gemini async client", exc_info=True)
+
+    @staticmethod
     def _map_batch_state(raw_state: Any) -> BatchState:
         """Normalize the provider's ``JOB_STATE_*`` enum to a :class:`BatchState`.
 
@@ -1656,7 +1664,10 @@ class LLMRouter:
         # AsyncBatches.create/get are the non-blocking SDK boundary used by the
         # worker maintenance tick.
         # Source: https://googleapis.github.io/python-genai/genai.html#genai.batches.AsyncBatches
-        job = await client.aio.batches.create(model=provider_model_id, src=inlined)
+        try:
+            job = await client.aio.batches.create(model=provider_model_id, src=inlined)
+        finally:
+            await self._close_gemini_async_client(client)
         if not getattr(job, "name", None):
             raise RuntimeError("Gemini batch creation returned no provider job name")
         logger.info(
@@ -1699,7 +1710,10 @@ class LLMRouter:
             raise RuntimeError("GOOGLE_API_KEY environment variable not set")
 
         client = genai.Client(api_key=api_key)
-        job = await client.aio.batches.get(name=provider_job_name)
+        try:
+            job = await client.aio.batches.get(name=provider_job_name)
+        finally:
+            await self._close_gemini_async_client(client)
         state = self._map_batch_state(getattr(job, "state", None))
 
         if state != BatchState.SUCCEEDED:

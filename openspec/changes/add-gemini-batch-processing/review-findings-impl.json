@@ -1,0 +1,91 @@
+{
+  "review_type": "implementation",
+  "target": "add-gemini-batch-processing",
+  "reviewer_vendor": "inline-local-fallback",
+  "findings": [
+    {
+      "id": 6,
+      "type": "resilience",
+      "criticality": "critical",
+      "description": "Per-call Gemini async clients were not closed.",
+      "resolution": "Close client.aio in finally without allowing close-only failures to discard an accepted provider result.",
+      "disposition": "fix",
+      "package_id": "wp-core",
+      "file_path": "src/services/llm_router.py",
+      "axis": "correctness",
+      "severity": "critical"
+    },
+    {
+      "id": 7,
+      "type": "correctness",
+      "criticality": "low",
+      "description": "batch_config returned a shallow copy with shared nested execution settings.",
+      "resolution": "Copy the nested execution mapping before returning configuration.",
+      "disposition": "fix",
+      "package_id": "wp-core",
+      "file_path": "src/config/models.py",
+      "axis": "readability",
+      "severity": "nit"
+    },
+    {
+      "id": 8,
+      "type": "correctness",
+      "criticality": "critical",
+      "description": "Result-handler exceptions could preserve partial ORM mutations or poison the polling session.",
+      "resolution": "Run each handler application in a nested transaction and roll back only that request on failure.",
+      "disposition": "fix",
+      "package_id": "wp-orchestration",
+      "file_path": "src/services/batch/workers.py",
+      "axis": "correctness",
+      "severity": "critical"
+    },
+    {
+      "id": 9,
+      "type": "resilience",
+      "criticality": "critical",
+      "description": "Fallback attempts were not durable before the external synchronous call.",
+      "resolution": "Commit the bounded attempt before calling the fallback and isolate downstream writes in a savepoint.",
+      "disposition": "fix",
+      "package_id": "wp-orchestration",
+      "file_path": "src/services/batch/workers.py",
+      "axis": "correctness",
+      "severity": "critical"
+    },
+    {
+      "id": 10,
+      "type": "security",
+      "criticality": "critical",
+      "description": "Credential screening ignored structured request contents.",
+      "resolution": "Recursively validate the full payload before storing it.",
+      "disposition": "fix",
+      "package_id": "wp-orchestration",
+      "file_path": "src/services/batch/collector.py",
+      "axis": "security",
+      "severity": "critical"
+    },
+    {
+      "id": 11,
+      "type": "spec_gap",
+      "criticality": "high",
+      "description": "The read-only batch status command omitted required recent-job details.",
+      "resolution": "Return a bounded newest-ten list in JSON-safe human and JSON output.",
+      "disposition": "fix",
+      "package_id": "wp-operator-surface",
+      "file_path": "src/cli/batch_commands.py",
+      "axis": "correctness",
+      "severity": "critical"
+    },
+    {
+      "id": 12,
+      "type": "performance",
+      "criticality": "low",
+      "description": "The submit sweep materialized every pending request before applying its provider-batch limit.",
+      "resolution": "Aggregate group readiness in SQL and load only the bounded rows selected for each ripe group.",
+      "disposition": "fix",
+      "package_id": "wp-orchestration",
+      "file_path": "src/services/batch/workers.py",
+      "axis": "performance",
+      "severity": "nit"
+    }
+  ]
+}

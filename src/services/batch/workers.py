@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
+
+from sqlalchemy import func
 
 from src.config.models import ModelStep
 from src.models.batch import (
@@ -126,34 +127,44 @@ async def run_batch_submit(
     summary = BatchSubmitSummary()
     summary.interrupted_jobs_recovered = _recover_interrupted_submissions(db, now)
 
-    pending = (
-        db.query(BatchRequestRow)
+    pending_groups = (
+        db.query(
+            BatchRequestRow.model_step,
+            BatchRequestRow.model_id,
+            func.count(BatchRequestRow.id),
+            func.min(BatchRequestRow.created_at),
+        )
         .filter(BatchRequestRow.status == BatchRequestStatus.PENDING.value)
+        .group_by(BatchRequestRow.model_step, BatchRequestRow.model_id)
         .order_by(
             BatchRequestRow.model_step,
             BatchRequestRow.model_id,
-            BatchRequestRow.created_at,
         )
         .all()
     )
-    groups: dict[tuple[str, str], list[BatchRequestRow]] = defaultdict(list)
-    for row in pending:
-        groups[row.model_step, row.model_id].append(row)
 
-    for (model_step, model_id), candidates in groups.items():
-        oldest = min(_utc(row.created_at) for row in candidates)
-        if len(candidates) < max_requests and now - oldest < threshold:
+    for model_step, model_id, request_count, oldest_created_at in pending_groups:
+        oldest = _utc(oldest_created_at)
+        if request_count < max_requests and now - oldest < threshold:
             summary.groups_held += 1
             continue
 
-        candidate_ids = [row.id for row in candidates[:max_requests]]
-        claim_query = db.query(BatchRequestRow).filter(
-            BatchRequestRow.id.in_(candidate_ids),
-            BatchRequestRow.status == BatchRequestStatus.PENDING.value,
+        claim_query = (
+            db.query(BatchRequestRow)
+            .filter(
+                BatchRequestRow.model_step == model_step,
+                BatchRequestRow.model_id == model_id,
+                BatchRequestRow.status == BatchRequestStatus.PENDING.value,
+            )
+            .order_by(
+                BatchRequestRow.created_at,
+                BatchRequestRow.id,
+            )
+            .limit(max_requests)
         )
         if _is_postgres(db):
             claim_query = claim_query.with_for_update(skip_locked=True)
-        claimed = claim_query.order_by(BatchRequestRow.created_at).all()
+        claimed = claim_query.all()
         if not claimed:
             db.rollback()
             continue
@@ -268,7 +279,11 @@ async def run_batch_poll(
                 text = results.get(row.request_key)
                 if text is not None and handler is not None:
                     try:
-                        handler.apply(db, row, text)
+                        # Domain writes and request reconciliation are atomic:
+                        # a caught handler failure must not leak partial ORM
+                        # mutations or poison the outer job transaction.
+                        with db.begin_nested():
+                            handler.apply(db, row, text)
                     except Exception as exc:
                         row.status = BatchRequestStatus.FALLBACK.value
                         row.error = f"result handler failed: {_provider_error(exc)}"
@@ -331,20 +346,39 @@ async def run_sync_fallback(
         query = query.with_for_update(skip_locked=True)
     rows = query.all()
 
-    for row in rows:
+    for selected_row in rows:
+        row_id = selected_row.id
+        current_attempts = int(selected_row.fallback_attempts or 0)
+        if current_attempts >= attempt_limit:
+            selected_row.status = BatchRequestStatus.FAILED.value
+            selected_row.error = "sync fallback attempt limit exhausted"
+            selected_row.completed_at = now
+            db.commit()
+            summary.requests_failed += 1
+            continue
+
+        # Persist the chargeable external-attempt claim before invoking the
+        # domain fallback. A crash/cancellation can consume an attempt, but it
+        # cannot roll the counter back and retry without bound.
+        selected_row.fallback_attempts = current_attempts + 1
+        db.commit()
+        row = db.get(BatchRequestRow, row_id)
+        if row is None:
+            continue
+
         step = ModelStep(row.model_step)
         result_handler = registry.get(step)
         fallback_handler = registry.get_fallback(step)
-        row.fallback_attempts = int(row.fallback_attempts or 0) + 1
         try:
-            if fallback_handler is None:
-                raise RuntimeError("no fallback handler registered")
-            if result_handler is None:
-                raise RuntimeError("no result handler registered")
-            result_text = await fallback_handler.fallback(db, row)
-            if not isinstance(result_text, str) or not result_text:
-                raise RuntimeError("fallback handler returned no result")
-            result_handler.apply(db, row, result_text)
+            with db.begin_nested():
+                if fallback_handler is None:
+                    raise RuntimeError("no fallback handler registered")
+                if result_handler is None:
+                    raise RuntimeError("no result handler registered")
+                result_text = await fallback_handler.fallback(db, row)
+                if not isinstance(result_text, str) or not result_text:
+                    raise RuntimeError("fallback handler returned no result")
+                result_handler.apply(db, row, result_text)
         except Exception as exc:
             row.error = f"sync fallback error: {_provider_error(exc)}"
             if row.fallback_attempts >= attempt_limit:
@@ -353,6 +387,7 @@ async def run_sync_fallback(
                 summary.requests_failed += 1
             else:
                 summary.requests_retrying += 1
+            db.commit()
             continue
 
         row.status = BatchRequestStatus.SUCCEEDED.value
@@ -360,8 +395,8 @@ async def run_sync_fallback(
         row.error = None
         row.completed_at = now
         summary.requests_recovered += 1
+        db.commit()
 
-    db.commit()
     logger.info("batch sync fallback", extra=summary.__dict__)
     return summary
 

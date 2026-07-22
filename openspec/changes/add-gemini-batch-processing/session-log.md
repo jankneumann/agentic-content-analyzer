@@ -59,3 +59,23 @@ Planned Gemini Batch API execution for non-latency-sensitive steps. Gate 1 selec
 
 ### Context
 Replanned the stale broad rollout into inert Gemini batch infrastructure, adapted the prior implementation to current architecture, and fixed five review findings. Focused and broad regression suites now cover durable claims, async provider correlation, bounded fallback, advisory maintenance, read-only operations, and safe defaults.
+
+---
+
+## Phase: Implementation Review (2026-07-22)
+
+**Agent**: codex inline fallback | **Session**: N/A
+
+### Decisions
+1. **Treat provider-client cleanup and fallback attempt durability as blocking** — Both defects could accumulate resources or repeat billable external work under normal worker failure modes.
+2. **Use per-request savepoints around result handlers** — A handler may mutate ORM state or flush before failing; isolating it keeps the polling session usable and preserves other results.
+3. **Resolve the bounded-query performance nit in the same pass** — SQL aggregation plus a limited claim query was low-risk and removes pending-table growth from worker memory usage.
+
+### Completed Work
+- Attempted configured Claude and Gemini reviewers; both vendor dispatches were unavailable.
+- Completed inline core and orchestration/CLI review.
+- Remediated seven findings, including five critical/high findings.
+- Passed 107 focused tests, changed-file Ruff checks, and changed-module mypy.
+
+### Context
+The second implementation-review round converged with no blocking findings. Structured findings are recorded in `review-findings-impl.json`; final deployed and repository-wide validation remains next.

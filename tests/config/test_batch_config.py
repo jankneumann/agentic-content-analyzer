@@ -77,3 +77,12 @@ class TestBatchConfigThresholds:
         cfg = ModelConfig()
         cfg.batch_config["enabled"] = True
         assert cfg.is_batch_enabled(ModelStep.CONTENT_FILTERING) is False
+
+    def test_batch_config_nested_execution_map_is_a_copy(self):
+        cfg = ModelConfig()
+        cfg._batch_config["enabled"] = True
+
+        returned = cfg.batch_config
+        returned["execution"]["content_filtering"] = "batch"
+
+        assert cfg.is_batch_enabled(ModelStep.CONTENT_FILTERING) is False

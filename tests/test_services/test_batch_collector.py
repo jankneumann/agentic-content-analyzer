@@ -134,6 +134,18 @@ class TestEnqueue:
                 BatchRequest(key="", contents="classify", config={"api_key": "secret"}),
             )
 
+    def test_nested_credentials_in_structured_contents_are_rejected(self, db, collector):
+        with pytest.raises(ValueError, match="credentials"):
+            collector.enqueue(
+                db,
+                ModelStep.CONTENT_FILTERING,
+                8,
+                BatchRequest(
+                    key="",
+                    contents={"parts": [{"authorization": "Bearer secret"}]},
+                ),
+            )
+
 
 class TestResultHandlerRegistry:
     def test_register_and_get(self):

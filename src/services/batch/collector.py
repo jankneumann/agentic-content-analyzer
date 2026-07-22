@@ -92,8 +92,9 @@ class BatchCollector:
             return None
         if isinstance(content_id, bool) or not isinstance(content_id, int):
             raise TypeError("content_id must be an integer")
-        if self._contains_credentials(request.config):
-            raise ValueError("batch request config must not contain credentials")
+        payload = {"contents": request.contents, "config": request.config}
+        if self._contains_credentials(payload):
+            raise ValueError("batch request payload must not contain credentials")
 
         active_statuses = tuple(
             status.value
@@ -127,7 +128,7 @@ class BatchCollector:
             model_step=step.value,
             model_id=model_id,
             content_id=content_id,
-            request_payload={"contents": request.contents, "config": request.config},
+            request_payload=payload,
             status=BatchRequestStatus.PENDING.value,
         )
         db.add(row)

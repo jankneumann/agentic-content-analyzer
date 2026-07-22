@@ -457,7 +457,10 @@ class ModelConfig:
     @property
     def batch_config(self) -> dict[str, Any]:
         """Return safe batch thresholds, fallback bound, size limit, and modes."""
-        return dict(self._batch_config)
+        return {
+            **self._batch_config,
+            "execution": dict(self._batch_config.get("execution", {})),
+        }
 
     def has_configured_providers(self) -> bool:
         """Return whether explicit provider priority configuration is present."""
