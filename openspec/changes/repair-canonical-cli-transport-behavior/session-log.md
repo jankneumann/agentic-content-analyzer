@@ -102,3 +102,29 @@ Implemented all four ri-01 work packages and integrated them with task-coupled c
 
 ### Context
 Internal cross-package and whole-branch review produced two evidence gaps and one blocking output-contract finding. All fix-disposition findings are resolved, and the integrated CLI/client gate passes 382 tests with one skip and no runtime warnings.
+
+---
+
+## Phase: Validation (2026-07-23)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Run the local-parallel spec and evidence gate** `architectural: roadmap-execution` — The item implementation produced work-package evidence while the roadmap assigns deployed cross-surface proof to ri-04.
+
+### Completed Work
+- spec compliance
+- package evidence
+- focused regression gate
+- static quality gate
+
+### Next Steps
+- Integrate ri-01 into the roadmap branch and advance to the next ready item.
+
+### Relevant Files
+- `openspec/changes/repair-canonical-cli-transport-behavior/validation-report.md` — Formal validation outcome
+- `openspec/changes/repair-canonical-cli-transport-behavior/architecture-impact.md` — Manual architecture impact analysis
+- `openspec/changes/repair-canonical-cli-transport-behavior/change-context.md` — Requirement evidence matrix
+
+### Context
+Spec and evidence validation passed: 4/4 requirements and 5/5 package results are complete, and the 383-test focused collection has no runtime or Requests compatibility warning. Production smoke remains assigned to dependent roadmap item ri-04.
