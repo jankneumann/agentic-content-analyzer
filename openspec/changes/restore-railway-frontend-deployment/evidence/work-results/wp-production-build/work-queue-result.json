@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "feature_id": "restore-railway-frontend-deployment",
+  "package_id": "wp-production-build",
+  "attempt": 2,
+  "plan_revision": 3,
+  "contracts_revision": 1,
+  "status": "completed",
+  "locks": {
+    "files": [
+      ".gitignore",
+      "package.json",
+      "pnpm-lock.yaml",
+      "web/package.json",
+      "web/package-lock.json",
+      "tests/config/test_frontend_deployment.py"
+    ],
+    "keys": ["feature:restore-railway-frontend-deployment:build"]
+  },
+  "scope": {
+    "write_allow": [
+      ".gitignore",
+      "package.json",
+      "pnpm-lock.yaml",
+      "web/package.json",
+      "web/package-lock.json",
+      "tests/config/test_frontend_deployment.py"
+    ],
+    "read_allow": ["web/**", "tests/**", "openspec/**", ".github/**"],
+    "deny": []
+  },
+  "files_modified": [
+    ".gitignore",
+    "package.json",
+    "pnpm-lock.yaml",
+    "tests/config/test_frontend_deployment.py",
+    "web/package-lock.json",
+    "web/package.json"
+  ],
+  "scope_check": {"passed": true, "violations": []},
+  "git": {
+    "base": {"ref": "4bc0e172"},
+    "head": {"commit": "648e2c9b02646c6f101957ff4816847992ac919e"}
+  },
+  "verification": {
+    "tier": "A",
+    "passed": true,
+    "steps": [
+      {
+        "name": "deployment-config-tests",
+        "kind": "command",
+        "command": "pytest tests/config/test_frontend_deployment.py --no-cov -q",
+        "exit_code": 0,
+        "passed": true,
+        "evidence": {
+          "artifacts": [],
+          "metrics": {"test_count": 5, "pass_count": 5}
+        }
+      },
+      {
+        "name": "production-build",
+        "kind": "command",
+        "command": "cd web && npm ci && npm audit --omit=dev --audit-level=high && npm run build",
+        "exit_code": 0,
+        "passed": true,
+        "evidence": {
+          "artifacts": [],
+          "metrics": {
+            "audit_passed": true,
+            "high_findings": 0,
+            "critical_findings": 0,
+            "build_passed": true
+          }
+        }
+      }
+    ]
+  },
+  "escalations": []
+}

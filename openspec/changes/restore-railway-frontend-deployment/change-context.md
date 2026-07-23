@@ -4,9 +4,9 @@
 
 | Req ID | Spec Source | Description | Contract Ref | Design Decision | Files Changed | Test(s) | Evidence |
 |--------|-------------|-------------|--------------|-----------------|---------------|---------|----------|
-| frontend-release-delivery.1 | `specs/frontend-release-delivery/spec.md` | Railway builds the isolated frontend from an uploaded committed, audit-gated lock without repository-level tools. | --- | D1, D2 | `.gitignore`, `package.json`, `pnpm-lock.yaml`, `web/package.json`, `web/package-lock.json` | `tests/config/test_frontend_deployment.py` | Pending corrected exact-SHA redeployment; deployment `6e246f86-e5a3-4146-8893-1e1a162055c8` is excluded because review found a critical dependency finding in its npm graph. |
-| frontend-release-delivery.2 | `specs/frontend-release-delivery/spec.md` | CI runs the production dependency audit, generated-contract drift, and exact production build. | `openspec/contracts/content-workflows/openapi/v1.yaml` | D3 | `.github/workflows/ci.yml` | `tests/config/test_frontend_ci.py` | Pending a successful `frontend-release` check for the corrected candidate SHA. |
-| frontend-release-delivery.3 | `specs/frontend-release-delivery/spec.md` | Production discovers capabilities, submits canonical ingestion, and avoids retired mutations. | `openspec/contracts/content-workflows/openapi/v1.yaml` | D4, D5 | `web/src/lib/api/workflows.ts`, `web/src/routes/ingest.tsx` (verification only) | `web/src/lib/api/__tests__/workflow-contracts.test.ts`, `web/tests/e2e/workflow-surface.spec.ts` | Pending corrected exact-SHA production verification. |
+| frontend-release-delivery.1 | `specs/frontend-release-delivery/spec.md` | Railway builds the isolated frontend from an uploaded committed, audit-gated lock without repository-level tools. | --- | D1, D2 | `.gitignore`, `package.json`, `pnpm-lock.yaml`, `web/package.json`, `web/package-lock.json` | `tests/config/test_frontend_deployment.py` | `evidence/production-deployment.md` — deployment `253e84a9-7946-48c6-b24a-cde6ca73313d` uploaded `web/package-lock.json`, selected Node 22.23.1, ran `npm ci`, built successfully, and reached `SUCCESS`. |
+| frontend-release-delivery.2 | `specs/frontend-release-delivery/spec.md` | CI runs the production dependency audit, generated-contract drift, and exact production build. | `openspec/contracts/content-workflows/openapi/v1.yaml` | D3 | `.github/workflows/ci.yml` | `tests/config/test_frontend_ci.py` | `evidence/production-deployment.md` — exact candidate `648e2c9b02646c6f101957ff4816847992ac919e` passed GitHub `frontend-release` job `89328888655`; the clean local release gate also passed. |
+| frontend-release-delivery.3 | `specs/frontend-release-delivery/spec.md` | Production discovers capabilities, submits canonical ingestion, and avoids retired mutations. | `openspec/contracts/content-workflows/openapi/v1.yaml` | D4, D5 | `web/src/lib/api/workflows.ts`, `web/src/routes/ingest.tsx` (verification only) | `web/src/lib/api/__tests__/workflow-contracts.test.ts`, `web/tests/e2e/workflow-surface.spec.ts` | `evidence/production-deployment.md` — production capability discovery returned 200, one visible canonical ingestion returned 202 and operation `104` completed, with zero retired-route calls. |
 
 ## Design Decision Trace
 
@@ -41,10 +41,10 @@
 
 - **Requirements traced**: 3/3
 - **Tests mapped**: 3 requirements have planned automated or production verification
-- **Evidence collected**: 0/3 requirements have final passing evidence after the
+- **Evidence collected**: 3/3 requirements have passing evidence after the
   security remediation.
-- **Gaps identified**: The corrected exact SHA must pass CI, deploy, and receive
-  a fresh bounded production verification record.
+- **Gaps identified**: None for this change.
 - **Deferred items**: Cross-surface release automation beyond this frontend proof
-  belongs to `ri-04`. Nullable form-input console warnings observed during the
+  belongs to `ri-04`. The remaining moderate OpenTelemetry audit chain is
+  tracked in `#468`; nullable form-input console warnings observed during the
   first smoke are tracked in `#470`.

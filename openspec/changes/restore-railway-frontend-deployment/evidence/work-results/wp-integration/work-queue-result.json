@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "feature_id": "restore-railway-frontend-deployment",
+  "package_id": "wp-integration",
+  "attempt": 1,
+  "plan_revision": 3,
+  "contracts_revision": 1,
+  "status": "completed",
+  "locks": {
+    "files": [],
+    "keys": ["feature:restore-railway-frontend-deployment:integration"]
+  },
+  "scope": {
+    "write_allow": [
+      "openspec/changes/restore-railway-frontend-deployment/**"
+    ],
+    "read_allow": ["**"],
+    "deny": []
+  },
+  "files_modified": [
+    "openspec/changes/restore-railway-frontend-deployment/architecture-impact.md",
+    "openspec/changes/restore-railway-frontend-deployment/change-context.md",
+    "openspec/changes/restore-railway-frontend-deployment/session-log.md",
+    "openspec/changes/restore-railway-frontend-deployment/tasks.md",
+    "openspec/changes/restore-railway-frontend-deployment/validation-report.md"
+  ],
+  "scope_check": {"passed": true, "violations": []},
+  "git": {
+    "base": {"ref": "4bc0e172"},
+    "head": {"commit": "648e2c9b02646c6f101957ff4816847992ac919e"}
+  },
+  "verification": {
+    "tier": "A",
+    "passed": true,
+    "steps": [
+      {
+        "name": "frontend-release-gate",
+        "kind": "command",
+        "command": "pytest focused config tests; validate evidence; npm ci; npm audit high gate; contract check; focused Vitest; production build",
+        "exit_code": 0,
+        "passed": true,
+        "evidence": {
+          "artifacts": [],
+          "metrics": {
+            "test_count": 46,
+            "evidence_complete": true,
+            "audit_passed": true,
+            "contract_check_passed": true,
+            "focused_tests_passed": true,
+            "build_passed": true
+          }
+        }
+      },
+      {
+        "name": "openspec-strict",
+        "kind": "command",
+        "command": "openspec validate restore-railway-frontend-deployment --strict",
+        "exit_code": 0,
+        "passed": true,
+        "evidence": {
+          "artifacts": [],
+          "metrics": {"validation_passed": true}
+        }
+      }
+    ]
+  },
+  "escalations": []
+}

@@ -150,3 +150,57 @@ The first live Railpack build succeeded but exposed that Railway CLI honored the
 
 ### Context
 Implementation review reopened RI-02 after finding a critical protobufjs regression in the new npm production graph and two evidence-integrity gaps. TDD regressions now pass for converged audit-safe npm/pnpm locks, a high-severity CI audit gate, explicit Railpack build facts, and attributed in-window backend correlation. A corrected exact-SHA CI and production cycle remains in progress.
+
+---
+
+## Phase: Review Iteration 1 (2026-07-23)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Accept the corrected implementation** `architectural: frontend-release-delivery` — All three blocking findings are covered by tested code, exact-SHA CI, corrected Railway deployment, and validator-enforced production evidence.
+
+### Completed Work
+- resolved the critical npm dependency regression
+- resolved missing Railway build-fact evidence
+- resolved weak browser-to-backend correlation validation
+- obtained clean independent re-review sign-off
+
+### Next Steps
+- run and record final validation
+
+### Relevant Files
+- `openspec/changes/restore-railway-frontend-deployment/change-context.md` — resolved review findings
+- `openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment.md` — corrected exact-SHA production proof
+
+### Context
+Independent Codex re-review signed off with no remaining blockers or should-fix findings. The review verified the audit-safe dual lock graphs, CI high/critical gate, explicit Railway build facts, bounded attributed correlations, exact-SHA CI identity, corrected production deployment, operation 104 completion, and zero retired-route calls.
+
+---
+
+## Phase: Validation (2026-07-23)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Accept full production validation** `architectural: frontend-release-delivery` — The exact audit-gated candidate is active, recoverable, and supported by validator-enforced browser, operation, Railway, and bounded backend evidence.
+
+### Completed Work
+- spec compliance
+- package evidence
+- security gate
+- static quality gate
+- exact-SHA CI
+- corrected Railway deployment
+- bounded production behavior proof
+
+### Next Steps
+- Integrate ri-02 into the roadmap branch and advance to ri-03.
+
+### Relevant Files
+- `openspec/changes/restore-railway-frontend-deployment/validation-report.md` — formal validation outcome
+- `openspec/changes/restore-railway-frontend-deployment/architecture-impact.md` — architecture impact analysis
+- `openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment.md` — sanitized production evidence
+
+### Context
+Full RI-02 validation passed: 3/3 requirements, 4/4 work-package results, 46 Python regressions, 6 focused frontend tests, high/critical npm audit gate, contract drift, exact production build, strict OpenSpec, Ruff, Mypy, package scope/locks, exact-SHA GitHub CI, Railway SUCCESS, and one completed canonical production canary with zero retired-route traffic.

@@ -48,18 +48,18 @@
   correlation, retries, and nonzero retired-route counts.
   **Design decisions:** D6
   **Dependencies:** 3.1
-- [ ] 3.3 Populate the pre-deployment release manifest and rollback record. **(M)**
+- [x] 3.3 Populate the pre-deployment release manifest and rollback record. **(M)**
   Capture the active deployment, last successful deployment and revision,
   public domain, exact project/environment/service IDs, rollback command, and
   abort criteria before any production mutation.
   **Design decisions:** D4, D6
   **Dependencies:** 3.2
-- [ ] 3.4 Commit and push a clean candidate, create or update its draft PR to
+- [x] 3.4 Commit and push a clean candidate, create or update its draft PR to
   `main`, then require a successful GitHub `frontend-release` check for that
   exact SHA. Record the check URL, conclusion, and checked SHA. **(M)**
   **Design decisions:** D3, D4
   **Dependencies:** 2.3, 3.3
-- [ ] 3.5 Deploy the validated exact SHA from a clean detached worktree. **(M)**
+- [x] 3.5 Deploy the validated exact SHA from a clean detached worktree. **(M)**
   Confirm detached `HEAD` equals the checked SHA and the worktree is clean,
   then run `railway up --ci` from that repository root with explicit project,
   environment, service, and a release message containing the SHA. Query
@@ -69,7 +69,7 @@
   **Spec scenarios:** Canonical production ingestion frontend / Production ingestion surface loads
   **Design decisions:** D4
   **Dependencies:** 3.4
-- [ ] 3.6 Verify capability discovery and submit exactly one production canary. **(M)**
+- [x] 3.6 Verify capability discovery and submit exactly one production canary. **(M)**
   Use `{"kind":"url","url":"https://example.com/?aca-release-smoke=<short-sha>","title":"ACA release smoke <short-sha>","notes":"restore-railway-frontend-deployment","routing_mode":"webpage","force_reprocess":false}`
   through the deployed form. Preserve browser network logging, fill the form
   once, click submit exactly once, and do not reload, double-click, script, or
@@ -78,7 +78,7 @@
   **Spec scenarios:** Production ingestion surface loads; Production ingestion is submitted
   **Design decisions:** D5, D6
   **Dependencies:** 3.5
-- [ ] 3.7 Correlate browser network evidence with bounded backend logs and
+- [x] 3.7 Correlate browser network evidence with bounded backend logs and
   query both retired mutation paths. **(M)**
   Record public URL, UTC window bounds, capability status, canonical
   method/path/status, browser/request attribution, operation ID/status,
@@ -87,15 +87,15 @@
   **Spec scenarios:** Canonical production ingestion frontend / Retired mutation routes remain unused
   **Design decisions:** D5, D6
   **Dependencies:** 3.6
-- [ ] Checkpoint: confirm Railway `SUCCESS`, public route health, and run the
+- [x] Checkpoint: confirm Railway `SUCCESS`, public route health, and run the
   production-evidence validator successfully.
 
 ## Phase 4 — Integration (`wp-integration`)
 
-- [ ] 4.1 Run the complete frontend release gate from a clean dependency state. **(M)**
+- [x] 4.1 Run the complete frontend release gate from a clean dependency state. **(M)**
   Include `npm test -- --run src/lib/api/__tests__/workflow-contracts.test.ts`.
   **Dependencies:** 1.3, 2.3, 3.7
-- [ ] 4.2 Populate requirement evidence and verify the pre-recorded rollback data. **(S)**
+- [x] 4.2 Populate requirement evidence and verify the pre-recorded rollback data. **(S)**
   **Dependencies:** 4.1
 
 ## Gate 2 Approval
