@@ -260,9 +260,10 @@ def query(
             raise typer.Exit(1)
 
     if not results:
-        console.print("[yellow]No results found for the given query.[/yellow]")
         if is_json_mode():
             output_result({"results": [], "total": 0, "query": query_text})
+        else:
+            console.print("[yellow]No results found for the given query.[/yellow]")
         raise typer.Exit(0)
 
     # JSON output mode

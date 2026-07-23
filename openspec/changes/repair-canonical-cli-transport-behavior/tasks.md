@@ -16,20 +16,20 @@
 
 ## Phase 2 — Discovery and JSON output (`wp-cli-output`)
 
-- [ ] 2.1 Write the configured-source command-local JSON regression. **(S)**
+- [x] 2.1 Write the configured-source command-local JSON regression. **(S)**
   **Spec scenarios:** CLI capability discovery / Configured sources use command-local JSON
   **Contracts:** `openspec/contracts/content-workflows/openapi/v1.yaml`
   **Design decisions:** D2
   **Dependencies:** None
-- [ ] 2.2 Write pure machine-output regressions. **(S)**
+- [x] 2.2 Write pure machine-output regressions. **(S)**
   **Spec scenarios:** Output format / JSON output
   **Design decisions:** D3
   **Dependencies:** None
-- [ ] 2.3 Implement command-local discovery JSON. **(S)**
+- [x] 2.3 Implement command-local discovery JSON. **(S)**
   **Dependencies:** 2.1
-- [ ] 2.4 Route diagnostics away from stdout. **(S)**
+- [x] 2.4 Route diagnostics away from stdout. **(S)**
   **Dependencies:** 2.2
-- [ ] Checkpoint: run canonical workflow plus graph CLI tests; review the output diff; verify scope.
+- [x] Checkpoint: run canonical workflow plus graph CLI tests; review the output diff; verify scope.
 
 ## Phase 3 — Hermetic CLI tests (`wp-test-isolation`)
 

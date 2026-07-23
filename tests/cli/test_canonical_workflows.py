@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib
 import json
+import logging
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -15,6 +17,7 @@ from src.clients.workflow_api_client import ProblemError
 from src.contracts.workflow_models import (
     COMMAND_FIELD_SCHEMAS,
     CapabilityDocument,
+    ConfiguredSourcePage,
     IngestCommand,
     OperationHandle,
     OperationPage,
@@ -98,6 +101,9 @@ class FakeClient:
             resource_types=[],
         )
 
+    def list_configured_sources(self, **_: Any) -> ConfiguredSourcePage:
+        return ConfiguredSourcePage(data=[], next_cursor="next")
+
     def list_operations(self, **_: Any) -> OperationPage:
         return OperationPage(data=[_handle()], next_cursor="next")
 
@@ -139,6 +145,50 @@ def test_capabilities_supports_documented_command_local_json(
     result = runner.invoke(app, ["capabilities", "--json"])
     assert result.exit_code == 0
     assert json.loads(result.stdout)["contract_version"] == "v1"
+
+
+def test_configured_sources_supports_documented_command_local_json(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, _ = cli
+    result = runner.invoke(app, ["configured-sources", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"data": [], "next_cursor": "next"}
+    assert result.stdout.count("\n") == 1
+    assert result.stderr == ""
+
+
+def test_empty_graph_json_stdout_is_exactly_one_document(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapters = importlib.import_module("src.cli.adapters")
+    graph_commands = importlib.import_module("src.cli.graph_commands")
+    monkeypatch.setattr(adapters, "search_graph_sync", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(graph_commands, "is_remote_backend", lambda: False)
+    monkeypatch.setattr(graph_commands, "guard_remote_backend", lambda *_args, **_kwargs: None)
+
+    result = CliRunner().invoke(app, ["--json", "graph", "query", "--query", "missing"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"results": [], "total": 0, "query": "missing"}
+    assert result.stdout.count("\n") == 1
+    assert result.stderr == ""
+
+
+def test_cli_logging_handler_routes_diagnostics_to_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configured: dict[str, Any] = {}
+    monkeypatch.setattr(logging, "basicConfig", lambda **kwargs: configured.update(kwargs))
+
+    from src.utils.logging import setup_logging
+
+    setup_logging()
+
+    handler = configured["handlers"][0]
+    assert isinstance(handler, logging.StreamHandler)
+    assert handler.stream is sys.stderr
 
 
 def test_ingestion_uses_underscore_discriminator_and_idempotency(
