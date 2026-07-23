@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-07-23T18:21:00.723276+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Resolved all six independent plan-review findings by binding production promotion to an immutable CI-passed revision, moving rollback capture before deployment, and specifying a one-shot production canary with durable correlated evidence.",
+    "completed_work": [
+      "Resolved PR-01 through PR-06",
+      "Added the sanitized production evidence template",
+      "Added Node 22 and focused workflow-client test parity",
+      "Revalidated strict OpenSpec and the work-package DAG"
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Require exact-SHA release promotion",
+        "rationale": "A local build is insufficient evidence that the production revision passed the release gate.",
+        "capability": "frontend-release-delivery",
+        "supersedes": null
+      },
+      {
+        "title": "Capture rollback before mutation",
+        "rationale": "A release must not begin unless the prior successful deployment is identifiable and recoverable.",
+        "capability": "frontend-release-delivery",
+        "supersedes": null
+      },
+      {
+        "title": "Use one labeled URL canary",
+        "rationale": "A forced-webpage example.com command exercises the canonical durable-operation path with minimal external effect and no automatic retry.",
+        "capability": "frontend-release-delivery",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Commit the approved plan and execute test-first work packages."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/restore-railway-frontend-deployment/design.md",
+        "description": "Immutable release and production proof decisions"
+      },
+      {
+        "path": "openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment-template.md",
+        "description": "Sanitized preflight and verification contract"
+      },
+      {
+        "path": "openspec/changes/restore-railway-frontend-deployment/work-packages.yaml",
+        "description": "Revised implementation DAG and gates"
+      }
+    ]
+  }
+}

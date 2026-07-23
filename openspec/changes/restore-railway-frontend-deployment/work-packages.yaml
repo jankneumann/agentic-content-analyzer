@@ -1,0 +1,261 @@
+schema_version: 1
+
+feature:
+  id: restore-railway-frontend-deployment
+  title: Restore the Railway frontend deployment
+  plan_revision: 2
+  created_by: codex
+  created_at: "2026-07-23T18:10:00Z"
+
+contracts:
+  revision: 1
+  openapi:
+    primary: openspec/contracts/content-workflows/openapi/v1.yaml
+    files:
+      - openspec/contracts/content-workflows/openapi/v1.yaml
+
+defaults:
+  priority: 5
+  lock_ttl_minutes: 120
+  timeout_minutes: 90
+  retry_budget: 1
+  verification_tier_required: B
+  min_trust_level: 2
+
+packages:
+  - package_id: wp-production-build
+    title: Isolated production build
+    task_type: config
+    description: Test and repair the locked Node-only Railway frontend build.
+    role: frontend-engineer
+    priority: 1
+    depends_on: []
+    locks:
+      files:
+        - web/package.json
+        - web/package-lock.json
+        - tests/config/test_frontend_deployment.py
+      keys:
+        - feature:restore-railway-frontend-deployment:build
+      ttl_minutes: 120
+      reason: Frontend production package and dependency boundary.
+    scope:
+      write_allow:
+        - web/package.json
+        - web/package-lock.json
+        - tests/config/test_frontend_deployment.py
+      read_allow:
+        - web/**
+        - tests/**
+        - openspec/**
+        - .github/**
+    worktree:
+      name: wp-production-build
+      mode: isolated
+    timeout_minutes: 90
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 80
+      alternatives_count: 3
+      complexity: medium
+      package_kind: config
+    inputs:
+      tasks: ["1.1", "1.2", "1.3"]
+    verification:
+      tier_required: B
+      steps:
+        - name: deployment-config-tests
+          kind: command
+          command: pytest tests/config/test_frontend_deployment.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count]
+        - name: production-build
+          kind: command
+          command: cd web && npm ci && npm run build
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [build_passed]
+    outputs:
+      result_keys: [files_modified, test_count, build_passed]
+
+  - package_id: wp-ci-parity
+    title: Frontend CI release parity
+    task_type: ci
+    description: Add a full-toolchain CI job for contract drift and the exact npm build.
+    role: ci-engineer
+    priority: 2
+    depends_on:
+      - wp-production-build
+    locks:
+      files:
+        - .github/workflows/ci.yml
+        - tests/config/test_frontend_ci.py
+      keys:
+        - feature:restore-railway-frontend-deployment:ci
+      ttl_minutes: 120
+      reason: Required frontend release gate.
+    scope:
+      write_allow:
+        - .github/workflows/ci.yml
+        - tests/config/test_frontend_ci.py
+      read_allow:
+        - .github/**
+        - web/**
+        - tests/**
+        - openspec/**
+    worktree:
+      name: wp-ci-parity
+      mode: isolated
+    timeout_minutes: 90
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 70
+      alternatives_count: 2
+      complexity: medium
+      package_kind: config
+    inputs:
+      tasks: ["2.1", "2.2", "2.3"]
+    verification:
+      tier_required: B
+      steps:
+        - name: frontend-ci-tests
+          kind: command
+          command: pytest tests/config/test_frontend_ci.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count]
+        - name: contract-and-build
+          kind: command
+          command: cd web && npm ci && npm run contracts:check && npm test -- --run src/lib/api/__tests__/workflow-contracts.test.ts && npm run build
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [contract_check_passed, focused_tests_passed, build_passed]
+    outputs:
+      result_keys: [files_modified, test_count, contract_check_passed, focused_tests_passed, build_passed]
+
+  - package_id: wp-production-proof
+    title: Production deployment proof
+    task_type: deploy
+    description: Document, deploy, and verify the canonical production frontend.
+    role: release-engineer
+    priority: 3
+    depends_on:
+      - wp-production-build
+      - wp-ci-parity
+    locks:
+      files:
+        - docs/MOBILE_DEPLOYMENT.md
+        - scripts/validate_frontend_deployment_evidence.py
+        - tests/config/test_frontend_deployment_evidence.py
+      keys:
+        - feature:restore-railway-frontend-deployment:production
+        - env:railway-production
+      ttl_minutes: 180
+      reason: Serialized production frontend release and evidence.
+    scope:
+      write_allow:
+        - docs/MOBILE_DEPLOYMENT.md
+        - scripts/validate_frontend_deployment_evidence.py
+        - tests/config/test_frontend_deployment_evidence.py
+        - openspec/changes/restore-railway-frontend-deployment/evidence/**
+      read_allow:
+        - "**"
+    worktree:
+      name: wp-production-proof
+      mode: shared
+    timeout_minutes: 180
+    retry_budget: 0
+    min_trust_level: 3
+    metadata:
+      loc_estimate: 50
+      alternatives_count: 2
+      complexity: high
+      package_kind: integration
+    inputs:
+      tasks: ["3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7"]
+    verification:
+      tier_required: A
+      steps:
+        - name: railway-deployment
+          kind: manual
+          manual_instructions: Before deployment capture rollback data and abort criteria, require exact-SHA frontend-release success, then confirm Railway activates that same revision with SUCCESS.
+          evidence:
+            artifacts:
+              - openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment.md
+            result_keys: [candidate_sha, ci_check_status, rollback_deployment_id, deployment_id, deployed_revision, deployment_status]
+        - name: canonical-production-traffic
+          kind: manual
+          manual_instructions: Submit the specified canary exactly once and correlate capability discovery plus canonical ingestion with browser evidence and bounded backend logs; confirm both retired-route counts are zero.
+          evidence:
+            artifacts:
+              - openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment.md
+            result_keys: [capabilities_observed, canonical_ingestion_observed, operation_id, operation_status, retired_route_count]
+        - name: evidence-completeness
+          kind: command
+          command: pytest tests/config/test_frontend_deployment_evidence.py --no-cov -q && python scripts/validate_frontend_deployment_evidence.py openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment.md
+          expect_exit_code: 0
+          evidence:
+            artifacts:
+              - openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment.md
+            result_keys: [test_count, evidence_complete, revision_match, window_valid, correlation_complete]
+    outputs:
+      result_keys: [files_modified, candidate_sha, ci_check_status, rollback_deployment_id, deployment_id, deployed_revision, deployment_status, capabilities_observed, canonical_ingestion_observed, operation_id, operation_status, retired_route_count, evidence_complete, revision_match, window_valid, correlation_complete]
+
+  - package_id: wp-integration
+    title: Integration and evidence
+    task_type: integrate
+    description: Run the clean release gate and finalize requirement evidence.
+    role: integrator
+    priority: 4
+    depends_on:
+      - wp-production-proof
+    locks:
+      files: []
+      keys:
+        - feature:restore-railway-frontend-deployment:integration
+      ttl_minutes: 180
+      reason: Final ri-02 release integration.
+    scope:
+      write_allow:
+        - openspec/changes/restore-railway-frontend-deployment/**
+      read_allow:
+        - "**"
+    worktree:
+      name: wp-integration
+      mode: shared
+    timeout_minutes: 180
+    retry_budget: 0
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 40
+      alternatives_count: 2
+      complexity: medium
+      package_kind: integration
+    inputs:
+      tasks: ["4.1", "4.2"]
+    verification:
+      tier_required: A
+      steps:
+        - name: frontend-release-gate
+          kind: command
+          command: pytest tests/config/test_frontend_deployment.py tests/config/test_frontend_ci.py tests/config/test_frontend_deployment_evidence.py --no-cov -q && python scripts/validate_frontend_deployment_evidence.py openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment.md && cd web && npm ci && npm run contracts:check && npm test -- --run src/lib/api/__tests__/workflow-contracts.test.ts && npm run build
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, evidence_complete, contract_check_passed, focused_tests_passed, build_passed]
+        - name: openspec-strict
+          kind: command
+          command: openspec validate restore-railway-frontend-deployment --strict
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [validation_passed]
+    outputs:
+      result_keys: [files_modified, test_count, evidence_complete, focused_tests_passed, validation_passed]

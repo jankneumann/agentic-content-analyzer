@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-07-23T18:26:15.954688+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Closed the final plan-review gaps: the production canary now follows the shipped UI, CI is triggered by a draft PR, deployment uses a detached exact-SHA checkout, and a tested validator enforces evidence completeness.",
+    "completed_work": [
+      "Resolved the final four review findings",
+      "Revalidated strict OpenSpec and work-package contracts",
+      "Received an internal re-review with no remaining blockers or should-fix findings"
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Exercise the deployed form exactly once",
+        "rationale": "The UI does not send a caller-provided idempotency header; a unique URL marker and one visible click prove the shipped path without expanding product scope.",
+        "capability": "frontend-release-delivery",
+        "supersedes": null
+      },
+      {
+        "title": "Deploy from a detached checked SHA",
+        "rationale": "Draft-PR CI plus Railway commit metadata creates an auditable identity chain from tested commit to active deployment.",
+        "capability": "frontend-release-delivery",
+        "supersedes": null
+      },
+      {
+        "title": "Validate evidence content",
+        "rationale": "Artifact existence alone cannot establish revision, rollback, operation, log, or retired-route acceptance outcomes.",
+        "capability": "frontend-release-delivery",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Commit and push the plan, then implement the work-package DAG test-first."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/restore-railway-frontend-deployment/tasks.md",
+        "description": "Executable CI, detached deployment, and one-shot canary sequence"
+      },
+      {
+        "path": "openspec/changes/restore-railway-frontend-deployment/work-packages.yaml",
+        "description": "Evidence validator and aligned result contracts"
+      }
+    ]
+  }
+}
