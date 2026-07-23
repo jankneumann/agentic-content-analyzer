@@ -32,6 +32,7 @@ packages:
     depends_on: []
     locks:
       files:
+        - .gitignore
         - web/package.json
         - web/package-lock.json
         - tests/config/test_frontend_deployment.py
@@ -41,6 +42,7 @@ packages:
       reason: Frontend production package and dependency boundary.
     scope:
       write_allow:
+        - .gitignore
         - web/package.json
         - web/package-lock.json
         - tests/config/test_frontend_deployment.py
@@ -61,7 +63,7 @@ packages:
       complexity: medium
       package_kind: config
     inputs:
-      tasks: ["1.1", "1.2", "1.3"]
+      tasks: ["1.1", "1.2", "1.3", "1.4"]
     verification:
       tier_required: B
       steps:

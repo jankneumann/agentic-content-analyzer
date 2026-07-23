@@ -44,6 +44,7 @@ def complete_evidence() -> str:
 - Deployment end UTC: 2026-07-23T14:05:00Z
 - Deployment ID: deployment-new
 - Railway reported revision: {SHA}
+- Railway CLI release message: frontend-release {SHA}
 - Build status: SUCCESS
 - Deployment status: SUCCESS
 - Revision matches CI-passed candidate: true
@@ -135,6 +136,20 @@ def test_candidate_ci_and_deployed_revisions_must_match(
     errors = validate_evidence(_replace_field(complete_evidence, field, value))
 
     assert any("revision mismatch" in error for error in errors)
+
+
+def test_railway_cli_release_message_must_name_candidate(
+    complete_evidence: str,
+) -> None:
+    errors = validate_evidence(
+        _replace_field(
+            complete_evidence,
+            "Railway CLI release message",
+            f"frontend-release {'d' * 40}",
+        )
+    )
+
+    assert any("Railway CLI release message" in error for error in errors)
 
 
 @pytest.mark.parametrize(

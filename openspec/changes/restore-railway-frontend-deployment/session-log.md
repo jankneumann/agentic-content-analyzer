@@ -88,3 +88,29 @@ Resolved all six independent plan-review findings by binding production promotio
 
 ### Context
 Closed the final plan-review gaps: the production canary now follows the shipped UI, CI is triggered by a draft PR, deployment uses a detached exact-SHA checkout, and a tested validator enforces evidence completeness.
+
+---
+
+## Phase: Implementation Iteration 1 (2026-07-23)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Guard the uploader ignore boundary** `architectural: frontend-release-delivery` — A Git-tracked file can still be omitted by Railway CLI when its archive builder honors .gitignore, so repository tests must exercise Git ignore semantics.
+2. **Use the persisted CLI message for revision identity** `architectural: frontend-release-delivery` — Railway CLI uploads expose meta.cliMessage but leave meta.commitHash null; the detached checkout plus SHA-bearing message is the available auditable identity chain.
+
+### Completed Work
+- Proved the uploader omission from live Railpack package-manager detection
+- Added a failing then passing Git-ignore regression
+- Updated the evidence validator, runbook, and plan to observed Railway metadata
+
+### Next Steps
+- Push the corrected candidate, require exact-SHA frontend-release success, and replace the non-accepted deployment.
+
+### Relevant Files
+- `.gitignore` — Explicit frontend npm lock exception
+- `tests/config/test_frontend_deployment.py` — Uploader-boundary regression
+- `docs/MOBILE_DEPLOYMENT.md` — Observed CLI metadata identity procedure
+
+### Context
+The first live Railpack build succeeded but exposed that Railway CLI honored the global package-lock ignore and omitted the tracked frontend lock. The deployment was excluded from acceptance; the upload boundary and CLI revision proof were corrected before a replacement candidate.

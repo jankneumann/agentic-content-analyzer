@@ -43,6 +43,7 @@ REQUIRED_FIELDS = (
     "Deployment end UTC",
     "Deployment ID",
     "Railway reported revision",
+    "Railway CLI release message",
     "Build status",
     "Deployment status",
     "Revision matches CI-passed candidate",
@@ -160,6 +161,12 @@ def validate_evidence(markdown: str) -> list[str]:
         errors.append(
             "Release revision mismatch: candidate, CI checked SHA, and Railway "
             "reported revision must be identical"
+        )
+    expected_cli_message = f"frontend-release {candidate_sha}"
+    if fields["Railway CLI release message"] != expected_cli_message:
+        errors.append(
+            "Railway CLI release message: expected "
+            f"{expected_cli_message!r}, got {fields['Railway CLI release message']!r}"
         )
 
     for label in ("Build status", "Deployment status"):

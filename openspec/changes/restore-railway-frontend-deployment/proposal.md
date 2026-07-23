@@ -67,7 +67,7 @@ couples unrelated backend changes to frontend releases.
 
 ## Selected Scope
 
-- `web/package.json` and `web/package-lock.json`
+- `.gitignore`, `web/package.json`, and `web/package-lock.json`
 - `.github/workflows/ci.yml`
 - focused configuration/CI regression tests
 - Railway frontend deployment evidence
@@ -77,6 +77,9 @@ couples unrelated backend changes to frontend releases.
 
 - **Dual lockfiles drift:** CI executes the npm production build and existing
   pnpm workflows continue to enforce the workspace lock.
+- **Tracked lock omitted from CLI upload:** the repository explicitly
+  unignores `web/package-lock.json`, and a regression uses Git's ignore engine
+  to ensure Railway's uploader includes it.
 - **Contract drift escapes production build:** CI runs the generator check as a
   separate required step before the production build.
 - **Unverified revision reaches production:** deployment is permitted only

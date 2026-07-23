@@ -560,9 +560,11 @@ environment values.
      --json
    ```
 
-   Require the new active deployment to be `SUCCESS`, and require both its
-   reported revision and `meta.commitHash` to equal the CI-passed SHA. Record
-   deployment and verification window bounds as ISO-8601 UTC timestamps
+   Require the new active deployment to be `SUCCESS`, and require its
+   `meta.cliMessage` to equal `frontend-release <CI-passed-SHA>`. CLI uploads
+   intentionally have a null `meta.commitHash`; the clean detached checkout
+   plus the persisted SHA-bearing CLI message is the supported identity chain.
+   Record deployment and verification window bounds as ISO-8601 UTC timestamps
    (`YYYY-MM-DDTHH:MM:SSZ`).
 
 6. Make exactly one visible canary submission.

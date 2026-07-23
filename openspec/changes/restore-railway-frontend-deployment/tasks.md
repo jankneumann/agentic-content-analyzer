@@ -14,6 +14,9 @@
   **Dependencies:** 1.1
 - [ ] 1.3 Commit and verify the exact frontend npm dependency graph. **(M)**
   **Dependencies:** 1.1
+- [ ] 1.4 Ensure Railway's Git-ignore-aware uploader includes the tracked
+  frontend npm lockfile. **(S)**
+  **Dependencies:** 1.3
 - [ ] Checkpoint: assert Node 22 package/runtime parity, run configuration
   tests, `npm ci`, and `npm run build`; review lockfile scope.
 
@@ -59,8 +62,9 @@
   Confirm detached `HEAD` equals the checked SHA and the worktree is clean,
   then run `railway up --ci` from that repository root with explicit project,
   environment, service, and a release message containing the SHA. Query
-  deployment metadata and require `meta.commitHash` plus the active revision
-  to equal the checked SHA.
+  deployment metadata and require `meta.cliMessage` to equal
+  `frontend-release <checked-SHA>` plus the active revision record to name the
+  checked SHA. (`meta.commitHash` is null for CLI uploads.)
   **Spec scenarios:** Canonical production ingestion frontend / Production ingestion surface loads
   **Design decisions:** D4
   **Dependencies:** 3.4

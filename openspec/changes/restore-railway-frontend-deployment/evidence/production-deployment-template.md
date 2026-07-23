@@ -30,6 +30,7 @@
 - Deployment end UTC:
 - Deployment ID:
 - Railway reported revision:
+- Railway CLI release message:
 - Build status:
 - Deployment status:
 - Revision matches CI-passed candidate:

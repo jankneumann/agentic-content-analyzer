@@ -19,10 +19,12 @@ must run before deployment in a complete repository checkout.
 
 ### D1. Match the isolated Railpack package manager
 
-Commit `web/package-lock.json`, declare Node 22 in `web/package.json`, use the
-same Node major in CI, and use `npm ci`. Configuration tests assert all three
-runtime invariants. Keep the build command composed only of package-local
-binaries (`tsc` and `vite`).
+Commit `web/package-lock.json`, explicitly exempt it from the repository's
+global `package-lock.json` ignore rule so Railway's CLI uploader includes it,
+declare Node 22 in `web/package.json`, use the same Node major in CI, and use
+`npm ci`. Configuration tests assert the runtime and upload-boundary
+invariants. Keep the build command composed only of package-local binaries
+(`tsc` and `vite`).
 
 This gives Railway an exact dependency graph without changing the service root
 or requiring pnpm inside the static build.
@@ -58,9 +60,12 @@ Create a temporary detached worktree at the checked SHA, confirm its `HEAD` and
 clean status, and run `railway up --ci` from its repository root with explicit
 project, environment, service, and a message containing the SHA. The Railway
 service retains its checked `/web` root. Query `railway deployment list --json`
-and require the resulting deployment's `meta.commitHash` and successful active
-revision to equal the CI-passed SHA. Abort before mutation if the prior release
-cannot be identified or redeployed.
+and require the resulting deployment's `meta.cliMessage` to equal
+`frontend-release <CI-passed-SHA>` and its successful active revision record to
+name that same SHA. Railway CLI uploads leave `meta.commitHash` null, so the
+clean detached checkout plus persisted SHA-bearing CLI message is the
+supported identity proof. Abort before mutation if the prior release cannot be
+identified or redeployed.
 
 ### D5. Verify the deployed revision at the network boundary
 

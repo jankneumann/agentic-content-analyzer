@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-07-23T18:54:35.937806+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "The first live Railpack build succeeded but exposed that Railway CLI honored the global package-lock ignore and omitted the tracked frontend lock. The deployment was excluded from acceptance; the upload boundary and CLI revision proof were corrected before a replacement candidate.",
+    "completed_work": [
+      "Proved the uploader omission from live Railpack package-manager detection",
+      "Added a failing then passing Git-ignore regression",
+      "Updated the evidence validator, runbook, and plan to observed Railway metadata"
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Guard the uploader ignore boundary",
+        "rationale": "A Git-tracked file can still be omitted by Railway CLI when its archive builder honors .gitignore, so repository tests must exercise Git ignore semantics.",
+        "capability": "frontend-release-delivery",
+        "supersedes": null
+      },
+      {
+        "title": "Use the persisted CLI message for revision identity",
+        "rationale": "Railway CLI uploads expose meta.cliMessage but leave meta.commitHash null; the detached checkout plus SHA-bearing message is the available auditable identity chain.",
+        "capability": "frontend-release-delivery",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Push the corrected candidate, require exact-SHA frontend-release success, and replace the non-accepted deployment."
+    ],
+    "relevant_files": [
+      {
+        "path": ".gitignore",
+        "description": "Explicit frontend npm lock exception"
+      },
+      {
+        "path": "tests/config/test_frontend_deployment.py",
+        "description": "Uploader-boundary regression"
+      },
+      {
+        "path": "docs/MOBILE_DEPLOYMENT.md",
+        "description": "Observed CLI metadata identity procedure"
+      }
+    ]
+  }
+}

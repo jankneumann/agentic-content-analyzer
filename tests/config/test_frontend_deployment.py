@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -48,3 +50,21 @@ def test_frontend_has_an_exact_npm_dependency_graph() -> None:
     assert lock_root["engines"]["node"] == package["engines"]["node"]
     assert lock_root["dependencies"] == package["dependencies"]
     assert lock_root["devDependencies"] == package["devDependencies"]
+
+
+def test_frontend_lockfile_is_included_in_railway_uploads() -> None:
+    git = shutil.which("git")
+    assert git is not None
+    result = subprocess.run(
+        [
+            git,
+            "check-ignore",
+            "--no-index",
+            "--quiet",
+            "web/package-lock.json",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+    )
+
+    assert result.returncode == 1

@@ -4,7 +4,7 @@
 
 | Req ID | Spec Source | Description | Contract Ref | Design Decision | Files Changed | Test(s) | Evidence |
 |--------|-------------|-------------|--------------|-----------------|---------------|---------|----------|
-| frontend-release-delivery.1 | `specs/frontend-release-delivery/spec.md` | Railway builds the isolated frontend from a committed lock without repository-level tools. | --- | D1, D2 | `web/package.json`, `web/package-lock.json` | `tests/config/test_frontend_deployment.py` | --- |
+| frontend-release-delivery.1 | `specs/frontend-release-delivery/spec.md` | Railway builds the isolated frontend from an uploaded committed lock without repository-level tools. | --- | D1, D2 | `.gitignore`, `web/package.json`, `web/package-lock.json` | `tests/config/test_frontend_deployment.py` | --- |
 | frontend-release-delivery.2 | `specs/frontend-release-delivery/spec.md` | CI runs generated-contract drift and the exact production build. | `openspec/contracts/content-workflows/openapi/v1.yaml` | D3 | `.github/workflows/ci.yml` | `tests/config/test_frontend_ci.py` | --- |
 | frontend-release-delivery.3 | `specs/frontend-release-delivery/spec.md` | Production discovers capabilities, submits canonical ingestion, and avoids retired mutations. | `openspec/contracts/content-workflows/openapi/v1.yaml` | D4, D5 | `web/src/lib/api/workflows.ts`, `web/src/routes/ingest.tsx` (verification only) | `web/src/lib/api/__tests__/workflow-contracts.test.ts`, `web/tests/e2e/workflow-surface.spec.ts` | --- |
 
@@ -23,7 +23,7 @@
 
 | Finding ID | Package | Type | Criticality | Disposition | Resolution |
 |------------|---------|------|-------------|-------------|------------|
-| PR-01 | wp-production-proof | correctness | blocker | fixed | Candidate deployment now requires a draft-PR exact-SHA `frontend-release` success, a clean detached-SHA upload, and matching Railway `meta.commitHash`. |
+| PR-01 | wp-production-proof | correctness | blocker | fixed | Candidate deployment requires a draft-PR exact-SHA `frontend-release` success, a clean detached-SHA upload, and matching SHA-bearing Railway `meta.cliMessage` (CLI uploads expose no `commitHash`). |
 | PR-02 | wp-production-proof | reliability | blocker | fixed | Rollback manifest and abort criteria must be captured before deployment. |
 | PR-03 | wp-production-proof | observability | blocker | fixed | Added a sanitized evidence template and a planned completeness validator for correlated browser, request, operation, log, revision, and rollback fields. |
 | PR-04 | wp-production-proof | safety | blocker | fixed | Specified one visible-form, non-repeated, uniquely marked URL canary and explicit retention/cleanup handling without claiming an unimplemented UI header. |
@@ -32,6 +32,7 @@
 | PR-07 | wp-production-proof | correctness | blocker | fixed | Draft PR creation/check waiting and detached exact-SHA Railway upload/query steps are now executable. |
 | PR-08 | wp-production-proof | testability | blocker | fixed | Evidence completeness is enforced by a tested repository validator, not file existence alone. |
 | PR-09 | wp-ci-parity | consistency | should-fix | fixed | Focused-test result keys are included in package and integration outputs. |
+| PR-10 | wp-production-build | correctness | blocker | fixed | Live Railpack evidence showed the CLI uploader omitted the tracked lock due to `.gitignore`; an explicit exception and Git-ignore regression now guard the upload boundary. |
 
 ## Coverage Summary
 
