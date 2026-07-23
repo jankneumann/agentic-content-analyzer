@@ -5,43 +5,44 @@
 
 ## Phase 1 — Production build boundary (`wp-production-build`)
 
-- [ ] 1.1 Write failing regressions for the isolated Railway build contract. **(S)**
+- [x] 1.1 Write failing regressions for the isolated Railway build contract. **(S)**
   **Spec scenarios:** Reproducible isolated frontend build / Clean Railway build;
   Production build stays toolchain-local
   **Design decisions:** D1, D2
   **Dependencies:** None
-- [ ] 1.2 Make the production build package-manager neutral. **(S)**
+- [x] 1.2 Make the production build package-manager neutral. **(S)**
   **Dependencies:** 1.1
-- [ ] 1.3 Commit and verify the exact frontend npm dependency graph. **(M)**
+- [x] 1.3 Commit and verify the exact frontend npm dependency graph. **(M)**
   **Dependencies:** 1.1
-- [ ] 1.4 Ensure Railway's Git-ignore-aware uploader includes the tracked
+- [x] 1.4 Ensure Railway's Git-ignore-aware uploader includes the tracked
   frontend npm lockfile. **(S)**
   **Dependencies:** 1.3
-- [ ] Checkpoint: assert Node 22 package/runtime parity, run configuration
+- [x] Checkpoint: assert Node 22 package/runtime parity, run configuration
   tests, `npm ci`, and `npm run build`; review lockfile scope.
 
 ## Phase 2 — CI release parity (`wp-ci-parity`)
 
-- [ ] 2.1 Write a failing regression for the required frontend CI steps. **(S)**
+- [x] 2.1 Write a failing regression for the required frontend CI steps. **(S)**
   **Spec scenarios:** CI frontend release parity / Generated contracts drift;
   Production frontend does not compile; Both release boundaries pass
   **Design decisions:** D3
   **Dependencies:** 1.2, 1.3
-- [ ] 2.2 Add the full-toolchain frontend release job to CI. **(M)**
+- [x] 2.2 Add the full-toolchain frontend release job to CI. **(M)**
   **Dependencies:** 2.1
-- [ ] 2.3 Run the contract drift check, workflow-client tests, and exact npm build locally. **(M)**
+- [x] 2.3 Run the contract drift check, production dependency audit,
+  workflow-client tests, and exact npm build locally. **(M)**
   **Dependencies:** 2.2
-- [ ] Checkpoint: validate workflow YAML, inspect job permissions, run
+- [x] Checkpoint: validate workflow YAML, inspect job permissions, run
   `npm test -- --run src/lib/api/__tests__/workflow-contracts.test.ts`, and
   review the CI diff.
 
 ## Phase 3 — Deployment and evidence (`wp-production-proof`)
 
-- [ ] 3.1 Update the Railway frontend deployment runbook. **(S)**
+- [x] 3.1 Update the Railway frontend deployment runbook. **(S)**
   **Spec scenarios:** Reproducible isolated frontend build / Clean Railway build
   **Design decisions:** D1, D2, D4
   **Dependencies:** 1.2, 1.3, 2.2
-- [ ] 3.2 Write tests and a validator for the production evidence contract. **(M)**
+- [x] 3.2 Write tests and a validator for the production evidence contract. **(M)**
   Reject blank critical fields, revision mismatch, unsuccessful CI/Railway or
   operation status, invalid/missing window bounds, missing browser/backend
   correlation, retries, and nonzero retired-route counts.

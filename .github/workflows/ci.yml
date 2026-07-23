@@ -38,6 +38,10 @@ jobs:
         working-directory: web
         run: npm ci
 
+      - name: Audit production frontend dependencies
+        working-directory: web
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Check generated workflow contracts
         working-directory: web
         run: npm run contracts:check

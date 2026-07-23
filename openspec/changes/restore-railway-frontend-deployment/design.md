@@ -22,9 +22,11 @@ must run before deployment in a complete repository checkout.
 Commit `web/package-lock.json`, explicitly exempt it from the repository's
 global `package-lock.json` ignore rule so Railway's CLI uploader includes it,
 declare Node 22 in `web/package.json`, use the same Node major in CI, and use
-`npm ci`. Configuration tests assert the runtime and upload-boundary
-invariants. Keep the build command composed only of package-local binaries
-(`tsc` and `vite`).
+`npm ci`. Keep the npm and pnpm override/lock graphs converged on the
+audit-safe `protobufjs` version required by the production OpenTelemetry
+chain. Configuration tests assert the runtime, dependency-security, and
+upload-boundary invariants. Keep the build command composed only of
+package-local binaries (`tsc` and `vite`).
 
 This gives Railway an exact dependency graph without changing the service root
 or requiring pnpm inside the static build.
@@ -45,8 +47,9 @@ The separation reflects two different contexts:
 The `frontend-release` CI job installs the exact npm dependency graph under
 Node 22, provisions uv, runs the existing generated-contract drift check from
 a full checkout, runs
-`npm test -- --run src/lib/api/__tests__/workflow-contracts.test.ts`, and runs
-the exact production build. A failure in any boundary blocks CI.
+`npm test -- --run src/lib/api/__tests__/workflow-contracts.test.ts`, rejects
+production dependency findings at high or critical severity, and runs the
+exact production build. A failure in any boundary blocks CI.
 
 ### D4. Promote only an immutable, recoverable revision
 
@@ -94,13 +97,15 @@ allowed.
 ### D6. Keep production evidence durable
 
 Populate the checked-in sanitized evidence template with the deployed revision,
-public URL, verification-window bounds, capability status, canonical request
+uploaded lockfile, install command, Node runtime, public URL,
+verification-window bounds, capability status, canonical request
 method/path/status, durable operation ID/status, browser/network attribution,
 bounded backend-log correlation, and rollback deployment ID. Do not persist
 secrets, cookies, administrator keys, request headers, or raw Railway variable
 values. A repository validator treats blank fields, revision mismatch,
-non-success states, nonzero retired-route counts, missing time bounds, or
-missing browser/log/operation correlation as release failures.
+non-success states, nonzero retired-route counts, missing time bounds,
+unattributed requests, out-of-window timestamps, or missing
+browser/log/operation correlation as release failures.
 
 ## Data and Contract Impact
 
@@ -123,6 +128,7 @@ missing browser/log/operation correlation as release failures.
 
 - Python configuration tests for package/CI boundary invariants.
 - `npm ci` and `npm run build` from `web/`.
+- `npm audit --omit=dev --audit-level=high` from `web/`.
 - `npm run contracts:check` from the full checkout.
 - focused workflow contract unit tests.
 - exact-SHA GitHub `frontend-release` success.

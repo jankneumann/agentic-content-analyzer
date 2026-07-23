@@ -488,6 +488,10 @@ environment values.
 2. Freeze and push the candidate.
 
    ```bash
+   cd web
+   npm ci
+   npm audit --omit=dev --audit-level=high
+   cd ..
    git status --porcelain=v1
    git diff --check
    git rev-parse HEAD
@@ -495,9 +499,10 @@ environment values.
    git rev-parse HEAD
    ```
 
-   The first command must print nothing. Record the full 40-character SHA as
-   `Candidate commit SHA`, confirm the second SHA is unchanged, and record
-   `Working tree clean: true` and `Candidate pushed: true`.
+   The audit must exit successfully and `git status --porcelain=v1` must print
+   nothing. Record the full 40-character SHA as `Candidate commit SHA`, confirm
+   the second SHA is unchanged, and record `Working tree clean: true` and
+   `Candidate pushed: true`.
 
 3. Gate the candidate with a draft pull request.
 
@@ -564,6 +569,8 @@ environment values.
    `meta.cliMessage` to equal `frontend-release <CI-passed-SHA>`. CLI uploads
    intentionally have a null `meta.commitHash`; the clean detached checkout
    plus the persisted SHA-bearing CLI message is the supported identity chain.
+   Inspect the bounded build log and record that `web/package-lock.json` was
+   uploaded, Railpack ran `npm ci`, and the resolved runtime was Node 22.x.
    Record deployment and verification window bounds as ISO-8601 UTC timestamps
    (`YYYY-MM-DDTHH:MM:SSZ`).
 
@@ -593,9 +600,10 @@ environment values.
    ad-hoc database cleanup.
 
    Bound backend log inspection to the recorded verification window. Correlate
-   the capability request and canonical ingestion request with the browser
-   session, response status, marker, and operation ID. Within that same window,
-   both retired-route counts must be zero:
+   the capability request and canonical ingestion request with request ID,
+   UTC timestamp, browser attribution, response status, marker, and operation
+   ID. Each correlated timestamp must fall within the browser verification
+   window. Within that same window, both retired-route counts must be zero:
 
    - `POST /api/v1/contents/ingest`
    - `POST /api/v1/content/save-url`

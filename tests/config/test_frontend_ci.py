@@ -1,7 +1,7 @@
 """Regression contract for the production frontend CI gate."""
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -11,7 +11,7 @@ CI_WORKFLOW = REPO_ROOT / ".github/workflows/ci.yml"
 
 def _frontend_job() -> dict[str, Any]:
     workflow = yaml.safe_load(CI_WORKFLOW.read_text())
-    return workflow["jobs"]["frontend-release"]
+    return cast(dict[str, Any], workflow["jobs"]["frontend-release"])
 
 
 def _step(job: dict[str, Any], name: str) -> dict[str, Any]:
@@ -39,6 +39,10 @@ def test_frontend_release_job_runs_reproducible_build_commands() -> None:
 
     expected_commands = [
         ("Install frontend dependencies", "npm ci"),
+        (
+            "Audit production frontend dependencies",
+            "npm audit --omit=dev --audit-level=high",
+        ),
         ("Check generated workflow contracts", "npm run contracts:check"),
         (
             "Run workflow contract client tests",
@@ -53,6 +57,9 @@ def test_frontend_release_job_runs_reproducible_build_commands() -> None:
 
     step_names = [step.get("name") for step in job["steps"]]
     assert step_names.index("Install frontend dependencies") < step_names.index(
+        "Audit production frontend dependencies"
+    )
+    assert step_names.index("Audit production frontend dependencies") < step_names.index(
         "Check generated workflow contracts"
     )
     assert step_names.index("Check generated workflow contracts") < step_names.index(

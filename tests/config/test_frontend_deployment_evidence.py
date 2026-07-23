@@ -43,8 +43,11 @@ def complete_evidence() -> str:
 - Deployment start UTC: 2026-07-23T14:00:00Z
 - Deployment end UTC: 2026-07-23T14:05:00Z
 - Deployment ID: deployment-new
-- Railway reported revision: {SHA}
+- Deployed candidate revision: {SHA}
 - Railway CLI release message: frontend-release {SHA}
+- Uploaded lockfile observed: web/package-lock.json
+- Railpack install command: npm ci
+- Railpack Node version: 22.23.1
 - Build status: SUCCESS
 - Deployment status: SUCCESS
 - Revision matches CI-passed candidate: true
@@ -72,8 +75,8 @@ def complete_evidence() -> str:
 
 - Backend service ID: 46b135a6-d361-4985-947b-e27049f612a7
 - Log query window: 2026-07-23T14:06:00Z/2026-07-23T14:10:00Z
-- Capability request correlation: release-{SHA[:8]}; GET /api/v1/capabilities; 200
-- Canonical ingestion request correlation: release-{SHA[:8]}; operation-123; POST /api/v1/ingestions; 202
+- Capability request correlation: requestId capability-123; GET /api/v1/capabilities; 200; 2026-07-23T14:07:00Z; HeadlessChrome/149
+- Canonical ingestion request correlation: requestId ingestion-123; operation-123; POST /api/v1/ingestions; 202; 2026-07-23T14:08:00Z; HeadlessChrome/149
 - `POST /api/v1/contents/ingest` count: 0
 - `POST /api/v1/content/save-url` count: 0
 
@@ -125,7 +128,7 @@ def test_blank_critical_field_is_rejected(
             "GitHub check conclusion and checked SHA",
             f"success; checked_sha={'d' * 40}",
         ),
-        ("Railway reported revision", "e" * 40),
+        ("Deployed candidate revision", "e" * 40),
     ],
 )
 def test_candidate_ci_and_deployed_revisions_must_match(
@@ -233,6 +236,63 @@ def test_missing_browser_or_backend_correlation_is_rejected(
     errors = validate_evidence(_replace_field(complete_evidence, field, ""))
 
     assert any("correlation" in error.lower() or field in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        (
+            "Capability request correlation",
+            "GET /api/v1/capabilities; 200; 2026-07-23T14:07:00Z; HeadlessChrome/149",
+            "request attribution",
+        ),
+        (
+            "Canonical ingestion request correlation",
+            "requestId ingestion-123; operation-123; POST /api/v1/ingestions; 202; "
+            "2026-07-23T14:11:00Z; HeadlessChrome/149",
+            "verification window",
+        ),
+        (
+            "Capability request correlation",
+            "requestId capability-123; GET /api/v1/capabilities; 200; not-a-time; "
+            "HeadlessChrome/149",
+            "timestamp",
+        ),
+        (
+            "Canonical ingestion request correlation",
+            "requestId ingestion-123; operation-123; POST /api/v1/ingestions; 202; "
+            "2026-07-23T14:08:00Z; unknown-client",
+            "browser attribution",
+        ),
+    ],
+)
+def test_backend_correlation_is_attributed_and_bounded(
+    complete_evidence: str,
+    field: str,
+    value: str,
+    message: str,
+) -> None:
+    errors = validate_evidence(_replace_field(complete_evidence, field, value))
+
+    assert any(message in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("Uploaded lockfile observed", "package-lock.json"),
+        ("Railpack install command", "npm install"),
+        ("Railpack Node version", "25.6.1"),
+    ],
+)
+def test_railpack_build_facts_are_enforced(
+    complete_evidence: str,
+    field: str,
+    value: str,
+) -> None:
+    errors = validate_evidence(_replace_field(complete_evidence, field, value))
+
+    assert any(field in error for error in errors)
 
 
 @pytest.mark.parametrize(

@@ -31,8 +31,9 @@ Railway build.
 
 CI SHALL run the generated workflow-contract drift check and the exact
 production frontend build in a full repository checkout under Node 22. It SHALL
-also run the focused workflow-client contract test non-interactively. Any
-failure MUST fail the `frontend-release` job.
+also run the focused workflow-client contract test non-interactively and reject
+high or critical production dependency audit findings. Any failure MUST fail
+the `frontend-release` job.
 
 #### Scenario: Generated contracts drift
 
@@ -45,11 +46,18 @@ failure MUST fail the `frontend-release` job.
 - **WHEN** a clean locked dependency install cannot build the frontend
 - **THEN** the frontend CI job fails
 
+#### Scenario: Production dependency graph is unsafe
+
+- **WHEN** the locked production dependency graph has a high or critical audit
+  finding
+- **THEN** the frontend CI job fails before promotion
+
 #### Scenario: Both release boundaries pass
 
 - **WHEN** generated contracts are current
 - **AND** the locked production frontend build succeeds
 - **AND** the focused workflow-client contract test succeeds
+- **AND** the production dependency audit has no high or critical finding
 - **THEN** the frontend CI release gate succeeds
 
 ### Requirement: Canonical production ingestion frontend
@@ -81,7 +89,9 @@ MUST be captured before deployment.
   target identifiers, and rollback command have been captured
 - **AND** a clean pushed commit has a successful `frontend-release` check
 - **WHEN** the frontend is deployed
-- **THEN** Railway reports that exact commit revision as active
+- **THEN** the detached deployment checkout names that exact commit revision
+- **AND** Railway records the exact revision in the immutable CLI release message
+- **AND** the Railway build records the uploaded lockfile, `npm ci`, and Node 22
 - **AND** the prior successful deployment remains available for rollback
 
 #### Scenario: Retired mutation routes remain unused

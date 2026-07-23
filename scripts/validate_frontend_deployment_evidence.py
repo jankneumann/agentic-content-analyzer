@@ -14,6 +14,12 @@ CI_RESULT_PATTERN = re.compile(
     r"^(?P<conclusion>[a-z_]+)\s*;\s*checked_sha=(?P<sha>[0-9a-f]{40})$",
     re.IGNORECASE,
 )
+CORRELATION_TIME_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b")
+REQUEST_ATTRIBUTION_PATTERN = re.compile(r"\brequestId\s+[^;\s]+", re.IGNORECASE)
+BROWSER_ATTRIBUTION_PATTERN = re.compile(
+    r"\b(?:chrome|chromium|headlesschrome|playwright|devtools|firefox|webkit)\b",
+    re.IGNORECASE,
+)
 
 EXPECTED_TARGETS = {
     "Railway project ID": "4b0db3b8-110d-4a13-81d5-440aa2ddc98d",
@@ -42,8 +48,11 @@ REQUIRED_FIELDS = (
     "Deployment start UTC",
     "Deployment end UTC",
     "Deployment ID",
-    "Railway reported revision",
+    "Deployed candidate revision",
     "Railway CLI release message",
+    "Uploaded lockfile observed",
+    "Railpack install command",
+    "Railpack Node version",
     "Build status",
     "Deployment status",
     "Revision matches CI-passed candidate",
@@ -121,6 +130,45 @@ def _require_2xx(fields: dict[str, str], label: str, errors: list[str]) -> None:
         errors.append(f"{label}: expected a successful 2xx status, got {status}")
 
 
+def _validate_correlation(
+    *,
+    label: str,
+    value: str,
+    expected_parts: tuple[str, ...],
+    verification_start: datetime | None,
+    verification_end: datetime | None,
+    errors: list[str],
+) -> None:
+    if any(expected not in value for expected in expected_parts):
+        errors.append(
+            f"{label} must include the canonical path, response status, "
+            "and associated durable operation when applicable"
+        )
+
+    if REQUEST_ATTRIBUTION_PATTERN.search(value) is None:
+        errors.append(f"{label}: request attribution must include a nonblank requestId")
+
+    timestamp_match = CORRELATION_TIME_PATTERN.search(value)
+    if timestamp_match is None:
+        errors.append(f"{label}: correlation timestamp must be a parseable ISO-8601 UTC value")
+    else:
+        timestamp = _parse_utc(
+            timestamp_match.group(0),
+            f"{label} timestamp",
+            errors,
+        )
+        if (
+            timestamp is not None
+            and verification_start is not None
+            and verification_end is not None
+            and not verification_start <= timestamp <= verification_end
+        ):
+            errors.append(f"{label}: timestamp must fall within the verification window")
+
+    if BROWSER_ATTRIBUTION_PATTERN.search(value) is None:
+        errors.append(f"{label}: browser attribution is required")
+
+
 def validate_evidence(markdown: str) -> list[str]:
     """Return actionable contract violations found in a Markdown evidence record."""
 
@@ -152,21 +200,32 @@ def validate_evidence(markdown: str) -> list[str]:
                 f"GitHub check conclusion must be successful, got {ci_match.group('conclusion')!r}"
             )
 
-    deployed_sha = fields["Railway reported revision"].casefold()
+    deployed_sha = fields["Deployed candidate revision"].casefold()
     if not SHA_PATTERN.fullmatch(deployed_sha):
         errors.append(
-            "Railway reported revision: expected a full 40-character hexadecimal commit SHA"
+            "Deployed candidate revision: expected a full 40-character hexadecimal commit SHA"
         )
     if ci_sha is not None and (candidate_sha != ci_sha or candidate_sha != deployed_sha):
         errors.append(
-            "Release revision mismatch: candidate, CI checked SHA, and Railway "
-            "reported revision must be identical"
+            "Release revision mismatch: candidate, CI checked SHA, and deployed "
+            "candidate revision must be identical"
         )
     expected_cli_message = f"frontend-release {candidate_sha}"
     if fields["Railway CLI release message"] != expected_cli_message:
         errors.append(
             "Railway CLI release message: expected "
             f"{expected_cli_message!r}, got {fields['Railway CLI release message']!r}"
+        )
+    expected_build_facts = {
+        "Uploaded lockfile observed": "web/package-lock.json",
+        "Railpack install command": "npm ci",
+    }
+    for label, expected in expected_build_facts.items():
+        if fields[label] != expected:
+            errors.append(f"{label}: expected {expected!r}, got {fields[label]!r}")
+    if re.fullmatch(r"22(?:\.\d+){0,2}", fields["Railpack Node version"]) is None:
+        errors.append(
+            f"Railpack Node version: expected Node 22.x, got {fields['Railpack Node version']!r}"
         )
 
     for label in ("Build status", "Deployment status"):
@@ -211,6 +270,12 @@ def validate_evidence(markdown: str) -> list[str]:
     ):
         if start is not None and end is not None and start >= end:
             errors.append(f"{description} window start must be before its end")
+    if (
+        deployment_end is not None
+        and verification_start is not None
+        and deployment_end > verification_start
+    ):
+        errors.append("Verification window must start after the deployment completes")
 
     log_window_parts = fields["Log query window"].split("/")
     if len(log_window_parts) != 2:
@@ -262,26 +327,26 @@ def validate_evidence(markdown: str) -> list[str]:
         if route_count is not None and route_count != 0:
             errors.append(f"{label}: retired route count must be 0, got {route_count}")
 
-    capability_correlation = fields["Capability request correlation"]
-    for expected in ("GET /api/v1/capabilities", fields["Capability response status"]):
-        if expected not in capability_correlation:
-            errors.append(
-                "Capability request correlation must include the canonical path and response status"
-            )
-            break
-
-    ingestion_correlation = fields["Canonical ingestion request correlation"]
-    for expected in (
-        "POST /api/v1/ingestions",
-        fields["Canary response status"],
-        fields["Durable operation ID"],
-    ):
-        if expected not in ingestion_correlation:
-            errors.append(
-                "Canonical ingestion request correlation must include the canonical "
-                "path, response status, and durable operation ID"
-            )
-            break
+    _validate_correlation(
+        label="Capability request correlation",
+        value=fields["Capability request correlation"],
+        expected_parts=("GET /api/v1/capabilities", fields["Capability response status"]),
+        verification_start=verification_start,
+        verification_end=verification_end,
+        errors=errors,
+    )
+    _validate_correlation(
+        label="Canonical ingestion request correlation",
+        value=fields["Canonical ingestion request correlation"],
+        expected_parts=(
+            "POST /api/v1/ingestions",
+            fields["Canary response status"],
+            fields["Durable operation ID"],
+        ),
+        verification_start=verification_start,
+        verification_end=verification_end,
+        errors=errors,
+    )
 
     if fields["Rollback required"].casefold() not in {"true", "false"}:
         errors.append("Rollback required: expected true or false")

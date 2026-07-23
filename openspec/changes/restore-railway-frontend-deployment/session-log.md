@@ -114,3 +114,39 @@ Closed the final plan-review gaps: the production canary now follows the shipped
 
 ### Context
 The first live Railpack build succeeded but exposed that Railway CLI honored the global package-lock ignore and omitted the tracked frontend lock. The deployment was excluded from acceptance; the upload boundary and CLI revision proof were corrected before a replacement candidate.
+
+---
+
+## Phase: Implementation Iteration 2 (2026-07-23)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Stop the release on the npm graph regression** `architectural: frontend-release-delivery` — The new authoritative npm lock installed a critical RCE-affected protobufjs version, so issue deferral could not make the deployed artifact acceptable.
+2. **Converge both package-manager graphs** `architectural: frontend-release-delivery` — The repository retains pnpm workflows while Railway uses npm; both override and lock graphs must resolve the same audit-safe protobufjs release.
+3. **Strengthen evidence at the observed boundary** `architectural: frontend-release-delivery` — Build success alone did not prove lock usage, and route substrings alone did not prove bounded browser-to-backend correlation.
+
+### Completed Work
+- recorded failing dependency and evidence regressions
+- pinned protobufjs 8.7.1 in npm and pnpm graphs
+- added the high-severity production audit CI gate
+- required explicit Railway lock/install/runtime facts
+- required attributed in-window backend correlations
+
+### In Progress
+- corrected exact-SHA CI and production redeployment
+
+### Next Steps
+- run the clean local release gate
+- commit and push the corrected candidate
+- require exact-SHA frontend-release success
+- redeploy and repeat one bounded production verification
+
+### Relevant Files
+- `web/package-lock.json` — authoritative Railway npm graph
+- `pnpm-lock.yaml` — converged workspace graph
+- `scripts/validate_frontend_deployment_evidence.py` — strengthened evidence validator
+- `openspec/changes/restore-railway-frontend-deployment/change-context.md` — review finding dispositions
+
+### Context
+Implementation review reopened RI-02 after finding a critical protobufjs regression in the new npm production graph and two evidence-integrity gaps. TDD regressions now pass for converged audit-safe npm/pnpm locks, a high-severity CI audit gate, explicit Railpack build facts, and attributed in-window backend correlation. A corrected exact-SHA CI and production cycle remains in progress.

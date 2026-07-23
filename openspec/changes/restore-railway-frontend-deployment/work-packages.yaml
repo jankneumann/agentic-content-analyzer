@@ -3,7 +3,7 @@ schema_version: 1
 feature:
   id: restore-railway-frontend-deployment
   title: Restore the Railway frontend deployment
-  plan_revision: 2
+  plan_revision: 3
   created_by: codex
   created_at: "2026-07-23T18:10:00Z"
 
@@ -33,6 +33,8 @@ packages:
     locks:
       files:
         - .gitignore
+        - package.json
+        - pnpm-lock.yaml
         - web/package.json
         - web/package-lock.json
         - tests/config/test_frontend_deployment.py
@@ -43,6 +45,8 @@ packages:
     scope:
       write_allow:
         - .gitignore
+        - package.json
+        - pnpm-lock.yaml
         - web/package.json
         - web/package-lock.json
         - tests/config/test_frontend_deployment.py
@@ -76,13 +80,13 @@ packages:
             result_keys: [test_count, pass_count]
         - name: production-build
           kind: command
-          command: cd web && npm ci && npm run build
+          command: cd web && npm ci && npm audit --omit=dev --audit-level=high && npm run build
           expect_exit_code: 0
           evidence:
             artifacts: []
-            result_keys: [build_passed]
+            result_keys: [audit_passed, build_passed]
     outputs:
-      result_keys: [files_modified, test_count, build_passed]
+      result_keys: [files_modified, test_count, audit_passed, build_passed]
 
   - package_id: wp-ci-parity
     title: Frontend CI release parity
@@ -134,13 +138,13 @@ packages:
             result_keys: [test_count, pass_count]
         - name: contract-and-build
           kind: command
-          command: cd web && npm ci && npm run contracts:check && npm test -- --run src/lib/api/__tests__/workflow-contracts.test.ts && npm run build
+          command: cd web && npm ci && npm audit --omit=dev --audit-level=high && npm run contracts:check && npm test -- --run src/lib/api/__tests__/workflow-contracts.test.ts && npm run build
           expect_exit_code: 0
           evidence:
             artifacts: []
-            result_keys: [contract_check_passed, focused_tests_passed, build_passed]
+            result_keys: [audit_passed, contract_check_passed, focused_tests_passed, build_passed]
     outputs:
-      result_keys: [files_modified, test_count, contract_check_passed, focused_tests_passed, build_passed]
+      result_keys: [files_modified, test_count, audit_passed, contract_check_passed, focused_tests_passed, build_passed]
 
   - package_id: wp-production-proof
     title: Production deployment proof
@@ -191,7 +195,7 @@ packages:
           evidence:
             artifacts:
               - openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment.md
-            result_keys: [candidate_sha, ci_check_status, rollback_deployment_id, deployment_id, deployed_revision, deployment_status]
+            result_keys: [candidate_sha, ci_check_status, rollback_deployment_id, deployment_id, deployed_revision, uploaded_lockfile, install_command, node_version, deployment_status]
         - name: canonical-production-traffic
           kind: manual
           manual_instructions: Submit the specified canary exactly once and correlate capability discovery plus canonical ingestion with browser evidence and bounded backend logs; confirm both retired-route counts are zero.
@@ -208,7 +212,7 @@ packages:
               - openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment.md
             result_keys: [test_count, evidence_complete, revision_match, window_valid, correlation_complete]
     outputs:
-      result_keys: [files_modified, candidate_sha, ci_check_status, rollback_deployment_id, deployment_id, deployed_revision, deployment_status, capabilities_observed, canonical_ingestion_observed, operation_id, operation_status, retired_route_count, evidence_complete, revision_match, window_valid, correlation_complete]
+      result_keys: [files_modified, candidate_sha, ci_check_status, rollback_deployment_id, deployment_id, deployed_revision, uploaded_lockfile, install_command, node_version, deployment_status, capabilities_observed, canonical_ingestion_observed, operation_id, operation_status, retired_route_count, evidence_complete, revision_match, window_valid, correlation_complete]
 
   - package_id: wp-integration
     title: Integration and evidence
@@ -247,11 +251,11 @@ packages:
       steps:
         - name: frontend-release-gate
           kind: command
-          command: pytest tests/config/test_frontend_deployment.py tests/config/test_frontend_ci.py tests/config/test_frontend_deployment_evidence.py --no-cov -q && python scripts/validate_frontend_deployment_evidence.py openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment.md && cd web && npm ci && npm run contracts:check && npm test -- --run src/lib/api/__tests__/workflow-contracts.test.ts && npm run build
+          command: pytest tests/config/test_frontend_deployment.py tests/config/test_frontend_ci.py tests/config/test_frontend_deployment_evidence.py --no-cov -q && python scripts/validate_frontend_deployment_evidence.py openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment.md && cd web && npm ci && npm audit --omit=dev --audit-level=high && npm run contracts:check && npm test -- --run src/lib/api/__tests__/workflow-contracts.test.ts && npm run build
           expect_exit_code: 0
           evidence:
             artifacts: []
-            result_keys: [test_count, evidence_complete, contract_check_passed, focused_tests_passed, build_passed]
+            result_keys: [test_count, evidence_complete, audit_passed, contract_check_passed, focused_tests_passed, build_passed]
         - name: openspec-strict
           kind: command
           command: openspec validate restore-railway-frontend-deployment --strict

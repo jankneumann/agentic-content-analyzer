@@ -4,7 +4,7 @@
   "pnpm": {
     "overrides": {
       "serialize-javascript": ">=7.0.5",
-      "protobufjs": "8.4.1"
+      "protobufjs": "8.7.1"
     }
   }
 }

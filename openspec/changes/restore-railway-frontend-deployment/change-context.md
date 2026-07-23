@@ -4,15 +4,15 @@
 
 | Req ID | Spec Source | Description | Contract Ref | Design Decision | Files Changed | Test(s) | Evidence |
 |--------|-------------|-------------|--------------|-----------------|---------------|---------|----------|
-| frontend-release-delivery.1 | `specs/frontend-release-delivery/spec.md` | Railway builds the isolated frontend from an uploaded committed lock without repository-level tools. | --- | D1, D2 | `.gitignore`, `web/package.json`, `web/package-lock.json` | `tests/config/test_frontend_deployment.py` | --- |
-| frontend-release-delivery.2 | `specs/frontend-release-delivery/spec.md` | CI runs generated-contract drift and the exact production build. | `openspec/contracts/content-workflows/openapi/v1.yaml` | D3 | `.github/workflows/ci.yml` | `tests/config/test_frontend_ci.py` | --- |
-| frontend-release-delivery.3 | `specs/frontend-release-delivery/spec.md` | Production discovers capabilities, submits canonical ingestion, and avoids retired mutations. | `openspec/contracts/content-workflows/openapi/v1.yaml` | D4, D5 | `web/src/lib/api/workflows.ts`, `web/src/routes/ingest.tsx` (verification only) | `web/src/lib/api/__tests__/workflow-contracts.test.ts`, `web/tests/e2e/workflow-surface.spec.ts` | --- |
+| frontend-release-delivery.1 | `specs/frontend-release-delivery/spec.md` | Railway builds the isolated frontend from an uploaded committed, audit-gated lock without repository-level tools. | --- | D1, D2 | `.gitignore`, `package.json`, `pnpm-lock.yaml`, `web/package.json`, `web/package-lock.json` | `tests/config/test_frontend_deployment.py` | Pending corrected exact-SHA redeployment; deployment `6e246f86-e5a3-4146-8893-1e1a162055c8` is excluded because review found a critical dependency finding in its npm graph. |
+| frontend-release-delivery.2 | `specs/frontend-release-delivery/spec.md` | CI runs the production dependency audit, generated-contract drift, and exact production build. | `openspec/contracts/content-workflows/openapi/v1.yaml` | D3 | `.github/workflows/ci.yml` | `tests/config/test_frontend_ci.py` | Pending a successful `frontend-release` check for the corrected candidate SHA. |
+| frontend-release-delivery.3 | `specs/frontend-release-delivery/spec.md` | Production discovers capabilities, submits canonical ingestion, and avoids retired mutations. | `openspec/contracts/content-workflows/openapi/v1.yaml` | D4, D5 | `web/src/lib/api/workflows.ts`, `web/src/routes/ingest.tsx` (verification only) | `web/src/lib/api/__tests__/workflow-contracts.test.ts`, `web/tests/e2e/workflow-surface.spec.ts` | Pending corrected exact-SHA production verification. |
 
 ## Design Decision Trace
 
 | Decision | Rationale | Implementation | Why This Approach |
 |----------|-----------|----------------|-------------------|
-| D1 | Match the isolated Railpack context. | npm lock plus manager-neutral build. | Production already selects npm and sees only `/web`. |
+| D1 | Match the isolated Railpack context. | npm lock plus manager-neutral build; npm and pnpm overrides converge on the audit-safe transitive dependency. | Production already selects npm and sees only `/web`, while repository workflows retain pnpm. |
 | D2 | Keep artifact construction minimal. | Remove contract generation from the transitive production build. | Python/uv inputs are absent from the isolated static build. |
 | D3 | Preserve both release gates. | Dedicated full-checkout frontend CI job. | CI has Node, Python, uv, and canonical generator inputs. |
 | D4 | Promote only an immutable, recoverable revision. | Pre-deployment rollback manifest plus exact-SHA CI and Railway matching. | A local build cannot prove the deployed revision passed CI. |
@@ -33,12 +33,18 @@
 | PR-08 | wp-production-proof | testability | blocker | fixed | Evidence completeness is enforced by a tested repository validator, not file existence alone. |
 | PR-09 | wp-ci-parity | consistency | should-fix | fixed | Focused-test result keys are included in package and integration outputs. |
 | PR-10 | wp-production-build | correctness | blocker | fixed | Live Railpack evidence showed the CLI uploader omitted the tracked lock due to `.gitignore`; an explicit exception and Git-ignore regression now guard the upload boundary. |
+| PR-11 | wp-production-build | security | blocker | fixed | The production npm graph pinned critically vulnerable `protobufjs` 8.0.0. Both npm and pnpm override/lock graphs now use 8.7.1, and CI blocks high or critical production audit findings. |
+| PR-12 | wp-production-proof | correctness | blocker | fixed | The evidence contract now requires the uploaded lockfile path, exact `npm ci` command, and observed Node 22 runtime instead of inferring them from build success. |
+| PR-13 | wp-production-proof | correctness | blocker | fixed | Correlation evidence now requires request IDs, parseable in-window UTC timestamps, browser attribution, canonical routes/statuses, and the durable operation ID. |
 
 ## Coverage Summary
 
 - **Requirements traced**: 3/3
 - **Tests mapped**: 3 requirements have planned automated or production verification
-- **Evidence collected**: 0/3 requirements have pass/fail evidence
-- **Gaps identified**: Production domain, prior successful release, and final
-  deployment ID are resolved and recorded before or during implementation.
-- **Deferred items**: Cross-surface release automation beyond this frontend proof belongs to `ri-04`.
+- **Evidence collected**: 0/3 requirements have final passing evidence after the
+  security remediation.
+- **Gaps identified**: The corrected exact SHA must pass CI, deploy, and receive
+  a fresh bounded production verification record.
+- **Deferred items**: Cross-surface release automation beyond this frontend proof
+  belongs to `ri-04`. Nullable form-input console warnings observed during the
+  first smoke are tracked in `#470`.

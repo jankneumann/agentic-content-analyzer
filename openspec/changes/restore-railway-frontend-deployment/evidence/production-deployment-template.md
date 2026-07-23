@@ -29,8 +29,11 @@
 - Deployment start UTC:
 - Deployment end UTC:
 - Deployment ID:
-- Railway reported revision:
+- Deployed candidate revision:
 - Railway CLI release message:
+- Uploaded lockfile observed:
+- Railpack install command:
+- Railpack Node version:
 - Build status:
 - Deployment status:
 - Revision matches CI-passed candidate:

@@ -67,7 +67,8 @@ couples unrelated backend changes to frontend releases.
 
 ## Selected Scope
 
-- `.gitignore`, `web/package.json`, and `web/package-lock.json`
+- `.gitignore`, `package.json`, `pnpm-lock.yaml`, `web/package.json`, and
+  `web/package-lock.json`
 - `.github/workflows/ci.yml`
 - focused configuration/CI regression tests
 - Railway frontend deployment evidence
@@ -76,7 +77,10 @@ couples unrelated backend changes to frontend releases.
 ## Risks and Mitigations
 
 - **Dual lockfiles drift:** CI executes the npm production build and existing
-  pnpm workflows continue to enforce the workspace lock.
+  pnpm workflows continue to enforce the workspace lock. Both package-manager
+  override graphs pin the same audit-safe `protobufjs` release.
+- **Vulnerable production graph:** CI runs `npm audit --omit=dev
+  --audit-level=high`; high or critical production findings block promotion.
 - **Tracked lock omitted from CLI upload:** the repository explicitly
   unignores `web/package-lock.json`, and a regression uses Git's ignore engine
   to ensure Railway's uploader includes it.
@@ -96,8 +100,8 @@ couples unrelated backend changes to frontend releases.
   its operation/content as labeled release evidence unless a supported cleanup
   path is confirmed.
 - **Incomplete release evidence:** a checked-in validator rejects blank or
-  inconsistent candidate, rollback, CI, Railway, browser, operation, log, and
-  retired-route fields.
+  inconsistent candidate, rollback, CI, Railway build, browser, operation,
+  attributed in-window log, and retired-route fields.
 - **Rollback:** capture the active deployment, last successful deployment,
   public domain, exact target IDs, and rollback command before deployment.
   Abort if no recoverable prior release exists.

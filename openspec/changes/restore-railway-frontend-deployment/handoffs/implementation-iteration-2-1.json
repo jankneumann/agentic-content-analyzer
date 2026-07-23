@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-07-23T19:28:39.480650+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Implementation review reopened RI-02 after finding a critical protobufjs regression in the new npm production graph and two evidence-integrity gaps. TDD regressions now pass for converged audit-safe npm/pnpm locks, a high-severity CI audit gate, explicit Railpack build facts, and attributed in-window backend correlation. A corrected exact-SHA CI and production cycle remains in progress.",
+    "completed_work": [
+      "recorded failing dependency and evidence regressions",
+      "pinned protobufjs 8.7.1 in npm and pnpm graphs",
+      "added the high-severity production audit CI gate",
+      "required explicit Railway lock/install/runtime facts",
+      "required attributed in-window backend correlations"
+    ],
+    "in_progress": [
+      "corrected exact-SHA CI and production redeployment"
+    ],
+    "decisions": [
+      {
+        "title": "Stop the release on the npm graph regression",
+        "rationale": "The new authoritative npm lock installed a critical RCE-affected protobufjs version, so issue deferral could not make the deployed artifact acceptable.",
+        "capability": "frontend-release-delivery",
+        "supersedes": null
+      },
+      {
+        "title": "Converge both package-manager graphs",
+        "rationale": "The repository retains pnpm workflows while Railway uses npm; both override and lock graphs must resolve the same audit-safe protobufjs release.",
+        "capability": "frontend-release-delivery",
+        "supersedes": null
+      },
+      {
+        "title": "Strengthen evidence at the observed boundary",
+        "rationale": "Build success alone did not prove lock usage, and route substrings alone did not prove bounded browser-to-backend correlation.",
+        "capability": "frontend-release-delivery",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "run the clean local release gate",
+      "commit and push the corrected candidate",
+      "require exact-SHA frontend-release success",
+      "redeploy and repeat one bounded production verification"
+    ],
+    "relevant_files": [
+      {
+        "path": "web/package-lock.json",
+        "description": "authoritative Railway npm graph"
+      },
+      {
+        "path": "pnpm-lock.yaml",
+        "description": "converged workspace graph"
+      },
+      {
+        "path": "scripts/validate_frontend_deployment_evidence.py",
+        "description": "strengthened evidence validator"
+      },
+      {
+        "path": "openspec/changes/restore-railway-frontend-deployment/change-context.md",
+        "description": "review finding dispositions"
+      }
+    ]
+  }
+}

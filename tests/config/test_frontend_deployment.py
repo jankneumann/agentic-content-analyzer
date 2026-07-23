@@ -6,14 +6,14 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WEB_ROOT = REPO_ROOT / "web"
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
 
 
 def test_railway_frontend_build_is_isolated_and_uses_railpack() -> None:
@@ -68,3 +68,13 @@ def test_frontend_lockfile_is_included_in_railway_uploads() -> None:
     )
 
     assert result.returncode == 1
+
+
+def test_frontend_dependency_graph_uses_audit_safe_protobuf_override() -> None:
+    root_package = _read_json(REPO_ROOT / "package.json")
+    frontend_package = _read_json(WEB_ROOT / "package.json")
+    package_lock = _read_json(WEB_ROOT / "package-lock.json")
+
+    assert root_package["pnpm"]["overrides"]["protobufjs"] == "8.7.1"
+    assert frontend_package["overrides"]["protobufjs"] == "8.7.1"
+    assert package_lock["packages"]["node_modules/protobufjs"]["version"] == "8.7.1"
