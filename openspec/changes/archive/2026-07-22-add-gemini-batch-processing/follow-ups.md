@@ -6,9 +6,12 @@ were originally recorded in `.beads/issues.jsonl`; that tracker was retired on
 before being removed again. The records are preserved here so they survive the
 removal and remain discoverable from the change they belong to.
 
-Re-file these against the coordinator (`mcp__coordination__issue_*`) once it is
-reachable again — as of 2026-07-22 it fails with `No module named
-'rich.traceback'`.
+**Migrated to GitHub Issues on 2026-07-22** — these are now tracked live:
+- `…-0vd` → [#464](https://github.com/jankneumann/agentic-content-analyzer/issues/464)
+- `…-6bc` → [#465](https://github.com/jankneumann/agentic-content-analyzer/issues/465)
+
+The beads DB held nothing else open, so it was deleted after this migration. The
+detail below is retained for historical context.
 
 ## Open
 
