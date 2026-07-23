@@ -61,7 +61,7 @@
 
 ## Phase 5 — Integration (`wp-integration`)
 
-- [ ] 5.1 Document the transport/output invariants. **(S)**
+- [x] 5.1 Document the transport/output invariants. **(S)**
   **Spec scenarios:** Output format / JSON output; CLI capability discovery / First discovery page omits cursor
   **Design decisions:** D1, D3
   **Dependencies:** 1.2, 2.3, 2.4, 3.1, 3.2, 4.3, 4.4
