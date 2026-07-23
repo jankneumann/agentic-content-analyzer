@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-07-23T21:33:38.331020+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "RI-03 now has an evidence-first, independently reviewed plan that separates landed foundations from genuine residual work, preserves current requirements through manual sync matrices, and proves the final actionable inventory before and after self-archive.",
+    "completed_work": [
+      "audited all active entries",
+      "resolved nine plan-review findings",
+      "validated strict OpenSpec and the fully ordered work-package graph"
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Classify by current evidence",
+        "rationale": "Stale task counts cannot prove implementation and several checked requirements contradict current durable workflow behavior.",
+        "capability": "openspec-inventory-governance",
+        "supersedes": null
+      },
+      {
+        "title": "Extract four bounded successors",
+        "rationale": "Filtering, source overrides, LLM operationalization, and ParadeDB/Langfuse production proof are real gaps but must not reopen completed foundations.",
+        "capability": "openspec-inventory-governance",
+        "supersedes": null
+      },
+      {
+        "title": "Use manual requirement merges before archive",
+        "rationale": "Legacy or overclaimed deltas cannot be synced wholesale without losing newer main-spec scenarios or publishing unsupported behavior.",
+        "capability": "openspec-inventory-governance",
+        "supersedes": null
+      },
+      {
+        "title": "Prove a final snapshot, not a permanent registry",
+        "rationale": "The reconciliation evidence must remain stable while later roadmap lifecycle transitions continue.",
+        "capability": "openspec-inventory-governance",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "run the evidence package",
+      "create and validate four successors",
+      "normalize retained roadmap deltas",
+      "merge specs and archive historical entries"
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/reconcile-openspec-inventory/design.md",
+        "description": "evidence and archive decisions"
+      },
+      {
+        "path": "openspec/changes/reconcile-openspec-inventory/work-packages.yaml",
+        "description": "fully ordered execution chain"
+      },
+      {
+        "path": "openspec/changes/reconcile-openspec-inventory/evidence/inventory-reconciliation.md",
+        "description": "dispositions and sync matrix"
+      }
+    ]
+  }
+}
