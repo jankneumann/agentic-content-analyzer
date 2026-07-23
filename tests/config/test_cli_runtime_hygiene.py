@@ -5,6 +5,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
+import yaml
 from packaging.requirements import Requirement
 from packaging.version import Version
 
@@ -22,3 +23,13 @@ def test_crawl4ai_extra_constrains_chardet_to_requests_compatible_range() -> Non
     lock = tomllib.loads((REPO_ROOT / "uv.lock").read_text())
     locked = next(package for package in lock["package"] if package["name"] == "chardet")
     assert Version(locked["version"]) in chardet.specifier
+
+
+def test_local_profile_uses_only_canonical_neo4j_keys() -> None:
+    profile = yaml.safe_load((REPO_ROOT / "profiles/local.yaml").read_text())
+    neo4j = profile["settings"]["neo4j"]
+
+    assert neo4j["neo4j_uri"] == "bolt://localhost:7687"
+    assert neo4j["neo4j_user"] == "neo4j"
+    assert "neo4j_password" in neo4j
+    assert not any(key.startswith("neo4j_local_") for key in neo4j)

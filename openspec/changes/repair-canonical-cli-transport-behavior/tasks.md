@@ -49,15 +49,15 @@
   **Spec scenarios:** CLI dependency warning hygiene / Optional crawler dependencies are compatible
   **Design decisions:** D5
   **Dependencies:** None
-- [ ] 4.2 Add the canonical local profile regression. **(S)**
+- [x] 4.2 Add the canonical local profile regression. **(S)**
   **Spec scenarios:** CLI dependency warning hygiene / Tracked local profile uses canonical graph keys
   **Design decisions:** D5
   **Dependencies:** None
 - [x] 4.3 Constrain the optional detector dependency. **(S)**
   **Dependencies:** 4.1
-- [ ] 4.4 Migrate the tracked local graph profile keys. **(S)**
+- [x] 4.4 Migrate the tracked local graph profile keys. **(S)**
   **Dependencies:** 4.2
-- [ ] Checkpoint: verify the lock, load the local profile, review the configuration diff.
+- [x] Checkpoint: verify the lock, load the local profile, review the configuration diff.
 
 ## Phase 5 — Integration (`wp-integration`)
 
