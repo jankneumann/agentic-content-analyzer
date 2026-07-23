@@ -33,6 +33,13 @@ _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
 _INGEST_ADAPTER: TypeAdapter[IngestCommand] = TypeAdapter(IngestCommand)
 
 
+def _cursor_page_params(*, limit: int, cursor: str | None) -> dict[str, int | str]:
+    params: dict[str, int | str] = {"limit": limit}
+    if cursor is not None:
+        params["cursor"] = cursor
+    return params
+
+
 class ProblemError(RuntimeError):
     """An HTTP request failed with a canonical RFC 7807 problem."""
 
@@ -196,7 +203,10 @@ class WorkflowApiClient:
         )
 
     def list_operations(self, *, limit: int = 50, cursor: str | None = None) -> OperationPage:
-        response = self._client.get("/api/v1/operations", params={"limit": limit, "cursor": cursor})
+        response = self._client.get(
+            "/api/v1/operations",
+            params=_cursor_page_params(limit=limit, cursor=cursor),
+        )
         return self._decode(response, OperationPage)
 
     def iter_operations(
@@ -247,7 +257,8 @@ class WorkflowApiClient:
 
     def get_capabilities(self, *, limit: int = 50, cursor: str | None = None) -> CapabilityDocument:
         response = self._client.get(
-            "/api/v1/capabilities", params={"limit": limit, "cursor": cursor}
+            "/api/v1/capabilities",
+            params=_cursor_page_params(limit=limit, cursor=cursor),
         )
         return self._decode(response, CapabilityDocument)
 
@@ -255,7 +266,8 @@ class WorkflowApiClient:
         self, *, limit: int = 50, cursor: str | None = None
     ) -> ConfiguredSourcePage:
         response = self._client.get(
-            "/api/v1/configured-sources", params={"limit": limit, "cursor": cursor}
+            "/api/v1/configured-sources",
+            params=_cursor_page_params(limit=limit, cursor=cursor),
         )
         return self._decode(response, ConfiguredSourcePage)
 

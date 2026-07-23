@@ -5,14 +5,14 @@
 
 ## Phase 1 — Transport serialization (`wp-transport`)
 
-- [ ] 1.1 Write serialized-query regression tests for all three cursor-page client methods. **(S)**
+- [x] 1.1 Write serialized-query regression tests for all three cursor-page client methods. **(S)**
   **Spec scenarios:** CLI capability discovery / First discovery page omits cursor; Explicit cursor is preserved
   **Contracts:** `openspec/contracts/content-workflows/openapi/v1.yaml`
   **Design decisions:** D1
   **Dependencies:** None
-- [ ] 1.2 Omit absent optional values in the shared workflow client. **(S)**
+- [x] 1.2 Omit absent optional values in the shared workflow client. **(S)**
   **Dependencies:** 1.1
-- [ ] Checkpoint: run client tests; review the transport diff; verify scope.
+- [x] Checkpoint: run client tests; review the transport diff; verify scope.
 
 ## Phase 2 — Discovery and JSON output (`wp-cli-output`)
 
