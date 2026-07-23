@@ -176,6 +176,30 @@ def test_empty_graph_json_stdout_is_exactly_one_document(
     assert result.stderr == ""
 
 
+def test_failed_graph_json_stdout_is_exactly_one_document(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapters = importlib.import_module("src.cli.adapters")
+    graph_commands = importlib.import_module("src.cli.graph_commands")
+    monkeypatch.setattr(
+        adapters,
+        "search_graph_sync",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionError("offline")),
+    )
+    monkeypatch.setattr(graph_commands, "is_remote_backend", lambda: False)
+    monkeypatch.setattr(graph_commands, "guard_remote_backend", lambda *_args, **_kwargs: None)
+
+    result = CliRunner().invoke(app, ["--json", "graph", "query", "--query", "missing"])
+
+    assert result.exit_code == 1
+    assert json.loads(result.stdout) == {
+        "error": "Graph database is unavailable: offline",
+        "success": False,
+    }
+    assert result.stdout.count("\n") == 1
+    assert "Graph database is unavailable: offline" in result.stderr
+
+
 def test_cli_logging_handler_routes_diagnostics_to_stderr(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -26,6 +26,15 @@ from src.cli.output import (
 app = typer.Typer(help="Manage the knowledge graph.")
 
 
+def _output_graph_error(console: Console, message: str) -> None:
+    """Emit a structured JSON failure while keeping diagnostics on stderr."""
+    if is_json_mode():
+        output_result({"error": message, "success": False}, success=False)
+        typer.echo(f"Error: {message}", err=True)
+    else:
+        console.print(f"[red]Error:[/red] {message}")
+
+
 def _graph_results_from_response(resp: dict) -> list[dict]:
     """Flatten a GraphQueryResponse {entities, relationships} into the flat
     result rows the table/JSON renderer expects (name / type / content).
@@ -70,17 +79,17 @@ def _extract_entities_via_api(console: Console, content_id: int) -> None:
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         if status == 404:
-            console.print(f"[red]Error:[/red] Content with ID {content_id} not found.")
+            _output_graph_error(console, f"Content with ID {content_id} not found.")
         elif status == 409:
-            console.print(
-                f"[red]Error:[/red] No summary found for content ID {content_id}. "
-                "Run summarization first."
+            _output_graph_error(
+                console,
+                f"No summary found for content ID {content_id}. Run summarization first.",
             )
         else:
-            console.print(f"[red]Error:[/red] Entity extraction failed: {exc}")
+            _output_graph_error(console, f"Entity extraction failed: {exc}")
         raise typer.Exit(1)
     except Exception as exc:
-        console.print(f"[red]Error:[/red] Entity extraction failed: {exc}")
+        _output_graph_error(console, f"Entity extraction failed: {exc}")
         raise typer.Exit(1)
     finally:
         client.close()
@@ -143,7 +152,7 @@ def extract_entities(
         with get_db() as db:
             content = db.query(Content).filter(Content.id == content_id).first()
             if not content:
-                console.print(f"[red]Error:[/red] Content with ID {content_id} not found.")
+                _output_graph_error(console, f"Content with ID {content_id} not found.")
                 raise typer.Exit(1)
 
             # Get the most recent summary for this content
@@ -154,9 +163,9 @@ def extract_entities(
                 .first()
             )
             if not summary:
-                console.print(
-                    f"[red]Error:[/red] No summary found for content ID {content_id}. "
-                    "Run summarization first."
+                _output_graph_error(
+                    console,
+                    f"No summary found for content ID {content_id}. Run summarization first.",
                 )
                 raise typer.Exit(1)
 
@@ -186,19 +195,19 @@ def extract_entities(
             console.print(f"[green]Successfully extracted entities from:[/green] {content_title}")
 
     except GraphBackendUnavailableError as e:
-        console.print(f"[red]Error:[/red] Graph backend is unavailable: {e}")
+        _output_graph_error(console, f"Graph backend is unavailable: {e}")
         raise typer.Exit(1)
     except ConnectionError as e:
-        console.print(f"[red]Error:[/red] Graph database is unavailable: {e}")
+        _output_graph_error(console, f"Graph database is unavailable: {e}")
         raise typer.Exit(1)
     except typer.Exit:
         raise
     except Exception as e:
         error_msg = str(e).lower()
         if "connection" in error_msg or "neo4j" in error_msg or "refused" in error_msg:
-            console.print("[red]Error:[/red] Graph database is unavailable.")
+            _output_graph_error(console, "Graph database is unavailable.")
         else:
-            console.print(f"[red]Error:[/red] Entity extraction failed: {e}")
+            _output_graph_error(console, f"Entity extraction failed: {e}")
         raise typer.Exit(1)
 
 
@@ -237,7 +246,7 @@ def query(
         try:
             resp = client.graph_query(query_text, limit=limit)
         except Exception as e:
-            console.print(f"[red]Error:[/red] Graph query failed: {e}")
+            _output_graph_error(console, f"Graph query failed: {e}")
             raise typer.Exit(1)
         finally:
             client.close()
@@ -249,14 +258,14 @@ def query(
 
             results = search_graph_sync(query_text, limit=limit)
         except ConnectionError as e:
-            console.print(f"[red]Error:[/red] Graph database is unavailable: {e}")
+            _output_graph_error(console, f"Graph database is unavailable: {e}")
             raise typer.Exit(1)
         except Exception as e:
             error_msg = str(e).lower()
             if "connection" in error_msg or "neo4j" in error_msg or "refused" in error_msg:
-                console.print("[red]Error:[/red] Graph database is unavailable.")
+                _output_graph_error(console, "Graph database is unavailable.")
             else:
-                console.print(f"[red]Error:[/red] Graph query failed: {e}")
+                _output_graph_error(console, f"Graph query failed: {e}")
             raise typer.Exit(1)
 
     if not results:

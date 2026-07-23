@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from typer.testing import CliRunner
@@ -167,6 +168,32 @@ class TestExtractEntitiesHttpRouting:
 
         assert result.exit_code == 1
         assert "not found" in result.output
+
+    @patch("src.cli.graph_commands.is_remote_backend", return_value=True)
+    @patch("src.cli.api_client.get_api_client")
+    def test_extract_404_json_is_structured(self, mock_get_client, _remote):
+        import httpx
+
+        req = httpx.Request("POST", "http://x/api/v1/graph/extract-entities")
+        resp = httpx.Response(404, request=req)
+        client = MagicMock()
+        client.graph_extract_entities.side_effect = httpx.HTTPStatusError(
+            "404", request=req, response=resp
+        )
+        mock_get_client.return_value = client
+
+        result = runner.invoke(
+            app,
+            ["--json", "graph", "extract-entities", "--content-id", "999"],
+        )
+
+        assert result.exit_code == 1
+        assert json.loads(result.stdout) == {
+            "error": "Content with ID 999 not found.",
+            "success": False,
+        }
+        assert result.stdout.count("\n") == 1
+        assert "Content with ID 999 not found." in result.stderr
 
     @patch("src.cli.graph_commands.is_remote_backend", return_value=True)
     @patch("src.cli.api_client.get_api_client")
