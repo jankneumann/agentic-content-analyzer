@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from typer.testing import CliRunner
 
@@ -12,10 +12,9 @@ runner = CliRunner()
 
 
 class TestExtractEntities:
-    @patch("src.cli.adapters.run_async")
     @patch("src.storage.graphiti_client.GraphitiClient")
     @patch("src.storage.database.get_db")
-    def test_extract_success(self, mock_get_db, mock_graphiti_cls, mock_run_async):
+    def test_extract_success(self, mock_get_db, mock_graphiti_cls):
         mock_content = MagicMock()
         mock_content.id = 42
         mock_content.title = "Test Article"
@@ -33,12 +32,14 @@ class TestExtractEntities:
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
 
         mock_client = MagicMock()
-        mock_graphiti_cls.return_value = mock_client
-        mock_run_async.return_value = None
+        mock_client.add_content_summary = AsyncMock()
+        mock_graphiti_cls.create = AsyncMock(return_value=mock_client)
 
         result = runner.invoke(app, ["graph", "extract-entities", "--content-id", "42"])
         assert result.exit_code == 0
         assert "Successfully extracted" in result.output or "Test Article" in result.output
+        mock_client.add_content_summary.assert_awaited_once_with(mock_content, mock_summary)
+        mock_client.close.assert_called_once_with()
 
     @patch("src.storage.database.get_db")
     def test_extract_content_not_found(self, mock_get_db):

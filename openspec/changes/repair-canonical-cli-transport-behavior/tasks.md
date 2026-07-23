@@ -33,15 +33,15 @@
 
 ## Phase 3 — Hermetic CLI tests (`wp-test-isolation`)
 
-- [ ] 3.1 Make RSS curation tests select their transport explicitly. **(S)**
+- [x] 3.1 Make RSS curation tests select their transport explicitly. **(S)**
   **Spec scenarios:** Hermetic CLI transport tests / Ambient credentials do not select a live transport
   **Design decisions:** D4
   **Dependencies:** None
-- [ ] 3.2 Exercise the real graph coroutine consumer with async mocks. **(S)**
+- [x] 3.2 Exercise the real graph coroutine consumer with async mocks. **(S)**
   **Spec scenarios:** Hermetic CLI transport tests / Async graph boundary is consumed
   **Design decisions:** D4
   **Dependencies:** None
-- [ ] Checkpoint: run curation plus graph tests with warnings enabled; review the test diff; verify scope.
+- [x] Checkpoint: run curation plus graph tests with warnings enabled; review the test diff; verify scope.
 
 ## Phase 4 — Runtime warning hygiene (`wp-runtime-hygiene`)
 
