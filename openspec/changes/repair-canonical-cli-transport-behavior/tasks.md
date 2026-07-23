@@ -45,7 +45,7 @@
 
 ## Phase 4 — Runtime warning hygiene (`wp-runtime-hygiene`)
 
-- [ ] 4.1 Add the optional dependency warning regression. **(S)**
+- [x] 4.1 Add the optional dependency warning regression. **(S)**
   **Spec scenarios:** CLI dependency warning hygiene / Optional crawler dependencies are compatible
   **Design decisions:** D5
   **Dependencies:** None
@@ -53,7 +53,7 @@
   **Spec scenarios:** CLI dependency warning hygiene / Tracked local profile uses canonical graph keys
   **Design decisions:** D5
   **Dependencies:** None
-- [ ] 4.3 Constrain the optional detector dependency. **(S)**
+- [x] 4.3 Constrain the optional detector dependency. **(S)**
   **Dependencies:** 4.1
 - [ ] 4.4 Migrate the tracked local graph profile keys. **(S)**
   **Dependencies:** 4.2
