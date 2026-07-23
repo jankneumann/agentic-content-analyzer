@@ -59,7 +59,10 @@ class TestCurateYoutubeRss:
         _write_yt_file(feed_file)
         before = feed_file.read_text()
 
-        result = runner.invoke(app, ["curate", "youtube-rss", "--file", str(feed_file)])
+        result = runner.invoke(
+            app,
+            ["curate", "youtube-rss", "--file", str(feed_file), "--via-rss"],
+        )
 
         assert result.exit_code == 0
         assert "Checked 2 channels" in result.output
@@ -77,7 +80,8 @@ class TestCurateYoutubeRss:
         _write_yt_file(feed_file)
 
         result = runner.invoke(
-            app, ["curate", "youtube-rss", "--file", str(feed_file), "--apply"]
+            app,
+            ["curate", "youtube-rss", "--file", str(feed_file), "--via-rss", "--apply"],
         )
 
         assert result.exit_code == 0
@@ -89,7 +93,7 @@ class TestCurateYoutubeRss:
     @patch("src.cli.curate_commands._load_sources")
     def test_no_sources_exits_nonzero(self, mock_load, tmp_path):
         mock_load.return_value = SourcesConfig(sources=[])
-        result = runner.invoke(app, ["curate", "youtube-rss"])
+        result = runner.invoke(app, ["curate", "youtube-rss", "--via-rss"])
         assert result.exit_code == 1
         assert "No YouTube RSS sources found." in result.output
 

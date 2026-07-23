@@ -40,6 +40,16 @@ Run `aca capabilities --json` for the registry-derived command and field
 contract. Multiword CLI commands use hyphens; request discriminators use
 underscores.
 
+Canonical cursor-page clients must omit optional query parameters when their
+value is `None`; do not send `cursor=` for a first-page request. Transport tests
+should assert the serialized `httpx.Request.url.params`, because fake service
+clients can accidentally normalize malformed requests.
+
+Machine-readable CLI commands reserve stdout for exactly one JSON document.
+Diagnostics and logging go to stderr. Discovery supports both root JSON mode
+(`aca --json configured-sources`) and the documented command-local form
+(`aca configured-sources --json`).
+
 ### Processing
 
 ```bash

@@ -483,7 +483,13 @@ def configured_sources(
     ctx: typer.Context,
     limit: Annotated[int, typer.Option("--limit", min=1, max=100)] = 50,
     cursor: Annotated[str | None, typer.Option("--cursor")] = None,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit the configured-source page.")
+    ] = False,
 ) -> None:
+    if json_output:
+        state = get_state(ctx)
+        ctx.find_root().obj = WorkflowCliState(True, state.client_factory)
     _emit_model(
         ctx, _run(ctx, lambda client: client.list_configured_sources(limit=limit, cursor=cursor))
     )

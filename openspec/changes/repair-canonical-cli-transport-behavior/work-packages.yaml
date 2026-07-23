@@ -1,0 +1,286 @@
+schema_version: 1
+
+feature:
+  id: repair-canonical-cli-transport-behavior
+  title: Repair canonical CLI transport behavior
+  plan_revision: 1
+  created_by: codex
+  created_at: "2026-07-23T17:20:00Z"
+
+contracts:
+  revision: 1
+  openapi:
+    primary: openspec/contracts/content-workflows/openapi/v1.yaml
+    files:
+      - openspec/contracts/content-workflows/openapi/v1.yaml
+
+defaults:
+  priority: 5
+  lock_ttl_minutes: 120
+  timeout_minutes: 60
+  retry_budget: 1
+  verification_tier_required: B
+  min_trust_level: 2
+
+packages:
+  - package_id: wp-transport
+    title: Transport serialization
+    task_type: implement
+    description: Test and repair optional cursor serialization in the shared workflow client.
+    role: backend-engineer
+    priority: 1
+    depends_on: []
+    locks:
+      files:
+        - src/clients/workflow_api_client.py
+        - tests/clients/test_workflow_api_client.py
+      keys:
+        - feature:repair-canonical-cli-transport-behavior:transport
+      ttl_minutes: 120
+      reason: Shared cursor-page request construction.
+    scope:
+      write_allow:
+        - src/clients/workflow_api_client.py
+        - tests/clients/test_workflow_api_client.py
+      read_allow:
+        - src/**
+        - tests/**
+        - openspec/**
+    worktree:
+      name: wp-transport
+      mode: isolated
+    timeout_minutes: 60
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 60
+      alternatives_count: 3
+      complexity: low
+      package_kind: integration
+    inputs:
+      tasks: ["1.1", "1.2"]
+    verification:
+      tier_required: B
+      steps:
+        - name: client-tests
+          kind: command
+          command: pytest tests/clients/test_workflow_api_client.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-cli-output
+    title: Discovery and JSON output
+    task_type: implement
+    description: Add command-local configured-source JSON and keep diagnostics off stdout.
+    role: cli-engineer
+    priority: 2
+    depends_on: []
+    locks:
+      files:
+        - src/cli/workflow_commands.py
+        - src/cli/graph_commands.py
+        - src/utils/logging.py
+        - tests/cli/test_canonical_workflows.py
+      keys:
+        - feature:repair-canonical-cli-transport-behavior:output
+      ttl_minutes: 120
+      reason: CLI discovery and machine-output boundary.
+    scope:
+      write_allow:
+        - src/cli/workflow_commands.py
+        - src/cli/graph_commands.py
+        - src/utils/logging.py
+        - tests/cli/test_canonical_workflows.py
+      read_allow:
+        - src/**
+        - tests/**
+        - openspec/**
+    worktree:
+      name: wp-cli-output
+      mode: isolated
+    timeout_minutes: 90
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 100
+      alternatives_count: 3
+      complexity: medium
+      package_kind: integration
+    inputs:
+      tasks: ["2.1", "2.2", "2.3", "2.4"]
+    verification:
+      tier_required: B
+      steps:
+        - name: cli-output-tests
+          kind: command
+          command: pytest tests/cli/test_canonical_workflows.py tests/cli/test_graph_commands.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-test-isolation
+    title: Hermetic CLI tests
+    task_type: test
+    description: Remove ambient credential and unconsumed coroutine behavior from CLI tests.
+    role: test-engineer
+    priority: 2
+    depends_on: []
+    locks:
+      files:
+        - tests/cli/test_curate_commands.py
+        - tests/cli/test_graph_commands.py
+      keys:
+        - feature:repair-canonical-cli-transport-behavior:test
+      ttl_minutes: 120
+      reason: Deterministic external-transport and async-boundary tests.
+    scope:
+      write_allow:
+        - tests/cli/test_curate_commands.py
+        - tests/cli/test_graph_commands.py
+      read_allow:
+        - src/**
+        - tests/**
+        - openspec/**
+    worktree:
+      name: wp-test-isolation
+      mode: isolated
+    timeout_minutes: 60
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 40
+      alternatives_count: 2
+      complexity: low
+      package_kind: integration
+    inputs:
+      tasks: ["3.1", "3.2"]
+    verification:
+      tier_required: B
+      steps:
+        - name: hermetic-cli-tests
+          kind: command
+          command: pytest tests/cli/test_curate_commands.py tests/cli/test_graph_commands.py --no-cov -q -W default
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count, warning_count]
+    outputs:
+      result_keys: [files_modified, test_count, warning_count]
+
+  - package_id: wp-runtime-hygiene
+    title: Runtime warning hygiene
+    task_type: config
+    description: Constrain the optional detector dependency and migrate tracked local graph keys.
+    role: platform-engineer
+    priority: 2
+    depends_on: []
+    locks:
+      files:
+        - pyproject.toml
+        - uv.lock
+        - profiles/local.yaml
+      keys:
+        - feature:repair-canonical-cli-transport-behavior:runtime
+      ttl_minutes: 120
+      reason: Dependency lock and tracked local profile.
+    scope:
+      write_allow:
+        - pyproject.toml
+        - uv.lock
+        - profiles/local.yaml
+        - tests/config/test_cli_runtime_hygiene.py
+      read_allow:
+        - pyproject.toml
+        - uv.lock
+        - profiles/**
+        - tests/**
+        - openspec/**
+    worktree:
+      name: wp-runtime-hygiene
+      mode: isolated
+    timeout_minutes: 90
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 50
+      alternatives_count: 2
+      complexity: low
+      package_kind: config
+    inputs:
+      tasks: ["4.1", "4.2", "4.3", "4.4"]
+    verification:
+      tier_required: B
+      steps:
+        - name: runtime-hygiene-tests
+          kind: command
+          command: pytest tests/config/test_cli_runtime_hygiene.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-integration
+    title: Integration and evidence
+    task_type: integrate
+    description: Document the invariants, run the full CLI gate, and collect evidence.
+    role: integrator
+    priority: 3
+    depends_on:
+      - wp-transport
+      - wp-cli-output
+      - wp-test-isolation
+      - wp-runtime-hygiene
+    locks:
+      files: []
+      keys:
+        - feature:repair-canonical-cli-transport-behavior:integration
+      ttl_minutes: 180
+      reason: Final roadmap-item integration.
+    scope:
+      write_allow:
+        - docs/DEVELOPMENT.md
+        - CLAUDE.md
+        - openspec/changes/repair-canonical-cli-transport-behavior/**
+      read_allow:
+        - "**"
+    worktree:
+      name: wp-integration
+      mode: shared
+    timeout_minutes: 180
+    retry_budget: 0
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 40
+      alternatives_count: 2
+      complexity: medium
+      package_kind: integration
+    inputs:
+      tasks: ["5.1", "5.2"]
+    verification:
+      tier_required: A
+      steps:
+        - name: cli-suite
+          kind: command
+          command: pytest tests/cli tests/clients/test_workflow_api_client.py --no-cov -q -W default
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count, warning_count]
+        - name: openspec-strict
+          kind: command
+          command: openspec validate repair-canonical-cli-transport-behavior --strict
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [validation_passed]
+    outputs:
+      result_keys: [files_modified, test_count, validation_passed]

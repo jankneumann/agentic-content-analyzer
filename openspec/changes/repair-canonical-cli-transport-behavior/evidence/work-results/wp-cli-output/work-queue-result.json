@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "feature_id": "repair-canonical-cli-transport-behavior",
+  "package_id": "wp-cli-output",
+  "attempt": 1,
+  "plan_revision": 1,
+  "contracts_revision": 1,
+  "status": "completed",
+  "locks": {
+    "files": [
+      "src/cli/workflow_commands.py",
+      "src/cli/graph_commands.py",
+      "src/utils/logging.py",
+      "tests/cli/test_canonical_workflows.py"
+    ],
+    "keys": ["feature:repair-canonical-cli-transport-behavior:output"]
+  },
+  "scope": {
+    "write_allow": [
+      "src/cli/workflow_commands.py",
+      "src/cli/graph_commands.py",
+      "src/utils/logging.py",
+      "tests/cli/test_canonical_workflows.py"
+    ],
+    "read_allow": ["src/**", "tests/**", "openspec/**"],
+    "deny": []
+  },
+  "files_modified": [
+    "src/cli/graph_commands.py",
+    "src/cli/workflow_commands.py",
+    "src/utils/logging.py",
+    "tests/cli/test_canonical_workflows.py"
+  ],
+  "scope_check": {"passed": true, "violations": []},
+  "git": {
+    "base": {"ref": "62d08012fca3c78fcc3b8b229764c386a33ec37d"},
+    "head": {"commit": "6460b8a0bd4a441964a35436476b1b2f30397b3c"}
+  },
+  "verification": {
+    "tier": "B",
+    "passed": true,
+    "steps": [
+      {
+        "name": "cli-output-tests",
+        "kind": "command",
+        "command": "pytest tests/cli/test_canonical_workflows.py tests/cli/test_graph_commands.py --no-cov -q",
+        "exit_code": 0,
+        "passed": true,
+        "evidence": {
+          "artifacts": [],
+          "metrics": {"test_count": 43, "pass_count": 43}
+        }
+      }
+    ]
+  },
+  "escalations": []
+}

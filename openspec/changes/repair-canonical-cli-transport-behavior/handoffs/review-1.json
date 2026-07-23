@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-07-23T17:50:42Z",
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Independent cross-package and whole-branch review completed under the no-consensus fallback. All fix-disposition findings are resolved.",
+    "completed_work": [
+      "structured graph JSON failure remediation",
+      "durable package evidence",
+      "requirement evidence matrix"
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Use the no-consensus review fallback",
+        "rationale": "Repository content could not be transmitted to external reviewers without separate authorization.",
+        "capability": "roadmap-execution",
+        "supersedes": null
+      },
+      {
+        "title": "Apply the JSON contract to failure paths",
+        "rationale": "Automation must receive exactly one parseable stdout document regardless of exit status.",
+        "capability": "canonical-cli-transport",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Run spec and evidence validation and produce the validation report."
+    ],
+    "relevant_files": [
+      {
+        "path": "src/cli/graph_commands.py",
+        "description": "Structured graph failure output"
+      },
+      {
+        "path": "openspec/changes/repair-canonical-cli-transport-behavior/change-context.md",
+        "description": "Review findings and evidence"
+      },
+      {
+        "path": "openspec/changes/repair-canonical-cli-transport-behavior/evidence/work-results",
+        "description": "Schema-valid package results"
+      }
+    ]
+  }
+}

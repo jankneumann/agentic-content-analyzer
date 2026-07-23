@@ -173,6 +173,88 @@ def test_request_json_exposes_authenticated_transport_without_client_internals()
     assert result == {"data": [{"id": 1}]}
 
 
+@pytest.mark.parametrize(
+    ("method_name", "path", "response_json"),
+    [
+        (
+            "list_operations",
+            "/api/v1/operations",
+            {"data": [], "next_cursor": None},
+        ),
+        (
+            "get_capabilities",
+            "/api/v1/capabilities",
+            {
+                "contract_version": "2.0.0",
+                "source_commands": [],
+                "operation_types": [],
+                "resource_types": [],
+                "next_cursor": None,
+            },
+        ),
+        (
+            "list_configured_sources",
+            "/api/v1/configured-sources",
+            {"data": [], "next_cursor": None},
+        ),
+    ],
+)
+def test_cursor_page_requests_omit_absent_cursor(
+    method_name: str,
+    path: str,
+    response_json: dict[str, object],
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == path
+        assert request.url.params["limit"] == "25"
+        assert "cursor" not in request.url.params
+        return httpx.Response(200, json=response_json, request=request)
+
+    client = WorkflowApiClient("https://aca.test", transport=httpx.MockTransport(handler))
+    getattr(client, method_name)(limit=25)
+
+
+@pytest.mark.parametrize(
+    ("method_name", "path", "response_json"),
+    [
+        (
+            "list_operations",
+            "/api/v1/operations",
+            {"data": [], "next_cursor": None},
+        ),
+        (
+            "get_capabilities",
+            "/api/v1/capabilities",
+            {
+                "contract_version": "2.0.0",
+                "source_commands": [],
+                "operation_types": [],
+                "resource_types": [],
+                "next_cursor": None,
+            },
+        ),
+        (
+            "list_configured_sources",
+            "/api/v1/configured-sources",
+            {"data": [], "next_cursor": None},
+        ),
+    ],
+)
+def test_cursor_page_requests_preserve_explicit_cursor(
+    method_name: str,
+    path: str,
+    response_json: dict[str, object],
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == path
+        assert request.url.params["limit"] == "25"
+        assert request.url.params["cursor"] == "opaque+/cursor=="
+        return httpx.Response(200, json=response_json, request=request)
+
+    client = WorkflowApiClient("https://aca.test", transport=httpx.MockTransport(handler))
+    getattr(client, method_name)(limit=25, cursor="opaque+/cursor==")
+
+
 def test_cursor_iteration_continues_without_duplication() -> None:
     cursors: list[str | None] = []
 

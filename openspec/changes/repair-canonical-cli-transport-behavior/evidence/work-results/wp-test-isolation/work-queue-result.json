@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "feature_id": "repair-canonical-cli-transport-behavior",
+  "package_id": "wp-test-isolation",
+  "attempt": 1,
+  "plan_revision": 1,
+  "contracts_revision": 1,
+  "status": "completed",
+  "locks": {
+    "files": [
+      "tests/cli/test_curate_commands.py",
+      "tests/cli/test_graph_commands.py"
+    ],
+    "keys": ["feature:repair-canonical-cli-transport-behavior:test"]
+  },
+  "scope": {
+    "write_allow": [
+      "tests/cli/test_curate_commands.py",
+      "tests/cli/test_graph_commands.py"
+    ],
+    "read_allow": ["src/**", "tests/**", "openspec/**"],
+    "deny": []
+  },
+  "files_modified": [
+    "tests/cli/test_curate_commands.py",
+    "tests/cli/test_graph_commands.py"
+  ],
+  "scope_check": {"passed": true, "violations": []},
+  "git": {
+    "base": {"ref": "62d08012fca3c78fcc3b8b229764c386a33ec37d"},
+    "head": {"commit": "65a7837fdcb5ddbe0797b92b068812294d914895"}
+  },
+  "verification": {
+    "tier": "B",
+    "passed": true,
+    "steps": [
+      {
+        "name": "hermetic-cli-tests",
+        "kind": "command",
+        "command": "pytest tests/cli/test_curate_commands.py tests/cli/test_graph_commands.py --no-cov -q -W default",
+        "exit_code": 0,
+        "passed": true,
+        "evidence": {
+          "artifacts": [],
+          "metrics": {
+            "test_count": 20,
+            "pass_count": 20,
+            "warning_count": 1,
+            "runtime_warning_count": 0
+          }
+        }
+      }
+    ]
+  },
+  "escalations": []
+}

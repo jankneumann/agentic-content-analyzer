@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from typer.testing import CliRunner
 
@@ -12,10 +13,9 @@ runner = CliRunner()
 
 
 class TestExtractEntities:
-    @patch("src.cli.adapters.run_async")
     @patch("src.storage.graphiti_client.GraphitiClient")
     @patch("src.storage.database.get_db")
-    def test_extract_success(self, mock_get_db, mock_graphiti_cls, mock_run_async):
+    def test_extract_success(self, mock_get_db, mock_graphiti_cls):
         mock_content = MagicMock()
         mock_content.id = 42
         mock_content.title = "Test Article"
@@ -33,12 +33,14 @@ class TestExtractEntities:
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
 
         mock_client = MagicMock()
-        mock_graphiti_cls.return_value = mock_client
-        mock_run_async.return_value = None
+        mock_client.add_content_summary = AsyncMock()
+        mock_graphiti_cls.create = AsyncMock(return_value=mock_client)
 
         result = runner.invoke(app, ["graph", "extract-entities", "--content-id", "42"])
         assert result.exit_code == 0
         assert "Successfully extracted" in result.output or "Test Article" in result.output
+        mock_client.add_content_summary.assert_awaited_once_with(mock_content, mock_summary)
+        mock_client.close.assert_called_once_with()
 
     @patch("src.storage.database.get_db")
     def test_extract_content_not_found(self, mock_get_db):
@@ -166,6 +168,32 @@ class TestExtractEntitiesHttpRouting:
 
         assert result.exit_code == 1
         assert "not found" in result.output
+
+    @patch("src.cli.graph_commands.is_remote_backend", return_value=True)
+    @patch("src.cli.api_client.get_api_client")
+    def test_extract_404_json_is_structured(self, mock_get_client, _remote):
+        import httpx
+
+        req = httpx.Request("POST", "http://x/api/v1/graph/extract-entities")
+        resp = httpx.Response(404, request=req)
+        client = MagicMock()
+        client.graph_extract_entities.side_effect = httpx.HTTPStatusError(
+            "404", request=req, response=resp
+        )
+        mock_get_client.return_value = client
+
+        result = runner.invoke(
+            app,
+            ["--json", "graph", "extract-entities", "--content-id", "999"],
+        )
+
+        assert result.exit_code == 1
+        assert json.loads(result.stdout) == {
+            "error": "Content with ID 999 not found.",
+            "success": False,
+        }
+        assert result.stdout.count("\n") == 1
+        assert "Content with ID 999 not found." in result.stderr
 
     @patch("src.cli.graph_commands.is_remote_backend", return_value=True)
     @patch("src.cli.api_client.get_api_client")

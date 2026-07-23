@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "feature_id": "repair-canonical-cli-transport-behavior",
+  "package_id": "wp-runtime-hygiene",
+  "attempt": 1,
+  "plan_revision": 1,
+  "contracts_revision": 1,
+  "status": "completed",
+  "locks": {
+    "files": ["pyproject.toml", "uv.lock", "profiles/local.yaml"],
+    "keys": ["feature:repair-canonical-cli-transport-behavior:runtime"]
+  },
+  "scope": {
+    "write_allow": [
+      "pyproject.toml",
+      "uv.lock",
+      "profiles/local.yaml",
+      "tests/config/test_cli_runtime_hygiene.py"
+    ],
+    "read_allow": [
+      "pyproject.toml",
+      "uv.lock",
+      "profiles/**",
+      "tests/**",
+      "openspec/**"
+    ],
+    "deny": []
+  },
+  "files_modified": [
+    "profiles/local.yaml",
+    "pyproject.toml",
+    "tests/config/test_cli_runtime_hygiene.py",
+    "uv.lock"
+  ],
+  "scope_check": {"passed": true, "violations": []},
+  "git": {
+    "base": {"ref": "62d08012fca3c78fcc3b8b229764c386a33ec37d"},
+    "head": {"commit": "594c36aa0b0d1d52b4a0b673ee8451368321d5af"}
+  },
+  "verification": {
+    "tier": "B",
+    "passed": true,
+    "steps": [
+      {
+        "name": "runtime-hygiene-tests",
+        "kind": "command",
+        "command": "pytest tests/config/test_cli_runtime_hygiene.py --no-cov -q",
+        "exit_code": 0,
+        "passed": true,
+        "evidence": {
+          "artifacts": [],
+          "metrics": {"test_count": 2, "pass_count": 2}
+        }
+      }
+    ]
+  },
+  "escalations": []
+}
