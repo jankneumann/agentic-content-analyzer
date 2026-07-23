@@ -2,9 +2,9 @@
   "schema_version": 1,
   "roadmap_id": "roadmap-workflow-surface-reliability",
   "current_item_id": "ri-02",
-  "phase": "reviewing",
+  "phase": "validating",
   "created_at": "2026-07-23T17:11:29.016204+00:00",
-  "updated_at": "2026-07-23T21:04:27.185586+00:00",
+  "updated_at": "2026-07-23T21:04:51.679438+00:00",
   "completed_items": [
     "ri-01"
   ]
