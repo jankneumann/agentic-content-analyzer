@@ -1,23 +1,32 @@
-# Stuck-content sweeper and requeue CLI
+# Change: Reconcile stuck content states
 
-> Parent roadmap: `ingestion-reliability`
+> Parent roadmap: `roadmap-workflow-surface-reliability`
 > Change ID: `stuck-content-sweeper-and-requeue-cli`
-> Effort: M
-> Priority: 4
+> Effort: L
+> Priority: 8
 
 ## Summary
 
-Periodic job resetting PROCESSING/PARSING rows older than a timeout back to PARSED/PENDING and requeuing FAILED rows up to a retry budget (summarizer.py:90,276 never re-selects PROCESSING; queue/setup.py:590 fails jobs without resetting content status). Add 'aca manage requeue-stuck'.
+Create a narrow reconciliation workflow for content rows whose transitional
+state conflicts with terminal or stale durable operations. Reuse operation
+retry, cancellation, retry budgets, checkpoints, and idempotency wherever
+possible.
 
 ## Dependencies
 
-- None
+- `ri-07`
 
 ## Acceptance Outcomes
 
-- Content rows stuck >1h in transitional states trend to zero automatically
-- FAILED rows are retried up to a budget and then surfaced, not stranded
+- Tested rules identify authoritative operation-to-content transitions and
+  bounded retry behavior.
+- Dry-run lists affected content and operations without mutation.
+- Apply mode is idempotent/auditable and uses canonical operation retry when it
+  can restore state.
+- Repeated reconciliation cannot duplicate content, reset successful
+  checkpoints, or exceed retry budgets.
 
 ## Rationale
 
-PROCESSING/PARSING are unrecoverable black holes; FAILED has no retry path.
+Recovery must repair domain state without bypassing durable operations or
+duplicating content.

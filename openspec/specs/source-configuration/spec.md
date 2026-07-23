@@ -489,3 +489,82 @@ Source discovery SHALL serialize each configured source through its registered s
 - **WHEN** source configuration models are validated at startup
 - **THEN** every enabled ingestion-capable config type maps to exactly one registry descriptor
 - **AND** an unregistered type fails validation with its config key
+
+### Requirement: Database-backed source definitions
+
+The system SHALL store validated runtime source overrides in
+`source_overrides`, including the full source union config, natural key,
+enabled state, version, and optional description.
+
+#### Scenario: A valid source is upserted
+
+- **WHEN** a caller submits a full source config containing its `type` and
+  required locator fields
+- **THEN** the service SHALL validate it against the shared source union
+- **AND** SHALL derive the natural key, create or update one row, and advance
+  its version
+
+#### Scenario: An invalid source is submitted
+
+- **WHEN** the config lacks a required discriminator or locator
+- **THEN** the service SHALL reject it
+- **AND** SHALL not create or modify a row
+
+### Requirement: Natural source identity and merge precedence
+
+Database and YAML sources SHALL share a natural key derived from source type
+and its registered locator. Database rows SHALL override matching YAML sources;
+a disabled database row SHALL shadow its YAML twin; lookup failure SHALL fall
+open to YAML-only configuration.
+
+#### Scenario: Database config overrides YAML
+
+- **WHEN** YAML and database entries share a natural key
+- **THEN** resolved configuration SHALL use database values and report database
+  origin
+
+#### Scenario: Database lookup is unavailable
+
+- **WHEN** source override lookup raises during configuration resolution
+- **THEN** resolution SHALL return the YAML source set
+- **AND** SHALL record the fail-open condition without aborting ingestion
+
+### Requirement: Source override management API
+
+The system SHALL expose admin-authenticated source mutations under
+`/api/v1/sources`. POST SHALL upsert a request whose `config` contains the full
+typed source; PATCH on a natural key SHALL set enabled state; DELETE SHALL
+remove a database override. POST and PATCH results SHALL report key, version,
+origin, and enabled state. DELETE results SHALL report the removed natural key
+and `deleted=true`.
+
+#### Scenario: Administrator disables a YAML source
+
+- **WHEN** an authenticated PATCH disables a YAML natural key with no existing
+  override
+- **THEN** the service SHALL create a self-describing database shadow
+- **AND** subsequent resolution SHALL exclude the source
+
+#### Scenario: Unauthenticated mutation is attempted
+
+- **WHEN** a caller without a valid admin key submits POST, PATCH, or DELETE
+- **THEN** the API SHALL reject the mutation
+
+### Requirement: Source override CLI
+
+The CLI SHALL provide `aca sources list`, `add`, `remove`, `enable`, and
+`disable` commands using the same source union, natural keys, origin, version,
+and enabled-state semantics as the API/service.
+
+#### Scenario: Operator lists resolved sources
+
+- **WHEN** `aca sources list` runs
+- **THEN** it SHALL show each resolved source's type, natural key, enabled
+  state, and origin
+
+#### Scenario: Operator adds a source
+
+- **WHEN** an operator supplies a valid source type and locator to
+  `aca sources add`
+- **THEN** the CLI SHALL upsert the validated source
+- **AND** SHALL report the resulting natural key and version

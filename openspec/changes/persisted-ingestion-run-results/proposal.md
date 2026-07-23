@@ -1,24 +1,34 @@
-# Persisted ingestion run results
+# Change: Reconcile persisted ingestion results
 
-> Parent roadmap: `ingestion-reliability`
+> Parent roadmap: `roadmap-workflow-surface-reliability`
 > Change ID: `persisted-ingestion-run-results`
-> Effort: M
-> Priority: 2
+> Effort: L
+> Priority: 7
 
 ## Summary
 
-Introduce IngestionRun and SourceRunResult tables written by every pipeline driver, replacing the current behavior of reading only items_ingested and discarding status/errors/warnings (src/pipeline/runner.py:123, src/cli/pipeline_commands.py:136). Surface via CLI/API queries.
+Map historical ingestion-run requirements to existing `pgqueuer_jobs`
+operations, checkpoints, source results, resources, retries, idempotency, and
+terminal problems. Add only demonstrably missing typed projections, history
+filters, retention behavior, and canonical API or CLI queries.
 
 ## Dependencies
 
-- None
+- `ri-05`
+- `ri-06`
 
 ## Acceptance Outcomes
 
-- aca pipeline daily exits non-zero or prints a WARN summary when any source is partial or failed
-- Per-source run history is queryable via CLI and API
-- A 1-of-N feed failure is visible in the run record, not only in logs
+- Every original acceptance case maps to existing durable state or a specified
+  remaining gap.
+- Canonical API/CLI queries distinguish source-level success, partial,
+  zero-item, and failed outcomes.
+- Result-size and retention rules are deterministic and tested.
+- Existing parent-child operations, retries, checkpoints, and idempotency remain
+  authoritative.
+- No parallel run table/state machine is introduced without a documented unmet
+  query or retention requirement.
 
 ## Rationale
 
-Partial failures (1-of-N dead feeds) are currently invisible above the service layer.
+Operators need useful history without a second authoritative state model.

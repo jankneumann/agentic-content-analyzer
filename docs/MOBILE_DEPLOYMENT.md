@@ -455,7 +455,7 @@ link:
 
 This procedure promotes only a clean, pushed commit that passed the
 `frontend-release` job at that exact SHA. Copy
-`openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment-template.md`
+`openspec/changes/archive/2026-07-23-restore-railway-frontend-deployment/evidence/production-deployment-template.md`
 to the implementation evidence path before starting, but never record
 credentials, cookies, authorization headers, request headers, or raw
 environment values.
@@ -612,7 +612,7 @@ environment values.
 
    ```bash
    python scripts/validate_frontend_deployment_evidence.py \
-     openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment.md
+     openspec/changes/archive/2026-07-23-restore-railway-frontend-deployment/evidence/production-deployment.md
    ```
 
    Exit status `0` is required. Exit status `1` lists every blank,

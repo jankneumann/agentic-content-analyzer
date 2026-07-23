@@ -1,5 +1,11 @@
 # Proposal Prioritization Report
 
+> **Reconciled 2026-07-23:** This is a historical prioritization snapshot.
+> RI-03 archived the implemented and superseded entries, extracted genuine
+> residual work into four focused successors, and normalized the retained
+> workflow-surface roadmap changes. The current next roadmap item is
+> `add-cross-surface-release-smoke-tests`; use `openspec list` for live state.
+
 **Run ID**: 2026-07-21-030454-78ecc77
 **Generated**: 2026-07-21T03:04:54Z
 **Analyzed Range**: `HEAD~50..HEAD` (50 commits)

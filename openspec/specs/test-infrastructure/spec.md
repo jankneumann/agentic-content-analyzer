@@ -169,3 +169,38 @@ The system SHALL provide a centralized helper module for test database configura
 - **GIVEN** the resolved database name
 - **WHEN** the name does not contain the string `test`
 - **THEN** the system SHALL raise a `ValueError` and refuse to proceed
+
+### Requirement: Hermetic CLI transport tests
+
+CLI unit tests MUST select external transports explicitly and MUST consume
+coroutines passed across mocked sync/async boundaries.
+
+#### Scenario: Ambient credentials do not select a live transport
+
+- **GIVEN** a developer environment contains unrelated external credentials
+- **WHEN** a curation or ingestion unit test runs
+- **THEN** the test SHALL explicitly select its intended transport
+- **AND** SHALL not issue a live request through another configured transport
+
+#### Scenario: Async graph boundary is consumed
+
+- **WHEN** the graph extraction CLI test exercises the synchronous adapter
+- **THEN** the extraction coroutine SHALL be awaited to completion
+- **AND** the suite SHALL emit no unawaited-coroutine warning
+
+### Requirement: CLI dependency warning hygiene
+
+The default CLI environment MUST use dependency versions and tracked profile
+keys that do not emit known compatibility or migration warnings during normal
+startup.
+
+#### Scenario: Optional crawler dependencies are compatible
+
+- **WHEN** the optional crawler dependency set is installed from the lock
+- **THEN** its character detector version SHALL be supported by Requests
+
+#### Scenario: Tracked local profile uses canonical graph keys
+
+- **WHEN** the tracked local profile is loaded
+- **THEN** it SHALL use canonical graph connection keys
+- **AND** SHALL emit no legacy key migration warning for that profile

@@ -67,7 +67,7 @@ Supported provider categories (matching existing Settings provider types):
 - `database`: "local" | "supabase" | "neon" | "railway"
 - `neo4j`: "local" | "auradb"
 - `storage`: "local" | "s3" | "supabase" | "railway"
-- `observability`: "noop" | "opik" | "braintrust" | "otel"
+- `observability`: "noop" | "opik" | "braintrust" | "otel" | "langfuse"
 
 Note: TTS and LLM providers are configured via API keys in the `settings` section, not as provider choices. This matches the existing Settings pattern where these are implicit based on which API keys are present.
 
@@ -312,10 +312,13 @@ The system SHALL provide a CLI command to migrate existing `.env` configurations
 
 ### Requirement: Default Profile Templates
 
-The system SHALL ship with default profile templates for common deployment scenarios.
+The system SHALL ship with default profile templates for common deployment
+scenarios. Base, local, Railway, staging, Railway-Neon staging, and
+Supabase-cloud profiles SHALL select Langfuse unless a specialized profile
+explicitly selects another provider.
 
 Templates:
-- `profiles/base.yaml`: All defaults, all providers set to "local"
+- `profiles/base.yaml`: Shared defaults with local infrastructure and Langfuse
 - `profiles/local.yaml`: Extends base, configured for Docker Compose
 - `profiles/railway.yaml`: Extends base, configured for Railway deployment
 - `profiles/supabase-cloud.yaml`: Extends base, configured for Supabase cloud
@@ -325,6 +328,21 @@ Templates:
 - **WHEN** `profiles/base.yaml` is loaded without any parent
 - **THEN** all provider categories SHALL have explicit values
 - **AND** all required settings for "local" providers SHALL have defaults
+- **AND** observability SHALL default to `langfuse`
+
+#### Scenario: Local profile uses self-hosted Langfuse
+- **GIVEN** `profiles/local.yaml` extends base
+- **WHEN** the profile is resolved
+- **THEN** observability SHALL be `langfuse`
+- **AND** the Langfuse base URL SHALL target the documented local service
+
+#### Scenario: Railway profile uses Langfuse Cloud configuration
+- **GIVEN** a Railway production profile
+- **WHEN** the profile is resolved
+- **THEN** observability SHALL be `langfuse`
+- **AND** public and secret keys SHALL be read from environment-backed profile
+  settings
+- **AND** missing keys SHALL warn without preventing application startup
 
 #### Scenario: Railway profile references injected variables
 - **GIVEN** `profiles/railway.yaml` template
@@ -336,8 +354,14 @@ Templates:
 #### Scenario: Staging profile targets production-like providers
 - **GIVEN** `profiles/staging.yaml` template
 - **THEN** it SHALL set providers for `database: railway`, `neo4j: auradb`, and `storage: railway`
-- **AND** it SHALL set observability to `braintrust` with a staging project name
+- **AND** it SHALL set observability to `langfuse` with staging-specific key
+  fallbacks and service identity
 - **AND** it SHALL support staging-specific environment variable overrides for core connections
+
+#### Scenario: Specialized observability profile remains explicit
+- **GIVEN** a profile explicitly selects `noop`, `opik`, `braintrust`, or `otel`
+- **WHEN** it extends the Langfuse-default base
+- **THEN** its explicit observability provider SHALL remain selected
 
 #### Scenario: Template profiles are valid structurally
 - **WHEN** each template profile is validated for structure only (ignoring unresolved variables)
