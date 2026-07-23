@@ -49,7 +49,7 @@ items:
   - Production traffic no longer calls POST /api/v1/contents/ingest or POST /api/v1/content/save-url.
 - item_id: ri-03
   title: Reconcile the OpenSpec inventory
-  status: in_progress
+  status: completed
   priority: 3
   effort: M
   depends_on: []
@@ -71,7 +71,7 @@ items:
   - The active OpenSpec inventory contains only actionable work.
 - item_id: ri-04
   title: Add cross-surface release smoke tests
-  status: approved
+  status: in_progress
   priority: 4
   effort: L
   depends_on:
