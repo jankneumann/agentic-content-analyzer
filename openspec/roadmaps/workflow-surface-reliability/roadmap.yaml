@@ -30,7 +30,7 @@ items:
     contains only the requested result.
 - item_id: ri-02
   title: Restore the Railway frontend deployment
-  status: approved
+  status: in_progress
   priority: 2
   effort: M
   depends_on: []
@@ -263,4 +263,4 @@ items:
     evaluation suites.
   - No speculative implementation from the existing 42-task proposal begins without
     a concrete incompatible case.
-updated_at: '2026-07-23T17:58:30.939069+00:00'
+updated_at: '2026-07-23T18:02:03.247404+00:00'
