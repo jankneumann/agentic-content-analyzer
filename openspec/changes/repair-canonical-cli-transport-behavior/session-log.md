@@ -30,3 +30,41 @@
 
 ### Context
 Refined roadmap item ri-01 into a coordinated, test-first plan. The selected design repairs optional query serialization in the shared client, preserves strict API cursor validation, and isolates CLI output and tests from ambient state.
+
+---
+
+## Phase: Implementation (2026-07-23)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Filter only None cursor values** `architectural: canonical-cli-transport` — Preserves explicit opaque and falsey values while omitting truly absent parameters.
+2. **Integrate package commits with task checkboxes** `architectural: roadmap-execution` — Keeps package scopes non-overlapping while satisfying commit-level task drift discipline.
+
+### Alternatives Considered
+- Relax API empty-cursor handling: rejected because Would weaken the opaque cursor contract.
+- Suppress compatibility warnings globally: rejected because Would hide future actionable warnings instead of fixing their causes.
+
+### Trade-offs
+- Accepted Logging diagnostics on stderr over Historical stdout logging because Machine-readable stdout requires a dedicated payload channel.
+
+### Open Questions
+- [ ] Architecture flow validation is deferred because the repository has no generated architecture.graph.json artifact in this checkout.
+
+### Completed Work
+- wp-transport
+- wp-cli-output
+- wp-test-isolation
+- wp-runtime-hygiene
+- wp-integration
+
+### Next Steps
+- Run per-package/whole-branch review, then spec and evidence validation.
+
+### Relevant Files
+- `src/clients/workflow_api_client.py` — Canonical cursor-page parameter construction
+- `src/utils/logging.py` — Diagnostic stream boundary
+- `openspec/changes/repair-canonical-cli-transport-behavior/change-context.md` — Implementation traceability
+
+### Context
+Implemented all four ri-01 work packages and integrated them with task-coupled commits. The shared client now omits absent cursors, CLI JSON output is pure, tests are hermetic, and the optional dependency/profile warnings are corrected at their sources.

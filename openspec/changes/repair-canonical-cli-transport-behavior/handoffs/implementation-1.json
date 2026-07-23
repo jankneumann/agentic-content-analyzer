@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-07-23T17:35:42.865698+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Implemented all four ri-01 work packages and integrated them with task-coupled commits. The shared client now omits absent cursors, CLI JSON output is pure, tests are hermetic, and the optional dependency/profile warnings are corrected at their sources.",
+    "completed_work": [
+      "wp-transport",
+      "wp-cli-output",
+      "wp-test-isolation",
+      "wp-runtime-hygiene",
+      "wp-integration"
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Filter only None cursor values",
+        "rationale": "Preserves explicit opaque and falsey values while omitting truly absent parameters.",
+        "capability": "canonical-cli-transport",
+        "supersedes": null
+      },
+      {
+        "title": "Integrate package commits with task checkboxes",
+        "rationale": "Keeps package scopes non-overlapping while satisfying commit-level task drift discipline.",
+        "capability": "roadmap-execution",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Run per-package/whole-branch review, then spec and evidence validation."
+    ],
+    "relevant_files": [
+      {
+        "path": "src/clients/workflow_api_client.py",
+        "description": "Canonical cursor-page parameter construction"
+      },
+      {
+        "path": "src/utils/logging.py",
+        "description": "Diagnostic stream boundary"
+      },
+      {
+        "path": "openspec/changes/repair-canonical-cli-transport-behavior/change-context.md",
+        "description": "Implementation traceability"
+      }
+    ]
+  }
+}

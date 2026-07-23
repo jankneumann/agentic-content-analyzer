@@ -65,7 +65,7 @@
   **Spec scenarios:** Output format / JSON output; CLI capability discovery / First discovery page omits cursor
   **Design decisions:** D1, D3
   **Dependencies:** 1.2, 2.3, 2.4, 3.1, 3.2, 4.3, 4.4
-- [ ] 5.2 Run the full CLI verification gate with warning checks. **(M)**
+- [x] 5.2 Run the full CLI verification gate with warning checks. **(M)**
   **Dependencies:** 5.1
 
 ## Gate 2 Approval

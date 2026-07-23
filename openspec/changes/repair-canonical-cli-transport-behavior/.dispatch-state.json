@@ -1,0 +1,7 @@
+{
+  "change_id": "repair-canonical-cli-transport-behavior",
+  "validator_vendors": [],
+  "worker_vendors": [
+    "codex"
+  ]
+}
