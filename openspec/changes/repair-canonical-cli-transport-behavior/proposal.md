@@ -5,21 +5,106 @@
 > Effort: M
 > Priority: 1
 
-## Summary
+## Why
 
-Fix optional query serialization in the shared workflow client and stabilize the affected CLI tests and machine-readable output. Cover capability discovery, configured sources, operation listing, credential-dependent curation behavior, and asynchronous graph tests at the real transport boundary.
+The shared workflow client currently sends absent cursors as `cursor=`. The API
+correctly treats an empty opaque cursor as invalid, so production discovery and
+operation-list commands fail with HTTP 422 even though mocked CLI tests pass.
+The CLI suite also depends on developer-local YouTube credentials, leaks an
+unawaited graph coroutine, and permits diagnostics to contaminate
+machine-readable output.
 
-## Dependencies
+This is the first roadmap item because later release-smoke and evaluation work
+must be able to trust the canonical CLI transport.
 
-- None
+## What Changes
 
-## Acceptance Outcomes
+- Omit absent optional query parameters in `WorkflowApiClient` while preserving
+  explicit cursor values.
+- Add transport-boundary regressions for operation, capability, and configured
+  source pagination.
+- Support the documented command-local
+  `aca configured-sources --json` spelling.
+- Keep JSON stdout to one document and route diagnostics to stderr.
+- Make YouTube curation and graph async tests independent of ambient
+  credentials and garbage-collection timing.
+- Constrain the optional Crawl4AI character detector to a Requests-compatible
+  version and migrate the tracked local profile off deprecated Neo4j keys.
 
-- aca capabilities --json, aca configured-sources --json, and aca --json operations list succeed against a deployed API when no cursor is supplied.
-- Transport-level tests assert that absent optional values do not appear in serialized query strings.
-- CLI tests cannot select a live YouTube API path based on developer-local credentials.
-- The CLI suite completes without unawaited-coroutine warnings, and JSON stdout contains only the requested result.
+## Out of Scope
 
-## Rationale
+- Relaxing API cursor validation.
+- Restoring direct CLI workflow execution or a transport-specific fallback.
+- Changing generated OpenAPI or workflow models.
+- Adding deployed cross-surface smoke tests; roadmap item `ri-04` owns them.
+- Changing production YouTube transport auto-selection.
 
-Production discovery and operation commands currently fail despite strong mocked coverage, so the canonical CLI surface must be trustworthy before higher-level evaluations depend on it.
+## Approaches Considered
+
+### Approach A: Repair the shared client boundary (Recommended)
+
+Build request parameters without absent values in the shared client, test the
+serialized URL through `httpx.MockTransport`, and make focused CLI/test hygiene
+changes at their existing boundaries.
+
+**Pros**
+
+- Fixes CLI and HTTP-mode MCP consumers at one canonical boundary.
+- Preserves strict server-side cursor validation.
+- Small, rollback-friendly edits with direct regression coverage.
+
+**Cons**
+
+- Touches several focused test and configuration files.
+- Does not itself prove a deployed revision; that remains `ri-04`.
+
+**Effort:** M
+
+### Approach B: Normalize empty cursors in the API
+
+Treat `cursor=""` as equivalent to an absent cursor in capability and operation
+services.
+
+**Pros**
+
+- Makes malformed clients appear to work without upgrading.
+
+**Cons**
+
+- Hides a transport defect and weakens the opaque-cursor contract.
+- Requires duplicated normalization in multiple services.
+- Leaves serialized request behavior untested.
+
+**Effort:** S
+
+### Approach C: Patch only CLI commands
+
+Strip `None` values in each CLI command before calling the shared client.
+
+**Pros**
+
+- Limits the initial code diff to CLI call sites.
+
+**Cons**
+
+- Leaves the shared client unsafe for MCP and future callers.
+- Repeats parameter-shaping logic and invites drift.
+
+**Effort:** S
+
+### Selected Approach
+
+Approach A is selected. The approved roadmap requires a trustworthy canonical
+transport, so the shared client is the correct repair point. Server validation
+and production YouTube selection remain unchanged.
+
+## Impact
+
+- **Code:** shared workflow client, CLI output/discovery edges, logging stream.
+- **Tests:** client transport tests plus focused CLI determinism regressions.
+- **Configuration:** optional Crawl4AI dependency constraint and local Neo4j
+  profile key migration.
+- **Contracts:** no OpenAPI shape changes; existing canonical workflow OpenAPI
+  remains authoritative.
+- **Rollback:** revert the focused implementation commits; no data migration or
+  persistent state change is involved.
