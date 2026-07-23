@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "feature_id": "restore-railway-frontend-deployment",
+  "package_id": "wp-production-proof",
+  "attempt": 2,
+  "plan_revision": 3,
+  "contracts_revision": 1,
+  "status": "completed",
+  "locks": {
+    "files": [
+      "docs/MOBILE_DEPLOYMENT.md",
+      "scripts/validate_frontend_deployment_evidence.py",
+      "tests/config/test_frontend_deployment_evidence.py"
+    ],
+    "keys": [
+      "feature:restore-railway-frontend-deployment:production",
+      "env:railway-production"
+    ]
+  },
+  "scope": {
+    "write_allow": [
+      "docs/MOBILE_DEPLOYMENT.md",
+      "scripts/validate_frontend_deployment_evidence.py",
+      "tests/config/test_frontend_deployment_evidence.py",
+      "openspec/changes/restore-railway-frontend-deployment/evidence/**"
+    ],
+    "read_allow": ["**"],
+    "deny": []
+  },
+  "files_modified": [
+    "docs/MOBILE_DEPLOYMENT.md",
+    "openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment-template.md",
+    "openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment.md",
+    "scripts/validate_frontend_deployment_evidence.py",
+    "tests/config/test_frontend_deployment_evidence.py"
+  ],
+  "scope_check": {"passed": true, "violations": []},
+  "git": {
+    "base": {"ref": "4bc0e172"},
+    "head": {"commit": "648e2c9b02646c6f101957ff4816847992ac919e"}
+  },
+  "verification": {
+    "tier": "A",
+    "passed": true,
+    "steps": [
+      {
+        "name": "railway-deployment",
+        "kind": "manual",
+        "manual": {
+          "instructions": "Deploy the exact CI-passed SHA from a clean detached checkout and verify Railway build and release metadata."
+        },
+        "passed": true,
+        "evidence": {
+          "artifacts": [
+            "openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment.md"
+          ],
+          "metrics": {
+            "deployment_status": "SUCCESS",
+            "uploaded_lockfile": "web/package-lock.json",
+            "install_command": "npm ci",
+            "node_version": "22.23.1"
+          }
+        }
+      },
+      {
+        "name": "canonical-production-traffic",
+        "kind": "manual",
+        "manual": {
+          "instructions": "Submit one visible URL canary through the production form and correlate canonical and retired route logs."
+        },
+        "passed": true,
+        "evidence": {
+          "artifacts": [
+            "openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment.md"
+          ],
+          "metrics": {
+            "capabilities_observed": true,
+            "canonical_ingestion_observed": true,
+            "operation_id": 104,
+            "operation_status": "completed",
+            "retired_route_count": 0
+          }
+        }
+      },
+      {
+        "name": "evidence-completeness",
+        "kind": "command",
+        "command": "pytest tests/config/test_frontend_deployment_evidence.py --no-cov -q && python scripts/validate_frontend_deployment_evidence.py openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment.md",
+        "exit_code": 0,
+        "passed": true,
+        "evidence": {
+          "artifacts": [
+            "openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment.md"
+          ],
+          "metrics": {
+            "test_count": 38,
+            "evidence_complete": true,
+            "revision_match": true,
+            "window_valid": true,
+            "correlation_complete": true
+          }
+        }
+      }
+    ]
+  },
+  "escalations": []
+}

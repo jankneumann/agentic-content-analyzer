@@ -11,6 +11,49 @@ permissions:
   contents: read
 
 jobs:
+  frontend-release:
+    name: frontend-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Audit production frontend dependencies
+        working-directory: web
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Check generated workflow contracts
+        working-directory: web
+        run: npm run contracts:check
+
+      - name: Run workflow contract client tests
+        working-directory: web
+        run: npm test -- --run src/lib/api/__tests__/workflow-contracts.test.ts
+
+      - name: Build production frontend
+        working-directory: web
+        run: npm run build
+
   lint:
     runs-on: ubuntu-latest
     steps:

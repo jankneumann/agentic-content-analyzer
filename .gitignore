@@ -236,6 +236,7 @@ web/node_modules/
 
 # Package manager
 package-lock.json
+!web/package-lock.json
 yarn.lock
 
 # Playwright
