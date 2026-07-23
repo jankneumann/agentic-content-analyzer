@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "feature_id": "repair-canonical-cli-transport-behavior",
+  "package_id": "wp-transport",
+  "attempt": 1,
+  "plan_revision": 1,
+  "contracts_revision": 1,
+  "status": "completed",
+  "locks": {
+    "files": [
+      "src/clients/workflow_api_client.py",
+      "tests/clients/test_workflow_api_client.py"
+    ],
+    "keys": ["feature:repair-canonical-cli-transport-behavior:transport"]
+  },
+  "scope": {
+    "write_allow": [
+      "src/clients/workflow_api_client.py",
+      "tests/clients/test_workflow_api_client.py"
+    ],
+    "read_allow": ["src/**", "tests/**", "openspec/**"],
+    "deny": []
+  },
+  "files_modified": [
+    "src/clients/workflow_api_client.py",
+    "tests/clients/test_workflow_api_client.py"
+  ],
+  "scope_check": {"passed": true, "violations": []},
+  "git": {
+    "base": {"ref": "62d08012fca3c78fcc3b8b229764c386a33ec37d"},
+    "head": {"commit": "a7461d8233fef1f8a92dd726ae39b70c4fd43cea"}
+  },
+  "verification": {
+    "tier": "B",
+    "passed": true,
+    "steps": [
+      {
+        "name": "client-tests",
+        "kind": "command",
+        "command": "pytest tests/clients/test_workflow_api_client.py --no-cov -q",
+        "exit_code": 0,
+        "passed": true,
+        "evidence": {
+          "artifacts": [],
+          "metrics": {"test_count": 20, "pass_count": 20}
+        }
+      }
+    ]
+  },
+  "escalations": []
+}

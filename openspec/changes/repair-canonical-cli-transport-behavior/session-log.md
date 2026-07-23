@@ -68,3 +68,37 @@ Refined roadmap item ri-01 into a coordinated, test-first plan. The selected des
 
 ### Context
 Implemented all four ri-01 work packages and integrated them with task-coupled commits. The shared client now omits absent cursors, CLI JSON output is pure, tests are hermetic, and the optional dependency/profile warnings are corrected at their sources.
+
+---
+
+## Phase: Review (2026-07-23)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Use the no-consensus review fallback** `architectural: roadmap-execution` — External reviewer dispatch could not transmit repository content without separate authorization, so independent Codex agents cross-reviewed packages they did not implement and reviewed the whole branch.
+2. **Treat graph error output as part of the JSON contract** `architectural: canonical-cli-transport` — Machine-readable mode must remain parseable on failure as well as success.
+
+### Alternatives Considered
+- Leave JSON failures as human text: rejected because it violates the one-document stdout contract.
+- Record only the aggregate gate: rejected because package-level result keys and revision/scope checks would not be durable.
+
+### Trade-offs
+- Accepted duplicated error information across structured stdout and diagnostic stderr because automation receives a stable payload while operators retain a readable diagnostic channel.
+
+### Review Outcomes
+- Fixed the blocking graph JSON failure-path finding in `7998a4ed`.
+- Recorded schema-valid work-queue results for all five packages.
+- Populated passing evidence for all four requirements.
+- No correctness, security, performance, architecture, or rollback defect remains open.
+
+### Next Steps
+- Run spec/evidence validation and produce the ri-01 validation report.
+
+### Relevant Files
+- `src/cli/graph_commands.py` — Structured graph failure output
+- `openspec/changes/repair-canonical-cli-transport-behavior/change-context.md` — Review dispositions and requirement evidence
+- `openspec/changes/repair-canonical-cli-transport-behavior/evidence/work-results/` — Durable package results
+
+### Context
+Internal cross-package and whole-branch review produced two evidence gaps and one blocking output-contract finding. All fix-disposition findings are resolved, and the integrated CLI/client gate passes 382 tests with one skip and no runtime warnings.
