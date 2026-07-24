@@ -45,6 +45,10 @@ def complete_evidence() -> str:
 - Deployment end UTC: 2026-07-23T14:05:00Z
 - Deployment ID: deployment-new
 - Deployed candidate revision: {SHA}
+- Release stamp path: web/release-build.json
+- Release stamp SHA-256: {"d" * 64}
+- Served frontend revision: {SHA}
+- Served frontend revision source: verified_detached_sha
 - Railway CLI release message: frontend-release {SHA}
 - Uploaded lockfile observed: web/package-lock.json
 - Railpack install command: npm ci
@@ -105,6 +109,11 @@ def test_detached_release_runbook_stamps_before_upload() -> None:
     assert runbook.index(stamp_command) < runbook.index(
         upload_command, runbook.index(stamp_command)
     )
+    rollback_stamp = 'python scripts/stamp_release_revision.py "$ACA_FRONTEND_ROLLBACK_SHA"'
+    assert rollback_stamp in runbook
+    assert runbook.index(rollback_stamp) < runbook.index(
+        upload_command, runbook.index(rollback_stamp)
+    )
     assert "`verified_detached_sha` provenance" in runbook
     assert "Record\n   that digest in the release evidence before upload" in runbook
 
@@ -118,6 +127,8 @@ def test_runbook_separates_deployment_from_protected_release_smoke() -> None:
     assert "gh workflow run release-smoke.yml -f tier=production" in runbook
     assert "gh workflow run release-smoke.yml -f tier=staging" in runbook
     assert "it never performs deployment or rollback" in runbook
+    assert "disallow self-approval" in runbook
+    assert "restrict deployment branches/tags" in runbook
 
 
 def test_complete_sanitized_evidence_passes(complete_evidence: str) -> None:
@@ -131,6 +142,8 @@ def test_complete_sanitized_evidence_passes(complete_evidence: str) -> None:
         "GitHub `frontend-release` check URL",
         "Last successful deployment ID",
         "Rollback command",
+        "Release stamp SHA-256",
+        "Served frontend revision",
         "Browser/session attribution",
         "Durable operation ID",
         "Canonical ingestion request correlation",
@@ -178,6 +191,26 @@ def test_railway_cli_release_message_must_name_candidate(
     )
 
     assert any("Railway CLI release message" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("Release stamp path", "web/other.json", "Release stamp path"),
+        ("Release stamp SHA-256", "short", "Release stamp SHA-256"),
+        ("Served frontend revision", "e" * 40, "Served frontend revision"),
+        ("Served frontend revision source", "local_development", "revision source"),
+    ],
+)
+def test_release_stamp_and_served_identity_are_required(
+    complete_evidence: str,
+    field: str,
+    value: str,
+    message: str,
+) -> None:
+    errors = validate_evidence(_replace_field(complete_evidence, field, value))
+
+    assert any(message in error for error in errors)
 
 
 @pytest.mark.parametrize(

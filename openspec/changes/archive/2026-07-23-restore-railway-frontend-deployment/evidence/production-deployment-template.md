@@ -30,6 +30,10 @@
 - Deployment end UTC:
 - Deployment ID:
 - Deployed candidate revision:
+- Release stamp path:
+- Release stamp SHA-256:
+- Served frontend revision:
+- Served frontend revision source:
 - Railway CLI release message:
 - Uploaded lockfile observed:
 - Railpack install command:

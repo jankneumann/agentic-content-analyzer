@@ -6,6 +6,7 @@ import hashlib
 import json
 import time
 from dataclasses import dataclass
+from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qsl, unquote, urljoin, urlsplit
@@ -15,6 +16,7 @@ import httpx
 from src.release_smoke.models import ProtectedTargetPolicy, RevisionSource
 
 _MAX_MANIFEST_BYTES = 1_048_576
+_MAX_DOCUMENT_BYTES = 1_048_576
 _MAX_ASSET_COUNT = 512
 _MAX_ASSET_BYTES = 10_485_760
 _MAX_TOTAL_BYTES = 67_108_864
@@ -105,11 +107,9 @@ def _require_response(response: httpx.Response, check: str) -> None:
         raise AssetManifestError(f"{check} returned HTTP {response.status_code}")
 
 
-def _manifest_document(response: httpx.Response) -> dict[str, Any]:
-    if len(response.content) > _MAX_MANIFEST_BYTES:
-        raise AssetManifestError("Asset manifest exceeds byte limit")
+def _manifest_document(source: bytes) -> dict[str, Any]:
     try:
-        document = response.json()
+        document = json.loads(source)
     except ValueError as exc:
         raise AssetManifestError("Asset manifest is not valid JSON") from exc
     if not isinstance(document, dict):
@@ -117,9 +117,85 @@ def _manifest_document(response: httpx.Response) -> dict[str, Any]:
     return document
 
 
+def _read_bounded(
+    client: httpx.Client,
+    url: str,
+    *,
+    check: str,
+    max_bytes: int,
+    started: float,
+) -> tuple[bytes, str]:
+    """Stream decompressed response bytes and stop at byte/deadline bounds."""
+    body = bytearray()
+    try:
+        with client.stream("GET", url) as response:
+            _require_response(response, check)
+            media_type = response.headers.get("Content-Type", "").split(";", 1)[0].lower()
+            for chunk in response.iter_bytes():
+                if time.monotonic() - started > _SCAN_DEADLINE_SECONDS:
+                    raise AssetManifestError("Asset scan exceeded deadline")
+                if len(body) + len(chunk) > max_bytes:
+                    raise AssetManifestError(f"{check} exceeds byte limit")
+                body.extend(chunk)
+    except httpx.HTTPError as exc:
+        raise AssetManifestError(f"{check} request failed") from exc
+    return bytes(body), media_type
+
+
 def _asset_has_retired_literal(source: bytes, routes: tuple[RetiredRoute, ...]) -> int:
     decoded = unquote(source.decode("utf-8", errors="ignore"))
     return sum(route.path in decoded for route in routes)
+
+
+def _browser_session_cookie(
+    policy: ProtectedTargetPolicy,
+    app_secret: str | None,
+    *,
+    transport: httpx.BaseTransport | None = None,
+) -> dict[str, Any] | None:
+    """Authenticate only to the exact API origin and return a scoped cookie."""
+    if app_secret is None:
+        return None
+    try:
+        with (
+            httpx.Client(
+                follow_redirects=False,
+                timeout=20.0,
+                transport=transport,
+            ) as client,
+            client.stream(
+                "POST",
+                f"{policy.api_origin}/api/v1/auth/login",
+                json={"password": app_secret},
+            ) as response,
+        ):
+            _require_response(response, "Browser authentication")
+            cookies = SimpleCookie()
+            for header in response.headers.get_list("set-cookie"):
+                cookies.load(header)
+    except httpx.HTTPError as exc:
+        raise AssetManifestError("Browser authentication request failed") from exc
+    morsel = cookies.get("session")
+    if morsel is None or not morsel.value:
+        raise AssetManifestError("Browser authentication did not issue a session cookie")
+    secure = bool(morsel["secure"])
+    http_only = bool(morsel["httponly"])
+    same_site_value = morsel["samesite"].casefold()
+    same_site = {"none": "None", "lax": "Lax", "strict": "Strict"}.get(same_site_value)
+    if not http_only or same_site is None:
+        raise AssetManifestError("Browser authentication cookie attributes are unsafe")
+    if policy.target != "local" and not secure:
+        raise AssetManifestError("Browser authentication cookie is not secure")
+    if policy.frontend_origin != policy.api_origin and same_site != "None":
+        raise AssetManifestError("Cross-origin browser authentication cookie is not SameSite=None")
+    return {
+        "name": "session",
+        "value": morsel.value,
+        "url": policy.api_origin,
+        "httpOnly": http_only,
+        "secure": secure,
+        "sameSite": same_site,
+    }
 
 
 def load_and_scan_assets(
@@ -136,9 +212,14 @@ def load_and_scan_assets(
         follow_redirects=False,
         timeout=20.0,
     ) as client:
-        manifest_response = client.get(f"{frontend_origin}/release-assets.json")
-        _require_response(manifest_response, "Asset manifest")
-        manifest = _manifest_document(manifest_response)
+        manifest_source, _manifest_media_type = _read_bounded(
+            client,
+            f"{frontend_origin}/release-assets.json",
+            check="Asset manifest",
+            max_bytes=_MAX_MANIFEST_BYTES,
+            started=started,
+        )
+        manifest = _manifest_document(manifest_source)
         if manifest.get("schema_version") != 1:
             raise AssetManifestError("Asset manifest schema version is unsupported")
         if manifest.get("revision") != expected_revision:
@@ -198,12 +279,16 @@ def load_and_scan_assets(
             asset_url = urljoin(f"{frontend_origin}/", path.removeprefix("/"))
             if f"{urlsplit(asset_url).scheme}://{urlsplit(asset_url).netloc}" != frontend_origin:
                 raise AssetManifestError("Asset escaped the frontend origin")
-            response = client.get(asset_url)
-            _require_response(response, "Frontend asset")
-            media_type = response.headers.get("Content-Type", "").split(";", 1)[0].lower()
+            remaining_bytes = _MAX_TOTAL_BYTES - total_bytes
+            source, media_type = _read_bounded(
+                client,
+                asset_url,
+                check="Frontend asset",
+                max_bytes=min(_MAX_ASSET_BYTES, remaining_bytes),
+                started=started,
+            )
             if media_type not in _JAVASCRIPT_TYPES:
                 raise AssetManifestError("Frontend asset has invalid content type")
-            source = response.content
             total_bytes += len(source)
             if len(source) != declared_size or len(source) > _MAX_ASSET_BYTES:
                 raise AssetManifestError("Frontend asset size mismatch")
@@ -232,9 +317,11 @@ def run_browser_discovery(
     observed_api: list[tuple[str, str, int | None]] = []
     discovery_with_cursor: list[str] = []
     observed_javascript_paths: set[str] = set()
-    off_policy_api: list[str] = []
+    off_policy_requests: list[str] = []
+    unsafe_methods: list[str] = []
     api_origin = urlsplit(policy.api_origin)
     frontend_origin = urlsplit(policy.frontend_origin)
+    allowed_origins = {policy.api_origin, policy.frontend_origin}
 
     def observe_request(request: Request) -> None:
         parsed = urlsplit(request.url)
@@ -242,7 +329,7 @@ def run_browser_discovery(
             observed_javascript_paths.add(unquote(parsed.path))
         if parsed.path.startswith("/api/v1/"):
             if parsed.scheme != api_origin.scheme or parsed.netloc != api_origin.netloc:
-                off_policy_api.append(parsed.path)
+                off_policy_requests.append(parsed.path)
             observed_api.append((request.method.upper(), unquote(parsed.path), None))
             if unquote(parsed.path) in {
                 "/api/v1/capabilities",
@@ -252,14 +339,22 @@ def run_browser_discovery(
 
     def enforce_origin(route: Route, request: Request) -> None:
         parsed = urlsplit(request.url)
-        if parsed.path.startswith("/api/v1/") and (
-            parsed.scheme != api_origin.scheme or parsed.netloc != api_origin.netloc
-        ):
-            off_policy_api.append(parsed.path)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        if parsed.scheme in {"http", "https"} and origin not in allowed_origins:
+            off_policy_requests.append(parsed.path)
+            route.abort()
+            return
+        if parsed.scheme in {"http", "https"} and request.method.upper() not in {
+            "GET",
+            "HEAD",
+            "OPTIONS",
+        }:
+            unsafe_methods.append(request.method.upper())
             route.abort()
             return
         route.continue_()
 
+    session_cookie = _browser_session_cookie(policy, app_secret)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         context = browser.new_context(
@@ -269,6 +364,8 @@ def run_browser_discovery(
                 "Pragma": "no-cache",
             },
         )
+        if session_cookie is not None:
+            context.add_cookies([cast(Any, session_cookie)])
         context.route("**/*", enforce_origin)
         page = context.new_page()
         page.on("request", observe_request)
@@ -283,15 +380,25 @@ def run_browser_discovery(
                         break
 
         page.on("response", observe_response)
-        page.goto(
-            f"{policy.frontend_origin}/ingest?release-smoke=1",
-            wait_until="domcontentloaded",
-            timeout=30_000,
-        )
-        password = page.locator("#password")
-        if app_secret and password.count() and password.is_visible():
-            password.fill(app_secret)
-            page.get_by_role("button", name="Sign in").click()
+        try:
+            navigation = page.goto(
+                f"{policy.frontend_origin}/ingest?release-smoke=1",
+                wait_until="domcontentloaded",
+                timeout=30_000,
+            )
+        except Exception as exc:
+            context.close()
+            browser.close()
+            raise AssetManifestError("Frontend navigation failed") from exc
+        if navigation is None or navigation.status != 200:
+            context.close()
+            browser.close()
+            raise AssetManifestError("Frontend navigation returned an invalid response")
+        final_url = urlsplit(page.url)
+        if f"{final_url.scheme}://{final_url.netloc}" != policy.frontend_origin:
+            context.close()
+            browser.close()
+            raise AssetManifestError("Frontend navigation escaped the protected origin")
         deadline = time.monotonic() + 20.0
         required_paths = {
             "/api/v1/capabilities",
@@ -307,11 +414,18 @@ def run_browser_discovery(
         revision_source = page.locator('meta[name="release-revision-source"]').get_attribute(
             "content"
         )
+        document_source = page.content().encode("utf-8")
+        if len(document_source) > _MAX_DOCUMENT_BYTES:
+            context.close()
+            browser.close()
+            raise AssetManifestError("Frontend document exceeds byte limit")
         context.close()
         browser.close()
 
-    if off_policy_api:
-        raise AssetManifestError("Frontend attempted off-policy API traffic")
+    if off_policy_requests:
+        raise AssetManifestError("Frontend attempted off-policy network traffic")
+    if unsafe_methods:
+        raise AssetManifestError("Frontend attempted a non-read-only request")
     for required_path in required_paths:
         matches = [
             (method, status) for method, path, status in observed_api if path == required_path
@@ -347,5 +461,9 @@ def run_browser_discovery(
         revision=revision,
         revision_source=cast(RevisionSource, revision_source),
         assets=tuple(assets),
-        retired_route_count=asset_retired_count + request_retired_count,
+        retired_route_count=(
+            asset_retired_count
+            + request_retired_count
+            + _asset_has_retired_literal(document_source, retired_routes)
+        ),
     )

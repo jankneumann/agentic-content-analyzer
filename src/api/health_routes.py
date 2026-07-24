@@ -33,16 +33,13 @@ def _release_identity(environ: Mapping[str, str] | None = None) -> tuple[str, st
     overrides are intentionally ignored.
     """
     values = os.environ if environ is None else environ
-    candidates = (
-        ("RAILWAY_GIT_COMMIT_SHA", "railway_commit_sha"),
-        ("GITHUB_SHA", "github_sha"),
-    )
-    for variable, source in candidates:
-        revision = values.get(variable)
-        if revision is None:
-            continue
-        if _COMMIT_SHA.fullmatch(revision):
-            return revision, source
+    railway_revision = values.get("RAILWAY_GIT_COMMIT_SHA")
+    if railway_revision is not None:
+        if _COMMIT_SHA.fullmatch(railway_revision):
+            return railway_revision, "railway_commit_sha"
+        return "unavailable", "unavailable"
+
+    if values.get("GITHUB_SHA") is not None:
         return "unavailable", "unavailable"
     return "development", "local_development"
 

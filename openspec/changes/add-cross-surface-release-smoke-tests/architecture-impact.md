@@ -11,7 +11,7 @@ state machine.
 ## Affected Flows
 
 1. **Backend build/runtime → `/health`**
-   - Trusted build/deployment environment supplies a revision.
+   - Railway's immutable deployment metadata supplies the API revision.
    - Liveness returns the normalized non-secret revision and allowlisted
      provenance with existing health.
 
@@ -24,14 +24,18 @@ state machine.
 
 3. **Release runner → API/CLI/browser**
    - Approval-protected target policy pins identity, exact origins, expected
-     revisions, and production aliases before credentials can be attached.
-   - Direct HTTP and real CLI subprocesses perform canonical discovery.
+     revisions, and nonempty production identity/origin registries before
+     credentials can be attached.
+   - Direct HTTP and a no-redirect real CLI subprocess perform canonical
+     discovery.
    - The ingestion UI uses its typed frontend client for configured-source
      first-page discovery.
-   - A fresh Playwright context loads the deployed ingestion surface and records
-     only allowlisted compatibility facts.
-   - Manifest-complete first-party assets and normalized observed requests are
-     checked against a non-overridable retired-mutation baseline.
+   - A fresh Playwright context authenticates directly to the exact API, keeps
+     the password out of served JavaScript, and loads only exact protected
+     frontend/API origins with read-only methods.
+   - Loaded HTML plus manifest-complete Rollup/PWA JavaScript and normalized
+     observed requests are checked against a non-overridable retired-mutation
+     baseline with streaming byte/deadline bounds.
 
 4. **Approved staging runner → durable operation**
    - Redundant target guards authorize one canonical ingestion.
@@ -53,8 +57,8 @@ state machine.
 - **Data risk**: production default is read-only; staging mutation is one-shot
   and idempotent.
 - **Security risk**: credentials remain environment-only and exact-origin
-  pinned; redirects are disabled; retained evidence is allowlisted and contains
-  no raw traffic.
+  pinned; redirects and browser writes are disabled; retained evidence is
+  allowlisted and contains no raw traffic.
 - **Performance risk**: no request-path overhead except constant-time revision
   normalization on liveness; asset scanning runs outside services.
 - **Rollback**: remove the gate/workflow and additive revision metadata. No data
@@ -67,5 +71,6 @@ state machine.
 - Browser: Playwright/Chromium pinned through the explicit `release-smoke`
   Python extra.
 - CLI: installed repository `aca` entry point, not an in-process shortcut.
-- CI: GitHub Actions with read-only repository permission and protected
-  environment secrets.
+- CI: commit-pinned GitHub Actions with read-only repository permission,
+  protected environment secrets, reviewed ref restrictions, and no
+  self-approval.

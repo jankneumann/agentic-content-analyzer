@@ -63,6 +63,7 @@ class ProtectedTargetPolicy(BaseModel):
     api_origin: str
     expected_frontend_revision: str | None
     expected_api_revision: str | None
+    production_target_ids: list[str] = Field(max_length=16)
     production_origins: list[str] = Field(max_length=16)
 
     @field_validator("target_id")
@@ -71,6 +72,15 @@ class ProtectedTargetPolicy(BaseModel):
         if not _TARGET_ID.fullmatch(value):
             raise ValueError("Target ID must be a stable lowercase opaque identifier")
         return value
+
+    @field_validator("production_target_ids")
+    @classmethod
+    def validate_production_target_ids(cls, values: list[str]) -> list[str]:
+        if any(not _TARGET_ID.fullmatch(value) for value in values):
+            raise ValueError("Production target IDs must be stable lowercase identifiers")
+        if len(set(values)) != len(values):
+            raise ValueError("Production target IDs must be unique")
+        return values
 
     @field_validator("frontend_origin", "api_origin")
     @classmethod
@@ -103,10 +113,18 @@ class ProtectedTargetPolicy(BaseModel):
                 raise ValueError("Non-local targets must use HTTPS")
             if self.expected_frontend_revision is None or self.expected_api_revision is None:
                 raise ValueError("Release targets require both expected revisions")
-        if self.target in {"staging", "ephemeral"} and origins.intersection(
-            self.production_origins
-        ):
-            raise ValueError("Non-production target resolves to a production origin")
+        if self.target == "production":
+            if self.target_id not in self.production_target_ids:
+                raise ValueError("Production target is absent from the protected identity registry")
+            if not origins.issubset(self.production_origins):
+                raise ValueError("Production target is absent from the protected origin registry")
+        if self.target in {"staging", "ephemeral"}:
+            if not self.production_target_ids or not self.production_origins:
+                raise ValueError("Mutation-capable targets require production deny registries")
+            if self.target_id in self.production_target_ids:
+                raise ValueError("Non-production target uses a production identity")
+            if origins.intersection(self.production_origins):
+                raise ValueError("Non-production target resolves to a production origin")
         return self
 
 

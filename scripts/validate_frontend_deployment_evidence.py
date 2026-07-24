@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
+SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$", re.IGNORECASE)
 CI_RESULT_PATTERN = re.compile(
     r"^(?P<conclusion>[a-z_]+)\s*;\s*checked_sha=(?P<sha>[0-9a-f]{40})$",
     re.IGNORECASE,
@@ -49,6 +50,10 @@ REQUIRED_FIELDS = (
     "Deployment end UTC",
     "Deployment ID",
     "Deployed candidate revision",
+    "Release stamp path",
+    "Release stamp SHA-256",
+    "Served frontend revision",
+    "Served frontend revision source",
     "Railway CLI release message",
     "Uploaded lockfile observed",
     "Railpack install command",
@@ -210,6 +215,14 @@ def validate_evidence(markdown: str) -> list[str]:
             "Release revision mismatch: candidate, CI checked SHA, and deployed "
             "candidate revision must be identical"
         )
+    if fields["Release stamp path"] != "web/release-build.json":
+        errors.append("Release stamp path must be web/release-build.json")
+    if SHA256_PATTERN.fullmatch(fields["Release stamp SHA-256"]) is None:
+        errors.append("Release stamp SHA-256 must be a 64-character hexadecimal digest")
+    if fields["Served frontend revision"].casefold() != candidate_sha:
+        errors.append("Served frontend revision must match the candidate revision")
+    if fields["Served frontend revision source"] != "verified_detached_sha":
+        errors.append("Served frontend revision source must be verified_detached_sha")
     expected_cli_message = f"frontend-release {candidate_sha}"
     if fields["Railway CLI release message"] != expected_cli_message:
         errors.append(

@@ -34,7 +34,9 @@ def committed_repo(tmp_path: Path) -> tuple[Path, str]:
     (tmp_path / "tracked.txt").write_text("tracked\n", encoding="utf-8")
     _git(tmp_path, "add", "tracked.txt")
     _git(tmp_path, "commit", "-qm", "fixture")
-    return tmp_path, _git(tmp_path, "rev-parse", "HEAD")
+    revision = _git(tmp_path, "rev-parse", "HEAD")
+    _git(tmp_path, "switch", "--detach", revision)
+    return tmp_path, revision
 
 
 def test_stamp_binds_canonical_payload_to_clean_head(
@@ -69,7 +71,27 @@ def test_stamp_rejects_dirty_tracked_checkout(
     repo, revision = committed_repo
     (repo / "tracked.txt").write_text("changed\n", encoding="utf-8")
 
-    with pytest.raises(StampError, match="tracked files"):
+    with pytest.raises(StampError, match="tracked or untracked"):
+        write_release_stamp(repo, revision)
+
+
+def test_stamp_rejects_attached_branch(
+    committed_repo: tuple[Path, str],
+) -> None:
+    repo, revision = committed_repo
+    _git(repo, "switch", "-c", "release-candidate")
+
+    with pytest.raises(StampError, match="detached"):
+        write_release_stamp(repo, revision)
+
+
+def test_stamp_rejects_untracked_build_input(
+    committed_repo: tuple[Path, str],
+) -> None:
+    repo, revision = committed_repo
+    (repo / "web" / "injected.ts").write_text("export const injected = true\n")
+
+    with pytest.raises(StampError, match="tracked or untracked"):
         write_release_stamp(repo, revision)
 
 

@@ -577,7 +577,8 @@ environment values.
    plus the verified build stamp and persisted SHA-bearing CLI message is the
    supported identity chain. The later release-smoke gate must observe the
    candidate SHA and `verified_detached_sha` provenance from the public
-   frontend.
+   frontend. Record the stamp path/digest and the served frontend revision plus
+   provenance in their dedicated evidence fields.
    Inspect the bounded build log and record that `web/package-lock.json` was
    uploaded, Railpack ran `npm ci`, and the resolved runtime was Node 22.x.
    Record deployment and verification window bounds as ISO-8601 UTC timestamps
@@ -644,6 +645,7 @@ environment values.
    git -C "$ACA_FRONTEND_ROLLBACK_WORKTREE" status --porcelain=v1
    (
      cd "$ACA_FRONTEND_ROLLBACK_WORKTREE"
+     python scripts/stamp_release_revision.py "$ACA_FRONTEND_ROLLBACK_SHA"
      railway up \
        --ci \
        --project 4b0db3b8-110d-4a13-81d5-440aa2ddc98d \
@@ -653,16 +655,19 @@ environment values.
    )
    ```
 
-   Require the rollback deployment to reach `SUCCESS`, verify the public route
-   and capability request without submitting another canary, and record the
-   rollback deployment ID. Preserve both temporary worktrees until the release
-   or rollback evidence has been validated.
+   Require the rollback stamp to name the rollback SHA, require the deployment
+   to reach `SUCCESS`, verify the public route and capability request without
+   submitting another canary, and record the rollback deployment ID. Preserve
+   both temporary worktrees until the release or rollback evidence has been
+   validated.
 
 #### Automated cross-surface release gate
 
 The `Release smoke` GitHub workflow verifies an already deployed frontend/API
 pair; it never performs deployment or rollback. Configure two GitHub
-environments with required reviewers:
+environments with required reviewers, prevent administrators from bypassing
+protection, disallow self-approval, and restrict deployment branches/tags to
+the reviewed default or release refs used for promotion:
 
 | Environment | Purpose |
 |---|---|
@@ -675,6 +680,8 @@ Each environment owns these protected variables:
 - `FRONTEND_ORIGIN` and `API_ORIGIN`: exact HTTPS origins with no path
 - `EXPECTED_FRONTEND_REVISION` and `EXPECTED_API_REVISION`: lowercase full
   40-character SHAs observed from the deployed pair
+- `PRODUCTION_TARGET_IDS_JSON`: JSON array containing every production target
+  identity; staging uses it as a deny list
 - `PRODUCTION_ORIGINS_JSON`: JSON array containing every production frontend
   and API origin; staging uses it as a deny list
 

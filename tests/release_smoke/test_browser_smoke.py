@@ -14,6 +14,7 @@ import pytest
 from src.release_smoke.browser import (
     AssetManifestError,
     RetiredRoute,
+    _browser_session_cookie,
     load_and_scan_assets,
     normalize_request,
     run_browser_discovery,
@@ -90,6 +91,80 @@ def test_manifest_detects_retired_literal_in_dormant_asset() -> None:
     assert retired_count == 1
 
 
+def test_manifest_stream_stops_at_decompressed_byte_bound() -> None:
+    chunks_consumed = 0
+
+    class OversizedStream(httpx.SyncByteStream):
+        def __iter__(self):
+            nonlocal chunks_consumed
+            for _ in range(4):
+                chunks_consumed += 1
+                yield b"x" * 600_000
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/release-assets.json"
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "application/json"},
+            stream=OversizedStream(),
+        )
+
+    with pytest.raises(AssetManifestError, match="byte limit"):
+        load_and_scan_assets(
+            frontend_origin="https://frontend.example.test",
+            expected_revision=SHA,
+            retired_routes=(),
+            transport=httpx.MockTransport(handler),
+        )
+
+    assert chunks_consumed == 2
+
+
+def test_browser_auth_preserves_and_requires_server_cookie_security() -> None:
+    policy = ProtectedTargetPolicy(
+        target_id="staging-primary",
+        target="staging",
+        frontend_origin="https://staging-frontend.example.test",
+        api_origin="https://staging-api.example.test",
+        expected_frontend_revision=SHA,
+        expected_api_revision=SHA,
+        production_target_ids=["production-primary"],
+        production_origins=[
+            "https://frontend.example.test",
+            "https://api.example.test",
+        ],
+    )
+
+    def lax_handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"Set-Cookie": "session=opaque; Path=/; Secure; HttpOnly; SameSite=Lax"},
+        )
+
+    with pytest.raises(AssetManifestError, match="SameSite=None"):
+        _browser_session_cookie(
+            policy,
+            "app-password",
+            transport=httpx.MockTransport(lax_handler),
+        )
+
+    def secure_handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"Set-Cookie": "session=opaque; Path=/; Secure; HttpOnly; SameSite=None"},
+        )
+
+    cookie = _browser_session_cookie(
+        policy,
+        "app-password",
+        transport=httpx.MockTransport(secure_handler),
+    )
+    assert cookie is not None
+    assert cookie["sameSite"] == "None"
+    assert cookie["secure"] is True
+    assert cookie["httpOnly"] is True
+
+
 @pytest.mark.parametrize(
     "mutation",
     ["redirect", "digest", "size", "mime", "revision", "duplicate"],
@@ -156,15 +231,22 @@ class _BrowserFixtureHandler(BaseHTTPRequestHandler):
     javascript: ClassVar[bytes] = (
         b'fetch("/api/v1/capabilities?limit=100");fetch("/api/v1/configured-sources?limit=100");'
     )
+    redirect_location: ClassVar[str | None] = None
+    document_extra: ClassVar[str] = ""
 
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
         if path in {"/ingest", "/"}:
+            if self.redirect_location is not None:
+                self.send_response(302)
+                self.send_header("Location", self.redirect_location)
+                self.end_headers()
+                return
             body = f"""<!doctype html>
 <html><head>
 <meta name="release-revision" content="{SHA}">
 <meta name="release-revision-source" content="github_sha">
-</head><body><script src="/assets/app.js"></script></body></html>""".encode()
+</head><body>{self.document_extra}<script src="/assets/app.js"></script></body></html>""".encode()
             self._send(200, "text/html", body)
             return
         if path == "/assets/app.js":
@@ -213,6 +295,7 @@ def test_real_browser_observes_both_first_page_discovery_requests() -> None:
         api_origin=origin,
         expected_frontend_revision=None,
         expected_api_revision=None,
+        production_target_ids=[],
         production_origins=[],
     )
     try:
@@ -228,4 +311,119 @@ def test_real_browser_observes_both_first_page_discovery_requests() -> None:
 
     assert observation.revision == SHA
     assert observation.retired_route_count == 0
+
+
+def test_browser_blocks_every_off_policy_origin() -> None:
+    original = _BrowserFixtureHandler.javascript
+    _BrowserFixtureHandler.javascript = (
+        original + b';fetch("http://127.0.0.1:9/collect",{method:"POST",body:"x"})'
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _BrowserFixtureHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    origin = f"http://127.0.0.1:{server.server_port}"
+    policy = ProtectedTargetPolicy(
+        target_id="local-browser",
+        target="local",
+        frontend_origin=origin,
+        api_origin=origin,
+        expected_frontend_revision=None,
+        expected_api_revision=None,
+        production_target_ids=[],
+        production_origins=[],
+    )
+    try:
+        with pytest.raises(AssetManifestError, match="off-policy network"):
+            run_browser_discovery(policy, app_secret=None, retired_routes=())
+    finally:
+        _BrowserFixtureHandler.javascript = original
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_browser_blocks_non_read_only_same_origin_requests() -> None:
+    original = _BrowserFixtureHandler.javascript
+    _BrowserFixtureHandler.javascript = original + b';fetch("/collect",{method:"POST",body:"x"})'
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _BrowserFixtureHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    origin = f"http://127.0.0.1:{server.server_port}"
+    policy = ProtectedTargetPolicy(
+        target_id="local-browser",
+        target="local",
+        frontend_origin=origin,
+        api_origin=origin,
+        expected_frontend_revision=None,
+        expected_api_revision=None,
+        production_target_ids=[],
+        production_origins=[],
+    )
+    try:
+        with pytest.raises(AssetManifestError, match="non-read-only"):
+            run_browser_discovery(policy, app_secret=None, retired_routes=())
+    finally:
+        _BrowserFixtureHandler.javascript = original
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_browser_rejects_cross_origin_navigation_redirect() -> None:
+    _BrowserFixtureHandler.redirect_location = "http://127.0.0.1:9/collect"
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _BrowserFixtureHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    origin = f"http://127.0.0.1:{server.server_port}"
+    policy = ProtectedTargetPolicy(
+        target_id="local-browser",
+        target="local",
+        frontend_origin=origin,
+        api_origin=origin,
+        expected_frontend_revision=None,
+        expected_api_revision=None,
+        production_target_ids=[],
+        production_origins=[],
+    )
+    try:
+        with pytest.raises(AssetManifestError, match="navigation"):
+            run_browser_discovery(policy, app_secret=None, retired_routes=())
+    finally:
+        _BrowserFixtureHandler.redirect_location = None
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_browser_scans_loaded_html_for_retired_literals() -> None:
+    _BrowserFixtureHandler.document_extra = (
+        '<script type="application/json">"/api/v1/contents/ingest"</script>'
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _BrowserFixtureHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    origin = f"http://127.0.0.1:{server.server_port}"
+    policy = ProtectedTargetPolicy(
+        target_id="local-browser",
+        target="local",
+        frontend_origin=origin,
+        api_origin=origin,
+        expected_frontend_revision=None,
+        expected_api_revision=None,
+        production_target_ids=[],
+        production_origins=[],
+    )
+    try:
+        observation = run_browser_discovery(
+            policy,
+            app_secret=None,
+            retired_routes=(RetiredRoute("POST", "/api/v1/contents/ingest"),),
+        )
+    finally:
+        _BrowserFixtureHandler.document_extra = ""
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert observation.retired_route_count == 1
     assert len(observation.assets) == 1

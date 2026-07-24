@@ -32,6 +32,7 @@ def test_production_build_embeds_revision_and_manifest() -> None:
     env = os.environ.copy()
     env.pop("RAILWAY_GIT_COMMIT_SHA", None)
     env["GITHUB_SHA"] = SHA
+    env["GITHUB_ACTIONS"] = "true"
     subprocess.run(
         [npm, "run", "build"],
         cwd=WEB_ROOT,
@@ -49,9 +50,38 @@ def test_production_build_embeds_revision_and_manifest() -> None:
     assert manifest["revision"] == SHA
     assert manifest["revision_source"] == "github_sha"
     assert manifest["javascript"]
+    manifest_paths = {asset["path"] for asset in manifest["javascript"]}
+    built_javascript = {
+        f"/{path.relative_to(WEB_ROOT / 'dist').as_posix()}"
+        for path in (WEB_ROOT / "dist").rglob("*.js")
+    }
+    assert manifest_paths == built_javascript
+    assert "/sw.js" in manifest_paths
+    assert any(path.startswith("/workbox-") for path in manifest_paths)
     assert all(
         set(asset) == {"path", "size_bytes", "sha256"}
         and asset["path"].endswith(".js")
         and len(asset["sha256"]) == 64
         for asset in manifest["javascript"]
     )
+
+
+def test_github_sha_is_rejected_outside_github_actions() -> None:
+    npm = shutil.which("npm")
+    assert npm is not None
+    env = os.environ.copy()
+    env.pop("RAILWAY_GIT_COMMIT_SHA", None)
+    env.pop("GITHUB_ACTIONS", None)
+    env["GITHUB_SHA"] = SHA
+
+    result = subprocess.run(
+        [npm, "run", "build"],
+        cwd=WEB_ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "trusted only inside GitHub Actions" in result.stderr

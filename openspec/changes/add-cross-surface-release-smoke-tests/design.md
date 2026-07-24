@@ -17,22 +17,24 @@ letting a flag or missing environment label accidentally authorize production.
 ### D1. Publish revision identity in existing operational surfaces
 
 Extend the public `/health` liveness response with normalized `revision` and
-`revision_source` fields. For the API, accept only the platform's immutable full
-commit SHA (`RAILWAY_GIT_COMMIT_SHA`, or `GITHUB_SHA` in CI) and its allowlisted
-provenance; never let an application runtime override claim a promotion
-revision. A local explicit value may produce only the conspicuous `development`
-provenance.
+`revision_source` fields. For the deployed API, accept only Railway's immutable
+full platform commit SHA (`RAILWAY_GIT_COMMIT_SHA`); an application-settable
+`GITHUB_SHA` runtime value cannot claim promotion provenance. A frontend
+GitHub Actions build may bake `GITHUB_SHA` only when `GITHUB_ACTIONS=true`.
+A local build may produce only the conspicuous `development` provenance.
 
 The canonical frontend release uses `railway up` from a clean detached checkout,
 where Railway leaves `meta.commitHash` null. Before upload, a repository script
 verifies the requested full SHA equals detached `HEAD`, verifies tracked files
-are clean, and writes a bounded canonical `web/release-build.json` stamp. The
+and untracked upload inputs are clean, and writes a bounded canonical
+`web/release-build.json` stamp. The
 runbook hashes that stamp and requires Railway `meta.cliMessage` to name the
 same SHA. Vite consumes the stamp at build time and bakes
 `verified_detached_sha` provenance into frontend HTML and the revision-bound
 asset manifest. The stamp cannot select a different SHA, and runtime
-configuration cannot relabel the built artifact. GitHub integration builds may
-use `GITHUB_SHA` directly. Do not add these operational fields to the canonical
+configuration cannot relabel the built artifact. GitHub Actions frontend builds
+may use `GITHUB_SHA` only with their baked Actions context. Do not add these
+operational fields to the canonical
 content workflow OpenAPI.
 
 The runner reads the backend values from `/health` and the frontend values from
@@ -49,7 +51,11 @@ establish liveness and canonical discovery. The CLI check invokes the installed
 `aca --json capabilities` and configured-source commands in a subprocess while
 supplying `API_BASE_URL` and `ADMIN_API_KEY` only through a scrubbed environment.
 The browser check uses the explicitly pinned Python Playwright extra against the
-deployed frontend and does not replace frontend requests with mocks.
+deployed frontend and does not replace frontend requests with mocks. When
+browser authentication is enabled, the runner posts the password directly to
+the exact no-redirect API origin, verifies the API-issued secure/HttpOnly/
+SameSite cookie attributes, and injects only that scoped cookie; served
+JavaScript never receives the password.
 
 Declare Playwright and JSON Schema format validation in a dedicated
 `release-smoke` Python extra. Release jobs install that explicit extra and the
@@ -61,7 +67,8 @@ workflow must provide deployed origins and run the same orchestrator.
 
 Before any credential-bearing request, load an approval-protected target policy
 whose exact frontend origin, API origin, target identity, classification,
-expected revisions, and production deny aliases cannot be workflow inputs.
+expected revisions, production target-ID registry, and production origin deny
+aliases cannot be workflow inputs.
 Require HTTPS outside loopback-local mode. Disable HTTP redirects and reject
 every destination that is not the exact pinned origin before adding
 authentication. Browser routing aborts off-policy API requests, and observed
@@ -76,8 +83,9 @@ never persisted. Observe all requests and require successful capability plus
 configured-source discovery. The first-page request must have no `cursor` query
 key.
 
-Vite emits `release-assets.json` from the final bundle. It binds the full
-frontend SHA to every JavaScript chunk, including dormant lazy chunks, with
+Vite emits `release-assets.json` after PWA generation. It binds the full
+frontend SHA to every emitted JavaScript file, including dormant lazy chunks,
+the service worker, and Workbox runtime, with
 path, size, and SHA-256 digest. The runner fetches this authoritative manifest,
 then streams every listed same-origin asset with redirects disabled; it also
 requires every observed first-party JavaScript request to be listed. Fail on a
@@ -85,8 +93,10 @@ revision/digest/content-type mismatch, redirect, duplicate/cycle, missing
 asset, unlisted observed asset, more than 512 assets, more than 10 MiB per
 asset, more than 64 MiB total, or a 60-second scan deadline.
 
-Scan observed method/normalized-path pairs and all verified asset bytes for the
-checked-in baseline retired-route policy. The baseline contains at least
+Scan the loaded HTML/inline scripts, observed method/normalized-path pairs, and
+all verified asset bytes for the checked-in baseline retired-route policy. All
+network response bodies are streamed with decompressed byte/deadline bounds.
+The baseline contains at least
 `POST /api/v1/contents/ingest` and `POST /api/v1/content/save-url`, cannot be
 overridden, and handles absolute/encoded/query variants after normalization.
 Runtime policy may add entries only. Evidence records path-free asset SHA-256
@@ -99,7 +109,8 @@ Mutation requires all of:
 1. an explicit `--allow-mutations` flag;
 2. an exact target identity and origins from the protected `staging` or
    `ephemeral` policy;
-3. no match against any protected production identity or origin alias;
+3. nonempty protected production target-ID and origin registries, with no
+   identity or origin match;
 4. a checked-in JSON fixture below `tests/fixtures/release_smoke/`;
 5. a deterministic idempotency key `aca-release-smoke-v1:<run_id>`.
 
@@ -138,13 +149,15 @@ credentials come from the corresponding approval-protected GitHub environment:
 - staging mutation: explicit input, approval-controlled environment, staging
   secrets, and an approved checked-in fixture.
 
-Validate schema and semantics before upload. If the runner output cannot
-validate, discard it and generate a separate minimal failure envelope from
-fixed safe fields and the validator's stable failure code; validate that
+Validate schema and semantics before upload. If the runner output is missing or
+cannot validate, discard it and generate a separate minimal failure envelope
+from fixed safe fields and the validator's stable failure code; validate that
 envelope before upload. Upload only validated evidence with bounded retention,
 then fail the job when compatibility did not pass. Workflow permissions remain
-read-only. Documentation makes clear that the workflow verifies an already
-deployed pair; deployment remains a separate operation.
+read-only, action/tool references are immutable, and protected environments
+require reviewed ref restrictions without self-approval. Documentation makes
+clear that the workflow verifies an already deployed pair; deployment remains
+a separate operation.
 
 ## Data and Contract Impact
 

@@ -72,6 +72,8 @@ def run_release_smoke(
     fixture_name: str | None = None,
 ) -> dict[str, Any]:
     """Run all release surfaces and return only schema-valid sanitized evidence."""
+    if fixture_name is not None and not allow_mutations:
+        raise ReleaseSmokeError("Mutation fixture requires explicit authorization")
     run_id = uuid.uuid4().hex
     started_at = _utc_now()
     checks: list[dict[str, str]] = []

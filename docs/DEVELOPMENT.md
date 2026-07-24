@@ -72,6 +72,7 @@ cat > /tmp/aca-release-smoke-local.json <<'JSON'
   "api_origin": "http://127.0.0.1:8000",
   "expected_frontend_revision": null,
   "expected_api_revision": null,
+  "production_target_ids": [],
   "production_origins": []
 }
 JSON

@@ -4,9 +4,8 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
-import type { OutputChunk } from 'rollup'
-import type { Plugin } from 'vite'
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import type { Plugin, ResolvedConfig } from 'vite'
 
 type ReleaseIdentity = {
   revision: string
@@ -27,6 +26,9 @@ function platformReleaseIdentity(): ReleaseIdentity | undefined {
   for (const [variable, revision_source] of candidates) {
     const revision = process.env[variable]
     if (revision === undefined) continue
+    if (variable === 'GITHUB_SHA' && process.env.GITHUB_ACTIONS !== 'true') {
+      throw new Error('GITHUB_SHA is trusted only inside GitHub Actions')
+    }
     if (!COMMIT_SHA.test(revision)) {
       throw new Error(`${variable} must be a lowercase 40-character commit SHA`)
     }
@@ -70,8 +72,22 @@ function releaseIdentity(): ReleaseIdentity {
 
 function releaseMetadataPlugin(): Plugin {
   const identity = releaseIdentity()
+  let resolvedConfig: ResolvedConfig
+
+  function javascriptFiles(directory: string): string[] {
+    return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+      const absolute = path.join(directory, entry.name)
+      if (entry.isDirectory()) return javascriptFiles(absolute)
+      return entry.isFile() && entry.name.endsWith('.js') ? [absolute] : []
+    })
+  }
+
   return {
     name: 'aca-release-metadata',
+    enforce: 'post',
+    configResolved(config) {
+      resolvedConfig = config
+    },
     transformIndexHtml() {
       return [
         {
@@ -89,27 +105,33 @@ function releaseMetadataPlugin(): Plugin {
         },
       ]
     },
-    generateBundle(_options, bundle) {
-      const javascript = Object.values(bundle)
-        .filter((output): output is OutputChunk => output.type === 'chunk')
-        .map((chunk) => {
-          const bytes = Buffer.from(chunk.code)
-          return {
-            path: `/${chunk.fileName}`,
-            size_bytes: bytes.byteLength,
-            sha256: createHash('sha256').update(bytes).digest('hex'),
-          }
-        })
-        .sort((left, right) => left.path.localeCompare(right.path))
-      this.emitFile({
-        type: 'asset',
-        fileName: 'release-assets.json',
-        source: JSON.stringify({
-          schema_version: 1,
-          ...identity,
-          javascript,
-        }),
-      })
+    closeBundle: {
+      order: 'post',
+      sequential: true,
+      handler() {
+        const outputDirectory = path.resolve(
+          resolvedConfig.root,
+          resolvedConfig.build.outDir,
+        )
+        const javascript = javascriptFiles(outputDirectory)
+          .map((file) => {
+            const bytes = readFileSync(file)
+            return {
+              path: `/${path.relative(outputDirectory, file).split(path.sep).join('/')}`,
+              size_bytes: bytes.byteLength,
+              sha256: createHash('sha256').update(bytes).digest('hex'),
+            }
+          })
+          .sort((left, right) => left.path.localeCompare(right.path))
+        writeFileSync(
+          path.join(outputDirectory, 'release-assets.json'),
+          JSON.stringify({
+            schema_version: 1,
+            ...identity,
+            javascript,
+          }),
+        )
+      },
     },
   }
 }
@@ -132,7 +154,6 @@ export default defineConfig({
     exclude: ['tests/e2e/**', 'node_modules/**', 'dist/**'],
   },
   plugins: [
-    releaseMetadataPlugin(),
     // React plugin provides Fast Refresh and JSX transformation
     react(),
     // Tailwind CSS v4 Vite plugin for CSS processing
@@ -202,6 +223,8 @@ export default defineConfig({
         ],
       },
     }),
+    // Run last so the release inventory includes generated PWA JavaScript.
+    releaseMetadataPlugin(),
   ],
 
   resolve: {

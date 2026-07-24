@@ -83,3 +83,30 @@
 - Complete package gate: 116 Python tests and 7 Vitest cases passed; Ruff,
   mypy, TypeScript typecheck, production build, strict OpenSpec, package schema,
   dependency/DAG/lock, and diff checks passed.
+
+## 2026-07-23 — Independent implementation and security rework
+
+- Independent implementation and OWASP-style security reviews found fail-open
+  redirect, browser credential, production identity, asset completeness,
+  evidence fallback/completeness, checkout cleanliness, and package-scope
+  defects.
+- Disabled redirects in the real CLI's release-smoke mode and proved a custom
+  admin header is never forwarded to a redirect destination.
+- Moved browser login to the exact no-redirect API origin, preserved and
+  verified the deployed cookie attributes, blocked every off-policy HTTP(S)
+  origin and non-read-only browser method, and kept the password out of served
+  JavaScript.
+- Added nonempty protected production identity/origin registries for mutation,
+  complete post-PWA JavaScript plus loaded-HTML retired-route scanning, and
+  streaming decompressed byte/deadline enforcement.
+- Hardened evidence validation against secret echo, malformed types,
+  incomplete passing claims, missing mutation terminal evidence, and
+  invalid/missing workflow output. The workflow now replaces rejected output
+  with a separately validated safe failure envelope before retention.
+- Required a detached, fully clean checkout; pinned workflow actions and uv;
+  validated stamp digest/served provenance in the manual evidence contract;
+  and stamped rollback uploads.
+- Rework gates: 142 release/config/API tests plus 49 canonical client/CLI tests
+  passed; 7 Vitest cases, TypeScript typecheck, complete post-PWA production
+  build, Ruff, mypy, strict OpenSpec, package schema/dependency/DAG/lock, and
+  diff checks passed.

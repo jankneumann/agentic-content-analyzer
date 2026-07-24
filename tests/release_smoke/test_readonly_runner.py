@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import shutil
 import subprocess
+from types import SimpleNamespace
 
 import httpx
 import pytest
 
+from src.cli.workflow_commands import default_client_factory
+from src.clients.workflow_api_client import WorkflowApiClient
 from src.release_smoke.models import ProtectedTargetPolicy
 from src.release_smoke.runner import (
     ReleaseSmokeError,
@@ -29,6 +33,7 @@ def _policy(**overrides: object) -> ProtectedTargetPolicy:
         "api_origin": "https://api.example.test",
         "expected_frontend_revision": SHA,
         "expected_api_revision": SHA,
+        "production_target_ids": ["production-primary"],
         "production_origins": [
             "https://frontend.example.test",
             "https://api.example.test",
@@ -60,6 +65,7 @@ def test_local_policy_allows_loopback_http_only() -> None:
         api_origin="http://127.0.0.1:8000",
         expected_frontend_revision=None,
         expected_api_revision=None,
+        production_target_ids=[],
         production_origins=[],
     )
 
@@ -73,6 +79,7 @@ def test_local_policy_allows_loopback_http_only() -> None:
             api_origin="http://127.0.0.1:8000",
             expected_frontend_revision=None,
             expected_api_revision=None,
+            production_target_ids=[],
             production_origins=[],
         )
 
@@ -84,6 +91,25 @@ def test_staging_policy_rejects_production_alias() -> None:
             target="staging",
             frontend_origin="https://staging.example.test",
             api_origin="https://api.example.test",
+        )
+
+
+def test_staging_policy_rejects_production_identity_and_empty_deny_registry() -> None:
+    with pytest.raises(ValueError, match="production identity"):
+        _policy(
+            target="staging",
+            frontend_origin="https://staging-frontend.example.test",
+            api_origin="https://staging-api.example.test",
+        )
+
+    with pytest.raises(ValueError, match="deny registries"):
+        _policy(
+            target_id="staging-primary",
+            target="staging",
+            frontend_origin="https://staging-frontend.example.test",
+            api_origin="https://staging-api.example.test",
+            production_target_ids=[],
+            production_origins=[],
         )
 
 
@@ -168,7 +194,56 @@ def test_cli_environment_is_minimal_and_environment_only(monkeypatch: pytest.Mon
 
     assert environment["API_BASE_URL"] == "https://api.example.test"
     assert environment["ADMIN_API_KEY"] == "test-admin-key"
+    assert environment["ACA_RELEASE_SMOKE"] == "1"
     assert "UNRELATED_SECRET" not in environment
+
+
+def test_release_cli_transport_rejects_redirect_without_forwarding_admin_key() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            302,
+            headers={"Location": "https://attacker.invalid/collect"},
+        )
+
+    client = WorkflowApiClient(
+        "https://api.example.test",
+        admin_key="test-admin-key",
+        transport=httpx.MockTransport(handler),
+        follow_redirects=False,
+    )
+    try:
+        with pytest.raises(httpx.HTTPStatusError):
+            client.get_capabilities()
+    finally:
+        client.close()
+
+    assert len(requests) == 1
+    assert requests[0].url.host == "api.example.test"
+
+
+def test_release_smoke_environment_disables_redirects_in_real_cli_factory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ACA_RELEASE_SMOKE", "1")
+    settings_module = importlib.import_module("src.config.settings")
+    monkeypatch.setattr(
+        settings_module,
+        "get_settings",
+        lambda: SimpleNamespace(
+            api_base_url="https://api.example.test",
+            admin_api_key="test-admin-key",
+            api_timeout=20,
+        ),
+    )
+
+    client = default_client_factory()
+    try:
+        assert client._client.follow_redirects is False
+    finally:
+        client.close()
 
 
 def test_cli_discovery_uses_real_command_shape_and_no_cursor(

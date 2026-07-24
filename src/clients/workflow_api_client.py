@@ -58,13 +58,14 @@ class WorkflowApiClient:
         admin_key: str | None = None,
         timeout: float = 30.0,
         transport: httpx.BaseTransport | None = None,
+        follow_redirects: bool = True,
     ) -> None:
         headers = {"X-Admin-Key": admin_key} if admin_key else None
         self._client = httpx.Client(
             base_url=base_url,
             headers=headers,
             timeout=httpx.Timeout(timeout, connect=min(timeout, 10.0)),
-            follow_redirects=True,
+            follow_redirects=follow_redirects,
             transport=transport,
         )
 
@@ -298,6 +299,12 @@ class WorkflowApiClient:
 
     @staticmethod
     def _decode_json(response: httpx.Response) -> Any:
+        if response.is_redirect:
+            raise httpx.HTTPStatusError(
+                "Redirect responses are not accepted",
+                request=response.request,
+                response=response,
+            )
         if response.is_error:
             try:
                 problem = Problem.model_validate(response.json())

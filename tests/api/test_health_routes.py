@@ -46,7 +46,16 @@ class TestReleaseIdentity:
         ) == (SHA, "railway_commit_sha")
 
     def test_github_sha_is_used_when_railway_metadata_is_absent(self):
-        assert _release_identity({"GITHUB_SHA": SHA}) == (SHA, "github_sha")
+        assert _release_identity({"GITHUB_SHA": SHA, "GITHUB_ACTIONS": "true"}) == (
+            "unavailable",
+            "unavailable",
+        )
+
+    def test_runtime_github_sha_without_actions_context_is_untrusted(self) -> None:
+        assert _release_identity({"GITHUB_SHA": SHA}) == (
+            "unavailable",
+            "unavailable",
+        )
 
     def test_malformed_platform_revision_fails_closed(self):
         assert _release_identity(

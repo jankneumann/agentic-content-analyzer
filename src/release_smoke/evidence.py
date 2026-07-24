@@ -57,12 +57,19 @@ def validate_evidence(document: object) -> list[str]:
         _schema(),
         format_checker=jsonschema.FormatChecker(),
     )
-    for error in sorted(validator.iter_errors(document), key=lambda item: list(item.path)):
-        errors.append(f"{_path(error)}: {error.message}")
+    for error in sorted(
+        validator.iter_errors(document),
+        key=lambda item: "/".join(str(part) for part in item.path),
+    ):
+        errors.append(f"{_path(error)}: schema validation failed ({error.validator})")
     if not isinstance(document, dict):
         return errors
 
-    serialized = json.dumps(document, separators=(",", ":"), sort_keys=True)
+    try:
+        serialized = json.dumps(document, separators=(",", ":"), sort_keys=True)
+    except (TypeError, ValueError):
+        serialized = ""
+        errors.append("<root>: evidence is not JSON-serializable")
     if _SENSITIVE.search(serialized):
         errors.append("<root>: evidence contains sensitive field names or values")
 
@@ -76,6 +83,11 @@ def validate_evidence(document: object) -> list[str]:
 
     result = document.get("result")
     failure_codes = document.get("failure_codes")
+    safe_failure_codes = (
+        {code for code in failure_codes if isinstance(code, str)}
+        if isinstance(failure_codes, list)
+        else set()
+    )
     checks = document.get("checks")
     if result == "passed":
         if failure_codes:
@@ -86,6 +98,49 @@ def validate_evidence(document: object) -> list[str]:
             errors.append("checks: passing evidence requires every check to pass")
         if document.get("retired_route_count") != 0:
             errors.append("retired_route_count: passing evidence requires zero retired routes")
+        expected_checks = {
+            "api_discovery": "api",
+            "cli_discovery": "cli",
+            "frontend_discovery": "frontend",
+        }
+        valid_checks: set[str] = set()
+        check_names: list[str] = []
+        if isinstance(checks, list):
+            for check in checks:
+                if not isinstance(check, dict):
+                    continue
+                name = check.get("name")
+                if isinstance(name, str):
+                    check_names.append(name)
+                if (
+                    isinstance(name, str)
+                    and check.get("status") == "passed"
+                    and expected_checks.get(name) == check.get("surface")
+                ):
+                    valid_checks.add(name)
+        if len(check_names) != len(set(check_names)):
+            errors.append("checks: check names must be unique")
+        if not set(expected_checks).issubset(valid_checks):
+            errors.append("checks: passing evidence is missing a required surface check")
+        if not isinstance(document.get("assets"), list) or not document["assets"]:
+            errors.append("assets: passing evidence requires a nonempty asset inventory")
+        if document.get("target") in {"staging", "ephemeral"}:
+            mutation_passed = (
+                any(
+                    isinstance(check, dict)
+                    and check.get("name") == "mutation_operation"
+                    and check.get("surface") == "mutation"
+                    and check.get("status") == "passed"
+                    for check in checks
+                )
+                if isinstance(checks, list)
+                else False
+            )
+            if not mutation_passed:
+                errors.append("checks: mutation target requires a passing mutation check")
+            operation = document.get("operation")
+            if not isinstance(operation, dict) or operation.get("status") != "completed":
+                errors.append("operation: mutation target requires a completed operation")
     elif result == "failed":
         if not failure_codes:
             errors.append("failure_codes: failed evidence requires a stable failure code")
@@ -113,12 +168,23 @@ def validate_evidence(document: object) -> list[str]:
             surface.get(field) is None
             for field in ("origin", "observed_revision", "revision_source")
         ):
-            codes = set(failure_codes) if isinstance(failure_codes, list) else set()
             required = f"{surface_name.upper()}_UNOBSERVED"
-            if result != "failed" or not ({required, "VALIDATOR_OUTPUT_REJECTED"} & codes):
+            if result != "failed" or not (
+                {required, "VALIDATOR_OUTPUT_REJECTED"} & safe_failure_codes
+            ):
                 errors.append(
                     f"{surface_name}: null observations require a matching pre-observation failure"
                 )
+        if result == "passed" and document.get("target") != "local":
+            if surface.get("expected_revision") is None:
+                errors.append(f"{surface_name}.expected_revision: release target requires a SHA")
+            trusted_sources = (
+                {"railway_commit_sha"}
+                if surface_name == "api"
+                else {"railway_commit_sha", "github_sha", "verified_detached_sha"}
+            )
+            if surface.get("revision_source") not in trusted_sources:
+                errors.append(f"{surface_name}.revision_source: provenance is untrusted")
 
     if isinstance(failure_codes, list):
         for code in failure_codes:

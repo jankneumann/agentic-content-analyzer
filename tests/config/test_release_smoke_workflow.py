@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, cast
 
@@ -53,6 +54,16 @@ def test_jobs_use_separate_approval_protected_environments() -> None:
     assert "permissions" not in staging
 
 
+def test_secret_bearing_jobs_pin_actions_and_toolchain() -> None:
+    for job in _workflow()["jobs"].values():
+        for step in job["steps"]:
+            action = step.get("uses")
+            if action is not None:
+                assert re.fullmatch(r"[^@]+@[0-9a-f]{40}", action)
+            if step.get("name") == "Install uv":
+                assert step["with"]["version"] == "0.9.18"
+
+
 def test_exact_target_policy_comes_only_from_environment_variables() -> None:
     expected_vars = {
         "ACA_TARGET_ID": "${{ vars.TARGET_ID }}",
@@ -60,6 +71,7 @@ def test_exact_target_policy_comes_only_from_environment_variables() -> None:
         "ACA_API_ORIGIN": "${{ vars.API_ORIGIN }}",
         "ACA_EXPECTED_FRONTEND_REVISION": "${{ vars.EXPECTED_FRONTEND_REVISION }}",
         "ACA_EXPECTED_API_REVISION": "${{ vars.EXPECTED_API_REVISION }}",
+        "ACA_PRODUCTION_TARGET_IDS_JSON": "${{ vars.PRODUCTION_TARGET_IDS_JSON }}",
         "ACA_PRODUCTION_ORIGINS_JSON": "${{ vars.PRODUCTION_ORIGINS_JSON }}",
     }
 
@@ -70,7 +82,10 @@ def test_exact_target_policy_comes_only_from_environment_variables() -> None:
         step = _step(_job(job_name), step_name)
         assert step["env"] == expected_vars
         assert f'target: "{target}"' in step["run"]
-        assert "--argjson production_origins" in step["run"]
+        assert '--arg production_target_ids_json "$ACA_PRODUCTION_TARGET_IDS_JSON"' in step["run"]
+        assert "try ($production_target_ids_json | fromjson) catch null" in step["run"]
+        assert '--arg production_origins_json "$ACA_PRODUCTION_ORIGINS_JSON"' in step["run"]
+        assert "try ($production_origins_json | fromjson) catch null" in step["run"]
         assert "${{ inputs." not in step["run"]
 
 
@@ -116,6 +131,7 @@ def test_validated_evidence_is_the_only_retained_artifact() -> None:
             < names.index(f"Enforce {suffix} compatibility gate")
         )
         assert validate["if"] == "always()"
+        assert f"--replace-invalid-with-failure-target {suffix}" in validate["run"]
         assert upload["if"] == "always() && steps.validate.outcome == 'success'"
         assert upload["uses"].startswith("actions/upload-artifact@")
         assert upload["with"]["path"] == "${{ runner.temp }}/release-smoke-evidence.json"

@@ -54,13 +54,15 @@ def write_release_stamp(repo_root: Path, revision: str) -> StampResult:
     head = _git(root, "rev-parse", "HEAD")
     if revision != head:
         raise StampError("Requested revision does not match HEAD")
-    if _git(root, "status", "--porcelain", "--untracked-files=no"):
-        raise StampError("Release checkout has modified tracked files")
+    if _git(root, "branch", "--show-current"):
+        raise StampError("Release checkout HEAD must be detached")
 
     web_root = (root / "web").resolve(strict=True)
     target = web_root / _STAMP_RELATIVE_PATH.name
     if target.exists() or target.is_symlink():
         raise StampError("Release stamp already exists")
+    if _git(root, "status", "--porcelain"):
+        raise StampError("Release checkout has tracked or untracked changes")
 
     payload = {
         "schema_version": 1,

@@ -9,6 +9,8 @@ import sys
 from copy import deepcopy
 from pathlib import Path
 
+import pytest
+
 from src.release_smoke.browser import AssetEvidence, BrowserObservation
 from src.release_smoke.evidence import (
     minimal_validator_failure_evidence,
@@ -16,6 +18,7 @@ from src.release_smoke.evidence import (
 )
 from src.release_smoke.models import ProtectedTargetPolicy, SurfaceObservation
 from src.release_smoke.orchestrator import run_release_smoke
+from src.release_smoke.runner import ReleaseSmokeError
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SHA = "a" * 40
@@ -103,6 +106,53 @@ def test_sensitive_or_additional_fields_are_rejected() -> None:
     assert any("request_headers" in error or "sensitive" in error for error in errors)
 
 
+def test_schema_errors_never_echo_rejected_values() -> None:
+    evidence = _valid_evidence()
+    assert isinstance(evidence["frontend"], dict)
+    secret_value = "api_key=TOPSECRET"
+    evidence["frontend"]["origin"] = secret_value
+    evidence["failure_codes"] = [{}]
+
+    errors = validate_evidence(evidence)
+
+    assert errors
+    assert secret_value not in json.dumps(errors)
+
+
+def test_passing_release_requires_all_surfaces_and_trusted_provenance() -> None:
+    missing_check = _valid_evidence()
+    assert isinstance(missing_check["checks"], list)
+    missing_check["checks"] = missing_check["checks"][:1]
+    bad_provenance = _valid_evidence()
+    assert isinstance(bad_provenance["api"], dict)
+    bad_provenance["api"]["revision_source"] = "local_development"
+    missing_expectation = _valid_evidence()
+    assert isinstance(missing_expectation["api"], dict)
+    missing_expectation["api"]["expected_revision"] = None
+    wrong_surface = _valid_evidence()
+    assert isinstance(wrong_surface["checks"], list)
+    assert isinstance(wrong_surface["checks"][0], dict)
+    wrong_surface["checks"][0]["surface"] = "evidence"
+    no_assets = _valid_evidence()
+    no_assets["assets"] = []
+
+    assert any("required surface" in error for error in validate_evidence(missing_check))
+    assert any("provenance" in error for error in validate_evidence(bad_provenance))
+    assert any("requires a SHA" in error for error in validate_evidence(missing_expectation))
+    assert any("required surface" in error for error in validate_evidence(wrong_surface))
+    assert any("nonempty asset" in error for error in validate_evidence(no_assets))
+
+
+def test_passing_mutation_target_requires_completed_operation() -> None:
+    evidence = _valid_evidence()
+    evidence["target"] = "staging"
+
+    errors = validate_evidence(evidence)
+
+    assert any("mutation check" in error for error in errors)
+    assert any("completed operation" in error for error in errors)
+
+
 def test_reversed_or_unbounded_window_is_rejected() -> None:
     evidence = _valid_evidence()
     evidence["finished_at"] = "2026-07-22T00:00:00Z"
@@ -143,6 +193,57 @@ def test_standalone_validator_imports_repository_package(tmp_path: Path) -> None
 
     assert result.returncode == 0
     assert result.stdout.strip() == "release-smoke evidence: VALID"
+
+
+def test_standalone_validator_never_echoes_rejected_values(tmp_path: Path) -> None:
+    evidence_path = tmp_path / "invalid.json"
+    secret_value = "api_key=TOPSECRET"
+    evidence_path.write_text(
+        json.dumps({"frontend": {"origin": secret_value}}),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts/validate_release_smoke_evidence.py"),
+            str(evidence_path),
+        ],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert secret_value not in result.stdout
+    assert secret_value not in result.stderr
+
+
+def test_standalone_validator_replaces_missing_output_with_safe_envelope(
+    tmp_path: Path,
+) -> None:
+    evidence_path = tmp_path / "missing.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts/validate_release_smoke_evidence.py"),
+            str(evidence_path),
+            "--replace-invalid-with-failure-target",
+            "production",
+        ],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+
+    assert result.returncode == 0
+    assert evidence["result"] == "failed"
+    assert evidence["failure_codes"] == ["VALIDATOR_OUTPUT_REJECTED"]
+    assert validate_evidence(evidence) == []
 
 
 def test_standalone_runner_writes_valid_failure_evidence_before_observation(
@@ -188,6 +289,7 @@ def test_orchestrator_returns_minimized_passing_evidence(
         api_origin="https://api.example.test",
         expected_frontend_revision=SHA,
         expected_api_revision=SHA,
+        production_target_ids=["production-primary"],
         production_origins=[
             "https://frontend.example.test",
             "https://api.example.test",
@@ -241,6 +343,7 @@ def test_orchestrator_replaces_invalid_output_with_safe_failure_envelope(
         api_origin="http://127.0.0.1:8000",
         expected_frontend_revision=None,
         expected_api_revision=None,
+        production_target_ids=[],
         production_origins=[],
     )
     monkeypatch.setattr(
@@ -282,3 +385,41 @@ def test_orchestrator_replaces_invalid_output_with_safe_failure_envelope(
 
     assert evidence["result"] == "failed"
     assert evidence["failure_codes"] == ["VALIDATOR_OUTPUT_REJECTED"]
+
+
+def test_fixture_without_mutation_authorization_fails_before_network(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    policy = ProtectedTargetPolicy(
+        target_id="local-fixture",
+        target="local",
+        frontend_origin="http://127.0.0.1:5173",
+        api_origin="http://127.0.0.1:8000",
+        expected_frontend_revision=None,
+        expected_api_revision=None,
+        production_target_ids=[],
+        production_origins=[],
+    )
+    called = False
+
+    def unexpected_network(*_args, **_kwargs) -> SurfaceObservation:
+        nonlocal called
+        called = True
+        raise AssertionError("network must not run")
+
+    monkeypatch.setattr(
+        "src.release_smoke.orchestrator.run_api_discovery",
+        unexpected_network,
+    )
+
+    with pytest.raises(ReleaseSmokeError, match="explicit authorization"):
+        run_release_smoke(
+            policy,
+            admin_key="admin",
+            app_secret=None,
+            repo_root=tmp_path,
+            fixture_name="url.json",
+        )
+
+    assert called is False

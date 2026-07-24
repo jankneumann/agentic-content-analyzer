@@ -21,17 +21,24 @@ RUN_ID = "1" * 32
 
 
 def _policy(target: str = "staging") -> ProtectedTargetPolicy:
+    frontend_origin = f"https://{target}-frontend.example.test"
+    api_origin = f"https://{target}-api.example.test"
     return ProtectedTargetPolicy(
         target_id=f"{target}-primary",
         target=target,
-        frontend_origin=f"https://{target}-frontend.example.test",
-        api_origin=f"https://{target}-api.example.test",
+        frontend_origin=frontend_origin,
+        api_origin=api_origin,
         expected_frontend_revision=SHA,
         expected_api_revision=SHA,
-        production_origins=[
-            "https://frontend.example.test",
-            "https://api.example.test",
-        ],
+        production_target_ids=["production-primary"],
+        production_origins=(
+            [frontend_origin, api_origin]
+            if target == "production"
+            else [
+                "https://frontend.example.test",
+                "https://api.example.test",
+            ]
+        ),
     )
 
 

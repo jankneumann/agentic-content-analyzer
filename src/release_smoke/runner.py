@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from src.release_smoke.models import ProtectedTargetPolicy, SurfaceObservation
 
-_TRUSTED_API_SOURCES = frozenset({"railway_commit_sha", "github_sha"})
+_TRUSTED_API_SOURCES = frozenset({"railway_commit_sha"})
 
 
 class ReleaseSmokeError(RuntimeError):
@@ -98,6 +98,7 @@ def build_cli_environment(
         {
             "API_BASE_URL": policy.api_origin,
             "ADMIN_API_KEY": admin_key,
+            "ACA_RELEASE_SMOKE": "1",
             "ENVIRONMENT": "production" if policy.target != "local" else "development",
         }
     )
