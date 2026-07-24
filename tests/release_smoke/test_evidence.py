@@ -223,6 +223,8 @@ def test_standalone_validator_never_echoes_rejected_values(tmp_path: Path) -> No
     assert result.returncode == 1
     assert secret_value not in result.stdout
     assert secret_value not in result.stderr
+    assert "TOPSECRET_UNOBSERVED" not in result.stdout
+    assert "TOPSECRET_UNOBSERVED" not in result.stderr
 
 
 def test_standalone_validator_replaces_missing_output_with_safe_envelope(
