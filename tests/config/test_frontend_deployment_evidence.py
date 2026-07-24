@@ -12,6 +12,7 @@ from scripts.validate_frontend_deployment_evidence import validate_evidence
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 VALIDATOR = REPO_ROOT / "scripts" / "validate_frontend_deployment_evidence.py"
+RUNBOOK = REPO_ROOT / "docs" / "MOBILE_DEPLOYMENT.md"
 SHA = "a" * 40
 
 
@@ -93,6 +94,30 @@ def _replace_field(evidence: str, label: str, value: str) -> str:
     lines = evidence.splitlines()
     prefix = f"- {label}:"
     return "\n".join(f"{prefix} {value}" if line.startswith(prefix) else line for line in lines)
+
+
+def test_detached_release_runbook_stamps_before_upload() -> None:
+    runbook = RUNBOOK.read_text(encoding="utf-8")
+    stamp_command = 'python scripts/stamp_release_revision.py "$ACA_FRONTEND_CANDIDATE_SHA"'
+    upload_command = "railway up"
+
+    assert stamp_command in runbook
+    assert runbook.index(stamp_command) < runbook.index(
+        upload_command, runbook.index(stamp_command)
+    )
+    assert "`verified_detached_sha` provenance" in runbook
+    assert "Record\n   that digest in the release evidence before upload" in runbook
+
+
+def test_runbook_separates_deployment_from_protected_release_smoke() -> None:
+    runbook = RUNBOOK.read_text(encoding="utf-8")
+
+    assert "#### Automated cross-surface release gate" in runbook
+    assert "`release-smoke-production`" in runbook
+    assert "`release-smoke-staging`" in runbook
+    assert "gh workflow run release-smoke.yml -f tier=production" in runbook
+    assert "gh workflow run release-smoke.yml -f tier=staging" in runbook
+    assert "it never performs deployment or rollback" in runbook
 
 
 def test_complete_sanitized_evidence_passes(complete_evidence: str) -> None:

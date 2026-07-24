@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from copy import deepcopy
@@ -142,6 +143,38 @@ def test_standalone_validator_imports_repository_package(tmp_path: Path) -> None
 
     assert result.returncode == 0
     assert result.stdout.strip() == "release-smoke evidence: VALID"
+
+
+def test_standalone_runner_writes_valid_failure_evidence_before_observation(
+    tmp_path: Path,
+) -> None:
+    policy_path = tmp_path / "invalid-policy.json"
+    policy_path.write_text("{}", encoding="utf-8")
+    evidence_path = tmp_path / "evidence.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts/run_release_smoke.py"),
+            "--policy-file",
+            str(policy_path),
+            "--output",
+            str(evidence_path),
+            "--target",
+            "production",
+        ],
+        cwd=tmp_path,
+        env={"ADMIN_API_KEY": "test-only", "PATH": os.environ["PATH"]},
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+
+    assert result.returncode == 1
+    assert evidence["result"] == "failed"
+    assert evidence["failure_codes"] == ["VALIDATOR_OUTPUT_REJECTED"]
+    assert validate_evidence(evidence) == []
 
 
 def test_orchestrator_returns_minimized_passing_evidence(

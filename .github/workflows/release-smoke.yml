@@ -1,0 +1,196 @@
+name: Release smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: Already-deployed target tier to verify
+        required: true
+        type: choice
+        options:
+          - production
+          - staging
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-smoke-${{ inputs.tier }}
+  cancel-in-progress: false
+
+jobs:
+  production-read-only:
+    if: inputs.tier == 'production'
+    runs-on: ubuntu-latest
+    environment: release-smoke-production
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+
+      - name: Install release-smoke dependencies
+        run: |
+          uv sync --frozen --extra release-smoke
+          uv run --frozen --extra release-smoke playwright install --with-deps chromium
+
+      - name: Materialize protected production policy
+        env:
+          ACA_TARGET_ID: ${{ vars.TARGET_ID }}
+          ACA_FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN }}
+          ACA_API_ORIGIN: ${{ vars.API_ORIGIN }}
+          ACA_EXPECTED_FRONTEND_REVISION: ${{ vars.EXPECTED_FRONTEND_REVISION }}
+          ACA_EXPECTED_API_REVISION: ${{ vars.EXPECTED_API_REVISION }}
+          ACA_PRODUCTION_ORIGINS_JSON: ${{ vars.PRODUCTION_ORIGINS_JSON }}
+        run: |
+          jq -n \
+            --arg target_id "$ACA_TARGET_ID" \
+            --arg frontend_origin "$ACA_FRONTEND_ORIGIN" \
+            --arg api_origin "$ACA_API_ORIGIN" \
+            --arg expected_frontend_revision "$ACA_EXPECTED_FRONTEND_REVISION" \
+            --arg expected_api_revision "$ACA_EXPECTED_API_REVISION" \
+            --argjson production_origins "$ACA_PRODUCTION_ORIGINS_JSON" \
+            '{
+              target_id: $target_id,
+              target: "production",
+              frontend_origin: $frontend_origin,
+              api_origin: $api_origin,
+              expected_frontend_revision: $expected_frontend_revision,
+              expected_api_revision: $expected_api_revision,
+              production_origins: $production_origins
+            }' > "$RUNNER_TEMP/release-smoke-policy.json"
+
+      - name: Run production read-only smoke
+        id: smoke
+        continue-on-error: true
+        env:
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+          APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
+        run: |
+          uv run --frozen --extra release-smoke python scripts/run_release_smoke.py \
+            --policy-file "$RUNNER_TEMP/release-smoke-policy.json" \
+            --output "$RUNNER_TEMP/release-smoke-evidence.json" \
+            --target production
+
+      - name: Validate sanitized evidence
+        id: validate
+        if: always()
+        run: |
+          uv run --frozen --extra release-smoke python \
+            scripts/validate_release_smoke_evidence.py \
+            "$RUNNER_TEMP/release-smoke-evidence.json"
+
+      - name: Retain validated production evidence
+        if: always() && steps.validate.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-smoke-production-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-smoke-evidence.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce production compatibility gate
+        if: always()
+        env:
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+          VALIDATION_OUTCOME: ${{ steps.validate.outcome }}
+        run: |
+          test "$VALIDATION_OUTCOME" = "success"
+          test "$SMOKE_OUTCOME" = "success"
+
+  staging-mutation:
+    if: inputs.tier == 'staging'
+    runs-on: ubuntu-latest
+    environment: release-smoke-staging
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+
+      - name: Install release-smoke dependencies
+        run: |
+          uv sync --frozen --extra release-smoke
+          uv run --frozen --extra release-smoke playwright install --with-deps chromium
+
+      - name: Materialize protected staging policy
+        env:
+          ACA_TARGET_ID: ${{ vars.TARGET_ID }}
+          ACA_FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN }}
+          ACA_API_ORIGIN: ${{ vars.API_ORIGIN }}
+          ACA_EXPECTED_FRONTEND_REVISION: ${{ vars.EXPECTED_FRONTEND_REVISION }}
+          ACA_EXPECTED_API_REVISION: ${{ vars.EXPECTED_API_REVISION }}
+          ACA_PRODUCTION_ORIGINS_JSON: ${{ vars.PRODUCTION_ORIGINS_JSON }}
+        run: |
+          jq -n \
+            --arg target_id "$ACA_TARGET_ID" \
+            --arg frontend_origin "$ACA_FRONTEND_ORIGIN" \
+            --arg api_origin "$ACA_API_ORIGIN" \
+            --arg expected_frontend_revision "$ACA_EXPECTED_FRONTEND_REVISION" \
+            --arg expected_api_revision "$ACA_EXPECTED_API_REVISION" \
+            --argjson production_origins "$ACA_PRODUCTION_ORIGINS_JSON" \
+            '{
+              target_id: $target_id,
+              target: "staging",
+              frontend_origin: $frontend_origin,
+              api_origin: $api_origin,
+              expected_frontend_revision: $expected_frontend_revision,
+              expected_api_revision: $expected_api_revision,
+              production_origins: $production_origins
+            }' > "$RUNNER_TEMP/release-smoke-policy.json"
+
+      - name: Run approval-controlled staging mutation smoke
+        id: smoke
+        continue-on-error: true
+        env:
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+          APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
+        run: |
+          uv run --frozen --extra release-smoke python scripts/run_release_smoke.py \
+            --policy-file "$RUNNER_TEMP/release-smoke-policy.json" \
+            --output "$RUNNER_TEMP/release-smoke-evidence.json" \
+            --target staging \
+            --allow-mutations \
+            --fixture url.json
+
+      - name: Validate sanitized evidence
+        id: validate
+        if: always()
+        run: |
+          uv run --frozen --extra release-smoke python \
+            scripts/validate_release_smoke_evidence.py \
+            "$RUNNER_TEMP/release-smoke-evidence.json"
+
+      - name: Retain validated staging evidence
+        if: always() && steps.validate.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-smoke-staging-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-smoke-evidence.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce staging compatibility gate
+        if: always()
+        env:
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+          VALIDATION_OUTCOME: ${{ steps.validate.outcome }}
+        run: |
+          test "$VALIDATION_OUTCOME" = "success"
+          test "$SMOKE_OUTCOME" = "success"

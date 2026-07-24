@@ -77,19 +77,19 @@
 
 ## Phase 4 — CI and operator integration (`wp-release-integration`)
 
-- [ ] 4.1 Add production read-only and approval-controlled staging mutation workflow
+- [x] 4.1 Add production read-only and approval-controlled staging mutation workflow
   entry points whose target policy is protected and whose evidence is validated
   before retention. **(M)**
   **Spec scenarios:** Production promotion gate; Staging mutation workflow
   **Design decisions:** D6
-- [ ] 4.2 Add deterministic configuration tests for workflow permissions, environment
+- [x] 4.2 Add deterministic configuration tests for workflow permissions, environment
   isolation, secret transport, expected revisions, and artifact retention. **(M)**
   **Dependencies:** 4.1
-- [ ] 4.3 Document local, production read-only, and staging mutation commands plus
+- [x] 4.3 Document local, production read-only, and staging mutation commands plus
   detached-SHA stamp/upload identity, evidence interpretation, and failure
   handling in the canonical release runbook. **(M)**
   **Dependencies:** 2.4, 3.4, 4.2
-- [ ] 4.4 Run focused Python, CLI, frontend, Playwright-fixture, configuration,
+- [x] 4.4 Run focused Python, CLI, frontend, Playwright-fixture, configuration,
   schema, security, and strict OpenSpec gates. **(M)**
   **Dependencies:** 1.4, 2.5, 3.4, 4.3
 

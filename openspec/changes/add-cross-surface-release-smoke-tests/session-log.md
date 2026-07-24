@@ -67,3 +67,19 @@
   points that import correctly from outside the repository.
 - Focused result: 41 release-smoke tests passed; Ruff, mypy, standalone
   validator, and diff checks passed.
+
+## 2026-07-23 — CI and operator integration
+
+- Added separate read-only production and approval-controlled staging mutation
+  jobs. Callers select only the tier; protected environment variables and
+  secrets supply exact target identity, origins, expected revisions, deny
+  aliases, and credentials.
+- Made sanitized evidence validation a prerequisite for bounded artifact
+  retention and preserved a failing job outcome after safe evidence upload.
+- Added a fixed-field fallback for malformed protected policy and other
+  pre-observation runner failures.
+- Updated local and production runbooks, including the clean detached-HEAD
+  frontend stamp and served `verified_detached_sha` identity chain.
+- Complete package gate: 116 Python tests and 7 Vitest cases passed; Ruff,
+  mypy, TypeScript typecheck, production build, strict OpenSpec, package schema,
+  dependency/DAG/lock, and diff checks passed.

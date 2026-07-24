@@ -541,6 +541,7 @@ environment values.
    git -C "$ACA_FRONTEND_RELEASE_WORKTREE" status --porcelain=v1
    (
      cd "$ACA_FRONTEND_RELEASE_WORKTREE"
+     python scripts/stamp_release_revision.py "$ACA_FRONTEND_CANDIDATE_SHA"
      railway up \
        --ci \
        --project 4b0db3b8-110d-4a13-81d5-440aa2ddc98d \
@@ -551,9 +552,14 @@ environment values.
    ```
 
    The detached `rev-parse` must equal the checked SHA and the detached status
-   must print nothing. Stop if the build or deployment does not reach
-   `SUCCESS`; never make a canary request against a failed or ambiguous
-   release.
+   must print nothing. The stamp command must report
+   `web/release-build.json`, the same full SHA, and a SHA-256 digest. Record
+   that digest in the release evidence before upload. The stamp is an
+   ephemeral build input and must not be committed; Vite embeds its
+   `verified_detached_sha` provenance in the served HTML and
+   `release-assets.json`. Stop if stamp generation, build, or deployment does
+   not reach `SUCCESS`; never make a canary request against a failed or
+   ambiguous release.
 
 5. Verify Railway metadata and the public route.
 
@@ -568,7 +574,10 @@ environment values.
    Require the new active deployment to be `SUCCESS`, and require its
    `meta.cliMessage` to equal `frontend-release <CI-passed-SHA>`. CLI uploads
    intentionally have a null `meta.commitHash`; the clean detached checkout
-   plus the persisted SHA-bearing CLI message is the supported identity chain.
+   plus the verified build stamp and persisted SHA-bearing CLI message is the
+   supported identity chain. The later release-smoke gate must observe the
+   candidate SHA and `verified_detached_sha` provenance from the public
+   frontend.
    Inspect the bounded build log and record that `web/package-lock.json` was
    uploaded, Railpack ran `npm ci`, and the resolved runtime was Node 22.x.
    Record deployment and verification window bounds as ISO-8601 UTC timestamps
@@ -648,6 +657,66 @@ environment values.
    and capability request without submitting another canary, and record the
    rollback deployment ID. Preserve both temporary worktrees until the release
    or rollback evidence has been validated.
+
+#### Automated cross-surface release gate
+
+The `Release smoke` GitHub workflow verifies an already deployed frontend/API
+pair; it never performs deployment or rollback. Configure two GitHub
+environments with required reviewers:
+
+| Environment | Purpose |
+|---|---|
+| `release-smoke-production` | Production read-only promotion evidence |
+| `release-smoke-staging` | Explicit staging mutation and terminal operation evidence |
+
+Each environment owns these protected variables:
+
+- `TARGET_ID`: stable lowercase target identifier
+- `FRONTEND_ORIGIN` and `API_ORIGIN`: exact HTTPS origins with no path
+- `EXPECTED_FRONTEND_REVISION` and `EXPECTED_API_REVISION`: lowercase full
+  40-character SHAs observed from the deployed pair
+- `PRODUCTION_ORIGINS_JSON`: JSON array containing every production frontend
+  and API origin; staging uses it as a deny list
+
+Each environment also owns `ADMIN_API_KEY` and, when browser login is enabled,
+`APP_SECRET_KEY` as environment secrets. The caller cannot override any target
+fact or credential.
+
+Run the production read-only promotion gate after deployment:
+
+```bash
+gh workflow run release-smoke.yml -f tier=production
+gh run watch --exit-status
+```
+
+Run the mutation tier only against the reviewed staging environment:
+
+```bash
+gh workflow run release-smoke.yml -f tier=staging
+gh run watch --exit-status
+```
+
+The staging tier submits the checked-in `url.json` fixture exactly once with a
+run-ID-derived idempotency key and waits for a completed durable operation. It
+cannot run with the production policy or origins.
+
+Both jobs validate the minimized JSON report before uploading it, retain only
+that report for 14 days, and then fail when any compatibility check failed.
+Download and independently validate an artifact when investigating:
+
+```bash
+gh run download <run-id> --name <release-smoke-artifact-name>
+uv run --frozen --extra release-smoke python \
+  scripts/validate_release_smoke_evidence.py \
+  release-smoke-evidence.json
+```
+
+Stable failure codes identify the failed boundary without retaining raw
+headers, cookies, URLs, subprocess output, Playwright traces, videos, or
+content. A revision mismatch means the served pair is stale or mixed: stop
+promotion and inspect deployment metadata. An ambiguous staging submission
+must not be retried; reconstruct its idempotency key as
+`aca-release-smoke-v1:<run_id>` and reconcile the operation first.
 
 #### Diagnosing cross-origin failures from backend logs
 
