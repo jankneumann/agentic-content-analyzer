@@ -41,3 +41,16 @@
   manifest.
 - Focused result: 28 tests passed; Ruff check/format, TypeScript typecheck,
   production build, and diff checks passed.
+
+## 2026-07-23 — Read-only cross-surface implementation
+
+- Added exact protected-target policy validation and minimal CLI environments.
+- Added direct API and real CLI subprocess discovery adapters with first-page
+  cursor omission.
+- Added typed configured-source discovery to the deployed ingestion UI.
+- Added Python Playwright browser observation with service workers blocked and
+  off-policy API rejection.
+- Added non-overridable retired-route baseline and revision/digest-bound asset
+  scanning with count, byte, MIME, redirect, and deadline guards.
+- Focused result: 21 Python tests and 7 Vitest cases passed; Ruff, mypy,
+  TypeScript typecheck, production build, and diff checks passed.

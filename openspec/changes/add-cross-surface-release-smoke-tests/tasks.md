@@ -31,27 +31,27 @@
 
 ## Phase 2 — Read-only cross-surface runner (`wp-readonly-runner`)
 
-- [ ] 2.1 Define the explicit `release-smoke` dependency extra, protected target
+- [x] 2.1 Define the explicit `release-smoke` dependency extra, protected target
   policy, exact-origin/redirect guards, result models, and revision comparison
   with production-safe defaults. **(M)**
   **Spec scenarios:** Default tier is read-only; Expected revisions match served revisions
   **Design decisions:** D2, D3
-- [ ] 2.2 Test and implement direct API discovery and real `aca` subprocess execution
+- [x] 2.2 Test and implement direct API discovery and real `aca` subprocess execution
   with environment-only credentials. **(M)**
   **Spec scenarios:** First discovery page omits cursor
   **Dependencies:** 2.1
-- [ ] 2.3 Add typed frontend configured-source discovery to the ingestion
+- [x] 2.3 Add typed frontend configured-source discovery to the ingestion
   surface, with first-page cursor omission tests. **(M)**
   **Spec scenarios:** Frontend consumes capability discovery
   **Dependencies:** 2.1
-- [ ] 2.4 Test and implement deployed Playwright discovery using a fresh,
+- [x] 2.4 Test and implement deployed Playwright discovery using a fresh,
   service-worker-blocked context that rejects off-policy API traffic. **(M)**
   **Dependencies:** 2.3
-- [ ] 2.5 Define the non-overridable retired-route baseline and test/implement
+- [x] 2.5 Define the non-overridable retired-route baseline and test/implement
   bounded manifest-complete asset plus normalized request scanning. **(L)**
   **Spec scenarios:** Browser observes a retired mutation; Served asset contains a retired mutation
   **Dependencies:** 1.4, 2.4
-- [ ] Checkpoint: run the read-only runner against a deterministic local fixture
+- [x] Checkpoint: run the read-only runner against a deterministic local fixture
   and verify no mutation method is emitted.
 
 ## Phase 3 — Guarded mutation and evidence (`wp-mutation-evidence`)

@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 import { ApiClientError, apiClient } from "../client"
 import {
   getAllCapabilities,
+  getConfiguredSources,
   listAllOperations,
   submitDigest,
   submitIngestion,
@@ -37,6 +38,19 @@ describe("canonical workflow client", () => {
     ])
     expect(get).toHaveBeenNthCalledWith(2, "/capabilities", {
       params: { cursor: "next", limit: 100 },
+    })
+  })
+
+  it("omits cursor from configured-source first page", async () => {
+    const get = vi.spyOn(apiClient, "get").mockResolvedValue({
+      data: [],
+      next_cursor: null,
+    })
+
+    await getConfiguredSources()
+
+    expect(get).toHaveBeenCalledWith("/configured-sources", {
+      params: { limit: 100 },
     })
   })
 
