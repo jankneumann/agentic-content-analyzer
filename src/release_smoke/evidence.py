@@ -193,7 +193,7 @@ def validate_evidence(document: object) -> list[str]:
                 and code.endswith("_UNOBSERVED")
                 and code not in (_PREOBSERVATION_CODES)
             ):
-                errors.append(f"failure_codes: unsupported pre-observation code {code}")
+                errors.append("failure_codes: unsupported pre-observation code")
 
     assets = document.get("assets")
     if isinstance(assets, list):

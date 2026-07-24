@@ -310,7 +310,7 @@ def run_browser_discovery(
 ) -> BrowserObservation:
     """Exercise deployed frontend discovery in a fresh, cache-busted browser."""
     try:
-        from playwright.sync_api import Request, Route, sync_playwright
+        from playwright.sync_api import Request, Route, WebSocketRoute, sync_playwright
     except ImportError as exc:  # pragma: no cover - dependency gate has a focused test
         raise AssetManifestError("Python Playwright release-smoke extra is unavailable") from exc
 
@@ -319,6 +319,7 @@ def run_browser_discovery(
     observed_javascript_paths: set[str] = set()
     off_policy_requests: list[str] = []
     unsafe_methods: list[str] = []
+    websocket_attempts: list[str] = []
     api_origin = urlsplit(policy.api_origin)
     frontend_origin = urlsplit(policy.frontend_origin)
     allowed_origins = {policy.api_origin, policy.frontend_origin}
@@ -354,6 +355,10 @@ def run_browser_discovery(
             return
         route.continue_()
 
+    def block_websocket(websocket: WebSocketRoute) -> None:
+        websocket_attempts.append(websocket.url)
+        # Routed sockets do not connect unless the handler explicitly connects them.
+
     session_cookie = _browser_session_cookie(policy, app_secret)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
@@ -367,6 +372,7 @@ def run_browser_discovery(
         if session_cookie is not None:
             context.add_cookies([cast(Any, session_cookie)])
         context.route("**/*", enforce_origin)
+        context.route_web_socket("**/*", block_websocket)
         page = context.new_page()
         page.on("request", observe_request)
 
@@ -426,6 +432,8 @@ def run_browser_discovery(
         raise AssetManifestError("Frontend attempted off-policy network traffic")
     if unsafe_methods:
         raise AssetManifestError("Frontend attempted a non-read-only request")
+    if websocket_attempts:
+        raise AssetManifestError("Frontend attempted WebSocket traffic")
     for required_path in required_paths:
         matches = [
             (method, status) for method, path, status in observed_api if path == required_path

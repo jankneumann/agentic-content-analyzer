@@ -199,7 +199,12 @@ def test_standalone_validator_never_echoes_rejected_values(tmp_path: Path) -> No
     evidence_path = tmp_path / "invalid.json"
     secret_value = "api_key=TOPSECRET"
     evidence_path.write_text(
-        json.dumps({"frontend": {"origin": secret_value}}),
+        json.dumps(
+            {
+                "frontend": {"origin": secret_value},
+                "failure_codes": ["TOPSECRET_UNOBSERVED"],
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -240,7 +245,7 @@ def test_standalone_validator_replaces_missing_output_with_safe_envelope(
     )
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
 
-    assert result.returncode == 0
+    assert result.returncode == 2
     assert evidence["result"] == "failed"
     assert evidence["failure_codes"] == ["VALIDATOR_OUTPUT_REJECTED"]
     assert validate_evidence(evidence) == []

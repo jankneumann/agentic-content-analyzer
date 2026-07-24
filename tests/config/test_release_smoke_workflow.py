@@ -119,19 +119,25 @@ def test_validated_evidence_is_the_only_retained_artifact() -> None:
     ):
         job = _job(job_name)
         names = [step.get("name") for step in job["steps"]]
+        normalize_name = f"Normalize invalid {suffix} evidence"
         validate_name = "Validate sanitized evidence"
         upload_name = f"Retain validated {suffix} evidence"
+        normalize = _step(job, normalize_name)
         validate = _step(job, validate_name)
         upload = _step(job, upload_name)
         enforce = _step(job, f"Enforce {suffix} compatibility gate")
 
         assert (
-            names.index(validate_name)
+            names.index(normalize_name)
+            < names.index(validate_name)
             < names.index(upload_name)
             < names.index(f"Enforce {suffix} compatibility gate")
         )
+        assert normalize["if"] == "always()"
+        assert normalize["continue-on-error"] is True
+        assert f"--replace-invalid-with-failure-target {suffix}" in normalize["run"]
         assert validate["if"] == "always()"
-        assert f"--replace-invalid-with-failure-target {suffix}" in validate["run"]
+        assert "--replace-invalid-with-failure-target" not in validate["run"]
         assert upload["if"] == "always() && steps.validate.outcome == 'success'"
         assert upload["uses"].startswith("actions/upload-artifact@")
         assert upload["with"]["path"] == "${{ runner.temp }}/release-smoke-evidence.json"
@@ -139,6 +145,7 @@ def test_validated_evidence_is_the_only_retained_artifact() -> None:
         assert upload["with"]["retention-days"] == 14
         assert enforce["if"] == "always()"
         assert 'test "$VALIDATION_OUTCOME" = "success"' in enforce["run"]
+        assert 'test "$NORMALIZATION_OUTCOME" = "success"' in enforce["run"]
         assert 'test "$SMOKE_OUTCOME" = "success"' in enforce["run"]
 
     workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8").casefold()

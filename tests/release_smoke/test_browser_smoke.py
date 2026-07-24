@@ -369,6 +369,33 @@ def test_browser_blocks_non_read_only_same_origin_requests() -> None:
         thread.join(timeout=5)
 
 
+def test_browser_blocks_websocket_traffic() -> None:
+    original = _BrowserFixtureHandler.javascript
+    _BrowserFixtureHandler.javascript = original + b';new WebSocket("ws://127.0.0.1:9/collect")'
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _BrowserFixtureHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    origin = f"http://127.0.0.1:{server.server_port}"
+    policy = ProtectedTargetPolicy(
+        target_id="local-browser",
+        target="local",
+        frontend_origin=origin,
+        api_origin=origin,
+        expected_frontend_revision=None,
+        expected_api_revision=None,
+        production_target_ids=[],
+        production_origins=[],
+    )
+    try:
+        with pytest.raises(AssetManifestError, match="WebSocket"):
+            run_browser_discovery(policy, app_secret=None, retired_routes=())
+    finally:
+        _BrowserFixtureHandler.javascript = original
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
 def test_browser_rejects_cross_origin_navigation_redirect() -> None:
     _BrowserFixtureHandler.redirect_location = "http://127.0.0.1:9/collect"
     server = ThreadingHTTPServer(("127.0.0.1", 0), _BrowserFixtureHandler)

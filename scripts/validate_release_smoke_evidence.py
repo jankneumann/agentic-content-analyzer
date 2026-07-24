@@ -62,7 +62,7 @@ def main() -> int:
                 encoding="utf-8",
             )
             print("release-smoke evidence: VALID (safe failure envelope)")
-            return 0
+            return 2
         print("release-smoke evidence: INVALID")
         for error in errors:
             print(f"- {error}")

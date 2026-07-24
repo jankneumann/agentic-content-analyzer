@@ -85,14 +85,23 @@ jobs:
             --output "$RUNNER_TEMP/release-smoke-evidence.json" \
             --target production
 
+      - name: Normalize invalid production evidence
+        id: normalize
+        if: always()
+        continue-on-error: true
+        run: |
+          uv run --frozen --extra release-smoke python \
+            scripts/validate_release_smoke_evidence.py \
+            "$RUNNER_TEMP/release-smoke-evidence.json" \
+            --replace-invalid-with-failure-target production
+
       - name: Validate sanitized evidence
         id: validate
         if: always()
         run: |
           uv run --frozen --extra release-smoke python \
             scripts/validate_release_smoke_evidence.py \
-            "$RUNNER_TEMP/release-smoke-evidence.json" \
-            --replace-invalid-with-failure-target production
+            "$RUNNER_TEMP/release-smoke-evidence.json"
 
       - name: Retain validated production evidence
         if: always() && steps.validate.outcome == 'success'
@@ -107,9 +116,11 @@ jobs:
         if: always()
         env:
           SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+          NORMALIZATION_OUTCOME: ${{ steps.normalize.outcome }}
           VALIDATION_OUTCOME: ${{ steps.validate.outcome }}
         run: |
           test "$VALIDATION_OUTCOME" = "success"
+          test "$NORMALIZATION_OUTCOME" = "success"
           test "$SMOKE_OUTCOME" = "success"
 
   staging-mutation:
@@ -180,14 +191,23 @@ jobs:
             --allow-mutations \
             --fixture url.json
 
+      - name: Normalize invalid staging evidence
+        id: normalize
+        if: always()
+        continue-on-error: true
+        run: |
+          uv run --frozen --extra release-smoke python \
+            scripts/validate_release_smoke_evidence.py \
+            "$RUNNER_TEMP/release-smoke-evidence.json" \
+            --replace-invalid-with-failure-target staging
+
       - name: Validate sanitized evidence
         id: validate
         if: always()
         run: |
           uv run --frozen --extra release-smoke python \
             scripts/validate_release_smoke_evidence.py \
-            "$RUNNER_TEMP/release-smoke-evidence.json" \
-            --replace-invalid-with-failure-target staging
+            "$RUNNER_TEMP/release-smoke-evidence.json"
 
       - name: Retain validated staging evidence
         if: always() && steps.validate.outcome == 'success'
@@ -202,7 +222,9 @@ jobs:
         if: always()
         env:
           SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+          NORMALIZATION_OUTCOME: ${{ steps.normalize.outcome }}
           VALIDATION_OUTCOME: ${{ steps.validate.outcome }}
         run: |
           test "$VALIDATION_OUTCOME" = "success"
+          test "$NORMALIZATION_OUTCOME" = "success"
           test "$SMOKE_OUTCOME" = "success"

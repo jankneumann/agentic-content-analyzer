@@ -32,7 +32,8 @@ state machine.
      first-page discovery.
    - A fresh Playwright context authenticates directly to the exact API, keeps
      the password out of served JavaScript, and loads only exact protected
-     frontend/API origins with read-only methods.
+     frontend/API origins with read-only methods while blocking every
+     WebSocket attempt.
    - Loaded HTML plus manifest-complete Rollup/PWA JavaScript and normalized
      observed requests are checked against a non-overridable retired-mutation
      baseline with streaming byte/deadline bounds.
@@ -45,7 +46,7 @@ state machine.
 5. **Release workflow → retained evidence**
    - Schema and semantic validation precede retention of a sanitized JSON
      artifact; invalid runner output is replaced with a separately validated
-     minimal failure envelope.
+     minimal failure envelope while preserving a failed normalization signal.
    - Promotion consumes observed revisions and pass/fail checks.
 
 ## Compatibility and Risk
@@ -57,8 +58,8 @@ state machine.
 - **Data risk**: production default is read-only; staging mutation is one-shot
   and idempotent.
 - **Security risk**: credentials remain environment-only and exact-origin
-  pinned; redirects and browser writes are disabled; retained evidence is
-  allowlisted and contains no raw traffic.
+  pinned; redirects, browser writes, and WebSockets are disabled; retained
+  evidence is allowlisted and contains no raw traffic.
 - **Performance risk**: no request-path overhead except constant-time revision
   normalization on liveness; asset scanning runs outside services.
 - **Rollback**: remove the gate/workflow and additive revision metadata. No data

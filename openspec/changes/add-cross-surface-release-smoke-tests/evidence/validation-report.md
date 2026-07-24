@@ -9,13 +9,14 @@ implementation and security rework.
 
 ## Behavioral and contract gates
 
-- 142 release-smoke, workflow configuration, build identity, stamp, manual
+- 143 release-smoke, workflow configuration, build identity, stamp, manual
   evidence, and health tests passed.
 - 49 canonical `WorkflowApiClient` and real CLI command-boundary tests passed.
 - 7 focused frontend workflow-contract tests passed.
 - A real local Chromium fixture exercised direct API and frontend discovery,
   exact-origin routing, read-only enforcement, cross-origin redirect rejection,
-  cookie policy, loaded HTML scanning, and manifest-complete asset retrieval.
+  WebSocket denial, cookie policy, loaded HTML scanning, and manifest-complete
+  asset retrieval.
 - The production frontend build emitted an inventory exactly matching all
   generated JavaScript, including `/sw.js`, Workbox, entry, and lazy chunks.
 
@@ -37,7 +38,8 @@ implementation and security rework.
   environment controls.
 - Credentials remain environment-only and are absent from retained evidence.
 - Invalid or missing evidence is discarded and replaced with a separately
-  generated, validated fixed-field failure envelope before artifact upload.
+  generated, validated fixed-field failure envelope before artifact upload;
+  replacement remains a failed promotion signal.
 - Production browser and direct runner paths cannot construct a workflow
   mutation; staging mutation requires protected identity/origin deny registries,
   explicit authorization, and the checked-in fixture.

@@ -71,9 +71,10 @@ expected revisions, production target-ID registry, and production origin deny
 aliases cannot be workflow inputs.
 Require HTTPS outside loopback-local mode. Disable HTTP redirects and reject
 every destination that is not the exact pinned origin before adding
-authentication. Browser routing aborts off-policy API requests, and observed
-workflow traffic must target the pinned API origin. The production and staging
-GitHub environments own separate policies and secrets.
+authentication. Browser routing aborts every off-policy HTTP(S) request and
+every WebSocket attempt, while observed workflow traffic must target the pinned
+API origin. The production and staging GitHub environments own separate
+policies and secrets.
 
 ### D3. Defeat stale browser state and inspect dormant code
 
@@ -152,8 +153,10 @@ credentials come from the corresponding approval-protected GitHub environment:
 Validate schema and semantics before upload. If the runner output is missing or
 cannot validate, discard it and generate a separate minimal failure envelope
 from fixed safe fields and the validator's stable failure code; validate that
-envelope before upload. Upload only validated evidence with bounded retention,
-then fail the job when compatibility did not pass. Workflow permissions remain
+envelope before upload. Replacement remains an explicit failed normalization
+outcome so a valid fallback artifact cannot become a passing promotion signal.
+Upload only validated evidence with bounded retention, then fail the job when
+compatibility did not pass. Workflow permissions remain
 read-only, action/tool references are immutable, and protected environments
 require reviewed ref restrictions without self-approval. Documentation makes
 clear that the workflow verifies an already deployed pair; deployment remains

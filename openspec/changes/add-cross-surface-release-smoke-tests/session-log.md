@@ -110,3 +110,12 @@
   passed; 7 Vitest cases, TypeScript typecheck, complete post-PWA production
   build, Ruff, mypy, strict OpenSpec, package schema/dependency/DAG/lock, and
   diff checks passed.
+
+## 2026-07-23 — Final security re-review rework
+
+- Preserved invalid-output normalization as an explicit failed workflow outcome
+  while independently validating and retaining the safe fallback envelope.
+- Removed rejected failure-code values from validator diagnostics and extended
+  the standalone no-echo regression.
+- Routed and blocked every browser WebSocket before page creation, recorded any
+  attempt as a smoke failure, and exercised the boundary in real Chromium.
