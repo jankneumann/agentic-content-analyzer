@@ -1,0 +1,266 @@
+schema_version: 1
+roadmap_id: roadmap-workflow-surface-reliability
+source_proposal: openspec/roadmaps/workflow-surface-reliability/proposal.md
+status: approved
+policy:
+  default_action: wait_if_budget_exceeded
+  max_switch_attempts_per_item: 2
+items:
+- item_id: ri-01
+  title: Repair canonical CLI transport behavior
+  status: completed
+  priority: 1
+  effort: M
+  depends_on: []
+  description: Fix optional query serialization in the shared workflow client and
+    stabilize the affected CLI tests and machine-readable output. Cover capability
+    discovery, configured sources, operation listing, credential-dependent curation
+    behavior, and asynchronous graph tests at the real transport boundary.
+  rationale: Production discovery and operation commands currently fail despite strong
+    mocked coverage, so the canonical CLI surface must be trustworthy before higher-level
+    evaluations depend on it.
+  change_id: repair-canonical-cli-transport-behavior
+  acceptance_outcomes:
+  - aca capabilities --json, aca configured-sources --json, and aca --json operations
+    list succeed against a deployed API when no cursor is supplied.
+  - Transport-level tests assert that absent optional values do not appear in serialized
+    query strings.
+  - CLI tests cannot select a live YouTube API path based on developer-local credentials.
+  - The CLI suite completes without unawaited-coroutine warnings, and JSON stdout
+    contains only the requested result.
+- item_id: ri-02
+  title: Restore the Railway frontend deployment
+  status: completed
+  priority: 2
+  effort: M
+  depends_on: []
+  description: Make the frontend build reproducible under the documented Railway configuration,
+    move generated-contract drift enforcement to a context with the complete toolchain,
+    and deploy the current capability-driven ingestion UI.
+  rationale: Production is serving an old frontend that calls retired mutations because
+    the corrected frontend cannot build in Railway.
+  change_id: restore-railway-frontend-deployment
+  acceptance_outcomes:
+  - A clean Railway frontend build succeeds from the checked-in service configuration.
+  - CI runs both the production frontend build and the generated workflow-contract
+    drift check.
+  - The active production frontend revision discovers capabilities and submits POST
+    /api/v1/ingestions.
+  - Production traffic no longer calls POST /api/v1/contents/ingest or POST /api/v1/content/save-url.
+- item_id: ri-03
+  title: Reconcile the OpenSpec inventory
+  status: completed
+  priority: 3
+  effort: M
+  depends_on: []
+  description: Verify implementation and deployment evidence, archive completed or
+    superseded changes, and extract only genuine remaining gaps into focused follow-up
+    changes. Do not repeat filtering, database override, HuggingFace, LLM routing
+    foundation, ParadeDB/Langfuse configuration, or MCP envelope implementation.
+  rationale: Accurate planning state is required before refining the remaining reliability
+    proposals and prevents completed work from being implemented twice.
+  change_id: reconcile-openspec-inventory
+  acceptance_outcomes:
+  - add-ingestion-filtering-prioritization and db-source-overrides are verified and
+    archived.
+  - add-huggingface-papers-source, llm-router-evaluation, and use-paradedb-railway-langfuse-default
+    are reconciled against implementation and external evidence.
+  - unify-mcp-ingest-envelope is archived as superseded by canonical durable operations.
+  - Any unresolved image-name, deployment, or model-reachability gap is represented
+    by a focused schema-valid change.
+  - The active OpenSpec inventory contains only actionable work.
+- item_id: ri-04
+  title: Add cross-surface release smoke tests
+  status: in_progress
+  priority: 4
+  effort: L
+  depends_on:
+  - ri-01
+  - ri-02
+  description: Add a deployed-environment compatibility gate spanning the frontend,
+    CLI, and API. Separate production-safe read-only checks from staging or ephemeral
+    mutation scenarios and record service revisions as promotion evidence.
+  rationale: A release boundary test is needed to detect stale artifacts and contract
+    skew before operators encounter retired routes or malformed requests.
+  change_id: add-cross-surface-release-smoke-tests
+  acceptance_outcomes:
+  - The gate fails when a deployed frontend calls a retired workflow mutation.
+  - The gate exercises capability discovery and cursor omission through the frontend
+    client contract and real CLI transport.
+  - A staging or ephemeral scenario submits a canonical ingestion request and observes
+    its durable operation through a terminal state.
+  - Default configuration prevents mutating smoke scenarios from targeting production.
+  - Promotion documentation records the tested frontend and API revisions and links
+    to retained evidence.
+- item_id: ri-05
+  title: Implement real ingestion CI tiers
+  status: approved
+  priority: 5
+  effort: L
+  depends_on:
+  - ri-03
+  description: Refine real-ingestion-test-tiers-in-ci around SOURCE_REGISTRY, typed
+    IngestCommand models, source fixtures, and durable operation results. Add a curated
+    pull-request tier and a broader scheduled tier with explicit policies for credentials
+    and network sensitivity.
+  rationale: Mocked tests do not detect adapter, queue, database, and persistence
+    integration failures across the real ingestion boundary.
+  change_id: real-ingestion-test-tiers-in-ci
+  acceptance_outcomes:
+  - The pull-request tier submits representative source commands through the canonical
+    workflow service and verifies terminal results against database row deltas.
+  - The scheduled tier exercises credentialed or network-sensitive adapters with explicit
+    skip and failure rules.
+  - Every SOURCE_REGISTRY entry maps to a fixture tier or a reviewed exclusion.
+  - CI publishes durable operation and result evidence sufficient to distinguish adapter,
+    queue, and persistence failures.
+- item_id: ri-06
+  title: Establish CLI gen-eval coverage
+  status: approved
+  priority: 6
+  effort: L
+  depends_on:
+  - ri-03
+  - ri-04
+  description: Add the supported gen-eval runner, checked-in CLI descriptor and scenarios,
+    Make target, report validation, and CI threshold. Categorize read-only discovery
+    and validation separately from staging-only submission and terminal workflow behavior.
+  rationale: The remembered evaluation suite is absent, leaving key command behavior
+    unmeasured outside mocked tests.
+  change_id: establish-cli-gen-eval-coverage
+  acceptance_outcomes:
+  - make gen-eval executes the checked-in descriptor and scenario suite and emits
+    a schema-valid report.
+  - Scenarios cover version and help, discovery, validation, every canonical workflow
+    operation type, and operation wait, status, retry, and cancel commands.
+  - CI enforces a documented pass-rate threshold and publishes failures grouped by
+    command and category.
+  - Mutating scenarios require an explicit staging or ephemeral target and reject
+    production by default.
+- item_id: ri-07
+  title: Reconcile persisted ingestion results
+  status: approved
+  priority: 7
+  effort: L
+  depends_on:
+  - ri-05
+  - ri-06
+  description: Map persisted-ingestion-run-results requirements to existing pgqueuer_jobs
+    operations, checkpoints, source results, resources, retries, and terminal problems.
+    Add only demonstrably missing typed projections, history filters, retention behavior,
+    and canonical API or CLI queries.
+  rationale: Operators need useful ingestion history without creating a second authoritative
+    run state machine beside durable operations.
+  change_id: persisted-ingestion-run-results
+  acceptance_outcomes:
+  - Every original persisted-result acceptance case maps to existing durable state
+    or a specified remaining gap.
+  - Canonical API and CLI surfaces can query per-source history and distinguish partial,
+    zero-item, failed, and successful outcomes.
+  - Result-size and retention rules are documented and covered by deterministic tests.
+  - Parent-child operations, retries, checkpoints, and idempotency remain authoritative
+    in the existing operation model.
+  - No parallel ingestion-run table or state machine is introduced without a documented
+    unmet query or retention requirement.
+- item_id: ri-08
+  title: Reconcile stuck content states
+  status: approved
+  priority: 8
+  effort: L
+  depends_on:
+  - ri-07
+  description: Refine stuck-content-sweeper-and-requeue-cli into a narrow reconciliation
+    workflow for content rows whose transitional state conflicts with terminal or
+    stale durable operations. Reuse operation retry, cancellation, retry budgets,
+    checkpoints, and idempotency wherever possible.
+  rationale: Recovery must repair domain state without bypassing the durable operation
+    model or duplicating ingested content.
+  change_id: stuck-content-sweeper-and-requeue-cli
+  acceptance_outcomes:
+  - Tested rules identify authoritative operation-to-content state transitions and
+    bounded retry behavior.
+  - Dry-run output lists each affected content row and corresponding operation without
+    mutation.
+  - Apply mode is idempotent and auditable and invokes canonical operation retry whenever
+    it can restore state.
+  - Repeated reconciliation cannot duplicate content, reset successful checkpoints,
+    or exceed retry budgets.
+- item_id: ri-09
+  title: Add terminal-state telemetry and alerts
+  status: approved
+  priority: 9
+  effort: L
+  depends_on:
+  - ri-07
+  - ri-08
+  description: Instrument canonical workflow terminal transitions and deliver deduplicated
+    out-of-band alerts for failures, partial sources, zero-item outcomes, and reconciliation
+    events. Define a sink boundary with safe retries, idempotency, diagnostic links,
+    and secret handling.
+  rationale: Production reliability requires actionable evidence and external notification
+    derived from the same typed persisted results used for recovery.
+  change_id: production-telemetry-and-out-of-band-alerting
+  acceptance_outcomes:
+  - Success, partial, zero-item, cancelled, failed, and reconciliation outcomes emit
+    structured terminal telemetry.
+  - At least one configured out-of-band sink receives deduplicated failure alerts
+    and retries delivery without duplicate notifications.
+  - Alert payloads identify the operation, workflow type, affected sources or resources,
+    and a stable diagnostic link without exposing secrets.
+  - Deterministic tests cover event classification, redaction, retry, and idempotency
+    behavior.
+  - A staging verification demonstrates terminal operation telemetry and external
+    alert delivery.
+- item_id: ri-10
+  title: Add Obsidian vault ingestion
+  status: approved
+  priority: 10
+  effort: L
+  depends_on:
+  - ri-05
+  - ri-06
+  - ri-09
+  description: Refine and implement Obsidian vault ingress through SOURCE_REGISTRY,
+    typed ingestion commands, generated contracts, canonical durable operations, and
+    the shared source workflow fixture matrix. Keep local vault ingestion distinct
+    from knowledge-base export and sync ownership.
+  rationale: Obsidian is the next source expansion, but it should land only after
+    the common ingestion test, persistence, recovery, and alerting foundations are
+    reliable.
+  change_id: add-obsidian-vault-ingest
+  acceptance_outcomes:
+  - Obsidian ingestion is represented in SOURCE_REGISTRY, generated contracts, CLI,
+    HTTP, MCP, worker dispatch, and the capability-driven UI.
+  - CLI and MCP submissions return the same canonical durable OperationHandle shape
+    as other sources.
+  - Fixture and real-ingestion tiers cover path validation, incremental ingestion,
+    idempotency, and typed failure reporting.
+  - Filesystem-only configuration has a documented database override representation
+    that does not expose vault secrets.
+  - Vault ingress remains separate from knowledge-base export and sync behavior.
+- item_id: ri-11
+  title: Decide the API versioning boundary
+  status: approved
+  priority: 11
+  effort: S
+  depends_on:
+  - ri-03
+  - ri-04
+  - ri-06
+  description: Reassess add-api-versioning after canonical clients, release smoke
+    coverage, and deprecation boundaries are stable. Retain a refined proposal only
+    if a concrete incompatible contract requires a new version; otherwise record deferral
+    and archive speculative work.
+  rationale: Versioning should respond to an executable compatibility need rather
+    than introduce a large migration before the current contract is stable.
+  change_id: add-api-versioning
+  acceptance_outcomes:
+  - A decision record names the first incompatible contract requiring a new API version
+    or documents why versioning remains deferred.
+  - Any retained proposal defines migration, deprecation, generated-client, and cross-surface
+    compatibility behavior against durable workflow contracts.
+  - The decision includes executable compatibility evidence from the release and CLI
+    evaluation suites.
+  - No speculative implementation from the existing 42-task proposal begins without
+    a concrete incompatible case.
+updated_at: '2026-07-23T21:07:16.727879+00:00'

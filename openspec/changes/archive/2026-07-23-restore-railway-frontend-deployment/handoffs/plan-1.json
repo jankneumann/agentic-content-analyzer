@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-07-23T18:11:21.836668+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Refined ri-02 from live production evidence. The selected design keeps Railway isolated at /web, makes its artifact build locked and Node-only, and moves generated-contract enforcement into a full-toolchain CI gate before an explicitly scoped production deployment.",
+    "completed_work": [
+      "production status and build-log diagnosis",
+      "three-approach design",
+      "delta specification",
+      "schema-oriented work package plan"
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Use an isolated npm production build",
+        "rationale": "Railway currently selects npm for the /web root; matching that observed boundary avoids platform-only root changes.",
+        "capability": "frontend-release-delivery",
+        "supersedes": null
+      },
+      {
+        "title": "Run contract drift in CI",
+        "rationale": "The generator requires repository-level Python/uv inputs that are intentionally absent from the static build context.",
+        "capability": "frontend-release-delivery",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Validate and review the plan, then implement the locked production build test-first."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/restore-railway-frontend-deployment/proposal.md",
+        "description": "Selected release strategy"
+      },
+      {
+        "path": "openspec/changes/restore-railway-frontend-deployment/design.md",
+        "description": "Build, CI, deployment, and rollback decisions"
+      },
+      {
+        "path": "openspec/changes/restore-railway-frontend-deployment/work-packages.yaml",
+        "description": "Implementation DAG"
+      }
+    ]
+  }
+}

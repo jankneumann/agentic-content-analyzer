@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,6 +44,7 @@ def default_client_factory() -> WorkflowApiClient:
         settings.api_base_url,
         admin_key=settings.admin_api_key,
         timeout=float(settings.api_timeout),
+        follow_redirects=os.environ.get("ACA_RELEASE_SMOKE") != "1",
     )
 
 
@@ -483,7 +485,13 @@ def configured_sources(
     ctx: typer.Context,
     limit: Annotated[int, typer.Option("--limit", min=1, max=100)] = 50,
     cursor: Annotated[str | None, typer.Option("--cursor")] = None,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit the configured-source page.")
+    ] = False,
 ) -> None:
+    if json_output:
+        state = get_state(ctx)
+        ctx.find_root().obj = WorkflowCliState(True, state.client_factory)
     _emit_model(
         ctx, _run(ctx, lambda client: client.list_configured_sources(limit=limit, cursor=cursor))
     )

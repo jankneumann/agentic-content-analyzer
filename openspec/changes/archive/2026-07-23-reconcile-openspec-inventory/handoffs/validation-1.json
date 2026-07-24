@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-07-23T22:20:00Z",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "coordinator handoff unavailable; durable local fallback written",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "RI-03 reconciled and self-archived the OpenSpec inventory with exact final-state validation and clean independent review.",
+    "completed_work": [
+      "published only evidenced foundation requirements",
+      "created four focused successors",
+      "archived nine historical entries plus RI-03",
+      "validated the exact final active and dated archive sets",
+      "synced openspec-inventory-governance"
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Keep residual work traceable",
+        "rationale": "Focused successors preserve genuine gaps without reopening completed foundations.",
+        "capability": "openspec-inventory-governance",
+        "supersedes": null
+      },
+      {
+        "title": "Treat archives as immutable",
+        "rationale": "Historical evidence remains trustworthy when later work changes only current durable artifacts.",
+        "capability": "openspec-inventory-governance",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "continue RI-04 add-cross-surface-release-smoke-tests",
+      "track legacy strict-spec normalization in GitHub issue 471"
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/archive/2026-07-23-reconcile-openspec-inventory/evidence/inventory-dispositions.yaml",
+        "description": "exact final inventory and per-entry lifecycle actions"
+      },
+      {
+        "path": "openspec/specs/openspec-inventory-governance/spec.md",
+        "description": "durable inventory governance requirements"
+      }
+    ]
+  }
+}

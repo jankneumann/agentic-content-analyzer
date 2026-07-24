@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-07-23T17:21:27.656712+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Refined roadmap item ri-01 into a coordinated, test-first plan. The selected design repairs optional query serialization in the shared client, preserves strict API cursor validation, and isolates CLI output and tests from ambient state.",
+    "completed_work": [],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Repair the shared client boundary",
+        "rationale": "One canonical fix covers CLI and HTTP-mode MCP callers without weakening server validation.",
+        "capability": "canonical-cli-transport",
+        "supersedes": null
+      },
+      {
+        "title": "Treat the approved roadmap as both planning gates",
+        "rationale": "The parent roadmap already records explicit acceptance outcomes, constraints, and approved status.",
+        "capability": "roadmap-execution",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Implement wp-transport, wp-cli-output, wp-test-isolation, and wp-runtime-hygiene before integration."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/repair-canonical-cli-transport-behavior/proposal.md",
+        "description": "Approved implementation direction"
+      },
+      {
+        "path": "openspec/changes/repair-canonical-cli-transport-behavior/work-packages.yaml",
+        "description": "Schema-valid coordinated DAG"
+      }
+    ]
+  }
+}

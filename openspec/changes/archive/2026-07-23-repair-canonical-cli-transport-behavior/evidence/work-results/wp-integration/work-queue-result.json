@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "feature_id": "repair-canonical-cli-transport-behavior",
+  "package_id": "wp-integration",
+  "attempt": 1,
+  "plan_revision": 1,
+  "contracts_revision": 1,
+  "status": "completed",
+  "locks": {
+    "files": [],
+    "keys": ["feature:repair-canonical-cli-transport-behavior:integration"]
+  },
+  "scope": {
+    "write_allow": [
+      "docs/DEVELOPMENT.md",
+      "CLAUDE.md",
+      "openspec/changes/repair-canonical-cli-transport-behavior/**"
+    ],
+    "read_allow": ["**"],
+    "deny": []
+  },
+  "files_modified": [
+    "CLAUDE.md",
+    "docs/DEVELOPMENT.md",
+    "openspec/changes/repair-canonical-cli-transport-behavior/.dispatch-state.json",
+    "openspec/changes/repair-canonical-cli-transport-behavior/change-context.md",
+    "openspec/changes/repair-canonical-cli-transport-behavior/handoffs/implementation-1.json",
+    "openspec/changes/repair-canonical-cli-transport-behavior/session-log.md",
+    "openspec/changes/repair-canonical-cli-transport-behavior/tasks.md"
+  ],
+  "scope_check": {"passed": true, "violations": []},
+  "git": {
+    "base": {"ref": "62d08012fca3c78fcc3b8b229764c386a33ec37d"},
+    "head": {"commit": "7d377f202bec38327b0000af8437ea6542046619"}
+  },
+  "verification": {
+    "tier": "A",
+    "passed": true,
+    "steps": [
+      {
+        "name": "cli-suite",
+        "kind": "command",
+        "command": "pytest tests/cli tests/clients/test_workflow_api_client.py tests/config/test_cli_runtime_hygiene.py --no-cov -q -W error::RuntimeWarning",
+        "exit_code": 0,
+        "passed": true,
+        "evidence": {
+          "artifacts": [],
+          "metrics": {
+            "test_count": 383,
+            "pass_count": 382,
+            "skip_count": 1,
+            "runtime_warning_count": 0
+          }
+        }
+      },
+      {
+        "name": "openspec-strict",
+        "kind": "command",
+        "command": "openspec validate repair-canonical-cli-transport-behavior --strict",
+        "exit_code": 0,
+        "passed": true,
+        "evidence": {
+          "artifacts": [],
+          "metrics": {"validation_passed": true}
+        }
+      }
+    ]
+  },
+  "escalations": []
+}

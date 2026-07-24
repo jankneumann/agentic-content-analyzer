@@ -5,6 +5,12 @@
 **Baseline**: `0922874d` (`main`, identical to `origin/main`)
 **Entries Analyzed**: 13 active OpenSpec entries (12 proposals and 1 analysis-only directory)
 
+> **Reconciled 2026-07-23:** This report is a historical input to
+> `reconcile-openspec-inventory`. Its implemented and superseded entries are
+> now archived, genuine residual work is captured in four focused successors,
+> and `add-cross-surface-release-smoke-tests` is the next workflow-surface
+> roadmap item. Use the current OpenSpec inventory for live status.
+
 ## Executive Finding
 
 The unified content workflow refactoring is fully merged and green, but the active

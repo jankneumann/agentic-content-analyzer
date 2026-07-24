@@ -3,6 +3,138 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
+import { createHash } from 'node:crypto'
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import type { Plugin, ResolvedConfig } from 'vite'
+
+type ReleaseIdentity = {
+  revision: string
+  revision_source:
+    | 'railway_commit_sha'
+    | 'github_sha'
+    | 'verified_detached_sha'
+    | 'local_development'
+}
+
+const COMMIT_SHA = /^[0-9a-f]{40}$/
+
+function platformReleaseIdentity(): ReleaseIdentity | undefined {
+  const candidates = [
+    ['RAILWAY_GIT_COMMIT_SHA', 'railway_commit_sha'],
+    ['GITHUB_SHA', 'github_sha'],
+  ] as const
+  for (const [variable, revision_source] of candidates) {
+    const revision = process.env[variable]
+    if (revision === undefined) continue
+    if (variable === 'GITHUB_SHA' && process.env.GITHUB_ACTIONS !== 'true') {
+      throw new Error('GITHUB_SHA is trusted only inside GitHub Actions')
+    }
+    if (!COMMIT_SHA.test(revision)) {
+      throw new Error(`${variable} must be a lowercase 40-character commit SHA`)
+    }
+    return { revision, revision_source }
+  }
+}
+
+function stampedReleaseIdentity(): ReleaseIdentity | undefined {
+  const stampPath = path.resolve(__dirname, 'release-build.json')
+  if (!existsSync(stampPath)) return
+  const parsed: unknown = JSON.parse(readFileSync(stampPath, 'utf8'))
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    Object.keys(parsed).sort().join(',') !== 'revision,revision_source,schema_version' ||
+    !('schema_version' in parsed) ||
+    parsed.schema_version !== 1 ||
+    !('revision' in parsed) ||
+    typeof parsed.revision !== 'string' ||
+    !COMMIT_SHA.test(parsed.revision) ||
+    !('revision_source' in parsed) ||
+    parsed.revision_source !== 'verified_detached_sha'
+  ) {
+    throw new Error('release-build.json is not a valid verified detached-SHA stamp')
+  }
+  return {
+    revision: parsed.revision,
+    revision_source: parsed.revision_source,
+  }
+}
+
+function releaseIdentity(): ReleaseIdentity {
+  return (
+    platformReleaseIdentity() ??
+    stampedReleaseIdentity() ?? {
+      revision: 'development',
+      revision_source: 'local_development',
+    }
+  )
+}
+
+function releaseMetadataPlugin(): Plugin {
+  const identity = releaseIdentity()
+  let resolvedConfig: ResolvedConfig
+
+  function javascriptFiles(directory: string): string[] {
+    return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+      const absolute = path.join(directory, entry.name)
+      if (entry.isDirectory()) return javascriptFiles(absolute)
+      return entry.isFile() && entry.name.endsWith('.js') ? [absolute] : []
+    })
+  }
+
+  return {
+    name: 'aca-release-metadata',
+    enforce: 'post',
+    configResolved(config) {
+      resolvedConfig = config
+    },
+    transformIndexHtml() {
+      return [
+        {
+          tag: 'meta',
+          attrs: { name: 'release-revision', content: identity.revision },
+          injectTo: 'head',
+        },
+        {
+          tag: 'meta',
+          attrs: {
+            name: 'release-revision-source',
+            content: identity.revision_source,
+          },
+          injectTo: 'head',
+        },
+      ]
+    },
+    closeBundle: {
+      order: 'post',
+      sequential: true,
+      handler() {
+        const outputDirectory = path.resolve(
+          resolvedConfig.root,
+          resolvedConfig.build.outDir,
+        )
+        const javascript = javascriptFiles(outputDirectory)
+          .map((file) => {
+            const bytes = readFileSync(file)
+            return {
+              path: `/${path.relative(outputDirectory, file).split(path.sep).join('/')}`,
+              size_bytes: bytes.byteLength,
+              sha256: createHash('sha256').update(bytes).digest('hex'),
+            }
+          })
+          .sort((left, right) => left.path.localeCompare(right.path))
+        writeFileSync(
+          path.join(outputDirectory, 'release-assets.json'),
+          JSON.stringify({
+            schema_version: 1,
+            ...identity,
+            javascript,
+          }),
+        )
+      },
+    },
+  }
+}
 
 /**
  * Vite Configuration for ACA (AI Content Analyzer) Web UI
@@ -91,6 +223,8 @@ export default defineConfig({
         ],
       },
     }),
+    // Run last so the release inventory includes generated PWA JavaScript.
+    releaseMetadataPlugin(),
   ],
 
   resolve: {

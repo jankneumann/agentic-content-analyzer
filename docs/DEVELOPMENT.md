@@ -40,6 +40,66 @@ Run `aca capabilities --json` for the registry-derived command and field
 contract. Multiword CLI commands use hyphens; request discriminators use
 underscores.
 
+Canonical cursor-page clients must omit optional query parameters when their
+value is `None`; do not send `cursor=` for a first-page request. Transport tests
+should assert the serialized `httpx.Request.url.params`, because fake service
+clients can accidentally normalize malformed requests.
+
+Machine-readable CLI commands reserve stdout for exactly one JSON document.
+Diagnostics and logging go to stderr. Discovery supports both root JSON mode
+(`aca --json configured-sources`) and the documented command-local form
+(`aca configured-sources --json`).
+
+### Cross-surface release smoke
+
+The release smoke verifies an already deployed frontend/API pair through
+direct HTTP, the real `aca` CLI, and a fresh Chromium browser. It does not
+deploy or roll back services. Production is always read-only; mutation is
+available only to an approval-controlled staging or ephemeral target.
+
+For a local diagnostic, start both services, install the explicit toolchain,
+and create a loopback-only policy outside the repository:
+
+```bash
+uv sync --frozen --extra release-smoke
+uv run --frozen --extra release-smoke playwright install chromium
+
+cat > /tmp/aca-release-smoke-local.json <<'JSON'
+{
+  "target_id": "local-development",
+  "target": "local",
+  "frontend_origin": "http://127.0.0.1:5173",
+  "api_origin": "http://127.0.0.1:8000",
+  "expected_frontend_revision": null,
+  "expected_api_revision": null,
+  "production_target_ids": [],
+  "production_origins": []
+}
+JSON
+
+ADMIN_API_KEY="<local-admin-key>" \
+APP_SECRET_KEY="<local-app-password-if-enabled>" \
+uv run --frozen --extra release-smoke python scripts/run_release_smoke.py \
+  --policy-file /tmp/aca-release-smoke-local.json \
+  --output /tmp/aca-release-smoke-evidence.json \
+  --target local
+
+uv run --frozen --extra release-smoke python \
+  scripts/validate_release_smoke_evidence.py \
+  /tmp/aca-release-smoke-evidence.json
+```
+
+Credentials are environment-only. Do not add them to the policy, command
+arguments, evidence, traces, videos, or logs. A nonzero smoke exit still writes
+a fixed-field, schema-valid failure report when possible; validation must pass
+before the report is retained.
+
+The GitHub `Release smoke` workflow accepts only `production` or `staging`.
+Exact origins, target identity, expected full frontend/API SHAs, production
+deny aliases, and credentials come from the corresponding protected GitHub
+environment. See [the deployment runbook](MOBILE_DEPLOYMENT.md#automated-cross-surface-release-gate)
+for environment configuration and operator commands.
+
 ### Processing
 
 ```bash

@@ -1,5 +1,7 @@
 {
   "generated_at": "2026-05-16T13:02:16-04:00",
+  "reconciled_at": "2026-07-23",
+  "reconciliation_note": "The discovery state is a historical snapshot. Recommendations and successor identifiers below were reconciled against the durable workflow-surface roadmap; use the current OpenSpec inventory for live task state.",
   "skill": "explore-feature",
   "focus_area": null,
   "score_formula": "impact*0.4 + strategic_fit*0.25 + (4-effort)*0.2 + (4-risk)*0.15",
@@ -175,10 +177,48 @@
   },
   "opportunities": [
     {
+      "id": "opp-add-cross-surface-release-smoke-tests",
+      "rank": 1,
+      "title": "Add cross-surface release smoke tests",
+      "problem": "The durable workflow contract and frontend release path are implemented, but a single release gate does not yet exercise CLI, HTTP, MCP, worker, and frontend behavior together.",
+      "impact": "high",
+      "strategic_fit": "high",
+      "effort": "M",
+      "risk": "low",
+      "score": 2.8,
+      "bucket": "quick-win",
+      "change_id_prefix": "add-",
+      "related_change_id": "add-cross-surface-release-smoke-tests",
+      "blocked_by": [],
+      "evidence": [
+        "RI-01 established the canonical durable workflow contract.",
+        "RI-02 restored and production-proved the frontend release path.",
+        "The workflow-surface-reliability roadmap schedules cross-surface release smoke coverage next."
+      ],
+      "likely_scope": {
+        "files": [
+          "tests/",
+          ".github/workflows/",
+          "openspec/contracts/content-workflows/"
+        ],
+        "api_endpoints": [
+          "durable workflow operations"
+        ],
+        "db_tables": [],
+        "events": [
+          "release smoke results"
+        ]
+      },
+      "parallel_feasibility": "N/A",
+      "resource_conflicts": [],
+      "independent_zones": [],
+      "recommended_next_action": "/implement-feature add-cross-surface-release-smoke-tests"
+    },
+    {
       "id": "opp-update-mcp-ingest-envelope",
       "rank": 1,
-      "title": "Finish canonical MCP ingest envelope unification",
-      "problem": "CLI, HTTP, queue, and pipeline ingestion now use the canonical IngestionResponse, but MCP ingest tools still expose flat ad hoc shapes. This keeps the last cross-transport consumer contract inconsistent.",
+      "title": "Canonical MCP ingest envelope unification (reconciled)",
+      "problem": "Historical opportunity. Canonical typed MCP ingestion commands now return durable OperationHandle values; the superseded umbrella change has been archived.",
       "impact": "high",
       "strategic_fit": "high",
       "effort": "S",
@@ -210,13 +250,13 @@
       "parallel_feasibility": "N/A",
       "resource_conflicts": [],
       "independent_zones": [],
-      "recommended_next_action": "/implement-feature unify-mcp-ingest-envelope"
+      "recommended_next_action": "archived as superseded"
     },
     {
       "id": "opp-complete-huggingface-papers-source",
       "rank": 2,
-      "title": "Complete HuggingFace Papers ingestion",
-      "problem": "The HuggingFace Papers source is nearly implemented but still open. Leaving it incomplete means the product misses curated AI research signals that complement raw arXiv ingestion.",
+      "title": "HuggingFace Papers ingestion (reconciled)",
+      "problem": "Historical opportunity. The canonical source, typed transport contract, durable worker path, capabilities, frontend support, and tests are implemented.",
       "impact": "high",
       "strategic_fit": "high",
       "effort": "M",
@@ -252,7 +292,7 @@
       "parallel_feasibility": "N/A",
       "resource_conflicts": [],
       "independent_zones": [],
-      "recommended_next_action": "/implement-feature add-huggingface-papers-source"
+      "recommended_next_action": "archived as implemented"
     },
     {
       "id": "opp-fix-api-security-smoke-regressions",
@@ -303,8 +343,8 @@
     {
       "id": "opp-use-paradedb-langfuse-default",
       "rank": 4,
-      "title": "Make ParadeDB and Langfuse the default production path",
-      "problem": "Production search and observability are not aligned with the intended stack: Railway PostgreSQL lacks ParadeDB extensions, and default observability is still not Langfuse-first.",
+      "title": "Verify the production ParadeDB and Langfuse path",
+      "problem": "The implementation foundation and public ParadeDB-compatible image exist, but production digest, extension, BM25, and Langfuse evidence still need operator verification.",
       "impact": "med",
       "strategic_fit": "high",
       "effort": "S",
@@ -312,7 +352,7 @@
       "score": 2.45,
       "bucket": "quick-win",
       "change_id_prefix": "update-",
-      "related_change_id": "use-paradedb-railway-langfuse-default",
+      "related_change_id": "verify-production-paradedb-langfuse",
       "blocked_by": [
         "Operator decision on Railway database migration timing",
         "Langfuse credentials for local and Railway profiles"
@@ -339,13 +379,13 @@
       "parallel_feasibility": "N/A",
       "resource_conflicts": [],
       "independent_zones": [],
-      "recommended_next_action": "/implement-feature use-paradedb-railway-langfuse-default"
+      "recommended_next_action": "/implement-feature verify-production-paradedb-langfuse"
     },
     {
       "id": "opp-llm-router-evaluation",
       "rank": 5,
-      "title": "Build the evaluation-first LLM router",
-      "problem": "The model router uses static per-step model choices, so the system cannot measure output quality or route easier tasks to cheaper models with confidence.",
+      "title": "Operationalize evaluation-first LLM routing",
+      "problem": "Evaluation and routing primitives exist, but the production router still needs a deployable dynamic routing loop, representative datasets, and truthful operational interfaces.",
       "impact": "high",
       "strategic_fit": "high",
       "effort": "L",
@@ -353,7 +393,7 @@
       "score": 2.45,
       "bucket": "big-bet",
       "change_id_prefix": "add-",
-      "related_change_id": "llm-router-evaluation",
+      "related_change_id": "operationalize-llm-evaluation-routing",
       "blocked_by": [
         "Needs representative evaluation datasets and judge-model credentials before dynamic routing can be enabled."
       ],
@@ -389,7 +429,7 @@
       "parallel_feasibility": "N/A",
       "resource_conflicts": [],
       "independent_zones": [],
-      "recommended_next_action": "/iterate-on-plan llm-router-evaluation"
+      "recommended_next_action": "/implement-feature operationalize-llm-evaluation-routing"
     },
     {
       "id": "opp-add-obsidian-vault-ingest",
@@ -479,13 +519,10 @@
     }
   ],
   "top_recommendation": {
-    "opportunity_id": "opp-update-mcp-ingest-envelope",
-    "why_now": "It is a bounded active OpenSpec change that closes the last known ingestion envelope drift across CLI, HTTP, queue, pipeline, and MCP. The test target is explicit, the main write surface is narrow, and it reduces downstream ambiguity for agentic-assistant before broader ingestion work continues.",
-    "dependencies_or_blockers": [
-      "Coordinate lockstep consumer update in agentic-assistant.",
-      "Confirm whether ingest_files should be added to MCP as part of the same change or split if it expands scope."
-    ],
-    "starter_command": "/implement-feature unify-mcp-ingest-envelope"
+    "opportunity_id": "opp-add-cross-surface-release-smoke-tests",
+    "why_now": "The canonical durable operation contract and frontend release path are implemented. Cross-surface release smoke tests are the next roadmap item that can prevent those CLI, HTTP, MCP, worker, and frontend paths from drifting again.",
+    "dependencies_or_blockers": [],
+    "starter_command": "/implement-feature add-cross-surface-release-smoke-tests"
   },
   "history_effect": {
     "previous_history_found": false,

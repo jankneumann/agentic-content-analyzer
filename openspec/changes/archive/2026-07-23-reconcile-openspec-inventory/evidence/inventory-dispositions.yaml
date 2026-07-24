@@ -1,0 +1,120 @@
+version: 1
+reconciliation_change: reconcile-openspec-inventory
+final_active:
+  - add-api-versioning
+  - add-cross-surface-release-smoke-tests
+  - add-obsidian-vault-ingest
+  - closeout-db-source-overrides-evidence
+  - establish-cli-gen-eval-coverage
+  - operationalize-llm-evaluation-routing
+  - persisted-ingestion-run-results
+  - production-telemetry-and-out-of-band-alerting
+  - real-ingestion-test-tiers-in-ci
+  - reconcile-ingestion-filtering-runtime-contract
+  - stuck-content-sweeper-and-requeue-cli
+  - verify-production-paradedb-langfuse
+successors:
+  - closeout-db-source-overrides-evidence
+  - operationalize-llm-evaluation-routing
+  - reconcile-ingestion-filtering-runtime-contract
+  - verify-production-paradedb-langfuse
+dated_archives:
+  - 2026-07-23-add-huggingface-papers-source
+  - 2026-07-23-add-ingestion-filtering-prioritization
+  - 2026-07-23-db-source-overrides
+  - 2026-07-23-feynman-inspired-features
+  - 2026-07-23-llm-router-evaluation
+  - 2026-07-23-reconcile-openspec-inventory
+  - 2026-07-23-repair-canonical-cli-transport-behavior
+  - 2026-07-23-restore-railway-frontend-deployment
+  - 2026-07-23-unify-mcp-ingest-envelope
+  - 2026-07-23-use-paradedb-railway-langfuse-default
+entries:
+  - name: add-api-versioning
+    disposition: retain-actionable
+    next_action: Refine the compatibility boundary and implement or retire it in RI-11.
+    final_location: active
+  - name: add-cross-surface-release-smoke-tests
+    disposition: retain-actionable
+    next_action: Expand and implement the cross-surface release gate in RI-04.
+    final_location: active
+  - name: add-obsidian-vault-ingest
+    disposition: retain-actionable
+    next_action: Refine and implement the canonical source workflow in RI-10.
+    final_location: active
+  - name: closeout-db-source-overrides-evidence
+    disposition: retain-successor
+    next_action: Align contracts and produce UI, migration, and documentation evidence.
+    final_location: active
+  - name: establish-cli-gen-eval-coverage
+    disposition: retain-actionable
+    next_action: Expand and implement generator-evaluator CLI coverage in RI-06.
+    final_location: active
+  - name: operationalize-llm-evaluation-routing
+    disposition: retain-successor
+    next_action: Build the safe deployable evaluation-to-routing loop.
+    final_location: active
+  - name: persisted-ingestion-run-results
+    disposition: retain-actionable
+    next_action: Reconcile and implement the reporting projection in RI-07.
+    final_location: active
+  - name: production-telemetry-and-out-of-band-alerting
+    disposition: retain-actionable
+    next_action: Implement privacy-safe terminal alerts in RI-09.
+    final_location: active
+  - name: real-ingestion-test-tiers-in-ci
+    disposition: retain-actionable
+    next_action: Expand and implement the CI test tiers in RI-05.
+    final_location: active
+  - name: reconcile-ingestion-filtering-runtime-contract
+    disposition: retain-successor
+    next_action: Resolve language and control semantics against canonical workflows.
+    final_location: active
+  - name: stuck-content-sweeper-and-requeue-cli
+    disposition: retain-actionable
+    next_action: Refine and implement reconciliation and requeue in RI-08.
+    final_location: active
+  - name: verify-production-paradedb-langfuse
+    disposition: retain-successor
+    next_action: Obtain authority and produce provenance-bound production evidence.
+    final_location: active
+  - name: add-huggingface-papers-source
+    disposition: archive-complete
+    next_action: Use the durable main spec and canonical source registry.
+    final_location: 2026-07-23-add-huggingface-papers-source
+  - name: add-ingestion-filtering-prioritization
+    disposition: extract-follow-up-and-archive
+    next_action: Continue only residual work in reconcile-ingestion-filtering-runtime-contract.
+    final_location: 2026-07-23-add-ingestion-filtering-prioritization
+  - name: db-source-overrides
+    disposition: extract-follow-up-and-archive
+    next_action: Continue only closeout work in closeout-db-source-overrides-evidence.
+    final_location: 2026-07-23-db-source-overrides
+  - name: feynman-inspired-features
+    disposition: archive-analysis
+    next_action: Create a new bounded proposal if one analyzed idea is selected.
+    final_location: 2026-07-23-feynman-inspired-features
+  - name: llm-router-evaluation
+    disposition: extract-follow-up-and-archive
+    next_action: Continue only operational work in operationalize-llm-evaluation-routing.
+    final_location: 2026-07-23-llm-router-evaluation
+  - name: reconcile-openspec-inventory
+    disposition: self-archive
+    next_action: Sync governance and run final-state validation.
+    final_location: 2026-07-23-reconcile-openspec-inventory
+  - name: repair-canonical-cli-transport-behavior
+    disposition: archive-complete
+    next_action: Use the durable CLI and test-infrastructure main specs.
+    final_location: 2026-07-23-repair-canonical-cli-transport-behavior
+  - name: restore-railway-frontend-deployment
+    disposition: archive-complete
+    next_action: Use the frontend-release-delivery main spec and production evidence.
+    final_location: 2026-07-23-restore-railway-frontend-deployment
+  - name: unify-mcp-ingest-envelope
+    disposition: archive-superseded
+    next_action: Use typed MCP commands and durable operation observation.
+    final_location: 2026-07-23-unify-mcp-ingest-envelope
+  - name: use-paradedb-railway-langfuse-default
+    disposition: extract-follow-up-and-archive
+    next_action: Continue only production proof in verify-production-paradedb-langfuse.
+    final_location: 2026-07-23-use-paradedb-railway-langfuse-default

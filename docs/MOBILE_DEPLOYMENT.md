@@ -440,6 +440,291 @@ ALLOWED_ORIGINS=https://your-frontend.up.railway.app,http://localhost:5173
 AUTH_COOKIE_CROSS_ORIGIN=true
 ```
 
+#### Production frontend exact-SHA release runbook
+
+The production frontend has one approved target. Use the IDs below explicitly
+for every release and rollback command; do not rely on an inherited Railway
+link:
+
+| Target | Name | ID |
+|---|---|---|
+| Project | `aca` | `4b0db3b8-110d-4a13-81d5-440aa2ddc98d` |
+| Environment | `production` | `cd39a506-8d8f-4aa2-b298-766fde2b8dd8` |
+| Frontend service | `aca-app` | `00281b0e-9de9-414d-844e-da3ab02836f5` |
+| Backend service | `aca-api` | `46b135a6-d361-4985-947b-e27049f612a7` |
+
+This procedure promotes only a clean, pushed commit that passed the
+`frontend-release` job at that exact SHA. Copy
+`openspec/changes/archive/2026-07-23-restore-railway-frontend-deployment/evidence/production-deployment-template.md`
+to the implementation evidence path before starting, but never record
+credentials, cookies, authorization headers, request headers, or raw
+environment values.
+
+1. Capture rollback data before any production mutation.
+
+   Link the CLI to the exact read target, verify the resolved IDs, and save
+   the deployment list:
+
+   ```bash
+   railway link \
+     --project 4b0db3b8-110d-4a13-81d5-440aa2ddc98d \
+     --environment cd39a506-8d8f-4aa2-b298-766fde2b8dd8 \
+     --service 00281b0e-9de9-414d-844e-da3ab02836f5
+   railway status --json
+   railway deployment list \
+     --environment cd39a506-8d8f-4aa2-b298-766fde2b8dd8 \
+     --service 00281b0e-9de9-414d-844e-da3ab02836f5 \
+     --limit 20 \
+     --json
+   ```
+
+   In the evidence manifest, record the active deployment and revision, the
+   most recent `SUCCESS` deployment and its revision, the existing public
+   frontend URL, all four target IDs above, and the rollback command from step
+   7. Abort before deployment if the previous successful revision is not a
+   locally resolvable commit, its deployment ID is missing, the public URL is
+   unresolved, or any target ID differs.
+
+2. Freeze and push the candidate.
+
+   ```bash
+   cd web
+   npm ci
+   npm audit --omit=dev --audit-level=high
+   cd ..
+   git status --porcelain=v1
+   git diff --check
+   git rev-parse HEAD
+   git push --set-upstream origin HEAD
+   git rev-parse HEAD
+   ```
+
+   The audit must exit successfully and `git status --porcelain=v1` must print
+   nothing. Record the full 40-character SHA as `Candidate commit SHA`, confirm
+   the second SHA is unchanged, and record `Working tree clean: true` and
+   `Candidate pushed: true`.
+
+3. Gate the candidate with a draft pull request.
+
+   Create or update a draft PR to `main`; do not merge it as part of the
+   deployment step. Wait for checks and inspect the named frontend job:
+
+   ```bash
+   gh pr create \
+     --draft \
+     --base main \
+     --head "$(git branch --show-current)" \
+     --title "Restore Railway frontend deployment" \
+     --body "Exact-SHA production frontend release candidate."
+   gh pr checks --watch --fail-fast
+   gh pr checks --json name,state,bucket,link
+   gh pr view --json headRefOid,url
+   ```
+
+   If the PR already exists, use `gh pr edit` instead of creating another.
+   Continue only when `frontend-release` has bucket `pass` and `headRefOid`
+   equals the candidate SHA. Record its evidence line exactly as
+   `success; checked_sha=<40-character SHA>`.
+
+4. Deploy from a clean detached checkout of the checked SHA.
+
+   Choose a temporary path outside the current worktree, then verify the
+   detached checkout before uploading:
+
+   ```bash
+   export ACA_FRONTEND_CANDIDATE_SHA="<CI-passed-40-character-SHA>"
+   export ACA_FRONTEND_RELEASE_WORKTREE="/tmp/aca-frontend-release-${ACA_FRONTEND_CANDIDATE_SHA}"
+   git worktree add --detach \
+     "$ACA_FRONTEND_RELEASE_WORKTREE" \
+     "$ACA_FRONTEND_CANDIDATE_SHA"
+   git -C "$ACA_FRONTEND_RELEASE_WORKTREE" rev-parse HEAD
+   git -C "$ACA_FRONTEND_RELEASE_WORKTREE" status --porcelain=v1
+   (
+     cd "$ACA_FRONTEND_RELEASE_WORKTREE"
+     python scripts/stamp_release_revision.py "$ACA_FRONTEND_CANDIDATE_SHA"
+     railway up \
+       --ci \
+       --project 4b0db3b8-110d-4a13-81d5-440aa2ddc98d \
+       --environment cd39a506-8d8f-4aa2-b298-766fde2b8dd8 \
+       --service 00281b0e-9de9-414d-844e-da3ab02836f5 \
+       --message "frontend-release ${ACA_FRONTEND_CANDIDATE_SHA}"
+   )
+   ```
+
+   The detached `rev-parse` must equal the checked SHA and the detached status
+   must print nothing. The stamp command must report
+   `web/release-build.json`, the same full SHA, and a SHA-256 digest. Record
+   that digest in the release evidence before upload. The stamp is an
+   ephemeral build input and must not be committed; Vite embeds its
+   `verified_detached_sha` provenance in the served HTML and
+   `release-assets.json`. Stop if stamp generation, build, or deployment does
+   not reach `SUCCESS`; never make a canary request against a failed or
+   ambiguous release.
+
+5. Verify Railway metadata and the public route.
+
+   ```bash
+   railway deployment list \
+     --environment cd39a506-8d8f-4aa2-b298-766fde2b8dd8 \
+     --service 00281b0e-9de9-414d-844e-da3ab02836f5 \
+     --limit 5 \
+     --json
+   ```
+
+   Require the new active deployment to be `SUCCESS`, and require its
+   `meta.cliMessage` to equal `frontend-release <CI-passed-SHA>`. CLI uploads
+   intentionally have a null `meta.commitHash`; the clean detached checkout
+   plus the verified build stamp and persisted SHA-bearing CLI message is the
+   supported identity chain. The later release-smoke gate must observe the
+   candidate SHA and `verified_detached_sha` provenance from the public
+   frontend. Record the stamp path/digest and the served frontend revision plus
+   provenance in their dedicated evidence fields.
+   Inspect the bounded build log and record that `web/package-lock.json` was
+   uploaded, Railpack ran `npm ci`, and the resolved runtime was Node 22.x.
+   Record deployment and verification window bounds as ISO-8601 UTC timestamps
+   (`YYYY-MM-DDTHH:MM:SSZ`).
+
+6. Make exactly one visible canary submission.
+
+   Open the existing public frontend URL in a browser with developer-tools
+   network preservation enabled. Confirm the page loads and that
+   `GET /api/v1/capabilities` returns a 2xx response with the URL source option
+   rendered. Fill the ingestion form once with:
+
+   ```json
+   {
+     "kind": "url",
+     "url": "https://example.com/?aca-release-smoke=<short-sha>",
+     "title": "ACA release smoke <short-sha>",
+     "notes": "restore-railway-frontend-deployment",
+     "routing_mode": "webpage",
+     "force_reprocess": false
+   }
+   ```
+
+   Click Submit exactly once. Do not double-click, reload, script, retry, or
+   repeat an ambiguous request. Require one
+   `POST /api/v1/ingestions` response, record its 2xx status and durable
+   operation ID, and wait for terminal status `completed`. Retain the uniquely
+   labeled result unless a supported cleanup path is confirmed; do not perform
+   ad-hoc database cleanup.
+
+   Bound backend log inspection to the recorded verification window. Correlate
+   the capability request and canonical ingestion request with request ID,
+   UTC timestamp, browser attribution, response status, marker, and operation
+   ID. Each correlated timestamp must fall within the browser verification
+   window. Within that same window, both retired-route counts must be zero:
+
+   - `POST /api/v1/contents/ingest`
+   - `POST /api/v1/content/save-url`
+
+   Validate the completed sanitized record:
+
+   ```bash
+   python scripts/validate_frontend_deployment_evidence.py \
+     openspec/changes/archive/2026-07-23-restore-railway-frontend-deployment/evidence/production-deployment.md
+   ```
+
+   Exit status `0` is required. Exit status `1` lists every blank,
+   inconsistent, unsuccessful, uncorrelated, retried, or retired-route
+   violation that must be corrected from source evidence.
+
+7. Roll back from the pre-recorded prior revision when required.
+
+   Do not use a moving branch or rebuild the failed candidate. Create another
+   detached worktree at the previously recorded successful revision:
+
+   ```bash
+   export ACA_FRONTEND_ROLLBACK_SHA="<pre-recorded-last-successful-revision>"
+   export ACA_FRONTEND_ROLLBACK_WORKTREE="/tmp/aca-frontend-rollback-${ACA_FRONTEND_ROLLBACK_SHA}"
+   git cat-file -e "${ACA_FRONTEND_ROLLBACK_SHA}^{commit}"
+   git worktree add --detach \
+     "$ACA_FRONTEND_ROLLBACK_WORKTREE" \
+     "$ACA_FRONTEND_ROLLBACK_SHA"
+   git -C "$ACA_FRONTEND_ROLLBACK_WORKTREE" rev-parse HEAD
+   git -C "$ACA_FRONTEND_ROLLBACK_WORKTREE" status --porcelain=v1
+   (
+     cd "$ACA_FRONTEND_ROLLBACK_WORKTREE"
+     python scripts/stamp_release_revision.py "$ACA_FRONTEND_ROLLBACK_SHA"
+     railway up \
+       --ci \
+       --project 4b0db3b8-110d-4a13-81d5-440aa2ddc98d \
+       --environment cd39a506-8d8f-4aa2-b298-766fde2b8dd8 \
+       --service 00281b0e-9de9-414d-844e-da3ab02836f5 \
+       --message "frontend-rollback ${ACA_FRONTEND_ROLLBACK_SHA}"
+   )
+   ```
+
+   Require the rollback stamp to name the rollback SHA, require the deployment
+   to reach `SUCCESS`, verify the public route and capability request without
+   submitting another canary, and record the rollback deployment ID. Preserve
+   both temporary worktrees until the release or rollback evidence has been
+   validated.
+
+#### Automated cross-surface release gate
+
+The `Release smoke` GitHub workflow verifies an already deployed frontend/API
+pair; it never performs deployment or rollback. Configure two GitHub
+environments with required reviewers, prevent administrators from bypassing
+protection, disallow self-approval, and restrict deployment branches/tags to
+the reviewed default or release refs used for promotion:
+
+| Environment | Purpose |
+|---|---|
+| `release-smoke-production` | Production read-only promotion evidence |
+| `release-smoke-staging` | Explicit staging mutation and terminal operation evidence |
+
+Each environment owns these protected variables:
+
+- `TARGET_ID`: stable lowercase target identifier
+- `FRONTEND_ORIGIN` and `API_ORIGIN`: exact HTTPS origins with no path
+- `EXPECTED_FRONTEND_REVISION` and `EXPECTED_API_REVISION`: lowercase full
+  40-character SHAs observed from the deployed pair
+- `PRODUCTION_TARGET_IDS_JSON`: JSON array containing every production target
+  identity; staging uses it as a deny list
+- `PRODUCTION_ORIGINS_JSON`: JSON array containing every production frontend
+  and API origin; staging uses it as a deny list
+
+Each environment also owns `ADMIN_API_KEY` and, when browser login is enabled,
+`APP_SECRET_KEY` as environment secrets. The caller cannot override any target
+fact or credential.
+
+Run the production read-only promotion gate after deployment:
+
+```bash
+gh workflow run release-smoke.yml -f tier=production
+gh run watch --exit-status
+```
+
+Run the mutation tier only against the reviewed staging environment:
+
+```bash
+gh workflow run release-smoke.yml -f tier=staging
+gh run watch --exit-status
+```
+
+The staging tier submits the checked-in `url.json` fixture exactly once with a
+run-ID-derived idempotency key and waits for a completed durable operation. It
+cannot run with the production policy or origins.
+
+Both jobs validate the minimized JSON report before uploading it, retain only
+that report for 14 days, and then fail when any compatibility check failed.
+Download and independently validate an artifact when investigating:
+
+```bash
+gh run download <run-id> --name <release-smoke-artifact-name>
+uv run --frozen --extra release-smoke python \
+  scripts/validate_release_smoke_evidence.py \
+  release-smoke-evidence.json
+```
+
+Stable failure codes identify the failed boundary without retaining raw
+headers, cookies, URLs, subprocess output, Playwright traces, videos, or
+content. A revision mismatch means the served pair is stale or mixed: stop
+promotion and inspect deployment metadata. An ambiguous staging submission
+must not be retried; reconstruct its idempotency key as
+`aca-release-smoke-v1:<run_id>` and reconcile the operation first.
+
 #### Diagnosing cross-origin failures from backend logs
 
 When the frontend can't reach the API, the backend logs have a specific signature depending on *which* layer rejected the request:

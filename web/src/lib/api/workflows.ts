@@ -1,6 +1,7 @@
 import type {
   AudioDigestRequest,
   CapabilityDocument,
+  ConfiguredSourcePage,
   DigestCreateRequest,
   IngestCommand,
   OperationHandle,
@@ -36,6 +37,11 @@ export async function getAllCapabilities(): Promise<CapabilityDocument> {
   if (!result) throw new Error("Capability discovery returned no document")
   return result
 }
+
+export const getConfiguredSources = (cursor?: string, limit = 100) =>
+  apiClient.get<ConfiguredSourcePage>("/configured-sources", {
+    params: cursor === undefined ? { limit } : { cursor, limit },
+  })
 
 export function uploadFile(file: File, metadata?: { title?: string; publication?: string }) {
   const body = new FormData()

@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "feature_id": "restore-railway-frontend-deployment",
+  "package_id": "wp-ci-parity",
+  "attempt": 2,
+  "plan_revision": 3,
+  "contracts_revision": 1,
+  "status": "completed",
+  "locks": {
+    "files": [
+      ".github/workflows/ci.yml",
+      "tests/config/test_frontend_ci.py"
+    ],
+    "keys": ["feature:restore-railway-frontend-deployment:ci"]
+  },
+  "scope": {
+    "write_allow": [
+      ".github/workflows/ci.yml",
+      "tests/config/test_frontend_ci.py"
+    ],
+    "read_allow": [".github/**", "web/**", "tests/**", "openspec/**"],
+    "deny": []
+  },
+  "files_modified": [
+    ".github/workflows/ci.yml",
+    "tests/config/test_frontend_ci.py"
+  ],
+  "scope_check": {"passed": true, "violations": []},
+  "git": {
+    "base": {"ref": "4bc0e172"},
+    "head": {"commit": "648e2c9b02646c6f101957ff4816847992ac919e"}
+  },
+  "verification": {
+    "tier": "A",
+    "passed": true,
+    "steps": [
+      {
+        "name": "frontend-ci-tests",
+        "kind": "command",
+        "command": "pytest tests/config/test_frontend_ci.py --no-cov -q",
+        "exit_code": 0,
+        "passed": true,
+        "evidence": {
+          "artifacts": [],
+          "metrics": {"test_count": 3, "pass_count": 3}
+        }
+      },
+      {
+        "name": "exact-sha-frontend-release",
+        "kind": "ci",
+        "ci": {
+          "provider": "github-actions",
+          "run_id": "30043506275",
+          "url": "https://github.com/jankneumann/agentic-content-analyzer/actions/runs/30043506275/job/89328888655",
+          "required_checks": ["frontend-release"]
+        },
+        "passed": true,
+        "evidence": {
+          "artifacts": [
+            "https://github.com/jankneumann/agentic-content-analyzer/actions/runs/30043506275/job/89328888655"
+          ],
+          "metrics": {
+            "audit_passed": true,
+            "contract_check_passed": true,
+            "focused_tests_passed": true,
+            "build_passed": true
+          }
+        }
+      }
+    ]
+  },
+  "escalations": []
+}

@@ -1,0 +1,6 @@
+{
+  "kind": "url",
+  "url": "https://example.com/aca-release-smoke-fixture",
+  "routing_mode": "webpage",
+  "notes": "Checked-in non-production release smoke fixture"
+}

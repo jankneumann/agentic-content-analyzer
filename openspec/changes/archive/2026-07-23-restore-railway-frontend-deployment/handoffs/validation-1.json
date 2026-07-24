@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-07-23T21:02:13.539585+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Full RI-02 validation passed: 3/3 requirements, 4/4 work-package results, 46 Python regressions, 6 focused frontend tests, high/critical npm audit gate, contract drift, exact production build, strict OpenSpec, Ruff, Mypy, package scope/locks, exact-SHA GitHub CI, Railway SUCCESS, and one completed canonical production canary with zero retired-route traffic.",
+    "completed_work": [
+      "spec compliance",
+      "package evidence",
+      "security gate",
+      "static quality gate",
+      "exact-SHA CI",
+      "corrected Railway deployment",
+      "bounded production behavior proof"
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Accept full production validation",
+        "rationale": "The exact audit-gated candidate is active, recoverable, and supported by validator-enforced browser, operation, Railway, and bounded backend evidence.",
+        "capability": "frontend-release-delivery",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Integrate ri-02 into the roadmap branch and advance to ri-03."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/restore-railway-frontend-deployment/validation-report.md",
+        "description": "formal validation outcome"
+      },
+      {
+        "path": "openspec/changes/restore-railway-frontend-deployment/architecture-impact.md",
+        "description": "architecture impact analysis"
+      },
+      {
+        "path": "openspec/changes/restore-railway-frontend-deployment/evidence/production-deployment.md",
+        "description": "sanitized production evidence"
+      }
+    ]
+  }
+}

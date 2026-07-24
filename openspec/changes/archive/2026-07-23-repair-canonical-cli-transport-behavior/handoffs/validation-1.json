@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-07-23T17:56:21.660818+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Spec and evidence validation passed: 4/4 requirements and 5/5 package results are complete, and the 383-test focused collection has no runtime or Requests compatibility warning. Production smoke remains assigned to dependent roadmap item ri-04.",
+    "completed_work": [
+      "spec compliance",
+      "package evidence",
+      "focused regression gate",
+      "static quality gate"
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Run the local-parallel spec and evidence gate",
+        "rationale": "The item implementation produced work-package evidence while the roadmap assigns deployed cross-surface proof to ri-04.",
+        "capability": "roadmap-execution",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Integrate ri-01 into the roadmap branch and advance to the next ready item."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/repair-canonical-cli-transport-behavior/validation-report.md",
+        "description": "Formal validation outcome"
+      },
+      {
+        "path": "openspec/changes/repair-canonical-cli-transport-behavior/architecture-impact.md",
+        "description": "Manual architecture impact analysis"
+      },
+      {
+        "path": "openspec/changes/repair-canonical-cli-transport-behavior/change-context.md",
+        "description": "Requirement evidence matrix"
+      }
+    ]
+  }
+}

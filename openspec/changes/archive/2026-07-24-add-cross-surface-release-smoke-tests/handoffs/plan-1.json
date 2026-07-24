@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-07-23T22:45:00+00:00",
+  "coordinator_error": null,
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Planned an automated deployed compatibility gate that observes served frontend and API revisions, exercises direct HTTP, a real CLI subprocess, and a deployed browser, rejects stale retired-route assets, and keeps mutation restricted to explicitly approved staging or ephemeral targets.",
+    "completed_work": [
+      "repository and release-boundary investigation",
+      "two-tier release-smoke design",
+      "delta specification",
+      "strict evidence schema",
+      "schema-valid implementation package DAG"
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Observe revisions from served artifacts",
+        "rationale": "Operator labels and deployment metadata do not prove what the network boundary is serving.",
+        "capability": "cross-surface-release-smoke",
+        "supersedes": null
+      },
+      {
+        "title": "Keep production smoke structurally read-only",
+        "rationale": "Mutation requires redundant authorization and an exact non-production target classification.",
+        "capability": "cross-surface-release-smoke",
+        "supersedes": null
+      },
+      {
+        "title": "Retain only allowlisted evidence",
+        "rationale": "Release proof must not become an artifact containing credentials, headers, queries, or user content.",
+        "capability": "cross-surface-release-smoke",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Implement served release identity test-first, then execute each serialized work package and its local verification gate."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/add-cross-surface-release-smoke-tests/proposal.md",
+        "description": "Scope, outcomes, risks, and approval"
+      },
+      {
+        "path": "openspec/changes/add-cross-surface-release-smoke-tests/design.md",
+        "description": "Revision, browser, mutation, evidence, and CI decisions"
+      },
+      {
+        "path": "openspec/changes/add-cross-surface-release-smoke-tests/work-packages.yaml",
+        "description": "Implementation package DAG"
+      },
+      {
+        "path": "openspec/changes/add-cross-surface-release-smoke-tests/contracts/release-smoke-evidence.schema.json",
+        "description": "Sanitized evidence contract"
+      }
+    ]
+  }
+}

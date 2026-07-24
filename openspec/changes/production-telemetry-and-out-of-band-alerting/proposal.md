@@ -1,23 +1,35 @@
-# Production telemetry and out-of-band alerting
+# Change: Add terminal-state telemetry and alerts
 
-> Parent roadmap: `ingestion-reliability`
+> Parent roadmap: `roadmap-workflow-surface-reliability`
 > Change ID: `production-telemetry-and-out-of-band-alerting`
-> Effort: M
-> Priority: 3
+> Effort: L
+> Priority: 9
 
 ## Summary
 
-Call record_ingestion / record_pipeline_stage_* from src/tasks/content.py and the worker (today only the CLI path is instrumented). Add one out-of-band channel (email via existing SendGrid dep, or webhook) to notification_service.emit() for severity >= warning, covering job_failure and zero-item runs; current delivery is SSE to an open browser only (notification_service.py:141-154).
+Instrument canonical workflow terminal transitions and deliver deduplicated
+out-of-band alerts for failures, partial sources, zero-item outcomes, and
+reconciliation events. Define a sink boundary with safe retries, idempotency,
+diagnostic links, redaction, and secret handling.
 
 ## Dependencies
 
-- `ingestion-run-persistence`
+- `ri-07`
+- `ri-08`
 
 ## Acceptance Outcomes
 
-- Scheduled runs emit per-source ingestion counters
-- A failed or empty overnight run produces an email/push notification by morning
+- All relevant terminal and reconciliation outcomes emit structured telemetry.
+- At least one configured out-of-band sink receives deduplicated failure alerts
+  and retries without duplicate notifications.
+- Payloads identify operation, workflow, and affected resources only through
+  opaque allowlisted identifiers, plus a stable same-origin diagnostic link
+  stripped of query and fragment data.
+- Deterministic tests cover classification; secret, PII, and user-content
+  redaction; URL sanitization; retry; and idempotency.
+- Staging proves terminal telemetry and external alert delivery.
 
 ## Rationale
 
-A 3 a.m. failed or empty run currently alerts nobody.
+Production reliability needs external notification derived from the same typed
+durable results used for recovery.

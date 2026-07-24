@@ -27,6 +27,7 @@ import type {
 } from "@/generated/workflow-contracts"
 import {
   getAllCapabilities,
+  getConfiguredSources,
   submitIngestion,
   submitPipeline,
   uploadFile,
@@ -393,6 +394,11 @@ function IngestPage() {
     queryFn: getAllCapabilities,
     staleTime: 5 * 60_000,
   })
+  const configuredSources = useQuery({
+    queryKey: ["workflow-configured-sources"],
+    queryFn: () => getConfiguredSources(),
+    staleTime: 5 * 60_000,
+  })
   const [selectedSource, setSelectedSource] = React.useState<string>()
   const frontendSources =
     capabilities.data?.source_commands.filter((source) =>
@@ -406,29 +412,36 @@ function IngestPage() {
       title="Ingestion"
       description="Submit durable source and pipeline operations"
     >
-      {capabilities.isLoading && (
+      {(capabilities.isLoading || configuredSources.isLoading) && (
         <div className="flex items-center gap-2 py-8" role="status">
           <Loader2 className="h-5 w-5 animate-spin" />
           Loading source capabilities
         </div>
       )}
-      {capabilities.isError && (
+      {(capabilities.isError || configuredSources.isError) && (
         <div className="border-destructive border p-4" role="alert">
           <p className="font-medium">Capabilities unavailable</p>
           <p className="text-muted-foreground text-sm">
-            {capabilities.error.message}
+            {(capabilities.error ?? configuredSources.error)?.message ??
+              "Workflow discovery failed"}
           </p>
           <Button
             className="mt-3"
             variant="outline"
-            onClick={() => void capabilities.refetch()}
+            onClick={() => {
+              void capabilities.refetch()
+              void configuredSources.refetch()
+            }}
           >
             Retry
           </Button>
         </div>
       )}
-      {capabilities.data && (
+      {capabilities.data && configuredSources.data && (
         <>
+          <p className="text-muted-foreground mb-3 text-xs">
+            {configuredSources.data.data.length} configured sources discovered
+          </p>
           <PipelineForm />
           <section aria-labelledby="source-operations">
             <div className="flex items-center gap-2">

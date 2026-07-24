@@ -33,6 +33,13 @@ _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
 _INGEST_ADAPTER: TypeAdapter[IngestCommand] = TypeAdapter(IngestCommand)
 
 
+def _cursor_page_params(*, limit: int, cursor: str | None) -> dict[str, int | str]:
+    params: dict[str, int | str] = {"limit": limit}
+    if cursor is not None:
+        params["cursor"] = cursor
+    return params
+
+
 class ProblemError(RuntimeError):
     """An HTTP request failed with a canonical RFC 7807 problem."""
 
@@ -51,13 +58,14 @@ class WorkflowApiClient:
         admin_key: str | None = None,
         timeout: float = 30.0,
         transport: httpx.BaseTransport | None = None,
+        follow_redirects: bool = True,
     ) -> None:
         headers = {"X-Admin-Key": admin_key} if admin_key else None
         self._client = httpx.Client(
             base_url=base_url,
             headers=headers,
             timeout=httpx.Timeout(timeout, connect=min(timeout, 10.0)),
-            follow_redirects=True,
+            follow_redirects=follow_redirects,
             transport=transport,
         )
 
@@ -196,7 +204,10 @@ class WorkflowApiClient:
         )
 
     def list_operations(self, *, limit: int = 50, cursor: str | None = None) -> OperationPage:
-        response = self._client.get("/api/v1/operations", params={"limit": limit, "cursor": cursor})
+        response = self._client.get(
+            "/api/v1/operations",
+            params=_cursor_page_params(limit=limit, cursor=cursor),
+        )
         return self._decode(response, OperationPage)
 
     def iter_operations(
@@ -247,7 +258,8 @@ class WorkflowApiClient:
 
     def get_capabilities(self, *, limit: int = 50, cursor: str | None = None) -> CapabilityDocument:
         response = self._client.get(
-            "/api/v1/capabilities", params={"limit": limit, "cursor": cursor}
+            "/api/v1/capabilities",
+            params=_cursor_page_params(limit=limit, cursor=cursor),
         )
         return self._decode(response, CapabilityDocument)
 
@@ -255,7 +267,8 @@ class WorkflowApiClient:
         self, *, limit: int = 50, cursor: str | None = None
     ) -> ConfiguredSourcePage:
         response = self._client.get(
-            "/api/v1/configured-sources", params={"limit": limit, "cursor": cursor}
+            "/api/v1/configured-sources",
+            params=_cursor_page_params(limit=limit, cursor=cursor),
         )
         return self._decode(response, ConfiguredSourcePage)
 
@@ -286,6 +299,12 @@ class WorkflowApiClient:
 
     @staticmethod
     def _decode_json(response: httpx.Response) -> Any:
+        if response.is_redirect:
+            raise httpx.HTTPStatusError(
+                "Redirect responses are not accepted",
+                request=response.request,
+                response=response,
+            )
         if response.is_error:
             try:
                 problem = Problem.model_validate(response.json())
