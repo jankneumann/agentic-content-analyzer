@@ -161,6 +161,16 @@ jobs:
         working-directory: web
         run: npm ci
 
+      # The `rest` shard also runs tests/release_smoke/test_browser_smoke.py,
+      # which drives a real Playwright browser. Install the release-smoke extra
+      # and the Chromium binary for this shard so those tests execute instead of
+      # failing on a missing optional dependency.
+      - name: Install release-smoke browser toolchain
+        if: matrix.shard == 'rest'
+        run: |
+          uv pip install --system -e ".[release-smoke]"
+          python -m playwright install --with-deps chromium
+
       - name: Run database migrations
         # API tests use TestClient which hits the app's actual DATABASE_URL
         # (newsletters), separate from the worktree-aware fixture DB
