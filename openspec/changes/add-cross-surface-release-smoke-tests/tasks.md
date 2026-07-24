@@ -56,23 +56,23 @@
 
 ## Phase 3 — Guarded mutation and evidence (`wp-mutation-evidence`)
 
-- [ ] 3.1 Write fail-closed exact target identity, production alias,
+- [x] 3.1 Write fail-closed exact target identity, production alias,
   classification, and mutation-authorization tests. **(M)**
   **Spec scenarios:** Production mutation is rejected
   **Design decisions:** D4
-- [ ] 3.2 Define a checked-in, bounded, non-executable JSON fixture contract;
+- [x] 3.2 Define a checked-in, bounded, non-executable JSON fixture contract;
   implement one-shot canonical ingestion with run-ID-derived idempotency and
   successful terminal-state polling. **(M)**
   **Spec scenarios:** Staging mutation reaches successful terminal state
   **Dependencies:** 3.1
-- [ ] 3.3 Define the sanitized JSON evidence schema, conditional failure
+- [x] 3.3 Define the sanitized JSON evidence schema, conditional failure
   observations, provenance rules, and semantic validator. **(M)**
   **Spec scenarios:** Passing evidence is complete; Sensitive evidence is rejected
   **Design decisions:** D5
-- [ ] 3.4 Test pass, pre-observation failure, timeout, redaction,
+- [x] 3.4 Test pass, pre-observation failure, timeout, redaction,
   validator-failure envelope, and ambiguous-submit reconciliation paths. **(M)**
   **Dependencies:** 3.2, 3.3
-- [ ] Checkpoint: validate representative read-only and staging reports and run
+- [x] Checkpoint: validate representative read-only and staging reports and run
   a secret-pattern scan over artifacts.
 
 ## Phase 4 — CI and operator integration (`wp-release-integration`)

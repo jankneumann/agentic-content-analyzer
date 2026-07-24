@@ -54,3 +54,16 @@
   scanning with count, byte, MIME, redirect, and deadline guards.
 - Focused result: 21 Python tests and 7 Vitest cases passed; Ruff, mypy,
   TypeScript typecheck, production build, and diff checks passed.
+
+## 2026-07-23 — Guarded mutation and evidence implementation
+
+- Added exact target classification, redundant production mutation rejection,
+  bounded checked-in JSON fixtures, one-shot canonical ingestion, and terminal
+  operation polling with stable ambiguous-submit handling.
+- Added a minimized JSON evidence contract and packaged runtime copy with
+  schema, semantic, provenance, time-window, byte-bound, and secret-name
+  validation.
+- Added safe validator-failure envelopes and standalone run/validate entry
+  points that import correctly from outside the repository.
+- Focused result: 41 release-smoke tests passed; Ruff, mypy, standalone
+  validator, and diff checks passed.
