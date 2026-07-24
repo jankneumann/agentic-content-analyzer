@@ -71,7 +71,7 @@ items:
   - The active OpenSpec inventory contains only actionable work.
 - item_id: ri-04
   title: Add cross-surface release smoke tests
-  status: in_progress
+  status: completed
   priority: 4
   effort: L
   depends_on:
@@ -263,4 +263,4 @@ items:
     evaluation suites.
   - No speculative implementation from the existing 42-task proposal begins without
     a concrete incompatible case.
-updated_at: '2026-07-23T21:07:16.727879+00:00'
+updated_at: '2026-07-24T17:39:35Z'
