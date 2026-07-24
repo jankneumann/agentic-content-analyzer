@@ -160,17 +160,33 @@ def test_reversed_or_unbounded_window_is_rejected() -> None:
     assert any("time" in error or "window" in error for error in validate_evidence(evidence))
 
 
+def _reviewed_contract_path() -> Path:
+    """Locate the reviewed schema whether the change is active or archived.
+
+    The contract lives under the active change directory while the change is in
+    flight, then moves to ``openspec/changes/archive/<date>-<change-id>/`` once
+    the change is archived. Resolve either location so this parity guard keeps
+    working after archival.
+    """
+    contract = Path("contracts") / "release-smoke-evidence.schema.json"
+    active = REPO_ROOT / "openspec/changes/add-cross-surface-release-smoke-tests" / contract
+    if active.exists():
+        return active
+    archived = sorted(
+        (REPO_ROOT / "openspec/changes/archive").glob(
+            "*-add-cross-surface-release-smoke-tests/" + contract.as_posix()
+        )
+    )
+    if archived:
+        return archived[-1]
+    return active  # surface a clear FileNotFoundError against the expected path
+
+
 def test_runtime_schema_matches_reviewed_openspec_contract() -> None:
     runtime = json.loads(
         (REPO_ROOT / "src/release_smoke/release_smoke_evidence.schema.json").read_text()
     )
-    reviewed = json.loads(
-        (
-            REPO_ROOT
-            / "openspec/changes/add-cross-surface-release-smoke-tests/contracts"
-            / "release-smoke-evidence.schema.json"
-        ).read_text()
-    )
+    reviewed = json.loads(_reviewed_contract_path().read_text())
 
     assert runtime == reviewed
 
