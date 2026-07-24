@@ -144,6 +144,23 @@ jobs:
         run: |
           uv pip install --system -e ".[dev]"
 
+      # The `rest` shard includes tests/config/test_release_metadata.py, which
+      # shells out to `npm run build` to assert the served frontend embeds
+      # release revision metadata. That build needs the frontend toolchain, so
+      # provision Node and install web dependencies for this shard only.
+      - name: Set up Node.js (frontend build tests)
+        if: matrix.shard == 'rest'
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies (frontend build tests)
+        if: matrix.shard == 'rest'
+        working-directory: web
+        run: npm ci
+
       - name: Run database migrations
         # API tests use TestClient which hits the app's actual DATABASE_URL
         # (newsletters), separate from the worktree-aware fixture DB
