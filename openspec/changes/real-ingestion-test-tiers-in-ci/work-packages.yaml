@@ -1,0 +1,39 @@
+version: 1
+change_id: real-ingestion-test-tiers-in-ci
+tier: sequential
+packages:
+  - id: wp-main
+    name: "Real ingestion CI tiers — full scope"
+    description: >-
+      PR + scheduled real-ingestion tiers over the canonical durable workflow:
+      DB-delta verification via the existing harness, registry completeness with a
+      reviewed exclusion set, failure-class evidence from the durable operation/result
+      taxonomy, live-adapter policy, and CI wiring.
+    tasks:
+      - "1.1"
+      - "1.2"
+      - "1.3"
+      - "2.1"
+      - "2.2"
+      - "3.1"
+      - "3.2"
+      - "4.1"
+      - "4.2"
+      - "5.1"
+      - "5.2"
+      - "5.3"
+      - "5.4"
+    priority: 1
+    dependencies: []
+    scope:
+      write_allow:
+        - "tests/real_ingestion/**"
+        - "tests/fixtures/sources/**"
+        - "src/ingestion/**"
+        - ".github/workflows/ci.yml"
+        - ".github/workflows/real-ingestion-scheduled.yml"
+        - "pyproject.toml"
+        - "docs/TESTING.md"
+      read_allow:
+        - "**"
+    verification: tier_b
