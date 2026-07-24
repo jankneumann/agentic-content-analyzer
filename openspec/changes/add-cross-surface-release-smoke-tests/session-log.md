@@ -119,3 +119,8 @@
   the standalone no-echo regression.
 - Routed and blocked every browser WebSocket before page creation, recorded any
   attempt as a smoke failure, and exercised the boundary in real Chromium.
+- Independent security review signed off clean on `94d49a1b`; independent
+  implementation review then identified and verified the test-only redaction
+  assertion improvement in `c5735abf`.
+- Final state: no remaining implementation, security, privacy, plan-scope, or
+  validation findings.

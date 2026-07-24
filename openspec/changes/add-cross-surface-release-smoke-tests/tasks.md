@@ -6,10 +6,10 @@
 ## Status
 
 - [x] Planning
-- [ ] Implementation
-- [ ] Testing
-- [ ] Review
-- [ ] Done
+- [x] Implementation
+- [x] Testing
+- [x] Review
+- [x] Done
 
 ## Phase 1 — Served revision identity (`wp-release-identity`)
 
