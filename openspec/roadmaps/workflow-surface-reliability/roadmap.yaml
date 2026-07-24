@@ -94,7 +94,7 @@ items:
     to retained evidence.
 - item_id: ri-05
   title: Implement real ingestion CI tiers
-  status: approved
+  status: in_progress
   priority: 5
   effort: L
   depends_on:
