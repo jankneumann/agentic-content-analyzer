@@ -1,0 +1,291 @@
+schema_version: 1
+
+feature:
+  id: add-cross-surface-release-smoke-tests
+  title: Add cross-surface release smoke tests
+  plan_revision: 2
+  created_by: codex
+  created_at: "2026-07-23T22:30:00Z"
+
+contracts:
+  revision: 1
+  openapi:
+    primary: openspec/contracts/content-workflows/openapi/v1.yaml
+    files:
+      - openspec/contracts/content-workflows/openapi/v1.yaml
+
+defaults:
+  priority: 5
+  lock_ttl_minutes: 120
+  timeout_minutes: 90
+  retry_budget: 1
+  verification_tier_required: B
+  min_trust_level: 2
+
+packages:
+  - package_id: wp-release-identity
+    title: Served release identity
+    task_type: implement
+    description: Publish bounded backend and frontend revisions from served artifacts.
+    role: platform-engineer
+    priority: 1
+    depends_on: []
+    locks:
+      files:
+        - src/api/health_routes.py
+        - tests/api/test_health_routes.py
+        - web/vite.config.ts
+        - tests/config/test_release_metadata.py
+        - scripts/stamp_release_revision.py
+        - tests/config/test_release_revision_stamp.py
+      keys:
+        - feature:add-cross-surface-release-smoke-tests:identity
+      ttl_minutes: 120
+      reason: Backend liveness and frontend build identity boundaries.
+    scope:
+      write_allow:
+        - src/api/health_routes.py
+        - tests/api/test_health_routes.py
+        - web/vite.config.ts
+        - tests/config/test_release_metadata.py
+        - scripts/stamp_release_revision.py
+        - tests/config/test_release_revision_stamp.py
+      read_allow:
+        - src/**
+        - tests/**
+        - web/**
+        - openspec/**
+    worktree:
+      name: wp-release-identity
+      mode: isolated
+    timeout_minutes: 90
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 100
+      alternatives_count: 3
+      complexity: medium
+      package_kind: integration
+    inputs:
+      tasks: ["1.1", "1.2", "1.3", "1.4"]
+    verification:
+      tier_required: B
+      steps:
+        - name: backend-release-identity
+          kind: command
+          command: pytest tests/api/test_health_routes.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count]
+        - name: frontend-release-identity
+          kind: command
+          command: pytest tests/config/test_release_metadata.py tests/config/test_release_revision_stamp.py --no-cov -q && cd web && npm run build
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, build_passed]
+    outputs:
+      result_keys: [files_modified, test_count, build_passed]
+
+  - package_id: wp-readonly-runner
+    title: Read-only cross-surface runner
+    task_type: implement
+    description: Exercise direct API, real CLI, and deployed frontend discovery without mutation.
+    role: test-engineer
+    priority: 2
+    depends_on:
+      - wp-release-identity
+    locks:
+      files:
+        - src/release_smoke/models.py
+        - src/release_smoke/runner.py
+        - src/release_smoke/browser.py
+        - src/release_smoke/__init__.py
+        - scripts/run_release_smoke.py
+        - tests/release_smoke/test_readonly_runner.py
+        - tests/release_smoke/test_browser_smoke.py
+        - pyproject.toml
+        - uv.lock
+        - web/src/lib/api/workflows.ts
+        - web/src/routes/ingest.tsx
+        - web/src/lib/api/__tests__/workflow-contracts.test.ts
+        - config/release_smoke_retired_routes.json
+      keys:
+        - feature:add-cross-surface-release-smoke-tests:readonly
+      ttl_minutes: 180
+      reason: Cross-surface orchestration and browser observation boundary.
+    scope:
+      write_allow:
+        - src/release_smoke/**
+        - scripts/run_release_smoke.py
+        - tests/release_smoke/test_readonly_runner.py
+        - tests/release_smoke/test_browser_smoke.py
+        - pyproject.toml
+        - uv.lock
+        - web/src/lib/api/workflows.ts
+        - web/src/routes/ingest.tsx
+        - web/src/lib/api/__tests__/workflow-contracts.test.ts
+        - config/release_smoke_retired_routes.json
+      read_allow:
+        - src/**
+        - tests/**
+        - web/**
+        - openspec/**
+    worktree:
+      name: wp-readonly-runner
+      mode: isolated
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 420
+      alternatives_count: 3
+      complexity: high
+      package_kind: integration
+    inputs:
+      tasks: ["2.1", "2.2", "2.3", "2.4", "2.5"]
+    verification:
+      tier_required: B
+      steps:
+        - name: readonly-runner-tests
+          kind: command
+          command: pytest tests/release_smoke/test_readonly_runner.py tests/release_smoke/test_browser_smoke.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count, mutation_count]
+        - name: frontend-discovery-contract
+          kind: command
+          command: cd web && npm test -- --run src/lib/api/__tests__/workflow-contracts.test.ts && npm run typecheck && npm run build
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [focused_tests_passed, typecheck_passed, build_passed]
+    outputs:
+      result_keys: [files_modified, test_count, mutation_count]
+
+  - package_id: wp-mutation-evidence
+    title: Guarded mutation and evidence
+    task_type: implement
+    description: Add fail-closed mutation authorization and sanitized evidence validation.
+    role: backend-engineer
+    priority: 2
+    depends_on:
+      - wp-readonly-runner
+    locks:
+      files:
+        - src/release_smoke/models.py
+        - src/release_smoke/runner.py
+        - src/release_smoke/evidence.py
+        - scripts/validate_release_smoke_evidence.py
+        - tests/release_smoke/test_mutation_runner.py
+        - tests/release_smoke/test_evidence.py
+        - openspec/changes/add-cross-surface-release-smoke-tests/contracts/release-smoke-evidence.schema.json
+        - tests/fixtures/release_smoke/url.json
+      keys:
+        - feature:add-cross-surface-release-smoke-tests:mutation
+      ttl_minutes: 180
+      reason: Mutation safety policy and retained evidence contract.
+    scope:
+      write_allow:
+        - src/release_smoke/models.py
+        - src/release_smoke/runner.py
+        - src/release_smoke/evidence.py
+        - scripts/validate_release_smoke_evidence.py
+        - tests/release_smoke/test_mutation_runner.py
+        - tests/release_smoke/test_evidence.py
+        - openspec/changes/add-cross-surface-release-smoke-tests/contracts/release-smoke-evidence.schema.json
+        - tests/fixtures/release_smoke/url.json
+      read_allow:
+        - src/**
+        - tests/**
+        - openspec/**
+    worktree:
+      name: wp-mutation-evidence
+      mode: shared
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 360
+      alternatives_count: 3
+      complexity: high
+      package_kind: integration
+    inputs:
+      tasks: ["3.1", "3.2", "3.3", "3.4"]
+    verification:
+      tier_required: A
+      steps:
+        - name: mutation-and-evidence-tests
+          kind: command
+          command: pytest tests/release_smoke/test_mutation_runner.py tests/release_smoke/test_evidence.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count, redaction_cases]
+    outputs:
+      result_keys: [files_modified, test_count, redaction_cases]
+
+  - package_id: wp-release-integration
+    title: CI and operator integration
+    task_type: integrate
+    description: Add protected workflow entry points, documentation, and the complete release gate.
+    role: release-engineer
+    priority: 3
+    depends_on:
+      - wp-readonly-runner
+      - wp-mutation-evidence
+    locks:
+      files:
+        - .github/workflows/release-smoke.yml
+        - docs/DEVELOPMENT.md
+        - docs/MOBILE_DEPLOYMENT.md
+        - tests/config/test_release_smoke_workflow.py
+        - tests/config/test_frontend_deployment_evidence.py
+      keys:
+        - feature:add-cross-surface-release-smoke-tests:integration
+      ttl_minutes: 180
+      reason: Final release workflow and documentation boundary.
+    scope:
+      write_allow:
+        - .github/workflows/release-smoke.yml
+        - docs/DEVELOPMENT.md
+        - docs/MOBILE_DEPLOYMENT.md
+        - tests/config/test_release_smoke_workflow.py
+        - tests/config/test_frontend_deployment_evidence.py
+        - openspec/changes/add-cross-surface-release-smoke-tests/**
+      read_allow:
+        - "**"
+    worktree:
+      name: wp-release-integration
+      mode: shared
+    timeout_minutes: 180
+    retry_budget: 0
+    min_trust_level: 3
+    metadata:
+      loc_estimate: 180
+      alternatives_count: 2
+      complexity: high
+      package_kind: integration
+    inputs:
+      tasks: ["4.1", "4.2", "4.3", "4.4"]
+    verification:
+      tier_required: A
+      steps:
+        - name: complete-release-smoke-gate
+          kind: command
+          command: pytest tests/release_smoke tests/config/test_release_smoke_workflow.py tests/config/test_release_metadata.py tests/config/test_release_revision_stamp.py tests/config/test_frontend_deployment_evidence.py tests/api/test_health_routes.py --no-cov -q && cd web && npm test -- --run src/lib/api/__tests__/workflow-contracts.test.ts && npm run typecheck && npm run build
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, build_passed, security_cases]
+        - name: openspec-strict
+          kind: command
+          command: openspec validate add-cross-surface-release-smoke-tests --strict
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [validation_passed]
+    outputs:
+      result_keys: [files_modified, test_count, build_passed, validation_passed]

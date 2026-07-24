@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/api/v1/content/save-url"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/contents/ingest"
+    }
+  ]
+}

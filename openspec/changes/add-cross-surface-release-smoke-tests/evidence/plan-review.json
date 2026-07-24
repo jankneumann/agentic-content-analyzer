@@ -1,0 +1,139 @@
+{
+  "review_type": "plan",
+  "target": "add-cross-surface-release-smoke-tests",
+  "reviewer_vendor": "codex-independent",
+  "findings": [
+    {
+      "id": 1,
+      "type": "security",
+      "criticality": "critical",
+      "description": "Credential-bearing origins and non-production identity were not pinned.",
+      "resolution": "Require approval-protected exact target identity, origins, expected revisions, production aliases, HTTPS, no redirects, and exact browser API destination before credentials or mutation.",
+      "disposition": "fix",
+      "package_id": "wp-readonly-runner",
+      "file_path": "openspec/changes/add-cross-surface-release-smoke-tests/design.md",
+      "axis": "security",
+      "severity": "critical"
+    },
+    {
+      "id": 2,
+      "type": "architecture",
+      "criticality": "critical",
+      "description": "The frontend configured-source scenario had no implementation or write scope.",
+      "resolution": "Add typed frontend configured-source discovery, actual ingestion-surface invocation, focused tests, locks, and scopes.",
+      "disposition": "fix",
+      "package_id": "wp-readonly-runner",
+      "file_path": "openspec/changes/add-cross-surface-release-smoke-tests/work-packages.yaml",
+      "axis": "architecture",
+      "severity": "critical"
+    },
+    {
+      "id": 3,
+      "type": "security",
+      "criticality": "critical",
+      "description": "The workflow uploaded evidence before validation.",
+      "resolution": "Validate before upload and replace invalid runner output with a separately generated and validated minimal failure envelope.",
+      "disposition": "fix",
+      "package_id": "wp-release-integration",
+      "file_path": "openspec/changes/add-cross-surface-release-smoke-tests/design.md",
+      "axis": "security",
+      "severity": "critical"
+    },
+    {
+      "id": 4,
+      "type": "correctness",
+      "criticality": "high",
+      "description": "The evidence schema could not represent failures before surface observation.",
+      "resolution": "Allow null safe observations only for failed evidence with corresponding stable failure codes; require complete observations for passing evidence.",
+      "disposition": "fix",
+      "package_id": "wp-mutation-evidence",
+      "file_path": "openspec/changes/add-cross-surface-release-smoke-tests/contracts/release-smoke-evidence.schema.json",
+      "axis": "correctness",
+      "severity": "optional"
+    },
+    {
+      "id": 5,
+      "type": "correctness",
+      "criticality": "high",
+      "description": "Promotion revision identity permitted mutable labels without provenance.",
+      "resolution": "Use immutable full commit SHAs with allowlisted provenance; for detached Railway CLI uploads generate a canonical build stamp only after verifying clean HEAD equals the requested SHA, correlate its digest to the SHA-bearing Railway message, and prohibit runtime promotion relabeling.",
+      "disposition": "fix",
+      "package_id": "wp-release-identity",
+      "file_path": "openspec/changes/add-cross-surface-release-smoke-tests/design.md",
+      "axis": "correctness",
+      "severity": "optional"
+    },
+    {
+      "id": 6,
+      "type": "spec_gap",
+      "criticality": "high",
+      "description": "The retired-route policy was undefined and downward-configurable.",
+      "resolution": "Add a non-overridable checked-in baseline containing both retired production mutation routes; runtime may only add entries.",
+      "disposition": "fix",
+      "package_id": "wp-readonly-runner",
+      "file_path": "openspec/changes/add-cross-surface-release-smoke-tests/contracts/retired-workflow-mutations.json",
+      "axis": "correctness",
+      "severity": "optional"
+    },
+    {
+      "id": 7,
+      "type": "performance",
+      "criticality": "high",
+      "description": "Asset completeness and resource bounds were undefined.",
+      "resolution": "Emit a revision/digest-bound Vite asset manifest and enforce completeness, redirect, MIME, per-asset, cumulative, count, and deadline limits.",
+      "disposition": "fix",
+      "package_id": "wp-readonly-runner",
+      "file_path": "openspec/changes/add-cross-surface-release-smoke-tests/design.md",
+      "axis": "performance",
+      "severity": "optional"
+    },
+    {
+      "id": 8,
+      "type": "architecture",
+      "criticality": "high",
+      "description": "Browser and schema-validator dependency ownership was implicit.",
+      "resolution": "Add a dedicated release-smoke Python extra pinning Playwright and JSON Schema format support; install Chromium explicitly in release CI.",
+      "disposition": "fix",
+      "package_id": "wp-readonly-runner",
+      "file_path": "openspec/changes/add-cross-surface-release-smoke-tests/work-packages.yaml",
+      "axis": "architecture",
+      "severity": "optional"
+    },
+    {
+      "id": 9,
+      "type": "security",
+      "criticality": "high",
+      "description": "The mutation fixture alternated between a data file and executable command.",
+      "resolution": "Use only bounded schema-validated JSON beneath a checked-in allowlisted root; reject absolute, traversal, and symlink paths and prohibit shell execution.",
+      "disposition": "fix",
+      "package_id": "wp-mutation-evidence",
+      "file_path": "openspec/changes/add-cross-surface-release-smoke-tests/design.md",
+      "axis": "security",
+      "severity": "optional"
+    },
+    {
+      "id": 10,
+      "type": "resilience",
+      "criticality": "high",
+      "description": "Ambiguous-submit reconciliation had no retained correlation.",
+      "resolution": "Derive the idempotency key deterministically as aca-release-smoke-v1:<run_id> so operators can reconstruct it from sanitized evidence.",
+      "disposition": "fix",
+      "package_id": "wp-mutation-evidence",
+      "file_path": "openspec/changes/add-cross-surface-release-smoke-tests/design.md",
+      "axis": "correctness",
+      "severity": "optional"
+    },
+    {
+      "id": 11,
+      "type": "correctness",
+      "criticality": "high",
+      "description": "The frontend-changing read-only package did not verify its focused frontend contract, types, or build.",
+      "resolution": "Run the focused frontend workflow-contract test, TypeScript typecheck, and production build within wp-readonly-runner and repeat them at integration.",
+      "disposition": "fix",
+      "package_id": "wp-readonly-runner",
+      "file_path": "openspec/changes/add-cross-surface-release-smoke-tests/work-packages.yaml",
+      "axis": "correctness",
+      "severity": "optional"
+    }
+  ]
+}
