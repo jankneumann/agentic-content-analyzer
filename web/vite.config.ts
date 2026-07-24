@@ -3,6 +3,116 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
+import { createHash } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
+import type { OutputChunk } from 'rollup'
+import type { Plugin } from 'vite'
+
+type ReleaseIdentity = {
+  revision: string
+  revision_source:
+    | 'railway_commit_sha'
+    | 'github_sha'
+    | 'verified_detached_sha'
+    | 'local_development'
+}
+
+const COMMIT_SHA = /^[0-9a-f]{40}$/
+
+function platformReleaseIdentity(): ReleaseIdentity | undefined {
+  const candidates = [
+    ['RAILWAY_GIT_COMMIT_SHA', 'railway_commit_sha'],
+    ['GITHUB_SHA', 'github_sha'],
+  ] as const
+  for (const [variable, revision_source] of candidates) {
+    const revision = process.env[variable]
+    if (revision === undefined) continue
+    if (!COMMIT_SHA.test(revision)) {
+      throw new Error(`${variable} must be a lowercase 40-character commit SHA`)
+    }
+    return { revision, revision_source }
+  }
+}
+
+function stampedReleaseIdentity(): ReleaseIdentity | undefined {
+  const stampPath = path.resolve(__dirname, 'release-build.json')
+  if (!existsSync(stampPath)) return
+  const parsed: unknown = JSON.parse(readFileSync(stampPath, 'utf8'))
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    Object.keys(parsed).sort().join(',') !== 'revision,revision_source,schema_version' ||
+    !('schema_version' in parsed) ||
+    parsed.schema_version !== 1 ||
+    !('revision' in parsed) ||
+    typeof parsed.revision !== 'string' ||
+    !COMMIT_SHA.test(parsed.revision) ||
+    !('revision_source' in parsed) ||
+    parsed.revision_source !== 'verified_detached_sha'
+  ) {
+    throw new Error('release-build.json is not a valid verified detached-SHA stamp')
+  }
+  return {
+    revision: parsed.revision,
+    revision_source: parsed.revision_source,
+  }
+}
+
+function releaseIdentity(): ReleaseIdentity {
+  return (
+    platformReleaseIdentity() ??
+    stampedReleaseIdentity() ?? {
+      revision: 'development',
+      revision_source: 'local_development',
+    }
+  )
+}
+
+function releaseMetadataPlugin(): Plugin {
+  const identity = releaseIdentity()
+  return {
+    name: 'aca-release-metadata',
+    transformIndexHtml() {
+      return [
+        {
+          tag: 'meta',
+          attrs: { name: 'release-revision', content: identity.revision },
+          injectTo: 'head',
+        },
+        {
+          tag: 'meta',
+          attrs: {
+            name: 'release-revision-source',
+            content: identity.revision_source,
+          },
+          injectTo: 'head',
+        },
+      ]
+    },
+    generateBundle(_options, bundle) {
+      const javascript = Object.values(bundle)
+        .filter((output): output is OutputChunk => output.type === 'chunk')
+        .map((chunk) => {
+          const bytes = Buffer.from(chunk.code)
+          return {
+            path: `/${chunk.fileName}`,
+            size_bytes: bytes.byteLength,
+            sha256: createHash('sha256').update(bytes).digest('hex'),
+          }
+        })
+        .sort((left, right) => left.path.localeCompare(right.path))
+      this.emitFile({
+        type: 'asset',
+        fileName: 'release-assets.json',
+        source: JSON.stringify({
+          schema_version: 1,
+          ...identity,
+          javascript,
+        }),
+      })
+    },
+  }
+}
 
 /**
  * Vite Configuration for ACA (AI Content Analyzer) Web UI
@@ -22,6 +132,7 @@ export default defineConfig({
     exclude: ['tests/e2e/**', 'node_modules/**', 'dist/**'],
   },
   plugins: [
+    releaseMetadataPlugin(),
     // React plugin provides Fast Refresh and JSX transformation
     react(),
     // Tailwind CSS v4 Vite plugin for CSS processing

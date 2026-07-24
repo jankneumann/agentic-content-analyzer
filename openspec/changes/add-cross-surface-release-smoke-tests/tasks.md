@@ -13,20 +13,20 @@
 
 ## Phase 1 — Served revision identity (`wp-release-identity`)
 
-- [ ] 1.1 Write backend liveness revision normalization and response tests. **(S)**
+- [x] 1.1 Write backend liveness revision normalization and response tests. **(S)**
   **Spec scenarios:** Deployed revisions / Expected revisions match served revisions
   **Design decisions:** D1
-- [ ] 1.2 Publish an immutable full API revision and allowlisted provenance from
+- [x] 1.2 Publish an immutable full API revision and allowlisted provenance from
   `/health`; keep local diagnostics visibly non-promotable. **(S)**
   **Dependencies:** 1.1
-- [ ] 1.3 Write and test a detached-HEAD stamp generator plus frontend metadata
+- [x] 1.3 Write and test a detached-HEAD stamp generator plus frontend metadata
   selection for Railway/GitHub, CLI-upload without platform SHA, dirty/mismatch,
   missing, malformed, local, and spoofed revision sources. **(M)**
   **Design decisions:** D1
-- [ ] 1.4 Embed the selected frontend revision/provenance and emit a
+- [x] 1.4 Embed the selected frontend revision/provenance and emit a
   revision-bound manifest covering every JavaScript chunk. **(M)**
   **Dependencies:** 1.3
-- [ ] Checkpoint: run focused backend/frontend build-metadata tests and inspect
+- [x] Checkpoint: run focused backend/frontend build-metadata tests and inspect
   production build output.
 
 ## Phase 2 — Read-only cross-surface runner (`wp-readonly-runner`)

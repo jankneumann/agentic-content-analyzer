@@ -8,7 +8,9 @@ from unittest.mock import MagicMock, patch
 from starlette.testclient import TestClient
 
 from src.api.app import app
-from src.api.health_routes import _check_backup_recency
+from src.api.health_routes import _check_backup_recency, _release_identity
+
+SHA = "a" * 40
 
 
 class TestHealthEndpoint:
@@ -22,6 +24,43 @@ class TestHealthEndpoint:
         data = response.json()
         assert data["status"] == "healthy"
         assert data["service"] == "newsletter-aggregator"
+        assert {"revision", "revision_source"} <= data.keys()
+
+    @patch("src.api.health_routes._release_identity")
+    def test_health_exposes_observed_release_identity(self, release_identity):
+        release_identity.return_value = (SHA, "railway_commit_sha")
+
+        response = TestClient(app).get("/health")
+
+        assert response.json()["revision"] == SHA
+        assert response.json()["revision_source"] == "railway_commit_sha"
+
+
+class TestReleaseIdentity:
+    def test_railway_commit_sha_is_authoritative(self):
+        assert _release_identity(
+            {
+                "RAILWAY_GIT_COMMIT_SHA": SHA,
+                "GITHUB_SHA": "b" * 40,
+            }
+        ) == (SHA, "railway_commit_sha")
+
+    def test_github_sha_is_used_when_railway_metadata_is_absent(self):
+        assert _release_identity({"GITHUB_SHA": SHA}) == (SHA, "github_sha")
+
+    def test_malformed_platform_revision_fails_closed(self):
+        assert _release_identity(
+            {
+                "RAILWAY_GIT_COMMIT_SHA": "not-a-sha",
+                "GITHUB_SHA": SHA,
+            }
+        ) == ("unavailable", "unavailable")
+
+    def test_runtime_override_cannot_claim_a_release_revision(self):
+        assert _release_identity({"ACA_RELEASE_REVISION": SHA}) == (
+            "development",
+            "local_development",
+        )
 
 
 class TestReadinessEndpoint:

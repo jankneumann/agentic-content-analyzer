@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import re
+from collections.abc import Mapping
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
@@ -18,6 +21,30 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["system"])
+
+_COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _release_identity(environ: Mapping[str, str] | None = None) -> tuple[str, str]:
+    """Return the immutable platform revision and its provenance.
+
+    A present but malformed higher-priority platform value fails closed instead
+    of falling through to a lower-trust label. Application-specific runtime
+    overrides are intentionally ignored.
+    """
+    values = os.environ if environ is None else environ
+    candidates = (
+        ("RAILWAY_GIT_COMMIT_SHA", "railway_commit_sha"),
+        ("GITHUB_SHA", "github_sha"),
+    )
+    for variable, source in candidates:
+        revision = values.get(variable)
+        if revision is None:
+            continue
+        if _COMMIT_SHA.fullmatch(revision):
+            return revision, source
+        return "unavailable", "unavailable"
+    return "development", "local_development"
 
 
 @lru_cache(maxsize=1)
@@ -96,7 +123,13 @@ def _check_backup_recency() -> str:
 @router.get("/health")
 async def health_check() -> dict[str, str]:
     """Liveness probe -- returns 200 if the process is alive."""
-    return {"status": "healthy", "service": "newsletter-aggregator"}
+    revision, revision_source = _release_identity()
+    return {
+        "status": "healthy",
+        "service": "newsletter-aggregator",
+        "revision": revision,
+        "revision_source": revision_source,
+    }
 
 
 @router.get("/ready")

@@ -32,3 +32,12 @@
   to the frontend-changing package.
 - Independent final re-review signed off clean with strict OpenSpec, package
   schema/dependency/DAG/lock, command-availability, and diff checks passing.
+
+## 2026-07-23 — Served release identity implementation
+
+- Added fail-closed API revision/provenance on `/health`.
+- Added a clean-HEAD-verified canonical detached-SHA frontend stamp generator.
+- Added Vite HTML metadata and a revision/digest-bound complete JavaScript
+  manifest.
+- Focused result: 28 tests passed; Ruff check/format, TypeScript typecheck,
+  production build, and diff checks passed.
