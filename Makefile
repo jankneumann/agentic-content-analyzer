@@ -53,6 +53,15 @@ workflow-contracts:  ## Validate and regenerate canonical workflow models
 workflow-contracts-check:  ## Validate canonical workflow models and fail on drift
 	uv run --frozen --extra dev python scripts/generate_workflow_contracts.py --check
 
+gen-eval-contract:  ## Validate the CLI gen-eval contract (no eval runner required)
+	uv run --frozen --extra gen-eval python scripts/validate_gen_eval_contract.py
+
+gen-eval-contract-schemas:  ## Regenerate vendored gen-eval schemas from the pinned runner ref
+	uv run --frozen --extra gen-eval python scripts/generate_gen_eval_contract_schemas.py
+
+gen-eval-contract-schemas-check:  ## Fail when vendored gen-eval schemas drift from the pinned ref
+	uv run --frozen --extra gen-eval python scripts/generate_gen_eval_contract_schemas.py --check
+
 test-cold:  ## Drop test DB + run pytest in CI-like cold-start state. Override test selection with ARGS=...
 	@set -e; \
 	DB=$$(.venv/bin/python -c "from urllib.parse import urlparse; from tests.helpers.test_db import get_test_database_url; print(urlparse(get_test_database_url()).path.lstrip('/'))" 2>/dev/null); \

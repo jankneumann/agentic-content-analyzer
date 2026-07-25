@@ -19,28 +19,50 @@
 Deliverable: schema conformance and enforcement that work with no runner
 installed. This phase must be independently green before Phase 2 begins.
 
-- [ ] 1.1 Vendor the UP-2 schemas into `openspec/contracts/cli-gen-eval/` at a
-  pinned contract version, with `evaluation/contract/VERSION` declaring the pin.
-  If UP-2 has not landed, generate them from the pinned runner source and record
-  the generating SHA. **(M)**
+- [x] 1.1 Vendor the UP-2 schemas into `openspec/contracts/cli-gen-eval/` at a
+  pinned contract version, with the pin declared in `evaluation/contract/pin.json`.
+  UP-2 has not landed, so they are generated from the pinned runner source via
+  `scripts/generate_gen_eval_contract_schemas.py`, which reaches the ref through
+  `uvx` and records provenance annotations on every schema. **(M)**
   **Spec scenarios:** The pinned contract version is declared
   **Design decisions:** D1
-- [ ] 1.2 Write validator tests: schema-invalid descriptor, schema-invalid
+  **Deviation:** the pin is `evaluation/contract/pin.json`, not a plain-text
+  `VERSION` file — it must carry the runner source, subdirectory, ref, and
+  generating ref alongside the version, which a one-line file cannot express.
+- [x] 1.2 Write validator tests: schema-invalid descriptor, schema-invalid
   scenario, and the no-runner-present case asserting a definite pass or fail
   rather than a skip. **(M)**
   **Spec scenarios:** Contract validation with no runner installed
   **Design decisions:** D1
   **Dependencies:** 1.1
-- [ ] 1.3 Implement `scripts/validate_gen_eval_contract.py` — descriptor and
+  **Landed as:** `tests/cli_gen_eval/test_contract.py`, 32 tests — also covers
+  three-way contract-version agreement (pin / module constant / schema
+  annotation), durable-vs-runtime byte parity, a static AST check that no
+  contract-layer module imports `gen_eval`, and the zero-scenario boundary
+  between schema validity and Phase 4 sufficiency.
+- [x] 1.3 Implement `scripts/validate_gen_eval_contract.py` — descriptor and
   scenario conformance against the pinned schemas, stdlib plus a JSON Schema
   validator only, no gen-eval import. **(M)**
   **Spec scenarios:** Descriptor and scenarios are schema-valid
   **Dependencies:** 1.2
-- [ ] 1.4 Add `make gen-eval-contract` and a test asserting no dependency,
+- [x] 1.4 Add `make gen-eval-contract` and a test asserting no dependency,
   optional extra, or package source entry references gen-eval. **(S)**
   **Spec scenarios:** Dependency resolution without a runner
   **Design decisions:** D1
   **Dependencies:** 1.3
+  **Landed as:** `make gen-eval-contract`, plus
+  `gen-eval-contract-schemas{,-check}` for regeneration and drift. New
+  `gen-eval` optional extra, deliberately jsonschema-only so the contract layer
+  installs without a browser. The hygiene test compares PEP 508 distribution
+  names rather than substrings, because the extra is itself named `gen-eval`.
+- [x] 1.5 Add the Phase 1 descriptor skeleton `evaluation/descriptors/aca-cli.yaml`
+  so the contract layer is demonstrable end-to-end and `make gen-eval-contract` is
+  green. **(S)**
+  **Deviation:** unplanned, and partially overlaps 3.1. Added because leaving a
+  documented Make target failing is worse than a skeleton, and because the
+  alternative — teaching the validator to tolerate an absent descriptor — would
+  reintroduce exactly the skip semantics D3 removes. `commands` and
+  `scenario_dirs` are empty; 3.1 and 3.2 populate them.
 
 ## Phase 2 — Runner acquisition and state classification (`wp-gen-eval-runner`)
 

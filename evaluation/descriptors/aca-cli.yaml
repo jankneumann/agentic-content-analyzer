@@ -1,0 +1,41 @@
+# Interface descriptor for the `aca` CLI.
+#
+# Schema: openspec/contracts/cli-gen-eval/interface-descriptor.schema.json
+#         (vendored from gen_eval.descriptor.InterfaceDescriptor at the ref in
+#          evaluation/contract/pin.json)
+#
+# STATE: Phase 1 skeleton. The `commands` list and `scenario_dirs` are populated by
+# tasks 3.1-3.5; task 3.2 adds the drift test that requires every command group
+# registered on src/cli/app.py to appear here or in a reviewed exclusion set. Until
+# then this file exists so the contract layer is demonstrable end-to-end and
+# `make gen-eval-contract` is green.
+
+project: agentic-newsletter-aggregator
+version: "0.1.0"
+
+services:
+  # The `aca` console script. Service-level `command` must be a single argv[0] —
+  # gen-eval's CliClient calls create_subprocess_exec without shlex-splitting, so
+  # subcommands and flags belong in each step's `args` list, never here.
+  - name: cli
+    type: cli
+    command: aca
+    json_flag: "--json"
+    commands: []
+
+# Resolved relative to this file. Empty until task 3.3 lands the first suite; the
+# contract validator accepts an empty list but fails on a declared directory that
+# does not exist, since that would silently evaluate nothing.
+scenario_dirs: []
+
+# Required by the descriptor schema even for a CLI-only project, and inert here: the
+# gate passes --no-services because there is no service to start. `true` is a no-op
+# that always succeeds, so the block parses and never runs anything meaningful.
+# Recorded as UP-4 in UPSTREAM.md — startup should be optional when no service
+# needs starting.
+startup:
+  command: "true"
+  health_check: "true"
+  health_timeout_seconds: 1
+  health_retry_count: 1
+  teardown: "true"
