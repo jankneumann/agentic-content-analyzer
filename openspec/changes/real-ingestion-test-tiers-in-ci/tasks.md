@@ -5,7 +5,7 @@
 
 ## Status
 
-- [ ] Planning
+- [x] Planning
 - [ ] Implementation
 - [ ] Testing
 - [ ] Review
@@ -13,7 +13,7 @@
 
 ## Phase 1 — PR tier: durable submission + DB-delta verification
 
-- [ ] 1.1 Write PR-tier tests for the 6 representative sources (rss, gmail, url,
+- [x] 1.1 Write PR-tier tests for the 6 representative sources (rss, gmail, url,
   youtube-playlist, arxiv-search, blog): submit each fixture command via
   `OperationService`, observe terminal operation, assert `Content` row delta. (RED)
   **Spec scenarios**: real-ingestion-ci — "Representative fixture ingestion completes
@@ -21,15 +21,15 @@
   not persist"
   **Design decisions**: D1 (OperationService), D2 (persistence classification)
   **Dependencies**: None — **Size: M**
-- [ ] 1.2 Add a real-ingestion harness path that routes a `SOURCE_FIXTURES` command
+- [x] 1.2 Add a real-ingestion harness path that routes a `SOURCE_FIXTURES` command
   through `OperationService` and drains the durable queue to a terminal state
   in-test (bounded worker drain helper if needed per design risk).
   **Design decisions**: D1
   **Dependencies**: 1.1 — **Size: M**
-- [ ] 1.3 Add a DB-delta assertion helper (expected vs actual `Content` rows for a
+- [x] 1.3 Add a DB-delta assertion helper (expected vs actual `Content` rows for a
   submitted operation) reused by all tier tests.
   **Dependencies**: 1.1 — **Size: S**
-- [ ] Checkpoint: run PR-tier tests against the paradedb service, review diff, verify
+- [x] Checkpoint: run PR-tier tests against the paradedb service, review diff, verify
   scope stays within `tests/real_ingestion/` + `tests/fixtures/sources/`
 
 ## Phase 2 — Registry completeness
@@ -78,7 +78,7 @@
 
 ## Phase 5 — CI wiring + docs
 
-- [ ] 5.1 Register the `real_ingest` marker in `pyproject.toml` and add it to the unit
+- [x] 5.1 Register the `real_ingest` marker in `pyproject.toml` and add it to the unit
   `test` shard deselection filter so default shards don't run it.
   **Design decisions**: D3
   **Dependencies**: 1.1 — **Size: S**
