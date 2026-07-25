@@ -1,57 +1,104 @@
 ## ADDED Requirements
 
-### Requirement: The gen-eval framework is consumed externally, never as a dependency
+### Requirement: The evaluation contract is repository-local and runner-independent
 
-The repository SHALL resolve the gen-eval framework from an externally owned
-checkout at run time and SHALL NOT declare it as a package dependency, path
-source, or vendored copy.
+The repository SHALL own the evaluation contract — the interface descriptor,
+scenario suites, and report schema — pinned to a declared framework contract
+version, and SHALL validate those artifacts without installing the evaluation
+runner.
 
-#### Scenario: Dependency resolution without a framework checkout
+#### Scenario: Contract validation with no runner installed
 
-- **WHEN** `uv lock` or `uv sync` runs in a clone with no sibling
-  `agentic-coding-tools` checkout present
+- **WHEN** contract validation runs and no evaluation runner is resolvable
+- **THEN** the checked-in descriptor and every scenario SHALL be validated against
+  the pinned schemas
+- **AND** validation SHALL report a definite pass or fail
+- **AND** SHALL NOT skip on account of the absent runner
+
+#### Scenario: Dependency resolution without a runner
+
+- **WHEN** dependency resolution runs in a clone with no evaluation runner and no
+  adjacent framework checkout
 - **THEN** resolution SHALL succeed
-- **AND** no dependency, optional extra, or `[tool.uv.sources]` entry SHALL
-  reference the gen-eval package
+- **AND** no dependency, optional extra, or package source entry SHALL reference
+  the evaluation framework
 
-#### Scenario: Framework invocation form
+#### Scenario: The pinned contract version is declared
 
-- **WHEN** the gate invokes the framework, including its runnability probe
-- **THEN** it SHALL invoke the framework as a Python module
-- **AND** SHALL NOT depend on the framework's console-script entry point
+- **WHEN** the contract layer is loaded
+- **THEN** the pinned framework contract version SHALL be read from a checked-in
+  declaration
+- **AND** the schemas used for validation SHALL be the ones vendored at that
+  version
 
-#### Scenario: Framework location is configurable
+### Requirement: The runner is acquired as a pinned versioned artifact
 
-- **WHEN** `ACA_GEN_EVAL_PROJECT` names a framework checkout
-- **THEN** the gate SHALL resolve the framework from that path
-- **AND** SHALL otherwise fall back to the documented default sibling path
+The gate SHALL resolve the evaluation runner from a declared precedence of
+versioned sources and SHALL NOT resolve it from a filesystem-adjacent checkout in
+any enforcing context.
 
-### Requirement: Framework availability is classified in three states
+#### Scenario: Runner resolution precedence
 
-The gate SHALL distinguish an absent framework from an unrunnable one and SHALL
-NOT report an invocation failure as an absence.
+- **WHEN** the gate resolves a runner
+- **THEN** it SHALL prefer an explicit operator-supplied runner path
+- **AND** SHALL otherwise resolve the pinned runner version recorded in the
+  checked-in runner pin
+- **AND** SHALL consider an adjacent framework checkout only when enforcement is
+  not requested
 
-#### Scenario: The framework checkout is absent locally
+#### Scenario: An adjacent checkout under enforcement
 
-- **WHEN** the resolved framework path does not exist and `ACA_GEN_EVAL_REQUIRE`
-  is unset
-- **THEN** the gate SHALL emit an advisory skip identifying the resolved path
-- **AND** SHALL exit successfully
+- **WHEN** enforcement is requested and the only candidate runner is a
+  filesystem-adjacent framework checkout
+- **THEN** the gate SHALL NOT use it
+- **AND** SHALL fail reporting that no pinned runner was resolved
 
-#### Scenario: The framework checkout is absent under enforcement
+#### Scenario: The runner is isolated from project dependencies
 
-- **WHEN** the resolved framework path does not exist and `ACA_GEN_EVAL_REQUIRE`
-  is set
+- **WHEN** the pinned runner is installed
+- **THEN** it SHALL be installed into an environment isolated from this project's
+  environment
+- **AND** the project's dependency manifest and lock file SHALL be unmodified
+
+#### Scenario: Runner contract version mismatch
+
+- **WHEN** a resolved runner reports a contract version other than the pinned one
 - **THEN** the gate SHALL fail
-- **AND** SHALL report the resolved path that was searched
+- **AND** SHALL report both the pinned and the resolved version
 
-#### Scenario: The framework is present but cannot be invoked
+#### Scenario: The runner is invoked through its published entry point
 
-- **WHEN** the framework path exists but the probe invocation exits non-zero or
-  rejects the gate's arguments
-- **THEN** the gate SHALL fail regardless of `ACA_GEN_EVAL_REQUIRE`
+- **WHEN** the gate invokes the resolved runner, including any probe
+- **THEN** it SHALL use the runner's published entry point as recorded in a single
+  declared location
+- **AND** SHALL forward only arguments the runner accepts
+
+### Requirement: Runner availability is classified in three states
+
+The gate SHALL distinguish an absent runner from an unrunnable one and SHALL NOT
+report an invocation failure as an absence.
+
+#### Scenario: No runner is resolvable locally
+
+- **WHEN** no runner is resolvable at any precedence level and enforcement is not
+  requested
+- **THEN** the gate SHALL emit an advisory skip naming the sources it attempted
+- **AND** SHALL exit successfully
+- **AND** contract validation SHALL still have run and enforced
+
+#### Scenario: No runner is resolvable under enforcement
+
+- **WHEN** no runner is resolvable and enforcement is requested
+- **THEN** the gate SHALL fail
+- **AND** SHALL report each source it attempted
+
+#### Scenario: A resolved runner cannot be invoked
+
+- **WHEN** a runner is resolved but its probe invocation exits non-zero or rejects
+  the gate's arguments
+- **THEN** the gate SHALL fail regardless of whether enforcement was requested
 - **AND** SHALL report the invocation and its captured diagnostic output
-- **AND** SHALL NOT classify the condition as an absent checkout
+- **AND** SHALL NOT classify the condition as an absent runner
 
 ### Requirement: The checked-in evaluation suite covers the canonical CLI surface
 
@@ -61,19 +108,19 @@ read-only categories separated from mutating categories.
 
 #### Scenario: Descriptor and scenarios are schema-valid
 
-- **WHEN** the gate loads the checked-in descriptor
-- **THEN** the descriptor SHALL validate against the framework's interface
-  descriptor schema
-- **AND** every scenario resolved from the descriptor's scenario directories
-  SHALL validate against the framework's scenario schema
+- **WHEN** the contract validator loads the checked-in descriptor
+- **THEN** the descriptor SHALL validate against the pinned interface descriptor
+  schema
+- **AND** every scenario resolved from the descriptor's scenario directories SHALL
+  validate against the pinned scenario schema
 
 #### Scenario: Plumbing and discovery coverage
 
 - **WHEN** the read-only categories execute
 - **THEN** they SHALL cover the version and help surface of the top-level
   application and each registered command group
-- **AND** SHALL cover capability discovery, configured-source listing, and
-  durable operation listing
+- **AND** SHALL cover capability discovery, configured-source listing, and durable
+  operation listing
 - **AND** SHALL assert that machine-readable invocations emit exactly one JSON
   document on standard output with diagnostics confined to standard error
 
@@ -88,51 +135,54 @@ read-only categories separated from mutating categories.
 #### Scenario: Canonical workflow submission coverage
 
 - **WHEN** the workflow-submission category executes
-- **THEN** it SHALL submit every canonical workflow operation type through the
-  CLI
+- **THEN** it SHALL submit every canonical workflow operation type through the CLI
 - **AND** each submission SHALL return a durable operation handle
 
 #### Scenario: Operation control coverage
 
 - **WHEN** the operation-control category executes
-- **THEN** it SHALL cover the operation retrieval, wait, retry, and cancel
-  commands under their implemented command names
-- **AND** SHALL observe at least one submitted operation through a terminal
-  state
+- **THEN** it SHALL cover the operation retrieval, wait, retry, and cancel commands
+  under their implemented command names
+- **AND** SHALL observe at least one submitted operation through a terminal state
+
+#### Scenario: The descriptor tracks the registered command surface
+
+- **WHEN** a command group is registered on the CLI application
+- **THEN** it SHALL appear in the descriptor, or in a reviewed exclusion set with a
+  stated reason
+- **AND** a drift check SHALL fail when neither holds
 
 ### Requirement: Report validity and pass-rate threshold are both enforced
 
-The gate SHALL enforce a documented pass-rate threshold and SHALL reject a
-report that is malformed, empty, or incomplete before evaluating that threshold.
+The gate SHALL enforce a documented pass-rate threshold and SHALL reject a report
+that is malformed, empty, or incomplete before evaluating that threshold.
 
 #### Scenario: `make gen-eval` emits a validated report
 
-- **WHEN** `make gen-eval` runs
+- **WHEN** `make gen-eval` runs with a resolved runner
 - **THEN** it SHALL execute the checked-in descriptor and scenario suite
-- **AND** SHALL emit a report that validates against the durable report schema
+- **AND** SHALL emit a report that validates against the pinned report schema
 - **AND** SHALL group results by command and category
 
 #### Scenario: A vacuous run is rejected
 
 - **WHEN** a report contains fewer scenarios than the declared minimum for the
-  selected categories, or omits a descriptor-declared interface from the tested
-  interfaces
+  selected categories, or reports any descriptor-declared interface as unevaluated
 - **THEN** validation SHALL fail
 - **AND** the gate SHALL NOT report success on the basis of the pass rate alone
 
-#### Scenario: CI enforces the documented threshold
+#### Scenario: Continuous integration enforces without a skip path
 
 - **WHEN** the evaluation gate runs in continuous integration
-- **THEN** enforcement SHALL be active with no advisory skip available
+- **THEN** enforcement SHALL be requested with no advisory skip available
 - **AND** the run SHALL fail when the pass rate is below the documented threshold
-- **AND** failures SHALL be published as retained evidence grouped by command
-  and category
+- **AND** failures SHALL be published as retained evidence grouped by command and
+  category
 
 #### Scenario: Continuous integration selects deterministic generation
 
 - **WHEN** the gate runs in continuous integration
-- **THEN** it SHALL use the framework's deterministic template-only generation
-  mode
+- **THEN** it SHALL use the runner's deterministic template-only generation mode
 - **AND** SHALL NOT require model-provider credentials
 
 ### Requirement: Mutating scenarios require a non-production target
@@ -150,9 +200,9 @@ release-verification target policy rather than a second target model.
 
 #### Scenario: A mutating category names a production target
 
-- **WHEN** a mutating category is selected with a target classified as
-  production, or with a non-production target whose identity or origin resolves
-  to a registered production identity or origin
+- **WHEN** a mutating category is selected with a target classified as production,
+  or with a non-production target whose identity or origin resolves to a
+  registered production identity or origin
 - **THEN** the gate SHALL refuse to execute the category
 - **AND** SHALL exit unsuccessfully without submitting any workflow
 
@@ -160,12 +210,12 @@ release-verification target policy rather than a second target model.
 
 - **WHEN** the evaluation gate runs on a pull request without explicit category
   selection
-- **THEN** only read-only categories SHALL execute
+- **THEN** only the contract layer and read-only categories SHALL execute
 - **AND** mutating categories SHALL require a separate, explicitly dispatched run
 
 #### Scenario: The production guard is single-sourced
 
 - **WHEN** the gate evaluates whether a target may be mutated
-- **THEN** it SHALL consume the existing release-verification target policy
-  model and its production deny registries
+- **THEN** it SHALL consume the existing release-verification target policy model
+  and its production deny registries
 - **AND** SHALL NOT define an independent target classification
