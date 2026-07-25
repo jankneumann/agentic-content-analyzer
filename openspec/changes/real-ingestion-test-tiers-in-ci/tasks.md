@@ -6,8 +6,8 @@
 ## Status
 
 - [x] Planning
-- [ ] Implementation
-- [ ] Testing
+- [x] Implementation
+- [x] Testing
 - [ ] Review
 - [ ] Done
 
@@ -82,17 +82,17 @@
   `test` shard deselection filter so default shards don't run it.
   **Design decisions**: D3
   **Dependencies**: 1.1 — **Size: S**
-- [ ] 5.2 Add the PR-tier CI job (`pytest -m real_ingest`, `REAL_INGEST_LIVE=0`,
+- [x] 5.2 Add the PR-tier CI job (`pytest -m real_ingest`, `REAL_INGEST_LIVE=0`,
   paradedb service) to `.github/workflows/ci.yml` as a required-eligible check.
   **Design decisions**: D3
   **Dependencies**: 5.1, 1.2, 1.3 — **Size: S**
-- [ ] 5.3 Add the scheduled workflow (`.github/workflows/real-ingestion-scheduled.yml`,
+- [x] 5.3 Add the scheduled workflow (`.github/workflows/real-ingestion-scheduled.yml`,
   `schedule` + `workflow_dispatch`, `REAL_INGEST_LIVE=1`) running the full set + policy
   live adapters, uploading the failure-class summary.
   **Design decisions**: D3, D4
   **Dependencies**: 4.2, 3.2 — **Size: S**
-- [ ] 5.4 Update `docs/TESTING.md` with the two tiers, the marker, the live policy, and
+- [x] 5.4 Update `docs/TESTING.md` with the two tiers, the marker, the live policy, and
   the exclusion set.
   **Dependencies**: 5.2, 5.3 — **Size: S**
-- [ ] Checkpoint: `openspec validate real-ingestion-test-tiers-in-ci --strict`, run the
+- [x] Checkpoint: `openspec validate real-ingestion-test-tiers-in-ci --strict`, run the
   PR tier locally, review full diff for scope

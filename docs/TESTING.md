@@ -38,10 +38,66 @@ Tests are organized by category using pytest markers:
 | `slow` | Tests > 1 second | Varies |
 | `live_api` | Calls real external APIs | API keys, costs money |
 | `crawl4ai` | Requires Crawl4AI setup | Browser, Crawl4AI |
+| `real_ingest` | Real-ingestion CI tiers (canonical durable workflow) | PostgreSQL test database; live adapters gated by `REAL_INGEST_LIVE` |
 
-Default test run excludes `integration`, `live_api`, `smoke`, and `contract`
-tests. Run contract suites explicitly; passing a file path does not override the
-default marker expression.
+Default test run excludes `integration`, `live_api`, `smoke`, `contract`, and
+`real_ingest` tests. Run contract suites explicitly; passing a file path does not
+override the default marker expression.
+
+## Real-ingestion tiers
+
+`tests/real_ingestion/` verifies ingestion through the **canonical durable
+workflow** — `OperationService.submit` → durable queue → worker → persistence —
+rather than calling `IngestionService` directly. Because the queue uses an
+`asyncpg` connection while the ORM writes go through a separate SQLAlchemy
+session, these tests **commit** (they cannot use the rolled-back `db_session`);
+each run namespaces its rows with a unique token and cleans them up.
+
+Two tiers share one harness (`tests/real_ingestion/harness.py`):
+
+- **PR tier** (offline, `REAL_INGEST_LIVE=0`): submits the 6 representative
+  sources (`rss`, `gmail`, `url`, `youtube_playlist`, `arxiv_search`, `blog`)
+  and the full fixture-backed set through the workflow against deterministic
+  fixtures, asserting each durable result's claimed count equals the actual
+  `Content` row delta. CI job: `real-ingest-test`.
+- **Scheduled tier** (`REAL_INGEST_LIVE=1`, `.github/workflows/real-ingestion-scheduled.yml`):
+  runs every fixture-backed source plus the policy-permitted live adapters, and
+  uploads a failure-class evidence summary.
+
+**Failure classification** (`src/ingestion/real_ingest_evidence.py`) attributes
+each non-successful source to exactly one layer from its durable operation/result
+record — **adapter** (upstream/source error, no rows), **queue** (never reached a
+terminal transition), or **persistence** (claimed success but rows absent). No
+new schema is introduced.
+
+**Live-adapter policy** (`src/ingestion/real_ingest_policy.py`) is the single
+source of truth for the scheduled tier. Each source declares its credential env
+vars (matching `settings.py`), live-eligibility, and paid exclusion:
+
+- **Free, no key** (run live without secrets): `rss`, `blog`, `substack`,
+  `youtube_rss`, `url`, `arxiv_search`, `arxiv_paper`, `huggingface_papers`,
+  `scholar_search`, `scholar_paper`, `scholar_references`.
+- **Credentialed, non-paid** (live only when the secret is present, else
+  skip-with-reason): `gmail` (`GMAIL_OAUTH_TOKEN_JSON`), `youtube_playlist`
+  (`YOUTUBE_API_KEY` or `GOOGLE_API_KEY`), `readwise` (`READWISE_API_KEY`).
+- **Paid, never live** (fixture-only): `x_search`, `perplexity_search`.
+- **Fixture-only** (no live upstream / cost): `podcast` (transcription cost),
+  `files` (local upload).
+
+**Registry completeness**: `assert_fixture_registry_complete()` (in
+`tests/fixtures/sources/library.py`) fails collection if any `SOURCE_REGISTRY`
+source lacks both a `SOURCE_FIXTURES` fixture and a reviewed entry in
+`FIXTURE_EXCLUSIONS`, or if an exclusion names an unknown source. The exclusion
+set is currently empty — every source ships a fixture.
+
+```bash
+# PR tier locally (offline). The default marker expression deselects real_ingest,
+# so pass -m real_ingest explicitly (it overrides the default).
+pytest tests/real_ingestion/ -m real_ingest --no-cov
+
+# Scheduled tier with live adapters (needs credentials + network):
+REAL_INGEST_LIVE=1 pytest tests/real_ingestion/ -m real_ingest --no-cov
+```
 
 ## Test Database Setup
 

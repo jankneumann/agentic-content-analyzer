@@ -85,6 +85,29 @@ class RealIngestOutcome:
     problem_detail: str | None = None
 
 
+def _outcome(
+    key: str,
+    operation_id: int,
+    terminal: Any,
+    result: dict[str, Any] | None,
+    claimed_content_ids: tuple[int, ...],
+    content_delta: int,
+) -> RealIngestOutcome:
+    """Assemble a RealIngestOutcome from a terminal operation handle."""
+
+    problem_detail = terminal.problem.detail if terminal.problem else None
+    return RealIngestOutcome(
+        key=key,
+        operation_id=str(operation_id),
+        status=terminal.status.value,
+        result=result,
+        claimed_content_ids=claimed_content_ids,
+        content_row_delta=content_delta,
+        succeeded=terminal.status.value == "completed",
+        problem_detail=problem_detail,
+    )
+
+
 def _fixture_response(fixture: SourceFixture, content_id: int) -> IngestionResponse:
     """The canonical single-item ingestion response for a committed fixture row."""
 
@@ -132,6 +155,56 @@ class RealIngestionHarness:
         operation_id = int(handle.operation_id)
         self._job_ids.append(operation_id)
 
+        before = len(self._created_content_ids)
+        await self._drive_job(
+            operations, operation_id, source_registry, files_key=key if key == "files" else None
+        )
+
+        terminal = await operations.get(operation_id)
+        result = terminal.result if isinstance(terminal.result, dict) else None
+        claimed = tuple(result.get("content_ids", [])) if result else ()
+        delta = self._content_delta(key)
+        claimed_from_run = tuple(self._created_content_ids[before:])
+        return _outcome(key, operation_id, terminal, result, claimed or claimed_from_run, delta)
+
+    async def submit_live(self, key: str) -> RealIngestOutcome:
+        """Submit a source's real command through the *real* registry (live network).
+
+        No fixture orchestrator is injected: the genuine adapter runs, persisting
+        through the application's own database session. For coherent verification
+        the live tier runs with ``DATABASE_URL`` pointed at the same database this
+        harness reads (see the scheduled workflow), so the claimed content IDs can
+        be counted back. The DB delta is derived from the claimed IDs (real feeds
+        are non-deterministic, so an absolute count is not asserted).
+        """
+
+        fixture = SOURCE_FIXTURES[key]
+        operations = OperationService(connection=self._conn)
+
+        handle = await operations.submit(OperationType.INGESTION_EXECUTE, dict(fixture.command))
+        operation_id = int(handle.operation_id)
+        self._job_ids.append(operation_id)
+
+        await self._drive_job(operations, operation_id, SOURCE_REGISTRY)
+
+        terminal = await operations.get(operation_id)
+        result = terminal.result if isinstance(terminal.result, dict) else None
+        claimed = tuple(result.get("content_ids", [])) if result else ()
+        # Record the live-created rows for cleanup and count how many persisted.
+        self._created_content_ids.extend(int(cid) for cid in claimed)
+        delta = self._content_delta_for_ids(claimed)
+        return _outcome(key, operation_id, terminal, result, claimed, delta)
+
+    async def _drive_job(
+        self,
+        operations: OperationService,
+        operation_id: int,
+        source_registry: SourceRegistry,
+        *,
+        files_key: str | None = None,
+    ) -> None:
+        """Claim and process one durable job to a terminal state, as the worker does."""
+
         registry = build_workflow_handler_registry(
             operation_service=operations,
             source_registry=source_registry,
@@ -139,7 +212,6 @@ class RealIngestionHarness:
         entrypoint = OperationType.INGESTION_EXECUTE.value
         worker_handler = registry.worker_handler(OperationType.INGESTION_EXECUTE)
 
-        before = len(self._created_content_ids)
         original = worker._handlers.get(entrypoint)
         worker._handlers[entrypoint] = worker_handler  # type: ignore[assignment]
         try:
@@ -150,8 +222,8 @@ class RealIngestionHarness:
                 # The files source takes IngestionService's upload-materialization
                 # branch instead of the descriptor orchestrator, so stub both seams
                 # to commit deterministically without a real uploaded artifact.
-                if key == "files":
-                    self._enter_files_patches(stack, key, fixture)
+                if files_key is not None:
+                    self._enter_files_patches(stack, files_key, SOURCE_FIXTURES[files_key])
                 job = await self._claim(operation_id)
                 await worker._process_job(self._conn, job)
         finally:
@@ -159,23 +231,6 @@ class RealIngestionHarness:
                 worker._handlers.pop(entrypoint, None)
             else:
                 worker._handlers[entrypoint] = original
-
-        terminal = await operations.get(operation_id)
-        result = terminal.result if isinstance(terminal.result, dict) else None
-        claimed = tuple(result.get("content_ids", [])) if result else ()
-        delta = self._content_delta(key)
-        claimed_from_run = tuple(self._created_content_ids[before:])
-        problem_detail = terminal.problem.detail if terminal.problem else None
-        return RealIngestOutcome(
-            key=key,
-            operation_id=str(operation_id),
-            status=terminal.status.value,
-            result=result,
-            claimed_content_ids=claimed or claimed_from_run,
-            content_row_delta=delta,
-            succeeded=terminal.status.value == "completed",
-            problem_detail=problem_detail,
-        )
 
     def evidence(self, outcome: RealIngestOutcome) -> SourceEvidence:
         """Classify a real outcome from its durable operation/result record."""
@@ -315,6 +370,19 @@ class RealIngestionHarness:
                 session.execute(
                     text("SELECT count(*) FROM contents WHERE source_id LIKE :prefix"),
                     {"prefix": f"real-ingest:{self._token}:{key}:%"},
+                ).scalar_one()
+            )
+
+    def _content_delta_for_ids(self, content_ids: tuple[int, ...]) -> int:
+        """Count how many of the claimed content IDs are actually persisted."""
+
+        if not content_ids:
+            return 0
+        with self._sessionmaker() as session:
+            return int(
+                session.execute(
+                    text("SELECT count(*) FROM contents WHERE id = ANY(:ids)"),
+                    {"ids": list(content_ids)},
                 ).scalar_one()
             )
 

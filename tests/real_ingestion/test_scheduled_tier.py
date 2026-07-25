@@ -22,6 +22,7 @@ from src.ingestion.real_ingest_evidence import FailureClass, render_failure_summ
 from src.ingestion.real_ingest_policy import LiveDecision, evaluate_live_adapter
 from src.ingestion.registry import SOURCE_REGISTRY
 from tests.fixtures.sources.library import SOURCE_FIXTURES
+from tests.real_ingestion import evidence_sink
 
 pytestmark = [pytest.mark.real_ingest, pytest.mark.asyncio]
 
@@ -45,6 +46,7 @@ async def test_scheduled_source_fixture_completes_and_classifies(
 
     outcome = await real_ingestion_harness.submit_fixture(key)
     evidence = real_ingestion_harness.evidence(outcome)
+    evidence_sink.record(evidence)
 
     assert outcome.status == "completed", f"{key}: {outcome.problem_detail}"
     assert evidence.failure_class is FailureClass.SUCCESS

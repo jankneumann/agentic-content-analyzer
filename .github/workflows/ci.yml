@@ -276,6 +276,60 @@ jobs:
         run: |
           pytest tests/contract/ -m contract -v --no-cov --tb=short
 
+  real-ingest-test:
+    name: real-ingest-test (PR tier)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: paradedb/paradedb:0.22.2-pg17
+        env:
+          POSTGRES_USER: newsletter_user
+          POSTGRES_PASSWORD: newsletter_password
+          POSTGRES_DB: newsletters
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: |
+          uv pip install --system -e ".[dev]"
+
+      # The test_engine fixture auto-creates newsletters_test and runs alembic to
+      # head against it, so no separate migration step is needed here.
+      - name: Run real-ingestion PR tier (offline, fixtures only)
+        env:
+          # Distinct test database; test_engine's safety check requires "test".
+          TEST_DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters_test
+          DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters
+          DATABASE_PROVIDER: local
+          ANTHROPIC_API_KEY: test-key-for-ci
+          ADMIN_API_KEY: test-admin-key
+          APP_SECRET_KEY: test-secret-key-for-ci
+          ENVIRONMENT: development
+          WORKER_ENABLED: "false"
+          # Never contact live networks in the PR tier.
+          REAL_INGEST_LIVE: "0"
+        run: |
+          pytest tests/real_ingestion/ -m real_ingest --no-cov -v --tb=short
+
   cold-start:
     name: Cold-start migration & boot
     runs-on: ubuntu-latest
