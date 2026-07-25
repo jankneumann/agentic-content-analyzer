@@ -53,6 +53,12 @@ workflow-contracts:  ## Validate and regenerate canonical workflow models
 workflow-contracts-check:  ## Validate canonical workflow models and fail on drift
 	uv run --frozen --extra dev python scripts/generate_workflow_contracts.py --check
 
+gen-eval:  ## Run the CLI gen-eval gate (contract, then suite). CATEGORIES="a b" to select
+	./evaluation/run-gate.sh $(if $(CATEGORIES),--categories $(CATEGORIES),)
+
+gen-eval-resolve:  ## Report which gen-eval runner resolves, and why, without running the suite
+	./evaluation/run-gate.sh --resolve-only
+
 gen-eval-contract:  ## Validate the CLI gen-eval contract (no eval runner required)
 	uv run --frozen --extra gen-eval python scripts/validate_gen_eval_contract.py
 

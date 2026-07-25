@@ -66,47 +66,66 @@ installed. This phase must be independently green before Phase 2 begins.
 
 ## Phase 2 — Runner acquisition and state classification (`wp-gen-eval-runner`)
 
-- [ ] 2.1 Write resolution-precedence tests: explicit override wins; pinned
+- [x] 2.1 Write resolution-precedence tests: explicit override wins; pinned
   artifact next; adjacent checkout used only when enforcement is not requested and
   never otherwise. **(M)**
   **Spec scenarios:** Runner resolution precedence / An adjacent checkout under
   enforcement
   **Design decisions:** D2
-- [ ] 2.2 Write three-state classification tests: `absent` (advisory skip locally,
+- [x] 2.2 Write three-state classification tests: `absent` (advisory skip locally,
   fatal under enforcement), `broken` (fatal always), `available`. Assert a non-zero
   probe exit is never classified as absent, and that contract checks ran in every
   case. **(M)**
   **Spec scenarios:** Runner availability is classified in three states / all
   **Design decisions:** D3
-- [ ] 2.3 Add `evaluation/contract/runner.lock` recording the pinned runner version
-  and source URL, plus a test asserting the gate never installs an unpinned
-  version. **(M)**
+  **Landed as:** `tests/cli_gen_eval/test_runner.py`, 36 tests. Includes a stub
+  reproducing the real upstream failure (present, executable, exits 1 with the
+  `TypeError`) and asserts it classifies `broken` with exit 3 under both
+  enforcement settings — plus that a broken high-precedence candidate does not
+  fall through to a working lower-precedence one, which would hide a
+  misconfigured override.
+- [x] 2.3 Record the pinned runner version and source, plus a test asserting the
+  gate never installs an unpinned version. **(M)**
   **Spec scenarios:** Runner resolution precedence
   **Design decisions:** D2
-  **Dependencies:** 2.1
-- [ ] 2.4 Implement `evaluation/run-gate.sh` resolution and classification.
-  Installation via `uv tool` / `uvx` into an isolated environment; assert the
-  project manifest and lock file are unmodified afterwards. **(L)**
+  **Deviation:** the pin was added to the existing `evaluation/contract/pin.json`
+  rather than a separate `evaluation/contract/runner.lock`. A second file would
+  have duplicated `runner_source`, `runner_subdirectory`, and `runner_ref`, and
+  two files that must agree is precisely the drift hazard this change argues
+  against elsewhere.
+- [x] 2.4 Implement the gate's resolution and classification. Installation via
+  `uv tool` / `uvx` into an isolated environment; assert the project manifest and
+  lock file are unmodified afterwards. **(L)**
   **Spec scenarios:** The runner is isolated from project dependencies
   **Design decisions:** D2, D3
-  **Dependencies:** 2.1, 2.2, 2.3
-- [ ] 2.5 Record the runner entry point in one declared location, with the interim
+  **Deviation:** the logic lives in `src/cli_gen_eval/runner.py` and
+  `scripts/run_gen_eval_gate.py`; `evaluation/run-gate.sh` is a thin wrapper over
+  them. Resolution and three-state classification are subtle enough to deserve
+  unit tests and type checking, which shell cannot provide. The shell script
+  remains the stable command CI, Make, and operators call.
+- [x] 2.5 Record the runner entry point in one declared location, with the interim
   module form documented as such so retiring it after UP-1 is a single-line change.
   **(S)**
   **Spec scenarios:** The runner is invoked through its published entry point
   **Design decisions:** D4
-  **Dependencies:** 2.4
-- [ ] 2.6 Implement and test the contract-version handshake: resolved runner
+  **Landed as:** `entry_point` in `pin.json`, consumed only by
+  `runner._entry_argv`. Task 7.3 is now literally flipping `"module"` to
+  `"console-script"`; a test guards against flipping it by accident.
+- [x] 2.6 Implement and test the contract-version handshake: resolved runner
   version compared against the pin, mismatch classified `broken` and reporting both
-  versions. Depends on UP-2 exposing a version; until then compare the resolved
-  install's recorded source SHA. **(M)**
+  versions. **(M)**
   **Spec scenarios:** Runner contract version mismatch
   **Design decisions:** D2, D4
-  **Dependencies:** 2.4
-- [ ] 2.7 Write `evaluation/README.md` and a `docs/decisions/` record for D1/D2:
+  **Note:** three outcomes, not two. `--print-contract-version` does not exist
+  upstream yet (UP-2), so a pinned candidate is verified *by construction* from
+  its ref; anything else is `unverifiable`, tolerated locally and refused under
+  enforcement so CI cannot evaluate against an unknown runner.
+- [x] 2.7 Write `evaluation/README.md` and a `docs/decisions/` record for D1/D2:
   why gen-eval is a pinned artifact and not a dependency or an adjacent checkout,
   and how to migrate the pin to an artifact index. **(S)**
-  **Dependencies:** 2.4
+  **Landed as:** `evaluation/README.md` and
+  `docs/decisions/0001-gen-eval-is-a-pinned-artifact.md` — the first ADR in this
+  repository; format mirrors `agentic-assistant`'s `docs/decisions/`.
 
 ## Phase 3 — Descriptor and read-only scenarios (`wp-gen-eval-readonly`)
 
