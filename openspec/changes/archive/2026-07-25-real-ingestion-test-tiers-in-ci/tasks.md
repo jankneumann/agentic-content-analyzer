@@ -8,8 +8,8 @@
 - [x] Planning
 - [x] Implementation
 - [x] Testing
-- [ ] Review
-- [ ] Done
+- [x] Review
+- [x] Done
 
 ## Phase 1 — PR tier: durable submission + DB-delta verification
 
