@@ -48,18 +48,18 @@
 
 ## Phase 3 — Failure-class evidence
 
-- [ ] 3.1 Write tests for the failure classifier: adapter vs queue vs persistence,
+- [x] 3.1 Write tests for the failure classifier: adapter vs queue vs persistence,
   each derived from durable operation/result records (including the "adapter error not
   misreported as persistence" case). (RED)
   **Spec scenarios**: real-ingestion-ci — "A run summary attributes each failure to a
   layer", "An adapter error is not misreported as a persistence failure"
   **Design decisions**: D2
   **Dependencies**: 1.2 — **Size: M**
-- [ ] 3.2 Implement the classifier (pure function over operation/result records) and a
+- [x] 3.2 Implement the classifier (pure function over operation/result records) and a
   CI summary reporter that renders per-source classifications.
   **Design decisions**: D2
   **Dependencies**: 3.1 — **Size: M**
-- [ ] Checkpoint: run Phase 2–3 tests, review diff, confirm no new schema/table added
+- [x] Checkpoint: run Phase 2–3 tests, review diff, confirm no new schema/table added
 
 ## Phase 4 — Scheduled tier + live-adapter policy
 
