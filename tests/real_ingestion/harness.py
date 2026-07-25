@@ -32,6 +32,10 @@ from sqlalchemy.orm import sessionmaker
 
 from src.ingestion.commands import IngestCommandBase
 from src.ingestion.content_references import record_content_reference
+from src.ingestion.real_ingest_evidence import (
+    SourceEvidence,
+    classify_source_outcome,
+)
 from src.ingestion.registry import SOURCE_REGISTRY, SourceDescriptor, SourceRegistry
 from src.ingestion.result import IngestionResponse
 from src.models.jobs import OperationType
@@ -72,6 +76,8 @@ class RealIngestOutcome:
     content_row_delta: int
     #: Whether the durable job reached a successful terminal state.
     succeeded: bool
+    #: The operation's failure diagnostic, if it terminated in failure.
+    problem_detail: str | None = None
 
 
 def _asyncpg_dsn(engine: Engine) -> str:
@@ -133,6 +139,7 @@ class RealIngestionHarness:
         claimed = tuple(result.get("content_ids", [])) if result else ()
         delta = self._content_delta(key)
         claimed_from_run = tuple(self._created_content_ids[before:])
+        problem_detail = terminal.problem.detail if terminal.problem else None
         return RealIngestOutcome(
             key=key,
             operation_id=str(operation_id),
@@ -141,6 +148,25 @@ class RealIngestionHarness:
             claimed_content_ids=claimed or claimed_from_run,
             content_row_delta=delta,
             succeeded=terminal.status.value == "completed",
+            problem_detail=problem_detail,
+        )
+
+    def evidence(self, outcome: RealIngestOutcome) -> SourceEvidence:
+        """Classify a real outcome from its durable operation/result record."""
+
+        failure_class = classify_source_outcome(
+            status=outcome.status,
+            claimed_content_ids=outcome.claimed_content_ids,
+            content_delta=outcome.content_row_delta,
+            problem_detail=outcome.problem_detail,
+        )
+        return SourceEvidence(
+            key=outcome.key,
+            operation_id=outcome.operation_id,
+            failure_class=failure_class,
+            claimed=len(outcome.claimed_content_ids),
+            delta=outcome.content_row_delta,
+            detail=outcome.problem_detail,
         )
 
     def _fixture_registry(self, key: str, fixture: SourceFixture) -> SourceRegistry:
