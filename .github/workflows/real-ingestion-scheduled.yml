@@ -1,0 +1,86 @@
+name: Real ingestion (scheduled live tier)
+
+# Runs the full fixture-backed real-ingestion set plus the policy-permitted live
+# adapters. Live execution is gated per-secret by the policy table in
+# src/ingestion/real_ingest_policy.py: a source whose credential is absent is
+# skipped with a recorded reason, and paid providers are never called live.
+on:
+  schedule:
+    # 07:00 UTC daily — off-peak, before the morning digest cadence.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+    inputs:
+      live:
+        description: "Run live adapters (1) or fixtures only (0)"
+        required: false
+        default: "1"
+
+permissions:
+  contents: read
+
+jobs:
+  real-ingest-scheduled:
+    name: real-ingest-scheduled
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: paradedb/paradedb:0.22.2-pg17
+        env:
+          POSTGRES_USER: newsletter_user
+          POSTGRES_PASSWORD: newsletter_password
+          POSTGRES_DB: newsletters
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: |
+          uv pip install --system -e ".[dev]"
+
+      - name: Run real-ingestion scheduled tier (live where policy permits)
+        env:
+          # Live persistence must land in the same database the harness reads,
+          # so DATABASE_URL points at the test database used by test_engine.
+          TEST_DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters_test
+          DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters_test
+          DATABASE_PROVIDER: local
+          APP_SECRET_KEY: test-secret-key-for-ci
+          ADMIN_API_KEY: test-admin-key
+          ENVIRONMENT: development
+          WORKER_ENABLED: "false"
+          REAL_INGEST_LIVE: ${{ github.event.inputs.live || '1' }}
+          REAL_INGEST_EVIDENCE_PATH: real-ingest-evidence.md
+          # Optional live credentials — absent secrets degrade to skip-with-reason
+          # via the live-adapter policy; paid providers are never live-eligible.
+          GMAIL_OAUTH_TOKEN_JSON: ${{ secrets.GMAIL_OAUTH_TOKEN_JSON }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          READWISE_API_KEY: ${{ secrets.READWISE_API_KEY }}
+        run: |
+          pytest tests/real_ingestion/ -m real_ingest --no-cov -v --tb=short
+
+      - name: Upload failure-class evidence summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-ingest-failure-class-summary
+          path: real-ingest-evidence.md
+          if-no-files-found: ignore

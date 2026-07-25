@@ -8,13 +8,26 @@ harness namespaces its rows with a unique token and cleans them up.
 
 from __future__ import annotations
 
+import os
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 
 import asyncpg
+import pytest
 import pytest_asyncio
 
+from tests.real_ingestion import evidence_sink
 from tests.real_ingestion.harness import RealIngestionHarness, _asyncpg_dsn
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _write_failure_class_summary() -> Iterator[None]:
+    """Render the collected failure-class evidence for the scheduled CI artifact."""
+
+    yield
+    path = os.environ.get("REAL_INGEST_EVIDENCE_PATH")
+    if path and evidence_sink.COLLECTED:
+        evidence_sink.flush_to(path)
 
 
 @pytest_asyncio.fixture
