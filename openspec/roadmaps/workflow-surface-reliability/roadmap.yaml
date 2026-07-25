@@ -116,7 +116,7 @@ items:
     queue, and persistence failures.
 - item_id: ri-06
   title: Establish CLI gen-eval coverage
-  status: approved
+  status: in_progress
   priority: 6
   effort: L
   depends_on:
