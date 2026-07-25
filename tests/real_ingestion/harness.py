@@ -20,9 +20,12 @@ explicitly in :meth:`cleanup`.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from pathlib import Path
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 import asyncpg
@@ -38,10 +41,12 @@ from src.ingestion.real_ingest_evidence import (
 )
 from src.ingestion.registry import SOURCE_REGISTRY, SourceDescriptor, SourceRegistry
 from src.ingestion.result import IngestionResponse
+from src.models.content import Content, ContentSource
 from src.models.jobs import OperationType
 from src.queue import worker
 from src.queue.workflow_handlers import build_workflow_handler_registry
 from src.services.operation_service import OperationService
+from src.services.upload_service import MaterializedUpload
 from tests.factories.content import ContentFactory
 from tests.factories.summary import SummaryFactory
 from tests.fixtures.sources.library import SOURCE_FIXTURES, SourceFixture
@@ -80,6 +85,18 @@ class RealIngestOutcome:
     problem_detail: str | None = None
 
 
+def _fixture_response(fixture: SourceFixture, content_id: int) -> IngestionResponse:
+    """The canonical single-item ingestion response for a committed fixture row."""
+
+    return IngestionResponse(
+        command=fixture.response_command,
+        source=fixture.response_source,
+        status="ok",
+        items_ingested=1,
+        details={"content_id": content_id, "results": [{"content_id": content_id}]},
+    )
+
+
 def _asyncpg_dsn(engine: Engine) -> str:
     """Render an asyncpg-compatible DSN, stripping any SQLAlchemy ``+driver``."""
 
@@ -100,8 +117,12 @@ class RealIngestionHarness:
         self._created_content_ids: list[int] = []
         self._job_ids: list[int] = []
 
-    async def submit_pr_source(self, key: str) -> RealIngestOutcome:
-        """Submit one PR-tier fixture command and drive it to a terminal state."""
+    async def submit_fixture(self, key: str) -> RealIngestOutcome:
+        """Submit one fixture command and drive its durable operation to terminal.
+
+        Used by both tiers: the PR tier for its 6 representative sources and the
+        scheduled tier (offline) for the full fixture-backed set.
+        """
 
         fixture = SOURCE_FIXTURES[key]
         source_registry = self._fixture_registry(key, fixture)
@@ -120,12 +141,17 @@ class RealIngestionHarness:
 
         before = len(self._created_content_ids)
         original = worker._handlers.get(entrypoint)
-        worker._handlers[entrypoint] = worker_handler
+        worker._handlers[entrypoint] = worker_handler  # type: ignore[assignment]
         try:
-            with (
-                patch("src.queue.setup.touch_job_heartbeat", AsyncMock()),
-                patch.object(worker, "_emit_job_notification", AsyncMock()),
-            ):
+            with ExitStack() as stack:
+                # Stub the queue side-channels (heartbeat pool + notifications).
+                stack.enter_context(patch("src.queue.setup.touch_job_heartbeat", AsyncMock()))
+                stack.enter_context(patch.object(worker, "_emit_job_notification", AsyncMock()))
+                # The files source takes IngestionService's upload-materialization
+                # branch instead of the descriptor orchestrator, so stub both seams
+                # to commit deterministically without a real uploaded artifact.
+                if key == "files":
+                    self._enter_files_patches(stack, key, fixture)
                 job = await self._claim(operation_id)
                 await worker._process_job(self._conn, job)
         finally:
@@ -173,7 +199,7 @@ class RealIngestionHarness:
         """Build a single-source registry whose orchestrator commits deterministically."""
 
         command = SOURCE_REGISTRY.parse_command(fixture.command)
-        descriptor = SOURCE_REGISTRY.get(command.kind)
+        descriptor = SOURCE_REGISTRY.get(command.kind)  # type: ignore[attr-defined]
 
         def orchestrator(typed_command: IngestCommandBase) -> IngestionResponse:
             return self._persist(key, fixture, typed_command, descriptor)
@@ -191,46 +217,71 @@ class RealIngestionHarness:
 
         sources = descriptor.resolve_sources(typed_command)
         if len(sources) != 1:
-            raise AssertionError(
-                f"PR-tier fixture '{key}' did not resolve to exactly one content source"
-            )
+            raise AssertionError(f"Fixture '{key}' did not resolve to exactly one content source")
         source = next(iter(sources))
-        index = len(self._created_content_ids) + 1
+        content_id = self._commit_content(key, fixture, source)
+        return _fixture_response(fixture, content_id)
 
+    def _commit_content(self, key: str, fixture: SourceFixture, source: ContentSource) -> int:
+        """Commit one Content+Summary for ``key`` and return the new content ID."""
+
+        index = len(self._created_content_ids) + 1
         session = self._sessionmaker()
         ContentFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
         SummaryFactory._meta.sqlalchemy_session = session  # type: ignore[attr-defined]
         try:
-            content = ContentFactory(
-                source_type=source,
-                source_id=f"real-ingest:{self._token}:{key}:{index}",
-                source_url=f"https://fixtures.test/{key}/{index}",
-                title=fixture.title,
-                publication=f"Fixture {key}",
-                published_date=PERIOD_START + timedelta(minutes=index),
-                ingested_at=PERIOD_START + timedelta(minutes=index),
-                markdown_content=f"# {fixture.title}\n\nDeterministic content for {key}.",
+            content = cast(
+                Content,
+                ContentFactory(
+                    source_type=source,
+                    source_id=f"real-ingest:{self._token}:{key}:{index}",
+                    source_url=f"https://fixtures.test/{key}/{index}",
+                    title=fixture.title,
+                    publication=f"Fixture {key}",
+                    published_date=PERIOD_START + timedelta(minutes=index),
+                    ingested_at=PERIOD_START + timedelta(minutes=index),
+                    markdown_content=f"# {fixture.title}\n\nDeterministic content for {key}.",
+                ),
             )
+            content_id = content.id
+            assert content_id is not None  # committed by the factory, so populated
             SummaryFactory(
                 content=content,
-                content_id=content.id,
+                content_id=content_id,
                 executive_summary=f"Persisted summary for {key}",
             )
-            record_content_reference(content.id, content.canonical_id)
-            content_id = content.id
+            record_content_reference(content_id, content.canonical_id)
         finally:
             ContentFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
             SummaryFactory._meta.sqlalchemy_session = None  # type: ignore[attr-defined]
             session.close()
 
         self._created_content_ids.append(content_id)
-        return IngestionResponse(
-            command=fixture.response_command,
-            source=fixture.response_source,
-            status="ok",
-            items_ingested=1,
-            details={"content_id": content_id, "results": [{"content_id": content_id}]},
+        return content_id
+
+    def _enter_files_patches(self, stack: ExitStack, key: str, fixture: SourceFixture) -> None:
+        """Stub upload materialization + ingest_files so the files path commits."""
+
+        @contextmanager
+        def _materialize_sync(
+            _self: Any, _upload_ids: list[str]
+        ) -> Iterator[list[MaterializedUpload]]:
+            yield [
+                MaterializedUpload(
+                    path=Path("fixture-upload.md"),
+                    title=fixture.title,
+                    publication=f"Fixture {key}",
+                )
+            ]
+
+        def _ingest_files(**_kwargs: Any) -> IngestionResponse:
+            content_id = self._commit_content(key, fixture, ContentSource.FILE_UPLOAD)
+            return _fixture_response(fixture, content_id)
+
+        stack.enter_context(
+            patch("src.services.upload_service.UploadService.materialize_sync", _materialize_sync)
         )
+        stack.enter_context(patch("src.ingestion.orchestrator.ingest_files", _ingest_files))
 
     async def recount(self, outcome: RealIngestOutcome) -> RealIngestOutcome:
         """Re-read the DB delta for an outcome (its claim is unchanged)."""

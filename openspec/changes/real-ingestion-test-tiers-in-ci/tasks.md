@@ -63,18 +63,18 @@
 
 ## Phase 4 — Scheduled tier + live-adapter policy
 
-- [ ] 4.1 Write tests for the live-adapter policy table: credentialed source skips with
+- [x] 4.1 Write tests for the live-adapter policy table: credentialed source skips with
   a reason when its secret is absent; paid APIs are never live-eligible. (RED)
   **Spec scenarios**: real-ingestion-ci — "A credentialed adapter runs live when its
   secret is present", "A credentialed adapter is skipped when its secret is absent",
   "A paid API is never called live"
   **Design decisions**: D4
   **Dependencies**: 2.2 — **Size: M**
-- [ ] 4.2 Implement the live-adapter policy table (credential env vars, live-eligible,
+- [x] 4.2 Implement the live-adapter policy table (credential env vars, live-eligible,
   retry, paid-exclusion) and env-gated live execution for the scheduled tier.
   **Design decisions**: D4
   **Dependencies**: 4.1 — **Size: M**
-- [ ] Checkpoint: run full `-m real_ingest` suite with `REAL_INGEST_LIVE=0`, review diff
+- [x] Checkpoint: run full `-m real_ingest` suite with `REAL_INGEST_LIVE=0`, review diff
 
 ## Phase 5 — CI wiring + docs
 
