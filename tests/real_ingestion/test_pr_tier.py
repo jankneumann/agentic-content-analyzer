@@ -28,7 +28,7 @@ async def test_pr_tier_source_completes_and_matches_db_delta(
 ) -> None:
     """A representative fixture ingestion completes and matches the DB delta."""
 
-    outcome = await real_ingestion_harness.submit_pr_source(key)
+    outcome = await real_ingestion_harness.submit_fixture(key)
 
     assert outcome.status == "completed"
     assert_result_matches_delta(outcome)
@@ -43,7 +43,7 @@ async def test_pr_tier_persistence_mismatch_is_detected(real_ingestion_harness) 
     trust the operation's claim.
     """
 
-    outcome = await real_ingestion_harness.submit_pr_source("rss")
+    outcome = await real_ingestion_harness.submit_fixture("rss")
     assert outcome.succeeded
     assert outcome.claimed_content_ids
 

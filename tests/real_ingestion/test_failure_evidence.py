@@ -121,7 +121,7 @@ async def test_real_completed_operation_classifies_as_success(
 ) -> None:
     """Evidence for a real, committed ingestion is derived from its durable record."""
 
-    outcome = await real_ingestion_harness.submit_pr_source("rss")
+    outcome = await real_ingestion_harness.submit_fixture("rss")
     evidence = real_ingestion_harness.evidence(outcome)
 
     assert evidence.failure_class is FailureClass.SUCCESS
