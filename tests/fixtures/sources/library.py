@@ -23,21 +23,50 @@ class SourceFixtureRegistryError(RuntimeError):
 
 
 def assert_fixture_registry_complete(
-    registry_keys: set[str] | frozenset[str], fixture_keys: set[str] | frozenset[str]
+    registry_keys: set[str] | frozenset[str],
+    fixture_keys: set[str] | frozenset[str],
+    exclusions: dict[str, str] | set[str] | frozenset[str] = frozenset(),
 ) -> None:
-    """Fail with actionable missing and extra fixture diagnostics."""
+    """Fail with actionable missing, extra, and stale-exclusion diagnostics.
 
-    missing = sorted(registry_keys - fixture_keys)
-    extra = sorted(fixture_keys - registry_keys)
-    if missing or extra:
+    A registry source is "covered" when it has a canonical fixture OR a reviewed
+    entry in ``exclusions`` (a source-key -> reason map). Diagnostics:
+
+    - ``missing``: registry sources with neither a fixture nor an exclusion.
+    - ``extra``: fixtures that name a source absent from the registry.
+    - ``stale_exclusions``: exclusions that name a source absent from the registry.
+    """
+
+    registry = set(registry_keys)
+    fixtures = set(fixture_keys)
+    exclusion_keys = set(exclusions)
+
+    missing = sorted(registry - fixtures - exclusion_keys)
+    extra = sorted(fixtures - registry)
+    stale_exclusions = sorted(exclusion_keys - registry)
+    if missing or extra or stale_exclusions:
         details: list[str] = []
         if missing:
             details.append(f"missing={missing}")
         if extra:
             details.append(f"extra={extra}")
+        if stale_exclusions:
+            details.append(f"stale_exclusions={stale_exclusions}")
         raise SourceFixtureRegistryError(
             "Source fixture registry does not match executable registry: " + ", ".join(details)
         )
+
+
+# Reviewed live-exclusion set for registry-completeness (RI-05 / design D5).
+#
+# Maps a ``SOURCE_REGISTRY`` key to the reason it has no canonical
+# ``SOURCE_FIXTURES`` entry. Every registry source currently ships a
+# deterministic fixture (including the paid X/Perplexity sources, which run
+# fixture-only), so this set is intentionally empty. Add an entry here — with a
+# reason — only when a new registry source genuinely cannot be fixtured, so
+# collection does not hard-fail. Keys must exist in the registry (stale entries
+# are rejected above).
+FIXTURE_EXCLUSIONS: dict[str, str] = {}
 
 
 SOURCE_FIXTURES: dict[str, SourceFixture] = {

@@ -34,14 +34,14 @@
 
 ## Phase 2 — Registry completeness
 
-- [ ] 2.1 Write a collection-time test asserting every `SOURCE_REGISTRY` entry maps to
+- [x] 2.1 Write a collection-time test asserting every `SOURCE_REGISTRY` entry maps to
   a `SOURCE_FIXTURES` fixture or the reviewed exclusion set, and that no exclusion
   names an unknown source. (RED)
   **Spec scenarios**: real-ingestion-ci — "A new registry source has no fixture and no
   exclusion", "The exclusion set references an unknown source"
   **Design decisions**: D5
   **Dependencies**: None — **Size: S**
-- [ ] 2.2 Add the reviewed exclusion set (with reasons) and wire
+- [x] 2.2 Add the reviewed exclusion set (with reasons) and wire
   `assert_fixture_registry_complete()` into real-ingestion collection.
   **Design decisions**: D5
   **Dependencies**: 2.1 — **Size: S**
