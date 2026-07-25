@@ -21,13 +21,31 @@ import os
 import pytest
 
 from src.ingestion.real_ingest_evidence import FailureClass
-from src.ingestion.real_ingest_policy import LiveDecision, evaluate_live_adapter
+from src.ingestion.real_ingest_policy import (
+    LIVE_ADAPTER_POLICIES,
+    LiveDecision,
+    evaluate_live_adapter,
+)
+from tests.fixtures.sources.library import SOURCE_FIXTURES
 from tests.real_ingestion import evidence_sink
-from tests.real_ingestion.harness import PR_TIER_KEYS
 
 pytestmark = [pytest.mark.real_ingest, pytest.mark.asyncio]
 
 _LIVE_ENABLED = os.environ.get("REAL_INGEST_LIVE", "0") not in {"", "0", "false", "False"}
+
+# Every source the policy marks live-eligible and for which a command fixture
+# exists to submit. Parametrizing from the policy (rather than the six PR keys)
+# ensures no live-eligible adapter — substack, youtube_rss, arxiv_paper,
+# huggingface_papers, the Scholar variants — is silently excluded from the live
+# tier. The per-test guard still skips any source missing a credential in this
+# environment, but the parametrization itself covers the full policy-permitted set.
+LIVE_ELIGIBLE_KEYS = tuple(
+    sorted(
+        key
+        for key, policy in LIVE_ADAPTER_POLICIES.items()
+        if policy.live_eligible and key in SOURCE_FIXTURES
+    )
+)
 
 
 async def test_live_drive_classifies_real_adapter_failure(real_ingestion_harness) -> None:
@@ -46,7 +64,7 @@ async def test_live_drive_classifies_real_adapter_failure(real_ingestion_harness
 
 
 @pytest.mark.skipif(not _LIVE_ENABLED, reason="live network tier runs only when REAL_INGEST_LIVE=1")
-@pytest.mark.parametrize("key", PR_TIER_KEYS)
+@pytest.mark.parametrize("key", LIVE_ELIGIBLE_KEYS)
 async def test_live_source_reaches_terminal_state(real_ingestion_harness, key: str) -> None:
     """Each policy-permitted source submits live and reaches a classified terminal state."""
 

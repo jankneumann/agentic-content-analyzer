@@ -77,11 +77,33 @@ def _is_adapter_problem(detail: str | None) -> bool:
     return bool(detail) and detail.startswith("Ingestion '")  # type: ignore[union-attr]
 
 
+#: Substrings that identify a database *write* failure rather than an upstream
+#: adapter error. ``_ingestion_diagnostic`` embeds both ``type(exc).__name__`` and
+#: ``str(exc)``, so a SQLAlchemy ``IntegrityError`` surfaces here as its type name
+#: plus the Postgres constraint message — neither of which contains the words
+#: "persist"/"database write" that the original check looked for. These signatures
+#: are DB-write specific, so they cannot be produced by an HTTP/parse adapter error.
+_PERSISTENCE_SIGNATURES: tuple[str, ...] = (
+    "persist",
+    "database write",
+    "integrityerror",
+    "dataerror",
+    "duplicate key value",
+    "violates unique constraint",
+    "violates foreign key constraint",
+    "violates not-null constraint",
+    "violates check constraint",
+    "violates exclusion constraint",
+    "deadlock detected",
+    "could not serialize access",
+)
+
+
 def _is_persistence_problem(detail: str | None) -> bool:
     if not detail:
         return False
     lowered = detail.lower()
-    return "persist" in lowered or "database write" in lowered
+    return any(signature in lowered for signature in _PERSISTENCE_SIGNATURES)
 
 
 @dataclass(frozen=True)

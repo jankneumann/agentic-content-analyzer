@@ -14,12 +14,9 @@ the scheduled CI workflow (Phase 5.3), gated per-secret by the policy table.
 
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from src.ingestion.real_ingest_evidence import FailureClass, render_failure_summary
-from src.ingestion.real_ingest_policy import LiveDecision, evaluate_live_adapter
 from src.ingestion.registry import SOURCE_REGISTRY
 from tests.fixtures.sources.library import SOURCE_FIXTURES
 from tests.real_ingestion import evidence_sink
@@ -30,19 +27,18 @@ pytestmark = [pytest.mark.real_ingest, pytest.mark.asyncio]
 SCHEDULED_KEYS = tuple(sorted(set(SOURCE_REGISTRY.keys()) & set(SOURCE_FIXTURES)))
 
 
-def _live_enabled() -> bool:
-    return os.environ.get("REAL_INGEST_LIVE", "0") not in {"", "0", "false", "False"}
-
-
 @pytest.mark.parametrize("key", SCHEDULED_KEYS)
 async def test_scheduled_source_fixture_completes_and_classifies(
     real_ingestion_harness, key: str
 ) -> None:
-    """Every fixture-backed source completes offline and classifies as success."""
+    """Every fixture-backed source completes offline and classifies as success.
 
-    decision = evaluate_live_adapter(key, live_enabled=_live_enabled(), env=os.environ)
-    if decision.decision is LiveDecision.LIVE:
-        pytest.skip(f"{key} is live-eligible in this environment; covered by the live tier")
+    The scheduled contract requires the deterministic fixture half to run for
+    *every* fixture-backed source regardless of live eligibility. Live adapters
+    are exercised *additionally* by the live tier (``test_live_tier.py``) when
+    ``REAL_INGEST_LIVE`` is set — live eligibility must never suppress the fixture
+    half, or a source whose secret is present would lose its offline coverage.
+    """
 
     outcome = await real_ingestion_harness.submit_fixture(key)
     evidence = real_ingestion_harness.evidence(outcome)

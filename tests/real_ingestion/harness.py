@@ -39,6 +39,7 @@ from src.ingestion.real_ingest_evidence import (
     SourceEvidence,
     classify_source_outcome,
 )
+from src.ingestion.real_ingest_policy import LIVE_ADAPTER_POLICIES
 from src.ingestion.registry import SOURCE_REGISTRY, SourceDescriptor, SourceRegistry
 from src.ingestion.result import IngestionResponse
 from src.models.content import Content, ContentSource
@@ -162,10 +163,19 @@ class RealIngestionHarness:
 
         terminal = await operations.get(operation_id)
         result = terminal.result if isinstance(terminal.result, dict) else None
-        claimed = tuple(result.get("content_ids", [])) if result else ()
         delta = self._content_delta(key)
-        claimed_from_run = tuple(self._created_content_ids[before:])
-        return _outcome(key, operation_id, terminal, result, claimed or claimed_from_run, delta)
+        if result is not None:
+            # Trust the durable result's own claim, even an explicit empty one: a
+            # completed operation that claims zero IDs while a row was persisted is
+            # exactly the durable-result regression this tier exists to catch.
+            # Substituting the harness's private creation log here would mask it and
+            # let ``assert_result_matches_delta`` pass. Fall back to the run log only
+            # when there is no result record at all (e.g. a failure before
+            # ``attach_result`` ran), where the operation makes no claim to trust.
+            claimed = tuple(result.get("content_ids", []))
+        else:
+            claimed = tuple(self._created_content_ids[before:])
+        return _outcome(key, operation_id, terminal, result, claimed, delta)
 
     async def submit_live(self, key: str) -> RealIngestOutcome:
         """Submit a source's real command through the *real* registry (live network).
@@ -185,7 +195,7 @@ class RealIngestionHarness:
         operation_id = int(handle.operation_id)
         self._job_ids.append(operation_id)
 
-        await self._drive_job(operations, operation_id, SOURCE_REGISTRY)
+        await self._drive_job(operations, operation_id, self._live_registry(key))
 
         terminal = await operations.get(operation_id)
         result = terminal.result if isinstance(terminal.result, dict) else None
@@ -260,6 +270,22 @@ class RealIngestionHarness:
             return self._persist(key, fixture, typed_command, descriptor)
 
         return SourceRegistry([replace(descriptor, orchestrator=orchestrator)])
+
+    def _live_registry(self, key: str) -> SourceRegistry:
+        """The real single-source registry for ``key`` with the live retry limit applied.
+
+        ``submit_live`` runs the genuine adapter and orchestrator, but the
+        live-adapter policy — not the registry default — is the single source of
+        truth for how many live attempts a retryable failure (e.g. HTTP 429) gets.
+        Override only the descriptor's ``retry_policy.max_attempts`` so the workflow
+        handler honors the policy while every other real behavior is preserved.
+        """
+
+        command = SOURCE_REGISTRY.parse_command(SOURCE_FIXTURES[key].command)
+        descriptor = SOURCE_REGISTRY.get(command.kind)  # type: ignore[attr-defined]
+        max_attempts = LIVE_ADAPTER_POLICIES[key].max_attempts
+        retry_policy = replace(descriptor.retry_policy, max_attempts=max_attempts)
+        return SourceRegistry([replace(descriptor, retry_policy=retry_policy)])
 
     def _persist(
         self,
