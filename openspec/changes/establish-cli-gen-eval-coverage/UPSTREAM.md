@@ -135,6 +135,33 @@ coupling — which is the whole point.
 
 ---
 
+## UP-4 — `startup` should be optional when no service needs starting
+
+`InterfaceDescriptor.startup` is a required field, so a CLI-only project must supply a
+`StartupConfig` it will never use. ACA's descriptor currently carries:
+
+```yaml
+startup:
+  command: "true"
+  health_check: "true"
+  teardown: "true"
+```
+
+Three no-ops that exist purely to satisfy the schema. `agentic-assistant`'s descriptor
+carries the same wart with a comment saying so ("the block is required by the schema and
+must always parse"), which is decent evidence it is not specific to us.
+
+Suggested fix: make `startup: StartupConfig | None = None` and have the orchestrator skip
+startup and teardown when it is absent, equivalent to today's `--no-services`. This is a
+schema-shape change, so it wants a contract-version bump under UP-2 — worth doing in the
+same pass rather than as a follow-up.
+
+Low priority: the workaround is harmless and one line of YAML. Recorded because the
+no-op block is the kind of thing a future reader will try to "fix" without knowing why it
+is there.
+
+---
+
 ## UP-3 — Confirm what ri-06 relies on (no change expected)
 
 Please sanity-check these, since ri-06's report validator is built on them:

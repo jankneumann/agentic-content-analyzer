@@ -130,6 +130,13 @@ release-smoke = [
     "jsonschema[format]>=4.23.0",
     "playwright==1.58.0",
 ]
+# CLI gen-eval contract layer. Deliberately jsonschema-only: the contract layer
+# validates vendored schemas and must stay installable without a browser, and
+# WITHOUT the gen-eval framework itself, which is acquired as a pinned external
+# artifact rather than a dependency (establish-cli-gen-eval-coverage D1/D2).
+gen-eval = [
+    "jsonschema[format]>=4.23.0",
+]
 ocr = [
     "docling[ocr]>=2.60.0",  # OCR support for scanned documents
 ]

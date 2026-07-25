@@ -1,0 +1,20 @@
+{
+  "contract_version": "1",
+  "runner_package": "gen-eval",
+  "runner_source": "git+https://github.com/jankneumann/agentic-coding-tools.git",
+  "runner_subdirectory": "packages/gen-eval",
+  "runner_ref": "e5dcab80c5c6d847fa425a08b569595a224eb8cd",
+  "runner_version": "0.1.0",
+  "schemas_generated_from_ref": "e5dcab80c5c6d847fa425a08b569595a224eb8cd",
+  "schemas_upstream_published": false,
+  "notes": [
+    "contract_version is this repository's pin on the gen-eval artifact contract.",
+    "Bump it whenever a regenerated schema changes shape, and record why in the",
+    "openspec/contracts/cli-gen-eval/README.md changelog.",
+    "schemas_upstream_published stays false until UPSTREAM.md UP-2 lands and gen-eval",
+    "ships the schemas itself; until then they are generated here from runner_ref and",
+    "the generator is the source of truth for parity.",
+    "runner_source is a git ref only as an interim measure. Repointing it at an",
+    "artifact index is a change to this file alone."
+  ]
+}
