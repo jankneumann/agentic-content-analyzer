@@ -61,6 +61,31 @@ def test_recorded_db_write_error_is_persistence() -> None:
     assert result is FailureClass.PERSISTENCE
 
 
+def test_database_integrity_error_is_persistence_not_adapter() -> None:
+    """A real DB write failure carries the adapter prefix but is a persistence failure.
+
+    ``_ingestion_diagnostic`` wraps *every* exception — including database errors —
+    in the ``Ingestion '<src>' failed after N attempts (<TypeName>): <exc>`` format,
+    so a ``IntegrityError`` (e.g. a duplicate-key violation) begins with the adapter
+    prefix yet must be attributed to persistence, not the adapter. The classifier
+    checks persistence signatures first for exactly this reason.
+    """
+
+    detail = (
+        "Ingestion 'rss' failed after 1 attempt (IntegrityError): "
+        "(psycopg2.errors.UniqueViolation) duplicate key value violates unique "
+        'constraint "contents_source_id_key"'
+    )
+    result = classify_source_outcome(
+        status="failed",
+        claimed_content_ids=[],
+        content_delta=0,
+        problem_detail=detail,
+    )
+    assert result is FailureClass.PERSISTENCE
+    assert result is not FailureClass.ADAPTER
+
+
 def test_nonterminal_operation_is_queue_failure() -> None:
     """A job that never reached a terminal transition is a queue-layer failure."""
 
