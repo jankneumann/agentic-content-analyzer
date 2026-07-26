@@ -1,0 +1,29 @@
+# Category: validation — no backend required.
+
+id: validation-missing-required-argument
+name: A command missing its required argument is rejected with exit 2
+description: >
+  `operations get` takes a required OPERATION_ID. Omitting it must fail locally with
+  exit 2, before any request is dispatched — the interesting failure mode is not a
+  crash but a plausible-looking request built from a missing value, which would reach
+  the API as a lookup for the empty string and come back as a 404 the user would read
+  as "that operation does not exist" rather than "you forgot an argument".
+
+  Pairs with validation/absent-optional-values-omitted.yaml: that one asserts an
+  ABSENT OPTIONAL value is omitted, this one asserts an ABSENT REQUIRED value is
+  refused. Both are about the CLI not inventing a value it was not given.
+category: validation
+priority: 1
+interfaces:
+  - "cli:operations"
+tags:
+  - read-only
+  - no-target
+steps:
+  - id: operations-get-without-id
+    transport: cli
+    command: operations
+    args:
+      - get
+    expect:
+      exit_code: 2

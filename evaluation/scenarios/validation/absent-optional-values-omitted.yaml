@@ -1,0 +1,58 @@
+# Category: validation — REQUIRES a reachable backend.
+#
+# This is the scenario the spec's "absent optional values are omitted rather than
+# serialized as empty query values" clause asks for, expressed as something the CLI
+# can actually be observed doing.
+
+id: validation-absent-optional-values-omitted
+name: An absent cursor is omitted from the query, not sent as an empty value
+description: >
+  A CLI cannot show you the URL it built, so asserting "the parameter was omitted"
+  looks untestable from outside the process. It becomes testable by finding an
+  observable the two spellings disagree on, and the API supplies one: every non-empty
+  cursor value is rejected with 422 "Invalid operation cursor", and an EMPTY cursor
+  value is rejected the same way — GET /api/v1/operations?cursor= returns 422, while
+  GET /api/v1/operations returns 200. Empty is not a permissive special case.
+
+  That asymmetry is the proof. Step 1 lists with no cursor and must exit 0; step 2
+  supplies a bad cursor and must exit 1 with the 422 problem document. If the CLI were
+  still serializing `cursor=None` as `cursor=`, step 1 would take step 2's path and
+  fail. Step 2 is not decoration — it establishes that the 422 route is live, so
+  step 1's success cannot be explained by a server that accepts anything.
+
+  This is the CLI-level counterpart to ri-01's transport tests, which assert the
+  serialized URL directly. Both are worth having: those pin the mechanism, this one
+  pins the behaviour a user gets, and the mechanism can be reimplemented without
+  anyone noticing this contract if only the unit test exists.
+category: validation
+priority: 1
+interfaces:
+  - "cli:operations"
+tags:
+  - read-only
+  - requires-target
+steps:
+  - id: no-cursor-succeeds
+    transport: cli
+    command: "--json"
+    args:
+      - operations
+      - list
+    expect:
+      exit_code: 0
+      body_contains:
+        data: []
+
+  - id: bad-cursor-is-rejected
+    transport: cli
+    command: "--json"
+    args:
+      - operations
+      - list
+      - "--cursor"
+      - not-a-cursor
+    expect:
+      exit_code: 1
+      body_contains:
+        status: 422
+        code: invalid-request

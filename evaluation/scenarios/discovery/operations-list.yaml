@@ -1,0 +1,73 @@
+# Category: discovery — read-only, REQUIRES a reachable backend.
+#
+# Note the two spellings of the same command below, and why both are needed.
+#
+# `--json` on this CLI is a root-level flag: it must precede the subcommand, and only
+# the two top-level commands additionally accept it locally. gen-eval builds argv as
+# [aca] + [step.command] + step.args, so a step can only place a flag ahead of the
+# subcommand by putting it in `command` — and a `command` that starts with a dash
+# credits no interface, because interface identity is the words of `command` before
+# its first flag.
+#
+# So the machine-readable spelling cannot credit `cli:operations` on its own. Step 1
+# addresses the command in the form that does credit it; steps 2 and 3 make the
+# assertions that need parseable output. Splitting them is not redundancy — it is the
+# only way to have both coverage attribution and a JSON assertion under the runner's
+# argv model. Raised upstream as UPSTREAM.md UP-6.
+
+id: discovery-operations-list
+name: aca operations list pages durable operations without a cursor
+description: >
+  Covers the durable-operation listing that ri-01 repaired, in the no-cursor form that
+  was broken: httpx serializes a None query value as an empty one, so `cursor=None`
+  reached the API as `?cursor=` and was rejected. The proof that it no longer is lives
+  in validation/absent-optional-values-omitted.yaml, which contrasts this against an
+  explicitly bad cursor; here the claim is narrower and unconditional — listing
+  operations with no arguments succeeds and returns a page.
+
+  Asserting `data: []` asserts the key exists and holds a list, not that the list is
+  empty: gen-eval's subset match against an empty expected list is satisfied by any
+  list. That matters because this suite must pass against a database with real
+  operations in it as readily as against a fresh one.
+category: discovery
+priority: 1
+interfaces:
+  - "cli:operations"
+tags:
+  - read-only
+  - requires-target
+steps:
+  # Credits cli:operations. Human-readable output is a Rich-rendered dict, so the only
+  # assertion available is the exit code — which is the whole claim for this step.
+  - id: operations-list-attributed
+    transport: cli
+    command: operations
+    args:
+      - list
+    expect:
+      exit_code: 0
+      not_empty: true
+
+  - id: operations-list-json
+    transport: cli
+    command: "--json"
+    args:
+      - operations
+      - list
+    expect:
+      exit_code: 0
+      body_contains:
+        data: []
+
+  - id: operations-list-json-limited
+    transport: cli
+    command: "--json"
+    args:
+      - operations
+      - list
+      - "--limit"
+      - "5"
+    expect:
+      exit_code: 0
+      body_contains:
+        data: []

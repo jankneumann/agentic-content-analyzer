@@ -1,0 +1,46 @@
+# Category: discovery — read-only, but REQUIRES a reachable backend.
+#
+# src/cli/workflow_commands.py is "backed exclusively by the HTTP API": there is no
+# --direct path for the canonical workflow surface, so these commands exit 1 with
+# "Workflow API unavailable" when nothing is listening. The gate resolves a target
+# before selecting this category and refuses rather than skips when it cannot — see
+# src/cli_gen_eval/target.py.
+
+id: discovery-capabilities
+name: aca capabilities emits the workflow capability contract as one JSON document
+description: >
+  `capabilities` is the discovery entry point every transport shares, so its contract
+  version is the thing most worth pinning: a bump that reaches consumers unannounced
+  is exactly the failure this category is here to catch. Asserting the literal
+  "2.0.0" means a deliberate bump updates this scenario and an accidental one fails
+  the gate.
+
+  The `source_commands: []` assertion is doing something less obvious. gen-eval
+  matches expected structures as a recursive subset, and a subset check against an
+  empty expected list is vacuously satisfied by any list — so this asserts "the key
+  exists and holds a list" without coupling to which adapters are registered.
+
+  Both assertions together are also the stdout-purity check the spec requires, by
+  construction rather than by a separate assertion. gen-eval only parses stdout into
+  a body when the whole stream is one JSON value; a log line, a warning, or a second
+  document would leave the body as {"raw": "..."} and fail every key assertion here.
+  Diagnostics on stderr are surfaced separately as body["stderr"] and never merged
+  into stdout, so this passing is evidence that stdout carried exactly one document.
+category: discovery
+priority: 1
+interfaces:
+  - "cli:capabilities"
+tags:
+  - read-only
+  - requires-target
+steps:
+  - id: capabilities-json
+    transport: cli
+    command: capabilities
+    args:
+      - "--json"
+    expect:
+      exit_code: 0
+      body_contains:
+        contract_version: "2.0.0"
+        source_commands: []

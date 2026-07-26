@@ -10,6 +10,7 @@ Exit codes:
     1  contract invalid, or the suite failed
     2  usage error (argparse)
     3  runner is broken, or absent while ACA_GEN_EVAL_REQUIRE is set
+    4  the backend target the selected categories need is unreachable
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -33,6 +36,15 @@ from src.cli_gen_eval.runner import (  # noqa: E402
     load_pin,
     resolve,
 )
+from src.cli_gen_eval.selection import materialize, select  # noqa: E402
+from src.cli_gen_eval.target import (  # noqa: E402
+    NO_TARGET_TAG,
+    TargetState,
+    resolve as resolve_target,
+)
+
+EXIT_TARGET_UNREACHABLE = 4
+SCENARIO_ROOT = REPO_ROOT / "evaluation" / "scenarios"
 
 DEFAULT_DESCRIPTOR = REPO_ROOT / "evaluation" / "descriptors" / "aca-cli.yaml"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "evaluation" / "reports"
@@ -77,6 +89,15 @@ def main() -> int:
         "--skip-contract",
         action="store_true",
         help="Skip contract validation. For debugging the runner path only; never in CI.",
+    )
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help=(
+            "Run only the scenarios that need no backend, naming the coverage that is "
+            "being given up. An explicit, reported reduction — not a skip. Refused "
+            f"while {ENV_REQUIRE} is set."
+        ),
     )
     args = parser.parse_args()
 
@@ -131,11 +152,62 @@ def main() -> int:
         )
         return 2
 
+    # 4. Selection. The runner's own --categories flag is inert (see
+    #    src/cli_gen_eval/selection.py), so the gate resolves the selection itself and
+    #    hands the runner a descriptor that points at exactly those scenarios. Without
+    #    this, every run evaluates everything on disk regardless of what was asked for.
+    require_tags: set[str] | None = None
+    if args.offline:
+        if enforcing:
+            emit(f"--offline is refused while {ENV_REQUIRE} is set")
+            return 2
+        require_tags = {NO_TARGET_TAG}
+
+    selected = select(SCENARIO_ROOT, categories=set(categories), require_tags=require_tags)
+    if not selected:
+        emit(f"selection {categories} with tags {require_tags or 'none'} matched no scenarios")
+        emit("refusing to report a pass rate over an empty suite")
+        return 1
+
+    if args.offline:
+        dropped = sorted(
+            {
+                s.category
+                for s in select(SCENARIO_ROOT, categories=set(categories))
+                if NO_TARGET_TAG not in s.tags
+            }
+        )
+        emit(
+            f"--offline: selected {len(selected)} scenarios tagged {NO_TARGET_TAG!r}, "
+            f"giving up the backend-dependent coverage in {dropped}"
+        )
+    else:
+        # 5. Target resolution — the same three states as the runner, and the same refusal
+        #    to treat a missing prerequisite as success.
+        target = resolve_target()
+        if target.state is TargetState.REACHABLE:
+            emit(f"target REACHABLE — {target.detail}")
+        else:
+            emit(f"target {target.state.value.upper()} — {target.detail}")
+            emit(
+                "the selection includes scenarios against the canonical workflow "
+                "surface, which is HTTP-only: there is no --direct path for "
+                "capabilities, configured-sources, or operations list"
+            )
+            emit(
+                "start a backend (make dev-bg), or pass --offline to run the hermetic "
+                "subset with the dropped coverage named"
+            )
+            return EXIT_TARGET_UNREACHABLE
+
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    descriptor_document = yaml.safe_load(args.descriptor.read_text(encoding="utf-8"))
+    run_descriptor = materialize(selected, descriptor_document, args.output_dir)
+
     argv = [
         *resolution.candidate.argv,
         "--descriptor",
-        str(args.descriptor),
+        str(run_descriptor),
         "--mode",
         "template-only",
         "--no-services",
@@ -145,11 +217,17 @@ def main() -> int:
         str(args.output_dir),
         "--fail-threshold",
         str(args.fail_threshold),
-        "--categories",
-        *categories,
     ]
-    emit(f"running categories {categories}")
+    by_category: dict[str, int] = {}
+    for item in selected:
+        by_category[item.category] = by_category.get(item.category, 0) + 1
+    emit(f"running {len(selected)} scenarios: {by_category}")
     completed = subprocess.run(argv, cwd=REPO_ROOT, check=False, env=os.environ.copy())
+    if completed.returncode == 0:
+        emit(
+            f"expected {len(selected)} scenarios; Phase 4 asserts the report's "
+            "total_scenarios matches, which is what catches the runner dropping work"
+        )
     return completed.returncode
 
 
