@@ -387,7 +387,7 @@
       "type": "object"
     },
     "StartupConfig": {
-      "description": "How to start/stop services for evaluation.\n\nSecurity: ``command``, ``teardown``, and ``seed_command`` are executed via\n``subprocess.run(..., shell=True)`` in the orchestrator.  Descriptor files\nmust come from trusted sources \u2014 never load an untrusted descriptor.",
+      "description": "How to start/stop services for evaluation.\n\nOptional on :class:`InterfaceDescriptor` \u2014 omit the whole block for\nprojects with nothing to start (a CLI-only surface, or services managed\nentirely out-of-band). See ``InterfaceDescriptor.startup``.\n\nSecurity: ``command``, ``teardown``, and ``seed_command`` are executed via\n``subprocess.run(..., shell=True)`` in the orchestrator.  Descriptor files\nmust come from trusted sources \u2014 never load an untrusted descriptor.",
       "properties": {
         "command": {
           "title": "Command",
@@ -516,6 +516,7 @@
       "type": "object"
     }
   },
+  "$id": "https://raw.githubusercontent.com/jankneumann/agentic-coding-tools/main/packages/gen-eval/src/gen_eval/contracts/interface-descriptor.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "Top-level project descriptor.\n\nDescribes an entire project's testable surface: services (HTTP, MCP, CLI),\nstate verifiers (databases), lifecycle configuration, and file-to-interface\nmappings for change detection.",
   "properties": {
@@ -557,7 +558,15 @@
       "type": "array"
     },
     "startup": {
-      "$ref": "#/$defs/StartupConfig"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StartupConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "state_verifiers": {
       "items": {
@@ -574,13 +583,12 @@
   "required": [
     "project",
     "version",
-    "services",
-    "startup"
+    "services"
   ],
-  "title": "InterfaceDescriptor",
+  "title": "gen-eval interface descriptor",
   "type": "object",
   "x-gen-eval-contract-version": "1",
-  "x-generated-from": "gen_eval.descriptor.InterfaceDescriptor",
-  "x-generated-from-ref": "e5dcab80c5c6d847fa425a08b569595a224eb8cd",
+  "x-generated-from": "gen_eval.contracts published schema 'interface-descriptor'",
+  "x-generated-from-ref": "600744a55418938f8691d70f0266c48410e6a545",
   "x-generator": "scripts/generate_gen_eval_contract_schemas.py"
 }

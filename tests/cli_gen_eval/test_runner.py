@@ -82,12 +82,28 @@ def test_pin_declares_the_entry_point() -> None:
     assert document["entry_console_script"]
 
 
-def test_entry_point_is_module_while_upstream_is_broken(pin: dict[str, Any]) -> None:
-    """Guards task 7.3: flipping this is deliberate, not incidental."""
-    assert pin["entry_point"] == "module", (
-        "entry_point should stay 'module' until UPSTREAM.md UP-1 fixes the console "
-        "script; flipping it is task 7.3"
-    )
+def test_entry_point_is_the_published_console_script(pin: dict[str, Any]) -> None:
+    """UP-1 landed at runner ref 600744a5, so the published entry point is usable.
+
+    Reverting to 'module' would mean routing around a published interface again, which
+    is the situation UP-1 removed. If a future ref regresses the console script, the
+    probe reports BROKEN — that is the mechanism, not a silent fallback here.
+    """
+    assert pin["entry_point"] == "console-script"
+
+
+def test_entry_argv_follows_the_pin() -> None:
+    """The pin is the only thing that decides the invocation form."""
+    from src.cli_gen_eval.runner import _entry_argv
+
+    assert _entry_argv({"entry_point": "console-script", "entry_console_script": "gen-eval"}) == [
+        "gen-eval"
+    ]
+    assert _entry_argv({"entry_point": "module", "entry_module": "gen_eval"}) == [
+        "python",
+        "-m",
+        "gen_eval",
+    ]
 
 
 def test_runner_requirement_is_fully_pinned(pin: dict[str, Any]) -> None:

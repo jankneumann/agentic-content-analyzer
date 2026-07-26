@@ -46,10 +46,15 @@ $ echo $?
 0
 ```
 
-Its probe invokes gen-eval's console script, which is broken upstream — `pyproject.toml`
-maps `gen-eval` to `gen_eval.__main__:main`, but `main` is `async def main(args)`, so the
-launcher raises `TypeError`. The crash is classified as an absent checkout. It also passes
-`--scenario`, which is not a gen-eval argument. That gate has never evaluated anything.
+Its probe invoked gen-eval's console script, which was broken upstream at the time —
+`pyproject.toml` mapped `gen-eval` to `gen_eval.__main__:main`, but `main` was
+`async def main(args)`, so the launcher raised `TypeError`. The crash was classified as an
+absent checkout. It also passes `--scenario`, which is not a gen-eval argument. That gate
+reported success without ever evaluating anything.
+
+The console-script defect has since been fixed (this repository's `UPSTREAM.md` UP-1), and
+that changes nothing about the design conclusion. A two-state gate returns to reporting
+green on the next breakage. The state model is the fix; the bug was only the evidence.
 
 ## Decision
 
@@ -114,10 +119,12 @@ dynamic-import fragility.
 - Pointing `runner_source` at an artifact index later — for example
   `artifactory.rotkohl.ai` — is a change to `pin.json` alone. The `uvx --from <requirement>`
   invocation shape is identical.
-- The upstream console-script defect is now blocking rather than routable-around, since a
-  pinned install publishes the console script as its interface. Recorded as
-  `UPSTREAM.md` UP-1; `pin.json`'s `entry_point` is `module` until it is fixed, and
-  flipping it is the whole migration.
+- Pinned distribution makes the runner's published entry point load-bearing: there is no
+  routing around a broken one, as there is with a source checkout. This surfaced the
+  upstream console-script defect as a blocker (`UPSTREAM.md` UP-1, since fixed).
+  `pin.json`'s `entry_point` remains the single declared location for the invocation form,
+  so a future regression is one edit to work around and a `BROKEN` verdict in the
+  meantime.
 
 ## References
 

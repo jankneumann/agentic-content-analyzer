@@ -28,14 +28,7 @@ services:
 # does not exist, since that would silently evaluate nothing.
 scenario_dirs: []
 
-# Required by the descriptor schema even for a CLI-only project, and inert here: the
-# gate passes --no-services because there is no service to start. `true` is a no-op
-# that always succeeds, so the block parses and never runs anything meaningful.
-# Recorded as UP-4 in UPSTREAM.md — startup should be optional when no service
-# needs starting.
-startup:
-  command: "true"
-  health_check: "true"
-  health_timeout_seconds: 1
-  health_retry_count: 1
-  teardown: "true"
+# No `startup` block. There is no service to start for a CLI-only project, and as of
+# runner ref 600744a5 the descriptor schema no longer requires one (UPSTREAM.md UP-4)
+# — the orchestrator skips startup, health check, seeding, and teardown when it is
+# absent. Earlier revisions carried three no-op commands purely to satisfy the schema.

@@ -21,13 +21,14 @@ contract version and validates its own artifacts the same way.
 
 ## Files
 
-- `interface-descriptor.schema.json` — generated from
-  `gen_eval.descriptor.InterfaceDescriptor`.
-- `scenario.schema.json` — generated from `gen_eval.models.Scenario`.
-- `eval-report.schema.json` — hand-assembled from `gen_eval.reports.generate_json_report`
-  with the generated `ScenarioVerdict` embedded as a `$def`. Upstream `GenEvalReport` is a
-  plain dataclass and cannot emit its own schema; see `UPSTREAM.md` UP-2 in the change
-  directory, which proposes promoting it to pydantic so this file becomes fully generated.
+All three are **verbatim copies** of the schemas gen-eval publishes in
+`gen_eval.contracts` (UP-2), plus provenance annotations. Nothing here is derived or
+hand-authored locally — upstream generates them from the pydantic models that actually
+produce and consume the data, and drift-tests them there.
+
+- `interface-descriptor.schema.json` — `gen_eval.descriptor.InterfaceDescriptor`.
+- `scenario.schema.json` — `gen_eval.models.Scenario`.
+- `eval-report.schema.json` — `gen_eval.reports.GenEvalReport`.
 
 Each file carries provenance annotations: `x-gen-eval-contract-version`,
 `x-generated-from-ref`, `x-generated-from`, and `x-generator`.
@@ -54,18 +55,26 @@ depending on the repository layout; the parity test covers all three.
 
 ## Report-schema strictness
 
-`eval-report.schema.json` sets `additionalProperties: true` — gen-eval may add report
-keys, and an unknown key is not a contract violation. Every key that
-`generate_json_report` writes unconditionally is `required`, so a report missing one is
-malformed. `per_visibility` is optional because upstream only writes it when non-empty.
+Schema validity is necessary but **not** sufficient, in two distinct ways that
+`tests/cli_gen_eval/test_contract.py` pins explicitly.
 
-Note that schema validity is necessary but **not** sufficient. A zero-scenario report is
-well-formed and would report `pass_rate` of `0.0`; rejecting a vacuous run is the report
-validator's job (minimum scenario counts plus an empty `unevaluated_interfaces`), not this
-schema's. `tests/cli_gen_eval/test_contract.py` pins that boundary explicitly.
+*Vacuity.* A zero-scenario report is well-formed and reports `pass_rate` of `0.0`.
+Rejecting a vacuous run is the report validator's job — minimum scenario counts plus an
+empty `unevaluated_interfaces` — not this schema's. This is precisely why
+`--fail-threshold` alone cannot be trusted.
+
+*Numeric ranges.* The published schema is generated from models that declare no bounds,
+so `pass_rate: 1.5` and a negative `total_scenarios` are schema-valid. We deliberately do
+not tighten the vendored copy: a locally-stricter schema would disagree with upstream's
+drift test and defeat the point of a shared contract. Range sanity therefore also belongs
+to the report validator. Raised upstream as `UPSTREAM.md` UP-5.
 
 ## Changelog
 
-- `1` — initial pin. Schemas generated from `agentic-coding-tools`
-  `e5dcab80c5c6d847fa425a08b569595a224eb8cd` (gen-eval `0.1.0`), with the report schema
-  hand-assembled pending UP-2.
+- `1` — initial pin. Originally generated locally from `agentic-coding-tools`
+  `e5dcab80c5c6d847fa425a08b569595a224eb8cd` with the report schema hand-assembled,
+  because gen-eval did not publish schemas yet. Repointed at
+  `600744a55418938f8691d70f0266c48410e6a545` once UP-2 landed; the files are now verbatim
+  copies of the published contract. Same contract version — the upstream publication was
+  the first, not a change to an existing one. `startup` also dropped out of the
+  descriptor's `required` list (UP-4), a widening at the same version.
