@@ -32,6 +32,21 @@ tags:
   - read-only
   - requires-target
 steps:
+  # Both assertions below spell the command as the root-level `--json` flag, because
+  # that is where this CLI accepts it. gen-eval credits `cli:<words before the first
+  # flag>`, so a flag-first step credits nothing at all — the two steps that carry the
+  # actual proof would leave this scenario attributed to no interface. This step exists
+  # to make the attribution honest, and it is the weakest possible precondition: if
+  # `aca operations list` cannot exit 0, neither of the steps after it could have passed
+  # for the right reason anyway.
+  - id: operations-list-is-reachable
+    transport: cli
+    command: operations
+    args:
+      - list
+    expect:
+      exit_code: 0
+
   - id: no-cursor-succeeds
     transport: cli
     command: "--json"

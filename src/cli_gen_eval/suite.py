@@ -299,3 +299,46 @@ def account_template(document: Any, path: Path, max_expansions: int) -> Template
         expansions=combinations,
         errors=errors,
     )
+
+
+def derive_interfaces(document: Any) -> list[str]:
+    """Which interfaces a template's steps will credit, in first-seen order.
+
+    This mirrors gen-eval's ``Evaluator._extract_interfaces`` for CLI steps: the
+    interface is ``cli:`` plus the words of ``step.command`` up to the first one
+    starting with ``-``. A command that *is* a flag credits nothing, which is how a
+    root-level ``--json`` spelling avoids inventing an interface named after a flag.
+
+    Reimplementing it here is a deliberate exception to this module's rule against
+    duplicating runner logic. The rule exists because Jinja2 rendering is large enough
+    to drift; this is four lines of string splitting, and the alternative is having no
+    way to predict coverage without running the suite. The duplication is pinned by
+    ``tests/cli_gen_eval/test_report.py``, which asserts the derivation reproduces the
+    ``per_interface`` keys of a real recorded report.
+
+    Note that the runner ignores a scenario's declared ``interfaces`` field entirely and
+    derives coverage from steps alone — so the declaration is documentation unless
+    something checks it. That is what ``test_declared_interfaces_match_the_steps`` is
+    for.
+    """
+    if not isinstance(document, dict):
+        return []
+
+    seen: set[str] = set()
+    result: list[str] = []
+    for step in document.get("steps") or []:
+        if not isinstance(step, dict) or step.get("transport") != "cli":
+            continue
+        command = str(step.get("command") or "").strip()
+        words: list[str] = []
+        for word in command.split():
+            if word.startswith("-"):
+                break
+            words.append(word)
+        if not words:
+            continue
+        interface = f"cli:{' '.join(words)}"
+        if interface not in seen:
+            seen.add(interface)
+            result.append(interface)
+    return result

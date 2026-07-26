@@ -11,11 +11,19 @@ Exit codes:
     2  usage error (argparse)
     3  runner is broken, or absent while ACA_GEN_EVAL_REQUIRE is set
     4  the backend target the selected categories need is unreachable
+    5  the run finished but its report is not credible
+
+Codes 1 and 5 are kept apart on purpose. Exit 1 means `aca` failed a scenario, which is
+a defect in the product. Exit 5 means the report cannot be used to decide either way —
+scenarios silently dropped, coverage missing, a self-inconsistent artifact. Collapsing
+them would hide the second behind the first, and the second is the failure mode this
+whole change exists to remove.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -28,6 +36,12 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.cli_gen_eval.contract import MUTATING_CATEGORIES, READ_ONLY_CATEGORIES  # noqa: E402
+from src.cli_gen_eval.report import (  # noqa: E402
+    Severity,
+    expectation_from,
+    load_json,
+    validate as validate_report,
+)
 from src.cli_gen_eval.runner import (  # noqa: E402
     ENV_REQUIRE,
     RunnerState,
@@ -44,11 +58,14 @@ from src.cli_gen_eval.target import (  # noqa: E402
 )
 
 EXIT_TARGET_UNREACHABLE = 4
+EXIT_REPORT_NOT_CREDIBLE = 5
 SCENARIO_ROOT = REPO_ROOT / "evaluation" / "scenarios"
 
 DEFAULT_DESCRIPTOR = REPO_ROOT / "evaluation" / "descriptors" / "aca-cli.yaml"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "evaluation" / "reports"
 CONTRACT_VALIDATOR = REPO_ROOT / "scripts" / "validate_gen_eval_contract.py"
+REPORT_NAME = "gen-eval-report.json"
+EXPECTATION_NAME = "gen-eval-expectation.json"
 
 
 def emit(message: str) -> None:
@@ -204,6 +221,20 @@ def main() -> int:
     descriptor_document = yaml.safe_load(args.descriptor.read_text(encoding="utf-8"))
     run_descriptor = materialize(selected, descriptor_document, args.output_dir)
 
+    # 6. Record what this run was asked to do, before it is asked to do it. A report
+    #    cannot say whether it is complete — completeness is a fact about the request —
+    #    so the expectation is written alongside it and published as evidence with it.
+    expectation = expectation_from(
+        [item.template for item in selected],
+        descriptor_document,
+        categories=list(categories),
+        offline=args.offline,
+    )
+    expectation_path = args.output_dir / EXPECTATION_NAME
+    expectation_path.write_text(
+        json.dumps(expectation.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
     argv = [
         *resolution.candidate.argv,
         "--descriptor",
@@ -223,12 +254,41 @@ def main() -> int:
         by_category[item.category] = by_category.get(item.category, 0) + 1
     emit(f"running {len(selected)} scenarios: {by_category}")
     completed = subprocess.run(argv, cwd=REPO_ROOT, check=False, env=os.environ.copy())
-    if completed.returncode == 0:
+
+    # 7. Validate the report the run produced. This runs whether or not the runner
+    #    reported success, because the interesting case is precisely the one where it
+    #    reported success over work it silently dropped — the runner's own exit code
+    #    cannot detect that, having been computed from the reduced set.
+    report_path = args.output_dir / REPORT_NAME
+    document, load_error = load_json(report_path)
+    if load_error is not None:
+        emit(f"report is unusable — {load_error}")
+        if completed.returncode != 0:
+            emit("the runner also exited non-zero; reporting that failure")
+            return completed.returncode
+        return EXIT_REPORT_NOT_CREDIBLE
+
+    verdict = validate_report(document, expectation, fail_threshold=args.fail_threshold)
+    for message in verdict.messages(Severity.CREDIBILITY):
+        emit(f"report: {message}")
+    for message in verdict.messages(Severity.THRESHOLD):
+        emit(f"threshold: {message}")
+
+    if not verdict.credible:
         emit(
-            f"expected {len(selected)} scenarios; Phase 4 asserts the report's "
-            "total_scenarios matches, which is what catches the runner dropping work"
+            f"report REJECTED — {len(verdict.messages(Severity.CREDIBILITY))} credibility findings"
         )
-    return completed.returncode
+        emit("the pass rate above describes a run that did not do what it was asked to do")
+        return EXIT_REPORT_NOT_CREDIBLE
+
+    if completed.returncode != 0 or not verdict.ok:
+        return completed.returncode or 1
+
+    emit(
+        f"report VALID — {expectation.total_scenarios} scenarios selected and evaluated, "
+        f"{len(expectation.interfaces)} interfaces covered"
+    )
+    return 0
 
 
 if __name__ == "__main__":

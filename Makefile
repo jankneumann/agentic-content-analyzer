@@ -53,11 +53,21 @@ workflow-contracts:  ## Validate and regenerate canonical workflow models
 workflow-contracts-check:  ## Validate canonical workflow models and fail on drift
 	uv run --frozen --extra dev python scripts/generate_workflow_contracts.py --check
 
-gen-eval:  ## Run the CLI gen-eval gate (contract, then suite). CATEGORIES="a b" to select
+gen-eval:  ## Run the CLI gen-eval gate: contract, suite, then report validation. CATEGORIES="a b" to select
 	./evaluation/run-gate.sh $(if $(CATEGORIES),--categories $(CATEGORIES),)
 
 gen-eval-resolve:  ## Report which gen-eval runner resolves, and why, without running the suite
 	./evaluation/run-gate.sh --resolve-only
+
+# Re-check a retained report away from the run that produced it — a CI artifact pulled
+# into a later job, or one attached to a bug. The gate already runs these checks
+# in-process on every run, so this is not the enforcement path; REPORT and EXPECTATION
+# travel together because a report alone cannot say whether it is complete.
+gen-eval-report:  ## Validate a retained gen-eval report. REPORT=... EXPECTATION=... [THRESHOLD=0.95]
+	uv run --frozen --extra gen-eval python scripts/validate_gen_eval_report.py \
+		$(or $(REPORT),evaluation/reports/gen-eval-report.json) \
+		--expectation $(or $(EXPECTATION),evaluation/reports/gen-eval-expectation.json) \
+		--fail-threshold $(or $(THRESHOLD),0.95)
 
 gen-eval-contract:  ## Validate the CLI gen-eval contract (no eval runner required)
 	uv run --frozen --extra gen-eval python scripts/validate_gen_eval_contract.py

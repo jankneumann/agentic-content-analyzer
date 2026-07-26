@@ -228,12 +228,41 @@ that is malformed, empty, or incomplete before evaluating that threshold.
 - **AND** SHALL emit a report that validates against the pinned report schema
 - **AND** SHALL group results by command and category
 
+#### Scenario: What the run was asked to do is recorded before it runs
+
+- **WHEN** the gate resolves a selection
+- **THEN** it SHALL record the scenarios that selection contains and the interfaces they
+  address, before invoking the runner
+- **AND** SHALL retain that record alongside the report
+
 #### Scenario: A vacuous run is rejected
 
-- **WHEN** a report contains fewer scenarios than the declared minimum for the
-  selected categories, or reports any descriptor-declared interface as unevaluated
+- **WHEN** a report contains no scenarios, or fewer scenarios than the recorded
+  selection, or omits a scenario the selection contained
 - **THEN** validation SHALL fail
+- **AND** SHALL name the scenarios that were selected but not evaluated
 - **AND** the gate SHALL NOT report success on the basis of the pass rate alone
+
+#### Scenario: An interface the selection addresses is not evaluated
+
+- **WHEN** a report omits an interface that the selected scenarios address, or reports
+  such an interface as unevaluated
+- **THEN** validation SHALL fail
+- **AND** an interface outside the selection SHALL NOT cause a failure, because a
+  category-scoped run is not required to cover the whole declared surface
+
+#### Scenario: A report credits an interface the descriptor does not declare
+
+- **WHEN** a report groups results under an interface that is neither declared by the
+  descriptor nor listed in a reviewed exception set
+- **THEN** validation SHALL fail
+
+#### Scenario: An incomplete run is distinguished from a failing one
+
+- **WHEN** validation rejects a report as incomplete, self-inconsistent, or out of range
+- **THEN** the gate SHALL exit with a status distinct from the one it uses for a pass
+  rate below the threshold
+- **AND** SHALL do so regardless of the pass rate the report carries
 
 #### Scenario: Continuous integration enforces without a skip path
 

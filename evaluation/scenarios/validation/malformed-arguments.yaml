@@ -23,7 +23,19 @@ description: >
   from `aca <group> --help` is sufficient proof of registration there.
 category: validation
 priority: 1
-interfaces: []
+# What the steps below will actually be credited with, which is not the same as what
+# this scenario is *about*. gen-eval derives coverage from `cli:<command>` per step and
+# ignores this field, so it can only ever be documentation — but it is documentation the
+# report validator holds to the steps, which is what stops it drifting into fiction.
+#
+# `cli:definitely-not-a-command` is deliberate and reviewed: the step names something the
+# CLI does not have in order to assert the rejection. It is listed in
+# `INTENTIONALLY_UNDECLARED_COMMANDS` so the report validator does not read it as a typo
+# crediting a phantom interface.
+interfaces:
+  - "cli:capabilities"
+  - "cli:definitely-not-a-command"
+  - "cli:operations"
 tags:
   - read-only
   - no-target

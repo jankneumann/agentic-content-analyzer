@@ -11,8 +11,21 @@
 | UP-2 published JSON Schema | **LANDED** at `600744a5` | no |
 | UP-3 coverage fields populated | **LANDED** at `600744a5` | no |
 | UP-4 optional `startup` | **LANDED** at `600744a5` | no |
-| UP-5 report schema numeric bounds | open, low | no — moved to ACA's report validator |
-| UP-6 runs silently evaluate less than the suite | **open, high** | no — worked around at real cost |
+| UP-5 report schema numeric bounds | open, low | no — enforced in ACA's report validator |
+| UP-6 runs silently evaluate less than the suite | **open, high** | no — worked around, and now detected |
+
+UP-5's gap is closed on ACA's side: `src/cli_gen_eval/report.py` rejects `pass_rate`
+outside `[0, 1]`, `coverage_pct` outside `[0, 100]`, and negative counts, with tests
+asserting each of those documents is schema-valid first. Upstream tightening the model
+would make those checks redundant rather than wrong.
+
+UP-6 is now *detected* as well as worked around. The gate records the selection before
+invoking the runner and compares it to the report, so a dropped scenario is a named,
+non-zero-exit failure rather than a quiet reduction. Verified against the real runner:
+pushing the suite past the tier cap yields `gen-eval: PASS (100.0% >= 95.0%)` from the
+runner and exit 5 from the gate, naming all twenty scenarios that vanished. That does not
+reduce UP-6's priority — every other consumer still gets the quiet reduction, and ACA
+still pays the batching cost that fitting the cap requires.
 
 UP-6 is the one worth acting on. It is not blocking, because ACA now resolves scenario
 selection itself and asserts the expected count, but the workaround cost genuine
