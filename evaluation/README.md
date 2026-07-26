@@ -19,7 +19,36 @@ make gen-eval-contract     # contract only — no runner needed, always conclusi
 make gen-eval              # contract, then the suite (read-only categories)
 ./evaluation/run-gate.sh --resolve-only   # report runner state and stop
 ./evaluation/run-gate.sh --categories plumbing discovery
+./evaluation/run-gate.sh --offline        # only the scenarios needing no backend
 ```
+
+`make gen-eval` needs a backend running: about a quarter of the suite exercises the
+canonical workflow surface, which is HTTP-only. `make dev-bg` first, or use `--offline`.
+
+## What needs a backend, and what happens when there isn't one
+
+`src/cli/workflow_commands.py` is "backed exclusively by the HTTP API" — there is no
+`--direct` path for `capabilities`, `configured-sources`, or `operations list`, so they
+exit 1 with "Workflow API unavailable" when nothing is listening.
+
+The gate resolves a target with the same three states it uses for the runner, and the
+same rule: a missing prerequisite is never reported as success.
+
+| State | Meaning | Result |
+|---|---|---|
+| `reachable` | `/health` answered 2xx | run |
+| `absent` | settings could not name a target at all | **fail (4)** |
+| `unreachable` | target named but not answering, or answering non-2xx | **fail (4)** |
+
+The URL comes from the same `api_base_url` the CLI reads, so the probe cannot pass while
+the scenarios dial somewhere else. `/health` is probed rather than `aca capabilities`
+deliberately: putting a command under test inside the gate's own precondition check would
+classify a genuine `capabilities` bug as "unreachable" and refuse, instead of reporting
+the failing scenario.
+
+`--offline` runs only the scenarios tagged `no-target`, prints the coverage being given
+up, and is refused under `ACA_GEN_EVAL_REQUIRE`. It is an explicit, named reduction — not
+a skip, which is why it announces what it dropped.
 
 ## Runner resolution
 
@@ -80,9 +109,10 @@ broken upstream and crashed on every invocation. That defect is fixed
 | Code | Meaning |
 |---|---|
 | 0 | contract valid, and the suite passed or the runner is absent locally |
-| 1 | contract invalid, or the suite failed |
-| 2 | usage error |
+| 1 | contract invalid, the suite failed, or the selection matched no scenarios |
+| 2 | usage error, or a flag refused under `ACA_GEN_EVAL_REQUIRE` |
 | 3 | runner broken, or absent under `ACA_GEN_EVAL_REQUIRE` |
+| 4 | the backend target the selection needs is absent or unreachable |
 
 ## Contract version and the pin
 
@@ -120,27 +150,65 @@ redesign; the `uvx --from <requirement>` shape is identical either way.
 
 ## Categories
 
-| Category | Mutating | Runs on PRs |
-|---|---|---|
-| `plumbing` | no | yes |
-| `discovery` | no | yes |
-| `validation` | no | yes |
-| `workflow-submission` | **yes** | no — explicit dispatch only |
-| `operation-control` | **yes** | no — explicit dispatch only |
+| Category | Scenarios | Needs a backend | Mutating | Runs on PRs |
+|---|---|---|---|---|
+| `plumbing` | 9 | no | no | yes |
+| `discovery` | 3 | yes | no | yes |
+| `validation` | 4 | 2 of 4 | no | yes |
+| `workflow-submission` | — | yes | **yes** | no — explicit dispatch only |
+| `operation-control` | — | yes | **yes** | no — explicit dispatch only |
 
 Mutating categories submit or control durable work and require an explicit staging or
 ephemeral target, reusing the release-smoke target policy. They are refused outright until
-that guard lands (Phase 5).
+that guard lands (Phase 5), and no such scenarios are checked in yet.
+
+## Selection is done by the gate, not the runner
+
+The runner's `--categories` flag does nothing. `args.categories` reaches its config and is
+never read again; the only path into its scenario filter is a feedback-driven focus list
+that is empty on the first iteration, and iterations default to 1. Confirmed rather than
+inferred — `--categories discovery` against this suite evaluates all sixteen scenarios.
+
+That matters beyond tidiness. The mutating categories are meant to be held back by
+selection, so trusting the flag would mean every `make gen-eval` submitted real durable
+work once Phase 5 lands. So the gate resolves the selection itself, copies the chosen
+scenarios into `evaluation/reports/.selection/`, and hands the runner a descriptor
+pointing there with the declared command list carried over intact. Reported upstream as
+`UPSTREAM.md` UP-6.
 
 ## Known limits
 
-The published report schema is generated from pydantic models that declare no numeric
-bounds, so `pass_rate: 1.5` or a negative scenario count are schema-valid. We vendor the
-published schema verbatim rather than tightening our copy, so range sanity belongs to the
-report validator. Raised upstream as `UPSTREAM.md` UP-5.
+**The runner evaluates at most 30 scenarios per invocation, and at most 13 of them may be
+non-critical.** Its generator truncates to `max_scenarios_per_iteration` (50, not settable
+from its CLI), and its orchestrator then splits that budget three ways: 40% reserved for
+interfaces matching `--changed-features-ref`, 35% for `priority <= 1`, and the remainder
+for everything else. The reserved share does not reflow when unused.
+
+This is why `evaluation/scenarios/plumbing/group-help.yaml` groups four commands per
+scenario instead of one. The first version used one scenario per command, and the run
+reported `total_scenarios: 21` against an expected 39 with `PASS (100.0%)` and exit 0. The
+cost of the workaround is real: a failing command masks the rest of its batch. The pinned
+limits live in `evaluation/contract/pin.json` under `runner_limits`, the arithmetic is
+modelled in `src/cli_gen_eval/suite.py`, and
+`tests/cli_gen_eval/test_descriptor_drift.py` fails when the suite stops fitting.
+
+**Dropped work is logged, not reported.** Unparseable YAML, a Jinja2 render error, and a
+model-validation failure each produce a `logger.warning` and are absent from the JSON
+report. `scripts/validate_gen_eval_contract.py` therefore publishes
+`scenarios_expected`, which Phase 4 compares against the report's `total_scenarios`.
+
+**The published report schema has no numeric bounds**, so `pass_rate: 1.5` or a negative
+scenario count are schema-valid. We vendor the published schema verbatim rather than
+tightening our copy, so range sanity belongs to the report validator (`UPSTREAM.md` UP-5).
+
+**Interface coverage is attempted, not passed.** `interfaces_tested` is derived from a
+scenario's declared steps regardless of which ones ran, so a batch that fails early still
+credits every interface it named. Coverage percentage answers "was this addressed", not
+"does this work" — the pass rate answers the second question.
 
 ## Status
 
-Phases 1 and 2 are complete: the contract layer and runner acquisition. The descriptor is
-still a skeleton with no scenarios — Phase 3 populates it — so `make gen-eval` currently
-validates the contract, resolves a runner, and evaluates an empty suite.
+Phases 1–3 are complete: the contract layer, runner acquisition, and the read-only suite.
+`make gen-eval` validates the contract, resolves a runner and a target, and evaluates 16
+scenarios covering all 31 declared command interfaces. Phase 4 adds report validation and
+the vacuous-run check; Phase 5 the mutation guard; Phase 6 CI wiring.

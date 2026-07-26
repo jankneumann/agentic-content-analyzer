@@ -152,6 +152,70 @@ read-only categories separated from mutating categories.
   stated reason
 - **AND** a drift check SHALL fail when neither holds
 
+### Requirement: The evaluation target is resolved before backend-dependent categories run
+
+The gate SHALL resolve the backend target that backend-dependent categories require, SHALL
+classify it in the same three states it classifies the runner, and SHALL NOT report a run
+as successful when a selected category's target is missing.
+
+#### Scenario: A selected category requires an unreachable target
+
+- **WHEN** a category containing scenarios against the canonical workflow surface is
+  selected and the resolved target does not answer its health probe
+- **THEN** the gate SHALL fail before executing the suite
+- **AND** SHALL report the target it resolved and how it was resolved
+- **AND** SHALL NOT execute the selection and attribute the resulting failures to the
+  command under test
+
+#### Scenario: No target can be named
+
+- **WHEN** target resolution cannot determine a target at all
+- **THEN** the gate SHALL fail
+- **AND** SHALL distinguish this from a target that was named but did not answer
+
+#### Scenario: The probe resolves the same target the scenarios will use
+
+- **WHEN** the gate probes a target
+- **THEN** the address SHALL be the one the command under test resolves from its own
+  configuration
+- **AND** the probe SHALL NOT invoke a command that the selected scenarios evaluate
+
+#### Scenario: Running without a target is explicit and reported
+
+- **WHEN** an operator requests a run restricted to scenarios that need no target
+- **THEN** the gate SHALL execute only those scenarios
+- **AND** SHALL report which categories' coverage was given up
+- **AND** the request SHALL be refused when enforcement is requested
+
+### Requirement: Category selection is enforced by the gate
+
+The gate SHALL determine which scenarios a run evaluates and SHALL NOT rely on the runner
+to filter them, so that an unselected category cannot execute.
+
+#### Scenario: A run evaluates only the selected categories
+
+- **WHEN** the gate runs with a category selection
+- **THEN** the runner SHALL receive only the scenarios in that selection
+- **AND** scenarios outside the selection SHALL NOT execute, whether or not the runner
+  honours a category filter of its own
+
+#### Scenario: A selection carries no residue from a previous run
+
+- **WHEN** a narrower selection follows a wider one
+- **THEN** only the narrower selection SHALL execute
+
+#### Scenario: The coverage denominator survives selection
+
+- **WHEN** the gate supplies the runner with a selection
+- **THEN** the declared command surface used to compute coverage SHALL be unchanged from
+  the checked-in descriptor
+
+#### Scenario: An empty selection is refused
+
+- **WHEN** a selection matches no scenarios
+- **THEN** the gate SHALL fail
+- **AND** SHALL NOT report a pass rate
+
 ### Requirement: Report validity and pass-rate threshold are both enforced
 
 The gate SHALL enforce a documented pass-rate threshold and SHALL reject a report

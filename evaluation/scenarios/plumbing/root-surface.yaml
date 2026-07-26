@@ -1,0 +1,36 @@
+# Category: plumbing — no backend, no database, no credentials.
+#
+# `command` here is a flag rather than a command name, so gen-eval credits no
+# interface for these steps. That is correct: `--version` and `--help` on the root
+# application are not command interfaces, and the 31 declared interfaces are credited
+# by group-help.yaml.
+
+id: plumbing-root-surface
+name: The root application answers --version and --help
+description: >
+  The cheapest possible liveness evidence for the CLI itself: the console script is
+  installed, the root Typer application constructs, and the eager --version and
+  --help callbacks fire without touching configuration, the database, or the backend
+  API. Every other scenario in the suite presupposes this, so it carries priority 1 —
+  if the runner's scenario cap ever truncates the suite, this is not what gets
+  dropped.
+category: plumbing
+priority: 1
+interfaces: []
+tags:
+  - read-only
+  - no-target
+steps:
+  - id: root-version
+    transport: cli
+    command: "--version"
+    expect:
+      exit_code: 0
+      not_empty: true
+
+  - id: root-help
+    transport: cli
+    command: "--help"
+    expect:
+      exit_code: 0
+      not_empty: true

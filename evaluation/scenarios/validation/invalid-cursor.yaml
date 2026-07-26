@@ -1,0 +1,35 @@
+# Category: validation — REQUIRES a reachable backend.
+
+id: validation-invalid-cursor
+name: An invalid pagination cursor returns a problem document on stdout
+description: >
+  Cursor rejection is server-side, so this covers the path where the CLI must relay a
+  structured API failure rather than produce one itself. The assertion worth making is
+  not just "it failed" but HOW: under --json the problem document goes to stdout as the
+  single JSON document and the process exits 1. Machine-readable mode stays
+  machine-readable on the error path — a caller parsing stdout gets a typed problem
+  rather than an empty stream plus prose on stderr.
+
+  Exit 1 rather than 2 is the deliberate distinction: 2 is reserved for arguments the
+  CLI itself rejects before any request (see limit-bounds.yaml), 1 for a request the
+  server rejected. Both are covered so the two cannot quietly converge.
+category: validation
+priority: 1
+interfaces:
+  - "cli:capabilities"
+tags:
+  - read-only
+  - requires-target
+steps:
+  - id: capabilities-bad-cursor
+    transport: cli
+    command: capabilities
+    args:
+      - "--cursor"
+      - bogus
+      - "--json"
+    expect:
+      exit_code: 1
+      body_contains:
+        status: 422
+        code: invalid-request

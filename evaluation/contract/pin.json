@@ -10,6 +10,13 @@
   "entry_console_script": "gen-eval",
   "schemas_generated_from_ref": "600744a55418938f8691d70f0266c48410e6a545",
   "schemas_upstream_published": true,
+  "runner_limits": {
+    "max_scenarios_per_iteration": 50,
+    "max_expansions_per_template": 100,
+    "tier_changed_share": 0.4,
+    "tier_critical_share": 0.35,
+    "critical_priority_max": 1
+  },
   "notes": [
     "entry_point is the single declared location for how the runner is invoked.",
     "It is 'console-script' as of runner_ref 600744a5, which fixed the broken",
@@ -20,6 +27,18 @@
     "provenance annotations — not derived or hand-assembled here.",
     "contract_version must equal gen_eval.contracts.CONTRACT_VERSION; the generator",
     "refuses to write when they disagree.",
+    "runner_limits are OBSERVED properties of the pinned runner, not settings. None is",
+    "exposed on its CLI. max_expansions_per_template caps one template's parameter",
+    "expansion. max_scenarios_per_iteration truncates the generated list; the",
+    "orchestrator then buckets what survives and gives int(total*tier_changed_share) to",
+    "scenarios matching --changed-features-ref, int(total*tier_critical_share) to",
+    "priority <= critical_priority_max, and the remainder to everything else. The",
+    "change-detection tier does NOT reflow when unused, so a run without a change ref",
+    "can evaluate only critical+remainder = 30 of a nominal 50, at most 13 of which may",
+    "be non-critical. Every one of these drops work with a log warning and exit 0, which",
+    "is why they are recorded here and asserted against the checked-in suite in",
+    "tests/cli_gen_eval/test_descriptor_drift.py. Re-verify them when bumping",
+    "runner_ref; raised upstream as UPSTREAM.md UP-6.",
     "runner_source is a git ref only as an interim measure. Repointing it at an",
     "artifact index is a change to this file alone."
   ]

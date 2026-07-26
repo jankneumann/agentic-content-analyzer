@@ -33,6 +33,12 @@ from src.cli_gen_eval.contract import (  # noqa: E402
     validate_descriptor,
     validate_scenario,
 )
+from src.cli_gen_eval.runner import load_pin  # noqa: E402
+from src.cli_gen_eval.suite import (  # noqa: E402
+    SuiteAccount,
+    account_template,
+    iter_templates,
+)
 
 DEFAULT_DESCRIPTOR = REPO_ROOT / "evaluation" / "descriptors" / "aca-cli.yaml"
 
@@ -91,7 +97,7 @@ def main() -> int:
 
     if not args.descriptor.exists():
         findings[str(args.descriptor)] = ["descriptor does not exist"]
-        return report(findings, CONTRACT_VERSION, 0, args.json)
+        return report(findings, CONTRACT_VERSION, SuiteAccount([]), args.json)
 
     document, load_errors = load_document(args.descriptor)
     descriptor_key = str(args.descriptor)
@@ -111,36 +117,54 @@ def main() -> int:
     if scenario_dir_errors:
         findings.setdefault(descriptor_key, []).extend(scenario_dir_errors)
 
+    max_expansions = int(
+        load_pin().get("runner_limits", {}).get("max_expansions_per_template", 100)
+    )
+    accounts = []
     for path in scenario_paths:
-        scenario, errors = load_document(path)
-        if not errors:
-            errors = validate_scenario(scenario)
+        document, errors = load_document(path)
         if errors:
             findings[str(path)] = errors
+            continue
+        # A scenario file holds one template or a list of them; the runner accepts both.
+        for index, template in enumerate(iter_templates(document)):
+            template_errors = validate_scenario(template)
+            # Account even when the template is schema-invalid, so the expected scenario
+            # count is reported alongside the reason it is wrong.
+            account = account_template(template, path, max_expansions)
+            accounts.append(account)
+            template_errors = template_errors + account.errors
+            if template_errors:
+                key = str(path) if isinstance(document, dict) else f"{path}[{index}]"
+                findings.setdefault(key, []).extend(template_errors)
 
     if args.require_scenarios and not scenario_paths:
         findings.setdefault(descriptor_key, []).append(
             "resolved zero scenarios but --require-scenarios was set"
         )
 
-    return report(findings, CONTRACT_VERSION, len(scenario_paths), args.json)
+    return report(findings, CONTRACT_VERSION, SuiteAccount(accounts), args.json)
 
 
 def report(
     findings: dict[str, list[str]],
     contract_version: str,
-    scenario_count: int,
+    account: SuiteAccount,
     as_json: bool,
 ) -> int:
     """Print the verdict. Machine-readable output stays on stdout alone."""
     ok = not findings
+    templates = len(account.templates)
+    expected = account.expected_scenarios()
     if as_json:
         print(
             json.dumps(
                 {
                     "valid": ok,
                     "contract_version": contract_version,
-                    "scenarios_validated": scenario_count,
+                    "templates_validated": templates,
+                    "scenarios_expected": expected,
+                    "scenarios_expected_per_category": account.per_category,
                     "findings": findings,
                 },
                 indent=2,
@@ -152,7 +176,8 @@ def report(
     if ok:
         print(
             f"gen-eval contract: VALID "
-            f"(contract_version={contract_version}, scenarios={scenario_count})"
+            f"(contract_version={contract_version}, templates={templates}, "
+            f"scenarios={expected})"
         )
         return 0
 

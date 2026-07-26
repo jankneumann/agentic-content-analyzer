@@ -164,6 +164,49 @@ target the real names; this records the reconciliation rather than adding an ali
 Deterministic, no LLM spend, no vendor credentials. `cli-augmented` stays available
 locally for scenario authoring.
 
+The three decisions below were forced by Phase 3, where authoring the suite showed
+that D5 and the category model both rested on runner behaviour that does not exist.
+
+**D10 — The gate owns scenario selection; the runner's category filter is not used.**
+D5 said scenarios are discovered through the descriptor rather than a CLI flag, which
+remains right. What it assumed is that `--categories` then narrows them, and it does
+not: `args.categories` reaches the runner's config and is never read again. Verified —
+`--categories discovery` evaluates every scenario in every category.
+
+Selection is a safety boundary here, not a convenience. The mutating categories are
+held back by it, so a decorative filter would mean every `make gen-eval` submitting
+durable work once Phase 5 lands. The gate therefore resolves the selection itself,
+materializes it, and synthesizes a per-run descriptor carrying the declared command
+list unchanged so the coverage denominator survives.
+
+**D11 — A backend target is resolved with the runner's three states, and refused
+rather than skipped.**
+`src/cli/workflow_commands.py` is HTTP-only: there is no `--direct` path for
+`capabilities`, `configured-sources`, or `operations list`, so a quarter of the suite
+needs a live backend. gen-eval's `startup` block is rejected because its mandatory
+`teardown` would stop a backend the developer was already running, and it cannot
+supply Postgres either way.
+
+The probe reads the same `api_base_url` the CLI reads — one source of truth, so the
+probe cannot pass while the scenarios dial elsewhere — and probes `/health` rather
+than `aca capabilities`, so a genuine bug in a command under test surfaces as a
+failing scenario instead of being classified a missing precondition. `--offline`
+exists as an explicit, reported reduction; it names the coverage dropped and is
+refused under enforcement, which is what distinguishes it from a skip.
+
+**D12 — The suite is sized against the runner's real per-run capacity, and the
+arithmetic is asserted.**
+The runner truncates twice: its generator caps a run at 50 scenarios, then its
+orchestrator splits that budget into tiers and reserves 40% for change-detection
+matches that never reflow when unused. Effective capacity is 30, of which at most 13
+may be non-critical.
+
+Both truncations are silent. A 39-scenario suite reported `total_scenarios: 21` with
+`PASS (100.0%)` and exit 0. So the help sweep groups four commands per scenario — which
+costs masking within a batch, and is recorded as a cost rather than a design
+preference — the pinned limits live in the runner pin, and the drift test fails when
+the suite stops fitting rather than letting a run quietly cover less.
+
 ### Scope
 
 - `evaluation/contract/` — pinned gen-eval contract version, the three vendored

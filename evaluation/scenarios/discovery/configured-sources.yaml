@@ -1,0 +1,34 @@
+# Category: discovery — read-only, REQUIRES a reachable backend.
+
+id: discovery-configured-sources
+name: aca configured-sources emits the merged source page as one JSON document
+description: >
+  Exercises the YAML-plus-database source merge described in CLAUDE.md through the
+  transport that consumers actually use. Deliberately asserts only the page shape, not
+  which sources are configured: the merge reads sources.d/*.yaml overlaid with
+  source_overrides rows, so any assertion about specific entries would fail on a
+  developer machine with different sources enabled and would be testing the fixtures
+  rather than the command.
+
+  `data: []` asserts the key exists and holds a list — gen-eval's subset matching is
+  vacuously satisfied by any list against an empty expected list. Paired with exit 0
+  that is the real claim: the merge completed and serialized a cursor page. And since
+  gen-eval only produces a keyed body when stdout parsed as exactly one JSON value,
+  this passing also establishes stdout purity.
+category: discovery
+priority: 1
+interfaces:
+  - "cli:configured-sources"
+tags:
+  - read-only
+  - requires-target
+steps:
+  - id: configured-sources-json
+    transport: cli
+    command: configured-sources
+    args:
+      - "--json"
+    expect:
+      exit_code: 0
+      body_contains:
+        data: []

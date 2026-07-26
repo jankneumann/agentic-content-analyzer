@@ -5,6 +5,20 @@
 
 ## Status
 
+| Item | State | Blocks ACA? |
+|---|---|---|
+| UP-1 console script | **LANDED** at `600744a5` | no |
+| UP-2 published JSON Schema | **LANDED** at `600744a5` | no |
+| UP-3 coverage fields populated | **LANDED** at `600744a5` | no |
+| UP-4 optional `startup` | **LANDED** at `600744a5` | no |
+| UP-5 report schema numeric bounds | open, low | no — moved to ACA's report validator |
+| UP-6 runs silently evaluate less than the suite | **open, high** | no — worked around at real cost |
+
+UP-6 is the one worth acting on. It is not blocking, because ACA now resolves scenario
+selection itself and asserts the expected count, but the workaround cost genuine
+reporting granularity and the underlying defect misleads any consumer that trusts
+`--categories`.
+
 **UP-1, UP-2, UP-3, and UP-4 all landed on `origin/main` at
 `600744a55418938f8691d70f0266c48410e6a545`** (commits `c2213c5f`, `e5fabe3d`).
 ACA's pin was moved to that ref. Verified from ACA rather than taken on trust:
@@ -29,6 +43,96 @@ Consequent changes in ACA, all landed:
 - The descriptor's three no-op `startup` commands are gone (UP-4).
 
 The sections below are kept as the record of what was asked and why.
+
+---
+
+## UP-6 — A run silently evaluates less than the suite it was given (open, HIGH priority)
+
+Found while authoring ACA's read-only suite in Phase 3. Four independent mechanisms
+reduce what a run covers, none of them reported, all of them exiting 0. The first is a
+correctness bug; the rest are unreachable configuration.
+
+### 6a. `--categories` does nothing
+
+`__main__.py` passes `args.categories` into `GenEvalConfig(categories=...)` and no code
+reads it again. The only path into `TemplateGenerator._filter`'s `focus_areas` is
+`feedback.suggested_focus`, which is `None` on the first iteration, and `max_iterations`
+defaults to 1. So the filter is unreachable in a default run.
+
+Verified against ACA's suite at ref `600744a5`:
+
+```
+$ gen-eval --descriptor evaluation/descriptors/aca-cli.yaml --categories discovery …
+total_scenarios: 16 — {'discovery': 3, 'plumbing': 9, 'validation': 4}
+```
+
+Three scenarios were requested; sixteen ran, spanning every category.
+
+This is the highest-severity item because the flag's *stated* purpose is a safety
+boundary. ACA's design keeps mutating scenarios — ones that submit durable work — in the
+same `scenario_dirs` tree and relies on selection to hold them back. Had we trusted the
+flag, every `make gen-eval` would have submitted real workflow operations against
+whatever database was configured. We now resolve the selection ourselves and synthesize a
+per-run descriptor (`src/cli_gen_eval/selection.py`), so ACA is safe either way, but any
+other consumer reading the `--help` text would not be.
+
+Suggested fix: pass `self.config.categories` as `focus_areas` when no feedback focus
+exists, so the existing `_filter` logic applies. Worth a regression test asserting that
+`--categories X` evaluates only category X, since nothing currently covers it.
+
+### 6b. `max_scenarios_per_iteration` is not settable, and the tier split makes it smaller
+than it looks
+
+`GenEvalConfig.max_scenarios_per_iteration` defaults to 50 and is absent from the
+argparse surface, so a CLI consumer cannot raise it. `TemplateGenerator.generate` returns
+`scenarios[:count]` with no warning when it truncates.
+
+The bigger surprise is `Orchestrator._prioritize_scenarios`, which then buckets what
+survives:
+
+```python
+max_tier1 = int(max_total * 0.40)   # interfaces in --changed-features-ref
+max_tier2 = int(max_total * 0.35)   # priority <= 1
+max_tier3 = max_total - max_tier1 - max_tier2
+result = tier1[:max_tier1] + tier2[:max_tier2] + tier3[:max_tier3]
+```
+
+Without `--changed-features-ref`, `tier1` is empty and its 20 slots are simply unspent —
+they do not reflow. A run's real capacity is 17 + 13 = **30 of a nominal 50**, and only 13
+of those may be non-critical.
+
+ACA hit this concretely: a 39-scenario suite reported
+
+```
+total_scenarios: 21
+pass_rate: 1.0
+gen-eval: PASS (100.0% >= 95.0%)
+```
+
+Eighteen scenarios were dropped, seventeen declared interfaces went unevaluated, and the
+run exited 0. Restructuring the suite to fit cost real coverage granularity — commands are
+now batched several per scenario, so a failing one masks the rest of its batch, which is a
+worse report than one scenario per command would give.
+
+Suggested fix: expose `--max-scenarios` and let unused tier allocation reflow into the
+following tiers (`tier3` cap becomes `max_total - len(tier1_taken) - len(tier2_taken)`).
+Both are small and neither changes behaviour for a run that fits today.
+
+### 6c. Dropped work is logged, never reported
+
+`_load_templates`, `_expand_parameters`, and `_validate` each `logger.warning` and
+continue on unparseable YAML, a Jinja2 render error, and a model-validation failure
+respectively. A consumer parsing the JSON report cannot tell any of them happened.
+
+Suggested fix: count them and surface the totals on the report — `templates_loaded`,
+`templates_rejected`, `expansions_dropped`, `scenarios_truncated`. A non-zero
+`scenarios_truncated` in particular should probably be fatal by default, since it means
+the reported pass rate covers an unnamed subset.
+
+### 6d. `GenEvalConfig.from_yaml` is unreachable from the CLI
+
+The classmethod exists and would solve 6b generically, but `__main__.py` only ever builds
+the config from argparse. A `--config` flag would expose every field at once.
 
 ---
 

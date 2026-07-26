@@ -129,30 +129,63 @@ installed. This phase must be independently green before Phase 2 begins.
 
 ## Phase 3 — Descriptor and read-only scenarios (`wp-gen-eval-readonly`)
 
-- [ ] 3.1 Author `evaluation/descriptors/aca-cli.yaml` declaring the `aca` CLI
+- [x] 3.1 Author `evaluation/descriptors/aca-cli.yaml` declaring the `aca` CLI
   service, its registered command groups, and `scenario_dirs`. Validate it through
   the Phase 1 contract validator. **(M)**
   **Spec scenarios:** Descriptor and scenarios are schema-valid
   **Design decisions:** D5
   **Dependencies:** 1.3
-- [ ] 3.2 Add a drift test asserting every command group registered on the CLI
+  **Done:** 31 declared commands (29 groups plus the two top-level commands) with
+  121 subcommands and `coverage:*` tags. `json_flag` deliberately unset — gen-eval
+  appends it to the end of argv, but `--json` is a root-level flag here.
+- [x] 3.2 Add a drift test asserting every command group registered on the CLI
   application appears in the descriptor or in a reviewed exclusion set with a
   stated reason. **(M)**
   **Spec scenarios:** The descriptor tracks the registered command surface
   **Dependencies:** 3.1
-- [ ] 3.3 Author the `plumbing` category: version output and a `--help` sweep
+  **Done:** `tests/cli_gen_eval/test_descriptor_drift.py`, 13 assertions. Zero
+  exclusions were needed — all 31 commands answer `--help` hermetically — so the
+  reviewed-reason mechanism became `PLUMBING_ONLY_REASONS`, covering the 20
+  commands with help-surface-only coverage.
+- [x] 3.3 Author the `plumbing` category: version output and a `--help` sweep
   across the top-level application and each registered command group. **(M)**
   **Spec scenarios:** Plumbing and discovery coverage
   **Dependencies:** 3.1
-- [ ] 3.4 Author the `discovery` category: capability discovery, configured-source
+- [x] 3.4 Author the `discovery` category: capability discovery, configured-source
   listing, and durable operation listing, including the no-cursor case `ri-01`
   repaired. Assert single-JSON-document stdout purity. **(M)**
   **Spec scenarios:** Plumbing and discovery coverage
   **Dependencies:** 3.1
-- [ ] 3.5 Author the `validation` category: malformed arguments, invalid pagination
+- [x] 3.5 Author the `validation` category: malformed arguments, invalid pagination
   cursors, and omission of absent optional query values. **(M)**
   **Spec scenarios:** Validation coverage
   **Dependencies:** 3.1
+  **Done:** the omission case is proved by contrast rather than by inspecting a URL
+  the CLI never shows: `GET /api/v1/operations?cursor=` returns 422 exactly as a
+  bogus cursor does, so a no-cursor listing exiting 0 establishes the parameter was
+  omitted rather than sent empty.
+
+Added during Phase 3. Both are prerequisites the plan assumed the runner provided
+and it does not; without them the authored scenarios cannot run, or run unsafely.
+
+- [x] 3.6 Resolve the backend target the discovery and validation scenarios need,
+  with the same three states and the same refusal-not-skip rule as the runner.
+  `src/cli_gen_eval/target.py`, exit code 4, plus `--offline` as an explicit,
+  reported reduction. **(M)**
+  **Spec scenarios:** The evaluation target is resolved before backend-dependent
+  categories run
+  **Rationale:** `src/cli/workflow_commands.py` is HTTP-only, so a quarter of the
+  suite needs a live backend. Without target resolution those scenarios fail as
+  though the CLI were broken, and a pass-rate threshold absorbs a missing
+  precondition as a low score.
+- [x] 3.7 Move scenario selection into the gate, because the runner's `--categories`
+  flag is inert. `src/cli_gen_eval/selection.py` resolves the selection, materializes
+  it, and synthesizes a per-run descriptor. **(M)**
+  **Spec scenarios:** Category selection is enforced by the gate
+  **Rationale:** verified that `--categories discovery` evaluates all 16 scenarios
+  across all categories. Selection is a safety boundary in this design — Phase 5's
+  mutating scenarios are held back by it — so a decorative filter would have meant
+  every `make gen-eval` submitting durable work. Reported as `UPSTREAM.md` UP-6.
 
 ## Phase 4 — Report validation and threshold (`wp-gen-eval-report`)
 
