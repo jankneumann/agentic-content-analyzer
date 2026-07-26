@@ -242,130 +242,138 @@
       ],
       "title": "StepVerdict",
       "type": "object"
+    },
+    "VisibilityBreakdown": {
+      "description": "Pass/fail/error/skip counts for a single visibility bucket.",
+      "properties": {
+        "errors": {
+          "default": 0,
+          "title": "Errors",
+          "type": "integer"
+        },
+        "failed": {
+          "default": 0,
+          "title": "Failed",
+          "type": "integer"
+        },
+        "pass_rate": {
+          "readOnly": true,
+          "title": "Pass Rate",
+          "type": "number"
+        },
+        "passed": {
+          "default": 0,
+          "title": "Passed",
+          "type": "integer"
+        },
+        "skipped": {
+          "default": 0,
+          "title": "Skipped",
+          "type": "integer"
+        },
+        "total": {
+          "default": 0,
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "pass_rate"
+      ],
+      "title": "VisibilityBreakdown",
+      "type": "object"
     }
   },
+  "$id": "https://raw.githubusercontent.com/jankneumann/agentic-coding-tools/main/packages/gen-eval/src/gen_eval/contracts/eval-report.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "additionalProperties": true,
-  "description": "Evaluation report emitted as gen-eval-report.json. Hand-assembled from gen_eval.reports.generate_json_report because upstream GenEvalReport is a dataclass; see UPSTREAM.md UP-2.",
+  "description": "Complete gen-eval run report.\n\nThis is a pydantic model rather than a plain dataclass so that\n``eval-report.schema.json`` can be *generated* from it (see\n``scripts/generate_contract_schemas.py``) instead of hand-authored and\nleft to drift away from the emitter.",
   "properties": {
     "budget_exhausted": {
+      "title": "Budget Exhausted",
       "type": "boolean"
     },
     "cost_summary": {
       "additionalProperties": {
         "type": "number"
       },
+      "title": "Cost Summary",
       "type": "object"
     },
     "coverage_pct": {
-      "maximum": 100.0,
-      "minimum": 0.0,
+      "title": "Coverage Pct",
       "type": "number"
     },
     "duration_seconds": {
-      "minimum": 0.0,
+      "title": "Duration Seconds",
       "type": "number"
     },
     "errors": {
-      "minimum": 0,
+      "title": "Errors",
       "type": "integer"
     },
     "failed": {
-      "minimum": 0,
+      "title": "Failed",
       "type": "integer"
     },
     "iterations_completed": {
-      "minimum": 0,
+      "title": "Iterations Completed",
       "type": "integer"
     },
     "pass_rate": {
-      "maximum": 1.0,
-      "minimum": 0.0,
+      "title": "Pass Rate",
       "type": "number"
     },
     "passed": {
-      "minimum": 0,
+      "title": "Passed",
       "type": "integer"
     },
     "per_category": {
       "additionalProperties": {
         "additionalProperties": {
-          "minimum": 0,
           "type": "integer"
         },
         "type": "object"
       },
+      "title": "Per Category",
       "type": "object"
     },
     "per_interface": {
       "additionalProperties": {
         "additionalProperties": {
-          "minimum": 0,
           "type": "integer"
         },
         "type": "object"
       },
+      "title": "Per Interface",
       "type": "object"
     },
     "per_visibility": {
       "additionalProperties": {
-        "properties": {
-          "errors": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "failed": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "pass_rate": {
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "type": "number"
-          },
-          "passed": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "skipped": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "total": {
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "total",
-          "passed",
-          "failed",
-          "errors",
-          "skipped",
-          "pass_rate"
-        ],
-        "type": "object"
+        "$ref": "#/$defs/VisibilityBreakdown"
       },
+      "title": "Per Visibility",
       "type": "object"
     },
     "skipped": {
-      "minimum": 0,
+      "title": "Skipped",
       "type": "integer"
     },
     "total_scenarios": {
-      "minimum": 0,
+      "title": "Total Scenarios",
       "type": "integer"
     },
     "unevaluated_interfaces": {
       "items": {
         "type": "string"
       },
+      "title": "Unevaluated Interfaces",
       "type": "array"
     },
     "verdicts": {
       "items": {
         "$ref": "#/$defs/ScenarioVerdict"
       },
+      "title": "Verdicts",
       "type": "array"
     }
   },
@@ -379,17 +387,17 @@
     "coverage_pct",
     "duration_seconds",
     "budget_exhausted",
-    "iterations_completed",
-    "cost_summary",
+    "verdicts",
     "per_interface",
     "per_category",
     "unevaluated_interfaces",
-    "verdicts"
+    "cost_summary",
+    "iterations_completed"
   ],
-  "title": "GenEvalReport",
+  "title": "gen-eval report",
   "type": "object",
   "x-gen-eval-contract-version": "1",
-  "x-generated-from": "gen_eval.reports.generate_json_report (hand-assembled)",
-  "x-generated-from-ref": "e5dcab80c5c6d847fa425a08b569595a224eb8cd",
+  "x-generated-from": "gen_eval.contracts published schema 'eval-report'",
+  "x-generated-from-ref": "600744a55418938f8691d70f0266c48410e6a545",
   "x-generator": "scripts/generate_gen_eval_contract_schemas.py"
 }

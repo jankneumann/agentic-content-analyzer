@@ -640,6 +640,7 @@
       "type": "object"
     }
   },
+  "$id": "https://raw.githubusercontent.com/jankneumann/agentic-coding-tools/main/packages/gen-eval/src/gen_eval/contracts/scenario.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A complete test scenario.\n\nAn ordered sequence of action steps with expected outcomes,\ncategory/priority metadata for budget allocation, and optional\ncleanup steps that always execute.",
   "properties": {
@@ -745,10 +746,10 @@
     "interfaces",
     "steps"
   ],
-  "title": "Scenario",
+  "title": "gen-eval scenario",
   "type": "object",
   "x-gen-eval-contract-version": "1",
-  "x-generated-from": "gen_eval.models.Scenario",
-  "x-generated-from-ref": "e5dcab80c5c6d847fa425a08b569595a224eb8cd",
+  "x-generated-from": "gen_eval.contracts published schema 'scenario'",
+  "x-generated-from-ref": "600744a55418938f8691d70f0266c48410e6a545",
   "x-generator": "scripts/generate_gen_eval_contract_schemas.py"
 }

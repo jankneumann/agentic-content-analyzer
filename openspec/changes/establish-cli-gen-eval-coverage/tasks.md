@@ -249,10 +249,18 @@ installed. This phase must be independently green before Phase 2 begins.
   reconciliation, and link `UPSTREAM.md` to the filed `agentic-coding-tools` issues.
   **(S)**
   **Design decisions:** D4, D8
-- [ ] 7.3 After UP-1 lands, retire the interim entry-point form at its single
+- [x] 7.3 After UP-1 lands, retire the interim entry-point form at its single
   declared location and drop the interim note from the README. **(S)**
   **Spec scenarios:** The runner is invoked through its published entry point
   **Dependencies:** 2.5, UP-1
+  **Landed as:** UP-1 through UP-4 all shipped at runner ref `600744a5`. The pin
+  moved there, `entry_point` flipped to `console-script`, the vendored schemas
+  became verbatim copies of the published `gen_eval.contracts` (so the generator
+  derives nothing), the descriptor's no-op `startup` block was removed, and the
+  version handshake is now a reported match rather than verified by construction.
+  Raised UP-5 upstream: the published report schema carries no numeric bounds, so
+  range sanity stays with the report validator rather than being tightened in our
+  vendored copy.
 - [ ] 7.4 Run `openspec validate establish-cli-gen-eval-coverage --strict`, the full
   test suite, lint, and type checks. **(S)**
   **Dependencies:** all

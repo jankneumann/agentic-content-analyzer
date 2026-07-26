@@ -7,12 +7,15 @@ gen-eval package through ``uvx`` at the ref recorded in
 environment (``establish-cli-gen-eval-coverage`` D1/D2). Everything downstream —
 the contract validator, the report validator, CI — reads the checked-in JSON only.
 
-Two schemas are generated from pydantic models. The third, the evaluation report,
-is assembled here because upstream ``GenEvalReport`` is a plain dataclass and
-cannot emit its own schema; its shape mirrors ``reports.generate_json_report()``
-with the generated ``ScenarioVerdict`` embedded. See UPSTREAM.md UP-2 — once that
-lands, this script's hand-assembled branch is replaced by a straight copy of the
-published schemas.
+As of runner ref 600744a5 (UPSTREAM.md UP-2) gen-eval publishes its own versioned
+JSON Schema in ``gen_eval.contracts``. This script now copies those files verbatim
+and adds provenance annotations; it derives nothing. That matters because a derived
+schema can disagree with the code that produces the data, while a published one is
+generated upstream from the very models that do — and is drift-tested there.
+
+The generator refuses to write when the upstream ``CONTRACT_VERSION`` disagrees with
+``contract_version`` in the pin, so bumping the runner ref cannot silently change the
+contract underneath the vendored copies.
 
 Usage:
     python3 scripts/generate_gen_eval_contract_schemas.py            # write
@@ -34,20 +37,23 @@ PIN_PATH = REPO_ROOT / "evaluation" / "contract" / "pin.json"
 DURABLE_DIR = REPO_ROOT / "openspec" / "contracts" / "cli-gen-eval"
 RUNTIME_DIR = REPO_ROOT / "src" / "cli_gen_eval" / "schemas"
 
-DESCRIPTOR_SCHEMA = "interface-descriptor.schema.json"
-SCENARIO_SCHEMA = "scenario.schema.json"
-REPORT_SCHEMA = "eval-report.schema.json"
+# Upstream logical schema name -> the filename we vendor it under. Identical today;
+# stated explicitly so a rename upstream is a visible edit here rather than silent
+# churn in the durable contract directory.
+FILENAMES = {
+    "interface-descriptor": "interface-descriptor.schema.json",
+    "scenario": "scenario.schema.json",
+    "eval-report": "eval-report.schema.json",
+}
 
 # Emitted inside the uvx subprocess. Keeps the gen-eval import off this process.
 _EMITTER = """
 import json
-from gen_eval.descriptor import InterfaceDescriptor
-from gen_eval.models import Scenario, ScenarioVerdict
+from gen_eval.contracts import CONTRACT_VERSION, SCHEMA_FILENAMES, load_schema
 
 print(json.dumps({
-    "descriptor": InterfaceDescriptor.model_json_schema(),
-    "scenario": Scenario.model_json_schema(),
-    "verdict": ScenarioVerdict.model_json_schema(),
+    "contract_version": CONTRACT_VERSION,
+    "schemas": {name: load_schema(name) for name in SCHEMA_FILENAMES},
 }))
 """
 
@@ -109,100 +115,37 @@ def _annotate(schema: dict[str, Any], pin: dict[str, Any], source: str) -> dict[
     return annotated
 
 
-def build_report_schema(verdict_schema: dict[str, Any], pin: dict[str, Any]) -> dict[str, Any]:
-    """Assemble the evaluation-report schema around the generated verdict model.
-
-    Mirrors ``gen_eval.reports.generate_json_report``. ``per_visibility`` is
-    optional there — it is only written when non-empty — so it is not required
-    here. Every other key is written unconditionally and is therefore required:
-    a report missing one is malformed, which is exactly what the ri-06 validator
-    needs to be able to say.
-    """
-    counts = {
-        "type": "object",
-        "additionalProperties": {"type": "integer", "minimum": 0},
-    }
-    verdict = dict(verdict_schema)
-    verdict_defs = verdict.pop("$defs", {})
-
-    schema: dict[str, Any] = {
-        "title": "GenEvalReport",
-        "description": (
-            "Evaluation report emitted as gen-eval-report.json. Hand-assembled from "
-            "gen_eval.reports.generate_json_report because upstream GenEvalReport is a "
-            "dataclass; see UPSTREAM.md UP-2."
-        ),
-        "type": "object",
-        "additionalProperties": True,
-        "required": [
-            "total_scenarios",
-            "passed",
-            "failed",
-            "errors",
-            "skipped",
-            "pass_rate",
-            "coverage_pct",
-            "duration_seconds",
-            "budget_exhausted",
-            "iterations_completed",
-            "cost_summary",
-            "per_interface",
-            "per_category",
-            "unevaluated_interfaces",
-            "verdicts",
-        ],
-        "properties": {
-            "total_scenarios": {"type": "integer", "minimum": 0},
-            "passed": {"type": "integer", "minimum": 0},
-            "failed": {"type": "integer", "minimum": 0},
-            "errors": {"type": "integer", "minimum": 0},
-            "skipped": {"type": "integer", "minimum": 0},
-            "pass_rate": {"type": "number", "minimum": 0.0, "maximum": 1.0},
-            "coverage_pct": {"type": "number", "minimum": 0.0, "maximum": 100.0},
-            "duration_seconds": {"type": "number", "minimum": 0.0},
-            "budget_exhausted": {"type": "boolean"},
-            "iterations_completed": {"type": "integer", "minimum": 0},
-            "cost_summary": {
-                "type": "object",
-                "additionalProperties": {"type": "number"},
-            },
-            "per_interface": {"type": "object", "additionalProperties": counts},
-            "per_category": {"type": "object", "additionalProperties": counts},
-            "unevaluated_interfaces": {"type": "array", "items": {"type": "string"}},
-            "verdicts": {"type": "array", "items": {"$ref": "#/$defs/ScenarioVerdict"}},
-            "per_visibility": {
-                "type": "object",
-                "additionalProperties": {
-                    "type": "object",
-                    "required": ["total", "passed", "failed", "errors", "skipped", "pass_rate"],
-                    "properties": {
-                        "total": {"type": "integer", "minimum": 0},
-                        "passed": {"type": "integer", "minimum": 0},
-                        "failed": {"type": "integer", "minimum": 0},
-                        "errors": {"type": "integer", "minimum": 0},
-                        "skipped": {"type": "integer", "minimum": 0},
-                        "pass_rate": {"type": "number", "minimum": 0.0, "maximum": 1.0},
-                    },
-                },
-            },
-        },
-        "$defs": {**verdict_defs, "ScenarioVerdict": verdict},
-    }
-    return _annotate(schema, pin, "gen_eval.reports.generate_json_report (hand-assembled)")
-
-
 def render(schema: dict[str, Any]) -> str:
+    """Serialize deterministically so byte-parity and drift checks are meaningful."""
     return json.dumps(schema, indent=2, sort_keys=True) + "\n"
 
 
 def build_all(pin: dict[str, Any]) -> dict[str, str]:
-    upstream = emit_upstream_schemas(pin)
+    """Copy the published schemas verbatim, annotated with provenance.
+
+    Refuses to proceed when upstream's contract version disagrees with the pin. That
+    guard is the point of the handshake: bumping ``runner_ref`` must never silently
+    swap the contract underneath artifacts that were validated against the old one.
+    """
+    emitted = emit_upstream_schemas(pin)
+
+    upstream_version = str(emitted["contract_version"])
+    pinned_version = str(pin["contract_version"])
+    if upstream_version != pinned_version:
+        raise SystemExit(
+            f"contract version mismatch: gen-eval at {pin['runner_ref'][:12]} publishes "
+            f"{upstream_version!r} but evaluation/contract/pin.json pins "
+            f"{pinned_version!r}. Review the upstream changelog, then update "
+            f"contract_version in the pin and the changelog in "
+            f"openspec/contracts/cli-gen-eval/README.md."
+        )
+
+    schemas: dict[str, dict[str, Any]] = emitted["schemas"]
     return {
-        DESCRIPTOR_SCHEMA: render(
-            _annotate(upstream["descriptor"], pin, "gen_eval.descriptor.InterfaceDescriptor")
-        ),
-        SCENARIO_SCHEMA: render(_annotate(upstream["scenario"], pin, "gen_eval.models.Scenario")),
-        REPORT_SCHEMA: render(build_report_schema(upstream["verdict"], pin)),
+        FILENAMES[name]: render(
+            _annotate(schema, pin, f"gen_eval.contracts published schema {name!r}")
+        )
+        for name, schema in schemas.items()
     }
 
 

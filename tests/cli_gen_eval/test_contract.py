@@ -304,9 +304,31 @@ def test_report_requires_per_category() -> None:
     assert any("per_category" in error for error in validate_report(document))
 
 
-def test_report_rejects_out_of_range_pass_rate() -> None:
+def test_report_schema_does_not_bound_numeric_ranges() -> None:
+    """Records a deliberate limit of the published contract.
+
+    The upstream schema is generated from pydantic models that declare no bounds, so
+    ``pass_rate: 1.5`` and a negative ``total_scenarios`` are both schema-VALID. We
+    vendor the published schema verbatim rather than tightening our copy — a locally
+    stricter copy would disagree with upstream's own drift test and defeat the point of
+    a shared contract.
+
+    Range sanity therefore belongs to the report validator (Phase 4), alongside the
+    other sufficiency rules. Suggested upstream as UP-5.
+    """
     document = minimal_report()
     document["pass_rate"] = 1.5
+    assert validate_report(document) == []
+
+    document = minimal_report()
+    document["total_scenarios"] = -1
+    assert validate_report(document) == []
+
+
+def test_report_rejects_wrong_types() -> None:
+    """What the schema does still catch: type errors."""
+    document = minimal_report()
+    document["pass_rate"] = "not a number"
     assert validate_report(document) != []
 
 
