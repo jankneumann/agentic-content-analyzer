@@ -21,7 +21,11 @@ import pytest
 import yaml
 from typer.main import get_command
 
-from src.cli_gen_eval.contract import KNOWN_CATEGORIES, READ_ONLY_CATEGORIES
+from src.cli_gen_eval.contract import (
+    INTENTIONALLY_UNDECLARED_COMMANDS,
+    KNOWN_CATEGORIES,
+    READ_ONLY_CATEGORIES,
+)
 from src.cli_gen_eval.suite import (
     SuiteAccount,
     account_template,
@@ -131,11 +135,6 @@ PLUMBING_ONLY_REASONS: dict[str, str] = {
         "is a bounded subprocess with a timeout."
     ),
 }
-
-# Step `command` values that intentionally name nothing the CLI has. The validation
-# category needs them to assert rejection, so they are exempt from the check that every
-# step addresses a declared command.
-INTENTIONALLY_UNKNOWN_COMMANDS = frozenset({"definitely-not-a-command"})
 
 
 # ---------------------------------------------------------------------------
@@ -361,9 +360,9 @@ def test_scenario_steps_address_declared_commands(
                 continue  # a root-level flag credits no interface, by design
             if "{{" in command:
                 continue  # covered by the parameter/descriptor agreement test above
-            assert command in declared or command in INTENTIONALLY_UNKNOWN_COMMANDS, (
+            assert command in declared or command in INTENTIONALLY_UNDECLARED_COMMANDS, (
                 f"{path.name} step {step['id']!r}: command {command!r} is neither a "
-                f"declared command nor listed in INTENTIONALLY_UNKNOWN_COMMANDS"
+                f"declared command nor listed in INTENTIONALLY_UNDECLARED_COMMANDS"
             )
 
 

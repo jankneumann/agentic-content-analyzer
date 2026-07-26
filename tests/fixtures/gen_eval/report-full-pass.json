@@ -1,0 +1,3394 @@
+{
+  "budget_exhausted": false,
+  "cost_summary": {
+    "cli_calls": 0.0,
+    "sdk_cost_usd": 0.0,
+    "time_minutes": 0.0
+  },
+  "coverage_pct": 100.0,
+  "duration_seconds": 6.494295874959789,
+  "errors": 0,
+  "failed": 0,
+  "iterations_completed": 1,
+  "pass_rate": 1.0,
+  "passed": 16,
+  "per_category": {
+    "discovery": {
+      "error": 0,
+      "fail": 0,
+      "pass": 3,
+      "total": 3
+    },
+    "plumbing": {
+      "error": 0,
+      "fail": 0,
+      "pass": 9,
+      "total": 9
+    },
+    "validation": {
+      "error": 0,
+      "fail": 0,
+      "pass": 4,
+      "total": 4
+    }
+  },
+  "per_interface": {
+    "cli:agent": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:audio-digest": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:auth": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:batch": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:capabilities": {
+      "error": 0,
+      "fail": 0,
+      "pass": 4
+    },
+    "cli:configured-sources": {
+      "error": 0,
+      "fail": 0,
+      "pass": 2
+    },
+    "cli:curate": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:definitely-not-a-command": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:deploy": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:digest": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:edit": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:evaluate": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:filter": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:graph": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:ingest": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:kb": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:manage": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:models": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:neon": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:operations": {
+      "error": 0,
+      "fail": 0,
+      "pass": 5
+    },
+    "cli:pipeline": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:podcast-audio": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:podcast-script": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:profile": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:prompts": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:review": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:settings": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:sources": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:summarize": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:sync": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:theme": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:worker": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    }
+  },
+  "per_visibility": {},
+  "skipped": 0,
+  "total_scenarios": 16,
+  "unevaluated_interfaces": [],
+  "verdicts": [
+    {
+      "backend_used": "template",
+      "category": "discovery",
+      "cleanup_warnings": [],
+      "duration_seconds": 0.7744236250873655,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:capabilities"
+      ],
+      "scenario_id": "discovery-capabilities",
+      "scenario_name": "aca capabilities emits the workflow capability contract as one JSON document",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "contract_version": "2.0.0",
+              "operation_types": [
+                "ingestion.execute",
+                "summarization.run",
+                "theme_analysis.create",
+                "digest.create",
+                "pipeline.run",
+                "podcast_script.create",
+                "podcast_audio.create",
+                "audio_digest.create"
+              ],
+              "resource_types": [
+                "content",
+                "ingestion_run",
+                "summary_batch",
+                "theme_analysis",
+                "digest",
+                "pipeline_run",
+                "podcast_script",
+                "podcast",
+                "audio_digest"
+              ],
+              "source_commands": [
+                {
+                  "display_name": "Gmail",
+                  "emitted_sources": [
+                    "gmail"
+                  ],
+                  "fields": [
+                    {
+                      "constraints": {
+                        "minimum": 1
+                      },
+                      "name": "max_items",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 0
+                      },
+                      "name": "days_back",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {},
+                      "format": "date-time",
+                      "name": "after_date",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "force_reprocess",
+                      "required": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "gmail"
+                      ],
+                      "name": "kind",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "name": "query",
+                      "required": false,
+                      "type": "string"
+                    }
+                  ],
+                  "key": "gmail",
+                  "requires_identifier": false,
+                  "scheduled": true,
+                  "supports_date_range": true,
+                  "supports_force": true,
+                  "supports_preview": false,
+                  "transports": [
+                    "cli",
+                    "http",
+                    "mcp",
+                    "frontend"
+                  ]
+                },
+                {
+                  "display_name": "RSS",
+                  "emitted_sources": [
+                    "rss"
+                  ],
+                  "fields": [
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "rss"
+                      ],
+                      "name": "kind",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 1
+                      },
+                      "name": "max_items",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 0
+                      },
+                      "name": "days_back",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {},
+                      "format": "date-time",
+                      "name": "after_date",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "force_reprocess",
+                      "required": false,
+                      "type": "boolean"
+                    }
+                  ],
+                  "key": "rss",
+                  "requires_identifier": false,
+                  "scheduled": true,
+                  "supports_date_range": true,
+                  "supports_force": true,
+                  "supports_preview": false,
+                  "transports": [
+                    "cli",
+                    "http",
+                    "mcp",
+                    "frontend"
+                  ]
+                },
+                {
+                  "display_name": "Blogs",
+                  "emitted_sources": [
+                    "blog"
+                  ],
+                  "fields": [
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "blog"
+                      ],
+                      "name": "kind",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 1
+                      },
+                      "name": "max_items",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 0
+                      },
+                      "name": "days_back",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {},
+                      "format": "date-time",
+                      "name": "after_date",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "force_reprocess",
+                      "required": false,
+                      "type": "boolean"
+                    }
+                  ],
+                  "key": "blog",
+                  "requires_identifier": false,
+                  "scheduled": true,
+                  "supports_date_range": true,
+                  "supports_force": true,
+                  "supports_preview": false,
+                  "transports": [
+                    "cli",
+                    "http",
+                    "mcp",
+                    "frontend"
+                  ]
+                },
+                {
+                  "display_name": "Substack",
+                  "emitted_sources": [
+                    "substack"
+                  ],
+                  "fields": [
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "substack"
+                      ],
+                      "name": "kind",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 1
+                      },
+                      "name": "max_items",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 0
+                      },
+                      "name": "days_back",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {},
+                      "format": "date-time",
+                      "name": "after_date",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "force_reprocess",
+                      "required": false,
+                      "type": "boolean"
+                    }
+                  ],
+                  "key": "substack",
+                  "requires_identifier": false,
+                  "scheduled": true,
+                  "supports_date_range": true,
+                  "supports_force": true,
+                  "supports_preview": false,
+                  "transports": [
+                    "cli",
+                    "http",
+                    "mcp",
+                    "frontend"
+                  ]
+                },
+                {
+                  "display_name": "YouTube playlists and channels",
+                  "emitted_sources": [
+                    "youtube"
+                  ],
+                  "fields": [
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "youtube_playlist"
+                      ],
+                      "name": "kind",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 1
+                      },
+                      "name": "max_items",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 0
+                      },
+                      "name": "days_back",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {},
+                      "format": "date-time",
+                      "name": "after_date",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "force_reprocess",
+                      "required": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "public_only",
+                      "required": false,
+                      "type": "boolean"
+                    }
+                  ],
+                  "key": "youtube_playlist",
+                  "requires_identifier": false,
+                  "scheduled": true,
+                  "supports_date_range": true,
+                  "supports_force": true,
+                  "supports_preview": false,
+                  "transports": [
+                    "cli",
+                    "http",
+                    "mcp",
+                    "frontend"
+                  ]
+                },
+                {
+                  "display_name": "YouTube RSS",
+                  "emitted_sources": [
+                    "youtube"
+                  ],
+                  "fields": [
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "youtube_rss"
+                      ],
+                      "name": "kind",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 1
+                      },
+                      "name": "max_items",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 0
+                      },
+                      "name": "days_back",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {},
+                      "format": "date-time",
+                      "name": "after_date",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "force_reprocess",
+                      "required": false,
+                      "type": "boolean"
+                    }
+                  ],
+                  "key": "youtube_rss",
+                  "requires_identifier": false,
+                  "scheduled": true,
+                  "supports_date_range": true,
+                  "supports_force": true,
+                  "supports_preview": false,
+                  "transports": [
+                    "cli",
+                    "http",
+                    "mcp",
+                    "frontend"
+                  ]
+                },
+                {
+                  "display_name": "Podcasts",
+                  "emitted_sources": [
+                    "podcast"
+                  ],
+                  "fields": [
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "podcast"
+                      ],
+                      "name": "kind",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 1
+                      },
+                      "name": "max_items",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 0
+                      },
+                      "name": "days_back",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {},
+                      "format": "date-time",
+                      "name": "after_date",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "force_reprocess",
+                      "required": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "constraints": {},
+                      "default": true,
+                      "name": "transcribe",
+                      "required": false,
+                      "type": "boolean"
+                    }
+                  ],
+                  "key": "podcast",
+                  "requires_identifier": false,
+                  "scheduled": true,
+                  "supports_date_range": true,
+                  "supports_force": true,
+                  "supports_preview": false,
+                  "transports": [
+                    "cli",
+                    "http",
+                    "mcp",
+                    "frontend"
+                  ]
+                },
+                {
+                  "display_name": "X search",
+                  "emitted_sources": [
+                    "xsearch"
+                  ],
+                  "fields": [
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "x_search"
+                      ],
+                      "name": "kind",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "name": "prompt",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 1
+                      },
+                      "name": "max_threads",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "force_reprocess",
+                      "required": false,
+                      "type": "boolean"
+                    }
+                  ],
+                  "key": "x_search",
+                  "requires_identifier": false,
+                  "scheduled": true,
+                  "supports_date_range": false,
+                  "supports_force": true,
+                  "supports_preview": false,
+                  "transports": [
+                    "cli",
+                    "http",
+                    "mcp",
+                    "frontend"
+                  ]
+                },
+                {
+                  "display_name": "Perplexity search",
+                  "emitted_sources": [
+                    "perplexity"
+                  ],
+                  "fields": [
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "perplexity_search"
+                      ],
+                      "name": "kind",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "name": "prompt",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 1
+                      },
+                      "name": "max_items",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "hour",
+                        "day",
+                        "week",
+                        "month"
+                      ],
+                      "name": "recency",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high"
+                      ],
+                      "name": "context_size",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "force_reprocess",
+                      "required": false,
+                      "type": "boolean"
+                    }
+                  ],
+                  "key": "perplexity_search",
+                  "requires_identifier": false,
+                  "scheduled": true,
+                  "supports_date_range": false,
+                  "supports_force": true,
+                  "supports_preview": false,
+                  "transports": [
+                    "cli",
+                    "http",
+                    "mcp",
+                    "frontend"
+                  ]
+                },
+                {
+                  "display_name": "Files",
+                  "emitted_sources": [
+                    "file_upload"
+                  ],
+                  "fields": [
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "files"
+                      ],
+                      "name": "kind",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {
+                        "minItems": 1
+                      },
+                      "name": "upload_ids",
+                      "required": true,
+                      "type": "array"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "force_reprocess",
+                      "required": false,
+                      "type": "boolean"
+                    }
+                  ],
+                  "key": "files",
+                  "requires_identifier": false,
+                  "scheduled": false,
+                  "supports_date_range": false,
+                  "supports_force": true,
+                  "supports_preview": false,
+                  "transports": [
+                    "cli",
+                    "http",
+                    "mcp",
+                    "frontend"
+                  ]
+                },
+                {
+                  "display_name": "URL",
+                  "emitted_sources": [
+                    "rss",
+                    "webpage",
+                    "youtube"
+                  ],
+                  "fields": [
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "url"
+                      ],
+                      "name": "kind",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "format": "uri",
+                      "name": "url",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "name": "title",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "name": "tags",
+                      "required": false,
+                      "type": "array"
+                    },
+                    {
+                      "constraints": {},
+                      "name": "notes",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "default": "auto",
+                      "enum": [
+                        "auto",
+                        "webpage"
+                      ],
+                      "name": "routing_mode",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "force_reprocess",
+                      "required": false,
+                      "type": "boolean"
+                    }
+                  ],
+                  "key": "url",
+                  "requires_identifier": false,
+                  "scheduled": false,
+                  "supports_date_range": false,
+                  "supports_force": true,
+                  "supports_preview": false,
+                  "transports": [
+                    "cli",
+                    "http",
+                    "mcp",
+                    "frontend"
+                  ]
+                },
+                {
+                  "display_name": "Semantic Scholar search",
+                  "emitted_sources": [
+                    "scholar"
+                  ],
+                  "fields": [
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "scholar_search"
+                      ],
+                      "name": "kind",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 1
+                      },
+                      "default": 20,
+                      "name": "max_items",
+                      "required": false,
+                      "type": "integer"
+                    }
+                  ],
+                  "key": "scholar_search",
+                  "requires_identifier": false,
+                  "scheduled": true,
+                  "supports_date_range": false,
+                  "supports_force": false,
+                  "supports_preview": false,
+                  "transports": [
+                    "cli",
+                    "http",
+                    "mcp",
+                    "frontend"
+                  ]
+                },
+                {
+                  "display_name": "Semantic Scholar paper",
+                  "emitted_sources": [
+                    "scholar"
+                  ],
+                  "fields": [
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "scholar_paper"
+                      ],
+                      "name": "kind",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {
+                        "minLength": 1
+                      },
+                      "name": "identifier",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "with_references",
+                      "required": false,
+                      "type": "boolean"
+                    }
+                  ],
+                  "key": "scholar_paper",
+                  "requires_identifier": true,
+                  "scheduled": false,
+                  "supports_date_range": false,
+                  "supports_force": false,
+                  "supports_preview": false,
+                  "transports": [
+                    "cli",
+                    "http",
+                    "mcp",
+                    "frontend"
+                  ]
+                },
+                {
+                  "display_name": "Scholar references",
+                  "emitted_sources": [
+                    "scholar"
+                  ],
+                  "fields": [
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "scholar_references"
+                      ],
+                      "name": "kind",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "format": "date-time",
+                      "name": "after",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "format": "date-time",
+                      "name": "before",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "name": "source_types",
+                      "required": false,
+                      "type": "array"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "dry_run",
+                      "required": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 1
+                      },
+                      "name": "limit",
+                      "required": false,
+                      "type": "integer"
+                    }
+                  ],
+                  "key": "scholar_references",
+                  "requires_identifier": false,
+                  "scheduled": false,
+                  "supports_date_range": true,
+                  "supports_force": false,
+                  "supports_preview": true,
+                  "transports": [
+                    "cli",
+                    "http",
+                    "mcp",
+                    "frontend"
+                  ]
+                },
+                {
+                  "display_name": "arXiv search",
+                  "emitted_sources": [
+                    "arxiv"
+                  ],
+                  "fields": [
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "arxiv_search"
+                      ],
+                      "name": "kind",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 1
+                      },
+                      "default": 20,
+                      "name": "max_items",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 0
+                      },
+                      "name": "days_back",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {},
+                      "format": "date-time",
+                      "name": "after_date",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "force_reprocess",
+                      "required": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "constraints": {},
+                      "default": true,
+                      "name": "extract_pdf",
+                      "required": false,
+                      "type": "boolean"
+                    }
+                  ],
+                  "key": "arxiv_search",
+                  "requires_identifier": false,
+                  "scheduled": true,
+                  "supports_date_range": true,
+                  "supports_force": true,
+                  "supports_preview": false,
+                  "transports": [
+                    "cli",
+                    "http",
+                    "mcp",
+                    "frontend"
+                  ]
+                },
+                {
+                  "display_name": "arXiv paper",
+                  "emitted_sources": [
+                    "arxiv"
+                  ],
+                  "fields": [
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "arxiv_paper"
+                      ],
+                      "name": "kind",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {
+                        "minLength": 1
+                      },
+                      "name": "identifier",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "default": true,
+                      "name": "extract_pdf",
+                      "required": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "force_reprocess",
+                      "required": false,
+                      "type": "boolean"
+                    }
+                  ],
+                  "key": "arxiv_paper",
+                  "requires_identifier": true,
+                  "scheduled": false,
+                  "supports_date_range": false,
+                  "supports_force": true,
+                  "supports_preview": false,
+                  "transports": [
+                    "cli",
+                    "http",
+                    "mcp",
+                    "frontend"
+                  ]
+                },
+                {
+                  "display_name": "Hugging Face papers",
+                  "emitted_sources": [
+                    "huggingface_papers"
+                  ],
+                  "fields": [
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "huggingface_papers"
+                      ],
+                      "name": "kind",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 1
+                      },
+                      "default": 30,
+                      "name": "max_items",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 0
+                      },
+                      "name": "days_back",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {},
+                      "format": "date-time",
+                      "name": "after_date",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "force_reprocess",
+                      "required": false,
+                      "type": "boolean"
+                    }
+                  ],
+                  "key": "huggingface_papers",
+                  "requires_identifier": false,
+                  "scheduled": true,
+                  "supports_date_range": true,
+                  "supports_force": true,
+                  "supports_preview": false,
+                  "transports": [
+                    "cli",
+                    "http",
+                    "mcp",
+                    "frontend"
+                  ]
+                },
+                {
+                  "display_name": "Readwise",
+                  "emitted_sources": [
+                    "readwise"
+                  ],
+                  "fields": [
+                    {
+                      "constraints": {},
+                      "enum": [
+                        "readwise"
+                      ],
+                      "name": "kind",
+                      "required": true,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "format": "date-time",
+                      "name": "updated_after",
+                      "required": false,
+                      "type": "string"
+                    },
+                    {
+                      "constraints": {},
+                      "name": "source_types",
+                      "required": false,
+                      "type": "array"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "include_deleted",
+                      "required": false,
+                      "type": "boolean"
+                    },
+                    {
+                      "constraints": {
+                        "minimum": 1
+                      },
+                      "name": "max_books",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    {
+                      "constraints": {},
+                      "default": false,
+                      "name": "force_reprocess",
+                      "required": false,
+                      "type": "boolean"
+                    }
+                  ],
+                  "key": "readwise",
+                  "requires_identifier": false,
+                  "scheduled": true,
+                  "supports_date_range": true,
+                  "supports_force": true,
+                  "supports_preview": false,
+                  "transports": [
+                    "cli",
+                    "http",
+                    "mcp",
+                    "frontend"
+                  ]
+                }
+              ]
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 774.3052080040798,
+          "error_message": null,
+          "expected": {
+            "body_contains": {
+              "contract_version": "2.0.0",
+              "source_commands": []
+            },
+            "exit_code": 0
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "capabilities-json",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "discovery",
+      "cleanup_warnings": [],
+      "duration_seconds": 0.8456449580844492,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:configured-sources"
+      ],
+      "scenario_id": "discovery-configured-sources",
+      "scenario_name": "aca configured-sources emits the merged source page as one JSON document",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "data": [
+                {
+                  "command_key": "blog",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "ai.meta.com",
+                    "max_entries": 10,
+                    "origin": "yaml",
+                    "request_delay": 1.0,
+                    "type": "blog"
+                  },
+                  "enabled": true,
+                  "key": "src_0658dad983517ffc8c4e",
+                  "origin": "yaml",
+                  "source_type": "blog"
+                },
+                {
+                  "command_key": "blog",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "deepmind.google",
+                    "max_entries": 10,
+                    "origin": "yaml",
+                    "request_delay": 1.0,
+                    "type": "blog"
+                  },
+                  "enabled": true,
+                  "key": "src_17d60cef50a3ff898b61",
+                  "origin": "yaml",
+                  "source_type": "blog"
+                },
+                {
+                  "command_key": "blog",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "openai.com",
+                    "max_entries": 10,
+                    "origin": "yaml",
+                    "request_delay": 1.0,
+                    "type": "blog"
+                  },
+                  "enabled": true,
+                  "key": "src_1d002ae8198ad8b1609d",
+                  "origin": "yaml",
+                  "source_type": "blog"
+                },
+                {
+                  "command_key": "blog",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "news.microsoft.com",
+                    "max_entries": 10,
+                    "origin": "yaml",
+                    "request_delay": 1.0,
+                    "type": "blog"
+                  },
+                  "enabled": true,
+                  "key": "src_3021240022b64b0fc318",
+                  "origin": "yaml",
+                  "source_type": "blog"
+                },
+                {
+                  "command_key": "blog",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "www.anthropic.com",
+                    "max_entries": 10,
+                    "origin": "yaml",
+                    "request_delay": 1.0,
+                    "type": "blog"
+                  },
+                  "enabled": true,
+                  "key": "src_52ee9bb110fb5352731a",
+                  "origin": "yaml",
+                  "source_type": "blog"
+                },
+                {
+                  "command_key": "blog",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "stax.sh",
+                    "max_entries": 10,
+                    "origin": "yaml",
+                    "request_delay": 1.0,
+                    "type": "blog"
+                  },
+                  "enabled": true,
+                  "key": "src_947ec54056d1d9cbe9b1",
+                  "origin": "yaml",
+                  "source_type": "blog"
+                },
+                {
+                  "command_key": "blog",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "hai.stanford.edu",
+                    "max_entries": 10,
+                    "origin": "yaml",
+                    "request_delay": 1.0,
+                    "type": "blog"
+                  },
+                  "enabled": true,
+                  "key": "src_a454cd8c249b3e7f03c0",
+                  "origin": "yaml",
+                  "source_type": "blog"
+                },
+                {
+                  "command_key": "blog",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "www.anthropic.com",
+                    "max_entries": 10,
+                    "origin": "yaml",
+                    "request_delay": 1.0,
+                    "type": "blog"
+                  },
+                  "enabled": true,
+                  "key": "src_ad3023cd792b9acc509e",
+                  "origin": "yaml",
+                  "source_type": "blog"
+                },
+                {
+                  "command_key": "blog",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "aws.amazon.com",
+                    "max_entries": 10,
+                    "origin": "yaml",
+                    "request_delay": 1.0,
+                    "type": "blog"
+                  },
+                  "enabled": true,
+                  "key": "src_c624771761ab656c1bcf",
+                  "origin": "yaml",
+                  "source_type": "blog"
+                },
+                {
+                  "command_key": "blog",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "www.anthropic.com",
+                    "max_entries": 10,
+                    "origin": "yaml",
+                    "request_delay": 1.0,
+                    "type": "blog"
+                  },
+                  "enabled": true,
+                  "key": "src_d78ec0f45a10f1a762ff",
+                  "origin": "yaml",
+                  "source_type": "blog"
+                },
+                {
+                  "command_key": "blog",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "www.microsoft.com",
+                    "max_entries": 10,
+                    "origin": "yaml",
+                    "request_delay": 1.0,
+                    "type": "blog"
+                  },
+                  "enabled": true,
+                  "key": "src_dc9397f8f1869e60e23f",
+                  "origin": "yaml",
+                  "source_type": "blog"
+                },
+                {
+                  "command_key": "blog",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "www.together.ai",
+                    "max_entries": 10,
+                    "origin": "yaml",
+                    "request_delay": 1.0,
+                    "type": "blog"
+                  },
+                  "enabled": true,
+                  "key": "src_df27c439a071a2df562e",
+                  "origin": "yaml",
+                  "source_type": "blog"
+                },
+                {
+                  "command_key": "blog",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "aws.amazon.com",
+                    "max_entries": 10,
+                    "origin": "yaml",
+                    "request_delay": 1.0,
+                    "type": "blog"
+                  },
+                  "enabled": true,
+                  "key": "src_f2aa4b09e076dd605560",
+                  "origin": "yaml",
+                  "source_type": "blog"
+                },
+                {
+                  "command_key": "gmail",
+                  "configuration": {
+                    "enabled": true,
+                    "max_entries": 50,
+                    "max_results": 50,
+                    "origin": "yaml",
+                    "type": "gmail"
+                  },
+                  "enabled": true,
+                  "key": "src_c5bbbfb615cede12d4b7",
+                  "origin": "yaml",
+                  "source_type": "gmail"
+                },
+                {
+                  "command_key": "huggingface_papers",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "huggingface.co",
+                    "max_entries": 30,
+                    "origin": "yaml",
+                    "request_delay": 1.0,
+                    "type": "huggingface_papers"
+                  },
+                  "enabled": true,
+                  "key": "src_7e1d95a7682ea0514d48",
+                  "origin": "yaml",
+                  "source_type": "huggingface_papers"
+                },
+                {
+                  "command_key": "perplexity_search",
+                  "configuration": {
+                    "enabled": true,
+                    "max_entries": 50,
+                    "max_results": null,
+                    "max_threads": null,
+                    "origin": "yaml",
+                    "provider": "perplexity",
+                    "recency_filter": null,
+                    "type": "websearch"
+                  },
+                  "enabled": true,
+                  "key": "src_0d459be4ee252ad61f50",
+                  "origin": "yaml",
+                  "source_type": "websearch"
+                },
+                {
+                  "command_key": "perplexity_search",
+                  "configuration": {
+                    "enabled": true,
+                    "max_entries": 50,
+                    "max_results": null,
+                    "max_threads": null,
+                    "origin": "yaml",
+                    "provider": "perplexity",
+                    "recency_filter": null,
+                    "type": "websearch"
+                  },
+                  "enabled": true,
+                  "key": "src_88348c98324bc1ca3707",
+                  "origin": "yaml",
+                  "source_type": "websearch"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "podcast.emerj.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_0bfbaa1400dd56ad737a",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "geomob-podcast.castos.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_13d978e5f31cb5bd73c0",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "feed.podbean.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_16a52b6a52f5f3e55807",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "www.dataengineeringpodcast.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_18fd7587ebb7563d708c",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "thedataexchange.media",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_1b4c142b1154e44feb0f",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "datastori.es",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_1efe7292dea82661519c",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "aneyeonai.libsyn.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_2665a9be41762c35f481",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "feeds.megaphone.fm",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_2dc1bc652bead26ae854",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "feeds.libsyn.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_369ae83d8637e60c2b19",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "feeds.fireside.fm",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_36c585fec4feb9549849",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "api.substack.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_446af1165551b5e090f1",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "topenddevs.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_4dfc72b3c7df3beee0de",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "feeds.transistor.fm",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_55cfcbc82b062a70217e",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "anchor.fm",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_5d2172d1917efe013179",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "feeds.soundcloud.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_671d30cdda43c27eac63",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "dataskeptic.libsyn.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_6c539b9829141593718c",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "anchor.fm",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_6c540b88d12b3c782ad2",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "feeds.transistor.fm",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_749a8d04d0f4f9020f8a",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "lexisnexisbis.libsyn.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_7520c40b1793f39c9330",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "datascienceathome.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_7c9e586c7b190f889048",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "anchor.fm",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_8c2d1d1729d18ac5d456",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "aiandbanking.libsyn.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_974e4bc764528516f98f",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "feeds.captivate.fm",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_9dfd5dd3ed49cb78c132",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "nssdeviations.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_a17c57559c84daf2aaa1",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "feeds.transistor.fm",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_a79d528d59032715f828",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "www.thechatgptreport.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_a8cc2f90c17eba67b839",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "changelog.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_b31615b9ea3ba6bf8875",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "www.themachinelearningpodcast.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_c3ad0cf908ca1aeca539",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "anchor.fm",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_cc8fbcb2df0a652bd8ea",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "feeds.soundcloud.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_d5431414d2d4e38eef70",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "twimlai.com",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_da2b12db495d2b0dcd7e",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "talkpython.fm",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_df6906f0cf1c9d386248",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                },
+                {
+                  "command_key": "podcast",
+                  "configuration": {
+                    "enabled": true,
+                    "host": "anchor.fm",
+                    "max_entries": 50,
+                    "origin": "yaml",
+                    "stt_provider": "openai",
+                    "transcribe": false,
+                    "type": "podcast"
+                  },
+                  "enabled": true,
+                  "key": "src_e96d3fb12a0491a692f5",
+                  "origin": "yaml",
+                  "source_type": "podcast"
+                }
+              ],
+              "next_cursor": "eyJvZmZzZXQiOjUwfQ"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 845.5445839790627,
+          "error_message": null,
+          "expected": {
+            "body_contains": {
+              "data": []
+            },
+            "exit_code": 0
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "configured-sources-json",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "discovery",
+      "cleanup_warnings": [],
+      "duration_seconds": 2.1938375000609085,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:operations"
+      ],
+      "scenario_id": "discovery-operations-list",
+      "scenario_name": "aca operations list pages durable operations without a cursor",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "{'data': []}"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 848.186417017132,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "operations-list-attributed",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "data": []
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 662.165583926253,
+          "error_message": null,
+          "expected": {
+            "body_contains": {
+              "data": []
+            },
+            "exit_code": 0
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "operations-list-json",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "data": []
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 683.2567909732461,
+          "error_message": null,
+          "expected": {
+            "body_contains": {
+              "data": []
+            },
+            "exit_code": 0
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "operations-list-json-limited",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "plumbing",
+      "cleanup_warnings": [],
+      "duration_seconds": 1.239852458005771,
+      "failure_summary": null,
+      "interfaces_tested": [],
+      "scenario_id": "plumbing-root-surface",
+      "scenario_name": "The root application answers --version and --help",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "aca 0.1.0"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 617.7173330215737,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "root-version",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca [OPTIONS] COMMAND [ARGS]...                                         \n                                        \u2026 [4738 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 622.0137909986079,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "root-help",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "validation",
+      "cleanup_warnings": [],
+      "duration_seconds": 2.207463749917224,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:operations"
+      ],
+      "scenario_id": "validation-absent-optional-values-omitted",
+      "scenario_name": "An absent cursor is omitted from the query, not sent as an empty value",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "{'data': []}"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 848.3465419849381,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "operations-list-is-reachable",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "data": []
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 676.1927079642192,
+          "error_message": null,
+          "expected": {
+            "body_contains": {
+              "data": []
+            },
+            "exit_code": 0
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "no-cursor-succeeds",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "code": "invalid-request",
+              "detail": "Invalid operation cursor",
+              "instance": "/api/v1/operations",
+              "status": 422,
+              "title": "Unprocessable Entity",
+              "type": "https://aca.rotkohl.ai/problems/invalid-request"
+            },
+            "exit_code": 1
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 682.7023338992149,
+          "error_message": null,
+          "expected": {
+            "body_contains": {
+              "code": "invalid-request",
+              "status": 422
+            },
+            "exit_code": 1
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "bad-cursor-is-rejected",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "validation",
+      "cleanup_warnings": [],
+      "duration_seconds": 0.6900702089769766,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:capabilities"
+      ],
+      "scenario_id": "validation-invalid-cursor",
+      "scenario_name": "An invalid pagination cursor returns a problem document on stdout",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "code": "invalid-request",
+              "detail": "Invalid capability cursor",
+              "instance": "/api/v1/capabilities",
+              "status": 422,
+              "title": "Unprocessable Entity",
+              "type": "https://aca.rotkohl.ai/problems/invalid-request"
+            },
+            "exit_code": 1
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 689.9525829358026,
+          "error_message": null,
+          "expected": {
+            "body_contains": {
+              "code": "invalid-request",
+              "status": 422
+            },
+            "exit_code": 1
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "capabilities-bad-cursor",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "validation",
+      "cleanup_warnings": [],
+      "duration_seconds": 2.5687068339902908,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:definitely-not-a-command",
+        "cli:operations",
+        "cli:capabilities"
+      ],
+      "scenario_id": "validation-malformed-arguments",
+      "scenario_name": "Malformed commands and out-of-range options are rejected with exit 2",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "stderr": "Usage: aca [OPTIONS] COMMAND [ARGS]...\nTry 'aca --help' for help.\n\u256d\u2500 Error \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502 No such command 'definitely-not-a-command'.                                  \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f"
+            },
+            "exit_code": 2
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 619.440833106637,
+          "error_message": null,
+          "expected": {
+            "exit_code": 2
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "unknown-top-level-command",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "stderr": "Usage: aca operations [OPTIONS] COMMAND [ARGS]...\nTry 'aca operations --help' for help.\n\u256d\u2500 Error \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502 No such command 'definitely-not-a-subcommand'.                               \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f"
+            },
+            "exit_code": 2
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 650.6527499295771,
+          "error_message": null,
+          "expected": {
+            "exit_code": 2
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "unknown-subcommand",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "stderr": "Usage: aca capabilities [OPTIONS]\nTry 'aca capabilities --help' for help.\n\u256d\u2500 Error \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502 Invalid value for '--limit': 0 is not in the range 1<=x<=100.                \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f"
+            },
+            "exit_code": 2
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 653.4123329911381,
+          "error_message": null,
+          "expected": {
+            "exit_code": 2
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "limit-below-minimum",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "stderr": "Usage: aca capabilities [OPTIONS]\nTry 'aca capabilities --help' for help.\n\u256d\u2500 Error \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502 Invalid value for '--limit': 101 is not in the range 1<=x<=100.              \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f"
+            },
+            "exit_code": 2
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 644.8948750039563,
+          "error_message": null,
+          "expected": {
+            "exit_code": 2
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "limit-above-maximum",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "validation",
+      "cleanup_warnings": [],
+      "duration_seconds": 0.6142322920495644,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:operations"
+      ],
+      "scenario_id": "validation-missing-required-argument",
+      "scenario_name": "A command missing its required argument is rejected with exit 2",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "stderr": "Usage: aca operations get [OPTIONS] OPERATION_ID\nTry 'aca operations get --help' for help.\n\u256d\u2500 Error \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502 Missing argument 'OPERATION_ID'.                                             \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f"
+            },
+            "exit_code": 2
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 614.1629159683362,
+          "error_message": null,
+          "expected": {
+            "exit_code": 2
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "operations-get-without-id",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "plumbing",
+      "cleanup_warnings": [],
+      "duration_seconds": 2.664025375037454,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:agent",
+        "cli:audio-digest",
+        "cli:auth",
+        "cli:batch"
+      ],
+      "scenario_id": "plumbing-help-batch-01",
+      "scenario_name": "aca --help sweep, batch 1: agent, audio-digest, auth, batch",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca agent [OPTIONS] COMMAND [ARGS]...                                   \n                                        \u2026 [1174 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 665.6418750062585,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-agent",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca audio-digest [OPTIONS] COMMAND [ARGS]...                            \n                                        \u2026 [688 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 688.2077920017764,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-audio-digest",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca auth [OPTIONS] COMMAND [ARGS]...                                    \n                                        \u2026 [1012 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 648.0750840855762,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-auth",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca batch [OPTIONS] COMMAND [ARGS]...                                   \n                                        \u2026 [688 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 661.4208749961108,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-batch",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "plumbing",
+      "cleanup_warnings": [],
+      "duration_seconds": 2.484398083994165,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:capabilities",
+        "cli:configured-sources",
+        "cli:curate",
+        "cli:deploy"
+      ],
+      "scenario_id": "plumbing-help-batch-02",
+      "scenario_name": "aca --help sweep, batch 2: capabilities, configured-sources, curate, deploy",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca capabilities [OPTIONS]                                              \n                                        \u2026 [526 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 616.8352499371395,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-capabilities",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca configured-sources [OPTIONS]                                        \n                                        \u2026 [526 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 627.0949590252712,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-configured-sources",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca curate [OPTIONS] COMMAND [ARGS]...                                  \n                                        \u2026 [1255 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 627.9596250969917,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-curate",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca deploy [OPTIONS] COMMAND [ARGS]...                                  \n                                        \u2026 [769 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 612.2375829145312,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-deploy",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "plumbing",
+      "cleanup_warnings": [],
+      "duration_seconds": 2.575964624993503,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:digest",
+        "cli:edit",
+        "cli:evaluate",
+        "cli:filter"
+      ],
+      "scenario_id": "plumbing-help-batch-03",
+      "scenario_name": "aca --help sweep, batch 3: digest, edit, evaluate, filter",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca digest [OPTIONS] COMMAND [ARGS]...                                  \n                                        \u2026 [688 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 644.4540000520647,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-digest",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca edit [OPTIONS] COMMAND [ARGS]...                                    \n                                        \u2026 [1174 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 657.7961250441149,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-edit",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca evaluate [OPTIONS] COMMAND [ARGS]...                                \n                                        \u2026 [1255 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 632.1612499887124,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-evaluate",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca filter [OPTIONS] COMMAND [ARGS]...                                  \n                                        \u2026 [931 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 641.3196249632165,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-filter",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "plumbing",
+      "cleanup_warnings": [],
+      "duration_seconds": 2.551569833070971,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:graph",
+        "cli:ingest",
+        "cli:kb",
+        "cli:manage"
+      ],
+      "scenario_id": "plumbing-help-batch-04",
+      "scenario_name": "aca --help sweep, batch 4: graph, ingest, kb, manage",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca graph [OPTIONS] COMMAND [ARGS]...                                   \n                                        \u2026 [850 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 639.070582925342,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-graph",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca ingest [OPTIONS] COMMAND [ARGS]...                                  \n                                        \u2026 [2065 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 635.3083330905065,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-ingest",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca kb [OPTIONS] COMMAND [ARGS]...                                      \n                                        \u2026 [1174 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 640.7709160121158,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-kb",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca manage [OPTIONS] COMMAND [ARGS]...                                  \n                                        \u2026 [2551 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 636.2024580594152,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-manage",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "plumbing",
+      "cleanup_warnings": [],
+      "duration_seconds": 2.3840115000493824,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:models",
+        "cli:neon",
+        "cli:operations",
+        "cli:pipeline"
+      ],
+      "scenario_id": "plumbing-help-batch-05",
+      "scenario_name": "aca --help sweep, batch 5: models, neon, operations, pipeline",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca models [OPTIONS] COMMAND [ARGS]...                                  \n                                        \u2026 [1093 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 636.3385419826955,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-models",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca neon [OPTIONS] COMMAND [ARGS]...                                    \n                                        \u2026 [1012 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 638.0885420367122,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-neon",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca operations [OPTIONS] COMMAND [ARGS]...                              \n                                        \u2026 [1012 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 562.5917500583455,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-operations",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca pipeline [OPTIONS] COMMAND [ARGS]...                                \n                                        \u2026 [688 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 546.7349579557776,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-pipeline",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "plumbing",
+      "cleanup_warnings": [],
+      "duration_seconds": 2.2825288330204785,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:podcast-audio",
+        "cli:podcast-script",
+        "cli:profile",
+        "cli:prompts"
+      ],
+      "scenario_id": "plumbing-help-batch-06",
+      "scenario_name": "aca --help sweep, batch 6: podcast-audio, podcast-script, profile, prompts",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca podcast-audio [OPTIONS] COMMAND [ARGS]...                           \n                                        \u2026 [688 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 634.2642089584842,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-podcast-audio",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca podcast-script [OPTIONS] COMMAND [ARGS]...                          \n                                        \u2026 [688 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 564.9246249813586,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-podcast-script",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca profile [OPTIONS] COMMAND [ARGS]...                                 \n                                        \u2026 [1012 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 544.5595839992166,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-profile",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca prompts [OPTIONS] COMMAND [ARGS]...                                 \n                                        \u2026 [1174 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 538.6426249751821,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-prompts",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "plumbing",
+      "cleanup_warnings": [],
+      "duration_seconds": 2.134213750017807,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:review",
+        "cli:settings",
+        "cli:sources",
+        "cli:summarize"
+      ],
+      "scenario_id": "plumbing-help-batch-07",
+      "scenario_name": "aca --help sweep, batch 7: review, settings, sources, summarize",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca review [OPTIONS] COMMAND [ARGS]...                                  \n                                        \u2026 [850 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 596.2725840508938,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-review",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca settings [OPTIONS] COMMAND [ARGS]...                                \n                                        \u2026 [931 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 529.0909999748692,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-settings",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca sources [OPTIONS] COMMAND [ARGS]...                                 \n                                        \u2026 [1012 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 526.524749933742,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-sources",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca summarize [OPTIONS] COMMAND [ARGS]...                               \n                                        \u2026 [688 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 482.1896660141647,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-summarize",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "plumbing",
+      "cleanup_warnings": [],
+      "duration_seconds": 1.636041541933082,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:sync",
+        "cli:theme",
+        "cli:worker"
+      ],
+      "scenario_id": "plumbing-help-batch-08",
+      "scenario_name": "aca --help sweep, batch 8: sync, theme, worker",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca sync [OPTIONS] COMMAND [ARGS]...                                    \n                                        \u2026 [931 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 559.195208013989,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-sync",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca theme [OPTIONS] COMMAND [ARGS]...                                   \n                                        \u2026 [688 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 548.8613749621436,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-theme",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca worker [OPTIONS] COMMAND [ARGS]...                                  \n                                        \u2026 [688 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 527.8623329941183,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-worker",
+          "transport": "cli"
+        }
+      ]
+    }
+  ]
+}

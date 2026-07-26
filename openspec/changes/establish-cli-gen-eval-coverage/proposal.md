@@ -207,6 +207,34 @@ costs masking within a batch, and is recorded as a cost rather than a design
 preference — the pinned limits live in the runner pin, and the drift test fails when
 the suite stops fitting rather than letting a run quietly cover less.
 
+**D13 — Completeness is checked against what the run was asked to do, recorded before
+it runs.**
+D7 said the gate validates the report before applying the threshold, and named the rule:
+fail when any descriptor-declared interface is unevaluated. That rule is wrong, and
+measurably so. The runner computes `coverage_pct` against the whole descriptor, so a
+`--categories validation --offline` run evaluates 2 scenarios, passes 100%, and reports
+29 of 31 interfaces unevaluated — correctly. The rule as written would reject every
+category-scoped run, including the ones CI is meant to make routine.
+
+The fix is a denominator, not a looser check. Before invoking the runner the gate writes
+an expectation next to the report: the scenario ids the selection contains, per-category
+counts, and the interfaces those scenarios will credit. Completeness is then a comparison
+against that, and it is stronger than the count D7 asked for — it names *which* scenarios
+went missing. A report alone can never establish this, because completeness is a fact
+about the request, which is why the expectation is retained as evidence beside the
+report rather than derived from it.
+
+Two consequences follow. Coverage is checked scoped to the selection, so an interface
+outside it may be unevaluated without complaint, while one inside it may not. And an
+incomplete report exits with a code distinct from a failing one, because "`aca`
+regressed" and "nobody can tell whether `aca` regressed" land on different desks;
+collapsing them would hide the second behind the first, which is the failure this whole
+change exists to remove.
+
+Verified end to end against the real runner rather than argued: pushing the suite past
+the tier cap produces `gen-eval: PASS (100.0% >= 95.0%)` from the runner and exit 5 from
+the gate, naming all twenty scenarios that vanished.
+
 ### Scope
 
 - `evaluation/contract/` — pinned gen-eval contract version, the three vendored
@@ -221,7 +249,11 @@ the suite stops fitting rather than letting a run quietly cover less.
   invocation (D4/D5).
 - `scripts/validate_gen_eval_contract.py` — D1 schema conformance for the
   descriptor and scenarios; runs with no runner present.
-- `scripts/validate_gen_eval_report.py` — D7 report validation and threshold.
+- `src/cli_gen_eval/report.py` — D7/D13 credibility rules and the expectation model,
+  shared by the gate (which enforces on every run) and the standalone validator.
+- `scripts/validate_gen_eval_report.py` — re-checking a retained report away from the
+  run that produced it.
+- `tests/fixtures/gen_eval/` — recorded runner output plus its expectation, paired.
 - `openspec/contracts/cli-gen-eval/` — the pinned schemas and fixtures as a
   durable contract domain.
 - `make gen-eval` (full gate) and `make gen-eval-contract` (contract layer only).

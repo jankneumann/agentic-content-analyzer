@@ -19,9 +19,13 @@
 #   1  contract invalid, or the suite failed
 #   2  usage error
 #   3  runner broken, or absent under ACA_GEN_EVAL_REQUIRE
+#   4  the backend target the selection needs is absent or unreachable
+#   5  the run finished but its report is not credible
 #
-# The gate never treats a broken runner as an absent one. See
-# src/cli_gen_eval/runner.py for why that distinction is load-bearing.
+# The gate never treats a broken runner as an absent one, and never treats an
+# unbelievable report as a failing one. Both distinctions are the same idea: a
+# prerequisite that did not hold is not a result. See src/cli_gen_eval/runner.py and
+# src/cli_gen_eval/report.py.
 
 set -euo pipefail
 

@@ -16,7 +16,8 @@ acquired, never depended on. See
 
 ```bash
 make gen-eval-contract     # contract only — no runner needed, always conclusive
-make gen-eval              # contract, then the suite (read-only categories)
+make gen-eval              # contract, then the suite, then report validation
+make gen-eval-report       # re-check a retained report; REPORT=… EXPECTATION=…
 ./evaluation/run-gate.sh --resolve-only   # report runner state and stop
 ./evaluation/run-gate.sh --categories plumbing discovery
 ./evaluation/run-gate.sh --offline        # only the scenarios needing no backend
@@ -113,6 +114,62 @@ broken upstream and crashed on every invocation. That defect is fixed
 | 2 | usage error, or a flag refused under `ACA_GEN_EVAL_REQUIRE` |
 | 3 | runner broken, or absent under `ACA_GEN_EVAL_REQUIRE` |
 | 4 | the backend target the selection needs is absent or unreachable |
+| 5 | the run finished but its report is not credible |
+
+## Is the report believable?
+
+A pass rate is a statement about whatever ran. It says nothing about whether *what ran*
+was what you asked for, and the pinned runner drops work without saying so. So the gate
+validates the report before believing it, and keeps that verdict separate from the
+threshold:
+
+| Exit | Verdict | Who acts |
+|---|---|---|
+| 1 | credible, below threshold | whoever broke `aca` — a scenario genuinely failed |
+| 5 | not credible | whoever owns the harness — nobody can tell whether `aca` broke |
+
+Before the runner is invoked the gate writes `gen-eval-expectation.json` next to the
+report: the scenario ids it selected, per-category counts, and the interfaces those
+scenarios will credit. A report on its own cannot say whether it is complete, because
+completeness is a fact about the *request*. The two are published together as evidence
+for that reason, and `scripts/validate_gen_eval_report.py` takes both.
+
+What gets checked, beyond schema conformance:
+
+- **Every selected scenario ran, and nothing else did.** Set comparison, not a count, so
+  a failure names which scenarios went missing rather than just how many.
+- **Per-category counts match the selection** — a shortfall can hide inside a correct total.
+- **Every interface the selection addresses appears in `per_interface`**, and none of them
+  is listed as unevaluated.
+- **No interface appears that the descriptor does not declare.** A mistyped `command`
+  credits a phantom interface and leaves the real one uncovered, with no runner error.
+- **The report agrees with itself** — counts sum to the total, verdicts match the total,
+  `pass_rate` equals `passed/total`.
+- **Numbers are in range**, which the published schema does not enforce (UP-5).
+
+Demonstrated rather than asserted. Adding 25 low-priority scenarios pushes the suite past
+the runner's tier-3 bucket:
+
+```
+gen-eval: PASS (100.0% >= 95.0%)
+gen-eval gate: report: the selection held 36 scenarios but the report evaluated 16 —
+  the runner drops work without a non-zero exit (UPSTREAM.md UP-6)
+gen-eval gate: report: scenario 'plumbing-overflow-05' was selected but not run
+  … 19 more
+gen-eval gate: report REJECTED — 22 credibility findings
+$ echo $?
+5
+```
+
+That is the Phase 3 failure reproduced against the real runner: it reports 100% and exits
+0, and the gate does not.
+
+**Coverage is scoped to the selection, not to the descriptor.** The runner computes
+`coverage_pct` against every declared interface, so a partial run legitimately reports
+most of them unevaluated — measured, `--categories validation --offline` evaluates 2
+scenarios, passes 100%, and leaves 29 of 31 unevaluated. A rule of "unevaluated must be
+empty" would reject every category-scoped run, so the check is scoped to the interfaces
+the selection actually addresses.
 
 ## Contract version and the pin
 
@@ -194,12 +251,20 @@ modelled in `src/cli_gen_eval/suite.py`, and
 
 **Dropped work is logged, not reported.** Unparseable YAML, a Jinja2 render error, and a
 model-validation failure each produce a `logger.warning` and are absent from the JSON
-report. `scripts/validate_gen_eval_contract.py` therefore publishes
-`scenarios_expected`, which Phase 4 compares against the report's `total_scenarios`.
+report. `scripts/validate_gen_eval_contract.py` therefore publishes `scenarios_expected`,
+and the gate compares the expectation against the report's `total_scenarios` — see "Is
+the report believable?" above.
 
 **The published report schema has no numeric bounds**, so `pass_rate: 1.5` or a negative
 scenario count are schema-valid. We vendor the published schema verbatim rather than
 tightening our copy, so range sanity belongs to the report validator (`UPSTREAM.md` UP-5).
+
+**A scenario's `interfaces:` field is inert to the runner.** Coverage is derived from
+step commands alone, so the declaration is documentation — which is why
+`tests/cli_gen_eval/test_report.py` holds it to the steps. Both drifts that test was
+written to catch were already present: one scenario claimed `cli:operations` while
+crediting nothing (its steps all spell the command as the root-level `--json` flag,
+which credits no interface), and another declared nothing while crediting three.
 
 **Interface coverage is attempted, not passed.** `interfaces_tested` is derived from a
 scenario's declared steps regardless of which ones ran, so a batch that fails early still
@@ -208,7 +273,8 @@ credits every interface it named. Coverage percentage answers "was this addresse
 
 ## Status
 
-Phases 1–3 are complete: the contract layer, runner acquisition, and the read-only suite.
-`make gen-eval` validates the contract, resolves a runner and a target, and evaluates 16
-scenarios covering all 31 declared command interfaces. Phase 4 adds report validation and
-the vacuous-run check; Phase 5 the mutation guard; Phase 6 CI wiring.
+Phases 1–4 are complete: the contract layer, runner acquisition, the read-only suite, and
+report validation. `make gen-eval` validates the contract, resolves a runner and a
+target, evaluates 16 scenarios covering all 31 declared command interfaces, and refuses
+to report success over a run it cannot show was complete. Phase 5 adds the mutation
+guard; Phase 6 CI wiring.

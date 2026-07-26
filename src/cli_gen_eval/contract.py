@@ -35,6 +35,17 @@ MUTATING_CATEGORIES = frozenset({"workflow-submission", "operation-control"})
 READ_ONLY_CATEGORIES = frozenset({"plumbing", "discovery", "validation"})
 KNOWN_CATEGORIES = MUTATING_CATEGORIES | READ_ONLY_CATEGORIES
 
+# Step `command` values that intentionally name nothing the CLI has. The validation
+# category needs them to assert rejection, and the runner credits `cli:<command>` from
+# the step regardless of whether the command exists — so without an allowance, every
+# report legitimately carries an interface the descriptor never declared.
+#
+# Kept here rather than in a test because two consumers need the same list: the drift
+# check (a step must address a declared command) and the report validator (an interface
+# in the report must be one the descriptor declares). A second copy would let them
+# disagree about what is deliberate.
+INTENTIONALLY_UNDECLARED_COMMANDS = frozenset({"definitely-not-a-command"})
+
 
 class ContractError(RuntimeError):
     """Raised when the vendored contract itself is unusable."""

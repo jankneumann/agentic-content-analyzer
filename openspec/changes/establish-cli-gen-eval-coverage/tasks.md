@@ -189,31 +189,79 @@ and it does not; without them the authored scenarios cannot run, or run unsafely
 
 ## Phase 4 — Report validation and threshold (`wp-gen-eval-report`)
 
-- [ ] 4.1 Write validator tests: schema-invalid report, zero-scenario report,
+- [x] 4.1 Write validator tests: schema-invalid report, zero-scenario report,
   below-minimum per-category counts, a non-empty `unevaluated_interfaces`, and pass
   rate below threshold. **(M)**
   **Spec scenarios:** A vacuous run is rejected
   **Design decisions:** D7
   **Dependencies:** 1.1
-- [ ] 4.2 Add report fixtures under `tests/fixtures/`, following the
+  **Done:** `tests/cli_gen_eval/test_report.py`, 45 tests. Every negative case mutates a
+  recorded report rather than asserting against a hand-authored one, so each test shows
+  what the runner emits and the single change that makes it unbelievable. The validator
+  itself was mutation-tested — disabling each check fails only the tests that name it,
+  including reverting the scoped-coverage rule to the naive "unevaluated must be empty".
+- [x] 4.2 Add report fixtures under `tests/fixtures/`, following the
   `release-smoke` durable contract layout. **(M)**
   **Spec scenarios:** `make gen-eval` emits a validated report
   **Dependencies:** 4.1
-- [ ] 4.3 Implement `scripts/validate_gen_eval_report.py`: schema validation,
+  **Done:** `tests/fixtures/gen_eval/` — real output from the pinned runner for a full
+  16-scenario run and an `--offline` 11-scenario run, each paired with the expectation
+  the gate wrote for it. Only edit: captured stdout bodies over 120 chars are truncated,
+  which removed ~120 KB of `--help` screens; a test asserts the fixtures are still
+  schema-valid, so the truncation cannot have corrupted them silently.
+- [x] 4.3 Implement `scripts/validate_gen_eval_report.py`: schema validation,
   minimum total and per-category counts, empty `unevaluated_interfaces`, then
   threshold. Read coverage from the report rather than recomputing it. **(M)**
   **Spec scenarios:** A vacuous run is rejected
-  **Design decisions:** D7
+  **Design decisions:** D7, D13
   **Dependencies:** 4.1, 4.2
-- [ ] 4.4 Add the `gen-eval` Make target — contract layer, then gate, then report
+  **Done:** rules in `src/cli_gen_eval/report.py`, shared by the gate and the script.
+  Two deviations from the task as written, both in D13. The "empty
+  `unevaluated_interfaces`" rule was replaced by a selection-scoped one: measured, a
+  `--categories validation --offline` run legitimately leaves 29 of 31 interfaces
+  unevaluated, so the rule as stated would reject every partial run. And "minimum total"
+  became set equality against the recorded selection, which is both stronger and more
+  useful — it names which scenarios went missing. Coverage is read from the report, not
+  recomputed (D7): a second implementation of the runner's aggregation would disagree
+  with it in ways indistinguishable from the defect it is meant to find.
+- [x] 4.4 Add the `gen-eval` Make target — contract layer, then gate, then report
   validation — forwarding `CATEGORIES`. Document the threshold and minimum counts.
   **(S)**
   **Spec scenarios:** `make gen-eval` emits a validated report
   **Dependencies:** 2.4, 4.3
-- [ ] 4.5 Add a grouping test asserting the emitted report groups results by command
+  **Done:** report validation runs inside the gate rather than as a third Make step, so
+  no invocation path can skip it — Phase 6 calls `run-gate.sh` directly and would
+  otherwise validate nothing. `make gen-eval-report` re-checks a retained artifact.
+  Documented in `evaluation/README.md` under "Is the report believable?".
+- [x] 4.5 Add a grouping test asserting the emitted report groups results by command
   and category. **(S)**
   **Spec scenarios:** `make gen-eval` emits a validated report
   **Dependencies:** 4.2
+  **Done:** grouping asserted against both recorded runs — per-category buckets sum to
+  their totals and match the selection, per-interface keys equal the expectation's
+  interfaces, and every grouped interface traces back to a verdict so a failing bucket
+  leads to a scenario to open.
+- [x] 4.6 Record what the run was asked to do before it runs, and hold the report to it.
+  **(M)**
+  **Spec scenarios:** What the run was asked to do is recorded before it runs;
+  An incomplete run is distinguished from a failing one
+  **Design decisions:** D13
+  **Added because:** the report cannot establish its own completeness — that is a fact
+  about the request, not the result. The gate now writes `gen-eval-expectation.json`
+  before invoking the runner and publishes it with the report. Exit 5 separates "the
+  report is not credible" from exit 1 "the suite failed". Verified against the real
+  runner: overflowing the tier cap yields `PASS (100.0%)` from the runner and exit 5
+  from the gate, naming all twenty dropped scenarios.
+- [x] 4.7 Hold each scenario's declared `interfaces` to what its steps will credit. **(S)**
+  **Spec scenarios:** A report credits an interface the descriptor does not declare
+  **Design decisions:** D13
+  **Added because:** the runner ignores the `interfaces` field entirely and derives
+  coverage from step commands, so the declaration was inert documentation — and inert
+  documentation drifts. Both drifts were already present when the check was written: one
+  scenario claimed `cli:operations` while crediting nothing (its steps spell the command
+  as the root-level `--json` flag, which credits no interface), another declared nothing
+  while crediting three. Fixed both, and `derive_interfaces` is pinned to the runner by
+  a test comparing it against a recorded report's `per_interface` keys.
 
 ## Phase 5 — Mutation guard and staging scenarios (`wp-gen-eval-mutation`)
 
