@@ -9,9 +9,9 @@
 ## Status
 
 - [x] Planning
-- [ ] Implementation
-- [ ] Testing
-- [ ] Review
+- [x] Implementation
+- [x] Testing
+- [x] Review
 - [ ] Done
 
 ## Phase 1 — Contract layer, runner-independent (`wp-gen-eval-contract`)
@@ -415,6 +415,27 @@ Added because the work required it:
   Raised UP-5 upstream: the published report schema carries no numeric bounds, so
   range sanity stays with the report validator rather than being tightened in our
   vendored copy.
-- [ ] 7.4 Run `openspec validate establish-cli-gen-eval-coverage --strict`, the full
+- [x] 7.4 Run `openspec validate establish-cli-gen-eval-coverage --strict`, the full
   test suite, lint, and type checks. **(S)**
   **Dependencies:** all
+  **Done:** `openspec validate --strict` reports valid. `ruff check` and
+  `ruff format --check` pass over all 22 Python files this change touches, and
+  `mypy src/cli_gen_eval/ src/release_smoke/ scripts/run_gen_eval_gate.py`
+  reports no issues across 16 source files. The focused suites
+  (`tests/cli_gen_eval/`, `tests/config/`, `tests/release_smoke/`) are 424
+  passed. The full suite is 5 failed / 5827 passed / 84 skipped locally; every
+  one of those five also fails on `main`, which carries 54 failing or erroring
+  test ids in the same local run, so this change introduces no new failure. The
+  five are `caplog`-assertion failures in `tests/test_services/`
+  `test_reference_graph_sync.py` and `test_reference_hook.py` that pass in
+  isolation on both branches and only fail in a full-suite run — local logging
+  pollution, unrelated to this change and out of its scope to fix. The gate's
+  own paths were exercised end to end: `make gen-eval-contract` VALID (26
+  templates), `run-gate.sh --resolve-only` AVAILABLE at pin `600744a5` with the
+  contract-version handshake reported, and the mutating categories refused with
+  exit 6 before any runner was resolved. Repository-wide `ruff` reports 68
+  pre-existing errors and 21 files needing reformat; the identical counts are
+  present on `main`.
+  **Not covered:** a green CI run of `.github/workflows/cli-gen-eval.yml`, which
+  cannot be observed until the branch has a pull request. The `Done` status box
+  below is checked at archive time, after that run and the merge.
