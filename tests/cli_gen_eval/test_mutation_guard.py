@@ -399,7 +399,7 @@ def test_the_gate_refuses_before_running_anything(
         ),
         "WRONG_TARGET": write_policy(),
     }
-    argv = ["--skip-contract", "--categories", "workflow-submission", *argv_extra]
+    argv = ["--categories", "workflow-submission", *argv_extra]
     argv = [str(policies[part]) if part in policies else part for part in argv]
     output_dir = tmp_path / "reports"
     argv += ["--output-dir", str(output_dir)]
@@ -434,11 +434,42 @@ def test_the_environment_variable_supplies_the_policy(
     monkeypatch.setattr(run_gen_eval_gate, "resolve", _explode)
     monkeypatch.setattr(
         "sys.argv",
-        ["run_gen_eval_gate.py", "--skip-contract", "--categories", "workflow-submission"],
+        ["run_gen_eval_gate.py", "--categories", "workflow-submission"],
     )
 
     # The env-supplied policy is read, and then refused for the right reason: it
     # describes staging while the CLI is pointed at production.
+    assert run_gen_eval_gate.main() == run_gen_eval_gate.EXIT_MUTATION_REFUSED
+
+
+def test_the_gate_refuses_before_subprocess_when_deployment_identity_is_untrusted(
+    monkeypatch: pytest.MonkeyPatch, write_policy
+) -> None:
+    from scripts import run_gen_eval_gate
+    from src.release_smoke.runner import ReleaseSmokeError
+
+    policy_path = write_policy()
+    monkeypatch.setattr(
+        run_gen_eval_gate, "resolve_base_url", lambda *a, **k: (STAGING_ORIGIN, "staging")
+    )
+    monkeypatch.setattr(
+        run_gen_eval_gate,
+        "verify_api_identity",
+        lambda *a, **k: (_ for _ in ()).throw(ReleaseSmokeError("revision mismatch")),
+    )
+    monkeypatch.setattr(run_gen_eval_gate.subprocess, "run", _explode)
+    monkeypatch.setattr(run_gen_eval_gate, "resolve", _explode)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_gen_eval_gate.py",
+            "--categories",
+            "workflow-submission",
+            "--target-policy",
+            str(policy_path),
+        ],
+    )
+
     assert run_gen_eval_gate.main() == run_gen_eval_gate.EXIT_MUTATION_REFUSED
 
 

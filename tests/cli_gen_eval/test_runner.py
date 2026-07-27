@@ -13,6 +13,7 @@ import os
 import stat
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,7 @@ from src.cli_gen_eval.runner import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PIN_PATH = REPO_ROOT / "evaluation" / "contract" / "pin.json"
+RUNNER_PROJECT = REPO_ROOT / "evaluation" / "runner"
 GATE = REPO_ROOT / "scripts" / "run_gen_eval_gate.py"
 GATE_SH = REPO_ROOT / "evaluation" / "run-gate.sh"
 
@@ -113,14 +115,39 @@ def test_runner_requirement_is_fully_pinned(pin: dict[str, Any]) -> None:
     assert "subdirectory=" in requirement
 
 
-def test_candidates_never_install_an_unpinned_version(pin: dict[str, Any]) -> None:
-    """Every uvx candidate must carry the exact ref — no floating installs."""
+def test_locked_runner_project_matches_the_pin(pin: dict[str, Any]) -> None:
+    project = tomllib.loads((RUNNER_PROJECT / "pyproject.toml").read_text(encoding="utf-8"))
+    dependencies = project["project"]["dependencies"]
+    assert dependencies == [runner_requirement(pin), "uv-build==0.9.18"]
+    assert project["project"]["requires-python"] == "==3.12.*"
+    assert project["tool"]["uv"]["package"] is False
+    assert project["tool"]["uv"]["build-constraint-dependencies"] == ["uv-build==0.9.18"]
+    assert (RUNNER_PROJECT / "uv.lock").is_file()
+
+
+def test_candidates_use_only_the_locked_runner_project(pin: dict[str, Any]) -> None:
+    """Enforced acquisition must fail on lock drift instead of resolving new code."""
     env = {"PATH": os.environ["PATH"]}
-    for candidate in candidates(pin, env):
-        if "uvx" in candidate.argv[0]:
-            requirement = candidate.argv[candidate.argv.index("--from") + 1]
-            assert pin["runner_ref"] in requirement
-            assert candidate.pinned is True
+    pinned = next(
+        candidate
+        for candidate in candidates(pin, env)
+        if candidate.origin.startswith("pinned artifact")
+    )
+    assert Path(pinned.argv[0]).name == "uv"
+    assert pinned.argv[1:] == [
+        "run",
+        "--project",
+        str(RUNNER_PROJECT),
+        "--locked",
+        "--exact",
+        "--no-dev",
+        "--no-python-downloads",
+        "--",
+        pin["entry_console_script"],
+    ]
+    assert "uvx" not in pinned.argv
+    assert "--from" not in pinned.argv
+    assert pinned.pinned is True
 
 
 # ── Enforcement flag ───────────────────────────────────────────────────────────
@@ -271,16 +298,20 @@ def test_version_mismatch_is_broken(pin: dict[str, Any], tmp_path: Path) -> None
     assert str(pin["contract_version"]) in resolution.detail
 
 
-def test_pinned_candidate_is_verified_by_construction(pin: dict[str, Any], tmp_path: Path) -> None:
-    """Until UP-2 ships --print-contract-version, the pinned ref is the proof."""
+def test_pinned_candidate_with_failed_version_probe_is_broken(
+    pin: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """UP-2 shipped, so even the pinned artifact must complete the handshake."""
     candidate = Candidate(
         origin="pinned artifact",
         argv=[str(working_stub(tmp_path / "runner"))],
         pinned=True,
     )
-    check, detail = check_contract_version(candidate, pin)
-    assert check is VersionCheck.MATCH
-    assert "by construction" in detail
+    monkeypatch.setattr("src.cli_gen_eval.runner.candidates", lambda *args, **kwargs: [candidate])
+    resolution = resolve(pin=pin, env={"PATH": os.environ["PATH"]})
+    assert resolution.state is RunnerState.BROKEN
+    assert resolution.version_check is VersionCheck.MISMATCH
+    assert "version probe exited 2" in resolution.detail
 
 
 def test_unpinned_runner_without_version_support_is_unverifiable(

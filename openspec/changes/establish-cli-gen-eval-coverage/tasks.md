@@ -88,11 +88,10 @@ installed. This phase must be independently green before Phase 2 begins.
   gate never installs an unpinned version. **(M)**
   **Spec scenarios:** Runner resolution precedence
   **Design decisions:** D2
-  **Deviation:** the pin was added to the existing `evaluation/contract/pin.json`
-  rather than a separate `evaluation/contract/runner.lock`. A second file would
-  have duplicated `runner_source`, `runner_subdirectory`, and `runner_ref`, and
-  two files that must agree is precisely the drift hazard this change argues
-  against elsewhere.
+  **Landed as:** provenance and invocation remain in
+  `evaluation/contract/pin.json`. Security review later required a separate
+  `evaluation/runner/uv.lock` for the full runtime and build closure; a test binds
+  its direct requirement back to the provenance pin.
 - [x] 2.4 Implement the gate's resolution and classification. Installation via
   `uv tool` / `uvx` into an isolated environment; assert the project manifest and
   lock file are unmodified afterwards. **(L)**
@@ -103,6 +102,9 @@ installed. This phase must be independently green before Phase 2 begins.
   them. Resolution and three-state classification are subtle enough to deserve
   unit tests and type checking, which shell cannot provide. The shell script
   remains the stable command CI, Make, and operators call.
+  **Security close-out:** enforced acquisition now uses the dedicated
+  `evaluation/runner/` project with `uv run --locked --exact`; its runtime and
+  `uv-build==0.9.18` build closure are immutable in the nested lockfile.
 - [x] 2.5 Record the runner entry point in one declared location, with the interim
   module form documented as such so retiring it after UP-1 is a single-line change.
   **(S)**
@@ -116,10 +118,10 @@ installed. This phase must be independently green before Phase 2 begins.
   versions. **(M)**
   **Spec scenarios:** Runner contract version mismatch
   **Design decisions:** D2, D4
-  **Note:** three outcomes, not two. `--print-contract-version` does not exist
-  upstream yet (UP-2), so a pinned candidate is verified *by construction* from
-  its ref; anything else is `unverifiable`, tolerated locally and refused under
-  enforcement so CI cannot evaluate against an unknown runner.
+  **Landed as:** three outcomes, not two. The pinned runner must successfully
+  report the exact contract version; a rejected probe is `broken`. An arbitrary
+  local override without the handshake is `unverifiable`, tolerated locally and
+  refused under enforcement.
 - [x] 2.7 Write `evaluation/README.md` and a `docs/decisions/` record for D1/D2:
   why gen-eval is a pinned artifact and not a dependency or an adjacent checkout,
   and how to migrate the pin to an artifact index. **(S)**
@@ -352,7 +354,10 @@ Added because the work required it:
   **Dependencies:** 4.4, 5.5
   **Done:** PR evaluation cold-starts Postgres plus the API and selects exactly
   `plumbing`, `discovery`, and `validation`; dispatched mutation reuses the
-  approval-protected `release-smoke-staging` target policy.
+  approval-protected `release-smoke-staging` target policy. The environment is
+  provisioned fail closed (main-only, no admin bypass, no self-review); populating
+  deployment-specific values and an independent reviewer is tracked in
+  [#478](https://github.com/jankneumann/agentic-content-analyzer/issues/478).
 - [x] 6.2 Install the runner in CI from the checked-in pin only — no adjacent
   checkout, no unpinned resolution — and assert the contract layer runs and enforces
   even when runner installation fails. **(M)**
@@ -361,15 +366,16 @@ Added because the work required it:
   **Design decisions:** D2, D3
   **Dependencies:** 6.1
   **Done:** both jobs validate the repository-owned contract before the gate
-  resolves the isolated `uvx` candidate from `pin.json`; the workflow contains no
-  runner URL, ref, override, or adjacent-checkout path.
+  resolves the isolated locked-project candidate; the workflow contains no runner
+  URL, ref, override, or adjacent-checkout path.
 - [x] 6.3 Upload the validated report and failure grouping as a retained artifact.
   **(S)**
   **Spec scenarios:** Continuous integration enforces without a skip path
   **Dependencies:** 6.1
-  **Done:** credible reports and their pre-run expectations are retained for 14
-  days even when the 95% gate fails; credibility is rechecked at threshold zero
-  for retention without weakening the original gate outcome.
+  **Done:** credible minimized reports and their pre-run expectations are retained
+  for 14 days even when the 95% gate fails; raw outputs and captures are removed,
+  and credibility is rechecked at threshold zero without weakening the original
+  gate outcome.
 - [x] 6.4 Add a workflow-configuration test in `tests/config/` asserting the
   pull-request job selects only the contract layer and read-only categories, sets
   enforcement, and does not permit mutations — following

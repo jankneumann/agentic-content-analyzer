@@ -55,15 +55,15 @@ jobs:
       - name: Install project dependencies
         run: uv sync --frozen --extra gen-eval
 
-      # This is deliberately separate from runner acquisition. If uvx cannot
-      # install the pinned runner, the repository-owned contract has still
+      # This is deliberately separate from runner acquisition. If the locked
+      # runner project cannot sync, the repository-owned contract has still
       # produced a definite enforced verdict rather than being skipped with it.
       - name: Validate runner-independent contract
         run: make gen-eval-contract
 
-      # The gate constructs the isolated uvx requirement only from
-      # evaluation/contract/pin.json. The workflow carries no runner URL, ref,
-      # adjacent-checkout path, or operator override.
+      # The gate invokes only the repository-owned evaluation/runner lock, whose
+      # direct requirement is drift-bound to the provenance pin. The workflow
+      # carries no runner URL, ref, adjacent-checkout path, or operator override.
       - name: Acquire and verify pinned runner
         run: ./evaluation/run-gate.sh --resolve-only
 
@@ -106,10 +106,18 @@ jobs:
         id: validate
         if: always()
         run: |
+          mkdir -p "$RUNNER_TEMP/cli-gen-eval-artifact"
+          uv run --frozen --extra gen-eval python \
+            scripts/minimize_gen_eval_report.py \
+            "$RUNNER_TEMP/cli-gen-eval/gen-eval-report.json" \
+            "$RUNNER_TEMP/cli-gen-eval-artifact/gen-eval-report.json"
+          cp \
+            "$RUNNER_TEMP/cli-gen-eval/gen-eval-expectation.json" \
+            "$RUNNER_TEMP/cli-gen-eval-artifact/gen-eval-expectation.json"
           uv run --frozen --extra gen-eval python \
             scripts/validate_gen_eval_report.py \
-            "$RUNNER_TEMP/cli-gen-eval/gen-eval-report.json" \
-            --expectation "$RUNNER_TEMP/cli-gen-eval/gen-eval-expectation.json" \
+            "$RUNNER_TEMP/cli-gen-eval-artifact/gen-eval-report.json" \
+            --expectation "$RUNNER_TEMP/cli-gen-eval-artifact/gen-eval-expectation.json" \
             --fail-threshold 0
 
       - name: Retain CLI gen-eval evidence
@@ -118,8 +126,8 @@ jobs:
         with:
           name: cli-gen-eval-read-only-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/cli-gen-eval/gen-eval-report.json
-            ${{ runner.temp }}/cli-gen-eval/gen-eval-expectation.json
+            ${{ runner.temp }}/cli-gen-eval-artifact/gen-eval-report.json
+            ${{ runner.temp }}/cli-gen-eval-artifact/gen-eval-expectation.json
           if-no-files-found: error
           retention-days: 14
 
@@ -133,7 +141,7 @@ jobs:
           test "$RUN_OUTCOME" = "success"
 
   staging-mutation:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: release-smoke-staging
     timeout-minutes: 25
@@ -167,6 +175,8 @@ jobs:
           ACA_TARGET_ID: ${{ vars.TARGET_ID }}
           ACA_FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN }}
           ACA_API_ORIGIN: ${{ vars.API_ORIGIN }}
+          ACA_EXPECTED_FRONTEND_REVISION: ${{ vars.EXPECTED_FRONTEND_REVISION }}
+          ACA_EXPECTED_API_REVISION: ${{ vars.EXPECTED_API_REVISION }}
           ACA_PRODUCTION_TARGET_IDS_JSON: ${{ vars.PRODUCTION_TARGET_IDS_JSON }}
           ACA_PRODUCTION_ORIGINS_JSON: ${{ vars.PRODUCTION_ORIGINS_JSON }}
         run: |
@@ -174,6 +184,8 @@ jobs:
             --arg target_id "$ACA_TARGET_ID" \
             --arg frontend_origin "$ACA_FRONTEND_ORIGIN" \
             --arg api_origin "$ACA_API_ORIGIN" \
+            --arg expected_frontend_revision "$ACA_EXPECTED_FRONTEND_REVISION" \
+            --arg expected_api_revision "$ACA_EXPECTED_API_REVISION" \
             --arg production_target_ids_json "$ACA_PRODUCTION_TARGET_IDS_JSON" \
             --arg production_origins_json "$ACA_PRODUCTION_ORIGINS_JSON" \
             '{
@@ -181,8 +193,8 @@ jobs:
               target: "staging",
               frontend_origin: $frontend_origin,
               api_origin: $api_origin,
-              expected_frontend_revision: null,
-              expected_api_revision: null,
+              expected_frontend_revision: $expected_frontend_revision,
+              expected_api_revision: $expected_api_revision,
               production_target_ids:
                 (try ($production_target_ids_json | fromjson) catch null),
               production_origins:
@@ -193,8 +205,8 @@ jobs:
         id: gate
         continue-on-error: true
         env:
+          ACA_RELEASE_SMOKE: "1"
           ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
-          APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
         run: |
           ./evaluation/run-gate.sh \
             --categories workflow-submission operation-control \
@@ -205,10 +217,18 @@ jobs:
         id: validate
         if: always()
         run: |
+          mkdir -p "$RUNNER_TEMP/cli-gen-eval-artifact"
+          uv run --frozen --extra gen-eval python \
+            scripts/minimize_gen_eval_report.py \
+            "$RUNNER_TEMP/cli-gen-eval/gen-eval-report.json" \
+            "$RUNNER_TEMP/cli-gen-eval-artifact/gen-eval-report.json"
+          cp \
+            "$RUNNER_TEMP/cli-gen-eval/gen-eval-expectation.json" \
+            "$RUNNER_TEMP/cli-gen-eval-artifact/gen-eval-expectation.json"
           uv run --frozen --extra gen-eval python \
             scripts/validate_gen_eval_report.py \
-            "$RUNNER_TEMP/cli-gen-eval/gen-eval-report.json" \
-            --expectation "$RUNNER_TEMP/cli-gen-eval/gen-eval-expectation.json" \
+            "$RUNNER_TEMP/cli-gen-eval-artifact/gen-eval-report.json" \
+            --expectation "$RUNNER_TEMP/cli-gen-eval-artifact/gen-eval-expectation.json" \
             --fail-threshold 0
 
       - name: Retain CLI gen-eval evidence
@@ -217,8 +237,8 @@ jobs:
         with:
           name: cli-gen-eval-staging-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/cli-gen-eval/gen-eval-report.json
-            ${{ runner.temp }}/cli-gen-eval/gen-eval-expectation.json
+            ${{ runner.temp }}/cli-gen-eval-artifact/gen-eval-report.json
+            ${{ runner.temp }}/cli-gen-eval-artifact/gen-eval-expectation.json
           if-no-files-found: error
           retention-days: 14
 

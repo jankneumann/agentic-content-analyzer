@@ -39,6 +39,47 @@ def _json_object(response: httpx.Response, check: str) -> dict[str, Any]:
     return value
 
 
+def _observe_api_identity(
+    client: httpx.Client,
+    policy: ProtectedTargetPolicy,
+) -> SurfaceObservation:
+    try:
+        health = client.get(f"{policy.api_origin}/health")
+    except httpx.HTTPError as exc:
+        raise ReleaseSmokeError("API identity endpoint is unreachable") from exc
+    _require_success(health, "API health")
+    health_document = _json_object(health, "API health")
+    try:
+        observation = SurfaceObservation.model_validate(
+            {
+                "revision": health_document.get("revision"),
+                "revision_source": health_document.get("revision_source"),
+            }
+        )
+    except ValidationError as exc:
+        raise ReleaseSmokeError("API health returned invalid release identity") from exc
+    if policy.target != "local":
+        if observation.revision_source not in _TRUSTED_API_SOURCES:
+            raise ReleaseSmokeError("API release identity has untrusted provenance")
+        if observation.revision != policy.expected_api_revision:
+            raise ReleaseSmokeError("API release revision does not match protected policy")
+    return observation
+
+
+def verify_api_identity(
+    policy: ProtectedTargetPolicy,
+    *,
+    transport: httpx.BaseTransport | None = None,
+) -> SurfaceObservation:
+    """Verify the protected origin serves the expected deployed API revision."""
+    with httpx.Client(
+        transport=transport,
+        follow_redirects=False,
+        timeout=20.0,
+    ) as client:
+        return _observe_api_identity(client, policy)
+
+
 def run_api_discovery(
     policy: ProtectedTargetPolicy,
     *,
@@ -51,23 +92,7 @@ def run_api_discovery(
         follow_redirects=False,
         timeout=20.0,
     ) as client:
-        health = client.get(f"{policy.api_origin}/health")
-        _require_success(health, "API health")
-        health_document = _json_object(health, "API health")
-        try:
-            observation = SurfaceObservation.model_validate(
-                {
-                    "revision": health_document.get("revision"),
-                    "revision_source": health_document.get("revision_source"),
-                }
-            )
-        except ValidationError as exc:
-            raise ReleaseSmokeError("API health returned invalid release identity") from exc
-        if policy.target != "local":
-            if observation.revision_source not in _TRUSTED_API_SOURCES:
-                raise ReleaseSmokeError("API release identity has untrusted provenance")
-            if observation.revision != policy.expected_api_revision:
-                raise ReleaseSmokeError("API release revision does not match protected policy")
+        observation = _observe_api_identity(client, policy)
 
         headers = {"X-Admin-Key": admin_key}
         for path in ("/api/v1/capabilities", "/api/v1/configured-sources"):

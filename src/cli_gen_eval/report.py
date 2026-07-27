@@ -44,6 +44,7 @@ find.
 
 from __future__ import annotations
 
+import copy
 import json
 from collections import Counter
 from dataclasses import dataclass, field
@@ -71,6 +72,8 @@ _COUNTS = (
     "skipped",
     "iterations_completed",
 )
+
+_ARTIFACT_STEP_FIELDS = frozenset({"duration_ms", "is_cleanup", "status", "step_id", "transport"})
 
 #: How far the recomputed pass rate may sit from the reported one before it is a finding.
 #: Floating-point division of small integers, not accumulated error, so this is tight.
@@ -481,6 +484,36 @@ def validate(
         "fail_threshold": fail_threshold,
     }
     return verdict
+
+
+def minimize_for_artifact(document: dict[str, Any]) -> dict[str, Any]:
+    """Remove raw runner observations before a report leaves the trusted job.
+
+    Step ``actual`` bodies, capture variables, diffs, expectations, semantic details,
+    and free-form failure text can contain arbitrary target data. None is needed by the
+    credibility checks or the failure grouping retained for diagnosis, so public CI
+    artifacts keep only step identity, status, and timing.
+    """
+    minimized = copy.deepcopy(document)
+    verdicts = minimized.get("verdicts")
+    if not isinstance(verdicts, list):
+        return minimized
+
+    for verdict in verdicts:
+        if not isinstance(verdict, dict):
+            continue
+        verdict.pop("failure_summary", None)
+        verdict.pop("cleanup_warnings", None)
+        steps = verdict.get("steps")
+        if not isinstance(steps, list):
+            continue
+        verdict["steps"] = [
+            {key: value for key, value in step.items() if key in _ARTIFACT_STEP_FIELDS}
+            if isinstance(step, dict)
+            else step
+            for step in steps
+        ]
+    return minimized
 
 
 def load_json(path: Any) -> tuple[Any | None, str | None]:

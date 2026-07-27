@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Run the CLI gen-eval gate: contract validation, then the evaluation suite.
+"""Run the CLI gen-eval gate: mutation safety, contract validation, then evaluation.
 
-Ordering is deliberate. Contract validation (Phase 1) runs first and always, with no
-runner required, so a failed runner acquisition reduces coverage *visibly* rather than
-turning the gate green. Only then is a runner resolved and the suite executed.
+Ordering is deliberate. A selected mutation is refused before any subprocess unless its
+policy and deployed API identity are trusted. Contract validation (Phase 1) then runs
+with no runner required, so failed acquisition reduces coverage *visibly* rather than
+turning the gate green.
 
 Exit codes:
     0  contract valid, and either the suite passed or the runner is absent locally
@@ -73,6 +74,7 @@ from src.cli_gen_eval.target import (  # noqa: E402
     resolve as resolve_target,
     resolve_base_url,
 )
+from src.release_smoke.runner import ReleaseSmokeError, verify_api_identity  # noqa: E402
 
 EXIT_TARGET_UNREACHABLE = 4
 EXIT_REPORT_NOT_CREDIBLE = 5
@@ -148,17 +150,7 @@ def main() -> int:
 
     enforcing = is_enforcing()
 
-    # 1. Contract layer — unconditional, runner-independent.
-    if not args.skip_contract:
-        contract_status = run_contract_validation(args.descriptor)
-        if contract_status != 0:
-            emit("contract validation FAILED — not running the suite")
-            return 1
-    elif enforcing:
-        emit(f"--skip-contract is refused while {ENV_REQUIRE} is set")
-        return 2
-
-    # 2. Mutation guard. Placed here, ahead of runner resolution, for two reasons.
+    # 1. Mutation guard. Placed ahead of every subprocess for two reasons.
     #
     #    It needs nothing the runner provides, so nothing about the runner should be able
     #    to preempt its verdict. A run pointed at production is a finding worth reporting
@@ -188,7 +180,29 @@ def main() -> int:
         emit("no scenario was materialized and no workflow was submitted")
         return EXIT_MUTATION_REFUSED
     if guard.guarded_categories:
+        assert guard.policy is not None
+        try:
+            observation = verify_api_identity(guard.policy)
+        except ReleaseSmokeError as exc:
+            emit(f"mutating categories {guard.guarded_categories} REFUSED")
+            emit(f"target identity: {exc}")
+            emit("no subprocess was executed and no workflow was submitted")
+            return EXIT_MUTATION_REFUSED
         emit(f"mutating categories {guard.guarded_categories} ALLOWED — {guard.reasons[0]}")
+        emit(
+            "target identity verified — "
+            f"{observation.revision_source} revision {observation.revision}"
+        )
+
+    # 2. Contract layer — unconditional after any mutation refusal, runner-independent.
+    if not args.skip_contract:
+        contract_status = run_contract_validation(args.descriptor)
+        if contract_status != 0:
+            emit("contract validation FAILED — not running the suite")
+            return 1
+    elif enforcing:
+        emit(f"--skip-contract is refused while {ENV_REQUIRE} is set")
+        return 2
 
     # 3. Runner resolution.
     pin = load_pin()

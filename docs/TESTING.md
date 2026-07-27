@@ -327,12 +327,15 @@ for non-enforcing local use, and `broken` always fails. CI sets
 offline runs, and removes adjacent checkouts from resolution.
 
 To bump the runner, update `runner_ref` in
-`evaluation/contract/pin.json`, run `make gen-eval-contract-schemas`, and update
-the pinned contract version plus
+`evaluation/contract/pin.json` and the matching direct requirement in
+`evaluation/runner/pyproject.toml`, regenerate the isolated lock with
+`uv lock --project evaluation/runner --python 3.12`, run
+`make gen-eval-contract-schemas`, and update the pinned contract version plus
 `openspec/contracts/cli-gen-eval/README.md` if the published schema changed.
 Then run the contract drift check, the focused suite, and an enforcing resolve:
 
 ```bash
+uv lock --project evaluation/runner --check
 make gen-eval-contract-schemas-check
 pytest tests/cli_gen_eval --no-cov
 ACA_GEN_EVAL_REQUIRE=1 ./evaluation/run-gate.sh --resolve-only

@@ -38,7 +38,9 @@ def test_triggers_separate_pull_request_reads_from_dispatched_mutations() -> Non
     staging = _job("staging-mutation")
     assert read_only["if"] == "github.event_name == 'pull_request'"
     assert "environment" not in read_only
-    assert staging["if"] == "github.event_name == 'workflow_dispatch'"
+    assert staging["if"] == (
+        "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'"
+    )
     assert staging["environment"] == "release-smoke-staging"
 
 
@@ -93,19 +95,23 @@ def test_staging_job_binds_mutation_policy_to_protected_environment() -> None:
 
     assert job["env"]["API_BASE_URL"] == "${{ vars.API_ORIGIN }}"
     assert run["env"] == {
+        "ACA_RELEASE_SMOKE": "1",
         "ADMIN_API_KEY": "${{ secrets.ADMIN_API_KEY }}",
-        "APP_SECRET_KEY": "${{ secrets.APP_SECRET_KEY }}",
     }
     assert materialize["env"] == {
         "ACA_TARGET_ID": "${{ vars.TARGET_ID }}",
         "ACA_FRONTEND_ORIGIN": "${{ vars.FRONTEND_ORIGIN }}",
         "ACA_API_ORIGIN": "${{ vars.API_ORIGIN }}",
+        "ACA_EXPECTED_FRONTEND_REVISION": "${{ vars.EXPECTED_FRONTEND_REVISION }}",
+        "ACA_EXPECTED_API_REVISION": "${{ vars.EXPECTED_API_REVISION }}",
         "ACA_PRODUCTION_TARGET_IDS_JSON": "${{ vars.PRODUCTION_TARGET_IDS_JSON }}",
         "ACA_PRODUCTION_ORIGINS_JSON": "${{ vars.PRODUCTION_ORIGINS_JSON }}",
     }
     assert 'target: "staging"' in materialize["run"]
     assert "try ($production_target_ids_json | fromjson) catch null" in materialize["run"]
     assert "try ($production_origins_json | fromjson) catch null" in materialize["run"]
+    assert "expected_frontend_revision: $expected_frontend_revision" in materialize["run"]
+    assert "expected_api_revision: $expected_api_revision" in materialize["run"]
     assert "${{ inputs." not in materialize["run"]
     assert run["continue-on-error"] is True
     assert f"--categories {MUTATING_CATEGORIES}" in run["run"]
@@ -139,13 +145,23 @@ def test_only_credible_reports_are_retained_without_masking_gate_failure() -> No
             < names.index(enforce_name)
         )
         assert validate["if"] == "always()"
+        assert "scripts/minimize_gen_eval_report.py" in validate["run"]
+        assert '"$RUNNER_TEMP/cli-gen-eval/gen-eval-report.json"' in validate["run"]
+        assert '"$RUNNER_TEMP/cli-gen-eval-artifact/gen-eval-report.json"' in validate["run"]
         assert "--fail-threshold 0" in validate["run"]
         assert "--expectation" in validate["run"]
         assert upload["if"] == "always() && steps.validate.outcome == 'success'"
         assert upload["uses"].startswith("actions/upload-artifact@")
         assert upload["with"]["name"].startswith(f"cli-gen-eval-{artifact_suffix}-")
-        assert "gen-eval-report.json" in upload["with"]["path"]
-        assert "gen-eval-expectation.json" in upload["with"]["path"]
+        assert (
+            "${{ runner.temp }}/cli-gen-eval-artifact/gen-eval-report.json"
+            in upload["with"]["path"]
+        )
+        assert (
+            "${{ runner.temp }}/cli-gen-eval-artifact/gen-eval-expectation.json"
+            in upload["with"]["path"]
+        )
+        assert "${{ runner.temp }}/cli-gen-eval/gen-eval-report.json" not in upload["with"]["path"]
         assert upload["with"]["if-no-files-found"] == "error"
         assert upload["with"]["retention-days"] == 14
         assert enforce["if"] == "always()"

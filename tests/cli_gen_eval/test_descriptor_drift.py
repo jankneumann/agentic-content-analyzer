@@ -32,6 +32,7 @@ from src.cli_gen_eval.suite import (
     iter_templates,
     tier_capacity,
 )
+from src.models.jobs import OperationType
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DESCRIPTOR_PATH = REPO_ROOT / "evaluation" / "descriptors" / "aca-cli.yaml"
@@ -374,6 +375,23 @@ def test_every_scenario_declares_a_known_category(
             f"{path.name}: category {document['category']!r} is not one of "
             f"{sorted(KNOWN_CATEGORIES)}"
         )
+
+
+def test_workflow_submission_covers_every_canonical_operation_type(
+    scenario_documents: list[tuple[Path, Any]],
+) -> None:
+    """The asserted operation handles must track the canonical enum exactly."""
+    asserted_operation_types = {
+        operation_type
+        for _, document in scenario_documents
+        if document["category"] == "workflow-submission"
+        for step in document["steps"]
+        for operation_type in [
+            step.get("expect", {}).get("body_contains", {}).get("operation_type")
+        ]
+        if operation_type is not None
+    }
+    assert asserted_operation_types == {operation_type.value for operation_type in OperationType}
 
 
 # ---------------------------------------------------------------------------
