@@ -382,14 +382,21 @@ Added because the work required it:
 
 ## Phase 7 — Documentation and close-out (`wp-gen-eval-docs`)
 
-- [ ] 7.1 Add a Testing-guide section: how to run the suite, how to author a
+- [x] 7.1 Add a Testing-guide section: how to run the suite, how to author a
   scenario, category semantics, the three runner states, and how to bump the runner
   pin. **(S)**
   **Dependencies:** 4.4
-- [ ] 7.2 Record the `operations get` versus `operations status` naming
+  **Done:** `docs/TESTING.md` now carries the concise author/operator workflow
+  and links to the detailed evaluation runbook; the runbook documents both CI
+  jobs and their retained-evidence behavior.
+- [x] 7.2 Record the `operations get` versus `operations status` naming
   reconciliation, and link `UPSTREAM.md` to the filed `agentic-coding-tools` issues.
   **(S)**
   **Design decisions:** D4, D8
+  **Done:** the Testing Guide records `get` as the implemented command with no
+  `status` alias; UP-5 and UP-6 are tracked upstream as issues
+  [#305](https://github.com/jankneumann/agentic-coding-tools/issues/305) and
+  [#306](https://github.com/jankneumann/agentic-coding-tools/issues/306).
 - [x] 7.3 After UP-1 lands, retire the interim entry-point form at its single
   declared location and drop the interim note from the README. **(S)**
   **Spec scenarios:** The runner is invoked through its published entry point

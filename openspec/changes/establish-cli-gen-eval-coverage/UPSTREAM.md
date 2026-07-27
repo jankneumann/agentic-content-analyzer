@@ -11,8 +11,8 @@
 | UP-2 published JSON Schema | **LANDED** at `600744a5` | no |
 | UP-3 coverage fields populated | **LANDED** at `600744a5` | no |
 | UP-4 optional `startup` | **LANDED** at `600744a5` | no |
-| UP-5 report schema numeric bounds | open, low | no — enforced in ACA's report validator |
-| UP-6 runs silently evaluate less than the suite | **open, high** | no — worked around, and now detected |
+| [UP-5 report schema numeric bounds](https://github.com/jankneumann/agentic-coding-tools/issues/305) | open, low | no — enforced in ACA's report validator |
+| [UP-6 runs silently evaluate less than the suite](https://github.com/jankneumann/agentic-coding-tools/issues/306) | **open, high** | no — worked around, and now detected |
 
 UP-5's gap is closed on ACA's side: `src/cli_gen_eval/report.py` rejects `pass_rate`
 outside `[0, 1]`, `coverage_pct` outside `[0, 100]`, and negative counts, with tests
@@ -59,7 +59,7 @@ The sections below are kept as the record of what was asked and why.
 
 ---
 
-## UP-6 — A run silently evaluates less than the suite it was given (open, HIGH priority)
+## UP-6 — A run silently evaluates less than the suite it was given ([issue #306](https://github.com/jankneumann/agentic-coding-tools/issues/306), open, HIGH priority)
 
 Found while authoring ACA's read-only suite in Phase 3. Four independent mechanisms
 reduce what a run covers, none of them reported, all of them exiting 0. The first is a
@@ -149,7 +149,7 @@ the config from argparse. A `--config` flag would expose every field at once.
 
 ---
 
-## UP-5 — The published report schema does not bound numeric ranges (open, low priority)
+## UP-5 — The published report schema does not bound numeric ranges ([issue #305](https://github.com/jankneumann/agentic-coding-tools/issues/305), open, low priority)
 
 `eval-report.schema.json` is generated from `GenEvalReport`, whose numeric fields carry
 no constraints, so the published schema is:
