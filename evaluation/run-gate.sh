@@ -13,6 +13,11 @@
 #   ACA_GEN_EVAL_BIN      Explicit runner command line. Highest precedence.
 #   ACA_GEN_EVAL_PROJECT  Adjacent gen-eval checkout. Developer convenience only —
 #                         ignored whenever ACA_GEN_EVAL_REQUIRE is set.
+#   ACA_GEN_EVAL_TARGET_POLICY
+#                         Path to the ProtectedTargetPolicy JSON declaring the
+#                         non-production target the mutating categories may write to.
+#                         Equivalent to --target-policy; consulted only when a mutating
+#                         category is selected.
 #
 # Exit codes:
 #   0  contract valid, and the suite passed or the runner is absent locally
@@ -20,12 +25,14 @@
 #   2  usage error
 #   3  runner broken, or absent under ACA_GEN_EVAL_REQUIRE
 #   4  the backend target the selection needs is absent or unreachable
-#   5  the run finished but its report is not credible
+#   5  the run finished but its report is not credible, or the selection could not have
+#      produced a credible one — it exceeds the runner's silent tier budget
+#   6  a mutating category was selected without a usable non-production target
 #
-# The gate never treats a broken runner as an absent one, and never treats an
-# unbelievable report as a failing one. Both distinctions are the same idea: a
-# prerequisite that did not hold is not a result. See src/cli_gen_eval/runner.py and
-# src/cli_gen_eval/report.py.
+# The gate never treats a broken runner as an absent one, never treats an unbelievable
+# report as a failing one, and never treats a refused mutation as a usage error. All
+# three distinctions are the same idea: a prerequisite that did not hold is not a
+# result. See src/cli_gen_eval/runner.py, report.py, and mutation_guard.py.
 
 set -euo pipefail
 

@@ -1,0 +1,229 @@
+# Category: operation-control — MUTATING. Cancels and retries durable work.
+#
+# Guarded the same way as workflow-submission: the category must be named explicitly and
+# the mutation guard must accept a staging or ephemeral target policy bound to the origin
+# the CLI resolves.
+#
+# ---------------------------------------------------------------------------
+# The command names
+# ---------------------------------------------------------------------------
+#
+# `aca operations list|get|wait|retry|cancel`. The roadmap's acceptance outcome says
+# "wait, status, retry, and cancel"; the implemented command is `get`, not `status`.
+# Proposal D8 records the reconciliation — these scenarios target the real names rather
+# than motivating an alias.
+#
+# ---------------------------------------------------------------------------
+# The one environment property these scenarios must not depend on
+# ---------------------------------------------------------------------------
+#
+# Whether the target drains its own queue. `src/api/app.py` starts an embedded worker
+# when `worker_enabled` is set, and neither `/health` nor `capabilities` reports it — so
+# the gate cannot classify it the way it classifies the runner and the target, and a
+# scenario that assumed either answer would be asserting a coin flip.
+#
+# Concretely: a submitted operation reaches a terminal state on its own when the worker
+# is running, and sits queued indefinitely when it is not. Every step below is written to
+# hold under both, which cost one assertion (see the cancel step) and is why `retry`'s
+# success path is not covered here.
+#
+# `OperationService.retry` requeues from `failed` only — its UPDATE carries
+# `WHERE parent.status = 'failed'` — and raises `OperationConflictError` from anywhere
+# else. So retry succeeds against a worker-drained target and 409s against an idle one,
+# from the identical sequence of prior steps. Its error contract is covered
+# unconditionally by the unknown-operation scenario below; its success path is a stated
+# gap, recorded in evaluation/README.md rather than papered over with a loose assertion.
+
+- id: operation-control-lifecycle
+  name: A submitted operation is retrieved, cancelled, observed terminal, and refused a retry
+  description: >
+    The full control surface over one operation. Submits podcast-audio work against a
+    script id that names nothing, so the operation is cheap and cannot succeed, then
+    walks it through get, cancel, wait, and retry.
+
+    The terminal-state observation is `wait` exiting 1. That exit code is reached for
+    `failed` and for `cancelled` and for nothing else, so it is precisely the assertion
+    "this operation reached a terminal state, and not a successful one" — which holds
+    whether the cancel took the operation directly out of the queue or a worker had
+    already picked it up and failed it. Asserting the specific terminal state instead
+    would be asserting which of those two happened, which is a fact about the
+    environment rather than about the CLI.
+  category: operation-control
+  priority: 1
+  # `cli:podcast-audio` is deliberately absent: the submission below uses the root-level
+  # `--json` spelling, which credits no interface, and workflow-submission already covers
+  # that command in the form that does. Declaring it here would be a claim these steps do
+  # not support — the Phase 4 report validator compares this list against what the steps
+  # actually credit, so an aspirational entry is a failure rather than documentation.
+  interfaces:
+    - "cli:operations"
+  tags:
+    - mutating
+    - requires-target
+  steps:
+    - id: submit-controllable-operation
+      transport: cli
+      command: "--json"
+      args:
+        - podcast-audio
+        - create
+        - "--script-id"
+        - "2147483646"
+      expect:
+        exit_code: 0
+        body_contains:
+          operation_type: "podcast_audio.create"
+      capture:
+        operation_id: "$.operation_id"
+
+    # Credits cli:operations. Human-readable output is Rich-rendered, so the exit code
+    # is the whole assertion — which is the claim: the id addresses a real operation.
+    - id: operations-get-attributed
+      transport: cli
+      command: operations
+      args:
+        - get
+        - "{{ operation_id }}"
+      expect:
+        exit_code: 0
+        not_empty: true
+
+    - id: operations-get-json
+      transport: cli
+      command: "--json"
+      args:
+        - operations
+        - get
+        - "{{ operation_id }}"
+      expect:
+        exit_code: 0
+        body_contains:
+          operation_id: "{{ operation_id }}"
+          operation_type: "podcast_audio.create"
+
+    # Cancel has two legitimate outcomes here and no way to express "either" in an
+    # expect block, so the exit code is deliberately not asserted.
+    #
+    #   queued or in progress  ->  exit 0, the cancelled (or cancel-requested) handle
+    #   already terminal       ->  exit 1, a 409 "cannot be cancelled from state failed"
+    #
+    # Which one occurs depends on `worker_enabled` on the target: the API hosts an
+    # embedded queue worker (src/api/app.py), so a target that drains its own queue will
+    # often have failed this operation before the cancel arrives. That setting is not
+    # visible from /health or from `capabilities`, so the gate cannot check it and this
+    # scenario must not depend on it. Asserting exit 0 here is what the first real run of
+    # this file did, and it failed exactly this way.
+    #
+    # What is still asserted: the command ran, and returned a parseable document rather
+    # than crashing. Cancel's error contract is pinned separately and unconditionally by
+    # operation-control-unknown-operation below.
+    - id: operations-cancel
+      transport: cli
+      command: "--json"
+      args:
+        - operations
+        - cancel
+        - "{{ operation_id }}"
+      expect:
+        not_empty: true
+
+    # The terminal-state observation, and deterministic under every combination of the
+    # above. `wait` returns only from a terminal state, and the CLI exits 1 for exactly
+    # `failed` and `cancelled` — so exit 1 asserts "terminal, and not successful". Both
+    # branches of the cancel above lead here: cancelled if the cancel took it, failed if
+    # the worker got there first. The operation cannot succeed, because the script id it
+    # names does not exist.
+    - id: operations-wait-observes-a-terminal-state
+      transport: cli
+      command: "--json"
+      args:
+        - operations
+        - wait
+        - "{{ operation_id }}"
+        - "--timeout"
+        - "120"
+      expect:
+        exit_code: 1
+        body_contains:
+          operation_id: "{{ operation_id }}"
+
+- id: operation-control-unknown-operation
+  name: Every operation-control command rejects an operation id that does not exist
+  description: >
+    The error path for all four commands, and the one part of this category that needs
+    no submission at all. An unknown id must produce a 404 Problem from each of get,
+    wait, retry, and cancel — not a hang, not an empty success, and not a handle for an
+    operation nobody created.
+
+    Worth asserting separately from the lifecycle scenario because the failure it
+    guards against is silent: `operations get` returning a default-constructed handle
+    for a missing row would read as a healthy operation in every downstream consumer.
+  category: operation-control
+  priority: 1
+  interfaces:
+    - "cli:operations"
+  tags:
+    - mutating
+    - requires-target
+  steps:
+    # Credits cli:operations, and asserts the human-readable spelling fails too — the
+    # `--json` steps below would all pass against a CLI that only reported errors in
+    # machine-readable mode.
+    - id: operations-get-unknown-attributed
+      transport: cli
+      command: operations
+      args:
+        - get
+        - "2147483645"
+      expect:
+        exit_code: 1
+
+    - id: operations-get-unknown
+      transport: cli
+      command: "--json"
+      args:
+        - operations
+        - get
+        - "2147483645"
+      expect:
+        exit_code: 1
+        body_contains:
+          status: 404
+
+    - id: operations-wait-unknown
+      transport: cli
+      command: "--json"
+      args:
+        - operations
+        - wait
+        - "2147483645"
+        - "--timeout"
+        - "5"
+      expect:
+        exit_code: 1
+        body_contains:
+          status: 404
+
+    - id: operations-retry-unknown
+      transport: cli
+      command: "--json"
+      args:
+        - operations
+        - retry
+        - "2147483645"
+      expect:
+        exit_code: 1
+        body_contains:
+          status: 404
+
+    - id: operations-cancel-unknown
+      transport: cli
+      command: "--json"
+      args:
+        - operations
+        - cancel
+        - "2147483645"
+      expect:
+        exit_code: 1
+        body_contains:
+          status: 404

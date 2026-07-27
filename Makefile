@@ -59,6 +59,15 @@ gen-eval:  ## Run the CLI gen-eval gate: contract, suite, then report validation
 gen-eval-resolve:  ## Report which gen-eval runner resolves, and why, without running the suite
 	./evaluation/run-gate.sh --resolve-only
 
+# The mutating dispatch. Deliberately a separate target rather than a flag on `gen-eval`,
+# because the two runs differ in more than scope: this one submits durable work, requires
+# a declared non-production target, and cannot run against localhost (the target policy
+# model requires HTTPS for every non-local class). TARGET_POLICY has no default — a
+# missing one is refused with exit 6 rather than defaulted to anything.
+gen-eval-mutating:  ## Run the mutating gen-eval categories. TARGET_POLICY=path/to/policy.json required
+	./evaluation/run-gate.sh --categories workflow-submission operation-control \
+		$(if $(TARGET_POLICY),--target-policy $(TARGET_POLICY),)
+
 # Re-check a retained report away from the run that produced it — a CI artifact pulled
 # into a later job, or one attached to a bug. The gate already runs these checks
 # in-process on every run, so this is not the enforcement path; REPORT and EXPECTATION

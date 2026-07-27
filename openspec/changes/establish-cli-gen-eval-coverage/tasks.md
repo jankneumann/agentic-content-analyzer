@@ -265,32 +265,80 @@ and it does not; without them the authored scenarios cannot run, or run unsafely
 
 ## Phase 5 — Mutation guard and staging scenarios (`wp-gen-eval-mutation`)
 
-- [ ] 5.1 Write guard tests: mutating category with no target policy, with a
+- [x] 5.1 Write guard tests: mutating category with no target policy, with a
   production target class, and with a non-production target whose identity or origin
   resolves to a registered production identity or origin. Assert no workflow is
   submitted in any rejection path. **(M)**
   **Spec scenarios:** Mutating scenarios require a non-production target / all
   **Design decisions:** D6
-- [ ] 5.2 Implement the guard by consuming `src/release_smoke` target-policy models
+  Done: `tests/cli_gen_eval/test_mutation_guard.py`, 33 tests. The no-submission
+  clause is asserted by making both `subprocess.run` and runner resolution raise if
+  reached, so a guard that decided correctly but late would fail.
+- [x] 5.2 Implement the guard by consuming `src/release_smoke` target-policy models
   and their production deny registries. Add a test asserting no independent target
   classification is introduced. **(M)**
   **Spec scenarios:** The production guard is single-sourced
   **Design decisions:** D6
   **Dependencies:** 5.1
-- [ ] 5.3 Author the `workflow-submission` category covering every canonical
+  Done: `src/cli_gen_eval/mutation_guard.py`. Every deny-registry rule is the policy
+  model's; the module never reads `production_target_ids`. The single-sourcing test
+  parses the module and asserts the only `TargetClass` literals in it are the two it
+  permits, so naming `production` as a value at all is a failure.
+- [x] 5.3 Author the `workflow-submission` category covering every canonical
   workflow operation type, asserting each returns a durable operation handle. **(L)**
   **Spec scenarios:** Canonical workflow submission coverage
   **Dependencies:** 3.1, 5.2
-- [ ] 5.4 Author the `operation-control` category covering the operation retrieval,
+  Done: 8 scenarios, one per `OperationType`. The handle assertion is that the
+  captured id resolves through `operations get`, not that the response had the right
+  shape — inputs are synthetic because submission performs no existence checks, so
+  the scenarios need no seeded data.
+- [x] 5.4 Author the `operation-control` category covering the operation retrieval,
   wait, retry, and cancel commands, observing at least one operation through a
   terminal state. **(L)**
   **Spec scenarios:** Operation control coverage
   **Design decisions:** D8
   **Dependencies:** 5.3
-- [ ] 5.5 Add a test asserting the default category selection includes the contract
+  Done: 2 scenarios. Terminality is observed as `operations wait` exiting 1, which
+  the CLI does for `failed` and `cancelled` and nothing else. Retry's success path is
+  a stated gap — see 5.7.
+- [x] 5.5 Add a test asserting the default category selection includes the contract
   layer and read-only categories and excludes every mutating category. **(S)**
   **Spec scenarios:** The default pull-request run excludes mutating categories
   **Dependencies:** 5.2
+  Done: asserted through the gate's behaviour rather than its source, plus a test
+  that the mutating scenarios exist on disk — before Phase 5 the exclusion would
+  have passed vacuously.
+
+Added because the work required it:
+
+- [x] 5.6 Bind the policy to the origin the CLI actually resolves, and refuse a
+  mismatch. **(M)**
+  **Spec scenarios:** The declared target is not the target the CLI will use
+  **Design decisions:** D14
+  Added because: a policy file is a claim about *some* target. Without comparing it
+  to the CLI's own base URL the guard is ceremonial — it would accept a correct
+  staging policy while the scenarios submitted somewhere else entirely.
+- [x] 5.7 Make the scenarios independent of whether the target drains its own
+  queue, and record what that costs. **(M)**
+  Added because: the first real run failed. `src/api/app.py` hosts an embedded
+  worker under `worker_enabled`, invisible to `/health` and to `capabilities`, so a
+  submitted operation reaches a terminal state on its own on one target and stays
+  queued on another. Verified against a local backend with the worker both enabled
+  and disabled; the cost is one unasserted exit code and retry's success path.
+- [x] 5.8 Teach the suite accounting that `{{ name }}` is a capture reference in an
+  unparameterized template, and a parameter reference otherwise. **(S)**
+  Added because: the accounting check rejected the operation-control scenarios
+  outright. The pinned generator returns a template untouched when it declares no
+  `parameters`, so the braces survive to the evaluator — but with a `parameters`
+  block the same braces are destroyed at generation time. Both readings, and the
+  capture ordering, are now checked.
+- [x] 5.9 Refuse a selection that exceeds the runner's tier budget before the run
+  rather than diagnosing it afterwards. **(S)**
+  **Spec scenarios:** A selection that cannot fit the runner is refused before it runs
+  **Design decisions:** D15
+  Added because: Phase 4 catches truncation from the report, which for a mutating
+  run means after part of the durable work has been submitted. The arithmetic is
+  available from the selection alone.
 
 ## Phase 6 — CI wiring (`wp-gen-eval-ci`)
 
