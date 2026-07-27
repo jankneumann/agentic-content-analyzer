@@ -342,7 +342,7 @@ Added because the work required it:
 
 ## Phase 6 — CI wiring (`wp-gen-eval-ci`)
 
-- [ ] 6.1 Add `.github/workflows/cli-gen-eval.yml`: a pull-request job running the
+- [x] 6.1 Add `.github/workflows/cli-gen-eval.yml`: a pull-request job running the
   contract layer plus read-only categories with enforcement requested and
   template-only generation, and a `workflow_dispatch` staging job for mutating
   categories using the `release-smoke-staging` environment pattern. **(L)**
@@ -350,23 +350,35 @@ Added because the work required it:
   Continuous integration selects deterministic generation
   **Design decisions:** D3, D9
   **Dependencies:** 4.4, 5.5
-- [ ] 6.2 Install the runner in CI from the checked-in pin only — no adjacent
+  **Done:** PR evaluation cold-starts Postgres plus the API and selects exactly
+  `plumbing`, `discovery`, and `validation`; dispatched mutation reuses the
+  approval-protected `release-smoke-staging` target policy.
+- [x] 6.2 Install the runner in CI from the checked-in pin only — no adjacent
   checkout, no unpinned resolution — and assert the contract layer runs and enforces
   even when runner installation fails. **(M)**
   **Spec scenarios:** No runner is resolvable under enforcement / Contract
   validation with no runner installed
   **Design decisions:** D2, D3
   **Dependencies:** 6.1
-- [ ] 6.3 Upload the validated report and failure grouping as a retained artifact.
+  **Done:** both jobs validate the repository-owned contract before the gate
+  resolves the isolated `uvx` candidate from `pin.json`; the workflow contains no
+  runner URL, ref, override, or adjacent-checkout path.
+- [x] 6.3 Upload the validated report and failure grouping as a retained artifact.
   **(S)**
   **Spec scenarios:** Continuous integration enforces without a skip path
   **Dependencies:** 6.1
-- [ ] 6.4 Add a workflow-configuration test in `tests/config/` asserting the
+  **Done:** credible reports and their pre-run expectations are retained for 14
+  days even when the 95% gate fails; credibility is rechecked at threshold zero
+  for retention without weakening the original gate outcome.
+- [x] 6.4 Add a workflow-configuration test in `tests/config/` asserting the
   pull-request job selects only the contract layer and read-only categories, sets
   enforcement, and does not permit mutations — following
   `tests/config/test_release_smoke_workflow.py`. **(M)**
   **Spec scenarios:** The default pull-request run excludes mutating categories
   **Dependencies:** 6.1
+  **Done:** seven configuration-contract tests cover trigger separation, immutable
+  actions/tooling, contract-before-runner ordering, category safety, protected
+  target binding, credible evidence retention, and deterministic generation.
 
 ## Phase 7 — Documentation and close-out (`wp-gen-eval-docs`)
 
