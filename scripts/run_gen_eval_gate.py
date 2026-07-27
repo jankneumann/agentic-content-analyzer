@@ -12,12 +12,19 @@ Exit codes:
     3  runner is broken, or absent while ACA_GEN_EVAL_REQUIRE is set
     4  the backend target the selected categories need is unreachable
     5  the run finished but its report is not credible
+    6  a mutating category was selected without a usable non-production target
 
 Codes 1 and 5 are kept apart on purpose. Exit 1 means `aca` failed a scenario, which is
 a defect in the product. Exit 5 means the report cannot be used to decide either way —
 scenarios silently dropped, coverage missing, a self-inconsistent artifact. Collapsing
 them would hide the second behind the first, and the second is the failure mode this
 whole change exists to remove.
+
+Code 6 is separate from 2 for the same kind of reason. A malformed invocation and a
+refused mutation are both "the run did not start", but only one of them is a safety
+outcome worth alerting on: it means something asked to write to a target it was not
+allowed to write to. Folding it into the argparse code would make that indistinguishable
+from a typo.
 """
 
 from __future__ import annotations
@@ -36,6 +43,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.cli_gen_eval.contract import MUTATING_CATEGORIES, READ_ONLY_CATEGORIES  # noqa: E402
+from src.cli_gen_eval.mutation_guard import (  # noqa: E402
+    ENV_TARGET_POLICY,
+    evaluate as evaluate_guard,
+)
 from src.cli_gen_eval.report import (  # noqa: E402
     Severity,
     expectation_from,
@@ -51,14 +62,21 @@ from src.cli_gen_eval.runner import (  # noqa: E402
     resolve,
 )
 from src.cli_gen_eval.selection import materialize, select  # noqa: E402
+from src.cli_gen_eval.suite import (  # noqa: E402
+    SuiteAccount,
+    account_template,
+    tier_capacity,
+)
 from src.cli_gen_eval.target import (  # noqa: E402
     NO_TARGET_TAG,
     TargetState,
     resolve as resolve_target,
+    resolve_base_url,
 )
 
 EXIT_TARGET_UNREACHABLE = 4
 EXIT_REPORT_NOT_CREDIBLE = 5
+EXIT_MUTATION_REFUSED = 6
 SCENARIO_ROOT = REPO_ROOT / "evaluation" / "scenarios"
 
 DEFAULT_DESCRIPTOR = REPO_ROOT / "evaluation" / "descriptors" / "aca-cli.yaml"
@@ -93,6 +111,16 @@ def main() -> int:
             "Scenario categories to run. Defaults to the read-only categories "
             f"({', '.join(sorted(READ_ONLY_CATEGORIES))}); mutating categories "
             f"({', '.join(sorted(MUTATING_CATEGORIES))}) must be named explicitly."
+        ),
+    )
+    parser.add_argument(
+        "--target-policy",
+        type=Path,
+        default=None,
+        help=(
+            "Path to a ProtectedTargetPolicy JSON document declaring the non-production "
+            f"target the mutating categories may write to. Falls back to {ENV_TARGET_POLICY}. "
+            "Required for, and only consulted by, those categories."
         ),
     )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
@@ -130,7 +158,39 @@ def main() -> int:
         emit(f"--skip-contract is refused while {ENV_REQUIRE} is set")
         return 2
 
-    # 2. Runner resolution.
+    # 2. Mutation guard. Placed here, ahead of runner resolution, for two reasons.
+    #
+    #    It needs nothing the runner provides, so nothing about the runner should be able
+    #    to preempt its verdict. A run pointed at production is a finding worth reporting
+    #    on its own terms; returning "your runner is broken" instead would be safe —
+    #    nothing gets submitted either way — and would tell the operator the wrong thing.
+    #
+    #    And a refusal reached this early is reached before anything is materialized,
+    #    resolved, or spawned, which is what makes "no workflow was submitted" a
+    #    structural property rather than a claim about control flow further down.
+    #
+    #    The default category set is the read-only one, so a mutating category can only
+    #    be here because it was named explicitly. That naming is the first of the two
+    #    mechanisms that must both fail before durable work is submitted; this guard is
+    #    the second, and it refuses independently of what selection would have chosen.
+    categories = args.categories if args.categories is not None else sorted(READ_ONLY_CATEGORIES)
+    policy_path = args.target_policy
+    if policy_path is None and os.environ.get(ENV_TARGET_POLICY):
+        policy_path = Path(os.environ[ENV_TARGET_POLICY])
+
+    base_url, base_url_detail = resolve_base_url()
+    guard = evaluate_guard(categories, policy_path, base_url)
+    if guard.refused:
+        emit(f"mutating categories {guard.guarded_categories} REFUSED")
+        for reason in guard.reasons:
+            emit(f"target policy: {reason}")
+        emit(f"the CLI resolves {base_url_detail}")
+        emit("no scenario was materialized and no workflow was submitted")
+        return EXIT_MUTATION_REFUSED
+    if guard.guarded_categories:
+        emit(f"mutating categories {guard.guarded_categories} ALLOWED — {guard.reasons[0]}")
+
+    # 3. Runner resolution.
     pin = load_pin()
     resolution = resolve(pin=pin)
 
@@ -157,18 +217,6 @@ def main() -> int:
     if args.resolve_only:
         return 0
 
-    # 3. Execute the suite.
-    categories = args.categories if args.categories is not None else sorted(READ_ONLY_CATEGORIES)
-    selected_mutating = sorted(set(categories) & MUTATING_CATEGORIES)
-    if selected_mutating:
-        # Phase 5 installs the real target-policy guard here. Until then, refuse
-        # rather than submit durable work with no production check in place.
-        emit(
-            f"mutating categories {selected_mutating} require the non-production target "
-            "guard, which is not implemented yet (Phase 5)"
-        )
-        return 2
-
     # 4. Selection. The runner's own --categories flag is inert (see
     #    src/cli_gen_eval/selection.py), so the gate resolves the selection itself and
     #    hands the runner a descriptor that points at exactly those scenarios. Without
@@ -185,6 +233,32 @@ def main() -> int:
         emit(f"selection {categories} with tags {require_tags or 'none'} matched no scenarios")
         emit("refusing to report a pass rate over an empty suite")
         return 1
+
+    # A selection larger than the runner's tier budget will be truncated, and the
+    # runner will not say so. Phase 4's report validation already catches that after
+    # the fact, at exit 5 — but "after the fact" means after a mutating run has
+    # submitted an arbitrary subset of its durable work. The arithmetic is available
+    # before anything runs, so the same verdict is reached here instead.
+    limits = pin["runner_limits"]
+    capacity = tier_capacity(
+        int(limits["max_scenarios_per_iteration"]),
+        changed_share=float(limits["tier_changed_share"]),
+        critical_share=float(limits["tier_critical_share"]),
+        critical_priority_max=int(limits["critical_priority_max"]),
+    )
+    max_expansions = int(limits["max_expansions_per_template"])
+    overflows = SuiteAccount(
+        [account_template(item.template, item.source, max_expansions) for item in selected]
+    ).overflows(capacity)
+    if overflows:
+        emit(f"selection {categories} does not fit the runner's tier budget:")
+        for problem in overflows:
+            emit(f"  {problem}")
+        emit(
+            "the runner would drop the excess and still exit 0; refusing before "
+            "anything is submitted rather than reporting an incredible run afterwards"
+        )
+        return EXIT_REPORT_NOT_CREDIBLE
 
     if args.offline:
         dropped = sorted(

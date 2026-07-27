@@ -1,0 +1,462 @@
+# Category: workflow-submission — MUTATING. Submits durable work.
+#
+# These scenarios do not run unless two separate things both happen: the category is
+# named explicitly (the default selection is read-only), and the mutation guard accepts a
+# ProtectedTargetPolicy describing a staging or ephemeral target that is the same origin
+# the CLI resolves. See src/cli_gen_eval/mutation_guard.py.
+#
+# ---------------------------------------------------------------------------
+# What is being claimed, and what is deliberately not
+# ---------------------------------------------------------------------------
+#
+# The claim is the submission contract: every canonical operation type can be submitted
+# through the CLI and comes back as a durable operation handle that the API will then
+# resolve by id. It is NOT a claim that the work succeeds. `src/api/workflow_routes.py`
+# performs no existence checks — `podcast-script create --digest-id <absent>` enqueues
+# happily and fails later in the worker — and that separation is the point rather than a
+# gap. A submission scenario that depended on seeded content would be testing the
+# pipeline's business logic through the narrowest possible aperture, and would fail for
+# reasons that have nothing to do with the CLI surface under evaluation.
+#
+# So the inputs below are deliberately synthetic: identifiers no row will ever carry, a
+# period window in the past, a source name that matches nothing. Each operation is
+# expected to be enqueued and then to fail or no-op. What is asserted is that it was
+# enqueued, addressably.
+#
+# ---------------------------------------------------------------------------
+# Why each scenario submits twice
+# ---------------------------------------------------------------------------
+#
+# `--json` on this CLI is a root-level flag, so the machine-readable spelling has to put
+# it in `step.command` — and a `command` beginning with a dash credits no interface,
+# because interface identity is the words of `command` before its first flag. A scenario
+# that only used the JSON spelling would evaluate the submission and credit nothing.
+#
+# The cost is smaller than it looks. Both steps send an identical payload, and
+# `OperationService.submit` derives its idempotency key from a hash of that payload when
+# the client sends no `Idempotency-Key` header, which the CLI does not unless asked. The
+# second step therefore returns the *same* operation as the first for as long as it is
+# still queued or in progress (`src/queue/setup.py::enqueue_queue_job` dedupes on
+# `(entrypoint, idempotency_key)` for non-terminal rows). Two submissions, normally one
+# durable operation.
+#
+# Step three then resolves the captured id through `operations get`. That is the actual
+# evidence for "returns a durable operation handle": not that the response had the right
+# shape, but that the identifier in it addresses something the API can find.
+
+- id: workflow-submission-ingestion
+  name: aca ingest url submits a durable ingestion operation
+  description: >
+    Covers OperationType.INGESTION_EXECUTE. `ingest url` is chosen over the
+    configured-source kinds because its side effect is bounded to a single fetch of one
+    named URL rather than a sweep of every feed in sources.d/, which matters when the
+    target is a shared staging environment.
+  category: workflow-submission
+  priority: 1
+  interfaces:
+    - "cli:ingest"
+    - "cli:operations"
+  tags:
+    - mutating
+    - requires-target
+  steps:
+    - id: ingest-url-attributed
+      transport: cli
+      command: ingest
+      args:
+        - url
+        - "https://example.com/aca-gen-eval"
+      expect:
+        exit_code: 0
+
+    - id: ingest-url-json
+      transport: cli
+      command: "--json"
+      args:
+        - ingest
+        - url
+        - "https://example.com/aca-gen-eval"
+      expect:
+        exit_code: 0
+        body_contains:
+          operation_type: "ingestion.execute"
+      capture:
+        operation_id: "$.operation_id"
+
+    - id: ingest-url-handle-resolves
+      transport: cli
+      command: operations
+      args:
+        - get
+        - "{{ operation_id }}"
+      expect:
+        exit_code: 0
+        not_empty: true
+
+- id: workflow-submission-summarization
+  name: aca summarize run submits a durable summarization operation
+  description: >
+    Covers OperationType.SUMMARIZATION_RUN. The content id names nothing, so the
+    enqueued run has no work to do; the claim is the handle, not the summary.
+  category: workflow-submission
+  priority: 1
+  interfaces:
+    - "cli:summarize"
+    - "cli:operations"
+  tags:
+    - mutating
+    - requires-target
+  steps:
+    - id: summarize-run-attributed
+      transport: cli
+      command: summarize
+      args:
+        - run
+        - "--content-id"
+        - "2147483647"
+      expect:
+        exit_code: 0
+
+    - id: summarize-run-json
+      transport: cli
+      command: "--json"
+      args:
+        - summarize
+        - run
+        - "--content-id"
+        - "2147483647"
+      expect:
+        exit_code: 0
+        body_contains:
+          operation_type: "summarization.run"
+      capture:
+        operation_id: "$.operation_id"
+
+    - id: summarize-run-handle-resolves
+      transport: cli
+      command: operations
+      args:
+        - get
+        - "{{ operation_id }}"
+      expect:
+        exit_code: 0
+        not_empty: true
+
+- id: workflow-submission-theme-analysis
+  name: aca theme create submits a durable theme-analysis operation
+  description: >
+    Covers OperationType.THEME_ANALYSIS_CREATE with the smallest theme budget the
+    request model permits.
+  category: workflow-submission
+  priority: 1
+  interfaces:
+    - "cli:theme"
+    - "cli:operations"
+  tags:
+    - mutating
+    - requires-target
+  steps:
+    - id: theme-create-attributed
+      transport: cli
+      command: theme
+      args:
+        - create
+        - "--max-themes"
+        - "1"
+      expect:
+        exit_code: 0
+
+    - id: theme-create-json
+      transport: cli
+      command: "--json"
+      args:
+        - theme
+        - create
+        - "--max-themes"
+        - "1"
+      expect:
+        exit_code: 0
+        body_contains:
+          operation_type: "theme_analysis.create"
+      capture:
+        operation_id: "$.operation_id"
+
+    - id: theme-create-handle-resolves
+      transport: cli
+      command: operations
+      args:
+        - get
+        - "{{ operation_id }}"
+      expect:
+        exit_code: 0
+        not_empty: true
+
+- id: workflow-submission-digest
+  name: aca digest create submits a durable digest operation
+  description: >
+    Covers OperationType.DIGEST_CREATE. The period is a fixed one-day window in the
+    past, so re-running this scenario submits the same payload and therefore recovers
+    the same operation rather than accumulating new ones.
+  category: workflow-submission
+  priority: 1
+  interfaces:
+    - "cli:digest"
+    - "cli:operations"
+  tags:
+    - mutating
+    - requires-target
+  steps:
+    - id: digest-create-attributed
+      transport: cli
+      command: digest
+      args:
+        - create
+        - "--type"
+        - daily
+        - "--period-start"
+        - "2020-01-01T00:00:00Z"
+        - "--period-end"
+        - "2020-01-02T00:00:00Z"
+      expect:
+        exit_code: 0
+
+    - id: digest-create-json
+      transport: cli
+      command: "--json"
+      args:
+        - digest
+        - create
+        - "--type"
+        - daily
+        - "--period-start"
+        - "2020-01-01T00:00:00Z"
+        - "--period-end"
+        - "2020-01-02T00:00:00Z"
+      expect:
+        exit_code: 0
+        body_contains:
+          operation_type: "digest.create"
+      capture:
+        operation_id: "$.operation_id"
+
+    - id: digest-create-handle-resolves
+      transport: cli
+      command: operations
+      args:
+        - get
+        - "{{ operation_id }}"
+      expect:
+        exit_code: 0
+        not_empty: true
+
+- id: workflow-submission-pipeline
+  name: aca pipeline run submits a durable pipeline operation
+  description: >
+    Covers OperationType.PIPELINE_RUN, the one submission here whose execution would be
+    expensive. `--source` names a source that does not exist, so the ingestion stage of
+    the enqueued run has nothing to sweep even if a worker picks it up.
+  category: workflow-submission
+  priority: 1
+  interfaces:
+    - "cli:pipeline"
+    - "cli:operations"
+  tags:
+    - mutating
+    - requires-target
+  steps:
+    - id: pipeline-run-attributed
+      transport: cli
+      command: pipeline
+      args:
+        - run
+        - "--period"
+        - daily
+        - "--period-start"
+        - "2020-01-01T00:00:00Z"
+        - "--period-end"
+        - "2020-01-02T00:00:00Z"
+        - "--source"
+        - aca-gen-eval-no-such-source
+      expect:
+        exit_code: 0
+
+    - id: pipeline-run-json
+      transport: cli
+      command: "--json"
+      args:
+        - pipeline
+        - run
+        - "--period"
+        - daily
+        - "--period-start"
+        - "2020-01-01T00:00:00Z"
+        - "--period-end"
+        - "2020-01-02T00:00:00Z"
+        - "--source"
+        - aca-gen-eval-no-such-source
+      expect:
+        exit_code: 0
+        body_contains:
+          operation_type: "pipeline.run"
+      capture:
+        operation_id: "$.operation_id"
+
+    - id: pipeline-run-handle-resolves
+      transport: cli
+      command: operations
+      args:
+        - get
+        - "{{ operation_id }}"
+      expect:
+        exit_code: 0
+        not_empty: true
+
+- id: workflow-submission-podcast-script
+  name: aca podcast-script create submits a durable podcast-script operation
+  description: >
+    Covers OperationType.PODCAST_SCRIPT_CREATE. The digest id names nothing; submission
+    does not check that it does, and this scenario asserts the handle rather than the
+    script.
+  category: workflow-submission
+  priority: 1
+  interfaces:
+    - "cli:podcast-script"
+    - "cli:operations"
+  tags:
+    - mutating
+    - requires-target
+  steps:
+    - id: podcast-script-create-attributed
+      transport: cli
+      command: podcast-script
+      args:
+        - create
+        - "--digest-id"
+        - "2147483647"
+        - "--no-web-search"
+      expect:
+        exit_code: 0
+
+    - id: podcast-script-create-json
+      transport: cli
+      command: "--json"
+      args:
+        - podcast-script
+        - create
+        - "--digest-id"
+        - "2147483647"
+        - "--no-web-search"
+      expect:
+        exit_code: 0
+        body_contains:
+          operation_type: "podcast_script.create"
+      capture:
+        operation_id: "$.operation_id"
+
+    - id: podcast-script-create-handle-resolves
+      transport: cli
+      command: operations
+      args:
+        - get
+        - "{{ operation_id }}"
+      expect:
+        exit_code: 0
+        not_empty: true
+
+- id: workflow-submission-podcast-audio
+  name: aca podcast-audio create submits a durable podcast-audio operation
+  description: >
+    Covers OperationType.PODCAST_AUDIO_CREATE against a script id that names nothing, so
+    no text-to-speech provider is ever reached by the enqueued work.
+  category: workflow-submission
+  priority: 1
+  interfaces:
+    - "cli:podcast-audio"
+    - "cli:operations"
+  tags:
+    - mutating
+    - requires-target
+  steps:
+    - id: podcast-audio-create-attributed
+      transport: cli
+      command: podcast-audio
+      args:
+        - create
+        - "--script-id"
+        - "2147483647"
+      expect:
+        exit_code: 0
+
+    - id: podcast-audio-create-json
+      transport: cli
+      command: "--json"
+      args:
+        - podcast-audio
+        - create
+        - "--script-id"
+        - "2147483647"
+      expect:
+        exit_code: 0
+        body_contains:
+          operation_type: "podcast_audio.create"
+      capture:
+        operation_id: "$.operation_id"
+
+    - id: podcast-audio-create-handle-resolves
+      transport: cli
+      command: operations
+      args:
+        - get
+        - "{{ operation_id }}"
+      expect:
+        exit_code: 0
+        not_empty: true
+
+- id: workflow-submission-audio-digest
+  name: aca audio-digest create submits a durable audio-digest operation
+  description: >
+    Covers OperationType.AUDIO_DIGEST_CREATE, the eighth and last canonical operation
+    type, against a digest id that names nothing.
+  category: workflow-submission
+  priority: 1
+  interfaces:
+    - "cli:audio-digest"
+    - "cli:operations"
+  tags:
+    - mutating
+    - requires-target
+  steps:
+    - id: audio-digest-create-attributed
+      transport: cli
+      command: audio-digest
+      args:
+        - create
+        - "--digest-id"
+        - "2147483647"
+      expect:
+        exit_code: 0
+
+    - id: audio-digest-create-json
+      transport: cli
+      command: "--json"
+      args:
+        - audio-digest
+        - create
+        - "--digest-id"
+        - "2147483647"
+      expect:
+        exit_code: 0
+        body_contains:
+          operation_type: "audio_digest.create"
+      capture:
+        operation_id: "$.operation_id"
+
+    - id: audio-digest-create-handle-resolves
+      transport: cli
+      command: operations
+      args:
+        - get
+        - "{{ operation_id }}"
+      expect:
+        exit_code: 0
+        not_empty: true

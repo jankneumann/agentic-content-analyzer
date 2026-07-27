@@ -12,19 +12,26 @@ absorb as a low score rather than report as a missing precondition.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
 
+from src.cli_gen_eval.contract import MUTATING_CATEGORIES, READ_ONLY_CATEGORIES
 from src.cli_gen_eval.selection import (
     SELECTION_DESCRIPTOR_NAME,
     SELECTION_DIRNAME,
     materialize,
     select,
 )
-from src.cli_gen_eval.suite import iter_templates
+from src.cli_gen_eval.suite import (
+    SuiteAccount,
+    account_template,
+    iter_templates,
+    tier_capacity,
+)
 from src.cli_gen_eval.target import (
     NO_TARGET_TAG,
     REQUIRES_TARGET_TAG,
@@ -271,3 +278,139 @@ def test_probe_rejects_a_listening_but_unhealthy_target(local_server: Any) -> No
 
 def test_target_states_are_distinct() -> None:
     assert TargetState.REACHABLE != TargetState.UNREACHABLE != TargetState.ABSENT
+
+
+# ---------------------------------------------------------------------------
+# `{{ }}` means two different things, and which one depends on `parameters`
+# (ri-06 Phase 5)
+# ---------------------------------------------------------------------------
+
+
+def captured_scenario(**overrides: Any) -> dict[str, Any]:
+    """A scenario that captures a value in step one and uses it in step two."""
+    document: dict[str, Any] = {
+        "id": "capture-fixture",
+        "name": "capture fixture",
+        "description": "fixture",
+        "category": "operation-control",
+        "interfaces": [],
+        "steps": [
+            {
+                "id": "submit",
+                "transport": "cli",
+                "command": "--json",
+                "args": ["summarize", "run"],
+                "capture": {"operation_id": "$.operation_id"},
+            },
+            {
+                "id": "use",
+                "transport": "cli",
+                "command": "operations",
+                "args": ["get", "{{ operation_id }}"],
+            },
+        ],
+    }
+    document.update(overrides)
+    return document
+
+
+def account(document: dict[str, Any]) -> Any:
+    return account_template(document, Path("fixture.yaml"), 100)
+
+
+def test_a_capture_reference_is_not_an_undeclared_parameter() -> None:
+    """The distinction the pinned generator draws, and nothing else records.
+
+    `TemplateGenerator._expand_parameters` returns `[raw]` untouched when a template
+    declares no `parameters`, so `{{ operation_id }}` is never rendered by Jinja2 and
+    reaches the evaluator, which interpolates it from captured values at run time.
+    Reading it as a generation-time parameter would reject every scenario that chains
+    steps — which is every scenario in the operation-control category.
+    """
+    assert account(captured_scenario()).errors == []
+
+
+def test_a_capture_reference_in_a_parameterized_template_is_rejected() -> None:
+    """The two mechanisms share `{{ }}` and cannot coexist.
+
+    With a `parameters` block the generator renders the whole template through Jinja2
+    with StrictUndefined, so the capture reference raises UndefinedError — logged,
+    swallowed, and the expansion silently dropped.
+    """
+    document = captured_scenario(parameters={"limit": ["1", "2"]})
+    document["steps"][1]["args"].append("{{ limit }}")
+    errors = account(document).errors
+    assert any("destroyed before the evaluator" in error for error in errors)
+
+
+def test_a_reference_to_a_name_nothing_captures_is_rejected() -> None:
+    document = captured_scenario()
+    document["steps"][0].pop("capture")
+    errors = account(document).errors
+    assert any("no step captures" in error for error in errors)
+    assert any("literal braces are dispatched" in error for error in errors)
+
+
+def test_a_reference_before_its_capture_is_rejected() -> None:
+    """Interpolation reads what earlier steps bound; a forward reference binds nothing."""
+    document = captured_scenario()
+    document["steps"].reverse()
+    errors = account(document).errors
+    assert any("before the step that captures it has run" in error for error in errors)
+
+
+def test_the_checked_in_mutating_scenarios_use_capture_correctly() -> None:
+    templates = [
+        item.template for item in select(SCENARIO_ROOT, categories=set(MUTATING_CATEGORIES))
+    ]
+    assert templates, "the mutating categories must be populated"
+    for template in templates:
+        assert account(template).errors == [], template["id"]
+
+
+# ---------------------------------------------------------------------------
+# The gate refuses a selection that would be truncated, before it runs
+# ---------------------------------------------------------------------------
+
+
+def _capacity_and_expansions(pin: dict[str, Any]):
+    limits = pin["runner_limits"]
+    return (
+        tier_capacity(
+            int(limits["max_scenarios_per_iteration"]),
+            changed_share=float(limits["tier_changed_share"]),
+            critical_share=float(limits["tier_critical_share"]),
+            critical_priority_max=int(limits["critical_priority_max"]),
+        ),
+        int(limits["max_expansions_per_template"]),
+    )
+
+
+def _overflows(categories: set[str] | None) -> list[str]:
+    pin = json.loads((REPO_ROOT / "evaluation" / "contract" / "pin.json").read_text())
+    capacity, max_expansions = _capacity_and_expansions(pin)
+    selected = select(SCENARIO_ROOT, categories=categories)
+    return SuiteAccount(
+        [account_template(item.template, item.source, max_expansions) for item in selected]
+    ).overflows(capacity)
+
+
+def test_each_supported_selection_fits_the_runners_tier_budget() -> None:
+    """Both dispatched runs fit. Neither is close enough to the cap to be a surprise."""
+    assert _overflows(set(READ_ONLY_CATEGORIES)) == []
+    assert _overflows(set(MUTATING_CATEGORIES)) == []
+
+
+def test_the_combined_selection_does_not_fit_and_that_is_recorded() -> None:
+    """Read-only and mutating are separate dispatches, and this is one reason why.
+
+    Together they exceed the pinned runner's critical tier, which it would resolve by
+    dropping scenarios and exiting 0. That is not a silent failure here — the gate
+    computes the same arithmetic before the run and refuses — but the number is worth
+    pinning, because it is the thing that changes when UPSTREAM.md UP-6 lands or when
+    the suite grows. When this test starts failing because the selection now fits, the
+    two runs can be merged.
+    """
+    problems = _overflows(set(READ_ONLY_CATEGORIES | MUTATING_CATEGORIES))
+    assert problems, "a combined run now fits; see UPSTREAM.md UP-6 before merging them"
+    assert "critical tier" in problems[0]

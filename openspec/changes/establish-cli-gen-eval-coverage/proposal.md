@@ -235,6 +235,43 @@ Verified end to end against the real runner rather than argued: pushing the suit
 the tier cap produces `gen-eval: PASS (100.0% >= 95.0%)` from the runner and exit 5 from
 the gate, naming all twenty scenarios that vanished.
 
+**D14 — The mutation guard binds the target policy to the origin the CLI will dial, and
+runs before anything else the gate does.**
+D6 said mutating categories consume `release_smoke`'s `ProtectedTargetPolicy` so exactly
+one place decides what production is. That holds, and the guard adds no classification of
+its own — a test asserts that the only target-class literals in the module are the two it
+permits. What D6 did not say is what the policy is a policy *about*.
+
+A document declaring `target: staging` proves nothing on its own: it describes some
+target, not necessarily the one the scenarios will submit to. So the guard resolves the
+CLI's own base URL from project settings — the same source `target.py` probes, for the
+same reason — and refuses when it is not the policy's `api_origin`. Without that
+comparison the policy is correct, adjacent to the work, and attached to nothing.
+
+Two consequences are worth stating rather than discovering. Because the policy model
+requires HTTPS for every non-local class and `local` is not mutable, **the mutating
+categories cannot run against localhost at all**; they are a dispatch against a deployed
+staging or ephemeral target. And the guard runs ahead of runner resolution, so a run
+pointed at production is reported as that rather than preempted by "your runner is
+broken" — both are safe, but only one is true.
+
+The refusal exits 6, distinct from the argparse code. Both mean the run did not start;
+only one means something asked to write where it was not allowed to.
+
+**D15 — A selection that cannot fit the runner is refused before the run, not diagnosed
+after it.**
+D13 already catches silent truncation, but only once a report exists — and for a mutating
+run that means after an arbitrary subset of the durable work has been submitted. The tier
+arithmetic is available from the selection alone, so the gate now computes it up front and
+refuses with the same exit code D13 uses. The verdict is identical; what changes is that
+nothing has been written when it is reached.
+
+This is what keeps the read-only and mutating dispatches honestly separate. They fit the
+budget individually (16 and 10 scenarios) and exceed it together by one, which
+`tests/cli_gen_eval/test_selection.py` pins in all three directions — so if UP-6 lands and
+a combined run becomes possible, a test says so rather than the arrangement quietly
+persisting out of habit.
+
 ### Scope
 
 - `evaluation/contract/` — pinned gen-eval contract version, the three vendored
@@ -251,12 +288,16 @@ the gate, naming all twenty scenarios that vanished.
   descriptor and scenarios; runs with no runner present.
 - `src/cli_gen_eval/report.py` — D7/D13 credibility rules and the expectation model,
   shared by the gate (which enforces on every run) and the standalone validator.
+- `src/cli_gen_eval/mutation_guard.py` — D6/D14 target-policy guard, consuming
+  `release_smoke`'s policy model rather than restating it.
+- `evaluation/target-policy.example.json` — the policy shape, as a document that loads.
 - `scripts/validate_gen_eval_report.py` — re-checking a retained report away from the
   run that produced it.
 - `tests/fixtures/gen_eval/` — recorded runner output plus its expectation, paired.
 - `openspec/contracts/cli-gen-eval/` — the pinned schemas and fixtures as a
   durable contract domain.
-- `make gen-eval` (full gate) and `make gen-eval-contract` (contract layer only).
+- `make gen-eval` (full gate), `make gen-eval-contract` (contract layer only), and
+  `make gen-eval-mutating` (the guarded dispatch).
 - `.github/workflows/cli-gen-eval.yml` — pull-request job (contract layer plus
   read-only categories, enforcing) and `workflow_dispatch` staging job (mutating
   categories).

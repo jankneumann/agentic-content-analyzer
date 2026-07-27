@@ -174,16 +174,74 @@ def _strings(document: Any) -> list[str]:
     return []
 
 
+def _captured_before(document: Any) -> dict[int, set[str]]:
+    """For each step index, the capture names an earlier step has already bound.
+
+    A reference to a name captured later — or never — interpolates to nothing at
+    runtime, and the resulting command is dispatched anyway with the literal braces
+    still in it. That failure is visible only as a confusing assertion diff.
+    """
+    available: dict[int, set[str]] = {}
+    seen: set[str] = set()
+    steps = document.get("steps") if isinstance(document, dict) else None
+    for index, step in enumerate(steps or []):
+        available[index] = set(seen)
+        if isinstance(step, dict) and isinstance(step.get("capture"), dict):
+            seen.update(str(name) for name in step["capture"])
+    return available
+
+
+def _all_captured(document: Any) -> set[str]:
+    """Every name any step binds, regardless of order."""
+    steps = document.get("steps") if isinstance(document, dict) else None
+    return {
+        str(name)
+        for step in steps or []
+        if isinstance(step, dict) and isinstance(step.get("capture"), dict)
+        for name in step["capture"]
+    }
+
+
+def _capture_order_errors(document: Any) -> list[str]:
+    """A step may only reference names an earlier step has captured."""
+    errors: list[str] = []
+    available = _captured_before(document)
+    every = _all_captured(document)
+    steps = document.get("steps") if isinstance(document, dict) else None
+    for index, step in enumerate(steps or []):
+        for text in _strings(step):
+            for name in _SUBSTITUTION.findall(text):
+                if name in available[index] or name not in every:
+                    continue
+                errors.append(
+                    f"step {step.get('id', index)!r} references {name!r} before the "
+                    "step that captures it has run"
+                )
+    return errors
+
+
 def _reference_errors(document: Any, parameters: dict[str, Any]) -> list[str]:
     """Catch the render failures that would silently drop parameter combinations.
 
-    gen-eval renders with ``StrictUndefined``, so a substitution naming something the
-    ``parameters`` block does not declare raises ``UndefinedError`` — which the
-    generator logs and swallows, dropping that combination. Checking references
-    statically turns that into a validation failure before any run.
+    `{{ name }}` means two entirely different things depending on one other field, and
+    the runner offers no signal about which reading applies.
+
+    With a ``parameters`` block, the generator renders the template through Jinja2 with
+    ``StrictUndefined``, so a substitution naming something undeclared raises
+    ``UndefinedError`` — which the generator logs and swallows, dropping that
+    combination silently. Without one, ``_expand_parameters`` returns the template
+    untouched (``if not params: return [raw]``) and the same braces survive to the
+    evaluator, which interpolates them at runtime from values captured by earlier steps.
+
+    So the two mechanisms share a delimiter and are mutually exclusive: a template that
+    parameterizes cannot also capture, because generation consumes the braces before the
+    evaluator ever sees them. Checking both readings here turns each of those into a
+    validation failure before any run.
     """
     errors: list[str] = []
     declared = set(parameters)
+    captured = _all_captured(document)
+
     for text in _strings(document):
         if not _ANY_JINJA.search(text):
             continue
@@ -201,10 +259,24 @@ def _reference_errors(document: Any, parameters: dict[str, Any]) -> list[str]:
             errors.append(f"contains a substitution this suite cannot account for: {text[:80]!r}")
             continue
         for name in sorted(referenced - declared):
+            if name in captured:
+                if declared:
+                    errors.append(
+                        f"references {name!r}, which a step captures, but the template "
+                        "also declares parameters — Jinja2 renders {{ }} at generation "
+                        "time with StrictUndefined, so the capture reference is "
+                        "destroyed before the evaluator can interpolate it"
+                    )
+                continue  # a runtime capture reference in an unparameterized template
             errors.append(
                 f"references undeclared parameter {name!r}; gen-eval renders with "
                 "StrictUndefined and would drop the expansion with only a warning"
+                if declared
+                else f"references {name!r}, which no step captures and no parameter "
+                "declares, so it interpolates to nothing and the literal braces are "
+                "dispatched as part of the command"
             )
+    errors.extend(_capture_order_errors(document))
     if not declared:
         return errors
     used = {

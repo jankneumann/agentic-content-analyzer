@@ -1,0 +1,13 @@
+{
+  "target_id": "aca-staging",
+  "target": "staging",
+  "frontend_origin": "https://staging.example.invalid",
+  "api_origin": "https://api-staging.example.invalid",
+  "expected_frontend_revision": "0000000000000000000000000000000000000000",
+  "expected_api_revision": "0000000000000000000000000000000000000000",
+  "production_target_ids": ["aca-production"],
+  "production_origins": [
+    "https://app.example.invalid",
+    "https://api.example.invalid"
+  ]
+}

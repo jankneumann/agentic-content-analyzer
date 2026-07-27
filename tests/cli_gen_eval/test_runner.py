@@ -365,15 +365,22 @@ def test_gate_refuses_skip_contract_under_enforcement(tmp_path: Path) -> None:
     assert completed.returncode == 2
 
 
-def test_gate_refuses_mutating_categories_before_phase_5(tmp_path: Path) -> None:
-    """No durable work may be submitted before the target guard exists."""
+def test_gate_refuses_mutating_categories_without_a_target_policy(tmp_path: Path) -> None:
+    """End to end, as a real invocation: no policy, no durable work.
+
+    The rules themselves are tested in tests/cli_gen_eval/test_mutation_guard.py. What
+    this adds is that a genuine subprocess invocation reaches the refusal — the guard is
+    wired into `main()` and reports on stderr with the exit code the wrapper documents,
+    not merely importable and correct.
+    """
     stub = working_stub(tmp_path / "runner", contract_version="1")
     completed = run_gate(
         ["--categories", "workflow-submission"],
         {"PATH": os.environ["PATH"], ENV_BIN: str(stub)},
     )
-    assert completed.returncode == 2
+    assert completed.returncode == 6
     assert "workflow-submission" in completed.stderr
+    assert "no workflow was submitted" in completed.stderr
 
 
 def test_gate_diagnostics_stay_on_stderr(tmp_path: Path) -> None:

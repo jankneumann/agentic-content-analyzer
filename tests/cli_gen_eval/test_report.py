@@ -402,9 +402,18 @@ def test_the_threshold_is_honoured_exactly(report: dict[str, Any]) -> None:
 def test_the_expectation_matches_the_checked_in_suite(
     templates: list[dict[str, Any]], descriptor: dict[str, Any]
 ) -> None:
-    built = expectation_from(
-        templates, descriptor, categories=["discovery", "plumbing", "validation"]
-    )
+    """Rebuilding the recorded expectation from the suite must reproduce it exactly.
+
+    The read-only filter is applied here rather than inside `expectation_from`, because
+    the gate hands it the *selection* and nothing else. A second category filter in the
+    builder would quietly repair a selection bug instead of recording it — the
+    expectation has to describe what was actually chosen, right or wrong.
+    """
+    read_only = ["discovery", "plumbing", "validation"]
+    selected = [t for t in templates if t["category"] in read_only]
+    assert len(selected) < len(templates), "mutating scenarios must exist to be excluded"
+
+    built = expectation_from(selected, descriptor, categories=read_only)
     recorded = Expectation.from_dict(_load("expectation-full-pass.json"))
     assert built.to_dict() == recorded.to_dict()
 

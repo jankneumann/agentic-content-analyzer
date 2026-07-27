@@ -18,6 +18,7 @@ acquired, never depended on. See
 make gen-eval-contract     # contract only — no runner needed, always conclusive
 make gen-eval              # contract, then the suite, then report validation
 make gen-eval-report       # re-check a retained report; REPORT=… EXPECTATION=…
+make gen-eval-mutating TARGET_POLICY=…    # the mutating dispatch — see below
 ./evaluation/run-gate.sh --resolve-only   # report runner state and stop
 ./evaluation/run-gate.sh --categories plumbing discovery
 ./evaluation/run-gate.sh --offline        # only the scenarios needing no backend
@@ -25,6 +26,9 @@ make gen-eval-report       # re-check a retained report; REPORT=… EXPECTATION=
 
 `make gen-eval` needs a backend running: about a quarter of the suite exercises the
 canonical workflow surface, which is HTTP-only. `make dev-bg` first, or use `--offline`.
+
+`make gen-eval` never runs the mutating categories, whatever is on disk. They are a
+separate dispatch against a separate target — see "Mutating categories" below.
 
 ## What needs a backend, and what happens when there isn't one
 
@@ -114,7 +118,15 @@ broken upstream and crashed on every invocation. That defect is fixed
 | 2 | usage error, or a flag refused under `ACA_GEN_EVAL_REQUIRE` |
 | 3 | runner broken, or absent under `ACA_GEN_EVAL_REQUIRE` |
 | 4 | the backend target the selection needs is absent or unreachable |
-| 5 | the run finished but its report is not credible |
+| 5 | the report is not credible, or the selection could not have produced a credible one |
+| 6 | a mutating category was selected without a usable non-production target |
+
+**These codes only survive `./evaluation/run-gate.sh`.** GNU make reports its own failure
+code — 2 — for any failing recipe, so `make gen-eval-mutating` returns 2 whether the guard
+refused, the target was unreachable, or a scenario failed. The Make targets are for
+humans; anything that needs to tell 4, 5, and 6 apart must call the script directly. This
+is the same reason report validation lives inside the gate rather than as a third Make
+step.
 
 ## Is the report believable?
 
@@ -212,12 +224,71 @@ redesign; the `uvx --from <requirement>` shape is identical either way.
 | `plumbing` | 9 | no | no | yes |
 | `discovery` | 3 | yes | no | yes |
 | `validation` | 4 | 2 of 4 | no | yes |
-| `workflow-submission` | — | yes | **yes** | no — explicit dispatch only |
-| `operation-control` | — | yes | **yes** | no — explicit dispatch only |
+| `workflow-submission` | 8 | yes | **yes** | no — explicit dispatch only |
+| `operation-control` | 2 | yes | **yes** | no — explicit dispatch only |
 
-Mutating categories submit or control durable work and require an explicit staging or
-ephemeral target, reusing the release-smoke target policy. They are refused outright until
-that guard lands (Phase 5), and no such scenarios are checked in yet.
+The read-only categories and the mutating ones are two dispatches, not one run with a
+wider selection. They fit the runner's tier budget separately (16 and 10 scenarios) and
+overflow it together by one, which the gate refuses up front rather than discovering
+afterwards — see "Known limits". `tests/cli_gen_eval/test_selection.py` pins all three
+numbers, so if `UPSTREAM.md` UP-6 lands and the combined run starts fitting, a test says
+so.
+
+## Mutating categories
+
+`workflow-submission` and `operation-control` submit and control durable work. Everything
+else here is a read: at worst it reports a wrong answer. These two write, and a write
+against the wrong database is not undone by re-running the gate.
+
+**Two independent mechanisms must both fail before anything is submitted.**
+
+1. Selection defaults to the read-only categories, so a mutating scenario present on disk
+   cannot execute unless its category is named explicitly.
+2. The guard (`src/cli_gen_eval/mutation_guard.py`) then refuses that explicit naming
+   unless a target policy is supplied *and* describes a non-production target that is the
+   same target the CLI will dial.
+
+Neither alone is sufficient. Selection filters files, so it says nothing about where the
+surviving scenarios point; the guard describes a target, so it says nothing about what is
+on disk.
+
+```bash
+make gen-eval-mutating TARGET_POLICY=~/secrets/aca-staging-policy.json
+```
+
+The policy is a `src/release_smoke/models.py::ProtectedTargetPolicy` document — the same
+model release verification uses, loaded verbatim. The guard defines no target
+classification of its own (proposal D6), so exactly one place in this repository decides
+what production is. `evaluation/target-policy.example.json` is a working copy of the
+shape; it carries no explanatory keys because the model forbids extra fields, and a
+`_comment` would make it fail the moment you copied it.
+
+What will refuse it, roughly in the order you will hit it:
+
+| Refusal | Owned by |
+|---|---|
+| `target` is not `staging` or `ephemeral` | the guard |
+| a non-local target that is not HTTPS — so **localhost can never be mutated** | the policy model |
+| empty `production_target_ids` / `production_origins` | the policy model |
+| `target_id` appears in `production_target_ids` | the policy model |
+| an origin appears in `production_origins` | the policy model |
+| `api_origin` is not the origin the CLI resolves from settings | the guard |
+
+That last one is the check that makes the rest mean anything. A file saying "staging"
+is a claim about a target the scenarios might not be pointed at; without comparing it to
+the CLI's own resolved base URL, the policy is a sticky note — correct, adjacent to the
+work, and attached to nothing.
+
+A refusal exits 6, distinct from the argparse code 2. Both mean "the run did not start",
+but only one of them means something asked to write to a target it was not allowed to
+write to, and that is worth alerting on differently from a typo.
+
+**Local runs are not possible, by construction.** The policy model requires HTTPS for
+every non-local class, and `local` is not a mutable class — so these categories need a
+deployed staging or ephemeral target. Verifying a change to them locally means invoking
+the pinned runner directly against a materialized selection, outside the gate; that is
+how the checked-in scenarios were verified, against a local backend with the embedded
+queue worker both enabled and disabled.
 
 ## Selection is done by the gate, not the runner
 
@@ -226,9 +297,9 @@ never read again; the only path into its scenario filter is a feedback-driven fo
 that is empty on the first iteration, and iterations default to 1. Confirmed rather than
 inferred — `--categories discovery` against this suite evaluates all sixteen scenarios.
 
-That matters beyond tidiness. The mutating categories are meant to be held back by
-selection, so trusting the flag would mean every `make gen-eval` submitted real durable
-work once Phase 5 lands. So the gate resolves the selection itself, copies the chosen
+That matters beyond tidiness. The mutating categories are held back by selection, so
+trusting the flag would mean every `make gen-eval` submitted real durable work. So the
+gate resolves the selection itself, copies the chosen
 scenarios into `evaluation/reports/.selection/`, and hands the runner a descriptor
 pointing there with the declared command list carried over intact. Reported upstream as
 `UPSTREAM.md` UP-6.
@@ -266,6 +337,26 @@ written to catch were already present: one scenario claimed `cli:operations` whi
 crediting nothing (its steps all spell the command as the root-level `--json` flag,
 which credits no interface), and another declared nothing while crediting three.
 
+**`{{ name }}` means two different things, and only one other field says which.** With a
+`parameters` block the generator renders the template through Jinja2 at generation time
+with `StrictUndefined`, and an undeclared name drops the expansion with a log warning.
+Without one, `_expand_parameters` returns the template untouched and the same braces reach
+the evaluator, which interpolates them from values earlier steps captured. So a template
+cannot both parameterize and capture — generation consumes the braces before the evaluator
+sees them. `src/cli_gen_eval/suite.py` checks both readings and the capture ordering, which
+is what lets the operation-control scenarios chain steps at all.
+
+**Whether the target drains its own queue is invisible to the gate.** `src/api/app.py`
+starts an embedded worker when `worker_enabled` is set, and neither `/health` nor
+`capabilities` reports it. A submitted operation therefore reaches a terminal state on its
+own on one target and sits queued indefinitely on another, from identical steps. The
+mutating scenarios are written to hold under both, which costs two things: the cancel step
+asserts only that the command returned a parseable document (its exit code is 0 from a
+queued operation and 1 from an already-failed one), and **`operations retry`'s success
+path is not covered** — retry requeues from `failed` only, so the identical prior steps
+yield 200 against a drained queue and 409 against an idle one. Retry's error contract is
+covered unconditionally.
+
 **Interface coverage is attempted, not passed.** `interfaces_tested` is derived from a
 scenario's declared steps regardless of which ones ran, so a batch that fails early still
 credits every interface it named. Coverage percentage answers "was this addressed", not
@@ -273,8 +364,10 @@ credits every interface it named. Coverage percentage answers "was this addresse
 
 ## Status
 
-Phases 1–4 are complete: the contract layer, runner acquisition, the read-only suite, and
-report validation. `make gen-eval` validates the contract, resolves a runner and a
-target, evaluates 16 scenarios covering all 31 declared command interfaces, and refuses
-to report success over a run it cannot show was complete. Phase 5 adds the mutation
-guard; Phase 6 CI wiring.
+Phases 1–5 are complete: the contract layer, runner acquisition, the read-only suite,
+report validation, and the mutation guard. `make gen-eval` validates the contract,
+resolves a runner and a target, evaluates 16 scenarios covering all 31 declared command
+interfaces, and refuses to report success over a run it cannot show was complete.
+`make gen-eval-mutating` evaluates 10 more against a declared non-production target,
+covering all eight canonical operation types and the operation-control surface. Phase 6
+wires both into CI.

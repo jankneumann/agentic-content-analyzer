@@ -210,6 +210,14 @@ to filter them, so that an unselected category cannot execute.
 - **THEN** the declared command surface used to compute coverage SHALL be unchanged from
   the checked-in descriptor
 
+#### Scenario: A selection that cannot fit the runner is refused before it runs
+
+- **WHEN** the selected scenarios exceed the pinned runner's per-tier capacity
+- **THEN** the gate SHALL refuse before materializing the selection or invoking the
+  runner
+- **AND** SHALL name the tier that overflowed and by how much
+- **AND** SHALL exit with the same code it uses for a report that cannot be believed
+
 #### Scenario: An empty selection is refused
 
 - **WHEN** a selection matches no scenarios
@@ -312,3 +320,26 @@ release-verification target policy rather than a second target model.
 - **THEN** it SHALL consume the existing release-verification target policy model
   and its production deny registries
 - **AND** SHALL NOT define an independent target classification
+
+#### Scenario: The declared target is not the target the CLI will use
+
+- **WHEN** a mutating category is selected with a valid non-production target policy
+  whose API origin differs from the origin the CLI resolves from project settings
+- **THEN** the gate SHALL refuse to execute the category
+- **AND** SHALL report both origins, so the policy cannot be read as describing a
+  target the scenarios are not pointed at
+
+#### Scenario: A refused mutation is distinguished from a malformed invocation
+
+- **WHEN** the gate refuses a mutating category on target-policy grounds
+- **THEN** it SHALL exit with a code reserved for that refusal and distinct from the
+  usage, suite-failure, runner, target, and report-credibility codes
+- **AND** SHALL report that no scenario was materialized and no workflow submitted
+
+#### Scenario: The guard decides before any runner is resolved
+
+- **WHEN** a mutating category is selected without a usable target policy and no
+  evaluation runner is resolvable
+- **THEN** the gate SHALL report the target-policy refusal rather than the runner
+  state
+- **AND** SHALL NOT execute any subprocess before reaching that verdict
