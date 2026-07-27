@@ -1,6 +1,5 @@
 {
   "permissions": {
-    "defaultMode": "auto",
     "allow": [
       "WebFetch(domain:localhost)",
       "WebFetch(domain:127.0.0.1)",
@@ -17,10 +16,10 @@
       "Bash(alembic *)",
       "Bash(psql *)",
       "Bash(railway *)",
-      "Bash(env *)"
+      "Bash(env *)",
+      "Bash(curl *)"
     ],
     "deny": [
-      "Bash(curl *)",
       "Bash(rm -rf *)",
       "Bash(rm -r -f *)",
       "Bash(git reset --hard *)",
