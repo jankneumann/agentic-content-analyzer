@@ -53,7 +53,8 @@ def committed_contract():
         Path(__file__).resolve().parents[2]
         / "openspec"
         / "changes"
-        / "cloud-db-source-of-truth"
+        / "archive"
+        / "2026-04-25-cloud-db-source-of-truth"
         / "contracts"
         / "openapi"
         / "v1.yaml"
