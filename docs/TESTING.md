@@ -282,6 +282,65 @@ publication dates with explicit ingestion-date fallback,
 filtered/failed/missing-summary exclusions, partial failure, force,
 idempotency, cancellation, retry, and queue payload version 1 projection.
 
+## CLI Generator-Evaluator Coverage
+
+The repository-owned CLI evaluation contract lives under `evaluation/`; the
+runner is acquired as an isolated artifact from the immutable ref in
+`evaluation/contract/pin.json`. Start with the contract-only command because it
+is conclusive even when no runner or backend is available:
+
+```bash
+make gen-eval-contract
+make gen-eval                         # read-only; requires a reachable backend
+./evaluation/run-gate.sh --offline    # explicit reduced local coverage
+make gen-eval-mutating TARGET_POLICY=~/secrets/aca-staging-policy.json
+```
+
+The default and pull-request selection contains only `plumbing`, `discovery`,
+and `validation`. `workflow-submission` and `operation-control` are mutating
+categories: they run only through an explicit dispatch whose
+`ProtectedTargetPolicy` identifies the same staging or ephemeral API origin the
+CLI resolves. Production, localhost, missing deny registries, and policy/origin
+mismatches are refused before runner resolution.
+
+When authoring a scenario:
+
+1. Put it in the matching `evaluation/scenarios/<category>/` directory and
+   preserve the `requires-target` or `no-target` tag.
+2. Declare only interfaces its CLI steps actually credit. A step reaching
+   `aca operations get` uses `command: operations` and `args: [get, ...]`, so
+   the credited interface is `cli:operations`.
+3. Run `make gen-eval-contract` and
+   `pytest tests/cli_gen_eval/test_descriptor_drift.py
+   tests/cli_gen_eval/test_report.py --no-cov`.
+4. Keep the read-only and mutating selections separate; their combined
+   scenario set exceeds the pinned runner's effective tier capacity.
+
+The roadmap used “operation status” as behavioral shorthand. The implemented
+CLI command is `aca operations get <id>`; there is no `operations status`
+command or compatibility alias. Evaluation scenarios intentionally exercise
+the real `get`, `wait`, `retry`, and `cancel` names.
+
+Runner resolution has three states: `available` runs, `absent` is advisory only
+for non-enforcing local use, and `broken` always fails. CI sets
+`ACA_GEN_EVAL_REQUIRE=1`, which also makes absence fatal, rejects reduced
+offline runs, and removes adjacent checkouts from resolution.
+
+To bump the runner, update `runner_ref` in
+`evaluation/contract/pin.json`, run `make gen-eval-contract-schemas`, and update
+the pinned contract version plus
+`openspec/contracts/cli-gen-eval/README.md` if the published schema changed.
+Then run the contract drift check, the focused suite, and an enforcing resolve:
+
+```bash
+make gen-eval-contract-schemas-check
+pytest tests/cli_gen_eval --no-cov
+ACA_GEN_EVAL_REQUIRE=1 ./evaluation/run-gate.sh --resolve-only
+```
+
+See [the evaluation runbook](../evaluation/README.md) for exit-code meanings,
+report credibility rules, target-policy details, and known upstream limits.
+
 ## Database Fixtures
 
 ### Session Fixture

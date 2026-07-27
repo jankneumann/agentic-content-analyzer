@@ -362,12 +362,35 @@ scenario's declared steps regardless of which ones ran, so a batch that fails ea
 credits every interface it named. Coverage percentage answers "was this addressed", not
 "does this work" — the pass rate answers the second question.
 
+## CI
+
+`.github/workflows/cli-gen-eval.yml` has two deliberately separate jobs:
+
+- Pull requests cold-start Postgres plus the API, enforce the pinned runner, and
+  execute only `plumbing`, `discovery`, and `validation`. The job has no model
+  credentials or repository secrets.
+- Manual dispatch runs `workflow-submission` and `operation-control` through the
+  approval-protected `release-smoke-staging` environment. `TARGET_ID`,
+  `FRONTEND_ORIGIN`, `API_ORIGIN`, `PRODUCTION_TARGET_IDS_JSON`, and
+  `PRODUCTION_ORIGINS_JSON` are protected environment variables;
+  `ADMIN_API_KEY` and `APP_SECRET_KEY` are environment secrets. The environment
+  must retain reviewed ref restrictions, no self-approval, and no administrator
+  bypass.
+
+Both jobs validate the repository-owned contract before acquiring the runner
+from the checked-in pin. The gate writes the expectation before the run and
+validates the report at the 95% threshold. A separate threshold-zero check
+validates credibility for retention, so a credible failing report is still
+uploaded for diagnosis while the original gate outcome remains failed. Only
+the JSON report and its expectation are retained, for 14 days.
+
 ## Status
 
-Phases 1–5 are complete: the contract layer, runner acquisition, the read-only suite,
-report validation, and the mutation guard. `make gen-eval` validates the contract,
+Phases 1–6 are complete: the contract layer, runner acquisition, read-only and
+mutating suites, report validation, mutation guard, and CI wiring.
+`make gen-eval` validates the contract,
 resolves a runner and a target, evaluates 16 scenarios covering all 31 declared command
 interfaces, and refuses to report success over a run it cannot show was complete.
 `make gen-eval-mutating` evaluates 10 more against a declared non-production target,
-covering all eight canonical operation types and the operation-control surface. Phase 6
-wires both into CI.
+covering all eight canonical operation types and the implemented operation-control
+surface.
