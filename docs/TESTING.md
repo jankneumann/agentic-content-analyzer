@@ -5,7 +5,7 @@ This guide covers the testing infrastructure, patterns, and best practices for t
 ## Quick Reference
 
 ```bash
-# Run fast tests (excludes integration, live_api, smoke, and contract by default)
+# Run fast tests (excludes integration, e2e, live_api, smoke, and contract by default)
 pytest
 
 # Run with coverage report
@@ -14,6 +14,7 @@ pytest --cov=src --cov-report=html
 # Run specific test categories
 pytest -m unit                    # Pure unit tests
 pytest -m integration             # Database integration tests
+pytest -m e2e                     # End-to-end tests; starts or requires a backend
 pytest -m hoverfly                # Hoverfly HTTP simulation tests
 pytest -m contract                # OpenAPI and deterministic workflow contracts
 pytest -m "not slow"              # Skip slow tests
@@ -40,9 +41,9 @@ Tests are organized by category using pytest markers:
 | `crawl4ai` | Requires Crawl4AI setup | Browser, Crawl4AI |
 | `real_ingest` | Real-ingestion CI tiers (canonical durable workflow) | PostgreSQL test database; live adapters gated by `REAL_INGEST_LIVE` |
 
-Default test run excludes `integration`, `live_api`, `smoke`, `contract`, and
-`real_ingest` tests. Run contract suites explicitly; passing a file path does not
-override the default marker expression.
+Default test run excludes `integration`, `e2e`, `live_api`, `smoke`, `contract`,
+and `real_ingest` tests. Run contract suites explicitly; passing a file path does
+not override the default marker expression.
 
 ## Real-ingestion tiers
 
