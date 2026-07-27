@@ -116,7 +116,7 @@ items:
     queue, and persistence failures.
 - item_id: ri-06
   title: Establish CLI gen-eval coverage
-  status: in_progress
+  status: completed
   priority: 6
   effort: L
   depends_on:
@@ -263,4 +263,4 @@ items:
     evaluation suites.
   - No speculative implementation from the existing 42-task proposal begins without
     a concrete incompatible case.
-updated_at: '2026-07-25T02:20:55Z'
+updated_at: '2026-07-27T20:05:01.226529+00:00'
