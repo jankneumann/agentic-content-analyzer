@@ -29,6 +29,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PIN_PATH = REPO_ROOT / "evaluation" / "contract" / "pin.json"
+RUNNER_PROJECT = REPO_ROOT / "evaluation" / "runner"
 
 #: Explicit operator override. Highest precedence. A full command line.
 ENV_BIN = "ACA_GEN_EVAL_BIN"
@@ -65,8 +66,7 @@ class Candidate:
 
     origin: str
     argv: list[str]
-    #: True when the contract version is guaranteed by construction — the pinned
-    #: artifact is installed from the exact ref the schemas were generated from.
+    #: True when acquisition is from the repository-owned locked runner project.
     pinned: bool = False
 
     def display(self) -> str:
@@ -143,12 +143,23 @@ def candidates(
     if override:
         found.append(Candidate(origin=f"{ENV_BIN} override", argv=shlex.split(override)))
 
-    uvx = shutil.which("uvx", path=search_path)
-    if uvx is not None:
+    uv = shutil.which("uv", path=search_path)
+    if uv is not None:
         found.append(
             Candidate(
                 origin=f"pinned artifact {pin['runner_ref'][:12]}",
-                argv=[uvx, "--from", runner_requirement(pin), *_entry_argv(pin)],
+                argv=[
+                    uv,
+                    "run",
+                    "--project",
+                    str(RUNNER_PROJECT),
+                    "--locked",
+                    "--exact",
+                    "--no-dev",
+                    "--no-python-downloads",
+                    "--",
+                    *_entry_argv(pin),
+                ],
                 pinned=True,
             )
         )
@@ -156,7 +167,6 @@ def candidates(
     if not enforcing:
         raw_project = (environ.get(ENV_PROJECT) or "").strip()
         project = Path(raw_project) if raw_project else DEFAULT_SIBLING
-        uv = shutil.which("uv", path=search_path)
         if uv is not None and project.is_dir():
             found.append(
                 Candidate(
@@ -204,10 +214,10 @@ def check_contract_version(
 ) -> tuple[VersionCheck, str]:
     """Compare the runner's contract version against the pin.
 
-    ``--print-contract-version`` does not exist upstream yet (UPSTREAM.md UP-2). Until
-    it does, a pinned candidate is verified *by construction* — it is installed from
-    the exact ref the vendored schemas were generated from. Anything else is
-    unverifiable, which is tolerable locally and refused under enforcement.
+    The pinned artifact publishes ``--print-contract-version``. A pinned candidate
+    that cannot complete that handshake is broken; an arbitrary local override may
+    still be classified unverifiable, which is tolerated locally and refused under
+    enforcement.
     """
     try:
         completed = subprocess.run(
@@ -222,7 +232,10 @@ def check_contract_version(
         completed = None
         detail = f"version probe failed: {exc}"
     else:
-        detail = ""
+        assert completed is not None
+        output = (completed.stderr or completed.stdout or "").strip().splitlines()
+        excerpt = output[-1] if output else "<no output>"
+        detail = f"version probe exited {completed.returncode}: {excerpt}"
 
     if completed is not None and completed.returncode == 0:
         reported = (completed.stdout or "").strip()
@@ -236,11 +249,8 @@ def check_contract_version(
 
     if candidate.pinned:
         return (
-            VersionCheck.MATCH,
-            (
-                f"contract version {pin['contract_version']} verified by construction "
-                f"(installed from pinned ref {pin['runner_ref'][:12]})"
-            ),
+            VersionCheck.MISMATCH,
+            f"pinned runner failed the contract-version handshake: {detail}",
         )
 
     return (
@@ -270,7 +280,7 @@ def resolve(
             attempted=[],
             detail=(
                 "no runner candidate exists: no "
-                f"{ENV_BIN} override, uvx is not on PATH, and no adjacent checkout is "
+                f"{ENV_BIN} override, uv is not on PATH, and no adjacent checkout is "
                 "usable"
                 + (" (adjacent checkouts are ignored under enforcement)" if enforcing else "")
             ),

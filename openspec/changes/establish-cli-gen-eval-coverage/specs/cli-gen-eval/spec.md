@@ -59,6 +59,8 @@ any enforcing context.
 - **THEN** it SHALL be installed into an environment isolated from this project's
   environment
 - **AND** the project's dependency manifest and lock file SHALL be unmodified
+- **AND** the isolated runner's complete runtime and build dependency closure SHALL
+  come from a checked-in lock that is required to be current
 
 #### Scenario: Runner contract version mismatch
 
@@ -279,6 +281,8 @@ that is malformed, empty, or incomplete before evaluating that threshold.
 - **AND** the run SHALL fail when the pass rate is below the documented threshold
 - **AND** failures SHALL be published as retained evidence grouped by command and
   category
+- **AND** retained evidence SHALL omit raw step outputs, captured variables, diffs,
+  and free-form failure text
 
 #### Scenario: Continuous integration selects deterministic generation
 
@@ -328,6 +332,14 @@ release-verification target policy rather than a second target model.
 - **THEN** the gate SHALL refuse to execute the category
 - **AND** SHALL report both origins, so the policy cannot be read as describing a
   target the scenarios are not pointed at
+
+#### Scenario: The deployed target identity does not match protected policy
+
+- **WHEN** a mutating category has an otherwise valid policy but its API health
+  identity redirects, has untrusted provenance, or reports a revision other than
+  the protected expected revision
+- **THEN** the gate SHALL refuse to execute the category
+- **AND** SHALL NOT execute any subprocess or forward a credential
 
 #### Scenario: A refused mutation is distinguished from a malformed invocation
 

@@ -1,0 +1,14 @@
+[project]
+name = "aca-gen-eval-runner"
+version = "0.0.0"
+requires-python = "==3.12.*"
+dependencies = [
+  "gen-eval @ git+https://github.com/jankneumann/agentic-coding-tools.git@600744a55418938f8691d70f0266c48410e6a545#subdirectory=packages/gen-eval",
+  "uv-build==0.9.18",
+]
+
+[tool.uv]
+package = false
+build-constraint-dependencies = [
+  "uv-build==0.9.18",
+]

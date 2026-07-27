@@ -15,9 +15,9 @@ layers with opposite distribution requirements:
   validator — lives in this repository, pins a gen-eval contract version, and has
   no runtime dependency on gen-eval at all.
 - **The runner** — the process that spawns the CLI and evaluates it — is acquired
-  as a **pinned, versioned artifact** (`uv tool` / `uvx` from a git SHA now, an
-  artifact index later). It is never resolved from a sibling checkout in any
-  non-interactive context.
+  as a **pinned, versioned artifact** from a git SHA now, with its full runtime and
+  build dependency closure in `evaluation/runner/uv.lock`. It is never resolved from
+  a sibling checkout in any non-interactive context.
 
 Read-only discovery and validation scenarios are categorized separately from
 staging-only submission and terminal-workflow scenarios, and the mutation guard
@@ -100,18 +100,17 @@ consistency comes from a shared schema version rather than a shared runtime.
 precedence.** In order:
 
 1. `ACA_GEN_EVAL_BIN` — explicit operator override.
-2. A pinned `uv tool` / `uvx` install of a specific gen-eval version. Verified
-   working today against a git SHA:
-   `uv tool install "gen-eval @ git+https://github.com/jankneumann/agentic-coding-tools.git@<sha>#subdirectory=packages/gen-eval"`.
-   The pin is recorded in a checked-in lock file, not passed ad hoc.
+2. A dedicated isolated uv project whose direct gen-eval dependency is an immutable
+   git SHA and whose complete closure is checked in. CI invokes it only with
+   `uv run --locked --exact`.
 3. A sibling checkout — **developer convenience only**, never used when
    `ACA_GEN_EVAL_REQUIRE` is set, and therefore never in CI.
 
-`uv tool` is what makes this a tool rather than a dependency: the runner installs
-into an isolated environment, so `pyproject.toml` and `uv.lock` are untouched and
-the runner's transitive deps cannot collide with this project's. Migrating to
-`artifactory.rotkohl.ai` (or any index) later changes the resolution URL in the
-lock file and nothing else — no redesign.
+The dedicated project makes this a tool rather than an application dependency: the
+root `pyproject.toml` and `uv.lock` are untouched, the runner's transitive dependencies
+cannot collide with this project's, and lock drift is fatal. Migrating to an artifact
+index later changes the direct requirement and regenerates that isolated lock — no
+gate redesign.
 
 **D3 — No skip semantics in any enforcing context.**
 The gate classifies the runner as `available`, `absent`, or `broken`:
@@ -127,11 +126,8 @@ is never classified as an absence — the distinction that the precedent gate la
 Contract-layer checks (D1) run and enforce regardless of runner state.
 
 **D4 — The runner is invoked through its published entry point.**
-Once UP-1 lands, that is the `gen-eval` console script. Until then the gate
-resolves `uvx --from gen-eval python -m gen_eval` as a documented interim form,
-recorded in one place so it is a single-line change to retire. The gate asserts the
-resolved runner's contract version matches the pinned one and treats a mismatch as
-`broken`.
+The gate uses the published `gen-eval` console script and asserts its reported contract
+version matches the pin. A rejected version probe or mismatch is `broken`.
 
 **D5 — Scenarios are discovered through the descriptor, not a CLI flag.**
 gen-eval has no `--scenario` argument; suites resolve from the descriptor's

@@ -73,14 +73,16 @@ achieves consistency by pinning the same contract version, not by sharing a proc
 **2. The runner is acquired as a pinned artifact.** Resolution precedence:
 
 1. `ACA_GEN_EVAL_BIN` — explicit operator override.
-2. The pinned artifact, installed by `uvx` from the ref in `pin.json` into an isolated
-   environment.
+2. The pinned artifact, executed from `evaluation/runner/` with
+   `uv run --locked --exact`; its direct ref is drift-bound to `pin.json` and its full
+   runtime and build dependency closure is committed in that isolated project's lock.
 3. An adjacent checkout — developer convenience only, removed from the precedence list
    entirely under `ACA_GEN_EVAL_REQUIRE`.
 
-`uv tool`/`uvx` is what makes this a tool rather than a dependency: the runner installs
-into its own environment, so `pyproject.toml` and `uv.lock` are untouched and the runner's
-transitive dependencies cannot collide with ours.
+The dedicated uv project is what makes this a tool rather than an application dependency:
+the root `pyproject.toml` and `uv.lock` stay untouched, its dependencies cannot collide
+with ours, and `--locked --exact` fails instead of resolving new transitive code in a
+credential-bearing job.
 
 **3. Three runner states, and `broken` is fatal everywhere.** `available` / `absent` /
 `broken`. An exit code, crash, timeout, rejected argument, or contract-version mismatch is
@@ -117,8 +119,8 @@ dynamic-import fragility.
 - Runner acquisition requires network and repository access. An environment without them
   gets `absent`, which is fatal under enforcement. That is correct and intentional.
 - Pointing `runner_source` at an artifact index later — for example
-  `artifactory.rotkohl.ai` — is a change to `pin.json` alone. The `uvx --from <requirement>`
-  invocation shape is identical.
+  `artifactory.rotkohl.ai` — updates the pin and the dedicated runner project's direct
+  requirement, then regenerates its lock; the gate and CI invocation stay unchanged.
 - Pinned distribution makes the runner's published entry point load-bearing: there is no
   routing around a broken one, as there is with a source checkout. This surfaced the
   upstream console-script defect as a blocker (`UPSTREAM.md` UP-1, since fixed).

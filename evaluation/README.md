@@ -61,16 +61,18 @@ Precedence, highest first:
 
 1. **`ACA_GEN_EVAL_BIN`** — explicit command line. Use when you have a checkout or build
    you want to test against.
-2. **The pinned artifact** — installed by `uvx` from the ref in
-   `evaluation/contract/pin.json`, into an isolated environment. This is what CI uses.
+2. **The pinned artifact** — executed from the fully locked isolated project under
+   `evaluation/runner/`. Its direct Git SHA must match
+   `evaluation/contract/pin.json`; `uv run --locked --exact` refuses lock drift. This
+   is what CI uses.
 3. **An adjacent checkout** — `ACA_GEN_EVAL_PROJECT`, defaulting to
    `../agentic-coding-tools/packages/gen-eval`. **Developer convenience only.** It is
    removed from the precedence list entirely whenever `ACA_GEN_EVAL_REQUIRE` is set, so
    CI can never evaluate against an unpinned working tree.
 
-gen-eval is not a dependency of this project. It appears in no `dependencies`, no extra,
-and no `[tool.uv.sources]` entry, and `uv.lock` contains no `gen-eval` package.
-`tests/cli_gen_eval/test_contract.py` enforces that.
+gen-eval is not a dependency of the application project. It appears in no root
+dependency, extra, source entry, or root `uv.lock`; its complete dependency graph lives
+only in `evaluation/runner/uv.lock`. `tests/cli_gen_eval/` enforces both boundaries.
 
 ## The three runner states
 
@@ -185,8 +187,10 @@ the selection actually addresses.
 
 ## Contract version and the pin
 
-`evaluation/contract/pin.json` is the single source for the runner artifact and the
-contract version. `entry_point` there is the **only** place that decides how the runner is
+`evaluation/contract/pin.json` declares runner and contract provenance.
+`evaluation/runner/pyproject.toml` repeats the direct runner requirement so uv can lock
+its complete runtime and build closure; a drift test requires it to match the pin
+exactly. `entry_point` in the pin is the **only** place that decides how the runner is
 invoked; it is `console-script` as of runner ref `600744a5`.
 
 The vendored schemas under `openspec/contracts/cli-gen-eval/` are **verbatim copies** of
@@ -207,15 +211,17 @@ A runner that does not support the flag at all is `unverifiable` — tolerated l
 refused under `ACA_GEN_EVAL_REQUIRE`, so CI never evaluates against a runner of unknown
 provenance.
 
-To bump the pin: edit `runner_ref` in `pin.json`, run `make gen-eval-contract-schemas`,
-and bump `contract_version` plus the changelog in
+To bump the pin: edit `runner_ref` in `pin.json` and the matching direct requirement in
+`evaluation/runner/pyproject.toml`, run
+`uv lock --project evaluation/runner --python 3.12` and
+`make gen-eval-contract-schemas`, then bump `contract_version` plus the changelog in
 `openspec/contracts/cli-gen-eval/README.md` if any schema changed shape.
 
 ## Migrating to an artifact index
 
 `runner_source` is a git URL as an interim measure. Pointing it at an index — for example
-a future `artifactory.rotkohl.ai` — is a change to `pin.json` alone. No code, no CI, no
-redesign; the `uvx --from <requirement>` shape is identical either way.
+a future `artifactory.rotkohl.ai` — changes the pin plus the locked runner project's
+direct requirement, but not the gate or CI design.
 
 ## Categories
 
@@ -371,18 +377,27 @@ credits every interface it named. Coverage percentage answers "was this addresse
   credentials or repository secrets.
 - Manual dispatch runs `workflow-submission` and `operation-control` through the
   approval-protected `release-smoke-staging` environment. `TARGET_ID`,
-  `FRONTEND_ORIGIN`, `API_ORIGIN`, `PRODUCTION_TARGET_IDS_JSON`, and
-  `PRODUCTION_ORIGINS_JSON` are protected environment variables;
-  `ADMIN_API_KEY` and `APP_SECRET_KEY` are environment secrets. The environment
-  must retain reviewed ref restrictions, no self-approval, and no administrator
-  bypass.
+  `FRONTEND_ORIGIN`, `API_ORIGIN`, both `EXPECTED_*_REVISION` values,
+  `PRODUCTION_TARGET_IDS_JSON`, and `PRODUCTION_ORIGINS_JSON` are protected
+  environment variables; `ADMIN_API_KEY` is the only environment secret. The job
+  additionally refuses every ref except `main`, verifies the target's protected API
+  revision without redirects before any subprocess, and runs the CLI with redirects
+  disabled.
+
+The environment protection is provisioned fail closed: administrator bypass is
+disabled, self-review is prevented, and the only deployment branch policy is `main`.
+Its target variables, admin secret, and independent reviewer activation are deliberately
+not guessed by this change and remain tracked in
+[issue #478](https://github.com/jankneumann/agentic-content-analyzer/issues/478);
+the staging tier is non-operational until that checklist is complete.
 
 Both jobs validate the repository-owned contract before acquiring the runner
 from the checked-in pin. The gate writes the expectation before the run and
 validates the report at the 95% threshold. A separate threshold-zero check
 validates credibility for retention, so a credible failing report is still
-uploaded for diagnosis while the original gate outcome remains failed. Only
-the JSON report and its expectation are retained, for 14 days.
+uploaded for diagnosis while the original gate outcome remains failed. Raw step bodies,
+captures, diffs, and free-form failure text are removed first; only the minimized JSON
+report and its expectation are retained, for 14 days.
 
 ## Status
 

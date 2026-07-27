@@ -34,6 +34,7 @@ from src.cli_gen_eval.report import (
     Severity,
     declared_interfaces,
     expectation_from,
+    minimize_for_artifact,
     validate,
 )
 from src.cli_gen_eval.suite import derive_interfaces, iter_templates
@@ -43,6 +44,7 @@ FIXTURES = REPO_ROOT / "tests" / "fixtures" / "gen_eval"
 SCENARIO_ROOT = REPO_ROOT / "evaluation" / "scenarios"
 DESCRIPTOR = REPO_ROOT / "evaluation" / "descriptors" / "aca-cli.yaml"
 VALIDATOR = REPO_ROOT / "scripts" / "validate_gen_eval_report.py"
+MINIMIZER = REPO_ROOT / "scripts" / "minimize_gen_eval_report.py"
 
 RECORDED_RUNS = ("full-pass", "offline-pass")
 
@@ -105,6 +107,57 @@ def test_a_real_passing_run_is_accepted(run: str) -> None:
     )
     assert verdict.ok, verdict.messages()
     assert verdict.summary["completeness_checked"] is True
+
+
+def test_artifact_minimization_removes_raw_outputs_and_remains_credible(
+    report: dict[str, Any], expectation: Expectation
+) -> None:
+    secret = "secret-value-that-must-not-reach-a-public-artifact"
+    first_verdict = report["verdicts"][0]
+    first_verdict["failure_summary"] = secret
+    first_verdict["cleanup_warnings"] = [secret]
+    first_step = first_verdict["steps"][0]
+    first_step["actual"] = {"body": {"raw": secret}}
+    first_step["captured_vars"] = {"operation_id": secret}
+    first_step["diff"] = {"raw": secret}
+    first_step["error_message"] = secret
+    first_step["expected"] = {"body_contains": secret}
+    first_step["semantic_verdict"] = {"reason": secret}
+    first_step["side_effect_verdicts"] = [{"detail": secret}]
+
+    minimized = minimize_for_artifact(report)
+
+    assert secret not in json.dumps(minimized)
+    assert first_step["actual"]["body"]["raw"] == secret, "the source report must not be mutated"
+    assert set(minimized["verdicts"][0]["steps"][0]) == {
+        "duration_ms",
+        "is_cleanup",
+        "status",
+        "step_id",
+        "transport",
+    }
+    verdict = validate(minimized, expectation, fail_threshold=0)
+    assert verdict.ok, verdict.messages()
+
+
+def test_artifact_minimizer_writes_a_distinct_safe_report(tmp_path: Path) -> None:
+    source = FIXTURES / "report-full-pass.json"
+    destination = tmp_path / "gen-eval-report.json"
+
+    result = subprocess.run(
+        [sys.executable, str(MINIMIZER), str(source), str(destination)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert destination.is_file()
+    raw = _load("report-full-pass.json")
+    minimized = json.loads(destination.read_text(encoding="utf-8"))
+    assert minimized["verdicts"][0]["steps"][0]["step_id"]
+    assert "actual" in raw["verdicts"][0]["steps"][0]
+    assert "actual" not in minimized["verdicts"][0]["steps"][0]
 
 
 def test_the_offline_run_covers_less_and_is_still_complete() -> None:
