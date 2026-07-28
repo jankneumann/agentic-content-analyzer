@@ -1,0 +1,75 @@
+# Category: validation — no backend required.
+#
+# Every step here must be rejected by Click before any HTTP client is constructed,
+# which is itself the claim: argument validation happens locally, so these steps pass
+# identically with the backend down. If one of them ever needed a target, the CLI
+# would have started dispatching requests it should have refused.
+
+id: validation-malformed-arguments
+name: Malformed commands and out-of-range options are rejected with exit 2
+description: >
+  Four rejection paths that must stay distinct from the exit-1 "server said no" path
+  covered by invalid-cursor.yaml. Unknown top-level command, unknown subcommand within
+  a registered group, and both ends of a bounded option range.
+
+  The limit bounds are the interesting pair. `--limit` is declared with min=1 and
+  max=100, and bounded options are where drift is silent: widening a bound to fix one
+  caller's edge case does not fail any existing test, and the CLI starts forwarding
+  values the API will reject with a 422 the user cannot act on. Asserting both ends
+  keeps the local bound and the remote one from separating.
+
+  The unknown-command step also underwrites the plumbing help sweep: it is the evidence
+  that Click cannot exit 0 for a command it does not have, which is why a zero exit
+  from `aca <group> --help` is sufficient proof of registration there.
+category: validation
+priority: 1
+# What the steps below will actually be credited with, which is not the same as what
+# this scenario is *about*. gen-eval derives coverage from `cli:<command>` per step and
+# ignores this field, so it can only ever be documentation — but it is documentation the
+# report validator holds to the steps, which is what stops it drifting into fiction.
+#
+# `cli:definitely-not-a-command` is deliberate and reviewed: the step names something the
+# CLI does not have in order to assert the rejection. It is listed in
+# `INTENTIONALLY_UNDECLARED_COMMANDS` so the report validator does not read it as a typo
+# crediting a phantom interface.
+interfaces:
+  - "cli:capabilities"
+  - "cli:definitely-not-a-command"
+  - "cli:operations"
+tags:
+  - read-only
+  - no-target
+steps:
+  - id: unknown-top-level-command
+    transport: cli
+    command: definitely-not-a-command
+    expect:
+      exit_code: 2
+
+  - id: unknown-subcommand
+    transport: cli
+    command: operations
+    args:
+      - definitely-not-a-subcommand
+    expect:
+      exit_code: 2
+
+  - id: limit-below-minimum
+    transport: cli
+    command: capabilities
+    args:
+      - "--limit"
+      - "0"
+      - "--json"
+    expect:
+      exit_code: 2
+
+  - id: limit-above-maximum
+    transport: cli
+    command: capabilities
+    args:
+      - "--limit"
+      - "101"
+      - "--json"
+    expect:
+      exit_code: 2

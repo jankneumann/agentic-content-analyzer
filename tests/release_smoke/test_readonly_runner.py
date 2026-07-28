@@ -20,6 +20,7 @@ from src.release_smoke.runner import (
     build_cli_environment,
     run_api_discovery,
     run_cli_discovery,
+    verify_api_identity,
 )
 
 SHA = "a" * 40
@@ -161,6 +162,52 @@ def test_api_discovery_observes_revisions_and_omits_cursor() -> None:
     assert "X-Admin-Key" not in requests[0].headers
 
 
+def test_api_identity_accepts_the_exact_protected_revision() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"revision": SHA, "revision_source": "railway_commit_sha"},
+        )
+
+    observation = verify_api_identity(_policy(), transport=httpx.MockTransport(handler))
+    assert observation.revision == SHA
+    assert observation.revision_source == "railway_commit_sha"
+
+
+@pytest.mark.parametrize(
+    ("response", "message"),
+    [
+        (httpx.Response(307, headers={"Location": "https://attacker.invalid"}), "redirect"),
+        (
+            httpx.Response(
+                200,
+                json={"revision": SHA, "revision_source": "local_development"},
+            ),
+            "untrusted provenance",
+        ),
+        (
+            httpx.Response(
+                200,
+                json={"revision": "b" * 40, "revision_source": "railway_commit_sha"},
+            ),
+            "does not match",
+        ),
+        (
+            httpx.Response(200, json={"revision": SHA}),
+            "invalid release identity",
+        ),
+    ],
+)
+def test_api_identity_refuses_untrusted_deployment_identity(
+    response: httpx.Response, message: str
+) -> None:
+    with pytest.raises(ReleaseSmokeError, match=message):
+        verify_api_identity(
+            _policy(),
+            transport=httpx.MockTransport(lambda request: response),
+        )
+
+
 def test_api_discovery_rejects_redirect_without_forwarding_credentials() -> None:
     requests: list[httpx.Request] = []
 
@@ -184,6 +231,15 @@ def test_api_discovery_rejects_redirect_without_forwarding_credentials() -> None
         )
 
     assert len(requests) == 2
+
+
+def test_api_identity_wraps_connection_failures_without_target_details() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("sensitive resolver detail", request=request)
+
+    with pytest.raises(ReleaseSmokeError, match="identity endpoint is unreachable") as raised:
+        verify_api_identity(_policy(), transport=httpx.MockTransport(handler))
+    assert "sensitive resolver detail" not in str(raised.value)
 
 
 def test_cli_environment_is_minimal_and_environment_only(monkeypatch: pytest.MonkeyPatch) -> None:

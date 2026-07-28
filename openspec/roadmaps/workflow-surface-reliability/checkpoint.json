@@ -1,13 +1,16 @@
 {
   "schema_version": 1,
   "roadmap_id": "roadmap-workflow-surface-reliability",
-  "current_item_id": "ri-04",
-  "phase": "planning",
+  "current_item_id": "ri-07",
+  "phase": "implementing",
   "created_at": "2026-07-23T17:11:29.016204+00:00",
-  "updated_at": "2026-07-23T22:09:34Z",
+  "updated_at": "2026-07-27T20:05:01.232586+00:00",
   "completed_items": [
     "ri-01",
     "ri-02",
-    "ri-03"
+    "ri-03",
+    "ri-04",
+    "ri-05",
+    "ri-06"
   ]
 }

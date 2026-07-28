@@ -1,0 +1,310 @@
+# Interface descriptor for the `aca` CLI.
+#
+# Schema: openspec/contracts/cli-gen-eval/interface-descriptor.schema.json
+#         (a verbatim copy of the schema gen-eval publishes in `gen_eval.contracts`
+#          at the ref in evaluation/contract/pin.json)
+#
+# Ownership: this file is hand-owned, not generated. `tests/cli_gen_eval/
+# test_descriptor_drift.py` compares it against the live Click command tree, so a
+# command group added to src/cli/app.py fails the suite until a coverage decision is
+# recorded here. Regenerating the file on drift would defeat that check.
+
+project: agentic-newsletter-aggregator
+version: "0.1.0"
+
+services:
+  # The `aca` console script.
+  #
+  # Two gen-eval mechanics constrain how steps address this service, and both are
+  # load-bearing for every scenario under evaluation/scenarios/:
+  #
+  # 1. `CliClient` builds argv as [command] + [step.command] + step.args and appends
+  #    each element verbatim — no shlex-splitting. So `step.command` must be a single
+  #    argv word; subcommands and flags belong in `args`.
+  #
+  # 2. Coverage is credited per interface, and a CLI step's interface identity is
+  #    "cli:" + the words of `step.command` before its first flag, matched against
+  #    "cli:<name>" for each entry below. So `step.command` must be exactly the
+  #    command name declared here for the interface to count as evaluated.
+  #
+  # Together these mean a step reaches `aca operations list` as
+  # `command: operations` + `args: [list]`, which credits `cli:operations`.
+  #
+  # `json_flag` is deliberately NOT set. gen-eval appends it to the *end* of argv,
+  # but `--json` on this CLI is a root-level flag that must precede the subcommand
+  # (only the two top-level commands also accept it locally). An appended `--json`
+  # would make `aca operations list --json` exit 2 and would corrupt every `--help`
+  # step. Scenarios therefore place `--json` explicitly, at the position the CLI
+  # actually accepts. See evaluation/README.md for the consequence.
+  - name: cli
+    type: cli
+    command: aca
+    commands:
+      - name: agent
+        description: 'Agentic analysis commands.'
+        tags: [coverage:plumbing]
+        subcommands:
+          - approve
+          - deny
+          - insights
+          - personas
+          - schedule
+          - status
+          - task
+      - name: audio-digest
+        description: 'Submit audio digest operations.'
+        tags: [coverage:plumbing, coverage:workflow-submission]
+        subcommands:
+          - create
+      - name: auth
+        description: 'Manage OAuth credentials for Gmail/YouTube ingestion.'
+        tags: [coverage:plumbing]
+        subcommands:
+          - gmail
+          - status
+          - youtube
+      - name: batch
+        description: 'Gemini batch execution status'
+        tags: [coverage:plumbing]
+        subcommands:
+          - status
+      - name: capabilities
+        description: 'Emit the workflow capability contract (top-level command).'
+        tags: [coverage:plumbing, coverage:discovery, coverage:validation]
+      - name: configured-sources
+        description: 'Emit the configured ingestion-source page (top-level command).'
+        tags: [coverage:plumbing, coverage:discovery, coverage:validation]
+      - name: curate
+        description: 'Health-check and curate ingestion sources (RSS feeds, blog scrapers).'
+        tags: [coverage:plumbing]
+        subcommands:
+          - blog
+          - find-moved
+          - rss
+          - youtube-rss
+      - name: deploy
+        description: 'Operations against the deployed Railway service.'
+        tags: [coverage:plumbing]
+        subcommands:
+          - sync-secrets
+      - name: digest
+        description: 'Submit digest operations.'
+        tags: [coverage:plumbing, coverage:workflow-submission]
+        subcommands:
+          - create
+      - name: edit
+        description: 'Edit content, summaries, digests, and scripts.'
+        tags: [coverage:plumbing]
+        subcommands:
+          - content
+          - digest
+          - digest-section
+          - script-section
+          - summary
+      - name: evaluate
+        description: 'LLM router evaluation — datasets, judging, and calibration'
+        tags: [coverage:plumbing]
+        subcommands:
+          - batch-savings
+          - calibrate
+          - compare
+          - create-dataset
+          - list-datasets
+          - report
+          - run
+      - name: filter
+        description: 'Inspect and re-run the ingestion filter.'
+        tags: [coverage:plumbing]
+        subcommands:
+          - explain
+          - rerun
+          - stats
+      - name: graph
+        description: 'Manage the knowledge graph.'
+        tags: [coverage:plumbing]
+        subcommands:
+          - extract-entities
+          - query
+      - name: ingest
+        description: 'Submit a canonical ingestion operation.'
+        tags: [coverage:plumbing, coverage:workflow-submission]
+        subcommands:
+          - arxiv-paper
+          - arxiv-search
+          - blog
+          - files
+          - gmail
+          - huggingface-papers
+          - perplexity-search
+          - podcast
+          - readwise
+          - rss
+          - scholar-paper
+          - scholar-references
+          - scholar-search
+          - substack
+          - url
+          - x-search
+          - youtube-playlist
+          - youtube-rss
+      - name: kb
+        description: 'Knowledge base management.'
+        tags: [coverage:plumbing]
+        subcommands:
+          - compile
+          - index
+          - lint
+          - list
+          - query
+          - show
+      - name: manage
+        description: 'Setup and operational management commands.'
+        tags: [coverage:plumbing]
+        subcommands:
+          - backfill-chunks
+          - backfill-tree-index
+          - check-profile-secrets
+          - cleanup-notifications
+          - extract-refs
+          - generate-secret
+          - list-models
+          - model-info
+          - railway-sync
+          - resolve-refs
+          - restore-from-cloud
+          - setup-gmail
+          - switch-embeddings
+          - update-model-pricing
+          - verify-setup
+      - name: models
+        description: 'Model registry — discovery, pricing refresh, and gated default promotion'
+        tags: [coverage:plumbing]
+        subcommands:
+          - discover
+          - propose-default
+          - refresh
+      - name: neon
+        description: 'Neon database branch management for agent workflows.'
+        tags: [coverage:plumbing]
+        subcommands:
+          - clean
+          - connection
+          - create
+          - delete
+          - list
+      - name: operations
+        description: 'Observe and control durable operations.'
+        tags: [coverage:plumbing, coverage:discovery, coverage:validation, coverage:operation-control]
+        subcommands:
+          - cancel
+          - get
+          - list
+          - retry
+          - wait
+      - name: pipeline
+        description: 'Submit pipeline operations.'
+        tags: [coverage:plumbing, coverage:workflow-submission]
+        subcommands:
+          - run
+      - name: podcast-audio
+        description: 'Submit podcast audio operations.'
+        tags: [coverage:plumbing, coverage:workflow-submission]
+        subcommands:
+          - create
+      - name: podcast-script
+        description: 'Submit podcast script operations.'
+        tags: [coverage:plumbing, coverage:workflow-submission]
+        subcommands:
+          - create
+      - name: profile
+        description: 'Manage configuration profiles'
+        tags: [coverage:plumbing]
+        subcommands:
+          - inspect
+          - list
+          - migrate
+          - show
+          - validate
+      - name: prompts
+        description: 'Manage LLM prompt templates and overrides.'
+        tags: [coverage:plumbing]
+        subcommands:
+          - export
+          - import
+          - list
+          - reset
+          - set
+          - show
+          - test
+      - name: review
+        description: 'Review and revise digests.'
+        tags: [coverage:plumbing]
+        subcommands:
+          - list
+          - revise
+          - view
+      - name: settings
+        description: 'Manage application settings overrides.'
+        tags: [coverage:plumbing]
+        subcommands:
+          - get
+          - list
+          - reset
+          - set
+      - name: sources
+        description: 'Manage ingestion source overrides (DB-backed, merged over YAML).'
+        tags: [coverage:plumbing]
+        subcommands:
+          - add
+          - disable
+          - enable
+          - list
+          - remove
+      - name: summarize
+        description: 'Submit summarization operations.'
+        tags: [coverage:plumbing, coverage:workflow-submission]
+        subcommands:
+          - run
+      - name: sync
+        description: 'Sync data between environments (PostgreSQL, graph DB, file storage)'
+        tags: [coverage:plumbing]
+        subcommands:
+          - export
+          - import
+          - obsidian
+          - push
+      - name: theme
+        description: 'Submit theme analysis operations.'
+        tags: [coverage:plumbing, coverage:workflow-submission]
+        subcommands:
+          - create
+      - name: worker
+        description: 'Job queue worker commands.'
+        tags: [coverage:plumbing]
+        subcommands:
+          - start
+
+# Resolved relative to this file by gen-eval, which loads every *.yaml below recursively.
+#
+# This is the WHOLE suite, and pointing the runner here runs all of it — the runner's
+# `--categories` flag is inert (`args.categories` reaches its config and is never read
+# again), so `category` fields do not filter anything by themselves. The gate therefore
+# never hands the runner this file for an actual run: it resolves the selection itself,
+# copies the chosen scenarios into a scratch directory, and synthesizes a descriptor
+# pointing there. See src/cli_gen_eval/selection.py.
+#
+# What this entry is for: the contract validator, the drift tests, and a deliberate
+# "everything" run. Treating it as the per-run scenario source is precisely the mistake
+# that would make Phase 5's mutating scenarios execute on a default `make gen-eval`.
+scenario_dirs:
+  - ../scenarios
+
+# No `startup` block, and this is a decision rather than an omission.
+#
+# As of runner ref 600744a5 the schema no longer requires one (UPSTREAM.md UP-4), and
+# a `startup` block would make gen-eval own the backend lifecycle by running a shell
+# command plus a teardown. For this project that teardown would kill a developer's
+# running dev stack as a side effect of an evaluation run, and it still could not
+# supply Postgres. The gate therefore resolves an already-running target instead, with
+# the same three-state honesty it applies to the runner — see
+# src/cli_gen_eval/target.py and evaluation/README.md.

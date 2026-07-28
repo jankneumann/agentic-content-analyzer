@@ -1,0 +1,1216 @@
+{
+  "budget_exhausted": false,
+  "cost_summary": {
+    "cli_calls": 0.0,
+    "sdk_cost_usd": 0.0,
+    "time_minutes": 0.0
+  },
+  "coverage_pct": 100.0,
+  "duration_seconds": 5.1629446250153705,
+  "errors": 0,
+  "failed": 0,
+  "iterations_completed": 1,
+  "pass_rate": 1.0,
+  "passed": 11,
+  "per_category": {
+    "plumbing": {
+      "error": 0,
+      "fail": 0,
+      "pass": 9,
+      "total": 9
+    },
+    "validation": {
+      "error": 0,
+      "fail": 0,
+      "pass": 2,
+      "total": 2
+    }
+  },
+  "per_interface": {
+    "cli:agent": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:audio-digest": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:auth": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:batch": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:capabilities": {
+      "error": 0,
+      "fail": 0,
+      "pass": 2
+    },
+    "cli:configured-sources": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:curate": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:definitely-not-a-command": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:deploy": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:digest": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:edit": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:evaluate": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:filter": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:graph": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:ingest": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:kb": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:manage": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:models": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:neon": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:operations": {
+      "error": 0,
+      "fail": 0,
+      "pass": 3
+    },
+    "cli:pipeline": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:podcast-audio": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:podcast-script": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:profile": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:prompts": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:review": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:settings": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:sources": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:summarize": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:sync": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:theme": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
+    "cli:worker": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    }
+  },
+  "per_visibility": {},
+  "skipped": 0,
+  "total_scenarios": 11,
+  "unevaluated_interfaces": [],
+  "verdicts": [
+    {
+      "backend_used": "template",
+      "category": "plumbing",
+      "cleanup_warnings": [],
+      "duration_seconds": 1.3483508749632165,
+      "failure_summary": null,
+      "interfaces_tested": [],
+      "scenario_id": "plumbing-root-surface",
+      "scenario_name": "The root application answers --version and --help",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "aca 0.1.0"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 669.1234579775482,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "root-version",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca [OPTIONS] COMMAND [ARGS]...                                         \n                                        \u2026 [4738 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 678.2285000663251,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "root-help",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "validation",
+      "cleanup_warnings": [],
+      "duration_seconds": 2.6925237911054865,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:definitely-not-a-command",
+        "cli:operations",
+        "cli:capabilities"
+      ],
+      "scenario_id": "validation-malformed-arguments",
+      "scenario_name": "Malformed commands and out-of-range options are rejected with exit 2",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "stderr": "Usage: aca [OPTIONS] COMMAND [ARGS]...\nTry 'aca --help' for help.\n\u256d\u2500 Error \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502 No such command 'definitely-not-a-command'.                                  \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f"
+            },
+            "exit_code": 2
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 729.4224159559235,
+          "error_message": null,
+          "expected": {
+            "exit_code": 2
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "unknown-top-level-command",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "stderr": "Usage: aca operations [OPTIONS] COMMAND [ARGS]...\nTry 'aca operations --help' for help.\n\u256d\u2500 Error \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502 No such command 'definitely-not-a-subcommand'.                               \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f"
+            },
+            "exit_code": 2
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 660.1360000204295,
+          "error_message": null,
+          "expected": {
+            "exit_code": 2
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "unknown-subcommand",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "stderr": "Usage: aca capabilities [OPTIONS]\nTry 'aca capabilities --help' for help.\n\u256d\u2500 Error \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502 Invalid value for '--limit': 0 is not in the range 1<=x<=100.                \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f"
+            },
+            "exit_code": 2
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 649.6706670150161,
+          "error_message": null,
+          "expected": {
+            "exit_code": 2
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "limit-below-minimum",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "stderr": "Usage: aca capabilities [OPTIONS]\nTry 'aca capabilities --help' for help.\n\u256d\u2500 Error \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502 Invalid value for '--limit': 101 is not in the range 1<=x<=100.              \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f"
+            },
+            "exit_code": 2
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 653.0573749914765,
+          "error_message": null,
+          "expected": {
+            "exit_code": 2
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "limit-above-maximum",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "validation",
+      "cleanup_warnings": [],
+      "duration_seconds": 0.7247555830981582,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:operations"
+      ],
+      "scenario_id": "validation-missing-required-argument",
+      "scenario_name": "A command missing its required argument is rejected with exit 2",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "stderr": "Usage: aca operations get [OPTIONS] OPERATION_ID\nTry 'aca operations get --help' for help.\n\u256d\u2500 Error \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502 Missing argument 'OPERATION_ID'.                                             \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f"
+            },
+            "exit_code": 2
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 724.6994589222595,
+          "error_message": null,
+          "expected": {
+            "exit_code": 2
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "operations-get-without-id",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "plumbing",
+      "cleanup_warnings": [],
+      "duration_seconds": 2.6582399590406567,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:agent",
+        "cli:audio-digest",
+        "cli:auth",
+        "cli:batch"
+      ],
+      "scenario_id": "plumbing-help-batch-01",
+      "scenario_name": "aca --help sweep, batch 1: agent, audio-digest, auth, batch",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca agent [OPTIONS] COMMAND [ARGS]...                                   \n                                        \u2026 [1174 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 733.2731250207871,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-agent",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca audio-digest [OPTIONS] COMMAND [ARGS]...                            \n                                        \u2026 [688 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 656.6947080427781,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-audio-digest",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca auth [OPTIONS] COMMAND [ARGS]...                                    \n                                        \u2026 [1012 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 644.4611250190064,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-auth",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca batch [OPTIONS] COMMAND [ARGS]...                                   \n                                        \u2026 [688 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 623.5060000326484,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-batch",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "plumbing",
+      "cleanup_warnings": [],
+      "duration_seconds": 2.6707795000402257,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:capabilities",
+        "cli:configured-sources",
+        "cli:curate",
+        "cli:deploy"
+      ],
+      "scenario_id": "plumbing-help-batch-02",
+      "scenario_name": "aca --help sweep, batch 2: capabilities, configured-sources, curate, deploy",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca capabilities [OPTIONS]                                              \n                                        \u2026 [526 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 728.384832968004,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-capabilities",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca configured-sources [OPTIONS]                                        \n                                        \u2026 [526 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 644.2633749684319,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-configured-sources",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca curate [OPTIONS] COMMAND [ARGS]...                                  \n                                        \u2026 [1255 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 639.5593340275809,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-curate",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca deploy [OPTIONS] COMMAND [ARGS]...                                  \n                                        \u2026 [769 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 658.3005000138655,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-deploy",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "plumbing",
+      "cleanup_warnings": [],
+      "duration_seconds": 2.557565832976252,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:digest",
+        "cli:edit",
+        "cli:evaluate",
+        "cli:filter"
+      ],
+      "scenario_id": "plumbing-help-batch-03",
+      "scenario_name": "aca --help sweep, batch 3: digest, edit, evaluate, filter",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca digest [OPTIONS] COMMAND [ARGS]...                                  \n                                        \u2026 [688 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 612.1132909320295,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-digest",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca edit [OPTIONS] COMMAND [ARGS]...                                    \n                                        \u2026 [1174 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 654.9429580336437,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-edit",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca evaluate [OPTIONS] COMMAND [ARGS]...                                \n                                        \u2026 [1255 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 663.3694580523297,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-evaluate",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca filter [OPTIONS] COMMAND [ARGS]...                                  \n                                        \u2026 [931 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 626.8229580018669,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-filter",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "plumbing",
+      "cleanup_warnings": [],
+      "duration_seconds": 2.6678530840435997,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:graph",
+        "cli:ingest",
+        "cli:kb",
+        "cli:manage"
+      ],
+      "scenario_id": "plumbing-help-batch-04",
+      "scenario_name": "aca --help sweep, batch 4: graph, ingest, kb, manage",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca graph [OPTIONS] COMMAND [ARGS]...                                   \n                                        \u2026 [850 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 665.7902919687331,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-graph",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca ingest [OPTIONS] COMMAND [ARGS]...                                  \n                                        \u2026 [2065 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 634.9353330442682,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-ingest",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca kb [OPTIONS] COMMAND [ARGS]...                                      \n                                        \u2026 [1174 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 678.3966670045629,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-kb",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca manage [OPTIONS] COMMAND [ARGS]...                                  \n                                        \u2026 [2551 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 688.4784589055926,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-manage",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "plumbing",
+      "cleanup_warnings": [],
+      "duration_seconds": 2.470003833062947,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:models",
+        "cli:neon",
+        "cli:operations",
+        "cli:pipeline"
+      ],
+      "scenario_id": "plumbing-help-batch-05",
+      "scenario_name": "aca --help sweep, batch 5: models, neon, operations, pipeline",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca models [OPTIONS] COMMAND [ARGS]...                                  \n                                        \u2026 [1093 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 661.1325409030542,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-models",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca neon [OPTIONS] COMMAND [ARGS]...                                    \n                                        \u2026 [1012 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 647.6971249794587,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-neon",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca operations [OPTIONS] COMMAND [ARGS]...                              \n                                        \u2026 [1012 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 585.8602080261335,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-operations",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca pipeline [OPTIONS] COMMAND [ARGS]...                                \n                                        \u2026 [688 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 575.092208920978,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-pipeline",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "plumbing",
+      "cleanup_warnings": [],
+      "duration_seconds": 2.4547630000161007,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:podcast-audio",
+        "cli:podcast-script",
+        "cli:profile",
+        "cli:prompts"
+      ],
+      "scenario_id": "plumbing-help-batch-06",
+      "scenario_name": "aca --help sweep, batch 6: podcast-audio, podcast-script, profile, prompts",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca podcast-audio [OPTIONS] COMMAND [ARGS]...                           \n                                        \u2026 [688 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 649.3814999703318,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-podcast-audio",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca podcast-script [OPTIONS] COMMAND [ARGS]...                          \n                                        \u2026 [688 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 649.6449999976903,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-podcast-script",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca profile [OPTIONS] COMMAND [ARGS]...                                 \n                                        \u2026 [1012 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 578.4398750402033,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-profile",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca prompts [OPTIONS] COMMAND [ARGS]...                                 \n                                        \u2026 [1174 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 577.1084999432787,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-prompts",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "plumbing",
+      "cleanup_warnings": [],
+      "duration_seconds": 2.4581742910668254,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:review",
+        "cli:settings",
+        "cli:sources",
+        "cli:summarize"
+      ],
+      "scenario_id": "plumbing-help-batch-07",
+      "scenario_name": "aca --help sweep, batch 7: review, settings, sources, summarize",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca review [OPTIONS] COMMAND [ARGS]...                                  \n                                        \u2026 [850 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 674.7259160038084,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-review",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca settings [OPTIONS] COMMAND [ARGS]...                                \n                                        \u2026 [931 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 660.9375829575583,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-settings",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca sources [OPTIONS] COMMAND [ARGS]...                                 \n                                        \u2026 [1012 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 560.6406660517678,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-sources",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca summarize [OPTIONS] COMMAND [ARGS]...                               \n                                        \u2026 [688 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 561.6987079847604,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-summarize",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "plumbing",
+      "cleanup_warnings": [],
+      "duration_seconds": 1.8337744169402868,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:sync",
+        "cli:theme",
+        "cli:worker"
+      ],
+      "scenario_id": "plumbing-help-batch-08",
+      "scenario_name": "aca --help sweep, batch 8: sync, theme, worker",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca sync [OPTIONS] COMMAND [ARGS]...                                    \n                                        \u2026 [931 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 667.8637909935787,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-sync",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca theme [OPTIONS] COMMAND [ARGS]...                                   \n                                        \u2026 [688 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 590.9660829929635,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-theme",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca worker [OPTIONS] COMMAND [ARGS]...                                  \n                                        \u2026 [688 chars trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 574.6907079592347,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-worker",
+          "transport": "cli"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,446 @@
+# Category: plumbing — no backend, no database, no credentials.
+#
+# The coverage floor for the whole declared command surface: every command declared in
+# the descriptor answers `--help` with exit 0. 31 commands across
+# 8 scenarios of at most 4 steps each.
+#
+# ---------------------------------------------------------------------------
+# Why batched, and what it costs
+# ---------------------------------------------------------------------------
+#
+# One scenario per command would be the better shape: gen-eval's evaluator
+# short-circuits a scenario at its first failing step and marks the remainder `skip`, so
+# grouping commands means a broken one can mask up to 3 others behind it.
+#
+# It does not fit. The pinned runner caps a run in two stages, neither settable from its
+# CLI. The generator truncates to `max_scenarios_per_iteration` (50); then the
+# orchestrator splits that budget into three tiers and allocates
+# int(50*0.40)=20 slots to scenarios matching --changed-features-ref, int(50*0.35)=17 to
+# priority <= 1, and the remaining 13 to everything else. Unused tier-1 slots do not
+# reflow, so a run without change detection can evaluate at most 30 scenarios, of which
+# at most 13 may be non-critical.
+#
+# 31 one-command scenarios therefore cannot run whatever priority they carry:
+# at priority >= 2 the tier-3 cap keeps 13 of them, and at priority <= 1 they crowd the
+# behavioural scenarios out of tier 2. The first version of this file learned that the
+# expensive way — 31 expected, 13 evaluated, "PASS (100.0%)", exit 0. That report is
+# what `scenarios_expected` in the contract validator and the tier assertions in
+# tests/cli_gen_eval/test_descriptor_drift.py now exist to prevent.
+#
+# So: batches of 4, priority 2 so truncation would reach the help sweep before it
+# reaches behavioural coverage, and 8 scenarios against a 13-slot tier —
+# room for roughly 20 more command groups before this needs
+# revisiting, which the drift test asserts rather than trusting.
+#
+# Masking is bounded and named: a failing step reports as a failure, and the skipped
+# steps after it are reported as `skip` rather than `pass`. What is lost is which of the
+# following 3 commands would also have failed — not whether a failure occurred.
+#
+# UPSTREAM.md UP-6 asks for the cap to be settable and for unused tier allocation to
+# reflow. Landing it makes one-scenario-per-command affordable again, and this file
+# should go back to a single parameterised template at that point.
+#
+# ---------------------------------------------------------------------------
+#
+# Why exit 0 is sufficient evidence, with no assertion on the help text: Click cannot
+# exit 0 for a command it does not have — `aca not-a-command` exits 2, which
+# validation/malformed-arguments.yaml pins. So a zero exit *is* the registration proof,
+# and asserting substrings of Rich-rendered, width-wrapped help would only add
+# brittleness. gen-eval offers no output-substring matcher on the success path anyway,
+# only `error_contains`, which would read as nonsense in a passing report row.
+#
+# The batch membership below is alphabetical by command name, so it is predictable and
+# reviewable rather than incidental. tests/cli_gen_eval/test_descriptor_drift.py asserts
+# these steps and the descriptor's declared commands are the same set, in both
+# directions.
+
+- id: plumbing-help-batch-01
+  name: 'aca --help sweep, batch 1: agent, audio-digest, auth, batch'
+  description: >
+    Each of these commands is registered on the root application and renders its
+    own help without a backend, a database, or credentials. Credits the
+    interfaces cli:agent, cli:audio-digest, cli:auth, cli:batch.
+  category: plumbing
+  priority: 2
+  interfaces:
+    - "cli:agent"
+    - "cli:audio-digest"
+    - "cli:auth"
+    - "cli:batch"
+  tags:
+    - read-only
+    - no-target
+  steps:
+    - id: help-agent
+      transport: cli
+      command: agent
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-audio-digest
+      transport: cli
+      command: audio-digest
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-auth
+      transport: cli
+      command: auth
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-batch
+      transport: cli
+      command: batch
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+
+- id: plumbing-help-batch-02
+  name: 'aca --help sweep, batch 2: capabilities, configured-sources, curate, deploy'
+  description: >
+    Each of these commands is registered on the root application and renders its
+    own help without a backend, a database, or credentials. Credits the
+    interfaces cli:capabilities, cli:configured-sources, cli:curate, cli:deploy.
+  category: plumbing
+  priority: 2
+  interfaces:
+    - "cli:capabilities"
+    - "cli:configured-sources"
+    - "cli:curate"
+    - "cli:deploy"
+  tags:
+    - read-only
+    - no-target
+  steps:
+    - id: help-capabilities
+      transport: cli
+      command: capabilities
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-configured-sources
+      transport: cli
+      command: configured-sources
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-curate
+      transport: cli
+      command: curate
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-deploy
+      transport: cli
+      command: deploy
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+
+- id: plumbing-help-batch-03
+  name: 'aca --help sweep, batch 3: digest, edit, evaluate, filter'
+  description: >
+    Each of these commands is registered on the root application and renders its
+    own help without a backend, a database, or credentials. Credits the
+    interfaces cli:digest, cli:edit, cli:evaluate, cli:filter.
+  category: plumbing
+  priority: 2
+  interfaces:
+    - "cli:digest"
+    - "cli:edit"
+    - "cli:evaluate"
+    - "cli:filter"
+  tags:
+    - read-only
+    - no-target
+  steps:
+    - id: help-digest
+      transport: cli
+      command: digest
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-edit
+      transport: cli
+      command: edit
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-evaluate
+      transport: cli
+      command: evaluate
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-filter
+      transport: cli
+      command: filter
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+
+- id: plumbing-help-batch-04
+  name: 'aca --help sweep, batch 4: graph, ingest, kb, manage'
+  description: >
+    Each of these commands is registered on the root application and renders its
+    own help without a backend, a database, or credentials. Credits the
+    interfaces cli:graph, cli:ingest, cli:kb, cli:manage.
+  category: plumbing
+  priority: 2
+  interfaces:
+    - "cli:graph"
+    - "cli:ingest"
+    - "cli:kb"
+    - "cli:manage"
+  tags:
+    - read-only
+    - no-target
+  steps:
+    - id: help-graph
+      transport: cli
+      command: graph
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-ingest
+      transport: cli
+      command: ingest
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-kb
+      transport: cli
+      command: kb
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-manage
+      transport: cli
+      command: manage
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+
+- id: plumbing-help-batch-05
+  name: 'aca --help sweep, batch 5: models, neon, operations, pipeline'
+  description: >
+    Each of these commands is registered on the root application and renders its
+    own help without a backend, a database, or credentials. Credits the
+    interfaces cli:models, cli:neon, cli:operations, cli:pipeline.
+  category: plumbing
+  priority: 2
+  interfaces:
+    - "cli:models"
+    - "cli:neon"
+    - "cli:operations"
+    - "cli:pipeline"
+  tags:
+    - read-only
+    - no-target
+  steps:
+    - id: help-models
+      transport: cli
+      command: models
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-neon
+      transport: cli
+      command: neon
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-operations
+      transport: cli
+      command: operations
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-pipeline
+      transport: cli
+      command: pipeline
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+
+- id: plumbing-help-batch-06
+  name: 'aca --help sweep, batch 6: podcast-audio, podcast-script, profile, prompts'
+  description: >
+    Each of these commands is registered on the root application and renders its
+    own help without a backend, a database, or credentials. Credits the
+    interfaces cli:podcast-audio, cli:podcast-script, cli:profile, cli:prompts.
+  category: plumbing
+  priority: 2
+  interfaces:
+    - "cli:podcast-audio"
+    - "cli:podcast-script"
+    - "cli:profile"
+    - "cli:prompts"
+  tags:
+    - read-only
+    - no-target
+  steps:
+    - id: help-podcast-audio
+      transport: cli
+      command: podcast-audio
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-podcast-script
+      transport: cli
+      command: podcast-script
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-profile
+      transport: cli
+      command: profile
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-prompts
+      transport: cli
+      command: prompts
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+
+- id: plumbing-help-batch-07
+  name: 'aca --help sweep, batch 7: review, settings, sources, summarize'
+  description: >
+    Each of these commands is registered on the root application and renders its
+    own help without a backend, a database, or credentials. Credits the
+    interfaces cli:review, cli:settings, cli:sources, cli:summarize.
+  category: plumbing
+  priority: 2
+  interfaces:
+    - "cli:review"
+    - "cli:settings"
+    - "cli:sources"
+    - "cli:summarize"
+  tags:
+    - read-only
+    - no-target
+  steps:
+    - id: help-review
+      transport: cli
+      command: review
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-settings
+      transport: cli
+      command: settings
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-sources
+      transport: cli
+      command: sources
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-summarize
+      transport: cli
+      command: summarize
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+
+- id: plumbing-help-batch-08
+  name: 'aca --help sweep, batch 8: sync, theme, worker'
+  description: >
+    Each of these commands is registered on the root application and renders its
+    own help without a backend, a database, or credentials. Credits the
+    interfaces cli:sync, cli:theme, cli:worker.
+  category: plumbing
+  priority: 2
+  interfaces:
+    - "cli:sync"
+    - "cli:theme"
+    - "cli:worker"
+  tags:
+    - read-only
+    - no-target
+  steps:
+    - id: help-sync
+      transport: cli
+      command: sync
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-theme
+      transport: cli
+      command: theme
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-worker
+      transport: cli
+      command: worker
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true

@@ -53,6 +53,40 @@ workflow-contracts:  ## Validate and regenerate canonical workflow models
 workflow-contracts-check:  ## Validate canonical workflow models and fail on drift
 	uv run --frozen --extra dev python scripts/generate_workflow_contracts.py --check
 
+gen-eval:  ## Run the CLI gen-eval gate: contract, suite, then report validation. CATEGORIES="a b" to select
+	./evaluation/run-gate.sh $(if $(CATEGORIES),--categories $(CATEGORIES),)
+
+gen-eval-resolve:  ## Report which gen-eval runner resolves, and why, without running the suite
+	./evaluation/run-gate.sh --resolve-only
+
+# The mutating dispatch. Deliberately a separate target rather than a flag on `gen-eval`,
+# because the two runs differ in more than scope: this one submits durable work, requires
+# a declared non-production target, and cannot run against localhost (the target policy
+# model requires HTTPS for every non-local class). TARGET_POLICY has no default — a
+# missing one is refused with exit 6 rather than defaulted to anything.
+gen-eval-mutating:  ## Run the mutating gen-eval categories. TARGET_POLICY=path/to/policy.json required
+	./evaluation/run-gate.sh --categories workflow-submission operation-control \
+		$(if $(TARGET_POLICY),--target-policy $(TARGET_POLICY),)
+
+# Re-check a retained report away from the run that produced it — a CI artifact pulled
+# into a later job, or one attached to a bug. The gate already runs these checks
+# in-process on every run, so this is not the enforcement path; REPORT and EXPECTATION
+# travel together because a report alone cannot say whether it is complete.
+gen-eval-report:  ## Validate a retained gen-eval report. REPORT=... EXPECTATION=... [THRESHOLD=0.95]
+	uv run --frozen --extra gen-eval python scripts/validate_gen_eval_report.py \
+		$(or $(REPORT),evaluation/reports/gen-eval-report.json) \
+		--expectation $(or $(EXPECTATION),evaluation/reports/gen-eval-expectation.json) \
+		--fail-threshold $(or $(THRESHOLD),0.95)
+
+gen-eval-contract:  ## Validate the CLI gen-eval contract (no eval runner required)
+	uv run --frozen --extra gen-eval python scripts/validate_gen_eval_contract.py
+
+gen-eval-contract-schemas:  ## Regenerate vendored gen-eval schemas from the pinned runner ref
+	uv run --frozen --extra gen-eval python scripts/generate_gen_eval_contract_schemas.py
+
+gen-eval-contract-schemas-check:  ## Fail when vendored gen-eval schemas drift from the pinned ref
+	uv run --frozen --extra gen-eval python scripts/generate_gen_eval_contract_schemas.py --check
+
 test-cold:  ## Drop test DB + run pytest in CI-like cold-start state. Override test selection with ARGS=...
 	@set -e; \
 	DB=$$(.venv/bin/python -c "from urllib.parse import urlparse; from tests.helpers.test_db import get_test_database_url; print(urlparse(get_test_database_url()).path.lstrip('/'))" 2>/dev/null); \

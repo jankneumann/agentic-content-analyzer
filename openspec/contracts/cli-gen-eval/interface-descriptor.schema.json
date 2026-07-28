@@ -1,0 +1,594 @@
+{
+  "$defs": {
+    "AuthConfig": {
+      "description": "Authentication configuration for a service.",
+      "properties": {
+        "env_var": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Env Var"
+        },
+        "header": {
+          "default": "X-API-Key",
+          "title": "Header",
+          "type": "string"
+        },
+        "type": {
+          "default": "none",
+          "enum": [
+            "api_key",
+            "bearer",
+            "basic",
+            "none"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "title": "AuthConfig",
+      "type": "object"
+    },
+    "BudgetConfig": {
+      "description": "Budget allocation percentages for a gen-eval run.",
+      "properties": {
+        "evaluation_pct": {
+          "default": 0.6,
+          "title": "Evaluation Pct",
+          "type": "number"
+        },
+        "generation_pct": {
+          "default": 0.4,
+          "title": "Generation Pct",
+          "type": "number"
+        },
+        "tier1_pct": {
+          "default": 0.4,
+          "title": "Tier1 Pct",
+          "type": "number"
+        },
+        "tier2_pct": {
+          "default": 0.35,
+          "title": "Tier2 Pct",
+          "type": "number"
+        },
+        "tier3_pct": {
+          "default": 0.25,
+          "title": "Tier3 Pct",
+          "type": "number"
+        },
+        "total_usd": {
+          "default": 5.0,
+          "title": "Total Usd",
+          "type": "number"
+        }
+      },
+      "title": "BudgetConfig",
+      "type": "object"
+    },
+    "CommandDescriptor": {
+      "description": "Description of a single CLI command.",
+      "properties": {
+        "args_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Args Schema"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "subcommands": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Subcommands",
+          "type": "array"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "CommandDescriptor",
+      "type": "object"
+    },
+    "EndpointDescriptor": {
+      "description": "Description of a single HTTP endpoint.",
+      "properties": {
+        "auth_required": {
+          "default": false,
+          "title": "Auth Required",
+          "type": "boolean"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "method": {
+          "default": "GET",
+          "title": "Method",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "request_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Request Schema"
+        },
+        "response_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Response Schema"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "EndpointDescriptor",
+      "type": "object"
+    },
+    "FileInterfaceMapping": {
+      "description": "Maps source files to interface endpoints for change detection.",
+      "properties": {
+        "file_pattern": {
+          "title": "File Pattern",
+          "type": "string"
+        },
+        "interfaces": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Interfaces",
+          "type": "array"
+        }
+      },
+      "required": [
+        "file_pattern",
+        "interfaces"
+      ],
+      "title": "FileInterfaceMapping",
+      "type": "object"
+    },
+    "ServiceDescriptor": {
+      "description": "A single testable service within a project.",
+      "properties": {
+        "auth": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AuthConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Url"
+        },
+        "cli_schema": {
+          "anyOf": [
+            {
+              "format": "path",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cli Schema"
+        },
+        "command": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Command"
+        },
+        "commands": {
+          "items": {
+            "$ref": "#/$defs/CommandDescriptor"
+          },
+          "title": "Commands",
+          "type": "array"
+        },
+        "endpoints": {
+          "items": {
+            "$ref": "#/$defs/EndpointDescriptor"
+          },
+          "title": "Endpoints",
+          "type": "array"
+        },
+        "json_flag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Json Flag"
+        },
+        "launch_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Launch Url"
+        },
+        "mcp_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mcp Url"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "openapi_spec": {
+          "anyOf": [
+            {
+              "format": "path",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Openapi Spec"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/$defs/ToolDescriptor"
+          },
+          "title": "Tools",
+          "type": "array"
+        },
+        "tools_manifest": {
+          "anyOf": [
+            {
+              "format": "path",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tools Manifest"
+        },
+        "transport": {
+          "anyOf": [
+            {
+              "enum": [
+                "stdio",
+                "sse"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Transport"
+        },
+        "type": {
+          "enum": [
+            "http",
+            "mcp",
+            "cli",
+            "browser"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "title": "ServiceDescriptor",
+      "type": "object"
+    },
+    "StartupConfig": {
+      "description": "How to start/stop services for evaluation.\n\nOptional on :class:`InterfaceDescriptor` \u2014 omit the whole block for\nprojects with nothing to start (a CLI-only surface, or services managed\nentirely out-of-band). See ``InterfaceDescriptor.startup``.\n\nSecurity: ``command``, ``teardown``, and ``seed_command`` are executed via\n``subprocess.run(..., shell=True)`` in the orchestrator.  Descriptor files\nmust come from trusted sources \u2014 never load an untrusted descriptor.",
+      "properties": {
+        "command": {
+          "title": "Command",
+          "type": "string"
+        },
+        "health_check": {
+          "title": "Health Check",
+          "type": "string"
+        },
+        "health_retry_count": {
+          "default": 5,
+          "title": "Health Retry Count",
+          "type": "integer"
+        },
+        "health_timeout_seconds": {
+          "default": 60,
+          "title": "Health Timeout Seconds",
+          "type": "integer"
+        },
+        "seed_command": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seed Command"
+        },
+        "teardown": {
+          "title": "Teardown",
+          "type": "string"
+        }
+      },
+      "required": [
+        "command",
+        "health_check",
+        "teardown"
+      ],
+      "title": "StartupConfig",
+      "type": "object"
+    },
+    "StateVerifier": {
+      "description": "A state backend for verification (not interaction).",
+      "properties": {
+        "dsn_env": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dsn Env"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "tables": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tables",
+          "type": "array"
+        },
+        "type": {
+          "enum": [
+            "postgres",
+            "sqlite",
+            "filesystem",
+            "redis"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "title": "StateVerifier",
+      "type": "object"
+    },
+    "ToolDescriptor": {
+      "description": "Description of a single MCP tool.",
+      "properties": {
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "input_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Schema"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ToolDescriptor",
+      "type": "object"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/jankneumann/agentic-coding-tools/main/packages/gen-eval/src/gen_eval/contracts/interface-descriptor.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Top-level project descriptor.\n\nDescribes an entire project's testable surface: services (HTTP, MCP, CLI),\nstate verifiers (databases), lifecycle configuration, and file-to-interface\nmappings for change detection.",
+  "properties": {
+    "budget_defaults": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BudgetConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "file_interface_map": {
+      "items": {
+        "$ref": "#/$defs/FileInterfaceMapping"
+      },
+      "title": "File Interface Map",
+      "type": "array"
+    },
+    "project": {
+      "title": "Project",
+      "type": "string"
+    },
+    "scenario_dirs": {
+      "items": {
+        "format": "path",
+        "type": "string"
+      },
+      "title": "Scenario Dirs",
+      "type": "array"
+    },
+    "services": {
+      "items": {
+        "$ref": "#/$defs/ServiceDescriptor"
+      },
+      "title": "Services",
+      "type": "array"
+    },
+    "startup": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StartupConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "state_verifiers": {
+      "items": {
+        "$ref": "#/$defs/StateVerifier"
+      },
+      "title": "State Verifiers",
+      "type": "array"
+    },
+    "version": {
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "project",
+    "version",
+    "services"
+  ],
+  "title": "gen-eval interface descriptor",
+  "type": "object",
+  "x-gen-eval-contract-version": "1",
+  "x-generated-from": "gen_eval.contracts published schema 'interface-descriptor'",
+  "x-generated-from-ref": "600744a55418938f8691d70f0266c48410e6a545",
+  "x-generator": "scripts/generate_gen_eval_contract_schemas.py"
+}

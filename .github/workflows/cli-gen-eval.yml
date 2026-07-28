@@ -1,0 +1,252 @@
+name: CLI gen-eval
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-gen-eval-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  read-only:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      ACA_GEN_EVAL_REQUIRE: "1"
+      API_BASE_URL: http://127.0.0.1:8000
+      DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters
+      DATABASE_PROVIDER: local
+      ADMIN_API_KEY: test-admin-key-for-gen-eval
+      APP_SECRET_KEY: test-app-secret-key-for-gen-eval
+      ENVIRONMENT: test
+      WORKER_ENABLED: "false"
+    services:
+      postgres:
+        image: paradedb/paradedb:0.22.2-pg17
+        env:
+          POSTGRES_USER: newsletter_user
+          POSTGRES_PASSWORD: newsletter_password
+          POSTGRES_DB: newsletters
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.9.18"
+
+      - name: Install project dependencies
+        run: uv sync --frozen --extra gen-eval
+
+      # This is deliberately separate from runner acquisition. If the locked
+      # runner project cannot sync, the repository-owned contract has still
+      # produced a definite enforced verdict rather than being skipped with it.
+      - name: Validate runner-independent contract
+        run: make gen-eval-contract
+
+      # The gate invokes only the repository-owned evaluation/runner lock, whose
+      # direct requirement is drift-bound to the provenance pin. The workflow
+      # carries no runner URL, ref, adjacent-checkout path, or operator override.
+      - name: Acquire and verify pinned runner
+        run: ./evaluation/run-gate.sh --resolve-only
+
+      - name: Run database migrations
+        run: uv run --frozen alembic upgrade head
+
+      - name: Run read-only CLI gen-eval
+        id: gate
+        continue-on-error: true
+        run: |
+          uv run --frozen uvicorn src.api.app:app \
+            --host 127.0.0.1 --port 8000 --log-level warning \
+            > "$RUNNER_TEMP/cli-gen-eval-api.log" 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true' EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl -fsS "$API_BASE_URL/health" >/dev/null; then
+              break
+            fi
+            if ! kill -0 "$api_pid" 2>/dev/null; then
+              cat "$RUNNER_TEMP/cli-gen-eval-api.log"
+              exit 1
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              cat "$RUNNER_TEMP/cli-gen-eval-api.log"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          ./evaluation/run-gate.sh \
+            --categories plumbing discovery validation \
+            --output-dir "$RUNNER_TEMP/cli-gen-eval"
+
+      # Threshold zero validates schema, expectation completeness, bounds, and
+      # grouping for retention without turning a credible failing report into a
+      # passing gate. The final step still requires the original 95% run to pass.
+      - name: Validate report credibility for retention
+        id: validate
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/cli-gen-eval-artifact"
+          uv run --frozen --extra gen-eval python \
+            scripts/minimize_gen_eval_report.py \
+            "$RUNNER_TEMP/cli-gen-eval/gen-eval-report.json" \
+            "$RUNNER_TEMP/cli-gen-eval-artifact/gen-eval-report.json"
+          cp \
+            "$RUNNER_TEMP/cli-gen-eval/gen-eval-expectation.json" \
+            "$RUNNER_TEMP/cli-gen-eval-artifact/gen-eval-expectation.json"
+          uv run --frozen --extra gen-eval python \
+            scripts/validate_gen_eval_report.py \
+            "$RUNNER_TEMP/cli-gen-eval-artifact/gen-eval-report.json" \
+            --expectation "$RUNNER_TEMP/cli-gen-eval-artifact/gen-eval-expectation.json" \
+            --fail-threshold 0
+
+      - name: Retain CLI gen-eval evidence
+        if: always() && steps.validate.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: cli-gen-eval-read-only-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/cli-gen-eval-artifact/gen-eval-report.json
+            ${{ runner.temp }}/cli-gen-eval-artifact/gen-eval-expectation.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce CLI gen-eval gate
+        if: always()
+        env:
+          RUN_OUTCOME: ${{ steps.gate.outcome }}
+          VALIDATION_OUTCOME: ${{ steps.validate.outcome }}
+        run: |
+          test "$VALIDATION_OUTCOME" = "success"
+          test "$RUN_OUTCOME" = "success"
+
+  staging-mutation:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: release-smoke-staging
+    timeout-minutes: 25
+    env:
+      ACA_GEN_EVAL_REQUIRE: "1"
+      API_BASE_URL: ${{ vars.API_ORIGIN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.9.18"
+
+      - name: Install project dependencies
+        run: uv sync --frozen --extra gen-eval
+
+      - name: Validate runner-independent contract
+        run: make gen-eval-contract
+
+      - name: Acquire and verify pinned runner
+        run: ./evaluation/run-gate.sh --resolve-only
+
+      - name: Materialize protected staging target policy
+        env:
+          ACA_TARGET_ID: ${{ vars.TARGET_ID }}
+          ACA_FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN }}
+          ACA_API_ORIGIN: ${{ vars.API_ORIGIN }}
+          ACA_EXPECTED_FRONTEND_REVISION: ${{ vars.EXPECTED_FRONTEND_REVISION }}
+          ACA_EXPECTED_API_REVISION: ${{ vars.EXPECTED_API_REVISION }}
+          ACA_PRODUCTION_TARGET_IDS_JSON: ${{ vars.PRODUCTION_TARGET_IDS_JSON }}
+          ACA_PRODUCTION_ORIGINS_JSON: ${{ vars.PRODUCTION_ORIGINS_JSON }}
+        run: |
+          jq -n \
+            --arg target_id "$ACA_TARGET_ID" \
+            --arg frontend_origin "$ACA_FRONTEND_ORIGIN" \
+            --arg api_origin "$ACA_API_ORIGIN" \
+            --arg expected_frontend_revision "$ACA_EXPECTED_FRONTEND_REVISION" \
+            --arg expected_api_revision "$ACA_EXPECTED_API_REVISION" \
+            --arg production_target_ids_json "$ACA_PRODUCTION_TARGET_IDS_JSON" \
+            --arg production_origins_json "$ACA_PRODUCTION_ORIGINS_JSON" \
+            '{
+              target_id: $target_id,
+              target: "staging",
+              frontend_origin: $frontend_origin,
+              api_origin: $api_origin,
+              expected_frontend_revision: $expected_frontend_revision,
+              expected_api_revision: $expected_api_revision,
+              production_target_ids:
+                (try ($production_target_ids_json | fromjson) catch null),
+              production_origins:
+                (try ($production_origins_json | fromjson) catch null)
+            }' > "$RUNNER_TEMP/cli-gen-eval-policy.json"
+
+      - name: Run guarded staging CLI gen-eval
+        id: gate
+        continue-on-error: true
+        env:
+          ACA_RELEASE_SMOKE: "1"
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+        run: |
+          ./evaluation/run-gate.sh \
+            --categories workflow-submission operation-control \
+            --target-policy "$RUNNER_TEMP/cli-gen-eval-policy.json" \
+            --output-dir "$RUNNER_TEMP/cli-gen-eval"
+
+      - name: Validate report credibility for retention
+        id: validate
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/cli-gen-eval-artifact"
+          uv run --frozen --extra gen-eval python \
+            scripts/minimize_gen_eval_report.py \
+            "$RUNNER_TEMP/cli-gen-eval/gen-eval-report.json" \
+            "$RUNNER_TEMP/cli-gen-eval-artifact/gen-eval-report.json"
+          cp \
+            "$RUNNER_TEMP/cli-gen-eval/gen-eval-expectation.json" \
+            "$RUNNER_TEMP/cli-gen-eval-artifact/gen-eval-expectation.json"
+          uv run --frozen --extra gen-eval python \
+            scripts/validate_gen_eval_report.py \
+            "$RUNNER_TEMP/cli-gen-eval-artifact/gen-eval-report.json" \
+            --expectation "$RUNNER_TEMP/cli-gen-eval-artifact/gen-eval-expectation.json" \
+            --fail-threshold 0
+
+      - name: Retain CLI gen-eval evidence
+        if: always() && steps.validate.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: cli-gen-eval-staging-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/cli-gen-eval-artifact/gen-eval-report.json
+            ${{ runner.temp }}/cli-gen-eval-artifact/gen-eval-expectation.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce CLI gen-eval gate
+        if: always()
+        env:
+          RUN_OUTCOME: ${{ steps.gate.outcome }}
+          VALIDATION_OUTCOME: ${{ steps.validate.outcome }}
+        run: |
+          test "$VALIDATION_OUTCOME" = "success"
+          test "$RUN_OUTCOME" = "success"
