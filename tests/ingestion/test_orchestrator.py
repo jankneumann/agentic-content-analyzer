@@ -137,6 +137,59 @@ def _yt_response(command: str, source: str, n: int) -> IngestionResponse:
     )
 
 
+def test_merge_youtube_envelopes_preserves_source_outcomes_and_omissions() -> None:
+    from src.ingestion.orchestrator import _merge_youtube_envelopes
+
+    first = _yt_response("ingest.youtube-playlist", "youtube-playlist", 2)
+    first = first.model_copy(
+        update={
+            "source_outcomes": [
+                {
+                    "source_key": "src_0123456789abcdefabcd",
+                    "status": "ok",
+                    "items_ingested": 2,
+                    "items_failed": 0,
+                    "errors": [],
+                    "warnings": [],
+                    "errors_omitted": 0,
+                    "warnings_omitted": 0,
+                }
+            ],
+            "source_outcomes_omitted": 1,
+        }
+    )
+    second = _yt_response("ingest.youtube-rss", "youtube-rss", 1)
+    second = second.model_copy(
+        update={
+            "source_outcomes": [
+                {
+                    "source_key": "src_abcdef0123456789abcd",
+                    "status": "ok",
+                    "items_ingested": 1,
+                    "items_failed": 0,
+                    "errors": [],
+                    "warnings": [],
+                    "errors_omitted": 0,
+                    "warnings_omitted": 0,
+                }
+            ],
+            "source_outcomes_omitted": 2,
+        }
+    )
+
+    merged = _merge_youtube_envelopes(
+        command="ingest.youtube",
+        source="youtube",
+        parts=[first, second],
+    )
+
+    assert [outcome.source_key for outcome in merged.source_outcomes] == [
+        "src_0123456789abcdefabcd",
+        "src_abcdef0123456789abcd",
+    ]
+    assert merged.source_outcomes_omitted == 3
+
+
 class TestIngestYoutube:
     """YouTube orchestrator tests.
 

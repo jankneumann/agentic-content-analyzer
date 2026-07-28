@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from src.config.sources import load_sources_config
+from src.config.sources import RSSSource, configured_source_public_key, load_sources_config
 from src.ingestion.commands import (
     ArxivPaperIngestCommand,
     ArxivSearchIngestCommand,
@@ -27,7 +27,12 @@ from src.ingestion.content_references import (
     _record_loaded_content_reference,
     _stage_session_content_references,
 )
-from src.ingestion.result import IngestionResponse, SourceFetchResult
+from src.ingestion.result import (
+    IngestionResponse,
+    SourceFetchResult,
+    build_response_from_source_results,
+    public_source_key_for,
+)
 from src.ingestion.scholar import ScholarPaperResult
 from src.ingestion.service import IngestionService
 from src.models.content import Content, ContentSource, ContentStatus
@@ -131,7 +136,9 @@ def test_absolute_after_date_is_preserved_when_execution_is_delayed() -> None:
 
 
 def test_queued_source_snapshot_is_used_instead_of_current_configuration() -> None:
-    service = IngestionService()
+    service = IngestionService(
+        configured_source_key_secret="configured-source-key-secret-for-tests"
+    )
     observed_urls: list[str] = []
 
     def execute_from_snapshot(**_kwargs):
@@ -150,6 +157,80 @@ def test_queued_source_snapshot_is_used_instead_of_current_configuration() -> No
         )
 
     assert observed_urls == ["https://queued.example/feed"]
+
+
+def test_ingestion_service_rejects_short_injected_source_key_secret() -> None:
+    with pytest.raises(ValueError, match="32 bytes"):
+        IngestionService(configured_source_key_secret="too-short")
+
+
+def test_queued_source_snapshot_carries_ordered_public_identity_into_results() -> None:
+    secret = "configured-source-key-secret-for-tests"
+    source = RSSSource(url="https://user:pass@private.example/feed?token=hidden")
+    service = IngestionService(configured_source_key_secret=secret)
+
+    def execute_from_snapshot(**_kwargs):
+        public_source_key = public_source_key_for(source)
+        assert public_source_key is not None
+        return build_response_from_source_results(
+            command="ingest.rss",
+            source="rss",
+            items_ingested=2,
+            source_results=[
+                SourceFetchResult(
+                    url=source.url,
+                    items_fetched=2,
+                    public_source_key=public_source_key,
+                )
+            ],
+        )
+
+    with patch(
+        "src.ingestion.orchestrator.ingest_rss",
+        side_effect=execute_from_snapshot,
+    ):
+        response = service.execute(
+            {
+                "kind": "rss",
+                "configured_sources": [source.model_dump(mode="json")],
+            }
+        )
+
+    assert [outcome.source_key for outcome in response.source_outcomes] == [
+        configured_source_public_key(source, secret=secret)
+    ]
+    assert response.source_outcomes[0].items_ingested == 2
+
+
+def test_queued_source_identity_count_mismatch_omits_unsafe_attribution() -> None:
+    service = IngestionService(
+        configured_source_key_secret="configured-source-key-secret-for-tests"
+    )
+
+    def execute_from_snapshot(**_kwargs):
+        return build_response_from_source_results(
+            command="ingest.rss",
+            source="rss",
+            items_ingested=1,
+            source_results=[SourceFetchResult(url="https://one.example/feed", items_fetched=1)],
+        )
+
+    with patch(
+        "src.ingestion.orchestrator.ingest_rss",
+        side_effect=execute_from_snapshot,
+    ):
+        response = service.execute(
+            {
+                "kind": "rss",
+                "configured_sources": [
+                    {"type": "rss", "url": "https://one.example/feed"},
+                    {"type": "rss", "url": "https://two.example/feed"},
+                ],
+            }
+        )
+
+    assert response.source_outcomes == []
+    assert response.source_outcomes_omitted == 2
 
 
 def test_invalid_queued_source_snapshot_fails_before_dispatch() -> None:

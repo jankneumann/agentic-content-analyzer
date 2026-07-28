@@ -197,7 +197,8 @@ class _CanonicalHandlers:
     async def ingestion(self, operation_id: int, payload: dict[str, Any]) -> WorkflowHandlerOutcome:
         from pydantic import ValidationError
 
-        from src.contracts.workflow_models import IngestionResult
+        from src.contracts.workflow_models import IngestionResultV2
+        from src.ingestion.result_sanitizer import sanitize_ingestion_metadata
 
         command = self.sources.parse_command(payload)
         descriptor = self.sources.get(command.kind)
@@ -231,27 +232,34 @@ class _CanonicalHandlers:
 
         if response is None:
             raise WorkflowExecutionError(f"Ingestion '{descriptor.key}' produced no response")
-        if response.status == "error":
-            raise WorkflowExecutionError(
-                f"Ingestion '{descriptor.key}' failed: "
-                f"{response.model_dump(mode='json').get('errors', [])}"
-            )
         details = dict(response.details)
         try:
-            result = IngestionResult(
+            metadata = sanitize_ingestion_metadata(
+                errors=response.errors,
+                warnings=response.warnings,
+                source_outcomes=getattr(response, "source_outcomes", ()),
+                source_outcomes_omitted=getattr(response, "source_outcomes_omitted", 0),
+                details=details,
+            )
+            result = IngestionResultV2(
                 command_key=details["command_key"],
                 resolved_route=details["resolved_route"],
                 emitted_sources=details["emitted_sources"],
+                status=response.status,
+                outcome=_ingestion_outcome(response.status, response.items_ingested),
                 items_ingested=response.items_ingested,
+                items_skipped=response.items_skipped,
+                items_failed=response.items_failed,
                 content_ids=details["content_ids"],
-                warnings=[warning.message for warning in response.warnings] or None,
-                details=details,
-            ).model_dump(mode="json")
-        except (KeyError, ValidationError) as exc:
+                **metadata,
+            ).model_dump(mode="json", exclude_none=True)
+        except (KeyError, TypeError, ValueError, ValidationError) as exc:
             raise WorkflowExecutionError(
                 f"Ingestion '{descriptor.key}' returned an invalid canonical result"
             ) from exc
         await self.operations.attach_result(operation_id, result)
+        if response.status == "error":
+            raise WorkflowExecutionError(f"Ingestion '{descriptor.key}' failed")
         await self.operations.update_progress(operation_id, 100, "Ingestion complete")
         return WorkflowHandlerOutcome()
 
@@ -432,11 +440,19 @@ def _status_code(exc: Exception) -> int | None:
     return response_status if isinstance(response_status, int) else None
 
 
+def _ingestion_outcome(status: str, items_ingested: int) -> str:
+    if status == "ok":
+        return "success" if items_ingested > 0 else "zero_items"
+    if status == "partial":
+        return "partial"
+    return "failed"
+
+
 def _ingestion_diagnostic(source: str, exc: Exception, attempts: int) -> str:
     status_code = _status_code(exc)
     status = f"HTTP {status_code}" if status_code is not None else type(exc).__name__
     suffix = "attempt" if attempts == 1 else "attempts"
-    return f"Ingestion '{source}' failed after {attempts} {suffix} ({status}): {exc}"
+    return f"Ingestion '{source}' failed after {attempts} {suffix} ({status})"
 
 
 def _required_result_id(result: Mapping[str, Any], key: str) -> str:

@@ -9,7 +9,7 @@ from unittest.mock import ANY, AsyncMock, Mock
 import pytest
 
 from src.ingestion.registry import SourceRetryPolicy
-from src.ingestion.result import IngestionResponse
+from src.ingestion.result import IngestionError, IngestionResponse, IngestionWarning
 from src.models.jobs import JobStatus, OperationType, ResourceReference
 from src.models.query import ResolvedContentSet, SelectionPolicy, compute_selection_fingerprint
 from src.queue.workflow_handlers import WorkflowExecutionError, build_workflow_handler_registry
@@ -159,8 +159,8 @@ async def test_summary_item_handler_honors_force_from_canonical_parent(monkeypat
 
 
 class _RateLimitError(RuntimeError):
-    def __init__(self) -> None:
-        super().__init__("too many requests")
+    def __init__(self, message: str = "too many requests") -> None:
+        super().__init__(message)
         self.response = SimpleNamespace(status_code=429)
 
 
@@ -208,25 +208,195 @@ async def test_ingestion_uses_descriptor_retry_policy_for_http_429() -> None:
     operations.attach_result.assert_awaited_once_with(
         9,
         {
+            "schema_version": 2,
             "command_key": "rss",
             "resolved_route": "rss",
             "emitted_sources": ["rss"],
+            "status": "ok",
+            "outcome": "success",
             "items_ingested": 1,
+            "items_skipped": 0,
+            "items_failed": 0,
             "content_ids": [21],
-            "warnings": None,
-            "details": {
-                "command_key": "rss",
-                "resolved_route": "rss",
-                "emitted_sources": ["rss"],
-                "content_ids": [21],
-            },
+            "errors": [],
+            "warnings": [],
+            "errors_omitted": 0,
+            "warnings_omitted": 0,
+            "source_outcomes": [],
+            "source_outcomes_omitted": 0,
+            "details": {},
+            "details_omitted": 4,
         },
     )
 
 
 @pytest.mark.asyncio
+async def test_partial_ingestion_attaches_bounded_v2_result() -> None:
+    operations = FakeOperations()
+    command = SimpleNamespace(kind="rss")
+    descriptor = SimpleNamespace(
+        key="rss",
+        retry_policy=SourceRetryPolicy(max_attempts=1),
+    )
+    secret = "DO-NOT-PERSIST"
+    response = IngestionResponse(
+        command="ingest.rss",
+        source="rss",
+        status="partial",
+        items_ingested=2,
+        items_failed=1,
+        errors=[
+            IngestionError(
+                code="feed_ingest_error",
+                message=f"https://user:{secret}@private.example/feed?token={secret}",
+                url=f"https://private.example/feed?token={secret}",
+            )
+        ],
+        warnings=[
+            IngestionWarning(
+                code="feed_redirected",
+                message=f"redirected from secret={secret}",
+                redirected_to=f"https://private.example/new?token={secret}",
+            )
+        ],
+        source_outcomes=[
+            {
+                "source_key": "src_0123456789abcdefabcd",
+                "status": "partial",
+                "items_ingested": 2,
+                "items_failed": 1,
+                "errors": [
+                    {
+                        "code": "fetch_error",
+                        "message": f"credential={secret}",
+                    }
+                ],
+                "warnings": [],
+                "errors_omitted": 2,
+                "warnings_omitted": 0,
+            }
+        ],
+        source_outcomes_omitted=3,
+        details={
+            "command_key": "rss",
+            "resolved_route": "rss",
+            "emitted_sources": ["rss"],
+            "content_ids": [21, 22],
+            "dry_run": True,
+            "query_echo": f"subject:{secret}",
+        },
+    )
+    registry = build_workflow_handler_registry(
+        operation_service=operations,
+        ingestion_service=SimpleNamespace(execute=Mock(return_value=response)),
+        source_registry=SimpleNamespace(
+            parse_command=Mock(return_value=command),
+            get=Mock(return_value=descriptor),
+        ),
+    )
+
+    await registry.dispatch(OperationType.INGESTION_EXECUTE, 11, {"kind": "rss"})
+
+    result = operations.attach_result.await_args.args[1]
+    assert result["schema_version"] == 2
+    assert result["status"] == "partial"
+    assert result["outcome"] == "partial"
+    assert result["items_ingested"] == 2
+    assert result["items_failed"] == 1
+    assert result["content_ids"] == [21, 22]
+    assert result["errors"] == [
+        {
+            "code": "feed_ingest_error",
+            "message": "A configured source could not be ingested",
+        }
+    ]
+    assert result["warnings"] == [
+        {
+            "code": "feed_redirected",
+            "message": "A configured source redirected",
+        }
+    ]
+    assert result["source_outcomes"] == [
+        {
+            "source_key": "src_0123456789abcdefabcd",
+            "status": "partial",
+            "items_ingested": 2,
+            "items_failed": 1,
+            "errors": [
+                {
+                    "code": "fetch_error",
+                    "message": "A configured source could not be fetched",
+                }
+            ],
+            "warnings": [],
+            "errors_omitted": 2,
+            "warnings_omitted": 0,
+        }
+    ]
+    assert result["source_outcomes_omitted"] == 3
+    assert result["details"] == {"dry_run": True}
+    assert secret not in str(result)
+
+
+@pytest.mark.asyncio
+async def test_failed_ingestion_attaches_bounded_v2_result_before_raising() -> None:
+    operations = FakeOperations()
+    command = SimpleNamespace(kind="rss")
+    descriptor = SimpleNamespace(
+        key="rss",
+        retry_policy=SourceRetryPolicy(max_attempts=1),
+    )
+    secret = "DO-NOT-PERSIST"
+    response = IngestionResponse(
+        command="ingest.rss",
+        source="rss",
+        status="error",
+        items_failed=1,
+        errors=[
+            IngestionError(
+                code="fetch_error",
+                message=f"credential={secret}\nforged log entry",
+                url=f"https://user:{secret}@private.example/feed",
+            )
+        ],
+        details={
+            "command_key": "rss",
+            "resolved_route": "rss",
+            "emitted_sources": ["rss"],
+            "content_ids": [],
+        },
+    )
+    registry = build_workflow_handler_registry(
+        operation_service=operations,
+        ingestion_service=SimpleNamespace(execute=Mock(return_value=response)),
+        source_registry=SimpleNamespace(
+            parse_command=Mock(return_value=command),
+            get=Mock(return_value=descriptor),
+        ),
+    )
+
+    with pytest.raises(WorkflowExecutionError) as exc_info:
+        await registry.dispatch(OperationType.INGESTION_EXECUTE, 12, {"kind": "rss"})
+
+    operations.attach_result.assert_awaited_once()
+    result = operations.attach_result.await_args.args[1]
+    assert result["schema_version"] == 2
+    assert result["status"] == "error"
+    assert result["outcome"] == "failed"
+    assert result["errors"] == [
+        {
+            "code": "fetch_error",
+            "message": "A configured source could not be fetched",
+        }
+    ]
+    assert secret not in str(result)
+    assert secret not in str(exc_info.value)
+
+
+@pytest.mark.asyncio
 async def test_ingestion_retry_exhaustion_retains_429_diagnostics() -> None:
     operations = FakeOperations()
+    secret = "DO-NOT-PERSIST"
     command = SimpleNamespace(kind="rss")
     descriptor = SimpleNamespace(
         key="rss",
@@ -238,7 +408,9 @@ async def test_ingestion_retry_exhaustion_retains_429_diagnostics() -> None:
     )
     registry = build_workflow_handler_registry(
         operation_service=operations,
-        ingestion_service=SimpleNamespace(execute=Mock(side_effect=_RateLimitError())),
+        ingestion_service=SimpleNamespace(
+            execute=Mock(side_effect=_RateLimitError(f"token={secret}\nforged log entry"))
+        ),
         source_registry=SimpleNamespace(
             parse_command=Mock(return_value=command),
             get=Mock(return_value=descriptor),
@@ -253,6 +425,8 @@ async def test_ingestion_retry_exhaustion_retains_429_diagnostics() -> None:
     assert "rss" in diagnostic
     assert "HTTP 429" in diagnostic
     assert "2 attempts" in diagnostic
+    assert secret not in diagnostic
+    assert "forged log entry" not in diagnostic
 
 
 @pytest.mark.asyncio

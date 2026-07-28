@@ -6,11 +6,17 @@ from collections.abc import Mapping
 from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
 
-from src.config.sources import SourcesConfig, use_sources_config
+from src.config.sources import (
+    SourcesConfig,
+    configured_source_public_key,
+    source_key,
+    use_sources_config,
+    validate_configured_source_key_secret,
+)
 from src.ingestion.commands import FilesIngestCommand, IngestCommandBase
 from src.ingestion.content_references import ContentReferences, collect_content_references
 from src.ingestion.registry import SOURCE_REGISTRY, SourceDescriptor, SourceRegistry
-from src.ingestion.result import IngestionResponse, derive_status
+from src.ingestion.result import IngestionResponse, derive_status, use_public_source_keys
 
 if TYPE_CHECKING:
     from src.services.upload_service import UploadService
@@ -23,9 +29,13 @@ class IngestionService:
         self,
         registry: SourceRegistry = SOURCE_REGISTRY,
         upload_service: UploadService | None = None,
+        configured_source_key_secret: str | None = None,
     ) -> None:
+        if configured_source_key_secret is not None:
+            validate_configured_source_key_secret(configured_source_key_secret)
         self.registry = registry
         self._upload_service = upload_service
+        self._configured_source_key_secret = configured_source_key_secret
 
     def execute(self, command: IngestCommandBase | Mapping[str, Any]) -> IngestionResponse:
         typed_command = self.registry.parse_command(command)
@@ -47,7 +57,28 @@ class IngestionService:
         config_context = (
             use_sources_config(source_config) if source_config is not None else nullcontext()
         )
-        with config_context, collect_content_references() as committed_content_ids:
+        if source_config is not None:
+            source_key_secret = self._configured_source_key_secret
+            if source_key_secret is None:
+                from src.config.settings import get_settings
+
+                source_key_secret = get_settings().get_configured_source_key_secret()
+            public_source_keys = {
+                source_key(source): configured_source_public_key(
+                    source,
+                    secret=source_key_secret,
+                )
+                for source in source_config.sources
+            }
+            identity_context = use_public_source_keys(public_source_keys)
+        else:
+            identity_context = nullcontext()
+
+        with (
+            config_context,
+            identity_context,
+            collect_content_references() as committed_content_ids,
+        ):
             if isinstance(typed_command, FilesIngestCommand):
                 response = self._execute_files(descriptor, typed_command)
             else:
@@ -64,6 +95,21 @@ class IngestionService:
                 raise TypeError(
                     f"Source '{descriptor.key}' returned {type(response).__name__}, "
                     "expected IngestionResponse"
+                )
+            if source_config is not None:
+                represented = {
+                    outcome.source_key
+                    for outcome in response.source_outcomes
+                    if outcome.source_key in public_source_keys.values()
+                }
+                unmatched = len(set(public_source_keys.values()).difference(represented))
+                response = response.model_copy(
+                    update={
+                        "source_outcomes_omitted": max(
+                            response.source_outcomes_omitted,
+                            unmatched,
+                        )
+                    }
                 )
             return self._normalize(
                 response,

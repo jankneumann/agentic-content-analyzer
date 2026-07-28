@@ -6,7 +6,14 @@ import pytest
 import yaml
 from pydantic import TypeAdapter, ValidationError
 
-from src.config.sources import GmailSource, ReadwiseSource, RSSSource, SourcesConfig
+from src.config.sources import (
+    GmailSource,
+    ReadwiseSource,
+    RSSSource,
+    SourcesConfig,
+    YouTubePlaylistSource,
+    configured_source_public_key,
+)
 from src.contracts.workflow_models import (
     IngestCommand,
     UrlIngestCommand as GeneratedUrlIngestCommand,
@@ -107,7 +114,11 @@ def test_runtime_commands_reexport_generated_contract_models() -> None:
 
 
 def test_capability_and_configured_source_discovery_are_safe_cursor_pages() -> None:
-    service = CapabilityService(SOURCE_REGISTRY)
+    source_key_secret = "configured-source-key-secret-for-tests"
+    service = CapabilityService(
+        SOURCE_REGISTRY,
+        configured_source_key_secret=source_key_secret,
+    )
     first = service.get_capabilities(limit=1)
     second = service.get_capabilities(limit=1, cursor=first.next_cursor)
     assert first.next_cursor
@@ -143,3 +154,55 @@ def test_capability_and_configured_source_discovery_are_safe_cursor_pages() -> N
     readwise = next(source for source in page.data if source.source_type == "readwise")
     assert readwise.command_key == "readwise"
     assert "url" not in readwise.configuration
+
+
+def test_configured_source_discovery_uses_secret_derived_stable_identity() -> None:
+    secret = "configured-source-key-secret-for-tests"
+    sources = [
+        RSSSource(url="https://user:pass@private.example/feed?token=hidden"),
+        YouTubePlaylistSource(id="PL-private-low-entropy"),
+        GmailSource(query="subject:private-project"),
+        ReadwiseSource(),
+    ]
+    config = SourcesConfig(sources=sources)
+
+    first = CapabilityService(
+        SOURCE_REGISTRY,
+        configured_source_key_secret=secret,
+    ).list_configured_sources(config, limit=100)
+    second = CapabilityService(
+        SOURCE_REGISTRY,
+        configured_source_key_secret=secret,
+    ).list_configured_sources(config, limit=100)
+    rotated = CapabilityService(
+        SOURCE_REGISTRY,
+        configured_source_key_secret="rotated-configured-source-secret",
+    ).list_configured_sources(config, limit=100)
+
+    expected = sorted(configured_source_public_key(source, secret=secret) for source in sources)
+    assert sorted(item.key for item in first.data) == expected
+    assert [item.key for item in first.data] == [item.key for item in second.data]
+    assert {item.key for item in first.data}.isdisjoint(item.key for item in rotated.data)
+    serialized = first.model_dump_json()
+    assert "user:pass" not in serialized
+    assert "/feed" not in serialized
+    assert "hidden" not in serialized
+    assert "PL-private-low-entropy" not in serialized
+    assert "subject:private-project" not in serialized
+
+
+@pytest.mark.parametrize("secret", ["", "too-short"])
+def test_configured_source_public_key_rejects_short_secret(secret: str) -> None:
+    with pytest.raises(ValueError, match="secret"):
+        configured_source_public_key(
+            RSSSource(url="https://example.com/private"),
+            secret=secret,
+        )
+
+
+def test_capability_service_rejects_short_injected_source_key_secret() -> None:
+    with pytest.raises(ValueError, match="32 bytes"):
+        CapabilityService(
+            SOURCE_REGISTRY,
+            configured_source_key_secret="too-short",
+        )

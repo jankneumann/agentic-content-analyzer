@@ -25,7 +25,7 @@ from urllib.parse import urlparse
 if TYPE_CHECKING:
     from src.config.sources import SourcesConfig
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -245,6 +245,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",  # Ignore unknown env vars (common in shared .env files)
+        hide_input_in_errors=True,
     )
 
     @classmethod
@@ -474,6 +475,7 @@ class Settings(BaseSettings):
     # Owner Authentication (Phase 1)
     app_secret_key: str | None = None  # Login password for browser/mobile access
     auth_cookie_cross_origin: bool = False  # SameSite=None for cross-origin deployments
+    configured_source_key_secret: SecretStr | None = Field(default=None, min_length=32)
 
     # Gmail Configuration
     gmail_credentials_file: str = "credentials.json"
@@ -1036,6 +1038,17 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def validate_configured_source_key_secret(self) -> Settings:
+        """Require durable configured-source identity in deployed environments."""
+
+        if (
+            self.environment in {"staging", "production"}
+            and self.configured_source_key_secret is None
+        ):
+            raise ValueError("CONFIGURED_SOURCE_KEY_SECRET is required in staging and production")
+        return self
+
+    @model_validator(mode="after")
     def validate_production_security(self) -> Settings:
         """Warn about insecure configuration when running in production.
 
@@ -1107,6 +1120,15 @@ class Settings(BaseSettings):
             )
 
         return self
+
+    def get_configured_source_key_secret(self) -> str:
+        """Return dedicated signing material for public configured-source identities."""
+
+        if self.configured_source_key_secret is not None:
+            return self.configured_source_key_secret.get_secret_value()
+        raise RuntimeError(
+            "CONFIGURED_SOURCE_KEY_SECRET is required to derive configured-source identities"
+        )
 
     def _mask_url(self, url: str) -> str:
         """Mask password in database URL for safe logging/errors.

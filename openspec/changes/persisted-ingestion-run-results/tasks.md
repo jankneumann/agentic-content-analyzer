@@ -13,7 +13,7 @@
 
 ## Phase 1 — Contract reconciliation
 
-- [ ] 1.1 Write contract tests for the versioned ingestion result, bounded
+- [x] 1.1 Write contract tests for the versioned ingestion result, bounded
   diagnostics, opaque configured-source outcomes, compact history row, history
   page, summary-only generic operation page, pipeline ingestion summary, named
   enum generation, V1 compatibility, plus legacy `unknown` outcome. Generated
@@ -23,22 +23,22 @@
   **Contracts:** `contracts/openapi/v1.yaml`
   **Design decisions:** D1, D2, D3, D5
   **Dependencies:** None — **Size: M**
-- [ ] 1.2 Extend the durable content-workflow OpenAPI contract plus both
+- [x] 1.2 Extend the durable content-workflow OpenAPI contract plus both
   generators with named enum aliases, `IngestionResultV1|V2`, the pipeline
   ingestion summary and `pipeline.run` result-schema registry mapping, plus
   compact history schemas.
   **Dependencies:** 1.1 — **Size: M**
-- [ ] 1.3 Add a reconciliation matrix mapping every original acceptance case
+- [x] 1.3 Add a reconciliation matrix mapping every original acceptance case
   to the existing operation field, the new projection field, or an explicit
   non-recoverable legacy gap.
   **Design decisions:** D1
   **Dependencies:** 1.1 — **Size: S**
-- [ ] Checkpoint: run workflow contract generation/drift tests, review the
+- [x] Checkpoint: run workflow contract generation/drift tests, review the
   contract diff, confirm no run table or workflow state was introduced.
 
 ## Phase 2 — Typed durable outcomes
 
-- [ ] 2.1 Write queue-handler tests proving `ok`, `partial`, plus `error`
+- [x] 2.1 Write queue-handler tests proving `ok`, `partial`, plus `error`
   ingestion responses persist status, counts, diagnostics, source outcomes,
   and one exact content-ID list before terminal handling. (RED)
   **Spec scenarios:** typed durable outcome, failed outcome before exception,
@@ -46,10 +46,10 @@
   **Contracts:** `contracts/openapi/v1.yaml#/components/schemas/IngestionResult`
   **Design decisions:** D1, D2, D3
   **Dependencies:** 1.2 — **Size: M**
-- [ ] 2.2 Implement the versioned ingestion result plus bounded diagnostic
+- [x] 2.2 Implement the versioned ingestion result plus bounded diagnostic
   projection; attach failed source results before raising the workflow error.
   **Dependencies:** 2.1 — **Size: M**
-- [ ] 2.3 Write source-aggregation tests for opaque stable source keys,
+- [x] 2.3 Write source-aggregation tests for opaque stable source keys,
   equality with configured-source discovery across URL/ID/query/singleton
   locators, partial visibility, total-budget truncation, plus adversarial
   locator/credential/message redaction across result/problem/notification/log
@@ -58,12 +58,12 @@
   redaction, deterministic bounds
   **Design decisions:** D3, D5
   **Dependencies:** 1.2 — **Size: M**
-- [ ] 2.4 Centralize secret-derived public source-key creation at the
+- [x] 2.4 Centralize secret-derived public source-key creation at the
   configuration boundary, carry configured identity through every aggregation
   adapter, sanitize allowlisted metadata, then preserve it in the operation
   result.
   **Dependencies:** 2.3 — **Size: M**
-- [ ] Checkpoint: run ingestion-result, queue-handler, contract, plus strict
+- [x] Checkpoint: run ingestion-result, queue-handler, contract, plus strict
   serialization tests; inspect fixtures for raw locators or secrets.
 
 ## Phase 3 — Shared pipeline classification

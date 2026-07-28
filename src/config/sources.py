@@ -8,6 +8,8 @@ Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmai
 
 """
 
+import hashlib
+import hmac
 import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -19,6 +21,8 @@ import yaml
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+_CONFIGURED_SOURCE_KEY_DOMAIN = b"aca:configured-source-key:v1\x00"
 
 
 # --- Source Default Models ---
@@ -580,6 +584,30 @@ def source_key(source: dict[str, Any] | SourceBase) -> str:
         raise ValueError(f"cannot derive source key for type={stype!r}: no locator field")
 
     return f"{stype}:{locator}"
+
+
+def configured_source_public_key(
+    source: dict[str, Any] | SourceBase,
+    *,
+    secret: str,
+) -> str:
+    """Derive a stable public source key without exposing its natural locator."""
+
+    validate_configured_source_key_secret(secret)
+    natural_key = source_key(source).encode("utf-8")
+    digest = hmac.new(
+        secret.encode("utf-8"),
+        _CONFIGURED_SOURCE_KEY_DOMAIN + natural_key,
+        hashlib.sha256,
+    ).hexdigest()
+    return f"src_{digest[:20]}"
+
+
+def validate_configured_source_key_secret(secret: str) -> None:
+    """Reject configured-source HMAC secrets below the 256-bit minimum."""
+
+    if len(secret.encode("utf-8")) < 32:
+        raise ValueError("configured-source key secret must be at least 32 bytes")
 
 
 def merge_source_overrides(config: SourcesConfig, overrides: list[dict[str, Any]]) -> SourcesConfig:

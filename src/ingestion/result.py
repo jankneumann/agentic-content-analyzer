@@ -81,6 +81,9 @@ Design notes
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal, Self
@@ -88,6 +91,36 @@ from typing import Any, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 IngestionStatus = Literal["ok", "partial", "error"]
+
+_ACTIVE_PUBLIC_SOURCE_KEYS: ContextVar[Mapping[str, str] | None] = ContextVar(
+    "active_public_source_keys",
+    default=None,
+)
+
+
+@contextmanager
+def use_public_source_keys(keys: Mapping[str, str]) -> Iterator[None]:
+    """Carry natural-to-public configured identity without exposing locators."""
+
+    token = _ACTIVE_PUBLIC_SOURCE_KEYS.set(dict(keys))
+    try:
+        yield
+    finally:
+        _ACTIVE_PUBLIC_SOURCE_KEYS.reset(token)
+
+
+def public_source_key_for(source: object) -> str | None:
+    """Look up configured public identity from an explicit source model."""
+
+    keys = _ACTIVE_PUBLIC_SOURCE_KEYS.get()
+    if keys is None:
+        return None
+    from src.config.sources import SourceBase, source_key
+
+    if not isinstance(source, (SourceBase, dict)):
+        return None
+    return keys.get(source_key(source))
+
 
 # Closed registry of canonical ``command`` values. New transports/services
 # adding an ingest path MUST add their identifier here so cross-transport
@@ -166,6 +199,34 @@ class IngestionWarning(BaseModel):
     redirected_to: str | None = None
 
 
+class BoundedIngestionDiagnostic(BaseModel):
+    """Sanitized diagnostic safe for durable configured-source outcomes."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=1, max_length=100)
+    message: str = Field(min_length=1, max_length=500)
+    redirected_source_key: str | None = Field(
+        default=None,
+        pattern=r"^src_[a-f0-9]{20}$",
+    )
+
+
+class ConfiguredSourceResult(BaseModel):
+    """Bounded per-configured-source result carrying only opaque identity."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_key: str = Field(pattern=r"^src_[a-f0-9]{20}$")
+    status: IngestionStatus
+    items_ingested: int = Field(ge=0)
+    items_failed: int = Field(ge=0)
+    errors: list[BoundedIngestionDiagnostic] = Field(default_factory=list, max_length=20)
+    warnings: list[BoundedIngestionDiagnostic] = Field(default_factory=list, max_length=20)
+    errors_omitted: int = Field(default=0, ge=0)
+    warnings_omitted: int = Field(default=0, ge=0)
+
+
 @dataclass
 class SourceFetchResult:
     """Canonical per-source outcome accumulator.
@@ -208,6 +269,7 @@ class SourceFetchResult:
     items_failed: int = 0
     item_errors: list[IngestionError] = field(default_factory=list)
     redirected_to: str | None = None
+    public_source_key: str | None = None
 
     @property
     def is_redirect(self) -> bool:
@@ -263,6 +325,8 @@ class IngestionResponse(BaseModel):
 
     errors: list[IngestionError] = Field(default_factory=list)
     warnings: list[IngestionWarning] = Field(default_factory=list)
+    source_outcomes: list[ConfiguredSourceResult] = Field(default_factory=list, max_length=100)
+    source_outcomes_omitted: int = Field(default=0, ge=0)
 
     details: dict[str, Any] = Field(default_factory=dict)
     """Command-specific extras. See module docstring for reserved key names."""
@@ -413,20 +477,24 @@ def build_response_from_source_results(
     """
     errors: list[IngestionError] = []
     warnings: list[IngestionWarning] = []
+    raw_source_outcomes: list[dict[str, Any]] = []
     items_failed = extra_items_failed
 
     for r in source_results:
+        source_errors: list[IngestionError] = []
+        source_warnings: list[IngestionWarning] = []
         if not getattr(r, "success", True):
-            errors.append(
+            source_errors.append(
                 IngestionError(
                     code=getattr(r, "error_type", None) or "fetch_error",
                     message=getattr(r, "error", None) or "unknown fetch error",
                     url=getattr(r, "url", None),
                 )
             )
+            errors.extend(source_errors)
         redirected_to = getattr(r, "redirected_to", None)
         if redirected_to:
-            warnings.append(
+            source_warnings.append(
                 IngestionWarning(
                     code="feed_redirected",
                     message=f"Source redirected to {redirected_to}",
@@ -434,12 +502,37 @@ def build_response_from_source_results(
                     redirected_to=redirected_to,
                 )
             )
-        items_failed += getattr(r, "items_failed", 0)
-        errors.extend(getattr(r, "item_errors", []))
+            warnings.extend(source_warnings)
+        source_items_failed = getattr(r, "items_failed", 0)
+        source_item_errors = list(getattr(r, "item_errors", []))
+        items_failed += source_items_failed
+        errors.extend(source_item_errors)
+        source_errors.extend(source_item_errors)
+
+        public_source_key = getattr(r, "public_source_key", None)
+        if public_source_key is not None:
+            source_items_ingested = getattr(r, "items_fetched", 0)
+            raw_source_outcomes.append(
+                {
+                    "source_key": public_source_key,
+                    "status": derive_status(
+                        items_ingested=source_items_ingested,
+                        items_failed=source_items_failed,
+                        errors=source_errors,
+                    ),
+                    "items_ingested": source_items_ingested,
+                    "items_failed": source_items_failed,
+                    "errors": source_errors,
+                    "warnings": source_warnings,
+                }
+            )
 
     if extra_item_errors:
         errors.extend(extra_item_errors)
 
+    from src.ingestion.result_sanitizer import sanitize_ingestion_metadata
+
+    source_projection = sanitize_ingestion_metadata(source_outcomes=raw_source_outcomes)
     return IngestionResponse(
         command=command,
         source=source,
@@ -450,4 +543,9 @@ def build_response_from_source_results(
         items_failed=items_failed,
         errors=errors,
         warnings=warnings,
+        source_outcomes=[
+            ConfiguredSourceResult.model_validate(value)
+            for value in source_projection["source_outcomes"]
+        ],
+        source_outcomes_omitted=source_projection["source_outcomes_omitted"],
     )

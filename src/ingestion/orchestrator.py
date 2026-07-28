@@ -227,6 +227,12 @@ def _merge_youtube_envelopes(
     items_failed = sum(p.items_failed for p in parts)
     errors: list[IngestionError] = [e for p in parts for e in p.errors]
     warnings = [w for p in parts for w in p.warnings]
+    from src.ingestion.result_sanitizer import sanitize_ingestion_metadata
+
+    source_projection = sanitize_ingestion_metadata(
+        source_outcomes=[outcome for part in parts for outcome in part.source_outcomes],
+        source_outcomes_omitted=sum(part.source_outcomes_omitted for part in parts),
+    )
 
     return _Response(
         command=command,  # type: ignore[arg-type]
@@ -239,6 +245,8 @@ def _merge_youtube_envelopes(
         items_failed=items_failed,
         errors=errors,
         warnings=warnings,
+        source_outcomes=source_projection["source_outcomes"],
+        source_outcomes_omitted=source_projection["source_outcomes_omitted"],
     )
 
 
