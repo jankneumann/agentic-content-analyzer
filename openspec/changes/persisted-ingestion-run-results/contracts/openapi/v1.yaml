@@ -1,0 +1,830 @@
+openapi: 3.1.0
+info:
+  title: ACA ingestion history delta
+  version: 0.1.0
+  description: >-
+    Proposed operation-native ingestion outcomes, compact history, and
+    summary-only operation lists. Implementation merges this delta into the
+    durable content-workflow OpenAPI registry.
+security:
+  - AdminKey: []
+paths:
+  /api/v1/operations:
+    get:
+      operationId: listOperations
+      summary: List bounded operation summaries without full result payloads
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/OperationStatus"
+          description: Optional lifecycle filter used for bounded active hydration.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 2048
+      responses:
+        "200":
+          description: Summary-only operation page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationPage"
+        "401":
+          description: Authentication is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The caller is not authorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/ingestions:
+    get:
+      operationId: listIngestionHistory
+      summary: List compact ingestion history derived from durable operations
+      parameters:
+        - name: command_key
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+          example: rss
+        - name: configured_source_key
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: "^src_[a-f0-9]{20}$"
+          example: src_42a94f81b6eea7c69316
+        - name: outcome
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/IngestionOutcome"
+          example: partial
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/TerminalOperationStatus"
+          example: completed
+        - name: parent_operation_id
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: "^[1-9][0-9]*$"
+            maxLength: 19
+          example: "8123"
+        - name: created_after
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+            maxLength: 64
+          example: "2026-07-01T00:00:00Z"
+        - name: created_before
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+            maxLength: 64
+          example: "2026-08-01T00:00:00Z"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          example: 50
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 2048
+          description: >-
+            Opaque keyset cursor bound to the normalized command,
+            configured-source, outcome, status, parent, and creation-window
+            filters.
+      responses:
+        "200":
+          description: Compact history page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestionHistoryPage"
+              example:
+                data:
+                  - operation_id: "8451"
+                    parent_operation_id: "8123"
+                    command_key: rss
+                    operation_status: completed
+                    outcome: partial
+                    items_ingested: 14
+                    items_skipped: 2
+                    items_failed: 1
+                    source_outcomes:
+                      - source_key: src_42a94f81b6eea7c69316
+                        status: partial
+                        outcome: partial
+                        items_ingested: 14
+                        items_failed: 1
+                    retry_count: 0
+                    problem_code: null
+                    status_url: /api/v1/operations/8451
+                    created_at: "2026-07-27T02:00:00Z"
+                    completed_at: "2026-07-27T02:00:06Z"
+                next_cursor: null
+        "422":
+          description: Invalid filter or filter-mismatched cursor
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              example:
+                type: https://aca.rotkohl.ai/problems/validation_error
+                title: Unprocessable Entity
+                status: 422
+                detail: History cursor does not match the requested filters
+                code: invalid_cursor
+        "401":
+          description: Authentication is required by the canonical API boundary
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: The caller is not authorized to read workflow history
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+components:
+  securitySchemes:
+    AdminKey:
+      type: apiKey
+      in: header
+      name: X-Admin-Key
+  schemas:
+    IngestionOutcome:
+      type: string
+      enum:
+        - success
+        - zero_items
+        - partial
+        - failed
+        - cancelled
+        - unknown
+    OperationStatus:
+      type: string
+      enum:
+        - queued
+        - in_progress
+        - completed
+        - failed
+        - cancelled
+    TerminalOperationStatus:
+      type: string
+      enum:
+        - completed
+        - failed
+        - cancelled
+    IngestionStatus:
+      type: string
+      enum:
+        - ok
+        - partial
+        - error
+    BoundedDiagnostic:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: feed_fetch_failed
+        message:
+          type: string
+          minLength: 1
+          maxLength: 500
+          example: One configured feed could not be fetched
+        redirected_source_key:
+          type:
+            - string
+            - "null"
+          pattern: "^src_[a-f0-9]{20}$"
+          example: null
+    ConfiguredSourceOutcome:
+      type: object
+      additionalProperties: false
+      required:
+        - source_key
+        - status
+        - items_ingested
+        - items_failed
+        - errors
+        - warnings
+        - errors_omitted
+        - warnings_omitted
+      properties:
+        source_key:
+          type: string
+          pattern: "^src_[a-f0-9]{20}$"
+          example: src_42a94f81b6eea7c69316
+        status:
+          $ref: "#/components/schemas/IngestionStatus"
+        items_ingested:
+          type: integer
+          minimum: 0
+          example: 14
+        items_failed:
+          type: integer
+          minimum: 0
+          example: 1
+        errors:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/BoundedDiagnostic"
+        warnings:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/BoundedDiagnostic"
+        errors_omitted:
+          type: integer
+          minimum: 0
+          example: 0
+        warnings_omitted:
+          type: integer
+          minimum: 0
+          example: 0
+    IngestionResult:
+      oneOf:
+        - $ref: "#/components/schemas/IngestionResultV1"
+        - $ref: "#/components/schemas/IngestionResultV2"
+      description: >-
+        Legacy V1 rows may predate an explicit schema_version, so readers use
+        structural union validation rather than a discriminator.
+    IngestionResultV1:
+      type: object
+      additionalProperties: false
+      required:
+        - command_key
+        - resolved_route
+        - emitted_sources
+        - items_ingested
+        - content_ids
+      properties:
+        schema_version:
+          type: integer
+          enum: [1]
+          default: 1
+        command_key:
+          type: string
+        resolved_route:
+          type: string
+        emitted_sources:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+        items_ingested:
+          type: integer
+          minimum: 0
+        content_ids:
+          type: array
+          uniqueItems: true
+          items:
+            type: integer
+            minimum: 1
+        warnings:
+          type: array
+          items:
+            type: string
+        details:
+          type: object
+          additionalProperties: true
+      description: >-
+        Legacy reader shape. New writers never emit V1 and history must not
+        infer missing outcome/count fields from it.
+    IngestionResultV2:
+      type: object
+      additionalProperties: false
+      x-max-serialized-metadata-bytes: 65536
+      description: >-
+        The aggregate serialized result metadata excluding content_ids is
+        limited to 65536 UTF-8 bytes after deterministic sanitization.
+      required:
+        - schema_version
+        - command_key
+        - resolved_route
+        - emitted_sources
+        - status
+        - outcome
+        - items_ingested
+        - items_skipped
+        - items_failed
+        - content_ids
+        - errors
+        - warnings
+        - errors_omitted
+        - warnings_omitted
+        - source_outcomes
+        - source_outcomes_omitted
+        - details
+        - details_omitted
+      properties:
+        schema_version:
+          type: integer
+          const: 2
+        command_key:
+          type: string
+          minLength: 1
+          example: rss
+        resolved_route:
+          type: string
+          minLength: 1
+          example: rss
+        emitted_sources:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+          example:
+            - rss
+        status:
+          $ref: "#/components/schemas/IngestionStatus"
+        outcome:
+          $ref: "#/components/schemas/IngestionOutcome"
+        items_ingested:
+          type: integer
+          minimum: 0
+          example: 14
+        items_skipped:
+          type: integer
+          minimum: 0
+          example: 2
+        items_failed:
+          type: integer
+          minimum: 0
+          example: 1
+        content_ids:
+          type: array
+          uniqueItems: true
+          items:
+            type: integer
+            minimum: 1
+          description: >-
+            Exact workflow provenance. Excluded from compact history and not
+            duplicated inside details.
+          example:
+            - 1001
+            - 1002
+        errors:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/BoundedDiagnostic"
+        warnings:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/BoundedDiagnostic"
+        errors_omitted:
+          type: integer
+          minimum: 0
+          example: 0
+        warnings_omitted:
+          type: integer
+          minimum: 0
+          example: 0
+        source_outcomes:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/ConfiguredSourceOutcome"
+        source_outcomes_omitted:
+          type: integer
+          minimum: 0
+          example: 0
+        details:
+          $ref: "#/components/schemas/SafeIngestionDetails"
+        details_omitted:
+          type: integer
+          minimum: 0
+          example: 0
+    SafeIngestionDetails:
+      type: object
+      additionalProperties: false
+      description: >-
+        Closed allowlist. Locator, prompt, query, citation, identifier, nested
+        result, and content provenance fields are intentionally excluded.
+      properties:
+        dry_run:
+          type: boolean
+        duplicate:
+          type: boolean
+        version_updated:
+          type: boolean
+        papers_ingested:
+          type: integer
+          minimum: 0
+        refs_ingested:
+          type: integer
+          minimum: 0
+        content_scanned:
+          type: integer
+          minimum: 0
+        references_found:
+          type: integer
+          minimum: 0
+        references_resolved:
+          type: integer
+          minimum: 0
+        references_unresolved:
+          type: integer
+          minimum: 0
+        queries_made:
+          type: integer
+          minimum: 0
+        citations_found:
+          type: integer
+          minimum: 0
+        tool_calls_made:
+          type: integer
+          minimum: 0
+        threads_found:
+          type: integer
+          minimum: 0
+    PipelineSourceIngestionSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - operation_id
+        - command_key
+        - operation_status
+        - outcome
+        - items_ingested
+        - items_skipped
+        - items_failed
+      properties:
+        operation_id:
+          type: string
+          pattern: "^[1-9][0-9]*$"
+          maxLength: 19
+        command_key:
+          type: string
+          minLength: 1
+          maxLength: 100
+        operation_status:
+          $ref: "#/components/schemas/TerminalOperationStatus"
+        outcome:
+          $ref: "#/components/schemas/IngestionOutcome"
+        items_ingested:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        items_skipped:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        items_failed:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+    PipelineIngestionSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - outcome
+        - sources
+      properties:
+        outcome:
+          $ref: "#/components/schemas/IngestionOutcome"
+        sources:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/PipelineSourceIngestionSummary"
+    PipelineResultV2:
+      type: object
+      additionalProperties: true
+      x-operation-type: pipeline.run
+      required:
+        - schema_version
+        - ingestion_summary
+      properties:
+        schema_version:
+          type: integer
+          const: 2
+        ingestion_summary:
+          $ref: "#/components/schemas/PipelineIngestionSummary"
+    ConfiguredSourceHistoryOutcome:
+      type: object
+      additionalProperties: false
+      required:
+        - source_key
+        - status
+        - outcome
+        - items_ingested
+        - items_failed
+      properties:
+        source_key:
+          type: string
+          pattern: "^src_[a-f0-9]{20}$"
+        status:
+          $ref: "#/components/schemas/IngestionStatus"
+        outcome:
+          $ref: "#/components/schemas/IngestionOutcome"
+        items_ingested:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        items_failed:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        error_codes:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+        warning_codes:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+    IngestionHistoryItem:
+      type: object
+      additionalProperties: false
+      required:
+        - operation_id
+        - command_key
+        - operation_status
+        - outcome
+        - items_ingested
+        - items_skipped
+        - items_failed
+        - source_outcomes
+        - retry_count
+        - status_url
+        - created_at
+      properties:
+        operation_id:
+          type: string
+          pattern: "^[1-9][0-9]*$"
+          maxLength: 19
+          example: "8451"
+        parent_operation_id:
+          type:
+            - string
+            - "null"
+          pattern: "^[1-9][0-9]*$"
+          maxLength: 19
+          example: "8123"
+        command_key:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: rss
+        operation_status:
+          $ref: "#/components/schemas/TerminalOperationStatus"
+        outcome:
+          $ref: "#/components/schemas/IngestionOutcome"
+        items_ingested:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+          example: 14
+        items_skipped:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+          example: 2
+        items_failed:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+          example: 1
+        source_outcomes:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/ConfiguredSourceHistoryOutcome"
+        retry_count:
+          type: integer
+          minimum: 0
+          example: 0
+        problem_code:
+          type:
+            - string
+            - "null"
+          maxLength: 100
+          example: null
+        status_url:
+          type: string
+          pattern: "^/api/v1/operations/[1-9][0-9]*$"
+          example: /api/v1/operations/8451
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-07-27T02:00:00Z"
+        completed_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          example: "2026-07-27T02:00:06Z"
+    IngestionHistoryPage:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/IngestionHistoryItem"
+        next_cursor:
+          type:
+            - string
+            - "null"
+          maxLength: 2048
+          example: null
+    OperationSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - operation_id
+        - operation_type
+        - status
+        - progress
+        - message
+        - cancellable
+        - retry_count
+        - status_url
+        - events_url
+        - created_at
+      properties:
+        schema_version:
+          type: integer
+          const: 2
+        operation_id:
+          type: string
+          pattern: "^[1-9][0-9]*$"
+          maxLength: 19
+        operation_type:
+          type: string
+          enum:
+            - ingestion.execute
+            - summarization.run
+            - theme_analysis.create
+            - digest.create
+            - pipeline.run
+            - podcast_script.create
+            - podcast_audio.create
+            - audio_digest.create
+        status:
+          $ref: "#/components/schemas/OperationStatus"
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        message:
+          type: string
+          maxLength: 500
+        cancellable:
+          type: boolean
+        retry_count:
+          type: integer
+          minimum: 0
+        status_url:
+          type: string
+          pattern: "^/api/v1/operations/[1-9][0-9]*$"
+        events_url:
+          type: string
+          pattern: "^/api/v1/operations/[1-9][0-9]*/events$"
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        completed_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+    OperationPage:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/OperationSummary"
+        next_cursor:
+          type:
+            - string
+            - "null"
+          maxLength: 2048
+    Problem:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - status
+        - detail
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        code:
+          type:
+            - string
+            - "null"
+        instance:
+          type:
+            - string
+            - "null"
+        errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - path
+              - code
+              - message
+            properties:
+              path:
+                type: array
+                items:
+                  type:
+                    - string
+                    - integer
+              code:
+                type: string
+              message:
+                type: string
