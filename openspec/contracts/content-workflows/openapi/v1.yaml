@@ -98,6 +98,54 @@ paths:
         "422": { $ref: "#/components/responses/ValidationProblem" }
 
   /api/v1/ingestions:
+    get:
+      operationId: listIngestionHistory
+      summary: List compact terminal ingestion history derived from durable operations
+      tags: [operations, ingestion]
+      parameters:
+        - name: command_key
+          in: query
+          required: false
+          schema: { type: string, minLength: 1, maxLength: 100 }
+        - name: configured_source_key
+          in: query
+          required: false
+          schema: { type: string, pattern: "^src_[a-f0-9]{20}$" }
+        - name: outcome
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/IngestionOutcome" }
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/TerminalOperationStatus" }
+        - name: parent_operation_id
+          in: query
+          required: false
+          schema: { type: string, pattern: "^[1-9][0-9]*$", maxLength: 19 }
+        - name: created_after
+          in: query
+          required: false
+          schema: { type: string, format: date-time, maxLength: 64 }
+        - name: created_before
+          in: query
+          required: false
+          schema: { type: string, format: date-time, maxLength: 64 }
+        - $ref: "#/components/parameters/PageLimit"
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string, minLength: 1, maxLength: 2048 }
+          description: Signed keyset cursor bound to the normalized history filters.
+      responses:
+        "200":
+          description: Compact ingestion history page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IngestionHistoryPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationProblem" }
     post:
       operationId: submitIngestion
       summary: Submit one typed ingestion command
@@ -330,9 +378,14 @@ paths:
   /api/v1/operations:
     get:
       operationId: listOperations
-      summary: List durable operations using an opaque keyset cursor
+      summary: List bounded operation summaries using an opaque keyset cursor
       tags: [operations]
       parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/OperationStatus" }
+          description: Optional lifecycle filter used for bounded active hydration.
         - $ref: "#/components/parameters/PageLimit"
         - $ref: "#/components/parameters/PageCursor"
       responses:
@@ -559,11 +612,75 @@ components:
         id: { type: string }
         url: { type: string }
 
+    IngestionOutcome:
+      type: string
+      enum: [success, zero_items, partial, failed, cancelled, unknown]
+
+    OperationStatus:
+      type: string
+      enum: [queued, in_progress, completed, failed, cancelled]
+
+    IngestionStatus:
+      type: string
+      enum: [ok, partial, error]
+
+    TerminalOperationStatus:
+      type: string
+      enum: [completed, failed, cancelled]
+
+    BoundedDiagnostic:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code: { type: string, minLength: 1, maxLength: 100 }
+        message: { type: string, minLength: 1, maxLength: 500 }
+        redirected_source_key:
+          type: [string, "null"]
+          pattern: "^src_[a-f0-9]{20}$"
+
+    ConfiguredSourceOutcome:
+      type: object
+      additionalProperties: false
+      required:
+        - source_key
+        - status
+        - items_ingested
+        - items_failed
+        - errors
+        - warnings
+        - errors_omitted
+        - warnings_omitted
+      properties:
+        source_key: { type: string, pattern: "^src_[a-f0-9]{20}$" }
+        status: { $ref: "#/components/schemas/IngestionStatus" }
+        items_ingested: { type: integer, minimum: 0 }
+        items_failed: { type: integer, minimum: 0 }
+        errors:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/BoundedDiagnostic" }
+        warnings:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/BoundedDiagnostic" }
+        errors_omitted: { type: integer, minimum: 0 }
+        warnings_omitted: { type: integer, minimum: 0 }
+
     IngestionResult:
+      oneOf:
+        - { $ref: "#/components/schemas/IngestionResultV1" }
+        - { $ref: "#/components/schemas/IngestionResultV2" }
+      description: >-
+        Legacy V1 rows may predate an explicit schema_version, so readers use
+        structural union validation rather than a discriminator.
+
+    IngestionResultV1:
       type: object
       additionalProperties: false
       required: [command_key, resolved_route, emitted_sources, items_ingested, content_ids]
       properties:
+        schema_version: { type: integer, enum: [1], default: 1 }
         command_key: { type: string }
         resolved_route: { type: string }
         emitted_sources:
@@ -578,12 +695,244 @@ components:
           items: { type: integer, minimum: 1 }
         warnings: { type: array, items: { type: string } }
         details: { type: object, additionalProperties: true }
+      description: >-
+        Legacy reader shape. New writers never emit V1 and history must not
+        infer missing outcome/count fields from it.
+
+    IngestionResultV2:
+      type: object
+      additionalProperties: false
+      x-max-serialized-metadata-bytes: 65536
+      required:
+        - schema_version
+        - command_key
+        - resolved_route
+        - emitted_sources
+        - status
+        - outcome
+        - items_ingested
+        - items_skipped
+        - items_failed
+        - content_ids
+        - errors
+        - warnings
+        - errors_omitted
+        - warnings_omitted
+        - source_outcomes
+        - source_outcomes_omitted
+        - details
+        - details_omitted
+      properties:
+        schema_version: { type: integer, const: 2 }
+        command_key: { type: string, minLength: 1, maxLength: 100 }
+        resolved_route: { type: string, minLength: 1, maxLength: 100 }
+        emitted_sources:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 100 }
+        status: { $ref: "#/components/schemas/IngestionStatus" }
+        outcome: { $ref: "#/components/schemas/IngestionOutcome" }
+        items_ingested: { type: integer, minimum: 0 }
+        items_skipped: { type: integer, minimum: 0 }
+        items_failed: { type: integer, minimum: 0 }
+        content_ids:
+          type: array
+          uniqueItems: true
+          items: { type: integer, minimum: 1 }
+          description: Exact provenance; excluded from compact list and history projections.
+        errors:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/BoundedDiagnostic" }
+        warnings:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/BoundedDiagnostic" }
+        errors_omitted: { type: integer, minimum: 0 }
+        warnings_omitted: { type: integer, minimum: 0 }
+        source_outcomes:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/ConfiguredSourceOutcome" }
+        source_outcomes_omitted: { type: integer, minimum: 0 }
+        details: { $ref: "#/components/schemas/SafeIngestionDetails" }
+        details_omitted: { type: integer, minimum: 0 }
+
+    SafeIngestionDetails:
+      type: object
+      additionalProperties: false
+      properties:
+        dry_run: { type: boolean }
+        duplicate: { type: boolean }
+        version_updated: { type: boolean }
+        papers_ingested: { type: integer, minimum: 0 }
+        refs_ingested: { type: integer, minimum: 0 }
+        content_scanned: { type: integer, minimum: 0 }
+        references_found: { type: integer, minimum: 0 }
+        references_resolved: { type: integer, minimum: 0 }
+        references_unresolved: { type: integer, minimum: 0 }
+        queries_made: { type: integer, minimum: 0 }
+        citations_found: { type: integer, minimum: 0 }
+        tool_calls_made: { type: integer, minimum: 0 }
+        threads_found: { type: integer, minimum: 0 }
+
+    PipelineSourceIngestionSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - operation_id
+        - command_key
+        - operation_status
+        - outcome
+        - items_ingested
+        - items_skipped
+        - items_failed
+      properties:
+        operation_id: { type: string, pattern: "^[1-9][0-9]*$", maxLength: 19 }
+        command_key: { type: string, minLength: 1, maxLength: 100 }
+        operation_status: { $ref: "#/components/schemas/TerminalOperationStatus" }
+        outcome: { $ref: "#/components/schemas/IngestionOutcome" }
+        items_ingested: { type: [integer, "null"], minimum: 0 }
+        items_skipped: { type: [integer, "null"], minimum: 0 }
+        items_failed: { type: [integer, "null"], minimum: 0 }
+
+    PipelineIngestionSummary:
+      type: object
+      additionalProperties: false
+      required: [outcome, sources, sources_omitted]
+      description: >-
+        Aggregate precedence is failed, partial, cancelled, unknown, zero_items,
+        success, with mixed success and zero-item sources classified as success.
+      properties:
+        outcome: { $ref: "#/components/schemas/IngestionOutcome" }
+        sources:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/PipelineSourceIngestionSummary" }
+        sources_omitted: { type: integer, minimum: 0 }
+
+    PipelineResultV2:
+      type: object
+      additionalProperties: true
+      x-operation-type: pipeline.run
+      required: [schema_version, ingestion_summary]
+      properties:
+        schema_version: { type: integer, const: 2 }
+        ingestion_summary: { $ref: "#/components/schemas/PipelineIngestionSummary" }
+
+    ConfiguredSourceHistoryOutcome:
+      type: object
+      additionalProperties: false
+      required: [source_key, status, outcome, items_ingested, items_failed]
+      properties:
+        source_key: { type: string, pattern: "^src_[a-f0-9]{20}$" }
+        status: { $ref: "#/components/schemas/IngestionStatus" }
+        outcome: { $ref: "#/components/schemas/IngestionOutcome" }
+        items_ingested: { type: [integer, "null"], minimum: 0 }
+        items_failed: { type: [integer, "null"], minimum: 0 }
+        error_codes:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 100 }
+        warning_codes:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 100 }
+
+    IngestionHistoryItem:
+      type: object
+      additionalProperties: false
+      required:
+        - operation_id
+        - command_key
+        - operation_status
+        - outcome
+        - items_ingested
+        - items_skipped
+        - items_failed
+        - source_outcomes
+        - retry_count
+        - status_url
+        - created_at
+      properties:
+        operation_id: { type: string, pattern: "^[1-9][0-9]*$", maxLength: 19 }
+        parent_operation_id: { type: [string, "null"], pattern: "^[1-9][0-9]*$", maxLength: 19 }
+        command_key: { type: string, minLength: 1, maxLength: 100 }
+        operation_status: { $ref: "#/components/schemas/TerminalOperationStatus" }
+        outcome: { $ref: "#/components/schemas/IngestionOutcome" }
+        items_ingested: { type: [integer, "null"], minimum: 0 }
+        items_skipped: { type: [integer, "null"], minimum: 0 }
+        items_failed: { type: [integer, "null"], minimum: 0 }
+        source_outcomes:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/ConfiguredSourceHistoryOutcome" }
+        retry_count: { type: integer, minimum: 0 }
+        problem_code: { type: [string, "null"], maxLength: 100 }
+        status_url: { type: string, pattern: "^/api/v1/operations/[1-9][0-9]*$" }
+        created_at: { type: string, format: date-time }
+        completed_at: { type: [string, "null"], format: date-time }
+
+    IngestionHistoryPage:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/IngestionHistoryItem" }
+        next_cursor: { type: [string, "null"], maxLength: 2048 }
+
+    OperationSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - operation_id
+        - operation_type
+        - status
+        - progress
+        - message
+        - cancellable
+        - retry_count
+        - status_url
+        - events_url
+        - created_at
+      properties:
+        schema_version: { type: integer, const: 2 }
+        operation_id: { type: string, pattern: "^[1-9][0-9]*$", maxLength: 19 }
+        operation_type:
+          type: string
+          enum:
+            - ingestion.execute
+            - summarization.run
+            - theme_analysis.create
+            - digest.create
+            - pipeline.run
+            - podcast_script.create
+            - podcast_audio.create
+            - audio_digest.create
+        status: { $ref: "#/components/schemas/OperationStatus" }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        message: { type: string, maxLength: 500 }
+        cancellable: { type: boolean }
+        retry_count: { type: integer, minimum: 0 }
+        status_url: { type: string, pattern: "^/api/v1/operations/[1-9][0-9]*$" }
+        events_url: { type: string, pattern: "^/api/v1/operations/[1-9][0-9]*/events$" }
+        created_at: { type: string, format: date-time }
+        started_at: { type: [string, "null"], format: date-time }
+        completed_at: { type: [string, "null"], format: date-time }
 
     OperationHandle:
       type: object
       additionalProperties: false
       x-operation-result-schemas:
         ingestion.execute: { $ref: "#/components/schemas/IngestionResult" }
+        pipeline.run: { $ref: "#/components/schemas/PipelineResultV2" }
       required:
         - schema_version
         - operation_id
@@ -610,7 +959,7 @@ components:
             - podcast_script.create
             - podcast_audio.create
             - audio_digest.create
-        status: { type: string, enum: [queued, in_progress, completed, failed, cancelled] }
+        status: { $ref: "#/components/schemas/OperationStatus" }
         progress: { type: integer, minimum: 0, maximum: 100 }
         message: { type: string }
         cancellable: { type: boolean }
@@ -637,8 +986,11 @@ components:
       additionalProperties: false
       required: [data]
       properties:
-        data: { type: array, items: { $ref: "#/components/schemas/OperationHandle" } }
-        next_cursor: { type: [string, "null"] }
+        data:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/OperationSummary" }
+        next_cursor: { type: [string, "null"], maxLength: 2048 }
 
     OperationEvent:
       type: object
@@ -659,7 +1011,7 @@ components:
             - podcast_script.create
             - podcast_audio.create
             - audio_digest.create
-        status: { type: string, enum: [queued, in_progress, completed, failed, cancelled] }
+        status: { $ref: "#/components/schemas/OperationStatus" }
         progress: { type: integer, minimum: 0, maximum: 100 }
         message: { type: string }
         resource:

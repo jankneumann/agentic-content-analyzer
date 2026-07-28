@@ -37,6 +37,12 @@ def _literal(values: list[Any], *, language: str) -> str:
     return " | ".join(json.dumps(value) for value in values)
 
 
+def _enum_values(schema: dict[str, Any], schemas: dict[str, Any]) -> list[Any]:
+    if "$ref" in schema:
+        schema = schemas[_ref_name(schema["$ref"])]
+    return cast(list[Any], schema["enum"])
+
+
 def _python_type(schema: dict[str, Any], *, field_name: str | None = None) -> str:
     if "$ref" in schema:
         return _ref_name(schema["$ref"])
@@ -129,14 +135,28 @@ def _object_parts(schema: dict[str, Any]) -> tuple[str, dict[str, Any], set[str]
         else:
             properties.update(part.get("properties", {}))
             required.update(part.get("required", []))
-    return (bases[0] if bases else "StrictModel"), properties, required
+    if bases:
+        base = bases[0]
+    elif schema.get("additionalProperties") is True:
+        base = "ExtensibleModel"
+    else:
+        base = "StrictModel"
+    return base, properties, required
 
 
 def _render_python(spec: dict[str, Any], digest: str) -> str:
     schemas = spec["components"]["schemas"]
     operation = schemas["OperationHandle"]["properties"]
     operation_types = operation["operation_type"]["enum"]
-    operation_statuses = operation["status"]["enum"]
+    operation_statuses = _enum_values(operation["status"], schemas)
+    scalar_aliases = [
+        (name, schema)
+        for name, schema in schemas.items()
+        if "enum" in schema
+        and not schema.get("properties")
+        and not schema.get("allOf")
+        and name not in {"OperationStatus", "OperationType"}
+    ]
     lines = [
         '"""Generated from contracts/openapi/v1.yaml; do not edit."""',
         "",
@@ -151,10 +171,18 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
         "",
         f"OperationStatus = {_literal(operation_statuses, language='python')}",
         f"OperationType = {_literal(operation_types, language='python')}",
+        *[
+            f"{name} = {_literal(schema['enum'], language='python')}"
+            for name, schema in scalar_aliases
+        ],
         "",
         "",
         "class StrictModel(BaseModel):",
         '    model_config = ConfigDict(extra="forbid")',
+        "",
+        "",
+        "class ExtensibleModel(BaseModel):",
+        '    model_config = ConfigDict(extra="allow")',
         "",
         "",
         "COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = "
@@ -282,12 +310,25 @@ def _typescript_type(schema: dict[str, Any]) -> str:
 def _render_typescript(spec: dict[str, Any], digest: str) -> str:
     schemas = spec["components"]["schemas"]
     operation = schemas["OperationHandle"]["properties"]
+    operation_statuses = _enum_values(operation["status"], schemas)
+    scalar_aliases = [
+        (name, schema)
+        for name, schema in schemas.items()
+        if "enum" in schema
+        and not schema.get("properties")
+        and not schema.get("allOf")
+        and name not in {"OperationStatus", "OperationType"}
+    ]
     lines = [
         "// Generated from contracts/openapi/v1.yaml; do not edit.",
         f'export const CONTRACT_SHA256 = "{digest}" as const;',
         "",
-        f"export type OperationStatus = {_literal(operation['status']['enum'], language='typescript')};",
+        f"export type OperationStatus = {_literal(operation_statuses, language='typescript')};",
         f"export type OperationType = {_literal(operation['operation_type']['enum'], language='typescript')};",
+        *[
+            f"export type {name} = {_literal(schema['enum'], language='typescript')};"
+            for name, schema in scalar_aliases
+        ],
     ]
 
     aliases: list[tuple[str, dict[str, Any]]] = []
@@ -305,8 +346,10 @@ def _render_typescript(spec: dict[str, Any], digest: str) -> str:
             continue
 
         base, properties, required = _object_parts(schema)
-        extends = f" extends {base}" if base != "StrictModel" else ""
+        extends = f" extends {base}" if base not in {"StrictModel", "ExtensibleModel"} else ""
         lines.extend(["", f"export interface {name}{extends} {{"])
+        if schema.get("additionalProperties") is True:
+            lines.append("  [key: string]: unknown;")
         for field_name, field_schema in properties.items():
             if field_schema.get("x-internal"):
                 continue

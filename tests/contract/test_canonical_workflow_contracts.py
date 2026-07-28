@@ -7,10 +7,12 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, get_args
 
+import pytest
 import yaml
 from jsonschema.validators import validator_for
+from pydantic import TypeAdapter, ValidationError
 
 ROOT = Path(__file__).parents[2]
 CONTRACTS = ROOT / "openspec/contracts/content-workflows"
@@ -52,6 +54,16 @@ OPERATION_TYPES = {
 
 def _openapi() -> dict:
     return cast(dict[str, Any], yaml.safe_load(OPENAPI_PATH.read_text()))
+
+
+def _generated_models() -> Any:
+    generated = CONTRACTS / "generated/models.py"
+    spec = importlib.util.spec_from_file_location("canonical_workflow_models", generated)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_contract_source_is_outside_change_lifecycle() -> None:
@@ -152,10 +164,186 @@ def test_operation_handle_contract_is_complete() -> None:
         "created_at",
     }
     assert set(handle["properties"]["operation_type"]["enum"]) == OPERATION_TYPES
-    assert "cancelled" in handle["properties"]["status"]["enum"]
+    assert handle["properties"]["status"] == {"$ref": "#/components/schemas/OperationStatus"}
+    assert "cancelled" in schemas["OperationStatus"]["enum"]
     assert handle["x-operation-result-schemas"]["ingestion.execute"] == {
         "$ref": "#/components/schemas/IngestionResult"
     }
+    assert handle["x-operation-result-schemas"]["pipeline.run"] == {
+        "$ref": "#/components/schemas/PipelineResultV2"
+    }
+
+
+def test_ingestion_result_contract_preserves_untagged_v1_and_strict_v2() -> None:
+    schemas = _openapi()["components"]["schemas"]
+    result = schemas["IngestionResult"]
+    assert "discriminator" not in result
+    assert result["oneOf"] == [
+        {"$ref": "#/components/schemas/IngestionResultV1"},
+        {"$ref": "#/components/schemas/IngestionResultV2"},
+    ]
+    assert "schema_version" not in schemas["IngestionResultV1"]["required"]
+    assert schemas["IngestionResultV1"]["properties"]["schema_version"]["default"] == 1
+    assert schemas["IngestionResultV1"]["additionalProperties"] is False
+    assert schemas["IngestionResultV2"]["properties"]["schema_version"] == {
+        "type": "integer",
+        "const": 2,
+    }
+    assert "unknown" in schemas["IngestionOutcome"]["enum"]
+
+
+def test_public_ingestion_projection_is_bounded_and_opaque() -> None:
+    schemas = _openapi()["components"]["schemas"]
+    result = schemas["IngestionResultV2"]
+    assert result["additionalProperties"] is False
+    assert result["x-max-serialized-metadata-bytes"] == 65_536
+    assert result["properties"]["errors"]["maxItems"] == 20
+    assert result["properties"]["warnings"]["maxItems"] == 20
+    assert result["properties"]["source_outcomes"]["maxItems"] == 100
+    assert {
+        "errors_omitted",
+        "warnings_omitted",
+        "source_outcomes_omitted",
+        "details_omitted",
+    } <= set(result["required"])
+
+    diagnostic = schemas["BoundedDiagnostic"]
+    assert diagnostic["properties"]["code"]["maxLength"] == 100
+    assert diagnostic["properties"]["message"]["maxLength"] == 500
+    source = schemas["ConfiguredSourceOutcome"]
+    assert source["properties"]["source_key"]["pattern"] == "^src_[a-f0-9]{20}$"
+    assert "source_key" in source["required"]
+    assert schemas["SafeIngestionDetails"]["additionalProperties"] is False
+
+    history = schemas["IngestionHistoryItem"]
+    assert history["additionalProperties"] is False
+    assert not {
+        "content_ids",
+        "details",
+        "errors",
+        "warnings",
+        "result",
+        "checkpoint",
+    } & set(history["properties"])
+    assert schemas["IngestionHistoryPage"]["properties"]["data"]["maxItems"] == 100
+
+
+def test_pipeline_and_history_contracts_have_stable_typed_summaries() -> None:
+    document = _openapi()
+    schemas = document["components"]["schemas"]
+    assert schemas["PipelineResultV2"]["properties"]["ingestion_summary"] == {
+        "$ref": "#/components/schemas/PipelineIngestionSummary"
+    }
+    assert schemas["PipelineIngestionSummary"]["required"] == [
+        "outcome",
+        "sources",
+        "sources_omitted",
+    ]
+    assert schemas["OperationPage"]["properties"]["data"]["items"] == {
+        "$ref": "#/components/schemas/OperationSummary"
+    }
+    assert document["paths"]["/api/v1/ingestions"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"] == {"$ref": "#/components/schemas/IngestionHistoryPage"}
+    history_status = next(
+        parameter
+        for parameter in document["paths"]["/api/v1/ingestions"]["get"]["parameters"]
+        if parameter["name"] == "status"
+    )
+    assert history_status["schema"] == {"$ref": "#/components/schemas/TerminalOperationStatus"}
+    history_parameters = {
+        parameter["name"]: parameter["schema"]
+        for parameter in document["paths"]["/api/v1/ingestions"]["get"]["parameters"]
+        if "name" in parameter
+    }
+    assert "command_key" in history_parameters
+    assert "source" not in history_parameters
+    assert history_parameters["created_after"]["maxLength"] == 64
+    assert history_parameters["created_before"]["maxLength"] == 64
+    operation_parameters = {
+        parameter["name"]: parameter["schema"]
+        for parameter in document["paths"]["/api/v1/operations"]["get"]["parameters"]
+        if "name" in parameter
+    }
+    assert operation_parameters["status"] == {"$ref": "#/components/schemas/OperationStatus"}
+    assert set(schemas["OperationSummary"]["properties"]) <= set(
+        schemas["OperationHandle"]["properties"]
+    )
+    assert not {"resource", "result", "problem"} & set(schemas["OperationSummary"]["properties"])
+    history = schemas["IngestionHistoryItem"]
+    assert history["properties"]["items_ingested"]["type"] == ["integer", "null"]
+    assert history["properties"]["items_skipped"]["type"] == ["integer", "null"]
+    assert history["properties"]["items_failed"]["type"] == ["integer", "null"]
+    assert history["properties"]["command_key"]["maxLength"] == 100
+    assert history["properties"]["problem_code"]["maxLength"] == 100
+
+
+def test_named_enum_aliases_and_v1_v2_union_generate_runtime_types() -> None:
+    module = _generated_models()
+    assert set(get_args(module.IngestionOutcome)) == {
+        "success",
+        "zero_items",
+        "partial",
+        "failed",
+        "cancelled",
+        "unknown",
+    }
+    assert set(get_args(module.TerminalOperationStatus)) == {
+        "completed",
+        "failed",
+        "cancelled",
+    }
+
+    legacy = TypeAdapter(module.IngestionResult).validate_python(
+        {
+            "command_key": "rss",
+            "resolved_route": "rss",
+            "emitted_sources": ["rss"],
+            "items_ingested": 4,
+            "content_ids": [11, 12],
+            "details": {"legacy_extension": True},
+        }
+    )
+    assert isinstance(legacy, module.IngestionResultV1)
+    assert legacy.schema_version == 1
+    assert legacy.details == {"legacy_extension": True}
+
+    with pytest.raises(ValidationError):
+        TypeAdapter(module.IngestionResult).validate_python(
+            {
+                "command_key": "rss",
+                "resolved_route": "rss",
+                "emitted_sources": ["rss"],
+                "items_ingested": 4,
+                "content_ids": [11, 12],
+                "legacy_extension": True,
+            }
+        )
+
+    with pytest.raises(ValidationError):
+        TypeAdapter(module.IngestionResult).validate_python(
+            {
+                "schema_version": 2,
+                "command_key": "rss",
+                "resolved_route": "rss",
+                "emitted_sources": ["rss"],
+                "status": "ok",
+                "outcome": "success",
+                "items_ingested": 1,
+                "items_skipped": 0,
+                "items_failed": 0,
+                "content_ids": [11],
+                "errors": [],
+                "warnings": [],
+                "errors_omitted": 0,
+                "warnings_omitted": 0,
+                "source_outcomes": [],
+                "source_outcomes_omitted": 0,
+                "details": {},
+                "details_omitted": 0,
+                "unexpected": True,
+            }
+        )
 
 
 def test_url_contract_preserves_routing_behavior_from_main() -> None:
@@ -191,7 +379,10 @@ def test_agent_facing_discovery_contracts_use_cursor_pages() -> None:
     assert paths["/api/v1/configured-sources"]["get"]["responses"]["200"]["content"][
         "application/json"
     ]["schema"] == {"$ref": "#/components/schemas/ConfiguredSourcePage"}
-    assert schemas["OperationPage"]["properties"]["next_cursor"] == {"type": ["string", "null"]}
+    assert schemas["OperationPage"]["properties"]["next_cursor"] == {
+        "type": ["string", "null"],
+        "maxLength": 2048,
+    }
     configured = schemas["ConfiguredSource"]
     assert "url" not in configured["required"]
     assert set(configured["required"]) >= {
@@ -249,12 +440,7 @@ def test_generated_contract_files_have_no_drift() -> None:
 
 
 def test_generated_python_contract_imports() -> None:
-    generated = CONTRACTS / "generated/models.py"
-    spec = importlib.util.spec_from_file_location("canonical_workflow_models", generated)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    module = _generated_models()
     assert set(module.OperationType.__args__) == OPERATION_TYPES
     assert all(
         "configured_sources" not in command["properties"]
@@ -266,3 +452,26 @@ def test_generated_python_contract_imports() -> None:
 def test_generated_typescript_omits_internal_scheduler_fields() -> None:
     generated = (CONTRACTS / "generated/types.ts").read_text()
     assert "configured_sources" not in generated
+
+
+def test_generated_typescript_declares_named_unions_and_type_checks() -> None:
+    generated = CONTRACTS / "generated/types.ts"
+    source = generated.read_text()
+    assert "export type IngestionResult = IngestionResultV1 | IngestionResultV2;" in source
+    assert "export type IngestionOutcome =" in source
+    assert "export interface OperationSummary" in source
+    result = subprocess.run(
+        [
+            str(ROOT / "web/node_modules/.bin/tsc"),
+            "--noEmit",
+            "--skipLibCheck",
+            "--target",
+            "ES2022",
+            str(generated),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
