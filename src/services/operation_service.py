@@ -6,18 +6,30 @@ import asyncio
 import base64
 import binascii
 import hashlib
+import hmac
 import json
+import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import monotonic
-from typing import Any
+from typing import Any, cast
 
 import asyncpg
 
 from src.contracts.workflow_models import (
+    ConfiguredSourceHistoryOutcome,
+    IngestionHistoryItem,
+    IngestionHistoryPage,
+    IngestionOutcome,
+    IngestionStatus,
     OperationPage,
     OperationSummary,
     PipelineIngestionSummary,
     PipelineResultV2,
+)
+from src.ingestion.result_sanitizer import (
+    SAFE_INGESTION_DIAGNOSTIC_CODES,
+    sanitize_ingestion_diagnostic_code,
 )
 from src.models.jobs import (
     LEGACY_OPERATION_TYPES,
@@ -41,6 +53,44 @@ _SUMMARY_MESSAGES: dict[JobStatus, str] = {
     JobStatus.FAILED: "Failed",
     JobStatus.CANCELLED: "Cancelled",
 }
+_HISTORY_CURSOR_VERSION = 1
+_MAX_HISTORY_CURSOR_LENGTH = 2048
+_MAX_HISTORY_CURSOR_BYTES = 1024
+_MAX_BIGINT = 9_223_372_036_854_775_807
+_SOURCE_KEY_RE = re.compile(r"^src_[a-f0-9]{20}$")
+_SAFE_COMMAND_RE = re.compile(r"^[a-z][a-z0-9_]{0,99}$")
+_HISTORY_OUTCOMES = frozenset(
+    {"success", "zero_items", "partial", "failed", "cancelled", "unknown"}
+)
+_TERMINAL_STATUSES = frozenset(
+    {OperationStatus.COMPLETED, OperationStatus.FAILED, OperationStatus.CANCELLED}
+)
+_LEGACY_INGESTION_ENTRYPOINTS = ("ingest_content", "extract_url_content")
+_LEGACY_COMMAND_BY_ENTRYPOINT = {"extract_url_content": "url"}
+_HISTORY_PROBLEM_CODES = SAFE_INGESTION_DIAGNOSTIC_CODES | {
+    "operation_failed",
+    "source_partial",
+}
+
+
+@dataclass(frozen=True)
+class _CompactSourceResult:
+    source_key: str
+    status: IngestionStatus
+    items_ingested: int
+    items_failed: int
+    error_codes: tuple[str, ...]
+    warning_codes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _CompactIngestionResult:
+    command_key: str
+    outcome: IngestionOutcome
+    items_ingested: int
+    items_skipped: int
+    items_failed: int
+    source_outcomes: tuple[_CompactSourceResult, ...]
 
 
 class OperationError(RuntimeError):
@@ -64,6 +114,7 @@ class OperationService:
         connection: asyncpg.Connection | None = None,
         poll_interval: float = queue_setup.DEFAULT_STATUS_POLL_SECONDS,
         max_wait_seconds: float = 30,
+        cursor_signing_key: str | None = None,
     ) -> None:
         if poll_interval < 0:
             raise ValueError("poll_interval must be non-negative")
@@ -72,6 +123,7 @@ class OperationService:
         self._connection = connection
         self._poll_interval = poll_interval
         self._max_wait_seconds = max_wait_seconds
+        self._cursor_signing_key = cursor_signing_key
 
     @staticmethod
     def project(job: JobRecord) -> OperationHandle:
@@ -331,6 +383,521 @@ class OperationService:
             last = jobs[-1]
             next_cursor = self._encode_cursor(last.created_at, last.id)
         return OperationPage(data=summaries, next_cursor=next_cursor)
+
+    async def list_ingestion_history(
+        self,
+        *,
+        command_key: str | None = None,
+        configured_source_key: str | None = None,
+        outcome: str | None = None,
+        status: OperationStatus | str | None = None,
+        parent_operation_id: str | int | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> IngestionHistoryPage:
+        """List compact terminal ingestion projections with fixed-filter pagination."""
+
+        filters, normalized_values = self._normalize_history_filters(
+            command_key=command_key,
+            configured_source_key=configured_source_key,
+            outcome=outcome,
+            status=status,
+            parent_operation_id=parent_operation_id,
+            created_after=created_after,
+            created_before=created_before,
+            limit=limit,
+        )
+        signing_key = self._history_cursor_signing_key()
+        before_created_at, before_id = self._decode_history_cursor(
+            cursor,
+            filters=filters,
+            signing_key=signing_key,
+        )
+        async with queue_setup._queue_connection(self._connection) as conn:
+            rows = await conn.fetch(
+                r"""
+                WITH candidates AS (
+                    SELECT id, entrypoint, status, payload, priority, error,
+                           retry_count, parent_job_id, heartbeat_at, created_at,
+                           started_at, completed_at,
+                           (
+                               jsonb_typeof(payload->'result') = 'object'
+                               AND jsonb_typeof(payload->'result'->'schema_version') = 'number'
+                               AND (payload->'result'->'schema_version')::text = '2'
+                               AND jsonb_typeof(payload->'result'->'command_key') = 'string'
+                               AND payload->'result'->>'command_key'
+                                   ~ '^[a-z][a-z0-9_]{0,99}$'
+                               AND jsonb_typeof(payload->'result'->'outcome') = 'string'
+                               AND payload->'result'->>'outcome' IN (
+                                   'success', 'zero_items', 'partial',
+                                   'failed', 'cancelled', 'unknown'
+                               )
+                               AND jsonb_typeof(payload->'result'->'items_ingested') = 'number'
+                               AND (payload->'result'->'items_ingested')::text
+                                   ~ '^(0|[1-9][0-9]*)$'
+                               AND jsonb_typeof(payload->'result'->'items_skipped') = 'number'
+                               AND (payload->'result'->'items_skipped')::text
+                                   ~ '^(0|[1-9][0-9]*)$'
+                               AND jsonb_typeof(payload->'result'->'items_failed') = 'number'
+                               AND (payload->'result'->'items_failed')::text
+                                   ~ '^(0|[1-9][0-9]*)$'
+                               AND jsonb_typeof(payload->'result'->'source_outcomes') = 'array'
+                           ) AS compact_result_eligible
+                    FROM pgqueuer_jobs
+                    WHERE status IN ('completed', 'failed', 'cancelled')
+                      AND (
+                          (
+                              jsonb_typeof(payload->'schema_version') = 'number'
+                              AND (payload->'schema_version')::text = '2'
+                              AND payload->>'operation_type' = 'ingestion.execute'
+                          )
+                          OR (
+                              NOT COALESCE(
+                                  jsonb_typeof(payload->'schema_version') = 'number'
+                                  AND (payload->'schema_version')::text = '2',
+                                  FALSE
+                              )
+                              AND entrypoint = ANY($10::text[])
+                          )
+                      )
+                ),
+                history AS (
+                    SELECT id, entrypoint, status, payload, priority, error,
+                           retry_count, parent_job_id, heartbeat_at, created_at,
+                           started_at, completed_at, compact_result_eligible,
+                           CASE
+                               WHEN compact_result_eligible
+                                   THEN payload->'result'->>'command_key'
+                               WHEN jsonb_typeof(payload->'input'->'kind') = 'string'
+                                AND payload->'input'->>'kind'
+                                    ~ '^[a-z][a-z0-9_]{0,99}$'
+                                   THEN payload->'input'->>'kind'
+                               WHEN jsonb_typeof(payload->'source') = 'string'
+                                AND payload->>'source' ~ '^[a-z][a-z0-9_]{0,99}$'
+                                   THEN payload->>'source'
+                               WHEN entrypoint = 'extract_url_content' THEN 'url'
+                               ELSE 'unknown'
+                           END AS history_command_key,
+                           CASE
+                               WHEN status = 'failed' THEN 'failed'
+                               WHEN status = 'cancelled' THEN 'cancelled'
+                               WHEN compact_result_eligible
+                                   THEN payload->'result'->>'outcome'
+                               ELSE 'unknown'
+                           END AS history_outcome
+                    FROM candidates
+                )
+                SELECT id, entrypoint, status, payload, priority, error,
+                       retry_count, parent_job_id, heartbeat_at, created_at,
+                       started_at, completed_at
+                FROM history
+                WHERE (
+                    $1::timestamptz IS NULL
+                    OR (created_at, id) < ($1::timestamptz, $2::bigint)
+                )
+                  AND ($3::text IS NULL OR history_command_key = $3::text)
+                  AND (
+                      $4::text IS NULL
+                      OR (
+                          compact_result_eligible
+                          AND EXISTS (
+                          SELECT 1
+                          FROM jsonb_array_elements(
+                              CASE
+                                  WHEN jsonb_typeof(payload->'result'->'source_outcomes') = 'array'
+                                      THEN payload->'result'->'source_outcomes'
+                                  ELSE '[]'::jsonb
+                              END
+                          ) WITH ORDINALITY AS source_outcome(
+                              source_value, source_ordinality
+                          )
+                          WHERE source_ordinality <= 100
+                            AND jsonb_typeof(source_value) = 'object'
+                            AND jsonb_typeof(source_value->'source_key') = 'string'
+                            AND source_value->>'source_key'
+                                ~ '^src_[a-f0-9]{20}$'
+                            AND source_value->>'source_key' = $4::text
+                            AND jsonb_typeof(source_value->'status') = 'string'
+                            AND source_value->>'status' IN ('ok', 'partial', 'error')
+                            AND jsonb_typeof(source_value->'items_ingested') = 'number'
+                            AND (source_value->'items_ingested')::text
+                                ~ '^(0|[1-9][0-9]*)$'
+                            AND jsonb_typeof(source_value->'items_failed') = 'number'
+                            AND (source_value->'items_failed')::text
+                                ~ '^(0|[1-9][0-9]*)$'
+                          )
+                      )
+                  )
+                  AND ($5::text IS NULL OR history_outcome = $5::text)
+                  AND ($6::text IS NULL OR status = $6::text)
+                  AND ($7::bigint IS NULL OR parent_job_id = $7::bigint)
+                  AND ($8::timestamptz IS NULL OR created_at >= $8::timestamptz)
+                  AND ($9::timestamptz IS NULL OR created_at < $9::timestamptz)
+                ORDER BY created_at DESC, id DESC
+                LIMIT $11
+                """,
+                before_created_at,
+                before_id,
+                normalized_values["command_key"],
+                normalized_values["configured_source_key"],
+                normalized_values["outcome"],
+                normalized_values["status"],
+                normalized_values["parent_operation_id"],
+                normalized_values["created_after"],
+                normalized_values["created_before"],
+                list(_LEGACY_INGESTION_ENTRYPOINTS),
+                limit + 1,
+            )
+
+        jobs = [self._job_from_row(row) for row in rows[:limit]]
+        items = [self._project_ingestion_history(job) for job in jobs]
+        next_cursor = None
+        if len(rows) > limit and jobs:
+            last = jobs[-1]
+            next_cursor = self._encode_history_cursor(
+                last.created_at,
+                last.id,
+                filters=filters,
+                signing_key=signing_key,
+            )
+        return IngestionHistoryPage(data=items, next_cursor=next_cursor)
+
+    @staticmethod
+    def _project_ingestion_history(job: JobRecord) -> IngestionHistoryItem:
+        payload = job.payload if isinstance(job.payload, dict) else {}
+        result = OperationService._compact_history_result(payload.get("result"))
+
+        command_key = OperationService._history_command_key(job.entrypoint, payload, result)
+        if job.status is JobStatus.FAILED:
+            history_outcome = "failed"
+        elif job.status is JobStatus.CANCELLED:
+            history_outcome = "cancelled"
+        elif result is not None:
+            history_outcome = result.outcome
+        else:
+            history_outcome = "unknown"
+
+        source_outcomes: list[ConfiguredSourceHistoryOutcome] = []
+        if result is not None:
+            for source in result.source_outcomes:
+                if source.status == "error":
+                    source_history_outcome = "failed"
+                elif source.status == "partial":
+                    source_history_outcome = "partial"
+                elif source.items_ingested:
+                    source_history_outcome = "success"
+                else:
+                    source_history_outcome = "zero_items"
+                source_outcomes.append(
+                    ConfiguredSourceHistoryOutcome(
+                        source_key=source.source_key,
+                        status=source.status,
+                        outcome=source_history_outcome,
+                        items_ingested=source.items_ingested,
+                        items_failed=source.items_failed,
+                        error_codes=list(source.error_codes) or None,
+                        warning_codes=list(source.warning_codes) or None,
+                    )
+                )
+
+        raw_problem = payload.get("problem")
+        raw_problem_code = raw_problem.get("code") if isinstance(raw_problem, dict) else None
+        problem_code = (
+            raw_problem_code
+            if isinstance(raw_problem_code, str) and raw_problem_code in _HISTORY_PROBLEM_CODES
+            else ("operation_failed" if job.status is JobStatus.FAILED else None)
+        )
+        return IngestionHistoryItem(
+            operation_id=str(job.id),
+            parent_operation_id=str(job.parent_job_id) if job.parent_job_id is not None else None,
+            command_key=command_key,
+            operation_status=job.status.value,
+            outcome=history_outcome,
+            items_ingested=result.items_ingested if result is not None else None,
+            items_skipped=result.items_skipped if result is not None else None,
+            items_failed=result.items_failed if result is not None else None,
+            source_outcomes=source_outcomes,
+            retry_count=job.retry_count,
+            problem_code=problem_code,
+            status_url=f"/api/v1/operations/{job.id}",
+            created_at=job.created_at,
+            completed_at=job.completed_at,
+        )
+
+    @staticmethod
+    def _compact_history_result(raw_result: object) -> _CompactIngestionResult | None:
+        if not isinstance(raw_result, dict):
+            return None
+        if type(raw_result.get("schema_version")) is not int:
+            return None
+        if raw_result["schema_version"] != 2:
+            return None
+
+        command_key = raw_result.get("command_key")
+        outcome = raw_result.get("outcome")
+        if not isinstance(command_key, str) or not _SAFE_COMMAND_RE.fullmatch(command_key):
+            return None
+        if not isinstance(outcome, str) or outcome not in _HISTORY_OUTCOMES:
+            return None
+
+        counts: list[int] = []
+        for field in ("items_ingested", "items_skipped", "items_failed"):
+            value = raw_result.get(field)
+            if type(value) is not int or value < 0:
+                return None
+            counts.append(value)
+
+        raw_sources = raw_result.get("source_outcomes")
+        if not isinstance(raw_sources, list):
+            return None
+        source_outcomes = tuple(
+            parsed
+            for raw_source in raw_sources[:100]
+            if (parsed := OperationService._compact_history_source(raw_source)) is not None
+        )
+        return _CompactIngestionResult(
+            command_key=command_key,
+            outcome=cast(IngestionOutcome, outcome),
+            items_ingested=counts[0],
+            items_skipped=counts[1],
+            items_failed=counts[2],
+            source_outcomes=source_outcomes,
+        )
+
+    @staticmethod
+    def _compact_history_source(raw_source: object) -> _CompactSourceResult | None:
+        if not isinstance(raw_source, dict):
+            return None
+        source_key = raw_source.get("source_key")
+        status = raw_source.get("status")
+        items_ingested = raw_source.get("items_ingested")
+        items_failed = raw_source.get("items_failed")
+        if not isinstance(source_key, str) or not _SOURCE_KEY_RE.fullmatch(source_key):
+            return None
+        if not isinstance(status, str) or status not in {"ok", "partial", "error"}:
+            return None
+        if type(items_ingested) is not int or items_ingested < 0:
+            return None
+        if type(items_failed) is not int or items_failed < 0:
+            return None
+        return _CompactSourceResult(
+            source_key=source_key,
+            status=cast(IngestionStatus, status),
+            items_ingested=items_ingested,
+            items_failed=items_failed,
+            error_codes=OperationService._history_machine_codes(raw_source.get("errors")),
+            warning_codes=OperationService._history_machine_codes(raw_source.get("warnings")),
+        )
+
+    @staticmethod
+    def _history_machine_codes(raw_diagnostics: object) -> tuple[str, ...]:
+        if not isinstance(raw_diagnostics, list):
+            return ()
+        codes: list[str] = []
+        seen: set[str] = set()
+        for diagnostic in raw_diagnostics:
+            raw_code = diagnostic.get("code") if isinstance(diagnostic, dict) else None
+            code = sanitize_ingestion_diagnostic_code(raw_code)
+            if code not in seen:
+                seen.add(code)
+                codes.append(code)
+                if len(codes) == 20:
+                    break
+        return tuple(codes)
+
+    @staticmethod
+    def _history_command_key(
+        entrypoint: str,
+        payload: dict[str, Any],
+        result: _CompactIngestionResult | None,
+    ) -> str:
+        candidates: list[object] = [result.command_key if result is not None else None]
+        raw_input = payload.get("input")
+        candidates.append(raw_input.get("kind") if isinstance(raw_input, dict) else None)
+        candidates.append(payload.get("source"))
+        candidates.append(_LEGACY_COMMAND_BY_ENTRYPOINT.get(entrypoint))
+        for candidate in candidates:
+            if isinstance(candidate, str) and _SAFE_COMMAND_RE.fullmatch(candidate):
+                return candidate
+        return "unknown"
+
+    @staticmethod
+    def _normalize_history_filters(
+        *,
+        command_key: str | None,
+        configured_source_key: str | None,
+        outcome: str | None,
+        status: OperationStatus | str | None,
+        parent_operation_id: str | int | None,
+        created_after: datetime | None,
+        created_before: datetime | None,
+        limit: int,
+    ) -> tuple[dict[str, str], dict[str, object | None]]:
+        if limit < 1 or limit > 100:
+            raise ValueError("limit must be between 1 and 100")
+        if command_key is not None and not 1 <= len(command_key) <= 100:
+            raise ValueError("command_key must be between 1 and 100 characters")
+        if configured_source_key is not None and not _SOURCE_KEY_RE.fullmatch(
+            configured_source_key
+        ):
+            raise ValueError("configured_source_key must be an opaque source key")
+        if outcome is not None and outcome not in _HISTORY_OUTCOMES:
+            raise ValueError("Invalid ingestion outcome")
+        normalized_status = OperationStatus(status) if status is not None else None
+        if normalized_status is not None and normalized_status not in _TERMINAL_STATUSES:
+            raise ValueError("Ingestion history status must be terminal")
+
+        normalized_parent: int | None = None
+        if parent_operation_id is not None:
+            try:
+                normalized_parent = int(parent_operation_id)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("parent_operation_id must be a positive bigint") from exc
+            if normalized_parent < 1 or normalized_parent > _MAX_BIGINT:
+                raise ValueError("parent_operation_id must be a positive bigint")
+
+        normalized_after = OperationService._normalize_history_datetime(
+            created_after, "created_after"
+        )
+        normalized_before = OperationService._normalize_history_datetime(
+            created_before, "created_before"
+        )
+        if (
+            normalized_after is not None
+            and normalized_before is not None
+            and normalized_after >= normalized_before
+        ):
+            raise ValueError("created_after must be earlier than created_before")
+
+        values: dict[str, object | None] = {
+            "command_key": command_key,
+            "configured_source_key": configured_source_key,
+            "outcome": outcome,
+            "status": normalized_status.value if normalized_status is not None else None,
+            "parent_operation_id": normalized_parent,
+            "created_after": normalized_after,
+            "created_before": normalized_before,
+        }
+        filters = {
+            key: OperationService._history_filter_value(value)
+            for key, value in values.items()
+            if value is not None
+        }
+        return filters, values
+
+    @staticmethod
+    def _normalize_history_datetime(value: datetime | None, field: str) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError(f"{field} must include a timezone")
+        return value.astimezone(UTC)
+
+    @staticmethod
+    def _history_filter_value(value: object) -> str:
+        if isinstance(value, datetime):
+            return value.isoformat().replace("+00:00", "Z")
+        return str(value)
+
+    def _history_cursor_signing_key(self) -> bytes:
+        key = self._cursor_signing_key
+        if key is None:
+            from src.config.settings import get_settings
+
+            key = get_settings().get_operation_cursor_signing_key()
+        if len(key.encode("utf-8")) < 32:
+            raise RuntimeError("OPERATION_CURSOR_SIGNING_KEY must be at least 32 bytes")
+        return key.encode("utf-8")
+
+    @staticmethod
+    def _encode_history_cursor(
+        created_at: datetime,
+        operation_id: int,
+        *,
+        filters: dict[str, str],
+        signing_key: bytes,
+    ) -> str:
+        payload = {
+            "v": _HISTORY_CURSOR_VERSION,
+            "position": {
+                "created_at": OperationService._history_filter_value(created_at.astimezone(UTC)),
+                "id": str(operation_id),
+            },
+            "filters": filters,
+        }
+        encoded_payload = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        envelope = {
+            "payload": payload,
+            "signature": hmac.new(signing_key, encoded_payload, hashlib.sha256).hexdigest(),
+        }
+        raw = json.dumps(envelope, sort_keys=True, separators=(",", ":")).encode()
+        if len(raw) > _MAX_HISTORY_CURSOR_BYTES:
+            raise ValueError("Invalid ingestion history cursor")
+        return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+    @staticmethod
+    def _decode_history_cursor(
+        cursor: str | None,
+        *,
+        filters: dict[str, str],
+        signing_key: bytes,
+    ) -> tuple[datetime | None, int]:
+        if cursor is None:
+            return None, 0
+        try:
+            if len(cursor) > _MAX_HISTORY_CURSOR_LENGTH:
+                raise ValueError("cursor is too long")
+            padded = cursor + "=" * (-len(cursor) % 4)
+            raw = base64.b64decode(padded, altchars=b"-_", validate=True)
+            if len(raw) > _MAX_HISTORY_CURSOR_BYTES:
+                raise ValueError("decoded cursor is too large")
+            envelope = json.loads(raw.decode("utf-8"))
+            if not isinstance(envelope, dict) or set(envelope) != {"payload", "signature"}:
+                raise ValueError("invalid envelope")
+            payload = envelope["payload"]
+            signature = envelope["signature"]
+            if not isinstance(payload, dict) or not isinstance(signature, str):
+                raise ValueError("invalid envelope values")
+            encoded_payload = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+            expected = hmac.new(signing_key, encoded_payload, hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(signature, expected):
+                raise ValueError("invalid signature")
+            if set(payload) != {"v", "position", "filters"}:
+                raise ValueError("invalid payload")
+            if payload["v"] != _HISTORY_CURSOR_VERSION or payload["filters"] != filters:
+                raise ValueError("cursor query mismatch")
+            position = payload["position"]
+            if not isinstance(position, dict) or set(position) != {"created_at", "id"}:
+                raise ValueError("invalid position")
+            raw_id = position["id"]
+            if not isinstance(raw_id, str) or not raw_id.isdigit() or len(raw_id) > 19:
+                raise ValueError("invalid bigint")
+            operation_id = int(raw_id)
+            if operation_id < 1 or operation_id > _MAX_BIGINT:
+                raise ValueError("invalid bigint")
+            raw_created_at = position["created_at"]
+            if not isinstance(raw_created_at, str) or len(raw_created_at) > 64:
+                raise ValueError("invalid timestamp")
+            created_at = datetime.fromisoformat(raw_created_at.replace("Z", "+00:00"))
+            normalized_created_at = OperationService._normalize_history_datetime(
+                created_at, "cursor created_at"
+            )
+            if (
+                normalized_created_at is None
+                or OperationService._history_filter_value(normalized_created_at) != raw_created_at
+            ):
+                raise ValueError("non-canonical timestamp")
+        except (
+            binascii.Error,
+            json.JSONDecodeError,
+            TypeError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as exc:
+            raise ValueError("Invalid ingestion history cursor") from exc
+        return normalized_created_at, operation_id
 
     async def update_progress(
         self,

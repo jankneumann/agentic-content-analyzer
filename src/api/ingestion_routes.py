@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile, status
 
 from src.api.workflow_dependencies import (
     get_operation_service,
@@ -13,7 +14,14 @@ from src.api.workflow_dependencies import (
     get_upload_service,
 )
 from src.config.sources import SourcesConfig
-from src.contracts.workflow_models import IngestCommand, OperationHandle, UploadReference
+from src.contracts.workflow_models import (
+    IngestCommand,
+    IngestionHistoryPage,
+    IngestionOutcome,
+    OperationHandle,
+    TerminalOperationStatus,
+    UploadReference,
+)
 from src.ingestion.registry import SOURCE_REGISTRY
 from src.models.jobs import OperationType
 from src.services.operation_service import OperationService
@@ -84,6 +92,39 @@ _UPLOAD_EXTENSION_MEDIA: dict[str, frozenset[str]] = {
     ".xlsx": frozenset({"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),
     ".zip": frozenset({"application/zip"}),
 }
+
+
+@router.get("/ingestions", response_model=IngestionHistoryPage)
+async def list_ingestion_history(
+    command_key: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
+    configured_source_key: Annotated[str | None, Query(pattern=r"^src_[a-f0-9]{20}$")] = None,
+    outcome: IngestionOutcome | None = None,
+    status_filter: Annotated[
+        TerminalOperationStatus | None,
+        Query(alias="status"),
+    ] = None,
+    parent_operation_id: Annotated[
+        str | None,
+        Query(pattern=r"^[1-9][0-9]*$", max_length=19),
+    ] = None,
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    cursor: Annotated[str | None, Query(min_length=1, max_length=2048)] = None,
+    service: OperationService = Depends(get_operation_service),
+) -> IngestionHistoryPage:
+    page = await service.list_ingestion_history(
+        command_key=command_key,
+        configured_source_key=configured_source_key,
+        outcome=outcome,
+        status=status_filter,
+        parent_operation_id=parent_operation_id,
+        created_after=created_after,
+        created_before=created_before,
+        limit=limit,
+        cursor=cursor,
+    )
+    return IngestionHistoryPage.model_validate(page.model_dump(mode="json"))
 
 
 @router.post("/uploads", response_model=UploadReference, status_code=status.HTTP_201_CREATED)

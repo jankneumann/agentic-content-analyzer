@@ -61,3 +61,59 @@ def test_configured_source_key_secret_rejects_short_dedicated_value() -> None:
         )
 
     assert secret not in str(exc_info.value)
+
+
+def test_operation_cursor_signing_key_prefers_dedicated_secret_without_repr_leak() -> None:
+    settings = Settings(
+        _env_file=None,
+        operation_cursor_signing_key="dedicated-operation-cursor-secret",
+        app_secret_key="application-secret-fallback-value",
+        admin_api_key="admin-secret-fallback-value-long-enough",
+    )
+
+    assert settings.get_operation_cursor_signing_key() == "dedicated-operation-cursor-secret"
+    assert "dedicated-operation-cursor-secret" not in repr(settings)
+
+
+@pytest.mark.parametrize(
+    ("app_secret_key", "admin_api_key", "expected"),
+    [
+        (
+            "application-secret-fallback-value",
+            "admin-secret-fallback-value-long-enough",
+            "application-secret-fallback-value",
+        ),
+        (
+            None,
+            "admin-secret-fallback-value-long-enough",
+            "admin-secret-fallback-value-long-enough",
+        ),
+    ],
+)
+def test_operation_cursor_signing_key_uses_only_approved_auth_fallbacks(
+    app_secret_key: str | None,
+    admin_api_key: str | None,
+    expected: str,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        operation_cursor_signing_key=None,
+        app_secret_key=app_secret_key,
+        admin_api_key=admin_api_key,
+        configured_source_key_secret="configured-source-secret-must-not-be-used",
+    )
+
+    assert settings.get_operation_cursor_signing_key() == expected
+
+
+def test_operation_cursor_signing_key_fails_closed_without_strong_material() -> None:
+    settings = Settings(
+        _env_file=None,
+        operation_cursor_signing_key=None,
+        app_secret_key="short",
+        admin_api_key=None,
+        configured_source_key_secret="configured-source-secret-must-not-be-used",
+    )
+
+    with pytest.raises(RuntimeError, match="OPERATION_CURSOR_SIGNING_KEY"):
+        settings.get_operation_cursor_signing_key()

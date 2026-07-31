@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -14,6 +14,8 @@ from src.api.workflow_dependencies import (
 )
 from src.config.sources import GmailSource, SourcesConfig
 from src.contracts.workflow_models import (
+    IngestionHistoryItem,
+    IngestionHistoryPage,
     OperationHandle,
     OperationPage,
     OperationSummary,
@@ -40,6 +42,30 @@ def _handle(operation_type="ingestion.execute", status="queued") -> OperationHan
     )
 
 
+def _history_page() -> IngestionHistoryPage:
+    return IngestionHistoryPage(
+        data=[
+            IngestionHistoryItem(
+                operation_id="41",
+                parent_operation_id="17",
+                command_key="rss",
+                operation_status="completed",
+                outcome="partial",
+                items_ingested=3,
+                items_skipped=1,
+                items_failed=2,
+                source_outcomes=[],
+                retry_count=0,
+                problem_code=None,
+                status_url="/api/v1/operations/41",
+                created_at=datetime(2026, 7, 16, tzinfo=UTC),
+                completed_at=datetime(2026, 7, 16, 0, 1, tzinfo=UTC),
+            )
+        ],
+        next_cursor="signed-next",
+    )
+
+
 @pytest.fixture
 def operation_service() -> AsyncMock:
     service = AsyncMock()
@@ -49,6 +75,7 @@ def operation_service() -> AsyncMock:
         _handle().model_dump(mode="json", exclude={"resource", "result", "problem"})
     )
     service.list.return_value = OperationPage(data=[summary], next_cursor="next")
+    service.list_ingestion_history.return_value = _history_page()
     service.retry.return_value = _handle()
     service.cancel.return_value = _handle(status="completed")
     service.submit.return_value = _handle()
@@ -132,6 +159,106 @@ def test_operation_list_rejects_unknown_status(
 
     assert response.status_code == 422
     operation_service.list.assert_not_awaited()
+
+
+def test_ingestion_history_forwards_fixed_filters_and_returns_compact_page(
+    canonical_client: TestClient, operation_service: AsyncMock
+) -> None:
+    response = canonical_client.get(
+        "/api/v1/ingestions",
+        params={
+            "command_key": "rss",
+            "configured_source_key": "src_0123456789abcdefabcd",
+            "outcome": "partial",
+            "status": "completed",
+            "parent_operation_id": "17",
+            "created_after": "2026-07-15T20:00:00-04:00",
+            "created_before": "2026-07-17T00:00:00Z",
+            "limit": 25,
+            "cursor": "signed-cursor",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"][0]["command_key"] == "rss"
+    assert {"result", "content_ids", "errors", "warnings"}.isdisjoint(response.json()["data"][0])
+    operation_service.list_ingestion_history.assert_awaited_once_with(
+        command_key="rss",
+        configured_source_key="src_0123456789abcdefabcd",
+        outcome="partial",
+        status="completed",
+        parent_operation_id="17",
+        created_after=datetime(2026, 7, 15, 20, tzinfo=timezone(-timedelta(hours=4))),
+        created_before=datetime(2026, 7, 17, tzinfo=UTC),
+        limit=25,
+        cursor="signed-cursor",
+    )
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "status=queued",
+        "status=in_progress",
+        "limit=0",
+        "limit=101",
+        "parent_operation_id=0",
+        "configured_source_key=private",
+    ],
+)
+def test_ingestion_history_rejects_active_statuses_and_invalid_budgets(
+    canonical_client: TestClient,
+    operation_service: AsyncMock,
+    query: str,
+) -> None:
+    response = canonical_client.get(f"/api/v1/ingestions?{query}")
+
+    assert response.status_code == 422
+    operation_service.list_ingestion_history.assert_not_awaited()
+
+
+def test_ingestion_history_cursor_mismatch_is_rfc7807(
+    canonical_client: TestClient, operation_service: AsyncMock
+) -> None:
+    operation_service.list_ingestion_history.side_effect = ValueError(
+        "Invalid ingestion history cursor"
+    )
+
+    response = canonical_client.get("/api/v1/ingestions?cursor=tampered")
+
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["code"] == "invalid-request"
+
+
+def test_ingestion_history_inherits_canonical_authorization(monkeypatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("APP_SECRET_KEY", "")
+    monkeypatch.setenv("ADMIN_API_KEY", "history-admin-key-that-is-long-enough")
+    monkeypatch.setenv("CONFIGURED_SOURCE_KEY_SECRET", "configured-source-key-secret-for-tests")
+    monkeypatch.setenv("WORKER_ENABLED", "false")
+    from src.config.settings import get_settings
+
+    get_settings.cache_clear()
+    service = AsyncMock()
+    service.list_ingestion_history.return_value = IngestionHistoryPage(data=[])
+    app.dependency_overrides[get_operation_service] = lambda: service
+    try:
+        with TestClient(app) as client:
+            missing = client.get("/api/v1/ingestions")
+            invalid = client.get("/api/v1/ingestions", headers={"X-Admin-Key": "invalid"})
+            accepted = client.get(
+                "/api/v1/ingestions",
+                headers={"X-Admin-Key": "history-admin-key-that-is-long-enough"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+    assert missing.status_code == 401
+    assert invalid.status_code == 403
+    assert accepted.status_code == 200
+    service.list_ingestion_history.assert_awaited_once()
 
 
 @pytest.mark.parametrize(

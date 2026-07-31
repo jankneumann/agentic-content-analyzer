@@ -301,9 +301,11 @@ packages:
         - src/api/ingestion_routes.py
         - src/api/workflow_dependencies.py
         - src/config/settings.py
+        - src/ingestion/result_sanitizer.py
         - tests/queue/test_operation_service.py
         - tests/api/test_canonical_workflow_api.py
         - tests/config/test_settings.py
+        - tests/ingestion/test_result_sanitizer.py
       read_allow:
         - src/**
         - tests/**

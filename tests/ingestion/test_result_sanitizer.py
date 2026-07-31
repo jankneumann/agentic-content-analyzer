@@ -5,8 +5,15 @@ import json
 from src.ingestion.result_sanitizer import (
     MAX_INGESTION_METADATA_BYTES,
     MAX_TOTAL_DIAGNOSTICS,
+    sanitize_ingestion_diagnostic_code,
     sanitize_ingestion_metadata,
 )
+
+
+def test_diagnostic_codes_use_a_closed_public_vocabulary() -> None:
+    assert sanitize_ingestion_diagnostic_code("fetch_error") == "fetch_error"
+    assert sanitize_ingestion_diagnostic_code("sk-proj-private-token") == "unexpected_error"
+    assert sanitize_ingestion_diagnostic_code("token_private_mailbox") == "unexpected_error"
 
 
 def test_sanitizer_removes_sensitive_and_log_forging_values() -> None:

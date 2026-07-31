@@ -57,6 +57,15 @@ _SAFE_DIAGNOSTIC_MESSAGES = {
     "youtube_metadata_failed": "YouTube metadata could not be retrieved",
     "youtube_video_not_found": "The YouTube video was not found",
 }
+SAFE_INGESTION_DIAGNOSTIC_CODES = frozenset(_SAFE_DIAGNOSTIC_MESSAGES)
+
+
+def sanitize_ingestion_diagnostic_code(value: object) -> str:
+    """Map an untrusted diagnostic code into the closed public vocabulary."""
+
+    if isinstance(value, str) and value in SAFE_INGESTION_DIAGNOSTIC_CODES:
+        return value
+    return "unexpected_error"
 
 
 def sanitize_ingestion_metadata(
@@ -158,10 +167,7 @@ def _sanitize_diagnostics(
 
 def _sanitize_diagnostic(value: object) -> dict[str, Any]:
     raw = _as_mapping(value)
-    raw_code = raw.get("code")
-    code = raw_code if isinstance(raw_code, str) else ""
-    if code not in _SAFE_DIAGNOSTIC_MESSAGES:
-        code = "unexpected_error"
+    code = sanitize_ingestion_diagnostic_code(raw.get("code"))
     result: dict[str, Any] = {
         "code": code,
         "message": _SAFE_DIAGNOSTIC_MESSAGES[code][:MAX_DIAGNOSTIC_MESSAGE_LENGTH],

@@ -109,7 +109,7 @@
   Add `--max-pages`/truncation signaling; hydrate the web indicator from one
   recent page plus bounded queued/in-progress queries.
   **Dependencies:** 4.1 — **Size: M**
-- [ ] 4.3 Write service/API tests for compact history filtering by command,
+- [x] 4.3 Write service/API tests for compact history filtering by command,
   opaque configured-source key, outcome, lifecycle status, parent, plus
   creation window; assert terminal-only rows, signed filter-bound cursors,
   invalid windows/IDs/sizes, rejection of active status values,
@@ -120,7 +120,7 @@
   **Contracts:** `contracts/openapi/v1.yaml#/paths/~1api~1v1~1ingestions/get`
   **Design decisions:** D5, D6
   **Dependencies:** 3.2 — **Size: M**
-- [ ] 4.4 Implement the compact operation-derived history query over
+- [x] 4.4 Implement the compact operation-derived history query over
   `pgqueuer_jobs`; exclude exact result/checkpoint payloads from pages.
   **Dependencies:** 4.3 — **Size: M**
 - [ ] 4.5 Write cross-surface tests for `aca ingest history`, including

@@ -476,6 +476,7 @@ class Settings(BaseSettings):
     app_secret_key: str | None = None  # Login password for browser/mobile access
     auth_cookie_cross_origin: bool = False  # SameSite=None for cross-origin deployments
     configured_source_key_secret: SecretStr | None = Field(default=None, min_length=32)
+    operation_cursor_signing_key: SecretStr | None = Field(default=None, min_length=32)
 
     # Gmail Configuration
     gmail_credentials_file: str = "credentials.json"
@@ -1128,6 +1129,18 @@ class Settings(BaseSettings):
             return self.configured_source_key_secret.get_secret_value()
         raise RuntimeError(
             "CONFIGURED_SOURCE_KEY_SECRET is required to derive configured-source identities"
+        )
+
+    def get_operation_cursor_signing_key(self) -> str:
+        """Return dedicated or approved authentication-secret cursor material."""
+
+        if self.operation_cursor_signing_key is not None:
+            return self.operation_cursor_signing_key.get_secret_value()
+        for fallback in (self.app_secret_key, self.admin_api_key):
+            if fallback is not None and len(fallback.encode("utf-8")) >= 32:
+                return fallback
+        raise RuntimeError(
+            "OPERATION_CURSOR_SIGNING_KEY or a strong APP_SECRET_KEY/ADMIN_API_KEY is required"
         )
 
     def _mask_url(self, url: str) -> str:
