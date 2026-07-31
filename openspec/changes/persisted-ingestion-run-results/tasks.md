@@ -68,7 +68,7 @@
 
 ## Phase 3 — Shared pipeline classification
 
-- [ ] 3.1 Write pipeline-classifier tests for success, zero-item, partial,
+- [x] 3.1 Write pipeline-classifier tests for success, zero-item, partial,
   failed, cancelled, plus legacy-unknown children; include mixed-source,
   strict-partial, zero-item, stable `result.ingestion_summary`, plus
   retry-resume cases and every aggregate-precedence row from D2. (RED)
@@ -77,19 +77,19 @@
   **Contracts:** `contracts/openapi/v1.yaml#/components/schemas/IngestionOutcome`
   **Design decisions:** D2, D4
   **Dependencies:** 2.2 — **Size: M**
-- [ ] 3.2 Implement typed pipeline source summaries with the shared outcome
+- [x] 3.2 Implement typed pipeline source summaries with the shared outcome
   classifier without changing checkpoint, retry-child, or idempotency behavior.
   **Dependencies:** 3.1, 2.4 — **Size: M**
-- [ ] 3.3 Write CLI wait tests proving tolerated partial pipelines warn on
+- [x] 3.3 Write CLI wait tests proving tolerated partial pipelines warn on
   stderr while JSON remains one document; fail-on-source-error still exits 1.
   (RED)
   **Spec scenarios:** tolerated partial pipeline, strict source failure,
   JSON output purity
   **Design decisions:** D4
   **Dependencies:** 3.2 — **Size: S**
-- [ ] 3.4 Add the partial/zero-item human summary to pipeline wait output.
+- [x] 3.4 Add the partial/zero-item human summary to pipeline wait output.
   **Dependencies:** 3.3 — **Size: S**
-- [ ] Checkpoint: run pipeline workflow, operation retry, plus canonical CLI
+- [x] Checkpoint: run pipeline workflow, operation retry, plus canonical CLI
   tests; verify checkpoint byte-for-byte compatibility in retry fixtures.
 
 ## Phase 4 — Compact ingestion history

@@ -123,6 +123,7 @@ def _submit_and_maybe_wait(
     *,
     wait: bool,
     timeout: float,
+    on_waited: Callable[[typer.Context, OperationHandle], None] | None = None,
 ) -> None:
     def action(client: WorkflowApiClient) -> OperationHandle:
         handle = submit(client)
@@ -134,8 +135,26 @@ def _submit_and_maybe_wait(
 
     handle = _run(ctx, action)
     _emit_model(ctx, handle)
+    if wait and on_waited is not None:
+        on_waited(ctx, handle)
     if handle.status in {"failed", "cancelled"}:
         raise typer.Exit(1)
+
+
+def _emit_pipeline_wait_summary(ctx: typer.Context, handle: OperationHandle) -> None:
+    if handle.status != "completed" or not isinstance(handle.result, dict):
+        return
+    summary = handle.result.get("ingestion_summary")
+    if not isinstance(summary, dict):
+        return
+    outcome = summary.get("outcome")
+    if outcome == "partial":
+        typer.echo(
+            "Warning: pipeline ingestion completed with partial source results.",
+            err=True,
+        )
+    elif outcome == "zero_items" and not get_state(ctx).json_output:
+        typer.echo("Pipeline ingestion completed with zero items.")
 
 
 def _parse_ingest_args(kind: str, args: list[str]) -> dict[str, Any]:
@@ -338,7 +357,13 @@ def pipeline_run(
         "sources": source,
         "continue_on_source_error": continue_on_source_error,
     }
-    _common_submit(ctx, "submit_pipeline", payload, wait, timeout, idempotency_key)
+    _submit_and_maybe_wait(
+        ctx,
+        lambda client: client.submit_pipeline(payload, idempotency_key=idempotency_key),
+        wait=wait,
+        timeout=timeout,
+        on_waited=_emit_pipeline_wait_summary,
+    )
 
 
 @podcast_script_app.command("create")

@@ -21,6 +21,7 @@ from src.contracts.workflow_models import (
     IngestCommand,
     OperationHandle,
     OperationPage,
+    OperationSummary,
     Problem,
     UploadReference,
 )
@@ -41,10 +42,30 @@ def _handle(operation_type: str = "ingestion.execute", status: str = "queued") -
     )
 
 
+def _pipeline_handle(outcome: str, *, status: str = "completed") -> OperationHandle:
+    handle = _handle("pipeline.run", status)
+    handle.result = {
+        "schema_version": 2,
+        "ingestion_summary": {
+            "outcome": outcome,
+            "sources": [],
+            "sources_omitted": 0,
+        },
+    }
+    return handle
+
+
+def _summary() -> OperationSummary:
+    return OperationSummary.model_validate(
+        _handle().model_dump(mode="json", exclude={"resource", "result", "problem"})
+    )
+
+
 class FakeClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, Any, str | None]] = []
         self.uploads: list[Path] = []
+        self.wait_result: OperationHandle | None = None
 
     def __enter__(self) -> FakeClient:
         return self
@@ -90,6 +111,8 @@ class FakeClient:
         raise AttributeError(name)
 
     def wait_operation(self, operation_id: str, *, timeout_seconds: float = 300) -> OperationHandle:
+        if self.wait_result is not None:
+            return self.wait_result
         operation_type = self.calls[-1][0] if self.calls else "ingestion.execute"
         return _handle(operation_type, "completed")
 
@@ -105,7 +128,7 @@ class FakeClient:
         return ConfiguredSourcePage(data=[], next_cursor="next")
 
     def list_operations(self, **_: Any) -> OperationPage:
-        return OperationPage(data=[_handle()], next_cursor="next")
+        return OperationPage(data=[_summary()], next_cursor="next")
 
     def iter_operations(self, **_: Any):
         yield _handle()
@@ -321,6 +344,85 @@ def test_wait_progress_is_stderr_and_json_stdout_is_exact(
     assert result.exit_code == 0
     assert json.loads(result.stdout)["status"] == "completed"
     assert result.stderr == ""
+
+
+def test_tolerated_partial_pipeline_wait_warns_without_corrupting_json(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+    client.wait_result = _pipeline_handle("partial")
+
+    result = runner.invoke(
+        app,
+        [
+            "--json",
+            "pipeline",
+            "run",
+            "--period",
+            "daily",
+            "--period-start",
+            "2026-07-15T00:00:00Z",
+            "--period-end",
+            "2026-07-16T00:00:00Z",
+            "--wait",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["result"]["ingestion_summary"]["outcome"] == "partial"
+    assert result.stdout.count("\n") == 1
+    assert result.stderr == "Warning: pipeline ingestion completed with partial source results.\n"
+
+
+def test_zero_item_pipeline_wait_prints_informational_human_summary(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+    client.wait_result = _pipeline_handle("zero_items")
+
+    result = runner.invoke(
+        app,
+        [
+            "pipeline",
+            "run",
+            "--period",
+            "daily",
+            "--period-start",
+            "2026-07-15T00:00:00Z",
+            "--period-end",
+            "2026-07-16T00:00:00Z",
+            "--wait",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Pipeline ingestion completed with zero items." in result.stdout
+
+
+def test_fail_on_source_error_pipeline_wait_keeps_nonzero_exit(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+    client.wait_result = _pipeline_handle("failed", status="failed")
+
+    result = runner.invoke(
+        app,
+        [
+            "pipeline",
+            "run",
+            "--period",
+            "daily",
+            "--period-start",
+            "2026-07-15T00:00:00Z",
+            "--period-end",
+            "2026-07-16T00:00:00Z",
+            "--fail-on-source-error",
+            "--wait",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert client.calls[-1][1]["continue_on_source_error"] is False
 
 
 @pytest.mark.parametrize(

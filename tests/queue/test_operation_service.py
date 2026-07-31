@@ -138,6 +138,72 @@ def test_failed_operation_projects_rfc7807_problem() -> None:
     _validate_operation_handle_contract(serialized)
 
 
+@pytest.mark.parametrize(
+    ("status", "expected_outcome"),
+    [
+        (JobStatus.FAILED, "failed"),
+        (JobStatus.CANCELLED, "cancelled"),
+    ],
+)
+def test_terminal_pipeline_projection_applies_lifecycle_precedence_without_mutation(
+    status: JobStatus,
+    expected_outcome: str,
+) -> None:
+    stored_result = {
+        "schema_version": 2,
+        "stage": "digest",
+        "ingestion_summary": {
+            "outcome": "success",
+            "sources": [],
+            "sources_omitted": 0,
+        },
+    }
+    payload = OperationPayloadV2(
+        operation_type=OperationType.PIPELINE_RUN,
+        result=stored_result,
+    ).model_dump(mode="json")
+
+    handle = OperationService.project(
+        _job(entrypoint="pipeline.run", status=status, payload=payload)
+    )
+
+    assert handle.result is not stored_result
+    assert handle.result is not None
+    assert handle.result["stage"] == "digest"
+    assert handle.result["ingestion_summary"]["outcome"] == expected_outcome
+    assert stored_result["ingestion_summary"]["outcome"] == "success"
+
+
+@pytest.mark.parametrize(
+    ("status", "expected_outcome"),
+    [
+        (JobStatus.FAILED, "failed"),
+        (JobStatus.CANCELLED, "cancelled"),
+    ],
+)
+def test_early_terminal_pipeline_projection_synthesizes_minimal_summary(
+    status: JobStatus,
+    expected_outcome: str,
+) -> None:
+    payload = OperationPayloadV2(
+        operation_type=OperationType.PIPELINE_RUN,
+        result=None,
+    ).model_dump(mode="json")
+
+    handle = OperationService.project(
+        _job(entrypoint="pipeline.run", status=status, payload=payload)
+    )
+
+    assert handle.result == {
+        "schema_version": 2,
+        "ingestion_summary": {
+            "outcome": expected_outcome,
+            "sources": [],
+            "sources_omitted": 0,
+        },
+    }
+
+
 def test_operation_problem_errors_match_openapi_contract() -> None:
     job = _job(status=JobStatus.FAILED)
     job.payload["problem"] = OperationProblem(

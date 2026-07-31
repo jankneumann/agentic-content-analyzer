@@ -164,6 +164,7 @@ packages:
     locks:
       files:
         - src/workflows/pipeline.py
+        - src/services/operation_service.py
         - src/cli/workflow_commands.py
       keys:
         - feature:persisted-ingestion-run-results:classifier
@@ -172,6 +173,7 @@ packages:
     scope:
       write_allow:
         - src/workflows/pipeline.py
+        - src/services/operation_service.py
         - src/cli/workflow_commands.py
         - tests/workflows/test_pipeline_workflow.py
         - tests/cli/test_canonical_workflows.py

@@ -12,7 +12,11 @@ from src.config.sources import SourcesConfig
 from src.contracts.workflow_models import (
     ContentQuery as WorkflowContentQuery,
     DigestCreateRequest,
+    IngestionOutcome,
+    IngestionResultV2,
+    PipelineIngestionSummary,
     PipelineRequest,
+    PipelineSourceIngestionSummary,
     SummarizationRequest,
 )
 from src.ingestion.registry import SOURCE_REGISTRY, SourceRegistry
@@ -23,6 +27,96 @@ from src.services.content_set_resolver import ContentSetResolver
 from src.services.operation_service import OperationService
 from src.storage.database import get_db
 from src.workflows.digest import validate_digest_provenance
+
+
+def aggregate_pipeline_ingestion_outcome(
+    pipeline_status: str,
+    child_outcomes: list[IngestionOutcome],
+) -> IngestionOutcome:
+    """Apply the committed D2 pipeline/child outcome precedence table."""
+
+    if pipeline_status == "cancelled":
+        return "cancelled"
+    if pipeline_status == "failed":
+        return "failed"
+    if pipeline_status != "completed":
+        raise ValueError(
+            f"Pipeline ingestion summary requires a terminal status, got {pipeline_status}"
+        )
+    if any(outcome in {"partial", "failed", "cancelled"} for outcome in child_outcomes):
+        return "partial"
+    if "unknown" in child_outcomes:
+        return "unknown"
+    if not child_outcomes or all(outcome == "zero_items" for outcome in child_outcomes):
+        return "zero_items"
+    return "success"
+
+
+def build_pipeline_ingestion_summary(
+    commands: list[dict[str, Any]],
+    handles: list[OperationHandle | Any],
+    *,
+    pipeline_status: str,
+) -> PipelineIngestionSummary:
+    """Project bounded typed child results without replacing checkpoint authority."""
+
+    source_outcomes: list[IngestionOutcome] = []
+    sources: list[PipelineSourceIngestionSummary] = []
+    for command, handle in zip(commands, handles, strict=True):
+        operation_status = (
+            handle.status.value
+            if isinstance(handle.status, OperationStatus)
+            else str(handle.status)
+        )
+        if operation_status not in {"completed", "failed", "cancelled"}:
+            raise ValueError(
+                f"Pipeline ingestion summary requires terminal children, got {operation_status}"
+            )
+
+        typed_result: IngestionResultV2 | None = None
+        raw_result = handle.result
+        if isinstance(raw_result, dict) and raw_result.get("schema_version") == 2:
+            try:
+                typed_result = IngestionResultV2.model_validate(raw_result)
+            except ValueError:
+                typed_result = None
+
+        if operation_status == "cancelled":
+            outcome: IngestionOutcome = "cancelled"
+        elif operation_status == "failed":
+            outcome = "failed"
+        elif typed_result is None:
+            outcome = "unknown"
+        else:
+            outcome = typed_result.outcome
+        source_outcomes.append(outcome)
+
+        if len(sources) < 100:
+            sources.append(
+                PipelineSourceIngestionSummary(
+                    operation_id=str(handle.operation_id),
+                    command_key=(
+                        typed_result.command_key
+                        if typed_result is not None
+                        else str(command.get("kind", "unknown"))
+                    ),
+                    operation_status=operation_status,
+                    outcome=outcome,
+                    items_ingested=(
+                        typed_result.items_ingested if typed_result is not None else None
+                    ),
+                    items_skipped=(
+                        typed_result.items_skipped if typed_result is not None else None
+                    ),
+                    items_failed=typed_result.items_failed if typed_result is not None else None,
+                )
+            )
+
+    return PipelineIngestionSummary(
+        outcome=aggregate_pipeline_ingestion_outcome(pipeline_status, source_outcomes),
+        sources=sources,
+        sources_omitted=max(0, len(source_outcomes) - len(sources)),
+    )
 
 
 class PipelineWorkflow:
@@ -72,10 +166,18 @@ class PipelineWorkflow:
         checkpoint["source_results"] = self._source_results(
             checkpoint["source_commands"], source_children
         )
+        ingestion_summary = build_pipeline_ingestion_summary(
+            checkpoint["source_commands"],
+            source_children,
+            pipeline_status="completed",
+        )
+        checkpoint["schema_version"] = 2
+        checkpoint["ingestion_summary"] = ingestion_summary.model_dump(mode="json")
         failed_sources = [
             result for result in checkpoint["source_results"] if result["status"] != "completed"
         ]
         if len(failed_sources) == len(checkpoint["source_results"]):
+            checkpoint["ingestion_summary"]["outcome"] = "failed"
             checkpoint.update(
                 {
                     "deferred": False,
@@ -89,7 +191,8 @@ class PipelineWorkflow:
             raise RuntimeError(
                 "Pipeline source ingestion failed because all source ingestion operations failed"
             )
-        if failed_sources and not request.continue_on_source_error:
+        if ingestion_summary.outcome == "partial" and not request.continue_on_source_error:
+            checkpoint["ingestion_summary"]["outcome"] = "failed"
             checkpoint.update(
                 {
                     "deferred": False,
@@ -139,6 +242,7 @@ class PipelineWorkflow:
                     message="Waiting for summarization",
                 )
             if summary.status is not OperationStatus.COMPLETED:
+                checkpoint["ingestion_summary"]["outcome"] = "failed"
                 checkpoint.update(
                     {
                         "deferred": False,
@@ -206,6 +310,7 @@ class PipelineWorkflow:
                 message="Waiting for digest creation",
             )
         if digest_operation.status is not OperationStatus.COMPLETED:
+            checkpoint["ingestion_summary"]["outcome"] = "failed"
             checkpoint.update(
                 {
                     "deferred": False,

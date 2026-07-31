@@ -13,6 +13,7 @@ from typing import Any
 
 import asyncpg
 
+from src.contracts.workflow_models import PipelineIngestionSummary, PipelineResultV2
 from src.models.jobs import (
     LEGACY_OPERATION_TYPES,
     JobRecord,
@@ -78,6 +79,11 @@ class OperationService:
 
         active = job.status in {JobStatus.QUEUED, JobStatus.IN_PROGRESS}
         cancellable = active and payload.cancellable and not payload.cancel_requested
+        result = OperationService._project_result(
+            payload.operation_type,
+            job.status,
+            payload.result,
+        )
         return OperationHandle(
             operation_id=str(job.id),
             operation_type=payload.operation_type,
@@ -89,12 +95,50 @@ class OperationService:
             status_url=f"/api/v1/operations/{job.id}",
             events_url=f"/api/v1/operations/{job.id}/events",
             resource=payload.resource,
-            result=payload.result,
+            result=result,
             problem=problem,
             created_at=job.created_at,
             started_at=job.started_at,
             completed_at=job.completed_at,
         )
+
+    @staticmethod
+    def _project_result(
+        operation_type: OperationType,
+        status: JobStatus,
+        result: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Reconcile pipeline aggregate outcomes with the authoritative lifecycle."""
+
+        if operation_type is not OperationType.PIPELINE_RUN or status not in {
+            JobStatus.FAILED,
+            JobStatus.CANCELLED,
+        }:
+            return result
+
+        outcome = status.value
+        projected = dict(result or {})
+        raw_summary = projected.get("ingestion_summary")
+        if isinstance(raw_summary, dict):
+            try:
+                summary = PipelineIngestionSummary.model_validate(raw_summary).model_copy(
+                    update={"outcome": outcome}
+                )
+            except ValueError:
+                summary = PipelineIngestionSummary(
+                    outcome=outcome,
+                    sources=[],
+                    sources_omitted=0,
+                )
+        else:
+            summary = PipelineIngestionSummary(
+                outcome=outcome,
+                sources=[],
+                sources_omitted=0,
+            )
+        projected["schema_version"] = 2
+        projected["ingestion_summary"] = summary.model_dump(mode="json")
+        return PipelineResultV2.model_validate(projected).model_dump(mode="json")
 
     @staticmethod
     def event(
