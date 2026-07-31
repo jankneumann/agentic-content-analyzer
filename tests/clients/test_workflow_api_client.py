@@ -271,8 +271,49 @@ def test_cursor_iteration_continues_without_duplication() -> None:
         )
 
     client = WorkflowApiClient("https://aca.test", transport=httpx.MockTransport(handler))
-    assert [item.operation_id for item in client.iter_operations()] == ["op-1", "op-2"]
+    traversal = client.collect_operations(max_pages=2)
+    assert [item.operation_id for item in traversal.data] == ["op-1", "op-2"]
+    assert traversal.truncated is False
+    assert traversal.next_cursor is None
     assert cursors == [None, "next"]
+
+
+def test_operation_traversal_stops_at_page_budget_and_signals_continuation() -> None:
+    cursors: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        cursor = request.url.params.get("cursor") or None
+        cursors.append(cursor)
+        operation = _handle(status="completed")
+        operation["operation_id"] = f"op-{len(cursors)}"
+        return httpx.Response(
+            200,
+            json={"data": [operation], "next_cursor": f"cursor-{len(cursors)}"},
+            request=request,
+        )
+
+    client = WorkflowApiClient("https://aca.test", transport=httpx.MockTransport(handler))
+    traversal = client.collect_operations(limit=25, max_pages=2, status="queued")
+
+    assert [item.operation_id for item in traversal.data] == ["op-1", "op-2"]
+    assert traversal.next_cursor == "cursor-2"
+    assert traversal.truncated is True
+    assert cursors == [None, "cursor-1"]
+
+
+def test_operation_list_serializes_status_and_omits_it_when_absent() -> None:
+    queries: list[httpx.QueryParams] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        queries.append(request.url.params)
+        return httpx.Response(200, json={"data": [], "next_cursor": None}, request=request)
+
+    client = WorkflowApiClient("https://aca.test", transport=httpx.MockTransport(handler))
+    client.list_operations()
+    client.list_operations(status="in_progress")
+
+    assert "status" not in queries[0]
+    assert queries[1]["status"] == "in_progress"
 
 
 def test_bounded_wait_returns_latest_nonterminal_handle(monkeypatch: pytest.MonkeyPatch) -> None:

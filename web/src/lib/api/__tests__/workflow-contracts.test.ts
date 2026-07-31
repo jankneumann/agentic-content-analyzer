@@ -4,7 +4,7 @@ import { ApiClientError, apiClient } from "../client"
 import {
   getAllCapabilities,
   getConfiguredSources,
-  listAllOperations,
+  listBackgroundOperations,
   submitDigest,
   submitIngestion,
 } from "../workflows"
@@ -128,20 +128,26 @@ describe("canonical workflow client", () => {
     })
   })
 
-  it("hydrates operations across cursor pages", async () => {
-    vi.spyOn(apiClient, "get")
-      .mockResolvedValueOnce({
-        data: [{ operation_id: "op-1" }],
-        next_cursor: "next",
-      })
-      .mockResolvedValueOnce({
-        data: [{ operation_id: "op-2" }],
-        next_cursor: null,
-      })
+  it("hydrates background operations with three bounded summary queries", async () => {
+    const get = vi
+      .spyOn(apiClient, "get")
+      .mockResolvedValueOnce({ data: [{ operation_id: "recent" }], next_cursor: "ignored" })
+      .mockResolvedValueOnce({ data: [{ operation_id: "queued" }], next_cursor: "ignored" })
+      .mockResolvedValueOnce({ data: [{ operation_id: "running" }], next_cursor: "ignored" })
 
     expect(
-      (await listAllOperations()).map((operation) => operation.operation_id)
-    ).toEqual(["op-1", "op-2"])
+      (await listBackgroundOperations()).map((operation) => operation.operation_id)
+    ).toEqual(["recent", "queued", "running"])
+    expect(get).toHaveBeenCalledTimes(3)
+    expect(get).toHaveBeenNthCalledWith(1, "/operations", {
+      params: { limit: 100 },
+    })
+    expect(get).toHaveBeenNthCalledWith(2, "/operations", {
+      params: { limit: 100, status: "queued" },
+    })
+    expect(get).toHaveBeenNthCalledWith(3, "/operations", {
+      params: { limit: 100, status: "in_progress" },
+    })
   })
 
   it("retains the complete RFC 7807 problem", () => {

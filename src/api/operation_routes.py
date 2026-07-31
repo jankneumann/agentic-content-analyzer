@@ -22,6 +22,7 @@ from src.contracts.workflow_models import (
     OperationHandle,
     OperationPage,
 )
+from src.models.jobs import OperationStatus
 from src.services.capability_service import CapabilityService
 from src.services.operation_service import OperationService
 
@@ -51,9 +52,10 @@ async def list_configured_sources(
 async def list_operations(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     cursor: str | None = None,
+    status: OperationStatus | None = None,
     service: OperationService = Depends(get_operation_service),
 ) -> OperationPage:
-    page = await service.list(limit=limit, cursor=cursor)
+    page = await service.list(limit=limit, cursor=cursor, status=status)
     return OperationPage.model_validate(page.model_dump(mode="json"))
 
 

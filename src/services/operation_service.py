@@ -13,14 +13,18 @@ from typing import Any
 
 import asyncpg
 
-from src.contracts.workflow_models import PipelineIngestionSummary, PipelineResultV2
+from src.contracts.workflow_models import (
+    OperationPage,
+    OperationSummary,
+    PipelineIngestionSummary,
+    PipelineResultV2,
+)
 from src.models.jobs import (
     LEGACY_OPERATION_TYPES,
     JobRecord,
     JobStatus,
     OperationEvent,
     OperationHandle,
-    OperationPage,
     OperationPayloadV2,
     OperationProblem,
     OperationStatus,
@@ -29,6 +33,14 @@ from src.models.jobs import (
     normalize_operation_payload,
 )
 from src.queue import setup as queue_setup
+
+_SUMMARY_MESSAGES: dict[JobStatus, str] = {
+    JobStatus.QUEUED: "Queued",
+    JobStatus.IN_PROGRESS: "In progress",
+    JobStatus.COMPLETED: "Completed",
+    JobStatus.FAILED: "Failed",
+    JobStatus.CANCELLED: "Cancelled",
+}
 
 
 class OperationError(RuntimeError):
@@ -100,6 +112,26 @@ class OperationService:
             created_at=job.created_at,
             started_at=job.started_at,
             completed_at=job.completed_at,
+        )
+
+    @staticmethod
+    def project_summary(job: JobRecord) -> OperationSummary:
+        """Project only bounded, non-sensitive fields for collection reads."""
+
+        handle = OperationService.project(job)
+        return OperationSummary(
+            operation_id=handle.operation_id,
+            operation_type=handle.operation_type.value,
+            status=handle.status.value,
+            progress=handle.progress,
+            message=_SUMMARY_MESSAGES[job.status],
+            cancellable=handle.cancellable,
+            retry_count=handle.retry_count,
+            status_url=handle.status_url,
+            events_url=handle.events_url,
+            created_at=handle.created_at,
+            started_at=handle.started_at,
+            completed_at=handle.completed_at,
         )
 
     @staticmethod
@@ -259,6 +291,7 @@ class OperationService:
         *,
         limit: int = 50,
         cursor: str | None = None,
+        status: OperationStatus | None = None,
     ) -> OperationPage:
         """List canonical operations with a stable, opaque keyset cursor."""
 
@@ -280,22 +313,24 @@ class OperationService:
                     payload->>'schema_version' = '2'
                     OR entrypoint = ANY($3::text[])
                   )
+                  AND ($4::text IS NULL OR status = $4::text)
                 ORDER BY created_at DESC, id DESC
-                LIMIT $4
+                LIMIT $5
                 """,
                 before_created_at,
                 before_id,
                 list(LEGACY_OPERATION_TYPES),
+                status.value if status is not None else None,
                 limit + 1,
             )
 
         jobs = [self._job_from_row(row) for row in rows[:limit]]
-        handles = [self.project(job) for job in jobs]
+        summaries = [self.project_summary(job) for job in jobs]
         next_cursor = None
         if len(rows) > limit and jobs:
             last = jobs[-1]
             next_cursor = self._encode_cursor(last.created_at, last.id)
-        return OperationPage(data=handles, next_cursor=next_cursor)
+        return OperationPage(data=summaries, next_cursor=next_cursor)
 
     async def update_progress(
         self,

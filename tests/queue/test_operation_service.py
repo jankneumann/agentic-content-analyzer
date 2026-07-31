@@ -15,7 +15,9 @@ import pytest
 import yaml
 from jsonschema import Draft202012Validator
 
+from src.contracts.workflow_models import OperationSummary
 from src.models.jobs import (
+    LEGACY_OPERATION_TYPES,
     JobRecord,
     JobStatus,
     OperationPayloadV2,
@@ -342,6 +344,80 @@ async def test_operation_listing_uses_opaque_keyset_cursor() -> None:
     assert decoded_at == NOW.replace(minute=1)
     assert decoded_id == 2
     assert "ORDER BY created_at DESC, id DESC" in conn.fetch.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_operation_listing_projects_sanitized_wire_compatible_summaries() -> None:
+    conn = AsyncMock()
+    row = _row(3, NOW)
+    row["status"] = "failed"
+    row["error"] = "private provider detail"
+    row["payload"].update(
+        {
+            "input": {"url": "https://example.test/private?token=input-secret"},
+            "result": {"checkpoint": {"content_ids": [1, 2]}},
+            "resource": {
+                "type": "digest",
+                "id": "42",
+                "url": "/api/v1/digests/42",
+            },
+            "problem": {
+                "title": "Failed",
+                "status": 500,
+                "detail": "private problem detail",
+            },
+            "message": (
+                "Fetching https://example.test/private?q=secret\x00 "
+                "token=message-secret " + "x" * 600
+            ),
+        }
+    )
+    conn.fetch.return_value = [row]
+
+    page = await OperationService(connection=conn).list(limit=1)
+
+    summary = page.data[0]
+    assert isinstance(summary, OperationSummary)
+    serialized = summary.model_dump(mode="json")
+    assert {"input", "result", "checkpoint", "resource", "problem"}.isdisjoint(serialized)
+    assert summary.message == "Failed"
+    _contract_models().OperationHandle.model_validate(serialized)
+
+
+@pytest.mark.parametrize(
+    ("status", "persisted_message", "expected_message"),
+    [
+        (JobStatus.QUEUED, "Authorization Bearer topsecret", "Queued"),
+        (JobStatus.IN_PROGRESS, "token topsecret", "In progress"),
+        (JobStatus.COMPLETED, "Finished for user alice@example.test", "Completed"),
+        (JobStatus.FAILED, "Provider Acme returned private account text", "Failed"),
+        (JobStatus.CANCELLED, "Cancelled mailbox private@example.test", "Cancelled"),
+    ],
+)
+def test_operation_summary_uses_closed_lifecycle_message_labels(
+    status: JobStatus,
+    persisted_message: str,
+    expected_message: str,
+) -> None:
+    job = _job(status=status)
+    job.payload["message"] = persisted_message
+
+    summary = OperationService.project_summary(job)
+
+    assert summary.message == expected_message
+    assert len(summary.message) <= 500
+
+
+@pytest.mark.asyncio
+async def test_operation_listing_filters_by_lifecycle_status() -> None:
+    conn = AsyncMock()
+    conn.fetch.return_value = []
+
+    await OperationService(connection=conn).list(limit=25, status=OperationStatus.IN_PROGRESS)
+
+    query, *arguments = conn.fetch.await_args.args
+    assert "status = $4::text" in query
+    assert arguments == [None, 0, list(LEGACY_OPERATION_TYPES), "in_progress", 26]
 
 
 def test_invalid_operation_cursor_is_rejected() -> None:

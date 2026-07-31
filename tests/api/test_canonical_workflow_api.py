@@ -13,7 +13,12 @@ from src.api.workflow_dependencies import (
     get_upload_service,
 )
 from src.config.sources import GmailSource, SourcesConfig
-from src.contracts.workflow_models import OperationHandle, OperationPage, UploadReference
+from src.contracts.workflow_models import (
+    OperationHandle,
+    OperationPage,
+    OperationSummary,
+    UploadReference,
+)
 from src.models.jobs import OperationEvent, OperationType
 from src.services.operation_service import OperationConflictError, OperationNotFoundError
 
@@ -40,7 +45,10 @@ def operation_service() -> AsyncMock:
     service = AsyncMock()
     service.get.return_value = _handle()
     service.wait.return_value = _handle(status="completed")
-    service.list.return_value = OperationPage(data=[_handle()], next_cursor="next")
+    summary = OperationSummary.model_validate(
+        _handle().model_dump(mode="json", exclude={"resource", "result", "problem"})
+    )
+    service.list.return_value = OperationPage(data=[summary], next_cursor="next")
     service.retry.return_value = _handle()
     service.cancel.return_value = _handle(status="completed")
     service.submit.return_value = _handle()
@@ -85,19 +93,45 @@ def test_operation_status_wait_list_controls_and_sse(
         canonical_client.get("/api/v1/operations/41?wait_seconds=5").json()["status"] == "completed"
     )
     assert (
-        canonical_client.get("/api/v1/operations?limit=10&cursor=opaque").json()["next_cursor"]
+        canonical_client.get("/api/v1/operations?limit=10&cursor=opaque&status=in_progress").json()[
+            "next_cursor"
+        ]
         == "next"
     )
     assert canonical_client.post("/api/v1/operations/41/retry").status_code == 202
     assert canonical_client.post("/api/v1/operations/41/cancel").status_code == 202
     operation_service.wait.assert_awaited_once_with("41", timeout_seconds=5)
-    operation_service.list.assert_awaited_once_with(limit=10, cursor="opaque")
+    operation_service.list.assert_awaited_once_with(limit=10, cursor="opaque", status="in_progress")
 
     operation_service.get.return_value = _handle(status="completed")
     events = canonical_client.get("/api/v1/operations/41/events", headers={"Last-Event-ID": "41:3"})
     assert events.headers["content-type"].startswith("text/event-stream")
     assert "id: 41:4" in events.text
     assert '"schema_version":2' in events.text
+
+
+def test_operation_list_rows_are_summary_only_but_exact_reads_stay_full(
+    canonical_client: TestClient, operation_service: AsyncMock
+) -> None:
+    full = _handle(status="completed").model_copy(
+        update={"result": {"content_ids": [1]}, "message": "Complete"}
+    )
+    operation_service.get.return_value = full
+
+    listed = canonical_client.get("/api/v1/operations").json()["data"][0]
+    exact = canonical_client.get("/api/v1/operations/41").json()
+
+    assert {"result", "resource", "problem"}.isdisjoint(listed)
+    assert exact["result"] == {"content_ids": [1]}
+
+
+def test_operation_list_rejects_unknown_status(
+    canonical_client: TestClient, operation_service: AsyncMock
+) -> None:
+    response = canonical_client.get("/api/v1/operations?status=unknown")
+
+    assert response.status_code == 422
+    operation_service.list.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
@@ -324,6 +358,7 @@ def test_canonical_upload_requires_auth_and_uses_rfc7807(monkeypatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("APP_SECRET_KEY", "")
     monkeypatch.setenv("ADMIN_API_KEY", "test-admin-key")
+    monkeypatch.setenv("CONFIGURED_SOURCE_KEY_SECRET", "test-configured-source-key-secret")
     monkeypatch.setenv("WORKER_ENABLED", "false")
     from src.config.settings import get_settings
 

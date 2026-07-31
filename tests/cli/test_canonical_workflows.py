@@ -13,7 +13,7 @@ from pydantic import TypeAdapter
 from typer.testing import CliRunner
 
 from src.cli.app import app
-from src.clients.workflow_api_client import ProblemError
+from src.clients.workflow_api_client import OperationTraversal, ProblemError
 from src.contracts.workflow_models import (
     COMMAND_FIELD_SCHEMAS,
     CapabilityDocument,
@@ -66,6 +66,8 @@ class FakeClient:
         self.calls: list[tuple[str, Any, str | None]] = []
         self.uploads: list[Path] = []
         self.wait_result: OperationHandle | None = None
+        self.operation_pages_requested: int | None = None
+        self.operation_statuses: list[str | None] = []
 
     def __enter__(self) -> FakeClient:
         return self
@@ -127,11 +129,14 @@ class FakeClient:
     def list_configured_sources(self, **_: Any) -> ConfiguredSourcePage:
         return ConfiguredSourcePage(data=[], next_cursor="next")
 
-    def list_operations(self, **_: Any) -> OperationPage:
+    def list_operations(self, **kwargs: Any) -> OperationPage:
+        self.operation_statuses.append(kwargs.get("status"))
         return OperationPage(data=[_summary()], next_cursor="next")
 
-    def iter_operations(self, **_: Any):
-        yield _handle()
+    def collect_operations(self, **kwargs: Any) -> OperationTraversal:
+        self.operation_pages_requested = kwargs["max_pages"]
+        self.operation_statuses.append(kwargs.get("status"))
+        return OperationTraversal(data=[_summary()], next_cursor="continue-here", truncated=True)
 
     def get_operation(self, operation_id: str) -> OperationHandle:
         return _handle()
@@ -443,6 +448,49 @@ def test_operation_controls_emit_structured_json(
     result = runner.invoke(app, ["--json", *args])
     assert result.exit_code == 0
     assert json.loads(result.stdout)
+
+
+def test_operations_all_is_bounded_and_json_signals_truncation(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+
+    result = runner.invoke(app, ["--json", "operations", "list", "--all", "--max-pages", "3"])
+
+    assert result.exit_code == 0, result.output
+    document = json.loads(result.stdout)
+    assert document["next_cursor"] == "continue-here"
+    assert document["truncated"] is True
+    assert [item["operation_id"] for item in document["data"]] == ["op-1"]
+    assert {"result", "resource", "problem"}.isdisjoint(document["data"][0])
+    assert client.operation_pages_requested == 3
+    assert result.stderr == ""
+
+
+def test_operations_all_human_output_warns_with_continuation_cursor(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, _ = cli
+
+    result = runner.invoke(app, ["operations", "list", "--all", "--max-pages", "2"])
+
+    assert result.exit_code == 0, result.output
+    assert "continue-here" in result.stderr
+    assert "truncated" in result.stderr.lower()
+
+
+@pytest.mark.parametrize("all_args", [[], ["--all", "--max-pages", "2"]])
+def test_operations_list_forwards_status_filter(
+    cli: tuple[CliRunner, FakeClient], all_args: list[str]
+) -> None:
+    runner, client = cli
+
+    result = runner.invoke(
+        app, ["--json", "operations", "list", "--status", "in_progress", *all_args]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert client.operation_statuses == ["in_progress"]
 
 
 def test_cli_problem_translation_preserves_full_contract(

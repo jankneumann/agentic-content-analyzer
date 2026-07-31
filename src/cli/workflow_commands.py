@@ -7,7 +7,7 @@ import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 import httpx
 import typer
@@ -17,7 +17,12 @@ from rich.console import Console
 from rich.table import Table
 
 from src.clients.workflow_api_client import ProblemError, WorkflowApiClient
-from src.contracts.workflow_models import COMMAND_FIELD_SCHEMAS, OperationHandle, Problem
+from src.contracts.workflow_models import (
+    COMMAND_FIELD_SCHEMAS,
+    OperationHandle,
+    OperationStatus,
+    Problem,
+)
 
 ingest_app = typer.Typer(help="Submit a canonical ingestion operation.", no_args_is_help=True)
 summarize_app = typer.Typer(help="Submit summarization operations.", no_args_is_help=True)
@@ -446,23 +451,63 @@ def operations_list(
     ctx: typer.Context,
     limit: Annotated[int, typer.Option("--limit", min=1, max=100)] = 50,
     cursor: Annotated[str | None, typer.Option("--cursor")] = None,
+    operation_status: Annotated[
+        str | None,
+        typer.Option(
+            "--status",
+            click_type=Choice(["queued", "in_progress", "completed", "failed", "cancelled"]),
+        ),
+    ] = None,
     all_pages: Annotated[bool, typer.Option("--all")] = False,
+    max_pages: Annotated[int, typer.Option("--max-pages", min=1, max=100)] = 20,
 ) -> None:
     if all_pages:
-        page = _run(ctx, lambda client: list(client.iter_operations(limit=limit, cursor=cursor)))
+        traversal = _run(
+            ctx,
+            lambda client: client.collect_operations(
+                limit=limit,
+                cursor=cursor,
+                status=cast(OperationStatus, operation_status),
+                max_pages=max_pages,
+            ),
+        )
         if get_state(ctx).json_output:
             typer.echo(
-                json.dumps([item.model_dump(mode="json", exclude_none=True) for item in page])
+                json.dumps(
+                    {
+                        "data": [
+                            item.model_dump(mode="json", exclude_none=True)
+                            for item in traversal.data
+                        ],
+                        "next_cursor": traversal.next_cursor,
+                        "truncated": traversal.truncated,
+                    }
+                )
             )
         else:
             table = Table("Operation", "Type", "Status", "Progress")
-            for item in page:
+            for item in traversal.data:
                 table.add_row(
                     item.operation_id, item.operation_type, item.status, f"{item.progress}%"
                 )
             Console().print(table)
+            if traversal.truncated:
+                typer.echo(
+                    f"Traversal truncated; continue with --cursor {traversal.next_cursor}",
+                    err=True,
+                )
         return
-    _emit_model(ctx, _run(ctx, lambda client: client.list_operations(limit=limit, cursor=cursor)))
+    _emit_model(
+        ctx,
+        _run(
+            ctx,
+            lambda client: client.list_operations(
+                limit=limit,
+                cursor=cursor,
+                status=cast(OperationStatus, operation_status),
+            ),
+        ),
+    )
 
 
 @operations_app.command("get")

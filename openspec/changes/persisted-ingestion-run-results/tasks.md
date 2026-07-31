@@ -94,7 +94,7 @@
 
 ## Phase 4 — Compact ingestion history
 
-- [ ] 4.1 Write service/API tests proving generic operation lists return
+- [x] 4.1 Write service/API tests proving generic operation lists return
   `OperationSummary` without result, input, checkpoint, resource metadata, or
   problem detail, and sanitize lifecycle messages while exact reads remain
   unchanged. Assert rows introduce no key rejected by the old strict
@@ -104,7 +104,7 @@
   **Contracts:** `contracts/openapi/v1.yaml#/paths/~1api~1v1~1operations/get`
   **Design decisions:** D5
   **Dependencies:** 1.2 — **Size: M**
-- [ ] 4.2 Implement the summary-only generic operation list and migrate every
+- [x] 4.2 Implement the summary-only generic operation list and migrate every
   first-party API, CLI, plus web Background Tasks list consumer atomically.
   Add `--max-pages`/truncation signaling; hydrate the web indicator from one
   recent page plus bounded queued/in-progress queries.
