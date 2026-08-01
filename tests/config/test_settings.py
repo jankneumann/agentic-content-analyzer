@@ -117,3 +117,39 @@ def test_operation_cursor_signing_key_fails_closed_without_strong_material() -> 
 
     with pytest.raises(RuntimeError, match="OPERATION_CURSOR_SIGNING_KEY"):
         settings.get_operation_cursor_signing_key()
+
+
+def test_operation_retention_defaults_are_finite_and_bounded() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.job_retention_days == 30
+    assert settings.failed_job_retention_days == 90
+    assert settings.job_retention_interval_seconds == 3600
+    assert settings.job_retention_batch_size == 100
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("job_retention_days", 0),
+        ("job_retention_days", 3651),
+        ("failed_job_retention_days", 0),
+        ("failed_job_retention_days", 3651),
+        ("job_retention_interval_seconds", 59),
+        ("job_retention_interval_seconds", 86_401),
+        ("job_retention_batch_size", 0),
+        ("job_retention_batch_size", 1001),
+    ],
+)
+def test_operation_retention_rejects_out_of_bounds_values(field: str, value: int) -> None:
+    with pytest.raises(ValidationError, match=field):
+        Settings(_env_file=None, **{field: value})
+
+
+def test_failed_retention_cannot_be_shorter_than_completed_retention() -> None:
+    with pytest.raises(ValidationError, match="failed_job_retention_days"):
+        Settings(
+            _env_file=None,
+            job_retention_days=91,
+            failed_job_retention_days=90,
+        )

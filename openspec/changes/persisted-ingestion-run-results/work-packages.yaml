@@ -453,12 +453,14 @@ packages:
       graph cleanup scheduled independently of optional batch maintenance.
     role: database-engineer
     priority: 4
-    depends_on: [wp-history-backend]
+    depends_on: [wp-history-backend, wp-history-indexes]
     locks:
       files:
         - src/queue/setup.py
         - src/queue/worker.py
         - src/config/settings.py
+        - src/services/operation_service.py
+        - tests/test_queue/test_setup.py
       keys:
         - env:operation-retention-policy
       ttl_minutes: 240
@@ -468,9 +470,12 @@ packages:
         - src/queue/setup.py
         - src/queue/worker.py
         - src/config/settings.py
+        - src/services/operation_service.py
         - tests/queue/test_operation_controls.py
+        - tests/queue/test_operation_service.py
         - tests/queue/test_worker_extended.py
         - tests/config/test_settings.py
+        - tests/test_queue/test_setup.py
         - tests/integration/test_operation_retention.py
       read_allow:
         - src/**
@@ -500,7 +505,7 @@ packages:
             result_keys: [test_count, pass_count, advisory_lock_cases]
         - name: worker-retention-tests
           kind: command
-          command: .venv/bin/pytest tests/queue/test_operation_controls.py tests/queue/test_worker_extended.py tests/config/test_settings.py --no-cov -q
+          command: .venv/bin/pytest tests/queue/test_operation_controls.py tests/queue/test_operation_service.py tests/queue/test_worker_extended.py tests/config/test_settings.py tests/test_queue/test_setup.py --no-cov -q
           expect_exit_code: 0
           evidence:
             artifacts: []
@@ -525,7 +530,10 @@ packages:
       files:
         - docs/DEVELOPMENT.md
         - docs/TESTING.md
+        - evaluation/README.md
         - evaluation/descriptors/aca-cli.yaml
+        - tests/fixtures/gen_eval/expectation-full-pass.json
+        - tests/fixtures/gen_eval/report-full-pass.json
         - openspec/specs/agentic-operations/spec.md
         - openspec/specs/pipeline/spec.md
         - openspec/specs/cli-interface/spec.md
@@ -538,9 +546,12 @@ packages:
       write_allow:
         - docs/DEVELOPMENT.md
         - docs/TESTING.md
+        - evaluation/README.md
         - evaluation/descriptors/aca-cli.yaml
         - evaluation/scenarios/**
         - tests/cli_gen_eval/**
+        - tests/fixtures/gen_eval/expectation-full-pass.json
+        - tests/fixtures/gen_eval/report-full-pass.json
         - openspec/specs/agentic-operations/spec.md
         - openspec/specs/pipeline/spec.md
         - openspec/specs/cli-interface/spec.md

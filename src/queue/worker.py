@@ -14,6 +14,7 @@ import asyncio
 import json
 from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
+from time import monotonic
 from typing import Any
 
 import asyncpg
@@ -30,6 +31,7 @@ _handlers: dict[str, Callable[..., Coroutine[Any, Any, None]]] = {}
 # operations remain the only user-submittable workflow mutations.
 _BATCH_MAINTENANCE_ADVISORY_LOCK = 2_104_711_915
 _BATCH_MAINTENANCE_INTERVAL_SECONDS = 60.0
+_RETENTION_MAINTENANCE_ADVISORY_LOCK = 2_104_711_916
 
 
 def _sqlalchemy_url_to_asyncpg(url: str) -> str:
@@ -297,6 +299,66 @@ async def _run_batch_maintenance_tick(conn: asyncpg.Connection) -> bool:
         )
 
 
+def _retention_tick_due(
+    *,
+    now: float,
+    last_run_at: float | None,
+    interval_seconds: float,
+) -> bool:
+    """Return whether startup or the configured process-local interval is due."""
+
+    return last_run_at is None or now - last_run_at >= interval_seconds
+
+
+def _record_retention_metrics(*, deleted_count: int, duration_seconds: float) -> None:
+    """Emit bounded structured maintenance metrics without requiring telemetry."""
+
+    logger.info(
+        "operation retention maintenance completed",
+        extra={
+            "retention_deleted_count": deleted_count,
+            "retention_duration_seconds": duration_seconds,
+        },
+    )
+
+
+async def _run_retention_maintenance_tick(
+    conn: asyncpg.Connection,
+    *,
+    retention_settings: Any,
+) -> bool:
+    """Run one graph-retention cycle when this worker wins leader election."""
+
+    acquired = await conn.fetchval(
+        "SELECT pg_try_advisory_lock($1::bigint)",
+        _RETENTION_MAINTENANCE_ADVISORY_LOCK,
+    )
+    if not acquired:
+        logger.debug("operation retention tick skipped; advisory lock held")
+        return False
+
+    started_at = monotonic()
+    try:
+        from src.queue.setup import cleanup_old_jobs
+
+        deleted_count = await cleanup_old_jobs(
+            older_than_days=retention_settings.job_retention_days,
+            failed_older_than_days=retention_settings.failed_job_retention_days,
+            batch_size=retention_settings.job_retention_batch_size,
+            conn=conn,
+        )
+        _record_retention_metrics(
+            deleted_count=deleted_count,
+            duration_seconds=max(monotonic() - started_at, 0.0),
+        )
+        return True
+    finally:
+        await conn.execute(
+            "SELECT pg_advisory_unlock($1::bigint)",
+            _RETENTION_MAINTENANCE_ADVISORY_LOCK,
+        )
+
+
 async def run_worker(
     *,
     concurrency: int = 5,
@@ -323,6 +385,10 @@ async def run_worker(
 
     conn = await asyncpg.connect(asyncpg_url)
     maintenance_conn = await asyncpg.connect(asyncpg_url)
+    retention_conn = await asyncpg.connect(asyncpg_url)
+    from src.config.settings import get_settings
+
+    retention_settings = get_settings()
 
     # Set up LISTEN for immediate job notification
     notify_event = asyncio.Event()
@@ -339,7 +405,9 @@ async def run_worker(
 
     active_tasks: set[asyncio.Task] = set()
     maintenance_task: asyncio.Task[bool] | None = None
+    retention_task: asyncio.Task[bool] | None = None
     last_maintenance_at = float("-inf")
+    last_retention_at: float | None = None
     loop = asyncio.get_running_loop()
     logger.info(f"Embedded worker started (concurrency={concurrency})")
 
@@ -352,6 +420,13 @@ async def run_worker(
                     logger.exception("batch maintenance tick failed")
                 maintenance_task = None
 
+            if retention_task is not None and retention_task.done():
+                try:
+                    retention_task.result()
+                except Exception:
+                    logger.exception("operation retention maintenance tick failed")
+                retention_task = None
+
             if (
                 maintenance_task is None
                 and loop.time() - last_maintenance_at >= _BATCH_MAINTENANCE_INTERVAL_SECONDS
@@ -360,6 +435,19 @@ async def run_worker(
                     _run_batch_maintenance_tick(maintenance_conn)
                 )
                 last_maintenance_at = loop.time()
+
+            if retention_task is None and _retention_tick_due(
+                now=loop.time(),
+                last_run_at=last_retention_at,
+                interval_seconds=retention_settings.job_retention_interval_seconds,
+            ):
+                retention_task = asyncio.create_task(
+                    _run_retention_maintenance_tick(
+                        retention_conn,
+                        retention_settings=retention_settings,
+                    )
+                )
+                last_retention_at = loop.time()
 
             # Clean up completed tasks
             done = {t for t in active_tasks if t.done()}
@@ -401,9 +489,13 @@ async def run_worker(
         if maintenance_task is not None:
             maintenance_task.cancel()
             await asyncio.gather(maintenance_task, return_exceptions=True)
+        if retention_task is not None:
+            retention_task.cancel()
+            await asyncio.gather(retention_task, return_exceptions=True)
         await conn.remove_listener("pgqueuer", _on_notify)
         await conn.close()
         await maintenance_conn.close()
+        await retention_conn.close()
 
 
 def _prepare_forced_summary(content_id: int) -> None:

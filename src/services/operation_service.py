@@ -1125,68 +1125,91 @@ class OperationService:
             "problem": None,
         }
         try:
-            row = await self._update_returning(
-                """
-                WITH retried_children AS (
-                    UPDATE pgqueuer_jobs AS child
+            async with queue_setup._queue_connection(self._connection) as conn, conn.transaction():
+                root_id = await queue_setup._resolve_operation_graph_root(conn, job_id)
+                if root_id is None:
+                    raise OperationNotFoundError(f"Operation {operation_id} was not found")
+                await queue_setup._acquire_operation_graph_lock(conn, root_id)
+                confirmed_root_id = await queue_setup._resolve_operation_graph_root(conn, job_id)
+                if confirmed_root_id != root_id:
+                    raise OperationNotFoundError(f"Operation {operation_id} was not found")
+
+                # Cleanup locks graphs root-first. Take the same first row lock
+                # before the pipeline CTE reaches its child updates so every
+                # lifecycle path has a compatible lock order.
+                locked_root_id = await conn.fetchval(
+                    "SELECT id FROM pgqueuer_jobs WHERE id = $1 FOR UPDATE",
+                    root_id,
+                )
+                if locked_root_id is None:
+                    raise OperationNotFoundError(f"Operation {operation_id} was not found")
+
+                row = await conn.fetchrow(
+                    """
+                    WITH retried_children AS (
+                        UPDATE pgqueuer_jobs AS child
+                        SET status = 'queued',
+                            payload = COALESCE(child.payload, '{}'::jsonb) || $1::jsonb,
+                            error = NULL,
+                            retry_count = child.retry_count + 1,
+                            started_at = NULL,
+                            completed_at = NULL,
+                            execute_after = NOW(),
+                            heartbeat_at = NOW()
+                        WHERE child.parent_job_id = $2
+                          AND child.status IN ('failed', 'cancelled')
+                          AND child.id = ANY (
+                              SELECT jsonb_array_elements_text(
+                                  COALESCE(
+                                      pipeline_parent.payload->'result'
+                                          ->'retry_child_operation_ids',
+                                      '[]'::jsonb
+                                  )
+                              )::bigint
+                              FROM pgqueuer_jobs AS pipeline_parent
+                              WHERE pipeline_parent.id = $2
+                                AND pipeline_parent.entrypoint = 'pipeline.run'
+                                AND pipeline_parent.status = 'failed'
+                          )
+                        RETURNING child.id
+                    )
+                    UPDATE pgqueuer_jobs AS parent
                     SET status = 'queued',
-                        payload = COALESCE(child.payload, '{}'::jsonb) || $1::jsonb,
+                        payload = (COALESCE(parent.payload, '{}'::jsonb) || $1::jsonb) ||
+                            CASE
+                                WHEN parent.entrypoint = 'pipeline.run'
+                                    AND parent.payload->'result' IS NOT NULL
+                                THEN jsonb_build_object('result', parent.payload->'result')
+                                ELSE '{}'::jsonb
+                            END,
                         error = NULL,
-                        retry_count = child.retry_count + 1,
+                        retry_count = retry_count + 1,
                         started_at = NULL,
                         completed_at = NULL,
                         execute_after = NOW(),
                         heartbeat_at = NOW()
-                    WHERE child.parent_job_id = $2
-                      AND child.status IN ('failed', 'cancelled')
-                      AND child.id = ANY (
-                          SELECT jsonb_array_elements_text(
-                              COALESCE(
-                                  pipeline_parent.payload->'result'->'retry_child_operation_ids',
-                                  '[]'::jsonb
-                              )
-                          )::bigint
-                          FROM pgqueuer_jobs AS pipeline_parent
-                          WHERE pipeline_parent.id = $2
-                            AND pipeline_parent.entrypoint = 'pipeline.run'
-                            AND pipeline_parent.status = 'failed'
-                      )
-                    RETURNING child.id
+                    WHERE parent.id = $2 AND parent.status = 'failed'
+                    RETURNING id, entrypoint, status, payload, priority, error,
+                              retry_count, parent_job_id, heartbeat_at, created_at,
+                              started_at, completed_at
+                    """,
+                    json.dumps(reset),
+                    job_id,
                 )
-                UPDATE pgqueuer_jobs AS parent
-                SET status = 'queued',
-                    payload = (COALESCE(parent.payload, '{}'::jsonb) || $1::jsonb) ||
-                        CASE
-                            WHEN parent.entrypoint = 'pipeline.run'
-                                AND parent.payload->'result' IS NOT NULL
-                            THEN jsonb_build_object('result', parent.payload->'result')
-                            ELSE '{}'::jsonb
-                        END,
-                    error = NULL,
-                    retry_count = retry_count + 1,
-                    started_at = NULL,
-                    completed_at = NULL,
-                    execute_after = NOW(),
-                    heartbeat_at = NOW()
-                WHERE parent.id = $2 AND parent.status = 'failed'
-                RETURNING id, entrypoint, status, payload, priority, error,
-                          retry_count, parent_job_id, heartbeat_at, created_at,
-                          started_at, completed_at
-                """,
-                json.dumps(reset),
-                job_id,
-            )
+                if row is None:
+                    current_job = await queue_setup.get_job_status(job_id, conn=conn)
+                    if current_job is None:
+                        raise OperationNotFoundError(f"Operation {operation_id} was not found")
+                    current = self.project(current_job)
+                    raise OperationConflictError(
+                        f"Operation {operation_id} cannot be retried "
+                        f"from state {current.status.value}"
+                    )
+                await conn.execute("SELECT pg_notify('pgqueuer', $1)", "operation_retry")
         except asyncpg.UniqueViolationError as exc:
             raise OperationConflictError(
                 f"Operation {operation_id} cannot be retried while an equivalent operation is active"
             ) from exc
-        if row is None:
-            current = await self.get(operation_id)
-            raise OperationConflictError(
-                f"Operation {operation_id} cannot be retried from state {current.status.value}"
-            )
-        async with queue_setup._queue_connection(self._connection) as conn:
-            await conn.execute("SELECT pg_notify('pgqueuer', $1)", "operation_retry")
         return self.project(self._job_from_row(row))
 
     async def checkpoint_cancellation(

@@ -6,7 +6,8 @@ to the corresponding orchestrator function with the right keyword arguments.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -205,6 +206,77 @@ async def test_ingest_unknown_source_raises():
     handler = _handlers["ingest_content"]
     with pytest.raises(ValueError, match="Unsupported source"):
         await handler(1, {"source": "nonexistent"})
+
+
+class _RetentionConnection:
+    def __init__(self, *, acquired: bool) -> None:
+        self.fetchval = AsyncMock(return_value=acquired)
+        self.execute = AsyncMock()
+
+
+def _retention_settings() -> SimpleNamespace:
+    return SimpleNamespace(
+        job_retention_days=30,
+        failed_job_retention_days=90,
+        job_retention_batch_size=25,
+    )
+
+
+@pytest.mark.asyncio
+async def test_retention_tick_lock_loser_skips_cleanup(monkeypatch) -> None:
+    from src.queue import worker
+
+    connection = _RetentionConnection(acquired=False)
+    cleanup = AsyncMock()
+    monkeypatch.setattr("src.queue.setup.cleanup_old_jobs", cleanup)
+
+    ran = await worker._run_retention_maintenance_tick(
+        connection,
+        retention_settings=_retention_settings(),
+    )
+
+    assert ran is False
+    cleanup.assert_not_awaited()
+    connection.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retention_tick_runs_without_gemini_and_emits_metrics(monkeypatch) -> None:
+    from src.queue import worker
+
+    connection = _RetentionConnection(acquired=True)
+    cleanup = AsyncMock(return_value=7)
+    metrics = MagicMock()
+    monkeypatch.setattr("src.queue.setup.cleanup_old_jobs", cleanup)
+    monkeypatch.setattr(worker, "_record_retention_metrics", metrics)
+
+    ran = await worker._run_retention_maintenance_tick(
+        connection,
+        retention_settings=_retention_settings(),
+    )
+
+    assert ran is True
+    cleanup.assert_awaited_once_with(
+        older_than_days=30,
+        failed_older_than_days=90,
+        batch_size=25,
+        conn=connection,
+    )
+    metrics.assert_called_once()
+    assert metrics.call_args.kwargs["deleted_count"] == 7
+    assert metrics.call_args.kwargs["duration_seconds"] >= 0
+    connection.execute.assert_awaited_once_with(
+        "SELECT pg_advisory_unlock($1::bigint)",
+        worker._RETENTION_MAINTENANCE_ADVISORY_LOCK,
+    )
+
+
+def test_retention_schedule_runs_at_startup_and_only_after_interval() -> None:
+    from src.queue.worker import _retention_tick_due
+
+    assert _retention_tick_due(now=100.0, last_run_at=None, interval_seconds=3600)
+    assert not _retention_tick_due(now=3699.0, last_run_at=100.0, interval_seconds=3600)
+    assert _retention_tick_due(now=3700.0, last_run_at=100.0, interval_seconds=3600)
 
 
 # ---------------------------------------------------------------------------

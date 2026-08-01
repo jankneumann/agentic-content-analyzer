@@ -11,7 +11,7 @@ import sys
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from types import ModuleType
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import asyncpg
 import pytest
@@ -1055,16 +1055,28 @@ async def test_submit_child_namespaces_caller_key_by_parent(monkeypatch) -> None
 
 @pytest.mark.asyncio
 async def test_pipeline_retry_preserves_checkpoint_and_requeues_failed_children() -> None:
-    service = OperationService(connection=AsyncMock())
+    class Transaction:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
     queued = _row(8123, NOW)
     queued["entrypoint"] = OperationType.PIPELINE_RUN.value
     queued["status"] = JobStatus.QUEUED.value
-    update = AsyncMock(return_value=queued)
-    service._update_returning = update  # type: ignore[method-assign]
+    conn = MagicMock()
+    conn.transaction.return_value = Transaction()
+    conn.fetchval = AsyncMock(side_effect=[8123, None, 8123, 8123])
+    conn.fetchrow = AsyncMock(return_value=queued)
+    conn.execute = AsyncMock()
+    service = OperationService(connection=conn)
 
     await service.retry("8123")
 
-    query = update.await_args.args[0]
+    query = conn.fetchrow.await_args.args[0]
+    assert "pg_advisory_xact_lock" in conn.fetchval.await_args_list[1].args[0]
+    assert "FOR UPDATE" in conn.fetchval.await_args_list[3].args[0]
     assert "WITH retried_children AS" in query
     assert query.index("UPDATE pgqueuer_jobs AS child") < query.index(
         "UPDATE pgqueuer_jobs AS parent"

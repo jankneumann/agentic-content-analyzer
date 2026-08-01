@@ -581,34 +581,222 @@ async def retry_failed_job(job_id: int) -> JobRecord | None:
         return await get_job_status(job_id, conn=conn)
 
 
-async def cleanup_old_jobs(older_than_days: int = 30) -> int:
-    """Delete old terminal jobs that no longer need operational retention.
+_OPERATION_GRAPH_LOCK_SQL = (
+    "SELECT pg_advisory_xact_lock("
+    "hashtextextended('aca:operation-graph:' || ($1::bigint)::text, 0))"
+)
 
-    Deletes completed and cancelled jobs. Never deletes queued, in_progress,
-    or failed jobs so active and retryable work remains observable.
 
-    Args:
-        older_than_days: Delete completed jobs older than this many days
+async def _resolve_operation_graph_root(
+    conn: asyncpg.Connection,
+    job_id: int,
+) -> int | None:
+    """Resolve a live job's root while rejecting broken or cyclic lineage."""
 
-    Returns:
-        Number of jobs deleted
+    root_id = await conn.fetchval(
+        """
+        WITH RECURSIVE lineage AS (
+            SELECT job.id, job.parent_job_id, ARRAY[job.id] AS visited
+            FROM pgqueuer_jobs AS job
+            WHERE job.id = $1
+            UNION ALL
+            SELECT parent.id,
+                   parent.parent_job_id,
+                   lineage.visited || parent.id
+            FROM pgqueuer_jobs AS parent
+            JOIN lineage ON parent.id = lineage.parent_job_id
+            WHERE NOT parent.id = ANY(lineage.visited)
+        )
+        SELECT id
+        FROM lineage
+        WHERE parent_job_id IS NULL
+        LIMIT 1
+        """,
+        job_id,
+    )
+    return int(root_id) if root_id is not None else None
+
+
+async def _acquire_operation_graph_lock(
+    conn: asyncpg.Connection,
+    root_id: int,
+) -> None:
+    """Serialize graph membership changes and retention for one root."""
+
+    await conn.fetchval(_OPERATION_GRAPH_LOCK_SQL, root_id)
+
+
+async def cleanup_old_jobs(
+    older_than_days: int = 30,
+    *,
+    failed_older_than_days: int = 90,
+    batch_size: int = 100,
+    conn: asyncpg.Connection | None = None,
+) -> int:
+    """Delete a bounded batch of fully terminal operation graphs.
+
+    Candidate roots are selected by the graph's newest completion timestamp.
+    The selected graphs are locked and re-read in the same transaction before
+    descendants are removed ahead of roots, so active or newly retried work is
+    never detached by ``ON DELETE SET NULL``.
     """
-    async with _queue_connection() as conn:
-        cutoff = datetime.now(UTC) - timedelta(days=older_than_days)
 
-        result = await conn.execute(
+    if not 1 <= older_than_days <= 3650:
+        raise ValueError("older_than_days must be between 1 and 3650")
+    if not older_than_days <= failed_older_than_days <= 3650:
+        raise ValueError("failed_older_than_days must be between older_than_days and 3650")
+    if not 1 <= batch_size <= 1000:
+        raise ValueError("batch_size must be between 1 and 1000")
+
+    candidate_sql = """
+        WITH RECURSIVE graph AS (
+            SELECT root.id, root.id AS root_id, root.status, root.completed_at
+            FROM pgqueuer_jobs AS root
+            WHERE root.parent_job_id IS NULL
+            UNION ALL
+            SELECT child.id, graph.root_id, child.status, child.completed_at
+            FROM pgqueuer_jobs AS child
+            JOIN graph ON child.parent_job_id = graph.id
+        ),
+        rollup AS (
+            SELECT root_id,
+                   MAX(completed_at) AS newest_completion,
+                   BOOL_OR(status = 'failed') AS has_failed,
+                   COUNT(*) FILTER (
+                       WHERE status NOT IN ('completed', 'failed', 'cancelled')
+                   ) AS active_count,
+                   COUNT(*) FILTER (WHERE completed_at IS NULL) AS null_completion_count
+            FROM graph
+            GROUP BY root_id
+        )
+        SELECT root_id
+        FROM rollup
+        WHERE active_count = 0
+          AND null_completion_count = 0
+          AND CASE
+              WHEN has_failed
+                  THEN newest_completion < CURRENT_TIMESTAMP
+                       - ($2::int * INTERVAL '1 day')
+              ELSE newest_completion < CURRENT_TIMESTAMP
+                       - ($1::int * INTERVAL '1 day')
+          END
+        ORDER BY newest_completion, root_id
+        LIMIT $3
+    """
+    graph_lock_sql = """
+        WITH RECURSIVE graph_ids AS (
+            SELECT root.id
+            FROM pgqueuer_jobs AS root
+            WHERE root.id = ANY($1::bigint[])
+            UNION ALL
+            SELECT child.id
+            FROM pgqueuer_jobs AS child
+            JOIN graph_ids ON child.parent_job_id = graph_ids.id
+        )
+        SELECT jobs.id
+        FROM pgqueuer_jobs AS jobs
+        JOIN graph_ids ON graph_ids.id = jobs.id
+        ORDER BY jobs.id
+        FOR UPDATE OF jobs
+    """
+    recheck_sql = """
+        WITH RECURSIVE graph AS (
+            SELECT root.id, root.id AS root_id, root.status, root.completed_at
+            FROM pgqueuer_jobs AS root
+            WHERE root.id = ANY($1::bigint[])
+              AND root.parent_job_id IS NULL
+            UNION ALL
+            SELECT child.id, graph.root_id, child.status, child.completed_at
+            FROM pgqueuer_jobs AS child
+            JOIN graph ON child.parent_job_id = graph.id
+        )
+        SELECT root_id
+        FROM graph
+        GROUP BY root_id
+        HAVING COUNT(*) FILTER (
+                   WHERE status NOT IN ('completed', 'failed', 'cancelled')
+               ) = 0
+           AND COUNT(*) FILTER (WHERE completed_at IS NULL) = 0
+           AND CASE
+               WHEN BOOL_OR(status = 'failed')
+                   THEN MAX(completed_at) < CURRENT_TIMESTAMP
+                        - ($3::int * INTERVAL '1 day')
+               ELSE MAX(completed_at) < CURRENT_TIMESTAMP
+                        - ($2::int * INTERVAL '1 day')
+           END
+        ORDER BY root_id
+    """
+    delete_descendants_sql = """
+        WITH RECURSIVE graph_ids AS (
+            SELECT root.id, root.id AS root_id
+            FROM pgqueuer_jobs AS root
+            WHERE root.id = ANY($1::bigint[])
+            UNION ALL
+            SELECT child.id, graph_ids.root_id
+            FROM pgqueuer_jobs AS child
+            JOIN graph_ids ON child.parent_job_id = graph_ids.id
+        )
+        DELETE FROM pgqueuer_jobs AS jobs
+        USING graph_ids
+        WHERE jobs.id = graph_ids.id
+          AND jobs.id <> graph_ids.root_id
+        RETURNING jobs.id
+    """
+
+    async with _queue_connection(conn) as query_conn, query_conn.transaction():
+        await query_conn.execute("SET LOCAL lock_timeout = '5s'")
+        await query_conn.execute("SET LOCAL statement_timeout = '30s'")
+        candidates = await query_conn.fetch(
+            candidate_sql,
+            older_than_days,
+            failed_older_than_days,
+            batch_size,
+        )
+        root_ids = sorted(int(row["root_id"]) for row in candidates)
+        if not root_ids:
+            return 0
+
+        # Child insertion takes the same root-scoped transaction lock. Once
+        # these locks are held, graph membership is stable through recheck and
+        # deletion. Sorted acquisition prevents cleanup workers deadlocking.
+        for root_id in root_ids:
+            await _acquire_operation_graph_lock(query_conn, root_id)
+
+        # Retain one row-lock pass so lifecycle mutations cannot race the
+        # terminal-state recheck. Membership no longer relies on repeated
+        # recursive snapshots because the advisory lock owns that invariant.
+        await query_conn.fetch(graph_lock_sql, root_ids)
+        rechecked = await query_conn.fetch(
+            recheck_sql,
+            root_ids,
+            older_than_days,
+            failed_older_than_days,
+        )
+        eligible_root_ids = [int(row["root_id"]) for row in rechecked]
+        if not eligible_root_ids:
+            return 0
+
+        descendants = await query_conn.fetch(
+            delete_descendants_sql,
+            eligible_root_ids,
+        )
+        roots = await query_conn.fetch(
             """
-            DELETE FROM pgqueuer_jobs
-            WHERE status IN ('completed', 'cancelled')
-              AND completed_at < $1
-            """,
-            cutoff,
+                DELETE FROM pgqueuer_jobs
+                WHERE id = ANY($1::bigint[])
+                  AND parent_job_id IS NULL
+                RETURNING id
+                """,
+            eligible_root_ids,
         )
 
-        # Parse "DELETE N" result
-        count = int(result.split()[-1]) if result else 0
-        logger.info(f"Cleaned up {count} old terminal jobs (older than {older_than_days} days)")
-        return count
+    deleted_count = len(descendants) + len(roots)
+    logger.info(
+        "operation retention deleted %s jobs across %s root graphs",
+        deleted_count,
+        len(roots),
+    )
+    return deleted_count
 
 
 async def mark_stale_jobs_failed(
@@ -670,7 +858,16 @@ async def enqueue_queue_job(
     payload = _normalize_job_payload(payload)
     effective_idempotency_key = idempotency_key or _build_idempotency_key(entrypoint, payload)
 
-    async with _queue_connection(conn) as query_conn:
+    async with _queue_connection(conn) as query_conn, query_conn.transaction():
+        if parent_job_id is not None:
+            root_id = await _resolve_operation_graph_root(query_conn, parent_job_id)
+            if root_id is None:
+                raise RuntimeError("Parent job does not belong to a live operation graph")
+            await _acquire_operation_graph_lock(query_conn, root_id)
+            confirmed_root_id = await _resolve_operation_graph_root(query_conn, parent_job_id)
+            if confirmed_root_id != root_id:
+                raise RuntimeError("Parent job does not belong to a live operation graph")
+
         row = await query_conn.fetchrow(
             """
             INSERT INTO pgqueuer_jobs (

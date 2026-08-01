@@ -6,7 +6,7 @@ import inspect
 import json
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import asyncpg
 import pytest
@@ -110,9 +110,18 @@ async def test_active_duplicate_returns_existing_handle(monkeypatch) -> None:
 
 class _MutationConnection:
     def __init__(self, returned_job: JobRecord | None) -> None:
+        class Transaction:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return None
+
         self.returned_job = returned_job
         self.fetchrow = AsyncMock(side_effect=self._fetchrow)
+        self.fetchval = AsyncMock(return_value=8123)
         self.execute = AsyncMock(return_value="SELECT 1")
+        self.transaction = MagicMock(return_value=Transaction())
 
     async def _fetchrow(self, query: str, *args):
         del args
@@ -216,6 +225,11 @@ async def test_retry_clears_stale_state_and_preserves_normalized_input() -> None
     handle = await OperationService(connection=conn).retry("8123")
 
     query, reset_json, operation_id = conn.fetchrow.await_args.args
+    assert conn.fetchval.await_count == 4
+    assert "WITH RECURSIVE lineage" in conn.fetchval.await_args_list[0].args[0]
+    assert "pg_advisory_xact_lock" in conn.fetchval.await_args_list[1].args[0]
+    assert "WITH RECURSIVE lineage" in conn.fetchval.await_args_list[2].args[0]
+    assert "FOR UPDATE" in conn.fetchval.await_args_list[3].args[0]
     reset = json.loads(reset_json)
     assert operation_id == 8123
     assert "status = 'failed'" in query
@@ -361,8 +375,26 @@ async def test_resource_and_result_attachments_preserve_active_state() -> None:
 async def test_cleanup_includes_cancelled_jobs(monkeypatch) -> None:
     from src.queue import setup as queue_setup
 
-    conn = AsyncMock()
-    conn.execute.return_value = "DELETE 2"
+    class Transaction:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+    conn = MagicMock()
+    conn.execute = AsyncMock()
+    conn.fetchval = AsyncMock()
+    conn.fetch = AsyncMock(
+        side_effect=[
+            [{"root_id": 1}],
+            [{"id": 1}, {"id": 2}],
+            [{"root_id": 1}],
+            [{"id": 2}],
+            [{"id": 1}],
+        ]
+    )
+    conn.transaction.return_value = Transaction()
 
     @asynccontextmanager
     async def fake_connection(_conn=None):
@@ -373,7 +405,17 @@ async def test_cleanup_includes_cancelled_jobs(monkeypatch) -> None:
     count = await queue_setup.cleanup_old_jobs(older_than_days=30)
 
     assert count == 2
-    assert "status IN ('completed', 'cancelled')" in conn.execute.await_args.args[0]
+    candidate_query = conn.fetch.await_args_list[0].args[0]
+    assert "status NOT IN ('completed', 'failed', 'cancelled')" in candidate_query
+    assert "COUNT(*) FILTER (WHERE completed_at IS NULL)" in candidate_query
+    assert conn.fetchval.await_count == 1
+    assert "pg_advisory_xact_lock" in conn.fetchval.await_args.args[0]
+    graph_lock = conn.fetch.await_args_list[1].args[0]
+    assert "FOR UPDATE OF jobs" in graph_lock
+    descendant_delete = conn.fetch.await_args_list[-2].args[0]
+    root_delete = conn.fetch.await_args_list[-1].args[0]
+    assert "jobs.id <> graph_ids.root_id" in descendant_delete
+    assert "parent_job_id IS NULL" in root_delete
 
 
 @pytest.mark.asyncio

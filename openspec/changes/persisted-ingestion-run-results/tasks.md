@@ -134,23 +134,23 @@
 - [x] 4.6 Implement `aca ingest history` through the canonical client with the
   same filter vocabulary as the API.
   **Dependencies:** 4.4, 4.5 — **Size: M**
-- [ ] 4.7 Write PostgreSQL query-plan tests over at least 10,000 representative
+- [x] 4.7 Write PostgreSQL query-plan tests over at least 10,000 representative
   operations; assert indexed order plus bounded rows scanned for selective
   command/configured-source/outcome/parent queries. (RED)
   **Spec scenarios:** filtered history, bounded output
   **Design decisions:** D5, D6
   **Dependencies:** 4.4 — **Size: M**
-- [ ] 4.8 Add only the smallest ordering or JSONB-expression indexes required
+- [x] 4.8 Add only the smallest ordering or JSONB-expression indexes required
   by `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` evidence.
   **Dependencies:** 4.7 — **Size: S**
-- [ ] Checkpoint: run service, API, client, CLI, OpenAPI drift, query-plan,
+- [x] Checkpoint: run service, API, client, CLI, OpenAPI drift, query-plan,
   plus gen-eval
   descriptor-drift tests; confirm existing POST `/api/v1/ingestions` is
   unchanged.
 
 ## Phase 5 — Graph-aware retention
 
-- [ ] 5.1 Write PostgreSQL tests for configurable retention, whole-graph
+- [x] 5.1 Write PostgreSQL tests for configurable retention, whole-graph
   eligibility, active-work preservation, finite failed horizon, bounded
   settings, bounded batches/timeouts, advisory-lock exclusion, transactional
   recheck, restart duplication, null terminal `completed_at`,
@@ -159,24 +159,24 @@
   failure, automatic cleanup
   **Design decisions:** D7
   **Dependencies:** 3.2 — **Size: M**
-- [ ] 5.2 Replace row-local cleanup with graph-aware terminal cleanup.
+- [x] 5.2 Replace row-local cleanup with graph-aware terminal cleanup.
   **Dependencies:** 5.1 — **Size: M**
-- [ ] 5.3 Wire one advisory-locked interval retention tick into the worker using a
+- [x] 5.3 Wire one advisory-locked interval retention tick into the worker using a
   validated `JOB_RETENTION_DAYS`/failed-retention policy independently of
   optional batch maintenance.
   **Dependencies:** 5.2 — **Size: S**
-- [ ] Checkpoint: run queue integration tests against PostgreSQL, inspect the
+- [x] Checkpoint: run queue integration tests against PostgreSQL, inspect the
   retention evidence, verify repeated cleanup is idempotent.
 
 ## Phase 6 — Documentation and close-out
 
-- [ ] 6.1 Reconcile API/CLI documentation plus the stale job-history spec so
+- [x] 6.1 Reconcile API/CLI documentation plus the stale job-history spec so
   canonical ingestion history, outcome semantics, bounds, plus retention are
   explicit; note that legacy `/jobs/history` remains compatibility-only.
   **Spec scenarios:** all
   **Design decisions:** D1–D7
   **Dependencies:** 4.6, 5.2 — **Size: S**
-- [ ] 6.2 Add RI-06 gen-eval scenarios for filtered history, zero-item output,
+- [x] 6.2 Add RI-06 gen-eval scenarios for filtered history, zero-item output,
   and partial warning behavior without enabling mutation in the PR tier.
   **Spec scenarios:** canonical history parity, tolerated partial pipeline
   **Design decisions:** D4, D5

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -19,11 +19,19 @@ from src.queue.setup import (
 
 @pytest.fixture
 def mock_connection():
-    conn = AsyncMock()
+    class Transaction:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+    conn = MagicMock()
     conn.fetchrow = AsyncMock()
     conn.fetchval = AsyncMock()
     conn.execute = AsyncMock()
     conn.close = AsyncMock()
+    conn.transaction.return_value = Transaction()
     return conn
 
 
@@ -135,6 +143,42 @@ class TestEnqueueQueueJob:
         with patch("src.queue.setup._connection", mock_connection):
             with pytest.raises(ValueError):
                 await enqueue_queue_job("summarize_content", {})
+
+    @pytest.mark.asyncio
+    async def test_child_enqueue_locks_and_revalidates_its_graph_root(self, mock_connection):
+        mock_connection.fetchval.side_effect = [41, None, 41]
+        mock_connection.fetchrow.return_value = {"id": 77}
+
+        with patch("src.queue.setup._connection", mock_connection):
+            result = await enqueue_queue_job(
+                "summarize_content",
+                {"content_id": 123},
+                parent_job_id=43,
+            )
+
+        assert result == (77, True)
+        assert mock_connection.fetchval.await_count == 3
+        first_query = mock_connection.fetchval.await_args_list[0].args[0]
+        lock_query = mock_connection.fetchval.await_args_list[1].args[0]
+        recheck_query = mock_connection.fetchval.await_args_list[2].args[0]
+        assert "WITH RECURSIVE lineage" in first_query
+        assert "pg_advisory_xact_lock" in lock_query
+        assert "WITH RECURSIVE lineage" in recheck_query
+        assert mock_connection.fetchrow.await_args.args[4] == 43
+
+    @pytest.mark.asyncio
+    async def test_child_enqueue_rejects_lineage_removed_while_waiting(self, mock_connection):
+        mock_connection.fetchval.side_effect = [41, None, None]
+
+        with patch("src.queue.setup._connection", mock_connection):
+            with pytest.raises(RuntimeError, match="live operation graph"):
+                await enqueue_queue_job(
+                    "summarize_content",
+                    {"content_id": 123},
+                    parent_job_id=43,
+                )
+
+        mock_connection.fetchrow.assert_not_awaited()
 
 
 class TestEnqueueSummarizationJob:

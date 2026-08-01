@@ -340,6 +340,10 @@ class Settings(BaseSettings):
     # Worker Configuration
     worker_enabled: bool = True  # Enable embedded queue worker in API process
     worker_concurrency: int = 5  # Max concurrent tasks (1-20)
+    job_retention_days: int = Field(default=30, ge=1, le=3650)
+    failed_job_retention_days: int = Field(default=90, ge=1, le=3650)
+    job_retention_interval_seconds: int = Field(default=3600, ge=60, le=86_400)
+    job_retention_batch_size: int = Field(default=100, ge=1, le=1000)
 
     # Database Provider Configuration
     # Explicit provider selection - no auto-detection magic
@@ -833,6 +837,16 @@ class Settings(BaseSettings):
                 f"(expected {expected}). This may cause vector insertion errors."
             )
 
+        return self
+
+    @model_validator(mode="after")
+    def validate_operation_retention(self) -> Settings:
+        """Keep retryable failed operations at least as long as other terminal work."""
+
+        if self.failed_job_retention_days < self.job_retention_days:
+            raise ValueError(
+                "failed_job_retention_days must be greater than or equal to job_retention_days"
+            )
         return self
 
     @field_validator("langfuse_sample_rate")
