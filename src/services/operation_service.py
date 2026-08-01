@@ -23,6 +23,7 @@ from src.contracts.workflow_models import (
     IngestionHistoryItem,
     IngestionHistoryPage,
     IngestionOutcome,
+    IngestionResultV2,
     IngestionStatus,
     OperationPage,
     OperationSummary,
@@ -967,18 +968,23 @@ class OperationService:
         if progress < 0 or progress > 100:
             raise ValueError("progress must be between 0 and 100")
         job_id = self._parse_operation_id(operation_id)
+        claim_generation = self._require_claim_generation(job_id, operation_id)
         row = await self._update_returning(
             """
             UPDATE pgqueuer_jobs
             SET payload = COALESCE(payload, '{}'::jsonb) || $1::jsonb,
                 heartbeat_at = NOW()
-            WHERE id = $2 AND status = 'in_progress'
+            WHERE id = $2
+              AND status = 'in_progress'
+              AND claim_generation = $3
             RETURNING id, entrypoint, status, payload, priority, error,
-                      retry_count, parent_job_id, heartbeat_at, created_at,
+                      retry_count, parent_job_id, heartbeat_at, claim_generation,
+                      claim_protocol_version, created_at,
                       started_at, completed_at
             """,
             json.dumps({"progress": progress, "message": message}),
             job_id,
+            claim_generation,
         )
         return self._require_updated(row, operation_id, "cannot accept progress updates")
 
@@ -995,6 +1001,7 @@ class OperationService:
         if progress < 0 or progress > 99:
             raise ValueError("deferred progress must be between 0 and 99")
         job_id = self._parse_operation_id(operation_id)
+        claim_generation = self._require_claim_generation(job_id, operation_id)
         patch = json.dumps({"result": checkpoint, "progress": progress, "message": message})
         row = await self._update_returning(
             """
@@ -1005,13 +1012,17 @@ class OperationService:
                 execute_after = NOW() + INTERVAL '1 second',
                 started_at = NULL,
                 heartbeat_at = NOW()
-            WHERE id = $2 AND status = 'in_progress'
+            WHERE id = $2
+              AND status = 'in_progress'
+              AND claim_generation = $3
             RETURNING id, entrypoint, status, payload, priority, error,
-                      retry_count, parent_job_id, heartbeat_at, created_at,
+                      retry_count, parent_job_id, heartbeat_at, claim_generation,
+                      claim_protocol_version, created_at,
                       started_at, completed_at
             """,
             patch,
             job_id,
+            claim_generation,
         )
         return self._require_updated(row, operation_id, "cannot be deferred")
 
@@ -1048,6 +1059,7 @@ class OperationService:
         """Atomically project a workflow's final result, resource, and progress."""
 
         job_id = self._parse_operation_id(operation_id)
+        claim_generation = self._require_claim_generation(job_id, operation_id)
         patch = json.dumps(
             {
                 "result": result,
@@ -1061,13 +1073,17 @@ class OperationService:
             UPDATE pgqueuer_jobs
             SET payload = COALESCE(payload, '{}'::jsonb) || $1::jsonb,
                 heartbeat_at = NOW()
-            WHERE id = $2 AND status = 'in_progress'
+            WHERE id = $2
+              AND status = 'in_progress'
+              AND claim_generation = $3
             RETURNING id, entrypoint, status, payload, priority, error,
-                      retry_count, parent_job_id, heartbeat_at, created_at,
+                      retry_count, parent_job_id, heartbeat_at, claim_generation,
+                      claim_protocol_version, created_at,
                       started_at, completed_at
             """,
             patch,
             job_id,
+            claim_generation,
         )
         return self._require_updated(row, operation_id, "cannot attach completion")
 
@@ -1093,7 +1109,8 @@ class OperationService:
               AND COALESCE((payload->>'cancellable')::boolean, TRUE)
               AND NOT COALESCE((payload->>'cancel_requested')::boolean, FALSE)
             RETURNING id, entrypoint, status, payload, priority, error,
-                      retry_count, parent_job_id, heartbeat_at, created_at,
+                      retry_count, parent_job_id, heartbeat_at, claim_generation,
+                      claim_protocol_version, created_at,
                       started_at, completed_at
             """,
             job_id,
@@ -1116,14 +1133,6 @@ class OperationService:
         """Requeue failed work while retaining durable pipeline checkpoints."""
 
         job_id = self._parse_operation_id(operation_id)
-        reset = {
-            "progress": 0,
-            "message": "Queued",
-            "cancel_requested": False,
-            "resource": None,
-            "result": None,
-            "problem": None,
-        }
         try:
             async with queue_setup._queue_connection(self._connection) as conn, conn.transaction():
                 root_id = await queue_setup._resolve_operation_graph_root(conn, job_id)
@@ -1143,74 +1152,207 @@ class OperationService:
                 )
                 if locked_root_id is None:
                     raise OperationNotFoundError(f"Operation {operation_id} was not found")
-
-                row = await conn.fetchrow(
-                    """
-                    WITH retried_children AS (
-                        UPDATE pgqueuer_jobs AS child
-                        SET status = 'queued',
-                            payload = COALESCE(child.payload, '{}'::jsonb) || $1::jsonb,
-                            error = NULL,
-                            retry_count = child.retry_count + 1,
-                            started_at = NULL,
-                            completed_at = NULL,
-                            execute_after = NOW(),
-                            heartbeat_at = NOW()
-                        WHERE child.parent_job_id = $2
-                          AND child.status IN ('failed', 'cancelled')
-                          AND child.id = ANY (
-                              SELECT jsonb_array_elements_text(
-                                  COALESCE(
-                                      pipeline_parent.payload->'result'
-                                          ->'retry_child_operation_ids',
-                                      '[]'::jsonb
-                                  )
-                              )::bigint
-                              FROM pgqueuer_jobs AS pipeline_parent
-                              WHERE pipeline_parent.id = $2
-                                AND pipeline_parent.entrypoint = 'pipeline.run'
-                                AND pipeline_parent.status = 'failed'
-                          )
-                        RETURNING child.id
-                    )
-                    UPDATE pgqueuer_jobs AS parent
-                    SET status = 'queued',
-                        payload = (COALESCE(parent.payload, '{}'::jsonb) || $1::jsonb) ||
-                            CASE
-                                WHEN parent.entrypoint = 'pipeline.run'
-                                    AND parent.payload->'result' IS NOT NULL
-                                THEN jsonb_build_object('result', parent.payload->'result')
-                                ELSE '{}'::jsonb
-                            END,
-                        error = NULL,
-                        retry_count = retry_count + 1,
-                        started_at = NULL,
-                        completed_at = NULL,
-                        execute_after = NOW(),
-                        heartbeat_at = NOW()
-                    WHERE parent.id = $2 AND parent.status = 'failed'
-                    RETURNING id, entrypoint, status, payload, priority, error,
-                              retry_count, parent_job_id, heartbeat_at, created_at,
-                              started_at, completed_at
-                    """,
-                    json.dumps(reset),
-                    job_id,
-                )
-                if row is None:
-                    current_job = await queue_setup.get_job_status(job_id, conn=conn)
-                    if current_job is None:
-                        raise OperationNotFoundError(f"Operation {operation_id} was not found")
-                    current = self.project(current_job)
-                    raise OperationConflictError(
-                        f"Operation {operation_id} cannot be retried "
-                        f"from state {current.status.value}"
-                    )
-                await conn.execute("SELECT pg_notify('pgqueuer', $1)", "operation_retry")
+                row = await self._retry_locked(conn, job_id, root_id=root_id)
         except asyncpg.UniqueViolationError as exc:
             raise OperationConflictError(
                 f"Operation {operation_id} cannot be retried while an equivalent operation is active"
             ) from exc
         return self.project(self._job_from_row(row))
+
+    async def _retry_locked(
+        self,
+        conn: asyncpg.Connection,
+        job_id: int,
+        *,
+        root_id: int | None = None,
+        max_retries: int | None = None,
+    ) -> Any:
+        """Retry on ``conn`` after the caller has acquired graph and root locks.
+
+        The private boundary deliberately does not open a connection or transaction;
+        reconciliation can therefore keep retry, audit, and notification atomic.
+        """
+
+        if max_retries is not None and max_retries < 0:
+            raise ValueError("max_retries must be non-negative")
+        root_id = job_id if root_id is None else root_id
+        holds_graph_lock = await conn.fetchval(
+            """
+            WITH lock_key AS (
+                SELECT hashtextextended(
+                    'aca:operation-graph:' || ($1::bigint)::text,
+                    0
+                )::bigint AS value
+            )
+            SELECT EXISTS (
+                SELECT 1
+                FROM pg_locks, lock_key
+                WHERE locktype = 'advisory'
+                  AND pid = pg_backend_pid()
+                  AND granted
+                  AND classid = (((lock_key.value >> 32) & 4294967295)::bigint)::oid
+                  AND objid = ((lock_key.value & 4294967295)::bigint)::oid
+                  AND objsubid = 1
+            )
+            """,
+            root_id,
+        )
+        if not holds_graph_lock:
+            raise OperationConflictError(
+                "Locked retry requires the operation graph lock on the supplied connection"
+            )
+
+        target = await conn.fetchrow(
+            """
+            SELECT id, entrypoint, status, payload, priority, error,
+                   retry_count, parent_job_id, heartbeat_at, claim_generation,
+                   claim_protocol_version, created_at, started_at, completed_at
+            FROM pgqueuer_jobs
+            WHERE id = $1
+            FOR UPDATE
+            """,
+            job_id,
+        )
+        if target is None:
+            raise OperationNotFoundError(f"Operation {job_id} was not found")
+
+        reset = {
+            "progress": 0,
+            "message": "Queued",
+            "cancel_requested": False,
+            "resource": None,
+            "result": None,
+            "problem": None,
+        }
+        preserved_result = await self._validated_url_retry_checkpoint(conn, target)
+        if preserved_result is not None:
+            reset["result"] = preserved_result
+
+        row = await conn.fetchrow(
+            """
+            WITH retried_children AS (
+                UPDATE pgqueuer_jobs AS child
+                SET status = 'queued',
+                    payload = COALESCE(child.payload, '{}'::jsonb) || $1::jsonb,
+                    error = NULL,
+                    retry_count = child.retry_count + 1,
+                    started_at = NULL,
+                    completed_at = NULL,
+                    execute_after = NOW(),
+                    heartbeat_at = NOW()
+                WHERE child.parent_job_id = $2
+                  AND child.status IN ('failed', 'cancelled')
+                  AND child.id = ANY (
+                      SELECT jsonb_array_elements_text(
+                          COALESCE(
+                              pipeline_parent.payload->'result'
+                                  ->'retry_child_operation_ids',
+                              '[]'::jsonb
+                          )
+                      )::bigint
+                      FROM pgqueuer_jobs AS pipeline_parent
+                      WHERE pipeline_parent.id = $2
+                        AND pipeline_parent.entrypoint = 'pipeline.run'
+                        AND pipeline_parent.status = 'failed'
+                        AND ($3::integer IS NULL OR pipeline_parent.retry_count < $3)
+                  )
+                RETURNING child.id
+            )
+            UPDATE pgqueuer_jobs AS parent
+            SET status = 'queued',
+                payload = (COALESCE(parent.payload, '{}'::jsonb) || $1::jsonb) ||
+                    CASE
+                        WHEN parent.entrypoint = 'pipeline.run'
+                            AND parent.payload->'result' IS NOT NULL
+                        THEN jsonb_build_object('result', parent.payload->'result')
+                        ELSE '{}'::jsonb
+                    END,
+                error = NULL,
+                retry_count = retry_count + 1,
+                started_at = NULL,
+                completed_at = NULL,
+                execute_after = NOW(),
+                heartbeat_at = NOW()
+            WHERE parent.id = $2
+              AND parent.status = 'failed'
+              AND ($3::integer IS NULL OR parent.retry_count < $3)
+            RETURNING id, entrypoint, status, payload, priority, error,
+                      retry_count, parent_job_id, heartbeat_at, claim_generation,
+                      claim_protocol_version, created_at, started_at, completed_at
+            """,
+            json.dumps(reset),
+            job_id,
+            max_retries,
+        )
+        if row is None:
+            current = self.project(self._job_from_row(target))
+            if max_retries is not None and int(target["retry_count"] or 0) >= max_retries:
+                raise OperationConflictError(
+                    f"Operation {job_id} reached retry ceiling {max_retries}"
+                )
+            raise OperationConflictError(
+                f"Operation {job_id} cannot be retried from state {current.status.value}"
+            )
+        await conn.execute("SELECT pg_notify('pgqueuer', $1)", "operation_retry")
+        return row
+
+    @staticmethod
+    async def _validated_url_retry_checkpoint(
+        conn: asyncpg.Connection,
+        target: Any,
+    ) -> dict[str, Any] | None:
+        """Return only the closed exact-content URL extraction checkpoint."""
+
+        if str(target["entrypoint"]) != OperationType.INGESTION_EXECUTE.value:
+            return None
+        payload = target["payload"] or {}
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except json.JSONDecodeError:
+                return None
+        if not isinstance(payload, dict) or payload.get("schema_version") != 2:
+            return None
+        if payload.get("operation_type") != OperationType.INGESTION_EXECUTE.value:
+            return None
+        raw_result = payload.get("result")
+        try:
+            result = IngestionResultV2.model_validate(raw_result)
+        except (TypeError, ValueError):
+            return None
+        content_ids = result.content_ids
+        if (
+            result.command_key != "url"
+            or result.resolved_route != "webpage"
+            or result.status != "partial"
+            or result.outcome != "partial"
+            or len(content_ids) != 1
+            or isinstance(content_ids[0], bool)
+            or content_ids[0] <= 0
+            or not any(error.code == "extraction_failed" for error in result.errors)
+        ):
+            return None
+
+        owner_matches = await conn.fetchval(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM contents
+                WHERE id = $1
+                  AND status_operation_id = $2
+                  AND status_claim_generation = $3
+                  AND status_operation_phase = 'parsing'
+                  AND status IN ('parsing', 'failed')
+                  AND source_type = 'webpage'
+            )
+            """,
+            content_ids[0],
+            int(target["id"]),
+            int(target.get("claim_generation", 0)),
+        )
+        if not owner_matches:
+            return None
+        return raw_result
 
     async def checkpoint_cancellation(
         self,
@@ -1219,6 +1361,7 @@ class OperationService:
         """Transition requested running work at a workflow-declared safe point."""
 
         job_id = self._parse_operation_id(operation_id)
+        claim_generation = self._require_claim_generation(job_id, operation_id)
         row = await self._update_returning(
             """
             UPDATE pgqueuer_jobs
@@ -1229,12 +1372,15 @@ class OperationService:
                 heartbeat_at = NOW()
             WHERE id = $1
               AND status = 'in_progress'
+              AND claim_generation = $2
               AND COALESCE((payload->>'cancel_requested')::boolean, FALSE)
             RETURNING id, entrypoint, status, payload, priority, error,
-                      retry_count, parent_job_id, heartbeat_at, created_at,
+                      retry_count, parent_job_id, heartbeat_at, claim_generation,
+                      claim_protocol_version, created_at,
                       started_at, completed_at
             """,
             job_id,
+            claim_generation,
         )
         return self.project(self._job_from_row(row)) if row is not None else None
 
@@ -1246,18 +1392,23 @@ class OperationService:
         action: str,
     ) -> OperationHandle:
         job_id = self._parse_operation_id(operation_id)
+        claim_generation = self._require_claim_generation(job_id, operation_id)
         row = await self._update_returning(
             """
             UPDATE pgqueuer_jobs
             SET payload = COALESCE(payload, '{}'::jsonb) || $1::jsonb,
                 heartbeat_at = NOW()
-            WHERE id = $2 AND status = 'in_progress'
+            WHERE id = $2
+              AND status = 'in_progress'
+              AND claim_generation = $3
             RETURNING id, entrypoint, status, payload, priority, error,
-                      retry_count, parent_job_id, heartbeat_at, created_at,
+                      retry_count, parent_job_id, heartbeat_at, claim_generation,
+                      claim_protocol_version, created_at,
                       started_at, completed_at
             """,
             json.dumps(patch),
             job_id,
+            claim_generation,
         )
         return self._require_updated(row, operation_id, action)
 
@@ -1282,6 +1433,15 @@ class OperationService:
         return self.project(self._job_from_row(row))
 
     @staticmethod
+    def _require_claim_generation(job_id: int, operation_id: str | int) -> int:
+        from src.queue.execution_claim import claim_generation_for
+
+        claim_generation = claim_generation_for(job_id)
+        if claim_generation is None:
+            raise OperationConflictError(f"Operation {operation_id} has no active execution claim")
+        return claim_generation
+
+    @staticmethod
     def _job_from_row(row: Any) -> JobRecord:
         payload = row["payload"] or {}
         if isinstance(payload, str):
@@ -1296,6 +1456,8 @@ class OperationService:
             retry_count=int(row["retry_count"] or 0),
             parent_job_id=row["parent_job_id"],
             heartbeat_at=row["heartbeat_at"],
+            claim_generation=int(row.get("claim_generation", 0)),
+            claim_protocol_version=int(row.get("claim_protocol_version", 1)),
             created_at=row["created_at"],
             started_at=row["started_at"],
             completed_at=row["completed_at"],

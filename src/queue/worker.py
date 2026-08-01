@@ -61,7 +61,8 @@ async def _claim_jobs(
         UPDATE pgqueuer_jobs
         SET status = 'in_progress',
             started_at = COALESCE(started_at, NOW()),
-            heartbeat_at = NOW()
+            heartbeat_at = NOW(),
+            claim_protocol_version = 2
         WHERE id IN (
             SELECT id FROM pgqueuer_jobs
             WHERE status = 'queued'
@@ -70,14 +71,18 @@ async def _claim_jobs(
             LIMIT $1
             FOR UPDATE SKIP LOCKED
         )
-        RETURNING id, entrypoint, payload
+        RETURNING id, entrypoint, payload, claim_generation, claim_protocol_version
         """,
         batch_size,
     )
     return [dict(row) for row in rows]
 
 
-async def _complete_job(conn: asyncpg.Connection, job_id: int) -> bool:
+async def _complete_job(
+    conn: asyncpg.Connection,
+    job_id: int,
+    claim_generation: int,
+) -> bool:
     """Mark uncancelled active work completed without overwriting terminal state."""
     completed_id = await conn.fetchval(
         """
@@ -85,15 +90,21 @@ async def _complete_job(conn: asyncpg.Connection, job_id: int) -> bool:
         SET status = 'completed', completed_at = NOW(), heartbeat_at = NOW()
         WHERE id = $1
           AND status = 'in_progress'
+          AND claim_generation = $2
           AND NOT COALESCE((payload->>'cancel_requested')::boolean, FALSE)
         RETURNING id
         """,
         job_id,
+        claim_generation,
     )
     return completed_id is not None
 
 
-async def _checkpoint_job_cancellation(conn: asyncpg.Connection, job_id: int) -> bool:
+async def _checkpoint_job_cancellation(
+    conn: asyncpg.Connection,
+    job_id: int,
+    claim_generation: int,
+) -> bool:
     """Resolve a cancellation that raced the handler's final safe checkpoint."""
 
     row = await conn.fetchrow(
@@ -105,25 +116,38 @@ async def _checkpoint_job_cancellation(conn: asyncpg.Connection, job_id: int) ->
             heartbeat_at = NOW()
         WHERE id = $1
           AND status = 'in_progress'
+          AND claim_generation = $2
           AND COALESCE((payload->>'cancel_requested')::boolean, FALSE)
         RETURNING id
         """,
         job_id,
+        claim_generation,
     )
     return row is not None
 
 
-async def _fail_job(conn: asyncpg.Connection, job_id: int, error: str) -> None:
+async def _fail_job(
+    conn: asyncpg.Connection,
+    job_id: int,
+    claim_generation: int,
+    error: str,
+) -> bool:
     """Mark an active job failed without overwriting a terminal state."""
-    await conn.execute(
+    failed_id = await conn.fetchval(
         """
         UPDATE pgqueuer_jobs
-        SET status = 'failed', error = $2, completed_at = NOW(), heartbeat_at = NOW()
-        WHERE id = $1 AND status = 'in_progress'
+        SET status = 'failed', error = $3, completed_at = NOW(), heartbeat_at = NOW()
+        WHERE id = $1
+          AND status = 'in_progress'
+          AND claim_generation = $2
+          AND NOT COALESCE((payload->>'cancel_requested')::boolean, FALSE)
+        RETURNING id
         """,
         job_id,
+        claim_generation,
         error[:1000],  # Truncate long error messages
     )
+    return failed_id is not None
 
 
 async def _emit_job_notification(
@@ -217,48 +241,103 @@ async def _process_job(
     """Process a single job by dispatching to its registered handler."""
     job_id = job["id"]
     entrypoint = job["entrypoint"]
+    claim_generation = int(job["claim_generation"])
+    claim_protocol_version = int(job["claim_protocol_version"])
     payload = job["payload"] or {}
     if isinstance(payload, str):
         payload = json.loads(payload)
 
-    handler = _handlers.get(entrypoint)
-    if handler is None:
-        logger.warning(f"No handler for entrypoint '{entrypoint}', failing job {job_id}")
-        await _fail_job(conn, job_id, f"Unknown entrypoint: {entrypoint}")
-        return
+    from src.queue.execution_claim import ExecutionClaim, bind_execution_claim
+    from src.queue.setup import touch_job_heartbeat
 
-    async def _heartbeat_loop() -> None:
-        from src.queue.setup import touch_job_heartbeat
+    claim = ExecutionClaim(
+        job_id=job_id,
+        claim_generation=claim_generation,
+        claim_protocol_version=claim_protocol_version,
+    )
 
-        while True:
-            await asyncio.sleep(15)
-            await touch_job_heartbeat(job_id)
+    with bind_execution_claim(claim):
+        if await _checkpoint_job_cancellation(conn, job_id, claim_generation):
+            logger.info(f"Job {job_id} ({entrypoint}) cancelled before handler invocation")
+            return
+        if not await touch_job_heartbeat(
+            job_id,
+            conn=conn,
+            claim_generation=claim_generation,
+        ):
+            logger.info(f"Job {job_id} ({entrypoint}) lost its execution claim")
+            return
 
-    heartbeat_task = asyncio.create_task(_heartbeat_loop())
+        handler = _handlers.get(entrypoint)
+        if handler is None:
+            logger.warning(f"No handler for entrypoint '{entrypoint}', failing job {job_id}")
+            if await _fail_job(
+                conn,
+                job_id,
+                claim_generation,
+                f"Unknown entrypoint: {entrypoint}",
+            ):
+                await _emit_job_notification(
+                    job_id,
+                    entrypoint,
+                    payload,
+                    error=f"Unknown entrypoint: {entrypoint}",
+                )
+            return
+
+        async def _heartbeat_loop() -> None:
+            while True:
+                await asyncio.sleep(15)
+                if not await touch_job_heartbeat(
+                    job_id,
+                    claim_generation=claim_generation,
+                ):
+                    return
+
+        heartbeat_task = asyncio.create_task(_heartbeat_loop())
+        try:
+            await handler(job_id, payload)
+            if await _complete_job(conn, job_id, claim_generation):
+                logger.info(f"Job {job_id} ({entrypoint}) completed")
+                await _emit_job_notification(job_id, entrypoint, payload)
+            elif await _checkpoint_job_cancellation(conn, job_id, claim_generation):
+                logger.info(f"Job {job_id} ({entrypoint}) cancelled before completion")
+            else:
+                logger.info(f"Job {job_id} ({entrypoint}) reached a terminal state in its handler")
+        except Exception as e:
+            logger.error(f"Job {job_id} ({entrypoint}) failed: {e}", exc_info=True)
+            from src.queue.workflow_handlers import WorkflowHandlerError
+
+            persisted_error = (
+                str(e)
+                if isinstance(e, WorkflowHandlerError)
+                else "Job failed due to an internal error"
+            )
+            if await _fail_job(conn, job_id, claim_generation, persisted_error):
+                await _emit_job_notification(
+                    job_id,
+                    entrypoint,
+                    payload,
+                    error=persisted_error,
+                )
+            elif await _checkpoint_job_cancellation(conn, job_id, claim_generation):
+                logger.info(f"Job {job_id} ({entrypoint}) cancelled after handler failure")
+        finally:
+            heartbeat_task.cancel()
+            await asyncio.gather(heartbeat_task, return_exceptions=True)
+
+
+async def _process_claimed_job(
+    asyncpg_url: str,
+    job: dict[str, Any],
+) -> None:
+    """Process one claim on a connection not shared with polling or sibling jobs."""
+
+    conn = await asyncpg.connect(asyncpg_url)
     try:
-        from src.queue.setup import touch_job_heartbeat
-
-        await touch_job_heartbeat(job_id)
-        await handler(job_id, payload)
-        if await _complete_job(conn, job_id):
-            logger.info(f"Job {job_id} ({entrypoint}) completed")
-            await _emit_job_notification(job_id, entrypoint, payload)
-        elif await _checkpoint_job_cancellation(conn, job_id):
-            logger.info(f"Job {job_id} ({entrypoint}) cancelled before completion")
-        else:
-            logger.info(f"Job {job_id} ({entrypoint}) reached a terminal state in its handler")
-    except Exception as e:
-        logger.error(f"Job {job_id} ({entrypoint}) failed: {e}", exc_info=True)
-        from src.queue.workflow_handlers import WorkflowHandlerError
-
-        persisted_error = (
-            str(e) if isinstance(e, WorkflowHandlerError) else "Job failed due to an internal error"
-        )
-        await _fail_job(conn, job_id, persisted_error)
-        await _emit_job_notification(job_id, entrypoint, payload, error=persisted_error)
+        await _process_job(conn, job)
     finally:
-        heartbeat_task.cancel()
-        await asyncio.gather(heartbeat_task, return_exceptions=True)
+        await conn.close()
 
 
 async def _run_batch_maintenance_tick(conn: asyncpg.Connection) -> bool:
@@ -464,7 +543,7 @@ async def run_worker(
             if available > 0:
                 jobs = await _claim_jobs(conn, batch_size=available)
                 for job in jobs:
-                    task = asyncio.create_task(_process_job(conn, job))
+                    task = asyncio.create_task(_process_claimed_job(asyncpg_url, job))
                     active_tasks.add(task)
 
                 if jobs:

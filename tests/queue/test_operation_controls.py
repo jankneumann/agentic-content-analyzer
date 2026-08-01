@@ -14,10 +14,12 @@ import pytest
 from src.models.jobs import (
     JobRecord,
     JobStatus,
+    OperationPayloadV2,
     OperationStatus,
     OperationType,
     ResourceReference,
 )
+from src.queue.execution_claim import ExecutionClaim, bind_execution_claim
 from src.services.operation_service import OperationConflictError, OperationService
 
 NOW = datetime(2026, 7, 13, 10, 0, tzinfo=UTC)
@@ -125,10 +127,10 @@ class _MutationConnection:
 
     async def _fetchrow(self, query: str, *args):
         del args
-        if "RETURNING" not in query or self.returned_job is None:
+        if self.returned_job is None:
             return None
         job = self.returned_job
-        return {
+        row = {
             "id": job.id,
             "entrypoint": job.entrypoint,
             "status": job.status.value,
@@ -142,6 +144,11 @@ class _MutationConnection:
             "started_at": job.started_at,
             "completed_at": job.completed_at,
         }
+        if "FOR UPDATE" in query:
+            row["status"] = JobStatus.FAILED.value
+            row["retry_count"] = max(0, job.retry_count - 1)
+            return row
+        return row if "RETURNING" in query else None
 
 
 @pytest.mark.asyncio
@@ -224,14 +231,15 @@ async def test_retry_clears_stale_state_and_preserves_normalized_input() -> None
 
     handle = await OperationService(connection=conn).retry("8123")
 
-    query, reset_json, operation_id = conn.fetchrow.await_args.args
-    assert conn.fetchval.await_count == 4
+    query, reset_json, operation_id, ceiling = conn.fetchrow.await_args.args
+    assert conn.fetchval.await_count == 5
     assert "WITH RECURSIVE lineage" in conn.fetchval.await_args_list[0].args[0]
     assert "pg_advisory_xact_lock" in conn.fetchval.await_args_list[1].args[0]
     assert "WITH RECURSIVE lineage" in conn.fetchval.await_args_list[2].args[0]
     assert "FOR UPDATE" in conn.fetchval.await_args_list[3].args[0]
     reset = json.loads(reset_json)
     assert operation_id == 8123
+    assert ceiling is None
     assert "status = 'failed'" in query
     assert "retry_count = retry_count + 1" in query
     assert reset == {
@@ -243,6 +251,145 @@ async def test_retry_clears_stale_state_and_preserves_normalized_input() -> None
         "problem": None,
     }
     assert handle.retry_count == 2
+
+
+def _url_failure_result(*, content_ids: list[int] | None = None) -> dict:
+    return {
+        "schema_version": 2,
+        "command_key": "url",
+        "resolved_route": "webpage",
+        "emitted_sources": ["webpage"],
+        "status": "partial",
+        "outcome": "partial",
+        "items_ingested": 0,
+        "items_skipped": 0,
+        "items_failed": 1,
+        "content_ids": [91] if content_ids is None else content_ids,
+        "errors": [{"code": "extraction_failed", "message": "Extraction failed"}],
+        "warnings": [],
+        "errors_omitted": 0,
+        "warnings_omitted": 0,
+        "source_outcomes": [],
+        "source_outcomes_omitted": 0,
+        "details": {},
+        "details_omitted": 0,
+    }
+
+
+class _LockedRetryConnection:
+    def __init__(
+        self,
+        target: JobRecord,
+        retried: JobRecord,
+        *,
+        owner_matches: bool = True,
+        holds_lock: bool = True,
+    ):
+        self.target = target
+        self.retried = retried
+        self.owner_matches = owner_matches
+        self.fetchrow = AsyncMock(side_effect=self._fetchrow)
+        self.holds_lock = holds_lock
+        self.fetchval = AsyncMock(side_effect=self._fetchval)
+        self.execute = AsyncMock()
+
+    async def _fetchrow(self, query: str, *_args):
+        if "FOR UPDATE" in query:
+            return _job_row(self.target)
+        if "UPDATE pgqueuer_jobs AS parent" in query:
+            return _job_row(self.retried)
+        return None
+
+    async def _fetchval(self, query: str, *_args):
+        if "pg_locks" in query:
+            return self.holds_lock
+        return self.owner_matches
+
+
+@pytest.mark.asyncio
+async def test_locked_retry_applies_atomic_optional_ceiling_and_notifies_on_connection() -> None:
+    target = _job(status=JobStatus.FAILED, retry_count=2)
+    target.claim_generation = 7
+    retried = _job(status=JobStatus.QUEUED, retry_count=3)
+    conn = _LockedRetryConnection(target, retried)
+
+    row = await OperationService(connection=conn)._retry_locked(
+        conn,
+        8123,
+        max_retries=3,
+    )
+
+    query, _reset, operation_id, ceiling = conn.fetchrow.await_args_list[-1].args
+    assert "retry_count < $3" in query
+    assert (operation_id, ceiling) == (8123, 3)
+    assert row["status"] == "queued"
+    conn.execute.assert_awaited_once_with(
+        "SELECT pg_notify('pgqueuer', $1)",
+        "operation_retry",
+    )
+
+
+@pytest.mark.asyncio
+async def test_locked_retry_rejects_connection_without_graph_lock() -> None:
+    conn = _LockedRetryConnection(
+        _job(status=JobStatus.FAILED),
+        _job(status=JobStatus.QUEUED),
+        holds_lock=False,
+    )
+
+    with pytest.raises(OperationConflictError, match="graph lock"):
+        await OperationService(connection=conn)._retry_locked(conn, 8123)
+
+    conn.fetchrow.assert_not_awaited()
+    conn.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_locked_retry_preserves_only_valid_exact_url_failure_checkpoint() -> None:
+    checkpoint = _url_failure_result()
+    target = _job(
+        status=JobStatus.FAILED,
+        payload=OperationPayloadV2(
+            operation_type=OperationType.INGESTION_EXECUTE,
+            input={"url": "https://example.com"},
+            result=checkpoint,
+        ).model_dump(mode="json"),
+    )
+    target.entrypoint = OperationType.INGESTION_EXECUTE.value
+    target.claim_generation = 7
+    retried = _job(status=JobStatus.QUEUED)
+    conn = _LockedRetryConnection(target, retried)
+
+    await OperationService(connection=conn)._retry_locked(conn, 8123)
+
+    reset = json.loads(conn.fetchrow.await_args_list[-1].args[1])
+    assert reset["result"] == checkpoint
+    owner_query, content_id, operation_id, generation = conn.fetchval.await_args.args
+    assert "status_operation_phase = 'parsing'" in owner_query
+    assert "source_type" in owner_query
+    assert (content_id, operation_id, generation) == (91, 8123, 7)
+
+
+@pytest.mark.asyncio
+async def test_locked_retry_clears_malformed_multi_id_url_checkpoint() -> None:
+    target = _job(
+        status=JobStatus.FAILED,
+        payload=OperationPayloadV2(
+            operation_type=OperationType.INGESTION_EXECUTE,
+            input={"url": "https://example.com"},
+            result=_url_failure_result(content_ids=[91, 92]),
+        ).model_dump(mode="json"),
+    )
+    target.entrypoint = OperationType.INGESTION_EXECUTE.value
+    target.claim_generation = 7
+    conn = _LockedRetryConnection(target, _job(status=JobStatus.QUEUED))
+
+    await OperationService(connection=conn)._retry_locked(conn, 8123)
+
+    reset = json.loads(conn.fetchrow.await_args_list[-1].args[1])
+    assert reset["result"] is None
+    assert conn.fetchval.await_count == 1
+    assert "pg_locks" in conn.fetchval.await_args.args[0]
 
 
 @pytest.mark.asyncio
@@ -259,9 +406,11 @@ async def test_cancellation_checkpoint_transitions_requested_job() -> None:
     cancelled = _job(status=JobStatus.CANCELLED)
     cancelled.payload["cancel_requested"] = True
     cancelled.payload["message"] = "Cancelled"
+    cancelled.claim_generation = 7
     conn = _MutationConnection(cancelled)
 
-    handle = await OperationService(connection=conn).checkpoint_cancellation("8123")
+    with bind_execution_claim(ExecutionClaim(job_id=8123, claim_generation=7)):
+        handle = await OperationService(connection=conn).checkpoint_cancellation("8123")
 
     query = conn.fetchrow.await_args.args[0]
     assert "status = 'in_progress'" in query
@@ -273,12 +422,12 @@ async def test_cancellation_checkpoint_transitions_requested_job() -> None:
 class _CancellationStateConnection:
     def __init__(self) -> None:
         self.job = _job(status=JobStatus.IN_PROGRESS)
-        self.job.payload["cancel_requested"] = True
+        self.job.claim_generation = 7
         self.fetchrow = AsyncMock(side_effect=self._fetchrow)
         self.fetchval = AsyncMock(side_effect=self._fetchval)
 
     async def _fetchrow(self, query: str, *_args):
-        if "SET status = 'cancelled'" not in query:
+        if "SET status = 'cancelled'" not in query or not self.job.payload["cancel_requested"]:
             return None
         self.job.status = JobStatus.CANCELLED
         self.job.payload["message"] = "Cancelled"
@@ -303,6 +452,8 @@ def _job_row(job: JobRecord) -> dict:
         "retry_count": job.retry_count,
         "parent_job_id": job.parent_job_id,
         "heartbeat_at": job.heartbeat_at,
+        "claim_generation": job.claim_generation,
+        "claim_protocol_version": job.claim_protocol_version,
         "created_at": job.created_at,
         "started_at": job.started_at,
         "completed_at": job.completed_at,
@@ -317,11 +468,12 @@ async def test_worker_completion_preserves_checkpoint_cancellation(monkeypatch) 
     entrypoint = "test.cancellation"
 
     async def handler(job_id: int, _payload: dict) -> None:
+        conn.job.payload["cancel_requested"] = True
         handle = await OperationService(connection=conn).checkpoint_cancellation(job_id)
         assert handle is not None
         assert handle.status is OperationStatus.CANCELLED
 
-    heartbeat = AsyncMock()
+    heartbeat = AsyncMock(return_value=True)
     notification = AsyncMock()
     monkeypatch.setattr("src.queue.setup.touch_job_heartbeat", heartbeat)
     monkeypatch.setattr(worker, "_emit_job_notification", notification)
@@ -329,7 +481,13 @@ async def test_worker_completion_preserves_checkpoint_cancellation(monkeypatch) 
 
     await worker._process_job(
         conn,  # type: ignore[arg-type]
-        {"id": conn.job.id, "entrypoint": entrypoint, "payload": conn.job.payload},
+        {
+            "id": conn.job.id,
+            "entrypoint": entrypoint,
+            "payload": conn.job.payload,
+            "claim_generation": 7,
+            "claim_protocol_version": 2,
+        },
     )
 
     assert conn.job.status is JobStatus.CANCELLED
@@ -343,10 +501,11 @@ async def test_worker_failure_does_not_overwrite_terminal_state() -> None:
 
     conn = AsyncMock()
 
-    await worker._fail_job(conn, 8123, "handler cleanup failed")
+    await worker._fail_job(conn, 8123, 7, "handler cleanup failed")
 
-    query = conn.execute.await_args.args[0]
+    query = conn.fetchval.await_args.args[0]
     assert "status = 'in_progress'" in query
+    assert "claim_generation = $2" in query
 
 
 @pytest.mark.asyncio
@@ -357,14 +516,16 @@ async def test_resource_and_result_attachments_preserve_active_state() -> None:
         "id": "42",
         "url": "/api/v1/digests/42",
     }
+    with_resource.claim_generation = 7
     conn = _MutationConnection(with_resource)
     service = OperationService(connection=conn)
 
-    resource_handle = await service.attach_resource(
-        "8123",
-        resource=ResourceReference(type="digest", id="42", url="/api/v1/digests/42"),
-    )
-    result_handle = await service.attach_result("8123", {"selection_fingerprint": "abc"})
+    with bind_execution_claim(ExecutionClaim(job_id=8123, claim_generation=7)):
+        resource_handle = await service.attach_resource(
+            "8123",
+            resource=ResourceReference(type="digest", id="42", url="/api/v1/digests/42"),
+        )
+        result_handle = await service.attach_result("8123", {"selection_fingerprint": "abc"})
 
     assert resource_handle.resource is not None
     assert result_handle.status is OperationStatus.IN_PROGRESS
@@ -450,7 +611,13 @@ async def test_status_read_reconciles_parent_after_failed_child(monkeypatch) -> 
     conn = AsyncMock()
     conn.fetchrow.side_effect = [
         row(parent),
-        {"completed": 1, "failed": 1, "cancelled": 0, "total": 2},
+        {
+            "completed": 1,
+            "failed": 1,
+            "cancelled": 0,
+            "total": 2,
+            "parent_claim_generation": 7,
+        },
         row(completed_parent),
     ]
 
@@ -469,6 +636,8 @@ async def test_status_read_reconciles_parent_after_failed_child(monkeypatch) -> 
     assert aggregate["failed"] == 1
     assert aggregate["processed"] == 2
     assert update_args[3] is True
+    assert update_args[4] == 7
+    assert "claim_generation = $4" in update_args[0]
 
 
 @pytest.mark.asyncio
@@ -483,6 +652,7 @@ async def test_child_reconciliation_requeues_canonical_parent_for_finalization()
         "failed": 0,
         "cancelled": 0,
         "total": 1,
+        "parent_claim_generation": 7,
     }
 
     await queue_setup._reconcile_batch_parent_status(conn, 8123)
@@ -493,6 +663,7 @@ async def test_child_reconciliation_requeues_canonical_parent_for_finalization()
     assert "THEN 'queued'" in query
     assert "THEN status" in query
     assert "THEN NULL" in query
+    assert "claim_generation = $4" in query
 
 
 def test_cancelled_job_is_terminal() -> None:

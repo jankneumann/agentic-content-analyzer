@@ -475,7 +475,8 @@ async def update_job_progress(
     message: str,
     *,
     conn: asyncpg.Connection | None = None,
-) -> None:
+    claim_generation: int | None = None,
+) -> bool:
     """Update job progress in the payload.
 
     Merges progress and message into the existing payload JSON,
@@ -486,36 +487,62 @@ async def update_job_progress(
         progress: Completion percentage (0-100)
         message: Current status message
     """
+    if claim_generation is None:
+        from src.queue.execution_claim import claim_generation_for
+
+        claim_generation = claim_generation_for(job_id)
+    if claim_generation is None:
+        return False
+
     async with _queue_connection(conn) as query_conn:
         # Merge progress into existing payload
         progress_data = json.dumps({"progress": progress, "message": message})
-        await query_conn.execute(
+        updated_id = await query_conn.fetchval(
             """
             UPDATE pgqueuer_jobs
             SET payload = COALESCE(payload, '{}'::jsonb) || $1::jsonb
               , heartbeat_at = NOW()
             WHERE id = $2
+              AND status = 'in_progress'
+              AND claim_generation = $3
+            RETURNING id
             """,
             progress_data,
             job_id,
+            claim_generation,
         )
-        logger.debug(f"Updated job {job_id} progress: {progress}% - {message}")
+        if updated_id is not None:
+            logger.debug(f"Updated job {job_id} progress: {progress}% - {message}")
+        return updated_id is not None
 
 
 async def touch_job_heartbeat(
     job_id: int,
     *,
     conn: asyncpg.Connection | None = None,
-) -> None:
+    claim_generation: int | None = None,
+) -> bool:
+    if claim_generation is None:
+        from src.queue.execution_claim import claim_generation_for
+
+        claim_generation = claim_generation_for(job_id)
+    if claim_generation is None:
+        return False
+
     async with _queue_connection(conn) as query_conn:
-        await query_conn.execute(
+        updated_id = await query_conn.fetchval(
             """
             UPDATE pgqueuer_jobs
             SET heartbeat_at = NOW()
             WHERE id = $1
+              AND status = 'in_progress'
+              AND claim_generation = $2
+            RETURNING id
             """,
             job_id,
+            claim_generation,
         )
+        return updated_id is not None
 
 
 async def list_jobs(
@@ -1171,7 +1198,12 @@ async def _reconcile_batch_parent_status(
             COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
             COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
             COUNT(*) FILTER (WHERE status = 'cancelled')::int AS cancelled,
-            COUNT(*)::int AS total
+            COUNT(*)::int AS total,
+            (
+                SELECT parent.claim_generation
+                FROM pgqueuer_jobs AS parent
+                WHERE parent.id = $1 AND parent.status = 'in_progress'
+            ) AS parent_claim_generation
         FROM pgqueuer_jobs
         WHERE parent_job_id = $1
           AND entrypoint = 'summarize_content'
@@ -1179,6 +1211,9 @@ async def _reconcile_batch_parent_status(
         parent_job_id,
     )
     if row is None:
+        return
+    parent_claim_generation = row.get("parent_claim_generation")
+    if parent_claim_generation is None:
         return
 
     completed = int(row["completed"] or 0)
@@ -1235,7 +1270,9 @@ async def _reconcile_batch_parent_status(
                 ELSE completed_at
             END,
             heartbeat_at = NOW()
-        WHERE id = $1 AND status = 'in_progress'
+        WHERE id = $1
+          AND status = 'in_progress'
+          AND claim_generation = $4
         """,
         parent_job_id,
         json.dumps(
@@ -1250,6 +1287,7 @@ async def _reconcile_batch_parent_status(
             }
         ),
         is_terminal,
+        int(parent_claim_generation),
     )
     if is_terminal:
         logger.info(

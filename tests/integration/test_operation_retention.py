@@ -11,7 +11,7 @@ import pytest
 
 from src.models.jobs import OperationPayloadV2, OperationStatus, OperationType
 from src.queue import setup as queue_setup, worker
-from src.services.operation_service import OperationService
+from src.services.operation_service import OperationConflictError, OperationService
 
 pytestmark = pytest.mark.integration
 
@@ -457,6 +457,69 @@ async def test_retry_and_retention_share_root_lock_without_deadlock_or_lost_retr
         await blocker.close()
         await retry_conn.close()
         await cleaner.close()
+        await observer.close()
+
+
+@pytest.mark.asyncio
+async def test_locked_retry_ceiling_allows_only_one_concurrent_increment(test_engine) -> None:
+    first = await _connect(test_engine)
+    second = await _connect(test_engine)
+    observer = await _connect(test_engine)
+    job_id = _BASE_ID + 550
+
+    async def retry_once(conn: asyncpg.Connection):
+        async with conn.transaction():
+            root_id = await queue_setup._resolve_operation_graph_root(conn, job_id)
+            assert root_id == job_id
+            await queue_setup._acquire_operation_graph_lock(conn, root_id)
+            locked_root_id = await conn.fetchval(
+                "SELECT id FROM pgqueuer_jobs WHERE id = $1 FOR UPDATE",
+                root_id,
+            )
+            assert locked_root_id == root_id
+            return await OperationService(connection=conn)._retry_locked(
+                conn,
+                job_id,
+                root_id=root_id,
+                max_retries=3,
+            )
+
+    try:
+        await observer.execute(
+            """
+            INSERT INTO pgqueuer_jobs (
+                id, entrypoint, payload, status, retry_count, completed_at
+            )
+            VALUES ($1, 'ingestion.execute', $2::jsonb, 'failed', 2, NOW())
+            """,
+            job_id,
+            json.dumps(
+                OperationPayloadV2(
+                    operation_type=OperationType.INGESTION_EXECUTE,
+                    input={"command_key": "rss"},
+                ).model_dump(mode="json")
+            ),
+        )
+
+        outcomes = await asyncio.gather(
+            retry_once(first),
+            retry_once(second),
+            return_exceptions=True,
+        )
+
+        assert sum(not isinstance(item, Exception) for item in outcomes) == 1
+        conflicts = [item for item in outcomes if isinstance(item, OperationConflictError)]
+        assert len(conflicts) == 1
+        row = await observer.fetchrow(
+            "SELECT status, retry_count FROM pgqueuer_jobs WHERE id = $1",
+            job_id,
+        )
+        assert row is not None
+        assert (row["status"], row["retry_count"]) == ("queued", 3)
+    finally:
+        await observer.execute("DELETE FROM pgqueuer_jobs WHERE id = $1", job_id)
+        await first.close()
+        await second.close()
         await observer.close()
 
 

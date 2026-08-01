@@ -7,11 +7,18 @@ to the corresponding orchestrator function with the right keyword arguments.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.queue.worker import _handlers, register_all_handlers
+from src.queue.worker import (
+    _checkpoint_job_cancellation,
+    _claim_jobs,
+    _complete_job,
+    _fail_job,
+    _handlers,
+    register_all_handlers,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -277,6 +284,159 @@ def test_retention_schedule_runs_at_startup_and_only_after_interval() -> None:
     assert _retention_tick_due(now=100.0, last_run_at=None, interval_seconds=3600)
     assert not _retention_tick_due(now=3699.0, last_run_at=100.0, interval_seconds=3600)
     assert _retention_tick_due(now=3700.0, last_run_at=100.0, interval_seconds=3600)
+
+
+@pytest.mark.asyncio
+async def test_claim_jobs_activates_current_claim_protocol_and_returns_fence() -> None:
+    connection = MagicMock()
+    connection.fetch = AsyncMock(
+        return_value=[
+            {
+                "id": 42,
+                "entrypoint": "digest.create",
+                "payload": {},
+                "claim_generation": 7,
+                "claim_protocol_version": 2,
+            }
+        ]
+    )
+
+    jobs = await _claim_jobs(connection, batch_size=1)
+
+    query = connection.fetch.await_args.args[0]
+    assert "claim_protocol_version = 2" in query
+    assert "claim_generation" in query
+    assert "claim_protocol_version" in query
+    assert jobs[0]["claim_generation"] == 7
+    assert jobs[0]["claim_protocol_version"] == 2
+
+
+@pytest.mark.asyncio
+async def test_worker_lifecycle_writes_require_exact_claim_generation() -> None:
+    connection = MagicMock()
+    connection.fetchval = AsyncMock(return_value=42)
+    connection.fetchrow = AsyncMock(return_value={"id": 42})
+
+    assert await _complete_job(connection, 42, 7) is True
+    assert await _checkpoint_job_cancellation(connection, 42, 7) is True
+    assert await _fail_job(connection, 42, 7, "boom") is True
+
+    complete_query = connection.fetchval.await_args.args[0]
+    cancel_query = connection.fetchrow.await_args.args[0]
+    fail_query = connection.fetchval.await_args_list[-1].args[0]
+    for query in (complete_query, cancel_query, fail_query):
+        assert "status = 'in_progress'" in query
+        assert "claim_generation = $2" in query
+    assert connection.fetchval.await_args_list[-1].args[1:] == (42, 7, "boom")
+
+
+@pytest.mark.asyncio
+async def test_process_job_checkpoints_cancellation_before_handler(monkeypatch) -> None:
+    from src.queue import worker
+
+    handler = AsyncMock()
+    checkpoint = AsyncMock(return_value=True)
+    heartbeat = AsyncMock()
+    monkeypatch.setitem(worker._handlers, "test.preflight", handler)
+    monkeypatch.setattr(worker, "_checkpoint_job_cancellation", checkpoint)
+    monkeypatch.setattr("src.queue.setup.touch_job_heartbeat", heartbeat)
+
+    await worker._process_job(
+        AsyncMock(),
+        {
+            "id": 42,
+            "entrypoint": "test.preflight",
+            "payload": {"cancel_requested": True},
+            "claim_generation": 7,
+            "claim_protocol_version": 2,
+        },
+    )
+
+    checkpoint.assert_awaited_once_with(ANY, 42, 7)
+    heartbeat.assert_not_awaited()
+    handler.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_process_job_generation_loss_prevents_handler(monkeypatch) -> None:
+    from src.queue import worker
+
+    handler = AsyncMock()
+    monkeypatch.setitem(worker._handlers, "test.preflight", handler)
+    monkeypatch.setattr(worker, "_checkpoint_job_cancellation", AsyncMock(return_value=False))
+    monkeypatch.setattr(
+        "src.queue.setup.touch_job_heartbeat",
+        AsyncMock(return_value=False),
+    )
+
+    await worker._process_job(
+        AsyncMock(),
+        {
+            "id": 42,
+            "entrypoint": "test.preflight",
+            "payload": {},
+            "claim_generation": 7,
+            "claim_protocol_version": 2,
+        },
+    )
+
+    handler.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stale_handler_exception_emits_no_failure_notification(monkeypatch) -> None:
+    from src.queue import worker
+
+    handler = AsyncMock(side_effect=RuntimeError("late worker"))
+    checkpoint = AsyncMock(side_effect=[False, False])
+    fail = AsyncMock(return_value=False)
+    notification = AsyncMock()
+    monkeypatch.setitem(worker._handlers, "test.stale", handler)
+    monkeypatch.setattr(worker, "_checkpoint_job_cancellation", checkpoint)
+    monkeypatch.setattr(worker, "_fail_job", fail)
+    monkeypatch.setattr(worker, "_emit_job_notification", notification)
+    monkeypatch.setattr(
+        "src.queue.setup.touch_job_heartbeat",
+        AsyncMock(return_value=True),
+    )
+
+    await worker._process_job(
+        AsyncMock(),
+        {
+            "id": 42,
+            "entrypoint": "test.stale",
+            "payload": {},
+            "claim_generation": 7,
+            "claim_protocol_version": 2,
+        },
+    )
+
+    fail.assert_awaited_once_with(ANY, 42, 7, "Job failed due to an internal error")
+    notification.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_claimed_job_uses_a_dedicated_lifecycle_connection(monkeypatch) -> None:
+    from src.queue import worker
+
+    connection = AsyncMock()
+    connect = AsyncMock(return_value=connection)
+    process = AsyncMock()
+    monkeypatch.setattr(worker.asyncpg, "connect", connect)
+    monkeypatch.setattr(worker, "_process_job", process)
+    job = {
+        "id": 42,
+        "entrypoint": "test.claim",
+        "payload": {},
+        "claim_generation": 7,
+        "claim_protocol_version": 2,
+    }
+
+    await worker._process_claimed_job("postgres://queue", job)
+
+    connect.assert_awaited_once_with("postgres://queue")
+    process.assert_awaited_once_with(connection, job)
+    connection.close.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

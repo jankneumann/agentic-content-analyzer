@@ -30,6 +30,7 @@ from src.models.jobs import (
     OperationType,
     ResourceReference,
 )
+from src.queue.execution_claim import ExecutionClaim, bind_execution_claim
 from src.services.operation_service import OperationService
 
 NOW = datetime(2026, 7, 13, 10, 0, tzinfo=UTC)
@@ -927,19 +928,22 @@ async def test_defer_atomically_checkpoints_and_requeues_parent() -> None:
     update = AsyncMock(return_value=queued)
     service._update_returning = update  # type: ignore[method-assign]
 
-    handle = await service.defer(
-        "8123",
-        checkpoint={"stage": "ingestion"},
-        progress=10,
-        message="Waiting for source operations",
-    )
+    with bind_execution_claim(ExecutionClaim(job_id=8123, claim_generation=7)):
+        handle = await service.defer(
+            "8123",
+            checkpoint={"stage": "ingestion"},
+            progress=10,
+            message="Waiting for source operations",
+        )
 
-    query, patch, operation_id = update.await_args.args
+    query, patch, operation_id, claim_generation = update.await_args.args
     assert "status = 'queued'" in query
     assert "execute_after" in query
     assert "status = 'in_progress'" in query
     assert "priority = LEAST(priority, -1)" in query
     assert operation_id == 8123
+    assert claim_generation == 7
+    assert "claim_generation = $3" in query
     assert __import__("json").loads(patch) == {
         "result": {"stage": "ingestion"},
         "progress": 10,
@@ -968,15 +972,18 @@ async def test_attach_completion_atomically_persists_result_resource_and_progres
     service._update_returning = update  # type: ignore[method-assign]
     resource = ResourceReference(type="digest", id="91", url="/api/v1/digests/91")
 
-    await service.attach_completion(
-        "8123",
-        result={"stage": "completed", "digest_id": 91},
-        resource=resource,
-        message="Pipeline complete",
-    )
+    with bind_execution_claim(ExecutionClaim(job_id=8123, claim_generation=7)):
+        await service.attach_completion(
+            "8123",
+            result={"stage": "completed", "digest_id": 91},
+            resource=resource,
+            message="Pipeline complete",
+        )
 
-    _query, patch, operation_id = update.await_args.args
+    query, patch, operation_id, claim_generation = update.await_args.args
     assert operation_id == 8123
+    assert claim_generation == 7
+    assert "claim_generation = $3" in query
     assert __import__("json").loads(patch) == {
         "result": {"stage": "completed", "digest_id": 91},
         "resource": resource.model_dump(mode="json"),
@@ -1065,16 +1072,18 @@ async def test_pipeline_retry_preserves_checkpoint_and_requeues_failed_children(
     queued = _row(8123, NOW)
     queued["entrypoint"] = OperationType.PIPELINE_RUN.value
     queued["status"] = JobStatus.QUEUED.value
+    locked = dict(queued)
+    locked["status"] = JobStatus.FAILED.value
     conn = MagicMock()
     conn.transaction.return_value = Transaction()
-    conn.fetchval = AsyncMock(side_effect=[8123, None, 8123, 8123])
-    conn.fetchrow = AsyncMock(return_value=queued)
+    conn.fetchval = AsyncMock(side_effect=[8123, None, 8123, 8123, True])
+    conn.fetchrow = AsyncMock(side_effect=[locked, queued])
     conn.execute = AsyncMock()
     service = OperationService(connection=conn)
 
     await service.retry("8123")
 
-    query = conn.fetchrow.await_args.args[0]
+    query = conn.fetchrow.await_args_list[-1].args[0]
     assert "pg_advisory_xact_lock" in conn.fetchval.await_args_list[1].args[0]
     assert "FOR UPDATE" in conn.fetchval.await_args_list[3].args[0]
     assert "WITH retried_children AS" in query

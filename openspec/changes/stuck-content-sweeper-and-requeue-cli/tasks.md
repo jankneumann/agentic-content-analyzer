@@ -44,11 +44,11 @@
 
 ## 3. Durable execution fencing
 
-- [ ] 3.1 [M] Write queue lifecycle tests covering trigger generations, every requeue/defer protocol reset, old-worker claims, stale heartbeat/progress writes, late terminal writes
+- [x] 3.1 [M] Write queue lifecycle tests covering trigger generations, every requeue/defer protocol reset, old-worker claims, stale heartbeat/progress writes, late terminal writes
   **Spec scenarios**: all scenarios under Claim generations fence every attempt
   **Design decisions**: D2
   **Dependencies**: 2.2
-- [ ] 3.2 [M] Implement shared claim context plus generation-guarded queue lifecycle writes
+- [x] 3.2 [M] Implement shared claim context plus generation-guarded queue lifecycle writes
   **Dependencies**: 3.1
 - [ ] 3.3 [M] Write transition-writer tests covering initial acquisition, N-to-N+1 renewal, validated/missing/ambiguous URL resume, legacy extraction, Summary provenance, unsupported-writer trigger clearing, cancellation outcomes, superseded commits
   **Spec scenarios**: Canonical URL extraction records parsing ownership; Initial phase ownership is acquired; Retried claim renews same-operation ownership; Canonical URL extraction failure is checkpointed; Canonical URL retry resumes exact Content; Canonical URL resume checkpoint is validated; Worker dies before attaching URL checkpoint; URL resume evidence is ambiguous; Summary leaf records processing ownership; Unsupported writer leaves owner fields unchanged; Old computation outlives its claim; Cancellation exists before handler dispatch; Cancellation races ongoing computation
@@ -67,14 +67,14 @@
 
 ## 4. Atomic retry primitive
 
-- [ ] 4.1 [M] Write retry tests covering atomic ceiling, public compatibility, closed URL checkpoint validation/preservation, malformed result clearing, transactional notification, graph lock order, concurrent callers
+- [x] 4.1 [M] Write retry tests covering atomic ceiling, public compatibility, closed URL checkpoint validation/preservation, malformed result clearing, transactional notification, graph lock order, concurrent callers
   **Spec scenarios**: all scenarios under Retry is canonical and atomically budgeted; Internal retry supports an optional atomic ceiling; Retry preserves a resumable operation result
   **Design decisions**: D6, D7
   **Dependencies**: 2.2
-- [ ] 4.2 [M] Refactor canonical retry around the connection-scoped locked primitive plus conditional URL checkpoint preservation
+- [x] 4.2 [M] Refactor canonical retry around the connection-scoped locked primitive plus conditional URL checkpoint preservation
   **Dependencies**: 4.1
 
-- [ ] Checkpoint: run operation retry/retention tests, review lock order, verify checkpoint preservation
+- [x] Checkpoint: run operation retry/retention tests, review lock order, verify checkpoint preservation
 
 ## 5. Reconciliation core
 

@@ -133,15 +133,25 @@ class TestQueueOwnershipBootstrap:
 
 class TestUpdateJobProgress:
     @pytest.mark.asyncio
-    async def test_update_job_progress_executes_update(self, mock_connection):
+    async def test_update_job_progress_requires_exact_claim_generation(self, mock_connection):
+        mock_connection.fetchval.return_value = 42
         with patch("src.queue.setup._connection", mock_connection):
-            await update_job_progress(42, 50, "Processing")
+            updated = await update_job_progress(
+                42,
+                50,
+                "Processing",
+                claim_generation=3,
+            )
 
-        sql, progress_data, job_id = mock_connection.execute.call_args[0]
+        sql, progress_data, job_id, claim_generation = mock_connection.fetchval.call_args[0]
         assert "UPDATE pgqueuer_jobs" in sql
         assert "heartbeat_at = NOW()" in sql
+        assert "status = 'in_progress'" in sql
+        assert "claim_generation = $3" in sql
         assert job_id == 42
+        assert claim_generation == 3
         assert json.loads(progress_data) == {"progress": 50, "message": "Processing"}
+        assert updated is True
 
 
 class TestEnqueueQueueJob:
