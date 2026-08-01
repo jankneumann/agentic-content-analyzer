@@ -397,6 +397,8 @@ packages:
     locks:
       files:
         - alembic/versions
+        - src/services/operation_service.py
+        - tests/migrations/test_batch_processing.py
       keys:
         - db:schema:pgqueuer_jobs
       ttl_minutes: 180
@@ -404,7 +406,9 @@ packages:
     scope:
       write_allow:
         - alembic/versions/**
+        - src/services/operation_service.py
         - tests/integration/test_ingestion_history_query_plan.py
+        - tests/migrations/test_batch_processing.py
       read_allow:
         - src/**
         - alembic/**
@@ -431,6 +435,13 @@ packages:
           evidence:
             artifacts: []
             result_keys: [test_count, pass_count, query_plan]
+        - name: migration-tests
+          kind: command
+          command: .venv/bin/pytest tests/migrations/test_batch_processing.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count]
     outputs:
       result_keys: [files_modified, test_count, query_plan]
 

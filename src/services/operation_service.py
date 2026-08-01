@@ -1,5 +1,7 @@
 """Durable operation projection and controls over ``pgqueuer_jobs``."""
 
+# ruff: noqa: S608 -- history query fragments are selected from internal static SQL
+
 from __future__ import annotations
 
 import asyncio
@@ -415,10 +417,63 @@ class OperationService:
             filters=filters,
             signing_key=signing_key,
         )
+        id_prefilters = []
+        if normalized_values["configured_source_key"] is not None:
+            id_prefilters.append(
+                """
+                    jsonb_typeof(payload->'result'->'source_outcomes') = 'array'
+                    AND (
+                        (
+                            jsonb_typeof(payload->'schema_version') = 'number'
+                            AND (payload->'schema_version')::text = '2'
+                            AND payload->>'operation_type' = 'ingestion.execute'
+                        )
+                        OR (
+                            NOT COALESCE(
+                                jsonb_typeof(payload->'schema_version') = 'number'
+                                AND (payload->'schema_version')::text = '2',
+                                FALSE
+                            )
+                            AND entrypoint = ANY($10::text[])
+                        )
+                    )
+                    AND payload->'result'->'source_outcomes' @>
+                          jsonb_build_array(
+                              jsonb_build_object('source_key', $4::text)
+                          )
+                """
+            )
+        if normalized_values["parent_operation_id"] is not None:
+            id_prefilters.append(
+                "parent_job_id = $7::bigint AND status IN ('completed', 'failed', 'cancelled')"
+            )
+        id_prefilter_cte = ""
+        candidate_source = "pgqueuer_jobs"
+        if id_prefilters:
+            id_prefilter_cte = f"""
+                prefiltered_ids AS MATERIALIZED (
+                    SELECT id
+                    FROM pgqueuer_jobs
+                    WHERE {" AND ".join(f"({predicate})" for predicate in id_prefilters)}
+                ),
+                prefiltered_rows AS MATERIALIZED (
+                    SELECT selected_job.*
+                    FROM prefiltered_ids
+                    CROSS JOIN LATERAL (
+                        SELECT *
+                        FROM pgqueuer_jobs AS selected_job
+                        WHERE selected_job.id = prefiltered_ids.id
+                        OFFSET 0
+                    ) AS selected_job
+                ),
+            """
+            candidate_source = "prefiltered_rows AS pgqueuer_jobs"
         async with queue_setup._queue_connection(self._connection) as conn:
+            # Interpolated fragments above are selected from internal static SQL only.
             rows = await conn.fetch(
-                r"""
-                WITH candidates AS (
+                rf"""
+                WITH {id_prefilter_cte}
+                candidates AS (
                     SELECT id, entrypoint, status, payload, priority, error,
                            retry_count, parent_job_id, heartbeat_at, created_at,
                            started_at, completed_at,
@@ -428,7 +483,7 @@ class OperationService:
                                AND (payload->'result'->'schema_version')::text = '2'
                                AND jsonb_typeof(payload->'result'->'command_key') = 'string'
                                AND payload->'result'->>'command_key'
-                                   ~ '^[a-z][a-z0-9_]{0,99}$'
+                                   ~ '^[a-z][a-z0-9_]{{0,99}}$'
                                AND jsonb_typeof(payload->'result'->'outcome') = 'string'
                                AND payload->'result'->>'outcome' IN (
                                    'success', 'zero_items', 'partial',
@@ -445,7 +500,7 @@ class OperationService:
                                    ~ '^(0|[1-9][0-9]*)$'
                                AND jsonb_typeof(payload->'result'->'source_outcomes') = 'array'
                            ) AS compact_result_eligible
-                    FROM pgqueuer_jobs
+                    FROM {candidate_source}
                     WHERE status IN ('completed', 'failed', 'cancelled')
                       AND (
                           (
@@ -472,10 +527,10 @@ class OperationService:
                                    THEN payload->'result'->>'command_key'
                                WHEN jsonb_typeof(payload->'input'->'kind') = 'string'
                                 AND payload->'input'->>'kind'
-                                    ~ '^[a-z][a-z0-9_]{0,99}$'
+                                    ~ '^[a-z][a-z0-9_]{{0,99}}$'
                                    THEN payload->'input'->>'kind'
                                WHEN jsonb_typeof(payload->'source') = 'string'
-                                AND payload->>'source' ~ '^[a-z][a-z0-9_]{0,99}$'
+                                AND payload->>'source' ~ '^[a-z][a-z0-9_]{{0,99}}$'
                                    THEN payload->>'source'
                                WHEN entrypoint = 'extract_url_content' THEN 'url'
                                ELSE 'unknown'
@@ -502,6 +557,10 @@ class OperationService:
                       $4::text IS NULL
                       OR (
                           compact_result_eligible
+                          AND payload->'result'->'source_outcomes' @>
+                              jsonb_build_array(
+                                  jsonb_build_object('source_key', $4::text)
+                              )
                           AND EXISTS (
                           SELECT 1
                           FROM jsonb_array_elements(
@@ -517,7 +576,7 @@ class OperationService:
                             AND jsonb_typeof(source_value) = 'object'
                             AND jsonb_typeof(source_value->'source_key') = 'string'
                             AND source_value->>'source_key'
-                                ~ '^src_[a-f0-9]{20}$'
+                                ~ '^src_[a-f0-9]{{20}}$'
                             AND source_value->>'source_key' = $4::text
                             AND jsonb_typeof(source_value->'status') = 'string'
                             AND source_value->>'status' IN ('ok', 'partial', 'error')
