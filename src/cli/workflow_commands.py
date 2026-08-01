@@ -6,6 +6,7 @@ import json
 import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, cast
 
@@ -19,9 +20,12 @@ from rich.table import Table
 from src.clients.workflow_api_client import ProblemError, WorkflowApiClient
 from src.contracts.workflow_models import (
     COMMAND_FIELD_SCHEMAS,
+    IngestionHistoryItem,
+    IngestionOutcome,
     OperationHandle,
     OperationStatus,
     Problem,
+    TerminalOperationStatus,
 )
 
 ingest_app = typer.Typer(help="Submit a canonical ingestion operation.", no_args_is_help=True)
@@ -249,6 +253,117 @@ for _kind in COMMAND_FIELD_SCHEMAS:
         _kind.replace("_", "-"),
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
     )(_make_ingest_command(_kind))
+
+
+def _parse_history_timestamp(value: str | None, option: str) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise typer.BadParameter(f"{option} must be an ISO 8601 timestamp") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise typer.BadParameter(f"{option} must include a timezone")
+    return parsed.astimezone(UTC)
+
+
+def _emit_ingestion_history_table(items: list[IngestionHistoryItem]) -> None:
+    table = Table("Operation", "Command", "Status", "Outcome", "Ingested", "Failed", "Created")
+    for item in items:
+        table.add_row(
+            item.operation_id,
+            item.command_key,
+            item.operation_status,
+            item.outcome,
+            "-" if item.items_ingested is None else str(item.items_ingested),
+            "-" if item.items_failed is None else str(item.items_failed),
+            item.created_at.isoformat(),
+        )
+    Console().print(table)
+
+
+@ingest_app.command("history")
+def ingest_history(
+    ctx: typer.Context,
+    command_key: Annotated[str | None, typer.Option("--command-key")] = None,
+    configured_source_key: Annotated[
+        str | None,
+        typer.Option("--configured-source-key"),
+    ] = None,
+    outcome: Annotated[
+        str | None,
+        typer.Option(
+            "--outcome",
+            click_type=Choice(
+                ["success", "zero_items", "partial", "failed", "cancelled", "unknown"]
+            ),
+        ),
+    ] = None,
+    history_status: Annotated[
+        str | None,
+        typer.Option(
+            "--status",
+            click_type=Choice(["completed", "failed", "cancelled"]),
+        ),
+    ] = None,
+    parent_operation_id: Annotated[str | None, typer.Option("--parent-operation-id")] = None,
+    created_after: Annotated[str | None, typer.Option("--created-after")] = None,
+    created_before: Annotated[str | None, typer.Option("--created-before")] = None,
+    limit: Annotated[int, typer.Option("--limit", min=1, max=100)] = 50,
+    cursor: Annotated[str | None, typer.Option("--cursor")] = None,
+    all_pages: Annotated[bool, typer.Option("--all")] = False,
+    max_pages: Annotated[int, typer.Option("--max-pages", min=1, max=100)] = 20,
+) -> None:
+    """List compact terminal ingestion history."""
+
+    filters = {
+        "command_key": command_key,
+        "configured_source_key": configured_source_key,
+        "outcome": cast(IngestionOutcome, outcome),
+        "status": cast(TerminalOperationStatus, history_status),
+        "parent_operation_id": parent_operation_id,
+        "created_after": _parse_history_timestamp(created_after, "--created-after"),
+        "created_before": _parse_history_timestamp(created_before, "--created-before"),
+        "limit": limit,
+        "cursor": cursor,
+    }
+    if all_pages:
+        traversal = _run(
+            ctx,
+            lambda client: client.collect_ingestion_history(
+                **filters,
+                max_pages=max_pages,
+            ),
+        )
+        if get_state(ctx).json_output:
+            typer.echo(
+                json.dumps(
+                    {
+                        "data": [
+                            item.model_dump(mode="json", exclude_none=True)
+                            for item in traversal.data
+                        ],
+                        "next_cursor": traversal.next_cursor,
+                        "truncated": traversal.truncated,
+                    }
+                )
+            )
+        else:
+            _emit_ingestion_history_table(traversal.data)
+            if traversal.truncated:
+                typer.echo(
+                    f"Traversal truncated; continue with --cursor {traversal.next_cursor}",
+                    err=True,
+                )
+        return
+
+    page = _run(ctx, lambda client: client.list_ingestion_history(**filters))
+    if get_state(ctx).json_output:
+        _emit_model(ctx, page)
+        return
+    _emit_ingestion_history_table(page.data)
+    if page.next_cursor is not None:
+        typer.echo(f"More results; continue with --cursor {page.next_cursor}", err=True)
 
 
 def _json_object(value: str | None) -> dict[str, Any] | None:

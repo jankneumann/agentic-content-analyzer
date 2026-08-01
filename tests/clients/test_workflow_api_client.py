@@ -25,6 +25,35 @@ def _handle(operation_type: str = "ingestion.execute", status: str = "queued") -
     }
 
 
+def _history_item(operation_id: str = "17") -> dict[str, object]:
+    return {
+        "operation_id": operation_id,
+        "parent_operation_id": "91",
+        "command_key": "rss",
+        "operation_status": "completed",
+        "outcome": "partial",
+        "items_ingested": 3,
+        "items_skipped": 1,
+        "items_failed": 2,
+        "source_outcomes": [
+            {
+                "source_key": "src_0123456789abcdefabcd",
+                "status": "partial",
+                "outcome": "partial",
+                "items_ingested": 3,
+                "items_failed": 2,
+                "error_codes": ["fetch_error"],
+                "warning_codes": None,
+            }
+        ],
+        "retry_count": 0,
+        "problem_code": "source_partial",
+        "status_url": f"/api/v1/operations/{operation_id}",
+        "created_at": "2026-07-13T10:00:00Z",
+        "completed_at": "2026-07-13T10:01:00Z",
+    }
+
+
 def test_submissions_preserve_typed_payload_and_idempotency() -> None:
     seen: list[httpx.Request] = []
 
@@ -314,6 +343,88 @@ def test_operation_list_serializes_status_and_omits_it_when_absent() -> None:
 
     assert "status" not in queries[0]
     assert queries[1]["status"] == "in_progress"
+
+
+def test_ingestion_history_omits_absent_filters_and_serializes_fixed_filters() -> None:
+    queries: list[httpx.QueryParams] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        queries.append(request.url.params)
+        return httpx.Response(
+            200,
+            json={"data": [_history_item()], "next_cursor": None},
+            request=request,
+        )
+
+    client = WorkflowApiClient("https://aca.test", transport=httpx.MockTransport(handler))
+    client.list_ingestion_history()
+    page = client.list_ingestion_history(
+        command_key="rss",
+        configured_source_key="src_0123456789abcdefabcd",
+        outcome="partial",
+        status="completed",
+        parent_operation_id="91",
+        created_after=datetime(2026, 7, 13, 4, tzinfo=UTC),
+        created_before=datetime(2026, 7, 14, 4, tzinfo=UTC),
+        limit=25,
+        cursor="opaque-cursor",
+    )
+
+    assert page.data[0].operation_id == "17"
+    assert dict(queries[0]) == {"limit": "50"}
+    assert dict(queries[1]) == {
+        "command_key": "rss",
+        "configured_source_key": "src_0123456789abcdefabcd",
+        "outcome": "partial",
+        "status": "completed",
+        "parent_operation_id": "91",
+        "created_after": "2026-07-13T04:00:00+00:00",
+        "created_before": "2026-07-14T04:00:00+00:00",
+        "limit": "25",
+        "cursor": "opaque-cursor",
+    }
+
+
+def test_ingestion_history_traversal_forwards_filters_and_stops_at_budget() -> None:
+    queries: list[httpx.QueryParams] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        queries.append(request.url.params)
+        operation_id = str(17 - len(queries))
+        return httpx.Response(
+            200,
+            json={
+                "data": [_history_item(operation_id)],
+                "next_cursor": f"cursor-{len(queries)}",
+            },
+            request=request,
+        )
+
+    client = WorkflowApiClient("https://aca.test", transport=httpx.MockTransport(handler))
+    traversal = client.collect_ingestion_history(
+        configured_source_key="src_0123456789abcdefabcd",
+        outcome="partial",
+        limit=25,
+        max_pages=2,
+    )
+
+    assert [item.operation_id for item in traversal.data] == ["16", "15"]
+    assert traversal.next_cursor == "cursor-2"
+    assert traversal.truncated is True
+    assert [query.get("cursor") for query in queries] == [None, "cursor-1"]
+    assert all(query["configured_source_key"] == "src_0123456789abcdefabcd" for query in queries)
+    assert all(query["outcome"] == "partial" for query in queries)
+
+
+@pytest.mark.parametrize("max_pages", [0, 101])
+def test_ingestion_history_traversal_rejects_invalid_page_budget(max_pages: int) -> None:
+    client = WorkflowApiClient(
+        "https://aca.test",
+        transport=httpx.MockTransport(lambda _: httpx.Response(500)),
+    )
+
+    with pytest.raises(ValueError, match="max_pages"):
+        client.collect_ingestion_history(max_pages=max_pages)
 
 
 def test_bounded_wait_returns_latest_nonterminal_handle(monkeypatch: pytest.MonkeyPatch) -> None:

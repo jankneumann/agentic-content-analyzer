@@ -13,12 +13,18 @@ from pydantic import TypeAdapter
 from typer.testing import CliRunner
 
 from src.cli.app import app
-from src.clients.workflow_api_client import OperationTraversal, ProblemError
+from src.clients.workflow_api_client import (
+    IngestionHistoryTraversal,
+    OperationTraversal,
+    ProblemError,
+)
 from src.contracts.workflow_models import (
     COMMAND_FIELD_SCHEMAS,
     CapabilityDocument,
     ConfiguredSourcePage,
     IngestCommand,
+    IngestionHistoryItem,
+    IngestionHistoryPage,
     OperationHandle,
     OperationPage,
     OperationSummary,
@@ -61,6 +67,25 @@ def _summary() -> OperationSummary:
     )
 
 
+def _history_item() -> IngestionHistoryItem:
+    return IngestionHistoryItem(
+        operation_id="17",
+        parent_operation_id="91",
+        command_key="rss",
+        operation_status="completed",
+        outcome="partial",
+        items_ingested=3,
+        items_skipped=1,
+        items_failed=2,
+        source_outcomes=[],
+        retry_count=0,
+        problem_code="source_partial",
+        status_url="/api/v1/operations/17",
+        created_at=datetime(2026, 7, 13, 10, tzinfo=UTC),
+        completed_at=datetime(2026, 7, 13, 10, 1, tzinfo=UTC),
+    )
+
+
 class FakeClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, Any, str | None]] = []
@@ -68,6 +93,8 @@ class FakeClient:
         self.wait_result: OperationHandle | None = None
         self.operation_pages_requested: int | None = None
         self.operation_statuses: list[str | None] = []
+        self.history_calls: list[dict[str, Any]] = []
+        self.history_pages_requested: int | None = None
 
     def __enter__(self) -> FakeClient:
         return self
@@ -137,6 +164,19 @@ class FakeClient:
         self.operation_pages_requested = kwargs["max_pages"]
         self.operation_statuses.append(kwargs.get("status"))
         return OperationTraversal(data=[_summary()], next_cursor="continue-here", truncated=True)
+
+    def list_ingestion_history(self, **kwargs: Any) -> IngestionHistoryPage:
+        self.history_calls.append(kwargs)
+        return IngestionHistoryPage(data=[_history_item()], next_cursor="history-next")
+
+    def collect_ingestion_history(self, **kwargs: Any) -> IngestionHistoryTraversal:
+        self.history_calls.append(kwargs)
+        self.history_pages_requested = kwargs["max_pages"]
+        return IngestionHistoryTraversal(
+            data=[_history_item()],
+            next_cursor="history-continue",
+            truncated=True,
+        )
 
     def get_operation(self, operation_id: str) -> OperationHandle:
         return _handle()
@@ -491,6 +531,100 @@ def test_operations_list_forwards_status_filter(
 
     assert result.exit_code == 0, result.output
     assert client.operation_statuses == ["in_progress"]
+
+
+def test_ingest_history_forwards_every_backend_filter(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+
+    result = runner.invoke(
+        app,
+        [
+            "--json",
+            "ingest",
+            "history",
+            "--command-key",
+            "rss",
+            "--configured-source-key",
+            "src_0123456789abcdefabcd",
+            "--outcome",
+            "partial",
+            "--status",
+            "completed",
+            "--parent-operation-id",
+            "91",
+            "--created-after",
+            "2026-07-13T04:00:00Z",
+            "--created-before",
+            "2026-07-14T04:00:00+00:00",
+            "--limit",
+            "25",
+            "--cursor",
+            "opaque-cursor",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["data"][0]["operation_id"] == "17"
+    assert client.history_calls == [
+        {
+            "command_key": "rss",
+            "configured_source_key": "src_0123456789abcdefabcd",
+            "outcome": "partial",
+            "status": "completed",
+            "parent_operation_id": "91",
+            "created_after": datetime(2026, 7, 13, 4, tzinfo=UTC),
+            "created_before": datetime(2026, 7, 14, 4, tzinfo=UTC),
+            "limit": 25,
+            "cursor": "opaque-cursor",
+        }
+    ]
+
+
+def test_ingest_history_all_uses_default_budget_and_emits_one_json_document(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+
+    result = runner.invoke(
+        app,
+        [
+            "--json",
+            "ingest",
+            "history",
+            "--configured-source-key",
+            "src_0123456789abcdefabcd",
+            "--all",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    document = json.loads(result.stdout)
+    assert set(document) == {"data", "next_cursor", "truncated"}
+    assert document["data"][0]["operation_id"] == "17"
+    assert document["next_cursor"] == "history-continue"
+    assert document["truncated"] is True
+    assert client.history_pages_requested == 20
+    assert client.history_calls[0]["configured_source_key"] == "src_0123456789abcdefabcd"
+    assert result.stderr == ""
+
+
+def test_ingest_history_human_output_is_bounded_and_warns_with_continuation(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+
+    result = runner.invoke(app, ["ingest", "history", "--all", "--max-pages", "2"])
+
+    assert result.exit_code == 0, result.output
+    assert "rss" in result.stdout
+    assert "completed" in result.stdout
+    assert "partial" in result.stdout
+    assert len(result.stdout) < 2_000
+    assert "history-continue" in result.stderr
+    assert "truncated" in result.stderr.lower()
+    assert client.history_pages_requested == 2
 
 
 def test_cli_problem_translation_preserves_full_contract(

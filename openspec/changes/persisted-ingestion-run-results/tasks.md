@@ -123,7 +123,7 @@
 - [x] 4.4 Implement the compact operation-derived history query over
   `pgqueuer_jobs`; exclude exact result/checkpoint payloads from pages.
   **Dependencies:** 4.3 — **Size: M**
-- [ ] 4.5 Write cross-surface tests for `aca ingest history`, including
+- [x] 4.5 Write cross-surface tests for `aca ingest history`, including
   omitted optional query values, configured-source filtering, all-pages
   `--max-pages` request budgets, JSON purity, plus bounded human output. (RED)
   **Spec scenarios:** canonical history parity, absent filter omission,
@@ -131,7 +131,7 @@
   **Contracts:** `contracts/openapi/v1.yaml#/paths/~1api~1v1~1ingestions/get`
   **Design decisions:** D5
   **Dependencies:** 4.3 — **Size: M**
-- [ ] 4.6 Implement `aca ingest history` through the canonical client with the
+- [x] 4.6 Implement `aca ingest history` through the canonical client with the
   same filter vocabulary as the API.
   **Dependencies:** 4.4, 4.5 — **Size: M**
 - [ ] 4.7 Write PostgreSQL query-plan tests over at least 10,000 representative

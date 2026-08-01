@@ -6,6 +6,7 @@ import mimetypes
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -18,6 +19,9 @@ from src.contracts.workflow_models import (
     ConfiguredSourcePage,
     DigestCreateRequest,
     IngestCommand,
+    IngestionHistoryItem,
+    IngestionHistoryPage,
+    IngestionOutcome,
     OperationHandle,
     OperationPage,
     OperationStatus,
@@ -27,6 +31,7 @@ from src.contracts.workflow_models import (
     PodcastScriptRequest,
     Problem,
     SummarizationRequest,
+    TerminalOperationStatus,
     ThemeAnalysisRequest,
     UploadReference,
 )
@@ -41,6 +46,15 @@ class OperationTraversal:
     """A bounded operation traversal with an explicit continuation signal."""
 
     data: list[OperationSummary]
+    next_cursor: str | None
+    truncated: bool
+
+
+@dataclass(frozen=True)
+class IngestionHistoryTraversal:
+    """A bounded ingestion-history traversal with an explicit continuation."""
+
+    data: list[IngestionHistoryItem]
     next_cursor: str | None
     truncated: bool
 
@@ -250,6 +264,73 @@ class WorkflowApiClient:
                 return OperationTraversal(data=data, next_cursor=None, truncated=False)
             next_cursor = page.next_cursor
         return OperationTraversal(data=data, next_cursor=next_cursor, truncated=True)
+
+    def list_ingestion_history(
+        self,
+        *,
+        command_key: str | None = None,
+        configured_source_key: str | None = None,
+        outcome: IngestionOutcome | None = None,
+        status: TerminalOperationStatus | None = None,
+        parent_operation_id: str | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> IngestionHistoryPage:
+        params = _cursor_page_params(limit=limit, cursor=cursor)
+        optional_params: dict[str, str | None] = {
+            "command_key": command_key,
+            "configured_source_key": configured_source_key,
+            "outcome": outcome,
+            "status": status,
+            "parent_operation_id": parent_operation_id,
+            "created_after": created_after.isoformat() if created_after is not None else None,
+            "created_before": created_before.isoformat() if created_before is not None else None,
+        }
+        params.update({key: value for key, value in optional_params.items() if value is not None})
+        response = self._client.get("/api/v1/ingestions", params=params)
+        return self._decode(response, IngestionHistoryPage)
+
+    def collect_ingestion_history(
+        self,
+        *,
+        command_key: str | None = None,
+        configured_source_key: str | None = None,
+        outcome: IngestionOutcome | None = None,
+        status: TerminalOperationStatus | None = None,
+        parent_operation_id: str | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+        max_pages: int = 20,
+    ) -> IngestionHistoryTraversal:
+        if max_pages < 1 or max_pages > 100:
+            raise ValueError("max_pages must be between 1 and 100")
+        data: list[IngestionHistoryItem] = []
+        next_cursor = cursor
+        for _ in range(max_pages):
+            page = self.list_ingestion_history(
+                command_key=command_key,
+                configured_source_key=configured_source_key,
+                outcome=outcome,
+                status=status,
+                parent_operation_id=parent_operation_id,
+                created_after=created_after,
+                created_before=created_before,
+                limit=limit,
+                cursor=next_cursor,
+            )
+            data.extend(page.data)
+            if page.next_cursor is None:
+                return IngestionHistoryTraversal(
+                    data=data,
+                    next_cursor=None,
+                    truncated=False,
+                )
+            next_cursor = page.next_cursor
+        return IngestionHistoryTraversal(data=data, next_cursor=next_cursor, truncated=True)
 
     def get_operation(self, operation_id: str, *, wait_seconds: int = 0) -> OperationHandle:
         response = self._client.get(
