@@ -17,7 +17,10 @@ ALTER TABLE contents
     (status_operation_id IS NULL AND status_claim_generation IS NULL AND status_operation_phase IS NULL AND status_owner_version IS NULL)
     OR
     (
-      status_operation_id > 0 AND status_claim_generation > 0 AND status_owner_version > 0
+      status_operation_id IS NOT NULL AND status_operation_id > 0
+      AND status_claim_generation IS NOT NULL AND status_claim_generation > 0
+      AND status_operation_phase IS NOT NULL
+      AND status_owner_version IS NOT NULL AND status_owner_version > 0
       AND (
         (status_operation_phase = 'parsing' AND status IN ('parsing', 'failed'))
         OR (status_operation_phase = 'processing' AND status IN ('processing', 'failed'))
@@ -31,7 +34,8 @@ ALTER TABLE summaries
   ADD CONSTRAINT ck_summaries_operation_owner_complete CHECK (
     (operation_id IS NULL AND operation_claim_generation IS NULL)
     OR
-    (operation_id > 0 AND operation_claim_generation > 0)
+    (operation_id IS NOT NULL AND operation_id > 0
+     AND operation_claim_generation IS NOT NULL AND operation_claim_generation > 0)
   );
 
 CREATE TABLE content_reconciliation_actions (

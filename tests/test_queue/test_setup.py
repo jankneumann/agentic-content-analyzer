@@ -10,9 +10,11 @@ import pytest
 
 from src.models.jobs import JobRecord, JobStatus
 from src.queue.setup import (
+    REQUIRED_QUEUE_COLUMNS,
     enqueue_queue_job,
     enqueue_summarization_job,
     get_job_status,
+    init_queue_schema,
     update_job_progress,
 )
 
@@ -44,6 +46,8 @@ def _job_row(status: str = "queued") -> dict:
         "priority": 0,
         "error": None,
         "retry_count": 0,
+        "claim_generation": 3,
+        "claim_protocol_version": 2,
         "parent_job_id": None,
         "heartbeat_at": datetime(2025, 2, 5, 10, 0, 0, tzinfo=UTC),
         "created_at": datetime(2025, 2, 5, 10, 0, 0, tzinfo=UTC),
@@ -63,6 +67,8 @@ class TestGetJobStatus:
         assert result.id == 42
         assert result.status == JobStatus.QUEUED
         assert result.parent_job_id is None
+        assert result.claim_generation == 3
+        assert result.claim_protocol_version == 2
 
     @pytest.mark.asyncio
     async def test_get_job_status_handles_missing_new_columns_for_backward_compat(
@@ -71,6 +77,8 @@ class TestGetJobStatus:
         row = _job_row()
         row.pop("parent_job_id")
         row.pop("heartbeat_at")
+        row.pop("claim_generation")
+        row.pop("claim_protocol_version")
         mock_connection.fetchrow.return_value = row
 
         with patch("src.queue.setup._connection", mock_connection):
@@ -79,6 +87,29 @@ class TestGetJobStatus:
         assert result is not None
         assert result.parent_job_id is None
         assert result.heartbeat_at is None
+        assert result.claim_generation == 0
+        assert result.claim_protocol_version == 1
+
+
+class TestQueueOwnershipBootstrap:
+    def test_required_queue_columns_include_claim_fence(self):
+        assert {"claim_generation", "claim_protocol_version"} <= REQUIRED_QUEUE_COLUMNS
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_installs_claim_defaults_and_triggers(self):
+        connection = AsyncMock()
+        connection.close = AsyncMock()
+        with (
+            patch("src.queue.setup.get_queue_connection_string", return_value="postgresql://db"),
+            patch("src.queue.setup.asyncpg.connect", AsyncMock(return_value=connection)),
+        ):
+            await init_queue_schema()
+
+        ddl = "\n".join(call.args[0] for call in connection.execute.await_args_list)
+        assert "claim_generation BIGINT NOT NULL DEFAULT 0" in ddl
+        assert "claim_protocol_version SMALLINT NOT NULL DEFAULT 1" in ddl
+        assert "pgqueuer_jobs_advance_claim_generation" in ddl
+        assert "pgqueuer_jobs_reset_claim_protocol" in ddl
 
     @pytest.mark.asyncio
     async def test_get_job_status_returns_none_when_missing(self, mock_connection):

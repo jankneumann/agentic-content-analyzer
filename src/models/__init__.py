@@ -20,6 +20,7 @@ from src.models.batch import BatchJob, BatchJobState, BatchRequest, BatchRequest
 from src.models.chat import ArtifactType, ChatMessage, Conversation, MessageRole
 from src.models.chunk import ChunkType, DocumentChunk
 from src.models.content import Content, ContentSource, ContentStatus
+from src.models.content_reconciliation import ContentReconciliationAction
 from src.models.content_reference import (
     ContentReference,
     ExternalIdType,
@@ -102,6 +103,7 @@ __all__ = [
     "Content",
     "ContentSource",
     "ContentStatus",
+    "ContentReconciliationAction",
     # Content Reference
     "ContentReference",
     "ReferenceType",

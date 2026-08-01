@@ -10,6 +10,10 @@
 | content-state-reconciliation.4 | `specs/content-state-reconciliation/spec.md` — Canonical remote controls expose reconciliation | The authenticated operation API exposes a synchronous bounded `POST /api/v1/operations/reconcile-content` contract with 200/401/403/422/503 responses. | `openspec/contracts/content-workflows/openapi/v1.yaml#/paths/~1api~1v1~1operations~1reconcile-content` | D11 | `openspec/contracts/content-workflows/openapi/v1.yaml`; `tests/contract/test_canonical_workflow_contracts.py` | `test_content_reconciliation_endpoint_has_exact_response_semantics` | --- |
 | content-state-reconciliation.5 | `specs/content-state-reconciliation/spec.md` — Retry is canonical and atomically budgeted | Reconciliation retry budget defaults to 3 and is bounded to 0..20. | --- | D7 | `src/config/settings.py`; `tests/config/test_settings.py` | `test_content_reconciliation_policy_defaults_are_safe_and_bounded`, `test_content_reconciliation_policy_rejects_out_of_bounds_values` | --- |
 | content-state-reconciliation.6 | `specs/content-state-reconciliation/spec.md` — Stale apply is locked and protocol-gated | Staleness, page, lock, and statement limits are bounded; statement timeout cannot be below lock timeout; apply defaults off. | --- | D7, D11 | `src/config/settings.py`; `tests/config/test_settings.py` | `test_content_reconciliation_policy_defaults_are_safe_and_bounded`, `test_content_reconciliation_policy_rejects_out_of_bounds_values`, `test_content_reconciliation_statement_timeout_cannot_be_shorter_than_lock_timeout` | --- |
+| content-state-reconciliation.7 | `specs/content-state-reconciliation/spec.md` — Supported transitions persist exact ownership | Content persists a complete operation/generation/phase/version token; compatible parsing/processing failed states are accepted and unsupported status writers clear unchanged tokens. | `contracts/db/schema.sql#contents` | D12 | `alembic/versions/8a5c3e7f9b21_add_content_reconciliation_ownership.py`; `src/models/content.py`; canonical/change-local DB contracts | `test_deployed_schema_fences_claims_and_legacy_status_writers`, `test_content_and_summary_expose_complete_owner_tokens` | GREEN: exact PostgreSQL migration test passed |
+| content-state-reconciliation.8 | `specs/content-state-reconciliation/spec.md` — Claim generations fence every attempt | Queue claims advance generation in the database and every nonqueued-to-queued transition resets protocol to legacy-safe version 1. | `contracts/db/schema.sql#pgqueuer_jobs` | D13 | migration; `src/models/jobs.py`; `src/queue/setup.py` | `test_deployed_schema_fences_claims_and_legacy_status_writers`, `test_bootstrap_installs_claim_defaults_and_triggers`, `test_job_record_preserves_legacy_projection_defaults` | GREEN: legacy and reclaimed claims passed |
+| content-state-reconciliation.9 | `specs/content-state-reconciliation/spec.md` — Domain projection requires matching provenance | Summary provenance stores an all-null or complete positive operation/generation pair without destructive foreign keys. | `contracts/db/schema.sql#summaries` | D12 | migration; `src/models/summary.py` | `test_deployed_schema_fences_claims_and_legacy_status_writers`, `test_content_and_summary_expose_complete_owner_tokens` | GREEN: complete and incomplete pairs exercised |
+| content-state-reconciliation.10 | `specs/content-state-reconciliation/spec.md` — Apply action evidence is atomic | Applied action evidence has closed values, one row per run/content pair, retained IDs without foreign keys, and database-enforced append-only mutation. | `contracts/db/schema.sql#content_reconciliation_actions` | D12 | migration; `src/models/content_reconciliation.py`; canonical/change-local DB contracts | `test_deployed_schema_fences_claims_and_legacy_status_writers`, `test_reconciliation_action_model_is_closed_and_has_no_destructive_foreign_keys` | GREEN: insert/update and downgrade exercised |
 
 ## Design Decision Trace
 
@@ -20,6 +24,8 @@
 | D9 | Make every applied mutation externally auditable without leaking payload data. | Closed item fields include before/after state and retry counts; actions and reasons are enumerated. | A strict schema provides an allowlist that generated clients share. |
 | D10 | Ensure deterministic bounded scans and safe continuation. | Request/report bounds cap pages at 100 and use positive content IDs for keyset continuation. | Contract-level limits prevent transports from requesting unbounded work. |
 | D11 | Fail closed during rollout. | Apply defaults off in settings and request schema; the endpoint declares a 503 problem response. | A default-off server gate preserves existing behavior and gives rollback a single switch. |
+| D12 | Persist ownership and action evidence without coupling retention lifecycles. | Add nullable complete owner/provenance tokens plus an append-only action table that retains IDs without foreign keys. | Legacy writes remain valid, while reconciliation can prove exact ownership and historical evidence survives queue/content retention. |
+| D13 | Preserve old-worker safety while introducing claim fencing. | Database triggers increment every queue claim generation and reset every requeue to protocol 1; current workers opt into protocol 2 later. | Trigger-driven defaults cover workers that do not know the new columns and make rollback behavior explicit. |
 
 ## Review Findings Summary
 
@@ -28,8 +34,8 @@
 
 ## Coverage Summary
 
-- **Requirements traced**: 6/6 package requirements
-- **Tests mapped**: 6 requirements have at least one planned test
-- **Evidence collected**: 0/6 requirements have pass/fail evidence
-- **Gaps identified**: Package implementation is GREEN; validation evidence is deferred to the validation phase
-- **Deferred items**: Non-contract reconciliation behavior belongs to downstream packages
+- **Requirements traced**: 10/10 package requirements
+- **Tests mapped**: 10 requirements have at least one test
+- **Evidence collected**: 4/10 schema requirements have direct GREEN evidence
+- **Gaps identified**: Runtime lifecycle, classifier, service, transport, and validation evidence belong to downstream packages
+- **Deferred items**: Candidate/provenance indexes remain deferred until the required 10,001-row plan test; no destructive foreign keys were introduced

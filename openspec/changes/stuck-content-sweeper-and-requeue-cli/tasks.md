@@ -32,15 +32,15 @@
 
 ## 2. Additive persistence foundation
 
-- [ ] 2.1 [M] Write migration/bootstrap tests covering generation/protocol triggers, owner versions, compatible phase checks, Summary provenance, append-only action constraints, downgrade
+- [x] 2.1 [M] Write migration/bootstrap tests covering generation/protocol triggers, owner versions, compatible phase checks, Summary provenance, append-only action constraints, downgrade
   **Spec scenarios**: Supported transitions persist exact ownership; Claim generations fence every attempt; Apply action evidence is atomic
   **Contracts**: `contracts/db/schema.sql`
   **Design decisions**: D1, D2, D3, D9
   **Dependencies**: 1.1
-- [ ] 2.2 [M] Add ownership/provenance/action schema through Alembic, ORM models, queue bootstrap
+- [x] 2.2 [M] Add ownership/provenance/action schema through Alembic, ORM models, queue bootstrap
   **Dependencies**: 2.1
 
-- [ ] Checkpoint: run migration/bootstrap tests, inspect upgrade/downgrade, verify no destructive foreign keys
+- [x] Checkpoint: run migration/bootstrap tests, inspect upgrade/downgrade, verify no destructive foreign keys
 
 ## 3. Durable execution fencing
 

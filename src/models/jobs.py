@@ -290,6 +290,8 @@ class JobRecord(BaseModel):
     retry_count: int = Field(default=0, description="Number of retry attempts")
     parent_job_id: int | None = Field(default=None, description="Parent batch job ID")
     heartbeat_at: datetime | None = Field(default=None, description="Last liveness heartbeat")
+    claim_generation: int = Field(default=0, ge=0, description="Current claim attempt")
+    claim_protocol_version: int = Field(default=1, ge=1, description="Claim fencing protocol")
     created_at: datetime = Field(description="When the job was enqueued")
     started_at: datetime | None = Field(default=None, description="When processing began")
     completed_at: datetime | None = Field(default=None, description="When processing finished")

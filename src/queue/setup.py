@@ -72,6 +72,8 @@ REQUIRED_QUEUE_COLUMNS: set[str] = {
     "idempotency_key",
     "error",
     "retry_count",
+    "claim_generation",
+    "claim_protocol_version",
 }
 
 
@@ -270,8 +272,41 @@ async def init_queue_schema() -> None:
                 parent_job_id BIGINT REFERENCES pgqueuer_jobs(id) ON DELETE SET NULL,
                 idempotency_key TEXT,
                 error TEXT,
-                retry_count INTEGER DEFAULT 0
+                retry_count INTEGER DEFAULT 0,
+                claim_generation BIGINT NOT NULL DEFAULT 0,
+                claim_protocol_version SMALLINT NOT NULL DEFAULT 1,
+                CONSTRAINT ck_pgqueuer_jobs_claim_generation_nonnegative
+                    CHECK (claim_generation >= 0),
+                CONSTRAINT ck_pgqueuer_jobs_claim_protocol_positive
+                    CHECK (claim_protocol_version >= 1)
             );
+
+            ALTER TABLE pgqueuer_jobs
+                ADD COLUMN IF NOT EXISTS claim_generation BIGINT NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS claim_protocol_version SMALLINT NOT NULL DEFAULT 1;
+
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'ck_pgqueuer_jobs_claim_generation_nonnegative'
+                      AND conrelid = 'pgqueuer_jobs'::regclass
+                ) THEN
+                    ALTER TABLE pgqueuer_jobs
+                        ADD CONSTRAINT ck_pgqueuer_jobs_claim_generation_nonnegative
+                        CHECK (claim_generation >= 0);
+                END IF;
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'ck_pgqueuer_jobs_claim_protocol_positive'
+                      AND conrelid = 'pgqueuer_jobs'::regclass
+                ) THEN
+                    ALTER TABLE pgqueuer_jobs
+                        ADD CONSTRAINT ck_pgqueuer_jobs_claim_protocol_positive
+                        CHECK (claim_protocol_version >= 1);
+                END IF;
+            END;
+            $$;
 
             CREATE INDEX IF NOT EXISTS idx_pgqueuer_jobs_status
                 ON pgqueuer_jobs(status, execute_after, priority DESC);
@@ -288,6 +323,36 @@ async def init_queue_schema() -> None:
             CREATE UNIQUE INDEX IF NOT EXISTS uq_pgqueuer_jobs_active_dedupe
                 ON pgqueuer_jobs(entrypoint, idempotency_key)
                 WHERE status IN ('queued', 'in_progress') AND idempotency_key IS NOT NULL;
+
+            CREATE OR REPLACE FUNCTION advance_pgqueuer_claim_generation()
+            RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN
+                NEW.claim_generation := OLD.claim_generation + 1;
+                RETURN NEW;
+            END;
+            $$;
+
+            DROP TRIGGER IF EXISTS pgqueuer_jobs_advance_claim_generation ON pgqueuer_jobs;
+            CREATE TRIGGER pgqueuer_jobs_advance_claim_generation
+            BEFORE UPDATE OF status ON pgqueuer_jobs
+            FOR EACH ROW
+            WHEN (OLD.status = 'queued' AND NEW.status = 'in_progress')
+            EXECUTE FUNCTION advance_pgqueuer_claim_generation();
+
+            CREATE OR REPLACE FUNCTION reset_pgqueuer_claim_protocol()
+            RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN
+                NEW.claim_protocol_version := 1;
+                RETURN NEW;
+            END;
+            $$;
+
+            DROP TRIGGER IF EXISTS pgqueuer_jobs_reset_claim_protocol ON pgqueuer_jobs;
+            CREATE TRIGGER pgqueuer_jobs_reset_claim_protocol
+            BEFORE UPDATE OF status ON pgqueuer_jobs
+            FOR EACH ROW
+            WHEN (OLD.status IS DISTINCT FROM 'queued' AND NEW.status = 'queued')
+            EXECUTE FUNCTION reset_pgqueuer_claim_protocol();
         """)
 
         # Create helper function for pg_cron to enqueue jobs
@@ -334,6 +399,8 @@ async def _fetch_job_row(conn: asyncpg.Connection, job_id: int) -> asyncpg.Recor
             priority,
             error,
             retry_count,
+            claim_generation,
+            claim_protocol_version,
             parent_job_id,
             heartbeat_at,
             created_at,
@@ -381,6 +448,8 @@ async def get_job_status(
             payload = json.loads(payload)
         parent_job_id = row.get("parent_job_id", None)
         heartbeat_at = row.get("heartbeat_at", None)
+        claim_generation = row.get("claim_generation", 0)
+        claim_protocol_version = row.get("claim_protocol_version", 1)
 
         return JobRecord(
             id=row["id"],
@@ -392,6 +461,8 @@ async def get_job_status(
             retry_count=row["retry_count"],
             parent_job_id=parent_job_id,
             heartbeat_at=heartbeat_at,
+            claim_generation=claim_generation,
+            claim_protocol_version=claim_protocol_version,
             created_at=row["created_at"],
             started_at=row["started_at"],
             completed_at=row["completed_at"],

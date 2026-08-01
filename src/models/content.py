@@ -27,7 +27,9 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     Enum as SQLEnum,
@@ -158,6 +160,10 @@ class Content(Base):  # type: ignore[valid-type, misc]
         index=True,
     )
     error_message = Column(Text, nullable=True)
+    status_operation_id = Column(BigInteger, nullable=True)
+    status_claim_generation = Column(BigInteger, nullable=True)
+    status_operation_phase = Column(String(16), nullable=True)
+    status_owner_version = Column(BigInteger, nullable=True)
 
     # Sharing
     is_public = Column(Boolean, nullable=False, default=False, server_default="false")
@@ -232,6 +238,24 @@ class Content(Base):  # type: ignore[valid-type, misc]
     __table_args__ = (
         Index("idx_contents_source", "source_type", "source_id", unique=True),
         Index("idx_contents_publication_date", "publication", "published_date"),
+        CheckConstraint(
+            """
+            (status_operation_id IS NULL
+             AND status_claim_generation IS NULL
+             AND status_operation_phase IS NULL
+             AND status_owner_version IS NULL)
+            OR
+            (status_operation_id IS NOT NULL AND status_operation_id > 0
+             AND status_claim_generation IS NOT NULL AND status_claim_generation > 0
+             AND status_operation_phase IS NOT NULL
+             AND status_owner_version IS NOT NULL AND status_owner_version > 0
+             AND ((status_operation_phase = 'parsing'
+                   AND status IN ('parsing', 'failed'))
+                  OR (status_operation_phase = 'processing'
+                      AND status IN ('processing', 'failed'))))
+            """,
+            name="ck_contents_status_owner_complete",
+        ),
     )
 
     def __repr__(self) -> str:
