@@ -358,6 +358,74 @@ async def test_process_job_checkpoints_cancellation_before_handler(monkeypatch) 
 
 
 @pytest.mark.asyncio
+async def test_process_job_treats_claim_cancelled_as_expected_outcome(monkeypatch) -> None:
+    from src.queue import worker
+    from src.queue.execution_claim import ClaimCancelled
+
+    async def handler(_job_id: int, _payload: dict) -> None:
+        raise ClaimCancelled("cancel raced domain commit")
+
+    checkpoint = AsyncMock(side_effect=[False, True])
+    fail = AsyncMock()
+    notification = AsyncMock()
+    monkeypatch.setitem(worker._handlers, "test.claim-cancelled", handler)
+    monkeypatch.setattr(worker, "_checkpoint_job_cancellation", checkpoint)
+    monkeypatch.setattr(worker, "_fail_job", fail)
+    monkeypatch.setattr(worker, "_emit_job_notification", notification)
+    monkeypatch.setattr("src.queue.setup.touch_job_heartbeat", AsyncMock(return_value=True))
+
+    await worker._process_job(
+        AsyncMock(),
+        {
+            "id": 42,
+            "entrypoint": "test.claim-cancelled",
+            "payload": {},
+            "claim_generation": 7,
+            "claim_protocol_version": 2,
+        },
+    )
+
+    assert checkpoint.await_count == 2
+    fail.assert_not_awaited()
+    notification.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_process_job_drops_superseded_domain_outcome(monkeypatch) -> None:
+    from src.queue import worker
+    from src.queue.execution_claim import ClaimSuperseded
+
+    async def handler(_job_id: int, _payload: dict) -> None:
+        raise ClaimSuperseded("generation changed")
+
+    fail = AsyncMock()
+    notification = AsyncMock()
+    monkeypatch.setitem(worker._handlers, "test.claim-superseded", handler)
+    monkeypatch.setattr(
+        worker,
+        "_checkpoint_job_cancellation",
+        AsyncMock(return_value=False),
+    )
+    monkeypatch.setattr(worker, "_fail_job", fail)
+    monkeypatch.setattr(worker, "_emit_job_notification", notification)
+    monkeypatch.setattr("src.queue.setup.touch_job_heartbeat", AsyncMock(return_value=True))
+
+    await worker._process_job(
+        AsyncMock(),
+        {
+            "id": 42,
+            "entrypoint": "test.claim-superseded",
+            "payload": {},
+            "claim_generation": 7,
+            "claim_protocol_version": 2,
+        },
+    )
+
+    fail.assert_not_awaited()
+    notification.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_process_job_generation_loss_prevents_handler(monkeypatch) -> None:
     from src.queue import worker
 

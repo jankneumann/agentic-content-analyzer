@@ -39,6 +39,8 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    event,
+    inspect,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, relationship
@@ -260,6 +262,21 @@ class Content(Base):  # type: ignore[valid-type, misc]
 
     def __repr__(self) -> str:
         return f"<Content(id={self.id}, source={self.source_type.value}, title='{self.title[:50]}...')>"
+
+
+@event.listens_for(Content, "before_update")
+def _clear_unchanged_status_owner(_mapper, _connection, content: Content) -> None:
+    """Mirror the PostgreSQL owner-clearing trigger in ORM-backed test stores."""
+
+    state = inspect(content)
+    if not state.attrs.status.history.has_changes():
+        return
+    if state.attrs.status_owner_version.history.has_changes():
+        return
+    content.status_operation_id = None
+    content.status_claim_generation = None
+    content.status_operation_phase = None
+    content.status_owner_version = None
 
 
 # --- Pydantic Schemas ---

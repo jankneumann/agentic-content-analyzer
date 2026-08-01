@@ -15,6 +15,13 @@ from src.config import settings
 from src.config.models import ModelConfig
 from src.models.content import Content, ContentStatus
 from src.models.summary import Summary
+from src.queue.execution_claim import (
+    ClaimRejected,
+    ContentExecutionPhase,
+    acquire_content_execution,
+    current_execution_claim,
+    guard_content_execution,
+)
 from src.storage.database import get_db
 from src.telemetry.decorators import observe
 from src.utils.logging import get_logger
@@ -71,10 +78,119 @@ class ContentSummarizer:
         Returns:
             True if successful, False otherwise
         """
-        with get_db() as db:
-            # Get content
-            content = db.query(Content).filter(Content.id == content_id).first()
+        if current_execution_claim() is not None:
+            return self._summarize_content_guarded(content_id)
+        return self._summarize_content_legacy(content_id)
 
+    def _summarize_content_guarded(self, content_id: int) -> bool:
+        """Summarize only while the current claim owns the processing phase."""
+
+        claim = current_execution_claim()
+        if claim is None:
+            raise RuntimeError("Guarded summarization requires an execution claim")
+
+        with get_db() as db:
+            content = db.query(Content).filter(Content.id == content_id).first()
+            if content is None:
+                logger.error(f"Content {content_id} not found")
+                return False
+
+            content = acquire_content_execution(
+                db,
+                content_id,
+                ContentExecutionPhase.PROCESSING,
+            )
+            db.commit()
+
+            try:
+                logger.info(f"Summarizing content: {content.title}")
+                response = self.agent.summarize_content(content)
+                if not response.success:
+                    content = guard_content_execution(
+                        db,
+                        content_id,
+                        ContentExecutionPhase.PROCESSING,
+                    )
+                    content.status = ContentStatus.FAILED
+                    content.status_owner_version = (content.status_owner_version or 0) + 1
+                    content.error_message = response.error
+                    db.commit()
+                    logger.error(f"Summarization failed: {response.error}")
+                    return False
+
+                summary_data = response.data
+                summary_dict = {
+                    "executive_summary": summary_data.executive_summary,
+                    "key_themes": summary_data.key_themes,
+                    "strategic_insights": summary_data.strategic_insights,
+                    "technical_details": summary_data.technical_details,
+                    "actionable_items": summary_data.actionable_items,
+                    "notable_quotes": summary_data.notable_quotes,
+                    "relevant_links": summary_data.relevant_links,
+                    "relevance_scores": summary_data.relevance_scores,
+                }
+                markdown_content = generate_summary_markdown(summary_dict)
+                theme_tags = extract_summary_theme_tags(summary_dict)
+
+                # The final fence is acquired before any ORM output mutation so
+                # autoflush cannot publish stale computation.
+                content = guard_content_execution(
+                    db,
+                    content_id,
+                    ContentExecutionPhase.PROCESSING,
+                )
+                summary = Summary(
+                    content_id=content_id,
+                    operation_id=claim.job_id,
+                    operation_claim_generation=claim.claim_generation,
+                    executive_summary=summary_data.executive_summary,
+                    key_themes=summary_data.key_themes,
+                    strategic_insights=summary_data.strategic_insights,
+                    technical_details=summary_data.technical_details,
+                    actionable_items=summary_data.actionable_items,
+                    notable_quotes=summary_data.notable_quotes,
+                    relevant_links=summary_data.relevant_links,
+                    relevance_scores=summary_data.relevance_scores,
+                    markdown_content=markdown_content,
+                    theme_tags=theme_tags,
+                    agent_framework=summary_data.agent_framework,
+                    model_used=summary_data.model_used,
+                    model_version=summary_data.model_version,
+                    token_usage=summary_data.token_usage,
+                    processing_time_seconds=summary_data.processing_time_seconds,
+                )
+                db.add(summary)
+                content.status = ContentStatus.COMPLETED
+                content.processed_at = datetime.now(UTC)
+                content.error_message = None
+                content.status_operation_id = None
+                content.status_claim_generation = None
+                content.status_operation_phase = None
+                content.status_owner_version = None
+                db.commit()
+                return True
+            except ClaimRejected:
+                db.rollback()
+                raise
+            except Exception as exc:
+                db.rollback()
+                content = guard_content_execution(
+                    db,
+                    content_id,
+                    ContentExecutionPhase.PROCESSING,
+                )
+                content.status = ContentStatus.FAILED
+                content.status_owner_version = (content.status_owner_version or 0) + 1
+                content.error_message = str(exc)
+                db.commit()
+                logger.error(f"Error summarizing content {content_id}: {exc}")
+                return False
+
+    def _summarize_content_legacy(self, content_id: int) -> bool:
+        """Preserve unowned direct/background summarization compatibility."""
+
+        with get_db() as db:
+            content = db.query(Content).filter(Content.id == content_id).first()
             if not content:
                 logger.error(f"Content {content_id} not found")
                 return False

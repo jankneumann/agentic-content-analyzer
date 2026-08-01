@@ -204,31 +204,49 @@ class _CanonicalHandlers:
         descriptor = self.sources.get(command.kind)
         policy = descriptor.retry_policy
         response = None
-        for attempt in range(1, policy.max_attempts + 1):
+        from src.queue.execution_claim import ClaimRejected, current_execution_claim
+
+        claim = current_execution_claim()
+        if descriptor.key == "url" and claim is not None and claim.claim_generation > 1:
+            from src.ingestion.orchestrator import URLResumeError, resume_owned_url_extraction
+
+            handle = await self.operations.get(operation_id)
             try:
-                response = await asyncio.to_thread(self._ingestion().execute, command)
-                break
-            except Exception as exc:
-                status_code = _status_code(exc)
-                retryable = status_code in policy.retryable_status_codes
-                if not retryable:
-                    raise WorkflowExecutionError(
-                        _ingestion_diagnostic(descriptor.key, exc, attempt)
-                    ) from exc
-                if attempt >= policy.max_attempts:
-                    raise WorkflowExecutionError(
-                        _ingestion_diagnostic(descriptor.key, exc, attempt)
-                    ) from exc
-                delay = min(
-                    policy.base_delay_seconds * (2 ** (attempt - 1)),
-                    policy.max_delay_seconds,
-                )
-                await self.operations.update_progress(
+                response = await asyncio.to_thread(
+                    resume_owned_url_extraction,
                     operation_id,
-                    10,
-                    f"Source {descriptor.key} rate limited; retrying attempt {attempt + 1}",
+                    handle.result,
                 )
-                await self.sleep(delay)
+            except URLResumeError as exc:
+                raise WorkflowExecutionError(str(exc)) from exc
+        else:
+            for attempt in range(1, policy.max_attempts + 1):
+                try:
+                    response = await asyncio.to_thread(self._ingestion().execute, command)
+                    break
+                except ClaimRejected:
+                    raise
+                except Exception as exc:
+                    status_code = _status_code(exc)
+                    retryable = status_code in policy.retryable_status_codes
+                    if not retryable:
+                        raise WorkflowExecutionError(
+                            _ingestion_diagnostic(descriptor.key, exc, attempt)
+                        ) from exc
+                    if attempt >= policy.max_attempts:
+                        raise WorkflowExecutionError(
+                            _ingestion_diagnostic(descriptor.key, exc, attempt)
+                        ) from exc
+                    delay = min(
+                        policy.base_delay_seconds * (2 ** (attempt - 1)),
+                        policy.max_delay_seconds,
+                    )
+                    await self.operations.update_progress(
+                        operation_id,
+                        10,
+                        f"Source {descriptor.key} rate limited; retrying attempt {attempt + 1}",
+                    )
+                    await self.sleep(delay)
 
         if response is None:
             raise WorkflowExecutionError(f"Ingestion '{descriptor.key}' produced no response")
@@ -258,6 +276,8 @@ class _CanonicalHandlers:
                 f"Ingestion '{descriptor.key}' returned an invalid canonical result"
             ) from exc
         await self.operations.attach_result(operation_id, result)
+        if _is_url_extraction_checkpoint(result):
+            raise WorkflowExecutionError("URL extraction failed and is resumable")
         if response.status == "error":
             raise WorkflowExecutionError(f"Ingestion '{descriptor.key}' failed")
         await self.operations.update_progress(operation_id, 100, "Ingestion complete")
@@ -446,6 +466,27 @@ def _ingestion_outcome(status: str, items_ingested: int) -> str:
     if status == "partial":
         return "partial"
     return "failed"
+
+
+def _is_url_extraction_checkpoint(result: Mapping[str, Any]) -> bool:
+    errors = result.get("errors")
+    content_ids = result.get("content_ids")
+    return bool(
+        result.get("command_key") == "url"
+        and result.get("resolved_route") == "webpage"
+        and result.get("status") == "partial"
+        and result.get("outcome") == "partial"
+        and isinstance(content_ids, list)
+        and len(content_ids) == 1
+        and isinstance(content_ids[0], int)
+        and not isinstance(content_ids[0], bool)
+        and content_ids[0] > 0
+        and isinstance(errors, list)
+        and any(
+            isinstance(diagnostic, Mapping) and diagnostic.get("code") == "extraction_failed"
+            for diagnostic in errors
+        )
+    )
 
 
 def _ingestion_diagnostic(source: str, exc: Exception, attempts: int) -> str:

@@ -21,6 +21,7 @@ from src.models.content import (
     ContentSource,
     ContentStatus,
     ContentUpdate,
+    _clear_unchanged_status_owner,
 )
 from src.models.image import Image
 from src.models.summary import Summary
@@ -103,6 +104,43 @@ class TestContentStatusEnum:
 
 class TestContentModel:
     """Tests for Content SQLAlchemy model."""
+
+    def test_unsupported_status_writer_clears_unchanged_owner_token(self):
+        from sqlalchemy.orm.attributes import set_committed_value
+
+        content = Content(status=ContentStatus.PARSING)
+        set_committed_value(content, "status", ContentStatus.PARSING)
+        set_committed_value(content, "status_operation_id", 41)
+        set_committed_value(content, "status_claim_generation", 3)
+        set_committed_value(content, "status_operation_phase", "parsing")
+        set_committed_value(content, "status_owner_version", 7)
+        content.status = ContentStatus.PARSED
+
+        _clear_unchanged_status_owner(None, None, content)
+
+        assert content.status_operation_id is None
+        assert content.status_claim_generation is None
+        assert content.status_operation_phase is None
+        assert content.status_owner_version is None
+
+    def test_supported_status_writer_that_advances_version_keeps_new_owner(self):
+        from sqlalchemy.orm.attributes import set_committed_value
+
+        content = Content(status=ContentStatus.PARSING)
+        set_committed_value(content, "status", ContentStatus.PARSING)
+        set_committed_value(content, "status_operation_id", 41)
+        set_committed_value(content, "status_claim_generation", 3)
+        set_committed_value(content, "status_operation_phase", "parsing")
+        set_committed_value(content, "status_owner_version", 7)
+        content.status = ContentStatus.FAILED
+        content.status_owner_version = 8
+
+        _clear_unchanged_status_owner(None, None, content)
+
+        assert content.status_operation_id == 41
+        assert content.status_claim_generation == 3
+        assert content.status_operation_phase == "parsing"
+        assert content.status_owner_version == 8
 
     def test_content_creation_minimal(self):
         """Test creating Content with only required fields."""

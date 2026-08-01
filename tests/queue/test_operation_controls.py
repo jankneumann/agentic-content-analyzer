@@ -6,7 +6,8 @@ import inspect
 import json
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import asyncpg
 import pytest
@@ -50,6 +51,168 @@ def _job(
         retry_count=retry_count,
         created_at=NOW,
     )
+
+
+class _URLHandlerOperations:
+    def __init__(self, result=None) -> None:
+        self.handle = SimpleNamespace(
+            status=JobStatus.IN_PROGRESS,
+            resource=None,
+            result=result,
+        )
+        self.attach_result = AsyncMock(side_effect=self._attach_result)
+        self.update_progress = AsyncMock()
+        self.checkpoint_cancellation = AsyncMock(return_value=None)
+
+    async def get(self, _operation_id):
+        return self.handle
+
+    async def _attach_result(self, _operation_id, result):
+        self.handle.result = result
+        return self.handle
+
+
+@pytest.mark.asyncio
+async def test_url_retry_resumes_exact_content_without_reclassification(monkeypatch) -> None:
+    from src.ingestion.registry import SourceRetryPolicy
+    from src.ingestion.result import IngestionResponse
+    from src.queue.workflow_handlers import build_workflow_handler_registry
+
+    checkpoint = {"schema_version": 2, "command_key": "url"}
+    operations = _URLHandlerOperations(result=checkpoint)
+    command = SimpleNamespace(kind="url")
+    sources = SimpleNamespace(
+        parse_command=Mock(return_value=command),
+        get=Mock(
+            return_value=SimpleNamespace(
+                key="url",
+                retry_policy=SourceRetryPolicy(max_attempts=1),
+            )
+        ),
+    )
+    ingestion = SimpleNamespace(execute=Mock())
+    resumed = Mock(
+        return_value=IngestionResponse(
+            command="ingest.url",
+            source="url",
+            status="ok",
+            items_ingested=1,
+            details={
+                "command_key": "url",
+                "resolved_route": "webpage",
+                "emitted_sources": ["url"],
+                "content_ids": [17],
+            },
+        )
+    )
+    monkeypatch.setattr("src.ingestion.orchestrator.resume_owned_url_extraction", resumed)
+    registry = build_workflow_handler_registry(
+        operation_service=operations,
+        ingestion_service=ingestion,
+        source_registry=sources,
+    )
+
+    with bind_execution_claim(ExecutionClaim(job_id=91, claim_generation=2)):
+        await registry.dispatch(OperationType.INGESTION_EXECUTE, 91, {"kind": "url"})
+
+    resumed.assert_called_once_with(91, checkpoint)
+    ingestion.execute.assert_not_called()
+    assert operations.handle.result["content_ids"] == [17]
+    assert operations.handle.result["outcome"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_url_extraction_failure_attaches_checkpoint_then_raises_retryably() -> None:
+    from src.ingestion.registry import SourceRetryPolicy
+    from src.ingestion.result import IngestionError, IngestionResponse
+    from src.queue.workflow_handlers import (
+        WorkflowExecutionError,
+        build_workflow_handler_registry,
+    )
+
+    operations = _URLHandlerOperations()
+    sources = SimpleNamespace(
+        parse_command=Mock(return_value=SimpleNamespace(kind="url")),
+        get=Mock(
+            return_value=SimpleNamespace(
+                key="url",
+                retry_policy=SourceRetryPolicy(max_attempts=1),
+            )
+        ),
+    )
+    response = IngestionResponse(
+        command="ingest.url",
+        source="url",
+        status="partial",
+        items_ingested=1,
+        errors=[IngestionError(code="extraction_failed", message="failed")],
+        details={
+            "command_key": "url",
+            "resolved_route": "webpage",
+            "emitted_sources": ["url"],
+            "content_ids": [17],
+        },
+    )
+    registry = build_workflow_handler_registry(
+        operation_service=operations,
+        ingestion_service=SimpleNamespace(execute=Mock(return_value=response)),
+        source_registry=sources,
+    )
+
+    with bind_execution_claim(ExecutionClaim(job_id=91, claim_generation=1)):
+        with pytest.raises(WorkflowExecutionError, match="resumable"):
+            await registry.dispatch(OperationType.INGESTION_EXECUTE, 91, {"kind": "url"})
+
+    operations.attach_result.assert_awaited_once()
+    checkpoint = operations.attach_result.await_args.args[1]
+    assert checkpoint["status"] == "partial"
+    assert checkpoint["outcome"] == "partial"
+    assert checkpoint["content_ids"] == [17]
+    assert checkpoint["errors"][0]["code"] == "extraction_failed"
+
+
+@pytest.mark.asyncio
+async def test_url_initial_path_preserves_typed_claim_rejection() -> None:
+    from src.ingestion.registry import SourceRetryPolicy
+    from src.queue.execution_claim import ClaimCancelled
+    from src.queue.workflow_handlers import build_workflow_handler_registry
+
+    operations = _URLHandlerOperations()
+    sources = SimpleNamespace(
+        parse_command=Mock(return_value=SimpleNamespace(kind="url")),
+        get=Mock(
+            return_value=SimpleNamespace(
+                key="url",
+                retry_policy=SourceRetryPolicy(max_attempts=1),
+            )
+        ),
+    )
+    registry = build_workflow_handler_registry(
+        operation_service=operations,
+        ingestion_service=SimpleNamespace(
+            execute=Mock(side_effect=ClaimCancelled("cancel raced extraction"))
+        ),
+        source_registry=sources,
+    )
+
+    with bind_execution_claim(ExecutionClaim(job_id=91, claim_generation=1)):
+        with pytest.raises(ClaimCancelled, match="cancel raced extraction"):
+            await registry.dispatch(OperationType.INGESTION_EXECUTE, 91, {"kind": "url"})
+
+
+def test_url_checkpoint_requires_one_positive_non_bool_content_id() -> None:
+    from src.queue.workflow_handlers import _is_url_extraction_checkpoint
+
+    base = {
+        "command_key": "url",
+        "resolved_route": "webpage",
+        "status": "partial",
+        "outcome": "partial",
+        "errors": [{"code": "extraction_failed"}],
+    }
+    assert not _is_url_extraction_checkpoint({**base, "content_ids": [True]})
+    assert not _is_url_extraction_checkpoint({**base, "content_ids": [0]})
+    assert _is_url_extraction_checkpoint({**base, "content_ids": [17]})
 
 
 @pytest.mark.asyncio

@@ -64,6 +64,7 @@ if TYPE_CHECKING:
     from src.ingestion.arxiv import ArxivPaperResult
     from src.ingestion.result import IngestionResponse
     from src.ingestion.scholar import ScholarPaperResult
+    from src.models.content import Content
 
 logger = get_logger(__name__)
 
@@ -1304,6 +1305,10 @@ def _ingest_webpage(
         try:
             asyncio.run(extractor.extract_content(content_id))
         except Exception as exc:
+            from src.queue.execution_claim import ClaimRejected
+
+            if isinstance(exc, ClaimRejected):
+                raise
             logger.warning(
                 f"URL extraction failed for content_id={content_id}, url={url}: {exc}",
                 exc_info=True,
@@ -1330,6 +1335,99 @@ def _ingest_webpage(
             "status": "queued",
             "duplicate": False,
             "url": url,
+        },
+    )
+
+
+class URLResumeError(RuntimeError):
+    """A retried URL operation cannot prove one exact owned Content row."""
+
+
+def resolve_owned_url_resume_content(db, operation_id: int, checkpoint: object) -> Content:
+    """Resolve strict checkpoint evidence or one exact persisted parsing owner."""
+
+    from pydantic import ValidationError
+
+    from src.contracts.workflow_models import IngestionResultV2
+    from src.models.content import Content, ContentSource, ContentStatus
+
+    content_id: int | None = None
+    try:
+        result = IngestionResultV2.model_validate(checkpoint)
+        error_codes = {diagnostic.code for diagnostic in result.errors}
+        if (
+            result.command_key == "url"
+            and result.resolved_route == "webpage"
+            and result.status == "partial"
+            and result.outcome == "partial"
+            and len(result.content_ids) == 1
+            and result.content_ids[0] > 0
+            and "extraction_failed" in error_codes
+        ):
+            content_id = result.content_ids[0]
+    except (TypeError, ValueError, ValidationError):
+        content_id = None
+
+    if content_id is not None:
+        content = db.get(Content, content_id)
+        if _is_exact_url_resume_owner(content, operation_id):
+            return content
+
+    matches = (
+        db.query(Content)
+        .filter(
+            Content.status_operation_id == operation_id,
+            Content.status_operation_phase == "parsing",
+            Content.status.in_([ContentStatus.PARSING, ContentStatus.FAILED]),
+            Content.source_type == ContentSource.WEBPAGE,
+        )
+        .limit(2)
+        .all()
+    )
+    if len(matches) != 1:
+        raise URLResumeError(
+            f"URL operation {operation_id} requires exactly one owned Content resume row"
+        )
+    return matches[0]
+
+
+def _is_exact_url_resume_owner(content: Content | None, operation_id: int) -> bool:
+    from src.models.content import ContentSource, ContentStatus
+
+    return bool(
+        content is not None
+        and content.status_operation_id == operation_id
+        and content.status_operation_phase == "parsing"
+        and content.status in {ContentStatus.PARSING, ContentStatus.FAILED}
+        and content.source_type is ContentSource.WEBPAGE
+    )
+
+
+def resume_owned_url_extraction(operation_id: int, checkpoint: object) -> IngestionResponse:
+    """Resume exact URL Content directly, bypassing classification and deduplication."""
+
+    from src.ingestion.result import IngestionResponse
+    from src.services.url_extractor import URLExtractor
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        content = resolve_owned_url_resume_content(db, operation_id, checkpoint)
+        content_id = int(content.id)
+        import asyncio
+
+        asyncio.run(URLExtractor(db).extract_content(content_id, resume_owned=True))
+
+    return IngestionResponse(
+        command="ingest.url",
+        source="url",
+        status="ok",
+        items_ingested=1,
+        details={
+            "command_key": "url",
+            "resolved_route": "webpage",
+            "emitted_sources": ["url"],
+            "content_ids": [content_id],
+            "content_id": content_id,
         },
     )
 

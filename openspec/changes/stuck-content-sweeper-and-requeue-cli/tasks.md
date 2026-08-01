@@ -50,20 +50,20 @@
   **Dependencies**: 2.2
 - [x] 3.2 [M] Implement shared claim context plus generation-guarded queue lifecycle writes
   **Dependencies**: 3.1
-- [ ] 3.3 [M] Write transition-writer tests covering initial acquisition, N-to-N+1 renewal, validated/missing/ambiguous URL resume, legacy extraction, Summary provenance, unsupported-writer trigger clearing, cancellation outcomes, superseded commits
+- [x] 3.3 [M] Write transition-writer tests covering initial acquisition, N-to-N+1 renewal, validated/missing/ambiguous URL resume, legacy extraction, Summary provenance, unsupported-writer trigger clearing, cancellation outcomes, superseded commits
   **Spec scenarios**: Canonical URL extraction records parsing ownership; Initial phase ownership is acquired; Retried claim renews same-operation ownership; Canonical URL extraction failure is checkpointed; Canonical URL retry resumes exact Content; Canonical URL resume checkpoint is validated; Worker dies before attaching URL checkpoint; URL resume evidence is ambiguous; Summary leaf records processing ownership; Unsupported writer leaves owner fields unchanged; Old computation outlives its claim; Cancellation exists before handler dispatch; Cancellation races ongoing computation
   **Design decisions**: D1, D3, D4, D5
   **Dependencies**: 2.2
-- [ ] 3.4 [M] Add guarded domain acquisition/commit primitives, typed claim outcomes, ownership-clearing parity hook
+- [x] 3.4 [M] Add guarded domain acquisition/commit primitives, typed claim outcomes, ownership-clearing parity hook
   **Dependencies**: 3.3
-- [ ] 3.5 [M] Guard URL extraction transitions plus exact-content resume checkpoints
+- [x] 3.5 [M] Guard URL extraction transitions plus exact-content resume checkpoints
   **Dependencies**: 3.4
-- [ ] 3.6 [M] Guard summarization transitions plus Summary provenance
+- [x] 3.6 [M] Guard summarization transitions plus Summary provenance
   **Dependencies**: 3.4
-- [ ] 3.7 [M] Serialize guarded domain commits with the content transaction lock
+- [x] 3.7 [M] Serialize guarded domain commits with the content transaction lock
   **Dependencies**: 3.2, 3.4
 
-- [ ] Checkpoint: run worker/domain concurrency tests, force reclaim during computation, verify superseded attempts cannot commit
+- [x] Checkpoint: run worker/domain concurrency tests, force reclaim during computation, verify superseded attempts cannot commit
 
 ## 4. Atomic retry primitive
 

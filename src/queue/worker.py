@@ -305,6 +305,17 @@ async def _process_job(
             else:
                 logger.info(f"Job {job_id} ({entrypoint}) reached a terminal state in its handler")
         except Exception as e:
+            from src.queue.execution_claim import ClaimCancelled, ClaimSuperseded
+
+            if isinstance(e, ClaimCancelled):
+                if await _checkpoint_job_cancellation(conn, job_id, claim_generation):
+                    logger.info(f"Job {job_id} ({entrypoint}) cancelled at domain commit")
+                else:
+                    logger.info(f"Job {job_id} ({entrypoint}) lost cancellation claim")
+                return
+            if isinstance(e, ClaimSuperseded):
+                logger.info(f"Job {job_id} ({entrypoint}) dropped superseded domain result")
+                return
             logger.error(f"Job {job_id} ({entrypoint}) failed: {e}", exc_info=True)
             from src.queue.workflow_handlers import WorkflowHandlerError
 
