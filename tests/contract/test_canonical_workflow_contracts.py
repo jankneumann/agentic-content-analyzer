@@ -18,6 +18,10 @@ ROOT = Path(__file__).parents[2]
 CONTRACTS = ROOT / "openspec/contracts/content-workflows"
 OPENAPI_PATH = CONTRACTS / "openapi/v1.yaml"
 GENERATOR = ROOT / "scripts/generate_workflow_contracts.py"
+RECONCILIATION_SCHEMA_PATH = (
+    ROOT
+    / "openspec/changes/stuck-content-sweeper-and-requeue-cli/contracts/reconciliation-report.schema.json"
+)
 
 SOURCE_KEYS = {
     "gmail",
@@ -366,6 +370,225 @@ def test_operation_routes_cover_status_events_retry_and_cancel() -> None:
     assert "get" in paths["/api/v1/operations/{operation_id}/events"]
     assert "post" in paths["/api/v1/operations/{operation_id}/retry"]
     assert "post" in paths["/api/v1/operations/{operation_id}/cancel"]
+
+
+def test_content_reconciliation_request_defaults_to_one_bounded_dry_run_page() -> None:
+    schemas = _openapi()["components"]["schemas"]
+    request = schemas["ContentReconciliationRequest"]
+
+    assert request["additionalProperties"] is False
+    assert request.get("required", []) == []
+    assert request["properties"] == {
+        "apply": {"type": "boolean", "default": False},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+        "after_content_id": {
+            "type": ["integer", "null"],
+            "minimum": 1,
+            "maximum": 9_223_372_036_854_775_807,
+        },
+    }
+
+
+def test_content_reconciliation_openapi_matches_change_contract() -> None:
+    schemas = _openapi()["components"]["schemas"]
+    change_defs = json.loads(RECONCILIATION_SCHEMA_PATH.read_text())["$defs"]
+
+    assert schemas["ContentReconciliationRequest"] == change_defs["request"]
+    assert schemas["ContentReconciliationCounts"] == change_defs["counts"]
+
+    canonical_item = schemas["ContentReconciliationItem"]
+    change_item = change_defs["item"]
+    assert canonical_item["additionalProperties"] == change_item["additionalProperties"]
+    assert set(canonical_item["required"]) == set(change_item["required"])
+    assert set(canonical_item["properties"]) == set(change_item["properties"])
+    assert (
+        schemas["ContentReconciliationContentStatus"]["enum"]
+        == change_defs["content_status"]["enum"]
+    )
+    assert schemas["ContentReconciliationOperationStatus"]["enum"] == [
+        value for value in change_defs["operation_status"]["enum"] if value is not None
+    ]
+    assert (
+        schemas["ContentReconciliationAction"]["enum"]
+        == change_item["properties"]["action"]["enum"]
+    )
+    assert (
+        schemas["ContentReconciliationReason"]["enum"]
+        == change_item["properties"]["reason"]["enum"]
+    )
+
+    canonical_report = schemas["ContentReconciliationReport"]
+    change_report = change_defs["report"]
+    assert canonical_report["additionalProperties"] == change_report["additionalProperties"]
+    assert set(canonical_report["required"]) == set(change_report["required"])
+    assert set(canonical_report["properties"]) == set(change_report["properties"])
+
+
+def test_content_reconciliation_contract_is_closed_bounded_and_safe() -> None:
+    schemas = _openapi()["components"]["schemas"]
+    report = schemas["ContentReconciliationReport"]
+    item = schemas["ContentReconciliationItem"]
+    counts = schemas["ContentReconciliationCounts"]
+
+    assert report["additionalProperties"] is False
+    assert set(report["required"]) == {
+        "run_id",
+        "mode",
+        "scanned",
+        "reported",
+        "counts",
+        "items",
+    }
+    assert report["properties"]["scanned"]["maximum"] == 100
+    assert report["properties"]["reported"]["maximum"] == 100
+    assert report["properties"]["items"]["maxItems"] == 100
+    assert report["properties"]["next_after_content_id"]["minimum"] == 1
+
+    expected_counts = {
+        "applied",
+        "retried",
+        "projected",
+        "restored",
+        "active",
+        "locked",
+        "missing",
+        "conflicted",
+        "cancelled",
+        "forced",
+        "exhausted",
+        "incompatible",
+        "failed",
+    }
+    assert counts["additionalProperties"] is False
+    assert set(counts["required"]) == expected_counts
+    assert set(counts["properties"]) == expected_counts
+    assert all(field["minimum"] == 0 for field in counts["properties"].values())
+    assert all(field["maximum"] == 100 for field in counts["properties"].values())
+
+    assert item["additionalProperties"] is False
+    safe_fields = {
+        "content_id",
+        "projection",
+        "content_status_before",
+        "content_status_after",
+        "operation_id",
+        "claim_generation",
+        "claim_protocol_version",
+        "operation_status_before",
+        "operation_status_after",
+        "retry_count_before",
+        "retry_count_after",
+        "phase",
+        "action",
+        "reason",
+        "operation_heartbeat_at",
+        "operation_completed_at",
+        "applied",
+    }
+    assert set(item["properties"]) == safe_fields
+    assert not {
+        "title",
+        "url",
+        "content",
+        "error",
+        "payload",
+        "input",
+        "result",
+        "checkpoint",
+        "secret",
+    } & set(item["properties"])
+    assert set(schemas["ContentReconciliationAction"]["enum"]) == {
+        "none",
+        "retry_operation",
+        "project_completed",
+        "project_parsed",
+        "restore_parsed",
+        "restore_pending",
+        "cancel_restore_parsed",
+        "cancel_restore_pending",
+    }
+    assert "apply_failed" in schemas["ContentReconciliationReason"]["enum"]
+    assert "incompatible_worker" in schemas["ContentReconciliationReason"]["enum"]
+
+
+def test_content_reconciliation_endpoint_has_exact_response_semantics() -> None:
+    operation = _openapi()["paths"]["/api/v1/operations/reconcile-content"]["post"]
+
+    assert operation["operationId"] == "reconcileContent"
+    assert operation["requestBody"]["required"] is True
+    assert operation["requestBody"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ContentReconciliationRequest"
+    }
+    assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ContentReconciliationReport"
+    }
+    assert set(operation["responses"]) == {"200", "401", "403", "422", "503"}
+    assert operation["responses"]["503"]["content"]["application/problem+json"]["schema"] == {
+        "$ref": "#/components/schemas/Problem"
+    }
+
+
+def test_generated_reconciliation_models_are_strict_and_default_to_dry_run() -> None:
+    module = _generated_models()
+
+    request = module.ContentReconciliationRequest()
+    assert request.apply is False
+    assert request.limit is None
+    assert request.after_content_id is None
+    with pytest.raises(ValidationError):
+        module.ContentReconciliationRequest(unexpected=True)
+
+    assert set(get_args(module.ContentReconciliationMode)) == {"dry_run", "apply"}
+    assert set(get_args(module.ContentReconciliationProjection)) == {"proposed", "observed"}
+
+    item = {
+        "content_id": 42,
+        "projection": "proposed",
+        "content_status_before": "failed",
+        "content_status_after": "failed",
+        "operation_id": "not-numeric",
+        "claim_generation": 1,
+        "claim_protocol_version": 2,
+        "operation_status_before": "failed",
+        "operation_status_after": "failed",
+        "retry_count_before": 0,
+        "retry_count_after": 0,
+        "phase": "processing",
+        "action": "none",
+        "reason": "failed_operation",
+        "applied": False,
+    }
+    with pytest.raises(ValidationError):
+        module.ContentReconciliationItem.model_validate(item)
+
+    with pytest.raises(ValidationError):
+        module.ContentReconciliationReport.model_validate(
+            {
+                "run_id": "not-a-uuid",
+                "mode": "dry_run",
+                "scanned": 0,
+                "reported": 0,
+                "counts": dict.fromkeys(
+                    {
+                        "applied",
+                        "retried",
+                        "projected",
+                        "restored",
+                        "active",
+                        "locked",
+                        "missing",
+                        "conflicted",
+                        "cancelled",
+                        "forced",
+                        "exhausted",
+                        "incompatible",
+                        "failed",
+                    },
+                    0,
+                ),
+                "items": [],
+            }
+        )
 
 
 def test_agent_facing_discovery_contracts_use_cursor_pages() -> None:

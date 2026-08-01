@@ -14,21 +14,21 @@
 
 ## 1. Wire contracts plus policy
 
-- [ ] 1.1 [S] Write reconciliation contract equivalence tests covering requests, reports, safe fields, closed counters, response semantics
+- [x] 1.1 [S] Write reconciliation contract equivalence tests covering requests, reports, safe fields, closed counters, response semantics
   **Spec scenarios**: Scanning and reports are strictly bounded; Dry-run is reconciliation-read-only; Canonical remote controls expose reconciliation
   **Contracts**: `contracts/reconciliation-report.schema.json`, canonical content-workflow OpenAPI
   **Design decisions**: D8, D9, D10
   **Dependencies**: None
-- [ ] 1.2 [M] Extend canonical OpenAPI plus generated reconciliation models
+- [x] 1.2 [M] Extend canonical OpenAPI plus generated reconciliation models
   **Dependencies**: 1.1
-- [ ] 1.3 [S] Write reconciliation policy setting tests covering defaults, bounds, cross-field validation, default-off apply
+- [x] 1.3 [S] Write reconciliation policy setting tests covering defaults, bounds, cross-field validation, default-off apply
   **Spec scenarios**: Retry is canonical and atomically budgeted; Stale apply is locked and protocol-gated
   **Design decisions**: D7, D11
   **Dependencies**: None
-- [ ] 1.4 [S] Implement validated reconciliation policy settings
+- [x] 1.4 [S] Implement validated reconciliation policy settings
   **Dependencies**: 1.3
 
-- [ ] Checkpoint: run contract/settings tests, review diff, verify package scope
+- [x] Checkpoint: run contract/settings tests, review diff, verify package scope
 
 ## 2. Additive persistence foundation
 

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Annotated, Any, Literal
+from uuid import UUID
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
-CONTRACT_SHA256 = "99b1f775d4d5df219fe81971c52985c49064e97f01a36b88b4ae442f6126b40d"
+CONTRACT_SHA256 = "1c9b4bf85f2865b099d18d6fbd715a96bd159fd0e52071369910829c006c434f"
 
 OperationStatus = Literal["queued", "in_progress", "completed", "failed", "cancelled"]
 OperationType = Literal[
@@ -23,6 +24,46 @@ OperationType = Literal[
 IngestionOutcome = Literal["success", "zero_items", "partial", "failed", "cancelled", "unknown"]
 IngestionStatus = Literal["ok", "partial", "error"]
 TerminalOperationStatus = Literal["completed", "failed", "cancelled"]
+ContentReconciliationMode = Literal["dry_run", "apply"]
+ContentReconciliationProjection = Literal["proposed", "observed"]
+ContentReconciliationContentStatus = Literal[
+    "pending", "parsing", "parsed", "processing", "completed", "failed", "filtered_out"
+]
+ContentReconciliationOperationStatus = Literal[
+    "queued", "in_progress", "completed", "failed", "cancelled"
+]
+ContentReconciliationPhase = Literal["parsing", "processing"]
+ContentReconciliationAction = Literal[
+    "none",
+    "retry_operation",
+    "project_completed",
+    "project_parsed",
+    "restore_parsed",
+    "restore_pending",
+    "cancel_restore_parsed",
+    "cancel_restore_pending",
+]
+ContentReconciliationReason = Literal[
+    "summary_exists",
+    "extraction_completed",
+    "completed_output_missing",
+    "output_owner_mismatch",
+    "active_operation",
+    "cancellation_pending",
+    "execution_locked",
+    "cancellation_requested",
+    "stale_operation",
+    "failed_operation",
+    "retry_budget_exhausted",
+    "forced_reprocessing",
+    "summarization_cancelled",
+    "extraction_cancelled",
+    "missing_operation",
+    "ownership_conflict",
+    "incompatible_worker",
+    "revalidation_conflict",
+    "apply_failed",
+]
 
 
 class StrictModel(BaseModel):
@@ -246,11 +287,11 @@ class ResourceReference(StrictModel):
 class BoundedDiagnostic(StrictModel):
     code: Annotated[str, Field(min_length=1, max_length=100)]
     message: Annotated[str, Field(min_length=1, max_length=500)]
-    redirected_source_key: str | None = None
+    redirected_source_key: str | None = Field(None, pattern="^src_[a-f0-9]{20}$")
 
 
 class ConfiguredSourceOutcome(StrictModel):
-    source_key: str
+    source_key: Annotated[str, Field(pattern="^src_[a-f0-9]{20}$")]
     status: IngestionStatus
     items_ingested: Annotated[int, Field(ge=0)]
     items_failed: Annotated[int, Field(ge=0)]
@@ -309,7 +350,7 @@ class SafeIngestionDetails(StrictModel):
 
 
 class PipelineSourceIngestionSummary(StrictModel):
-    operation_id: Annotated[str, Field(max_length=19)]
+    operation_id: Annotated[str, Field(max_length=19, pattern="^[1-9][0-9]*$")]
     command_key: Annotated[str, Field(min_length=1, max_length=100)]
     operation_status: TerminalOperationStatus
     outcome: IngestionOutcome
@@ -330,7 +371,7 @@ class PipelineResultV2(ExtensibleModel):
 
 
 class ConfiguredSourceHistoryOutcome(StrictModel):
-    source_key: str
+    source_key: Annotated[str, Field(pattern="^src_[a-f0-9]{20}$")]
     status: IngestionStatus
     outcome: IngestionOutcome
     items_ingested: Annotated[int | None, Field(ge=0)]
@@ -340,8 +381,8 @@ class ConfiguredSourceHistoryOutcome(StrictModel):
 
 
 class IngestionHistoryItem(StrictModel):
-    operation_id: Annotated[str, Field(max_length=19)]
-    parent_operation_id: str | None = Field(None, max_length=19)
+    operation_id: Annotated[str, Field(max_length=19, pattern="^[1-9][0-9]*$")]
+    parent_operation_id: str | None = Field(None, max_length=19, pattern="^[1-9][0-9]*$")
     command_key: Annotated[str, Field(min_length=1, max_length=100)]
     operation_status: TerminalOperationStatus
     outcome: IngestionOutcome
@@ -351,7 +392,7 @@ class IngestionHistoryItem(StrictModel):
     source_outcomes: Annotated[list[ConfiguredSourceHistoryOutcome], Field(max_length=100)]
     retry_count: Annotated[int, Field(ge=0)]
     problem_code: str | None = Field(None, max_length=100)
-    status_url: str
+    status_url: Annotated[str, Field(pattern="^/api/v1/operations/[1-9][0-9]*$")]
     created_at: datetime
     completed_at: datetime | None = None
 
@@ -363,15 +404,15 @@ class IngestionHistoryPage(StrictModel):
 
 class OperationSummary(StrictModel):
     schema_version: Literal[2] = 2
-    operation_id: Annotated[str, Field(max_length=19)]
+    operation_id: Annotated[str, Field(max_length=19, pattern="^[1-9][0-9]*$")]
     operation_type: OperationType
     status: OperationStatus
     progress: Annotated[int, Field(ge=0, le=100)]
     message: Annotated[str, Field(max_length=500)]
     cancellable: bool
     retry_count: Annotated[int, Field(ge=0)]
-    status_url: str
-    events_url: str
+    status_url: Annotated[str, Field(pattern="^/api/v1/operations/[1-9][0-9]*$")]
+    events_url: Annotated[str, Field(pattern="^/api/v1/operations/[1-9][0-9]*/events$")]
     created_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None
@@ -399,6 +440,58 @@ class OperationHandle(StrictModel):
 class OperationPage(StrictModel):
     data: Annotated[list[OperationSummary], Field(max_length=100)]
     next_cursor: str | None = Field(None, max_length=2048)
+
+
+class ContentReconciliationRequest(StrictModel):
+    apply: bool = False
+    limit: int | None = Field(None, ge=1, le=100)
+    after_content_id: int | None = Field(None, ge=1, le=9223372036854775807)
+
+
+class ContentReconciliationCounts(StrictModel):
+    applied: Annotated[int, Field(ge=0, le=100)]
+    retried: Annotated[int, Field(ge=0, le=100)]
+    projected: Annotated[int, Field(ge=0, le=100)]
+    restored: Annotated[int, Field(ge=0, le=100)]
+    active: Annotated[int, Field(ge=0, le=100)]
+    locked: Annotated[int, Field(ge=0, le=100)]
+    missing: Annotated[int, Field(ge=0, le=100)]
+    conflicted: Annotated[int, Field(ge=0, le=100)]
+    cancelled: Annotated[int, Field(ge=0, le=100)]
+    forced: Annotated[int, Field(ge=0, le=100)]
+    exhausted: Annotated[int, Field(ge=0, le=100)]
+    incompatible: Annotated[int, Field(ge=0, le=100)]
+    failed: Annotated[int, Field(ge=0, le=100)]
+
+
+class ContentReconciliationItem(StrictModel):
+    content_id: Annotated[int, Field(ge=1, le=9223372036854775807)]
+    projection: ContentReconciliationProjection
+    content_status_before: ContentReconciliationContentStatus
+    content_status_after: ContentReconciliationContentStatus
+    operation_id: Annotated[str | None, Field(max_length=19, pattern="^[1-9][0-9]{0,18}$")]
+    claim_generation: Annotated[int | None, Field(ge=1, le=9223372036854775807)]
+    claim_protocol_version: Annotated[int | None, Field(ge=1, le=32767)]
+    operation_status_before: ContentReconciliationOperationStatus | None
+    operation_status_after: ContentReconciliationOperationStatus | None
+    retry_count_before: Annotated[int | None, Field(ge=0, le=2147483647)]
+    retry_count_after: Annotated[int | None, Field(ge=0, le=2147483647)]
+    phase: ContentReconciliationPhase | None
+    action: ContentReconciliationAction
+    reason: ContentReconciliationReason
+    operation_heartbeat_at: datetime | None = None
+    operation_completed_at: datetime | None = None
+    applied: bool
+
+
+class ContentReconciliationReport(StrictModel):
+    run_id: UUID
+    mode: ContentReconciliationMode
+    scanned: Annotated[int, Field(ge=0, le=100)]
+    reported: Annotated[int, Field(ge=0, le=100)]
+    next_after_content_id: int | None = Field(None, ge=1, le=9223372036854775807)
+    counts: ContentReconciliationCounts
+    items: Annotated[list[ContentReconciliationItem], Field(max_length=100)]
 
 
 class OperationEvent(StrictModel):

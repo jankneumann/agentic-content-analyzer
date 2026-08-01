@@ -344,6 +344,16 @@ class Settings(BaseSettings):
     failed_job_retention_days: int = Field(default=90, ge=1, le=3650)
     job_retention_interval_seconds: int = Field(default=3600, ge=60, le=86_400)
     job_retention_batch_size: int = Field(default=100, ge=1, le=1000)
+    content_reconciliation_stale_seconds: int = Field(default=3600, ge=60, le=604_800)
+    content_reconciliation_max_retries: int = Field(default=3, ge=0, le=20)
+    content_reconciliation_batch_size: int = Field(default=50, ge=1, le=100)
+    content_reconciliation_lock_timeout_ms: int = Field(default=250, ge=1, le=5000)
+    content_reconciliation_statement_timeout_ms: int = Field(
+        default=5000,
+        ge=100,
+        le=30_000,
+    )
+    content_reconciliation_apply_enabled: bool = False
 
     # Database Provider Configuration
     # Explicit provider selection - no auto-detection magic
@@ -846,6 +856,20 @@ class Settings(BaseSettings):
         if self.failed_job_retention_days < self.job_retention_days:
             raise ValueError(
                 "failed_job_retention_days must be greater than or equal to job_retention_days"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_content_reconciliation_timeouts(self) -> Settings:
+        """Keep the per-item statement ceiling at least as long as lock acquisition."""
+
+        if (
+            self.content_reconciliation_statement_timeout_ms
+            < self.content_reconciliation_lock_timeout_ms
+        ):
+            raise ValueError(
+                "content_reconciliation_statement_timeout_ms must be greater than or equal "
+                "to content_reconciliation_lock_timeout_ms"
             )
         return self
 

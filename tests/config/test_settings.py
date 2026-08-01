@@ -153,3 +153,49 @@ def test_failed_retention_cannot_be_shorter_than_completed_retention() -> None:
             job_retention_days=91,
             failed_job_retention_days=90,
         )
+
+
+def test_content_reconciliation_policy_defaults_are_safe_and_bounded() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.content_reconciliation_stale_seconds == 3600
+    assert settings.content_reconciliation_max_retries == 3
+    assert settings.content_reconciliation_batch_size == 50
+    assert settings.content_reconciliation_lock_timeout_ms == 250
+    assert settings.content_reconciliation_statement_timeout_ms == 5000
+    assert settings.content_reconciliation_apply_enabled is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("content_reconciliation_stale_seconds", 59),
+        ("content_reconciliation_stale_seconds", 604_801),
+        ("content_reconciliation_max_retries", -1),
+        ("content_reconciliation_max_retries", 21),
+        ("content_reconciliation_batch_size", 0),
+        ("content_reconciliation_batch_size", 101),
+        ("content_reconciliation_lock_timeout_ms", 0),
+        ("content_reconciliation_lock_timeout_ms", 5001),
+        ("content_reconciliation_statement_timeout_ms", 99),
+        ("content_reconciliation_statement_timeout_ms", 30_001),
+    ],
+)
+def test_content_reconciliation_policy_rejects_out_of_bounds_values(
+    field: str,
+    value: int,
+) -> None:
+    with pytest.raises(ValidationError, match=field):
+        Settings(_env_file=None, **{field: value})
+
+
+def test_content_reconciliation_statement_timeout_cannot_be_shorter_than_lock_timeout() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="content_reconciliation_statement_timeout_ms",
+    ):
+        Settings(
+            _env_file=None,
+            content_reconciliation_lock_timeout_ms=5000,
+            content_reconciliation_statement_timeout_ms=4999,
+        )

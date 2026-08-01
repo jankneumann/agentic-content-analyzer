@@ -1,11 +1,18 @@
 // Generated from contracts/openapi/v1.yaml; do not edit.
-export const CONTRACT_SHA256 = "99b1f775d4d5df219fe81971c52985c49064e97f01a36b88b4ae442f6126b40d" as const;
+export const CONTRACT_SHA256 = "1c9b4bf85f2865b099d18d6fbd715a96bd159fd0e52071369910829c006c434f" as const;
 
 export type OperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 export type OperationType = "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
 export type IngestionOutcome = "success" | "zero_items" | "partial" | "failed" | "cancelled" | "unknown";
 export type IngestionStatus = "ok" | "partial" | "error";
 export type TerminalOperationStatus = "completed" | "failed" | "cancelled";
+export type ContentReconciliationMode = "dry_run" | "apply";
+export type ContentReconciliationProjection = "proposed" | "observed";
+export type ContentReconciliationContentStatus = "pending" | "parsing" | "parsed" | "processing" | "completed" | "failed" | "filtered_out";
+export type ContentReconciliationOperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
+export type ContentReconciliationPhase = "parsing" | "processing";
+export type ContentReconciliationAction = "none" | "retry_operation" | "project_completed" | "project_parsed" | "restore_parsed" | "restore_pending" | "cancel_restore_parsed" | "cancel_restore_pending";
+export type ContentReconciliationReason = "summary_exists" | "extraction_completed" | "completed_output_missing" | "output_owner_mismatch" | "active_operation" | "cancellation_pending" | "execution_locked" | "cancellation_requested" | "stale_operation" | "failed_operation" | "retry_budget_exhausted" | "forced_reprocessing" | "summarization_cancelled" | "extraction_cancelled" | "missing_operation" | "ownership_conflict" | "incompatible_worker" | "revalidation_conflict" | "apply_failed";
 
 export interface Problem {
   type: string;
@@ -180,6 +187,58 @@ export interface OperationHandle {
 export interface OperationPage {
   data: Array<OperationSummary>;
   next_cursor?: string | null;
+}
+
+export interface ContentReconciliationRequest {
+  apply?: boolean;
+  limit?: number;
+  after_content_id?: number | null;
+}
+
+export interface ContentReconciliationCounts {
+  applied: number;
+  retried: number;
+  projected: number;
+  restored: number;
+  active: number;
+  locked: number;
+  missing: number;
+  conflicted: number;
+  cancelled: number;
+  forced: number;
+  exhausted: number;
+  incompatible: number;
+  failed: number;
+}
+
+export interface ContentReconciliationItem {
+  content_id: number;
+  projection: ContentReconciliationProjection;
+  content_status_before: ContentReconciliationContentStatus;
+  content_status_after: ContentReconciliationContentStatus;
+  operation_id: string | null;
+  claim_generation: number | null;
+  claim_protocol_version: number | null;
+  operation_status_before: ContentReconciliationOperationStatus | null;
+  operation_status_after: ContentReconciliationOperationStatus | null;
+  retry_count_before: number | null;
+  retry_count_after: number | null;
+  phase: ContentReconciliationPhase | null;
+  action: ContentReconciliationAction;
+  reason: ContentReconciliationReason;
+  operation_heartbeat_at?: string | null;
+  operation_completed_at?: string | null;
+  applied: boolean;
+}
+
+export interface ContentReconciliationReport {
+  run_id: string;
+  mode: ContentReconciliationMode;
+  scanned: number;
+  reported: number;
+  next_after_content_id?: number | null;
+  counts: ContentReconciliationCounts;
+  items: Array<ContentReconciliationItem>;
 }
 
 export interface OperationEvent {
