@@ -51,6 +51,8 @@ packages:
       reason: Canonical wire schema, generated output, and bounded policy ownership.
     scope:
       write_allow:
+        - openspec/changes/stuck-content-sweeper-and-requeue-cli/tasks.md
+        - openspec/changes/stuck-content-sweeper-and-requeue-cli/change-context.md
         - openspec/contracts/content-workflows/openapi/v1.yaml
         - openspec/contracts/content-workflows/generated/**
         - openspec/changes/stuck-content-sweeper-and-requeue-cli/contracts/reconciliation-report.schema.json
@@ -121,6 +123,8 @@ packages:
       reason: Additive durable ownership and audit schema boundary.
     scope:
       write_allow:
+        - openspec/changes/stuck-content-sweeper-and-requeue-cli/tasks.md
+        - openspec/changes/stuck-content-sweeper-and-requeue-cli/change-context.md
         - alembic/versions/**
         - openspec/contracts/content-workflows/db/schema.sql
         - openspec/changes/stuck-content-sweeper-and-requeue-cli/contracts/db/schema.sql
@@ -186,6 +190,8 @@ packages:
       reason: Durable attempt fencing and supported transition ownership.
     scope:
       write_allow:
+        - openspec/changes/stuck-content-sweeper-and-requeue-cli/tasks.md
+        - openspec/changes/stuck-content-sweeper-and-requeue-cli/change-context.md
         - src/queue/worker.py
         - src/queue/execution_claim.py
         - src/queue/content_execution_lock.py
@@ -259,6 +265,8 @@ packages:
       reason: Canonical graph-lock, retry-count, and notification ownership.
     scope:
       write_allow:
+        - openspec/changes/stuck-content-sweeper-and-requeue-cli/tasks.md
+        - openspec/changes/stuck-content-sweeper-and-requeue-cli/change-context.md
         - src/services/operation_service.py
         - src/queue/worker.py
         - src/queue/setup.py
@@ -317,6 +325,8 @@ packages:
       reason: Reconciliation rules, mutations, audits, and query-plan ownership.
     scope:
       write_allow:
+        - openspec/changes/stuck-content-sweeper-and-requeue-cli/tasks.md
+        - openspec/changes/stuck-content-sweeper-and-requeue-cli/change-context.md
         - src/services/content_reconciliation_service.py
         - alembic/versions/**
         - tests/services/test_content_reconciliation_service.py
@@ -379,6 +389,8 @@ packages:
       reason: Canonical remote surface and CLI transport ownership.
     scope:
       write_allow:
+        - openspec/changes/stuck-content-sweeper-and-requeue-cli/tasks.md
+        - openspec/changes/stuck-content-sweeper-and-requeue-cli/change-context.md
         - src/api/operation_routes.py
         - src/api/workflow_dependencies.py
         - src/clients/workflow_api_client.py
@@ -435,6 +447,8 @@ packages:
       reason: Final documentation, evaluation, and validation ownership.
     scope:
       write_allow:
+        - openspec/changes/stuck-content-sweeper-and-requeue-cli/tasks.md
+        - openspec/changes/stuck-content-sweeper-and-requeue-cli/change-context.md
         - docs/DEVELOPMENT.md
         - docs/ARCHITECTURE.md
         - evaluation/descriptors/aca-cli.yaml
