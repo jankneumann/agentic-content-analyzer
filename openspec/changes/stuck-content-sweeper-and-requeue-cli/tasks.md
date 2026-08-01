@@ -78,29 +78,29 @@
 
 ## 5. Reconciliation core
 
-- [ ] 5.1 [M] Write classifier tests covering every matrix row, precedence, ownership conflicts, force, cancellation, protocol mismatch
+- [x] 5.1 [M] Write classifier tests covering every matrix row, precedence, ownership conflicts, force, cancellation, protocol mismatch
   **Spec scenarios**: all content-state-reconciliation classification scenarios
   **Contracts**: `contracts/reconciliation-report.schema.json`, `contracts/db/schema.sql`
   **Design decisions**: D1-D5, D10, D11
   **Dependencies**: 2.2
-- [ ] 5.2 [M] Implement the fail-closed reconciliation classifier
+- [x] 5.2 [M] Implement the fail-closed reconciliation classifier
   **Dependencies**: 5.1
-- [ ] 5.3 [M] Write PostgreSQL service tests covering dry-run purity, single-connection apply, row revalidation, stale parsing/processing recovery, audit rollback, per-item continuation, repeated apply
+- [x] 5.3 [M] Write PostgreSQL service tests covering dry-run purity, single-connection apply, row revalidation, stale parsing/processing recovery, audit rollback, per-item continuation, repeated apply
   **Spec scenarios**: Dry-run observes a repairable row; Apply commits one action; Abandoned stale owner is recovered; Retried stale parsing owner resumes; Retried stale processing owner resumes; Action audit insertion fails; One item fails within a page; Apply is repeated
   **Design decisions**: D6, D8, D9
   **Dependencies**: 3.7, 4.2, 5.1
-- [ ] 5.4 [M] Implement bounded read-only reconciliation scanning
+- [x] 5.4 [M] Implement bounded read-only reconciliation scanning
   **Dependencies**: 5.2, 5.3
-- [ ] 5.5 [M] Implement locked protocol-gated reconciliation apply
+- [x] 5.5 [M] Implement locked protocol-gated reconciliation apply
   **Dependencies**: 3.7, 4.2, 5.3, 5.4
-- [ ] 5.6 [M] Write the 10,001-row ownership query-plan regression
+- [x] 5.6 [M] Write the 10,001-row ownership query-plan regression
   **Spec scenarios**: Candidate tables contain 10,001 irrelevant rows
   **Design decisions**: D10
   **Dependencies**: 5.4
-- [ ] 5.7 [S] Add only ownership indexes justified by the measured plan
+- [x] 5.7 [S] Add only ownership indexes justified by the measured plan
   **Dependencies**: 5.6
 
-- [ ] Checkpoint: run service/query-plan tests, compare dry-run state snapshots, inspect action-audit constraints
+- [x] Checkpoint: run service/query-plan tests, compare dry-run state snapshots, inspect action-audit constraints
 
 ## 6. Canonical API plus CLI
 
