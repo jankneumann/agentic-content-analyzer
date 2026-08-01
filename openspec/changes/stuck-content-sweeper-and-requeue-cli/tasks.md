@@ -21,14 +21,14 @@
   **Dependencies**: None
 - [x] 1.2 [M] Extend canonical OpenAPI plus generated reconciliation models
   **Dependencies**: 1.1
-- [ ] 1.3 [S] Write reconciliation policy setting tests covering defaults, bounds, cross-field validation, default-off apply
+- [x] 1.3 [S] Write reconciliation policy setting tests covering defaults, bounds, cross-field validation, default-off apply
   **Spec scenarios**: Retry is canonical and atomically budgeted; Stale apply is locked and protocol-gated
   **Design decisions**: D7, D11
   **Dependencies**: None
-- [ ] 1.4 [S] Implement validated reconciliation policy settings
+- [x] 1.4 [S] Implement validated reconciliation policy settings
   **Dependencies**: 1.3
 
-- [ ] Checkpoint: run contract/settings tests, review diff, verify package scope
+- [x] Checkpoint: run contract/settings tests, review diff, verify package scope
 
 ## 2. Additive persistence foundation
 
