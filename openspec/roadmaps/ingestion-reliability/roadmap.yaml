@@ -85,20 +85,22 @@ items:
     - settings/notifications.yaml
 - item_id: stuck-content-sweeper
   title: Stuck-content sweeper and requeue CLI
-  status: approved
+  status: replan_required
   priority: 4
   effort: M
   depends_on: []
-  description: Periodic job resetting PROCESSING/PARSING rows older than a timeout
-    back to PARSED/PENDING and requeuing FAILED rows up to a retry budget (summarizer.py:90,276
-    never re-selects PROCESSING; queue/setup.py:590 fails jobs without resetting content
-    status). Add 'aca manage requeue-stuck'.
-  rationale: PROCESSING/PARSING are unrecoverable black holes; FAILED has no retry
-    path.
+  description: Superseded by ri-08 in roadmap-workflow-surface-reliability and
+    its persisted-owner design. Do not execute the former age-based direct-reset
+    plan; it cannot prove transition ownership or fence stale worker commits.
+  rationale: The original plan predated canonical durable operations. Safe recovery
+    now requires persisted content ownership, claim generations, guarded domain
+    writes, canonical retry budgets, dry-run, and protocol-gated apply.
   change_id: stuck-content-sweeper-and-requeue-cli
   acceptance_outcomes:
-  - Content rows stuck >1h in transitional states trend to zero automatically
-  - FAILED rows are retried up to a budget and then surfaced, not stranded
+  - Replan only from the authoritative workflow-surface-reliability RI-08 artifacts.
+  - Periodic automatic apply remains deferred until the later telemetry roadmap item.
+  failure_reason: Superseded by roadmap-workflow-surface-reliability/ri-08; direct
+    resets are unsafe.
   scope:
     write_allow:
     - src/queue/**

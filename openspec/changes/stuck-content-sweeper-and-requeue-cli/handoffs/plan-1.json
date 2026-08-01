@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-08-01T21:39:50.772970+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Planned a bounded, dry-run-first reconciliation surface backed by exact operation-attempt ownership. The selected design adds durable claim fencing, provenance-gated projection, atomic retry budgets, append-only action evidence, and authenticated API/CLI controls.",
+    "completed_work": [],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Persist transition ownership at supported writes",
+        "rationale": "Payload association and timestamps cannot prove which attempt owns current Content state.",
+        "capability": "job-management",
+        "supersedes": null
+      },
+      {
+        "title": "Fence every claim with a database generation",
+        "rationale": "Late workers must be unable to write lifecycle or domain state after reclaim.",
+        "capability": "job-management",
+        "supersedes": null
+      },
+      {
+        "title": "Keep reconciliation bounded and explicit",
+        "rationale": "One-page dry-run/apply controls make rollout observable and avoid an unsafe automatic sweeper.",
+        "capability": "agentic-operations",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Implement work packages in dependency order, beginning with contracts and additive persistence."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/stuck-content-sweeper-and-requeue-cli/proposal.md",
+        "description": "approved scope and approach"
+      },
+      {
+        "path": "openspec/changes/stuck-content-sweeper-and-requeue-cli/design.md",
+        "description": "fencing, retry, and reconciliation decisions"
+      },
+      {
+        "path": "openspec/changes/stuck-content-sweeper-and-requeue-cli/work-packages.yaml",
+        "description": "validated implementation DAG"
+      }
+    ]
+  }
+}

@@ -61,14 +61,16 @@ currently-open browser only (`src/services/notification_service.py:141-154`).
 
 ### Job: Stuck-content sweeper and requeue
 
-Periodic job (reuse pgqueuer cron) that resets `PROCESSING`/`PARSING` rows older than a
-timeout back to `PARSED`/`PENDING` and requeues `FAILED` rows up to a retry budget
-(`summarizer.py:90,276` never re-selects `PROCESSING`; `queue/setup.py:590` fails jobs
-without resetting content status). Add `aca manage requeue-stuck`.
+This original age-based direct-reset design is superseded by RI-08 in
+`openspec/roadmaps/workflow-surface-reliability/roadmap.yaml` and
+`openspec/changes/stuck-content-sweeper-and-requeue-cli/design.md`. Reconciliation
+must use persisted transition ownership, claim generations, guarded domain writes,
+canonical retry budgets, dry-run, and protocol-gated apply. Do not implement
+`aca manage requeue-stuck` or direct time-based resets from this proposal.
 
 **Acceptance Outcomes:**
-- Content rows stuck >1h in transitional states trend to zero automatically.
-- FAILED rows are retried up to a budget and then surfaced, not stranded.
+- Replan only from the authoritative workflow-surface-reliability RI-08 artifacts.
+- Periodic automatic apply is deferred until telemetry consumes stable outcomes.
 
 ### Registry: Unified source registry for all pipeline drivers
 

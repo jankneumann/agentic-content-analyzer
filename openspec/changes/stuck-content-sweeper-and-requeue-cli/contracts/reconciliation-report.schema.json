@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-newsletter-aggregator.local/contracts/content-reconciliation.schema.json",
+  "title": "Content reconciliation wire contract",
+  "$defs": {
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apply": {"type": "boolean", "default": false},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+        "after_content_id": {"type": ["integer", "null"], "minimum": 1, "maximum": 9223372036854775807}
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "applied", "retried", "projected", "restored", "active", "locked",
+        "missing", "conflicted", "cancelled", "forced", "exhausted",
+        "incompatible", "failed"
+      ],
+      "properties": {
+        "applied": {"type": "integer", "minimum": 0, "maximum": 100},
+        "retried": {"type": "integer", "minimum": 0, "maximum": 100},
+        "projected": {"type": "integer", "minimum": 0, "maximum": 100},
+        "restored": {"type": "integer", "minimum": 0, "maximum": 100},
+        "active": {"type": "integer", "minimum": 0, "maximum": 100},
+        "locked": {"type": "integer", "minimum": 0, "maximum": 100},
+        "missing": {"type": "integer", "minimum": 0, "maximum": 100},
+        "conflicted": {"type": "integer", "minimum": 0, "maximum": 100},
+        "cancelled": {"type": "integer", "minimum": 0, "maximum": 100},
+        "forced": {"type": "integer", "minimum": 0, "maximum": 100},
+        "exhausted": {"type": "integer", "minimum": 0, "maximum": 100},
+        "incompatible": {"type": "integer", "minimum": 0, "maximum": 100},
+        "failed": {"type": "integer", "minimum": 0, "maximum": 100}
+      }
+    },
+    "content_status": {
+      "enum": ["pending", "parsing", "parsed", "processing", "completed", "failed", "filtered_out"]
+    },
+    "operation_status": {
+      "type": ["string", "null"],
+      "enum": ["queued", "in_progress", "completed", "failed", "cancelled", null]
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "content_id", "projection", "content_status_before", "content_status_after",
+        "operation_id", "claim_generation", "claim_protocol_version", "operation_status_before", "operation_status_after",
+        "retry_count_before", "retry_count_after", "phase", "action", "reason", "applied"
+      ],
+      "properties": {
+        "content_id": {"type": "integer", "minimum": 1, "maximum": 9223372036854775807},
+        "projection": {"enum": ["proposed", "observed"]},
+        "content_status_before": {"$ref": "#/$defs/content_status"},
+        "content_status_after": {"$ref": "#/$defs/content_status"},
+        "operation_id": {
+          "type": ["string", "null"],
+          "pattern": "^[1-9][0-9]{0,18}$",
+          "maxLength": 19
+        },
+        "claim_generation": {"type": ["integer", "null"], "minimum": 1, "maximum": 9223372036854775807},
+        "claim_protocol_version": {"type": ["integer", "null"], "minimum": 1, "maximum": 32767},
+        "operation_status_before": {"$ref": "#/$defs/operation_status"},
+        "operation_status_after": {"$ref": "#/$defs/operation_status"},
+        "retry_count_before": {"type": ["integer", "null"], "minimum": 0, "maximum": 2147483647},
+        "retry_count_after": {"type": ["integer", "null"], "minimum": 0, "maximum": 2147483647},
+        "phase": {"type": ["string", "null"], "enum": ["parsing", "processing", null]},
+        "action": {
+          "enum": [
+            "none", "retry_operation", "project_completed", "project_parsed",
+            "restore_parsed", "restore_pending", "cancel_restore_parsed",
+            "cancel_restore_pending"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "summary_exists", "extraction_completed", "completed_output_missing",
+            "output_owner_mismatch", "active_operation", "cancellation_pending",
+            "execution_locked", "cancellation_requested", "stale_operation",
+            "failed_operation", "retry_budget_exhausted", "forced_reprocessing",
+            "summarization_cancelled", "extraction_cancelled", "missing_operation",
+            "ownership_conflict", "incompatible_worker", "revalidation_conflict",
+            "apply_failed"
+          ]
+        },
+        "operation_heartbeat_at": {"type": ["string", "null"], "format": "date-time"},
+        "operation_completed_at": {"type": ["string", "null"], "format": "date-time"},
+        "applied": {"type": "boolean"}
+      }
+    },
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "mode", "scanned", "reported", "counts", "items"],
+      "properties": {
+        "run_id": {"type": "string", "format": "uuid"},
+        "mode": {"enum": ["dry_run", "apply"]},
+        "scanned": {"type": "integer", "minimum": 0, "maximum": 100},
+        "reported": {"type": "integer", "minimum": 0, "maximum": 100},
+        "next_after_content_id": {"type": ["integer", "null"], "minimum": 1, "maximum": 9223372036854775807},
+        "counts": {"$ref": "#/$defs/counts"},
+        "items": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {"$ref": "#/$defs/item"}
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/$defs/request"},
+    {"$ref": "#/$defs/report"}
+  ]
+}

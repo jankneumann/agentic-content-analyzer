@@ -1,0 +1,480 @@
+schema_version: 1
+
+feature:
+  id: stuck-content-sweeper-and-requeue-cli
+  title: Reconcile stuck content states
+  plan_revision: 3
+  created_by: codex
+  created_at: "2026-08-01T21:00:00Z"
+
+contracts:
+  revision: 3
+  openapi:
+    primary: openspec/contracts/content-workflows/openapi/v1.yaml
+    files:
+      - openspec/contracts/content-workflows/openapi/v1.yaml
+      - openspec/changes/stuck-content-sweeper-and-requeue-cli/contracts/reconciliation-report.schema.json
+  generated:
+    pydantic_dir: src/contracts
+    typescript_dir: web/src/generated
+
+defaults:
+  priority: 5
+  lock_ttl_minutes: 180
+  timeout_minutes: 180
+  retry_budget: 1
+  verification_tier_required: B
+  min_trust_level: 3
+
+packages:
+  - package_id: wp-contracts
+    title: Reconciliation wire contracts plus policy
+    task_type: implement
+    description: >-
+      Test and add the closed request/report schemas, generated models, and
+      default-off bounded reconciliation settings.
+    role: contract-engineer
+    priority: 1
+    depends_on: []
+    locks:
+      files:
+        - openspec/contracts/content-workflows/openapi/v1.yaml
+        - openspec/contracts/content-workflows/generated/models.py
+        - openspec/contracts/content-workflows/generated/types.ts
+        - src/contracts/workflow_models.py
+        - web/src/generated/workflow-contracts.ts
+        - src/config/settings.py
+      keys:
+        - contract:content-workflows:content-reconciliation
+        - env:content-reconciliation-policy
+      ttl_minutes: 180
+      reason: Canonical wire schema, generated output, and bounded policy ownership.
+    scope:
+      write_allow:
+        - openspec/contracts/content-workflows/openapi/v1.yaml
+        - openspec/contracts/content-workflows/generated/**
+        - openspec/changes/stuck-content-sweeper-and-requeue-cli/contracts/reconciliation-report.schema.json
+        - src/contracts/**
+        - web/src/generated/**
+        - scripts/generate_workflow_contracts.py
+        - src/config/settings.py
+        - tests/contract/test_canonical_workflow_contracts.py
+        - tests/config/test_settings.py
+      read_allow:
+        - src/**
+        - web/**
+        - tests/**
+        - openspec/**
+    worktree: { name: wp-contracts, mode: isolated }
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 3
+    metadata:
+      loc_estimate: 360
+      alternatives_count: 3
+      complexity: medium
+      package_kind: data_model
+    inputs:
+      tasks: ["1.1", "1.2", "1.3", "1.4"]
+    verification:
+      tier_required: B
+      steps:
+        - name: contract-drift
+          kind: command
+          command: make workflow-contracts-check
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [contract_valid, generated_models_current]
+        - name: contract-settings-tests
+          kind: command
+          command: .venv/bin/pytest tests/contract/test_canonical_workflow_contracts.py tests/config/test_settings.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, contract_valid, generated_models_current]
+
+  - package_id: wp-schema
+    title: Ownership and action-audit persistence
+    task_type: implement
+    description: >-
+      Add tested claim-generation, transition-owner, Summary-provenance, and
+      append-only action-audit persistence through Alembic, ORM, and bootstrap.
+    role: database-engineer
+    priority: 2
+    depends_on: [wp-contracts]
+    locks:
+      files:
+        - alembic/versions
+        - openspec/contracts/content-workflows/db/schema.sql
+        - src/models/content.py
+        - src/models/summary.py
+        - src/models/jobs.py
+        - src/queue/setup.py
+      keys:
+        - db:migration-slot
+        - db:schema:content_reconciliation_actions
+        - feature:content-reconciliation:ownership
+      ttl_minutes: 240
+      reason: Additive durable ownership and audit schema boundary.
+    scope:
+      write_allow:
+        - alembic/versions/**
+        - openspec/contracts/content-workflows/db/schema.sql
+        - openspec/changes/stuck-content-sweeper-and-requeue-cli/contracts/db/schema.sql
+        - src/models/content.py
+        - src/models/summary.py
+        - src/models/jobs.py
+        - src/models/content_reconciliation.py
+        - src/models/__init__.py
+        - src/queue/setup.py
+        - tests/migrations/**
+        - tests/test_models/**
+        - tests/test_queue/test_setup.py
+      read_allow:
+        - src/**
+        - alembic/**
+        - tests/**
+        - openspec/**
+    worktree: { name: wp-schema, mode: isolated }
+    timeout_minutes: 240
+    retry_budget: 1
+    min_trust_level: 4
+    metadata:
+      loc_estimate: 480
+      alternatives_count: 3
+      complexity: high
+      package_kind: migration
+    inputs:
+      tasks: ["2.1", "2.2"]
+    verification:
+      tier_required: A
+      steps:
+        - name: migration-bootstrap-tests
+          kind: command
+          command: .venv/bin/pytest tests/migrations tests/test_models tests/test_queue/test_setup.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count, upgrade_downgrade_cases, constraint_cases]
+    outputs:
+      result_keys: [files_modified, test_count, upgrade_downgrade_cases, constraint_cases]
+
+  - package_id: wp-fence
+    title: Generation-guarded content execution
+    task_type: implement
+    description: >-
+      Add claim contexts, generation-guarded queue writes, guarded URL/Summary
+      commits, and transaction advisory locking at the domain boundary.
+    role: concurrency-engineer
+    priority: 3
+    depends_on: [wp-retry]
+    locks:
+      files:
+        - src/queue/worker.py
+        - src/queue/execution_claim.py
+        - src/queue/workflow_handlers.py
+        - src/models/content.py
+        - src/services/url_extractor.py
+        - src/processors/summarizer.py
+        - src/ingestion/orchestrator.py
+      keys:
+        - feature:content-reconciliation:fence
+      ttl_minutes: 240
+      reason: Durable attempt fencing and supported transition ownership.
+    scope:
+      write_allow:
+        - src/queue/worker.py
+        - src/queue/execution_claim.py
+        - src/queue/content_execution_lock.py
+        - src/queue/workflow_handlers.py
+        - src/queue/setup.py
+        - src/models/content.py
+        - src/services/url_extractor.py
+        - src/processors/summarizer.py
+        - src/ingestion/orchestrator.py
+        - tests/queue/test_worker_extended.py
+        - tests/queue/test_operation_controls.py
+        - tests/integration/test_content_reconciliation_concurrency.py
+        - tests/integration/test_summarization_workflow.py
+        - tests/test_services/test_url_extractor.py
+        - tests/test_processors/test_summarizer.py
+        - tests/test_models/test_content.py
+      read_allow:
+        - src/**
+        - tests/**
+        - openspec/**
+    worktree: { name: wp-fence, mode: isolated }
+    timeout_minutes: 300
+    retry_budget: 1
+    min_trust_level: 4
+    metadata:
+      loc_estimate: 760
+      alternatives_count: 3
+      complexity: high
+      package_kind: algorithm
+    inputs:
+      tasks: ["3.3", "3.4", "3.5", "3.6", "3.7"]
+    verification:
+      tier_required: A
+      steps:
+        - name: fence-postgres-tests
+          kind: command
+          command: .venv/bin/pytest tests/integration/test_content_reconciliation_concurrency.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count, generation_races, superseded_commit_cases]
+        - name: writer-worker-tests
+          kind: command
+          command: .venv/bin/pytest tests/queue/test_worker_extended.py tests/queue/test_operation_controls.py tests/test_services/test_url_extractor.py tests/test_processors/test_summarizer.py tests/integration/test_summarization_workflow.py tests/test_models/test_content.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, test_count, generation_races, superseded_commit_cases]
+
+  - package_id: wp-retry
+    title: Generation-guarded operation lifecycle
+    task_type: implement
+    description: >-
+      Guard worker and OperationService lifecycle writes by generation, enforce
+      protocol reset behavior, then refactor retry around one locked
+      connection-scoped primitive with optional atomic reconciliation ceilings.
+    role: concurrency-engineer
+    priority: 3
+    depends_on: [wp-schema]
+    locks:
+      files:
+        - src/services/operation_service.py
+        - src/queue/worker.py
+        - src/queue/setup.py
+        - src/queue/execution_claim.py
+      keys:
+        - feature:operation-retry:budget
+      ttl_minutes: 180
+      reason: Canonical graph-lock, retry-count, and notification ownership.
+    scope:
+      write_allow:
+        - src/services/operation_service.py
+        - src/queue/worker.py
+        - src/queue/setup.py
+        - src/queue/execution_claim.py
+        - tests/queue/test_operation_service.py
+        - tests/queue/test_worker_extended.py
+        - tests/queue/test_operation_controls.py
+        - tests/test_queue/test_setup.py
+        - tests/integration/test_operation_retention.py
+      read_allow:
+        - src/**
+        - tests/**
+        - openspec/**
+    worktree: { name: wp-retry, mode: isolated }
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 4
+    metadata:
+      loc_estimate: 280
+      alternatives_count: 3
+      complexity: high
+      package_kind: algorithm
+    inputs:
+      tasks: ["3.1", "3.2", "4.1", "4.2"]
+    verification:
+      tier_required: A
+      steps:
+        - name: retry-retention-tests
+          kind: command
+          command: .venv/bin/pytest tests/queue/test_operation_service.py tests/queue/test_worker_extended.py tests/queue/test_operation_controls.py tests/test_queue/test_setup.py tests/integration/test_operation_retention.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count, budget_races, lock_order_cases]
+    outputs:
+      result_keys: [files_modified, test_count, budget_races, lock_order_cases]
+
+  - package_id: wp-reconciliation
+    title: Bounded reconciliation engine
+    task_type: implement
+    description: >-
+      Implement exact-owner classification, pure keyset dry-run, one-connection
+      protocol-gated apply, atomic action audits, and measured candidate indexes.
+    role: backend-engineer
+    priority: 4
+    depends_on: [wp-fence, wp-retry]
+    locks:
+      files:
+        - src/services/content_reconciliation_service.py
+        - alembic/versions
+      keys:
+        - db:migration-slot
+        - feature:content-reconciliation:apply
+        - feature:content-reconciliation:index
+      ttl_minutes: 300
+      reason: Reconciliation rules, mutations, audits, and query-plan ownership.
+    scope:
+      write_allow:
+        - src/services/content_reconciliation_service.py
+        - alembic/versions/**
+        - tests/services/test_content_reconciliation_service.py
+        - tests/integration/test_content_reconciliation.py
+        - tests/integration/test_content_reconciliation_query_plan.py
+      read_allow:
+        - src/**
+        - alembic/**
+        - tests/**
+        - openspec/**
+    worktree: { name: wp-reconciliation, mode: isolated }
+    timeout_minutes: 300
+    retry_budget: 1
+    min_trust_level: 4
+    metadata:
+      loc_estimate: 760
+      alternatives_count: 3
+      complexity: high
+      package_kind: algorithm
+    inputs:
+      tasks: ["5.1", "5.2", "5.3", "5.4", "5.5", "5.6", "5.7"]
+    verification:
+      tier_required: A
+      steps:
+        - name: reconciliation-postgres-tests
+          kind: command
+          command: .venv/bin/pytest tests/integration/test_content_reconciliation.py tests/integration/test_content_reconciliation_query_plan.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count, query_plan, idempotency_cases, audit_rollback_cases]
+        - name: reconciliation-unit-tests
+          kind: command
+          command: .venv/bin/pytest tests/services/test_content_reconciliation_service.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, test_count, query_plan, idempotency_cases]
+
+  - package_id: wp-surfaces
+    title: Authenticated API plus remote CLI
+    task_type: implement
+    description: >-
+      Expose one bounded report through authenticated audited operation routes,
+      WorkflowApiClient, and the dry-run-by-default operations CLI.
+    role: api-engineer
+    priority: 5
+    depends_on: [wp-reconciliation]
+    locks:
+      files:
+        - src/api/operation_routes.py
+        - src/clients/workflow_api_client.py
+        - src/cli/workflow_commands.py
+      keys:
+        - api:POST /api/v1/operations/reconcile-content
+        - feature:content-reconciliation:cli
+      ttl_minutes: 180
+      reason: Canonical remote surface and CLI transport ownership.
+    scope:
+      write_allow:
+        - src/api/operation_routes.py
+        - src/api/workflow_dependencies.py
+        - src/clients/workflow_api_client.py
+        - src/cli/workflow_commands.py
+        - tests/api/test_canonical_workflow_api.py
+        - tests/clients/test_workflow_api_client.py
+        - tests/cli/test_canonical_workflows.py
+      read_allow:
+        - src/**
+        - tests/**
+        - openspec/**
+    worktree: { name: wp-surfaces, mode: isolated }
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 3
+    metadata:
+      loc_estimate: 380
+      alternatives_count: 3
+      complexity: medium
+      package_kind: integration
+    inputs:
+      tasks: ["6.1", "6.2", "6.3", "6.4"]
+    verification:
+      tier_required: B
+      steps:
+        - name: surface-tests
+          kind: command
+          command: .venv/bin/pytest tests/api/test_canonical_workflow_api.py tests/clients/test_workflow_api_client.py tests/cli/test_canonical_workflows.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count, auth_cases, exit_policy_cases]
+    outputs:
+      result_keys: [files_modified, test_count, auth_cases, exit_policy_cases]
+
+  - package_id: wp-integration
+    title: Evaluation documentation validation
+    task_type: integration
+    description: >-
+      Add CLI evaluation, operator guidance, canonical reconciliation notes, and
+      complete quality plus independent review evidence.
+    role: integration-engineer
+    priority: 6
+    depends_on: [wp-surfaces]
+    locks:
+      files:
+        - docs/DEVELOPMENT.md
+        - docs/ARCHITECTURE.md
+        - evaluation/descriptors/aca-cli.yaml
+        - tests/integration/test_content_reconciliation_url_resume.py
+      keys:
+        - feature:content-reconciliation:integration
+      ttl_minutes: 180
+      reason: Final documentation, evaluation, and validation ownership.
+    scope:
+      write_allow:
+        - docs/DEVELOPMENT.md
+        - docs/ARCHITECTURE.md
+        - evaluation/descriptors/aca-cli.yaml
+        - evaluation/scenarios/**
+        - tests/cli_gen_eval/**
+        - tests/fixtures/gen_eval/**
+        - tests/integration/test_content_reconciliation_url_resume.py
+        - openspec/specs/agentic-operations/spec.md
+        - openspec/specs/job-management/spec.md
+        - openspec/specs/cli-interface/spec.md
+        - openspec/changes/stuck-content-sweeper-and-requeue-cli/**
+      read_allow:
+        - "**"
+    worktree: { name: wp-integration, mode: isolated }
+    timeout_minutes: 240
+    retry_budget: 1
+    min_trust_level: 3
+    metadata:
+      loc_estimate: 320
+      alternatives_count: 3
+      complexity: medium
+      package_kind: integration
+    inputs:
+      tasks: ["7.1", "7.2", "7.3", "7.4", "7.5"]
+    verification:
+      tier_required: A
+      steps:
+        - name: openspec-strict
+          kind: command
+          command: openspec validate stuck-content-sweeper-and-requeue-cli --strict
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [openspec_valid]
+        - name: full-quality-gate
+          kind: command
+          command: .venv/bin/pytest tests/ --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count, baseline_failures]
+    outputs:
+      result_keys: [files_modified, openspec_valid, test_count, review_findings]
