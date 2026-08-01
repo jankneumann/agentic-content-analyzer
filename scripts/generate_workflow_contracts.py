@@ -85,6 +85,8 @@ def _python_type(schema: dict[str, Any], *, field_name: str | None = None) -> st
             return "datetime"
         if schema.get("format") == "uri":
             return "AnyUrl"
+        if schema.get("format") == "uuid":
+            return "UUID"
         return "str"
     if schema_type == "integer":
         return "int"
@@ -110,6 +112,7 @@ def _python_default(schema: dict[str, Any], *, required: bool) -> tuple[str, lis
         ("maxLength", "max_length"),
         ("minItems", "min_length"),
         ("maxItems", "max_length"),
+        ("pattern", "pattern"),
     ):
         if source in schema:
             constraints.append(f"{target}={schema[source]!r}")
@@ -164,6 +167,7 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
         "",
         "from datetime import datetime",
         "from typing import Annotated, Any, Literal",
+        "from uuid import UUID",
         "",
         "from pydantic import AnyUrl, BaseModel, ConfigDict, Field",
         "",
