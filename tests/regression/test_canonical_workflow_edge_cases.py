@@ -64,9 +64,18 @@ def _job(
 
 class _MutationConnection:
     def __init__(self, returned: JobRecord) -> None:
+        class _Transaction:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return None
+
         self.returned = returned
         self.fetchrow = AsyncMock(side_effect=self._fetchrow)
+        self.fetchval = AsyncMock(side_effect=[returned.id, None, returned.id, returned.id])
         self.execute = AsyncMock(return_value="SELECT 1")
+        self.transaction = lambda: _Transaction()
 
     async def _fetchrow(self, query: str, *_args):
         job = self.returned

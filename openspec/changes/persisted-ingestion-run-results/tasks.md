@@ -6,10 +6,10 @@
 ## Status
 
 - [x] Planning
-- [ ] Implementation
-- [ ] Testing
-- [ ] Review
-- [ ] Done
+- [x] Implementation
+- [x] Testing
+- [x] Review
+- [x] Done
 
 ## Phase 1 — Contract reconciliation
 
@@ -181,9 +181,9 @@
   **Spec scenarios:** canonical history parity, tolerated partial pipeline
   **Design decisions:** D4, D5
   **Dependencies:** 4.6 — **Size: S**
-- [ ] 6.3 Run strict OpenSpec validation, contract drift, focused tests, full
+- [x] 6.3 Run strict OpenSpec validation, contract drift, focused tests, full
   default tests, lint, type checks, and implementation/security review.
   **Dependencies:** all — **Size: S**
-- [ ] Checkpoint: review the complete diff, confirm every file maps to a task,
+- [x] Checkpoint: review the complete diff, confirm every file maps to a task,
   verify no telemetry sink, content reconciliation, or second run model
   entered scope.

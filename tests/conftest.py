@@ -66,6 +66,15 @@ def isolate_environment():
     """
     # Snapshot current environment
     original_env = os.environ.copy()
+    # Production-mode API tests exercise unrelated auth and error paths. Supply
+    # the dedicated opaque-source signing secret by default so the deployed
+    # settings invariant does not prevent those fixtures from starting. Tests
+    # for fail-closed secret handling pass an explicit ``None`` and remain
+    # independent of this harness default.
+    os.environ.setdefault(
+        "CONFIGURED_SOURCE_KEY_SECRET",
+        "configured-source-key-secret-for-test-harness",
+    )
 
     yield
 

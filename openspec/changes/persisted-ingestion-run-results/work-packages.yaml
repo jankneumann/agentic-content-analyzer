@@ -534,6 +534,8 @@ packages:
         - evaluation/descriptors/aca-cli.yaml
         - tests/fixtures/gen_eval/expectation-full-pass.json
         - tests/fixtures/gen_eval/report-full-pass.json
+        - tests/conftest.py
+        - tests/regression/test_canonical_workflow_edge_cases.py
         - openspec/specs/agentic-operations/spec.md
         - openspec/specs/pipeline/spec.md
         - openspec/specs/cli-interface/spec.md
@@ -552,6 +554,8 @@ packages:
         - tests/cli_gen_eval/**
         - tests/fixtures/gen_eval/expectation-full-pass.json
         - tests/fixtures/gen_eval/report-full-pass.json
+        - tests/conftest.py
+        - tests/regression/test_canonical_workflow_edge_cases.py
         - openspec/specs/agentic-operations/spec.md
         - openspec/specs/pipeline/spec.md
         - openspec/specs/cli-interface/spec.md
