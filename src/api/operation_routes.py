@@ -7,11 +7,13 @@ import json
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
+from src.api.middleware.audit import audited
 from src.api.workflow_dependencies import (
     get_capability_service,
+    get_content_reconciliation_service,
     get_operation_service,
     get_sources_config,
 )
@@ -19,11 +21,18 @@ from src.config.sources import SourcesConfig
 from src.contracts.workflow_models import (
     CapabilityDocument,
     ConfiguredSourcePage,
+    ContentReconciliationReport,
+    ContentReconciliationRequest,
     OperationHandle,
     OperationPage,
+    Problem,
 )
 from src.models.jobs import OperationStatus
 from src.services.capability_service import CapabilityService
+from src.services.content_reconciliation_service import (
+    ContentReconciliationApplyDisabledError,
+    ContentReconciliationService,
+)
 from src.services.operation_service import OperationService
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
@@ -57,6 +66,47 @@ async def list_operations(
 ) -> OperationPage:
     page = await service.list(limit=limit, cursor=cursor, status=status)
     return OperationPage.model_validate(page.model_dump(mode="json"))
+
+
+@router.post(
+    "/operations/reconcile-content",
+    response_model=ContentReconciliationReport,
+    responses={
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "description": "Reconciliation apply is disabled by server policy",
+            "content": {"application/problem+json": {"schema": Problem.model_json_schema()}},
+        }
+    },
+)
+@audited(operation="operations.reconcile_content")
+async def reconcile_content(
+    body: ContentReconciliationRequest,
+    request: Request,
+    service: ContentReconciliationService = Depends(get_content_reconciliation_service),
+) -> ContentReconciliationReport:
+    """Preview or apply exactly one bounded reconciliation page."""
+    request.state.audit_notes = {"mode": "apply" if body.apply else "dry_run"}
+    try:
+        report = await service.reconcile(body)
+    except ContentReconciliationApplyDisabledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Content reconciliation apply is disabled",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid reconciliation request",
+        ) from exc
+    request.state.audit_notes.update(
+        {
+            "run_id": str(report.run_id),
+            "scanned": report.scanned,
+            "reported": report.reported,
+            "counts": report.counts.model_dump(mode="json"),
+        }
+    )
+    return report
 
 
 @router.get("/operations/{operation_id}", response_model=OperationHandle)

@@ -17,6 +17,8 @@ from src.contracts.workflow_models import (
     AudioDigestRequest,
     CapabilityDocument,
     ConfiguredSourcePage,
+    ContentReconciliationReport,
+    ContentReconciliationRequest,
     DigestCreateRequest,
     IngestCommand,
     IngestionHistoryItem,
@@ -244,6 +246,22 @@ class WorkflowApiClient:
             params=params,
         )
         return self._decode(response, OperationPage)
+
+    def reconcile_content(
+        self,
+        request: ContentReconciliationRequest | Mapping[str, Any],
+    ) -> ContentReconciliationReport:
+        """Preview or apply exactly one bounded reconciliation page."""
+        validated = (
+            request
+            if isinstance(request, ContentReconciliationRequest)
+            else ContentReconciliationRequest.model_validate(request)
+        )
+        response = self._client.post(
+            "/api/v1/operations/reconcile-content",
+            json=validated.model_dump(mode="json", exclude_none=True),
+        )
+        return self._decode(response, ContentReconciliationReport)
 
     def collect_operations(
         self,

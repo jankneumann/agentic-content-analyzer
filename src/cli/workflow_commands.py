@@ -20,6 +20,7 @@ from rich.table import Table
 from src.clients.workflow_api_client import ProblemError, WorkflowApiClient
 from src.contracts.workflow_models import (
     COMMAND_FIELD_SCHEMAS,
+    ContentReconciliationRequest,
     IngestionHistoryItem,
     IngestionOutcome,
     OperationHandle,
@@ -628,6 +629,31 @@ def operations_list(
 @operations_app.command("get")
 def operations_get(ctx: typer.Context, operation_id: str) -> None:
     _emit_model(ctx, _run(ctx, lambda client: client.get_operation(operation_id)))
+
+
+@operations_app.command("reconcile-content")
+def operations_reconcile_content(
+    ctx: typer.Context,
+    apply_changes: Annotated[
+        bool,
+        typer.Option("--apply", help="Apply guarded repairs instead of previewing them."),
+    ] = False,
+    limit: Annotated[int | None, typer.Option("--limit", min=1, max=100)] = None,
+    after_content_id: Annotated[
+        int | None,
+        typer.Option("--after-content-id", min=1),
+    ] = None,
+) -> None:
+    """Preview or apply one bounded reconciliation page remotely."""
+    request = ContentReconciliationRequest(
+        apply=apply_changes,
+        limit=limit,
+        after_content_id=after_content_id,
+    )
+    report = _run(ctx, lambda client: client.reconcile_content(request))
+    _emit_model(ctx, report)
+    if apply_changes and any(item.reason == "apply_failed" for item in report.items):
+        raise typer.Exit(1)
 
 
 @operations_app.command("wait")

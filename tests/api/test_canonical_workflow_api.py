@@ -1,19 +1,25 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
 
 from src.api.app import app
 from src.api.workflow_dependencies import (
+    get_content_reconciliation_service,
     get_operation_service,
     get_sources_config,
     get_upload_service,
 )
 from src.config.sources import GmailSource, SourcesConfig
 from src.contracts.workflow_models import (
+    ContentReconciliationCounts,
+    ContentReconciliationReport,
     IngestionHistoryItem,
     IngestionHistoryPage,
     OperationHandle,
@@ -22,6 +28,9 @@ from src.contracts.workflow_models import (
     UploadReference,
 )
 from src.models.jobs import OperationEvent, OperationType
+from src.services.content_reconciliation_service import (
+    ContentReconciliationApplyDisabledError,
+)
 from src.services.operation_service import OperationConflictError, OperationNotFoundError
 
 
@@ -63,6 +72,32 @@ def _history_page() -> IngestionHistoryPage:
             )
         ],
         next_cursor="signed-next",
+    )
+
+
+def _reconciliation_report(*, mode: str = "dry_run") -> ContentReconciliationReport:
+    return ContentReconciliationReport(
+        run_id=UUID("00000000-0000-4000-8000-000000000061"),
+        mode=mode,
+        scanned=0,
+        reported=0,
+        next_after_content_id=84,
+        counts=ContentReconciliationCounts(
+            applied=0,
+            retried=0,
+            projected=0,
+            restored=0,
+            active=0,
+            locked=0,
+            missing=0,
+            conflicted=0,
+            cancelled=0,
+            forced=0,
+            exhausted=0,
+            incompatible=0,
+            failed=0,
+        ),
+        items=[],
     )
 
 
@@ -135,6 +170,159 @@ def test_operation_status_wait_list_controls_and_sse(
     assert events.headers["content-type"].startswith("text/event-stream")
     assert "id: 41:4" in events.text
     assert '"schema_version":2' in events.text
+
+
+def test_content_reconciliation_defaults_to_one_bounded_audited_preview(
+    canonical_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = AsyncMock()
+    service.reconcile.return_value = _reconciliation_report()
+    app.dependency_overrides[get_content_reconciliation_service] = lambda: service
+    audit_rows: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "src.api.middleware.audit._default_writer",
+        lambda **kwargs: audit_rows.append(kwargs),
+    )
+
+    response = canonical_client.post("/api/v1/operations/reconcile-content", json={})
+
+    assert response.status_code == 200
+    assert response.json() == _reconciliation_report().model_dump(mode="json")
+    request = service.reconcile.await_args.args[0]
+    assert request.model_dump(mode="json") == {
+        "apply": False,
+        "limit": None,
+        "after_content_id": None,
+    }
+    assert audit_rows[-1]["operation"] == "operations.reconcile_content"
+    assert audit_rows[-1]["notes"] == {
+        "mode": "dry_run",
+        "run_id": "00000000-0000-4000-8000-000000000061",
+        "scanned": 0,
+        "reported": 0,
+        "counts": _reconciliation_report().counts.model_dump(mode="json"),
+    }
+
+
+def test_content_reconciliation_disabled_apply_is_503_problem(
+    canonical_client: TestClient,
+) -> None:
+    service = AsyncMock()
+    service.reconcile.side_effect = ContentReconciliationApplyDisabledError(
+        "Content reconciliation apply is disabled"
+    )
+    app.dependency_overrides[get_content_reconciliation_service] = lambda: service
+
+    response = canonical_client.post(
+        "/api/v1/operations/reconcile-content",
+        json={"apply": True, "limit": 10, "after_content_id": 84},
+    )
+
+    assert response.status_code == 503
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["detail"] == "Content reconciliation apply is disabled"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"limit": 0},
+        {"limit": 101},
+        {"after_content_id": 0},
+        {"unexpected": True},
+    ],
+)
+def test_content_reconciliation_rejects_invalid_requests_without_calling_service(
+    canonical_client: TestClient,
+    payload: dict[str, object],
+) -> None:
+    service = AsyncMock()
+    app.dependency_overrides[get_content_reconciliation_service] = lambda: service
+
+    response = canonical_client.post(
+        "/api/v1/operations/reconcile-content",
+        json=payload,
+    )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith("application/problem+json")
+    service.reconcile.assert_not_awaited()
+
+
+def test_content_reconciliation_inherits_canonical_authorization(monkeypatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("APP_SECRET_KEY", "")
+    monkeypatch.setenv("ADMIN_API_KEY", "reconciliation-admin-key-that-is-long-enough")
+    monkeypatch.setenv("CONFIGURED_SOURCE_KEY_SECRET", "configured-source-key-secret-for-tests")
+    monkeypatch.setenv("WORKER_ENABLED", "false")
+    from src.config.settings import get_settings
+
+    get_settings.cache_clear()
+    service = AsyncMock()
+    service.reconcile.return_value = _reconciliation_report()
+    app.dependency_overrides[get_content_reconciliation_service] = lambda: service
+    try:
+        with TestClient(app) as client:
+            missing = client.post("/api/v1/operations/reconcile-content", json={})
+            invalid = client.post(
+                "/api/v1/operations/reconcile-content",
+                json={},
+                headers={"X-Admin-Key": "invalid"},
+            )
+            accepted = client.post(
+                "/api/v1/operations/reconcile-content",
+                json={},
+                headers={"X-Admin-Key": "reconciliation-admin-key-that-is-long-enough"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+    assert missing.status_code == 401
+    assert invalid.status_code == 403
+    assert accepted.status_code == 200
+    service.reconcile.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_content_reconciliation_dependency_uses_one_supplied_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = AsyncMock()
+    context_exited = False
+
+    @asynccontextmanager
+    async def one_connection():
+        nonlocal context_exited
+        try:
+            yield connection
+        finally:
+            context_exited = True
+
+    settings = SimpleNamespace(
+        content_reconciliation_stale_seconds=120,
+        content_reconciliation_max_retries=4,
+        content_reconciliation_batch_size=25,
+        content_reconciliation_lock_timeout_ms=100,
+        content_reconciliation_statement_timeout_ms=1000,
+        content_reconciliation_apply_enabled=True,
+    )
+    monkeypatch.setattr(
+        "src.api.workflow_dependencies.queue_setup._queue_connection",
+        one_connection,
+    )
+    monkeypatch.setattr("src.api.workflow_dependencies.get_settings", lambda: settings)
+
+    dependency = get_content_reconciliation_service()
+    service = await anext(dependency)
+    assert service._connection is connection
+    assert service._stale_seconds == 120
+    assert service._batch_size == 25
+    assert service._apply_enabled is True
+    await dependency.aclose()
+
+    assert context_exited is True
 
 
 def test_operation_list_rows_are_summary_only_but_exact_reads_stay_full(

@@ -104,20 +104,20 @@
 
 ## 6. Canonical API plus CLI
 
-- [ ] 6.1 [S] Write API tests covering authentication, validation, default preview, disabled apply, bounded reports, request audit notes
+- [x] 6.1 [S] Write API tests covering authentication, validation, default preview, disabled apply, bounded reports, request audit notes
   **Spec scenarios**: all scenarios under Stale apply is locked and protocol-gated; Canonical remote controls expose reconciliation
   **Contracts**: canonical content-workflow OpenAPI
   **Dependencies**: 1.2, 5.5
-- [ ] 6.2 [S] Add the authenticated audited reconciliation endpoint
+- [x] 6.2 [S] Add the authenticated audited reconciliation endpoint
   **Dependencies**: 6.1
-- [ ] 6.3 [S] Write client/CLI tests covering one-page transport, apply, continuation, safe JSON, exact exit policy
+- [x] 6.3 [S] Write client/CLI tests covering one-page transport, apply, continuation, safe JSON, exact exit policy
   **Spec scenarios**: CLI pagination is requested; Default CLI invocation previews; CLI apply contains item failures
   **Contracts**: canonical content-workflow OpenAPI
   **Dependencies**: 6.2
-- [ ] 6.4 [S] Add WorkflowApiClient reconciliation plus the operations CLI command
+- [x] 6.4 [S] Add WorkflowApiClient reconciliation plus the operations CLI command
   **Dependencies**: 6.3
 
-- [ ] Checkpoint: run API/client/CLI tests, verify remote-only behavior, inspect problem responses
+- [x] Checkpoint: run API/client/CLI tests, verify remote-only behavior, inspect problem responses
 
 ## 7. Integration evidence
 

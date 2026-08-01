@@ -22,6 +22,8 @@ from src.contracts.workflow_models import (
     COMMAND_FIELD_SCHEMAS,
     CapabilityDocument,
     ConfiguredSourcePage,
+    ContentReconciliationReport,
+    ContentReconciliationRequest,
     IngestCommand,
     IngestionHistoryItem,
     IngestionHistoryPage,
@@ -35,15 +37,15 @@ from src.contracts.workflow_models import (
 
 def _handle(operation_type: str = "ingestion.execute", status: str = "queued") -> OperationHandle:
     return OperationHandle(
-        operation_id="op-1",
+        operation_id="1",
         operation_type=operation_type,
         status=status,
         progress=0,
         message=status,
         cancellable=True,
         retry_count=0,
-        status_url="/api/v1/operations/op-1",
-        events_url="/api/v1/operations/op-1/events",
+        status_url="/api/v1/operations/1",
+        events_url="/api/v1/operations/1/events",
         created_at=datetime.now(UTC),
     )
 
@@ -86,6 +88,58 @@ def _history_item() -> IngestionHistoryItem:
     )
 
 
+def _reconciliation_report(
+    *,
+    mode: str = "dry_run",
+    reason: str = "missing_operation",
+) -> ContentReconciliationReport:
+    return ContentReconciliationReport.model_validate(
+        {
+            "run_id": "00000000-0000-4000-8000-000000000061",
+            "mode": mode,
+            "scanned": 1,
+            "reported": 1,
+            "next_after_content_id": 84,
+            "counts": {
+                "applied": 0,
+                "retried": 0,
+                "projected": 0,
+                "restored": 0,
+                "active": 0,
+                "locked": int(reason == "execution_locked"),
+                "missing": int(reason == "missing_operation"),
+                "conflicted": 0,
+                "cancelled": 0,
+                "forced": 0,
+                "exhausted": int(reason == "retry_budget_exhausted"),
+                "incompatible": 0,
+                "failed": int(reason == "apply_failed"),
+            },
+            "items": [
+                {
+                    "content_id": 84,
+                    "projection": "proposed" if mode == "dry_run" else "observed",
+                    "content_status_before": "processing",
+                    "content_status_after": "processing",
+                    "operation_id": None,
+                    "claim_generation": None,
+                    "claim_protocol_version": None,
+                    "operation_status_before": None,
+                    "operation_status_after": None,
+                    "retry_count_before": None,
+                    "retry_count_after": None,
+                    "phase": "processing",
+                    "action": "none",
+                    "reason": reason,
+                    "operation_heartbeat_at": None,
+                    "operation_completed_at": None,
+                    "applied": False,
+                }
+            ],
+        }
+    )
+
+
 class FakeClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, Any, str | None]] = []
@@ -95,6 +149,8 @@ class FakeClient:
         self.operation_statuses: list[str | None] = []
         self.history_calls: list[dict[str, Any]] = []
         self.history_pages_requested: int | None = None
+        self.reconciliation_requests: list[ContentReconciliationRequest] = []
+        self.reconciliation_result = _reconciliation_report()
 
     def __enter__(self) -> FakeClient:
         return self
@@ -186,6 +242,13 @@ class FakeClient:
 
     def cancel_operation(self, operation_id: str) -> OperationHandle:
         return _handle(status="cancelled")
+
+    def reconcile_content(
+        self,
+        request: ContentReconciliationRequest,
+    ) -> ContentReconciliationReport:
+        self.reconciliation_requests.append(request)
+        return self.reconciliation_result
 
 
 @pytest.fixture
@@ -490,6 +553,92 @@ def test_operation_controls_emit_structured_json(
     assert json.loads(result.stdout)
 
 
+def test_reconcile_content_defaults_to_one_dry_run_page(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+
+    result = runner.invoke(app, ["operations", "reconcile-content"])
+
+    assert result.exit_code == 0, result.output
+    assert len(client.reconciliation_requests) == 1
+    assert client.reconciliation_requests[0] == ContentReconciliationRequest(apply=False)
+    assert "missing_operation" in result.stdout
+    assert "84" in result.stdout
+
+
+def test_reconcile_content_forwards_apply_limit_and_continuation_once(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+    client.reconciliation_result = _reconciliation_report(mode="apply")
+
+    result = runner.invoke(
+        app,
+        [
+            "operations",
+            "reconcile-content",
+            "--apply",
+            "--limit",
+            "7",
+            "--after-content-id",
+            "84",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert client.reconciliation_requests == [
+        ContentReconciliationRequest(apply=True, limit=7, after_content_id=84)
+    ]
+
+
+def test_reconcile_content_json_is_one_safe_bounded_document(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+
+    result = runner.invoke(app, ["--json", "operations", "reconcile-content"])
+
+    assert result.exit_code == 0, result.output
+    document = json.loads(result.stdout)
+    assert document == client.reconciliation_result.model_dump(mode="json", exclude_none=True)
+    assert result.stdout.count("\n") == 1
+    assert result.stderr == ""
+    assert {"payload", "error", "traceback", "worker_id"}.isdisjoint(document["items"][0])
+
+
+def test_reconcile_content_apply_failed_renders_report_and_exits_nonzero(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+    client.reconciliation_result = _reconciliation_report(
+        mode="apply",
+        reason="apply_failed",
+    )
+
+    result = runner.invoke(
+        app,
+        ["--json", "operations", "reconcile-content", "--apply"],
+    )
+
+    assert result.exit_code == 1
+    assert json.loads(result.stdout)["items"][0]["reason"] == "apply_failed"
+    assert result.stderr == ""
+
+
+@pytest.mark.parametrize("reason", ["execution_locked", "retry_budget_exhausted"])
+def test_reconcile_content_apply_fail_closed_noops_exit_zero(
+    cli: tuple[CliRunner, FakeClient],
+    reason: str,
+) -> None:
+    runner, client = cli
+    client.reconciliation_result = _reconciliation_report(mode="apply", reason=reason)
+
+    result = runner.invoke(app, ["operations", "reconcile-content", "--apply"])
+
+    assert result.exit_code == 0, result.output
+
+
 def test_operations_all_is_bounded_and_json_signals_truncation(
     cli: tuple[CliRunner, FakeClient],
 ) -> None:
@@ -501,7 +650,7 @@ def test_operations_all_is_bounded_and_json_signals_truncation(
     document = json.loads(result.stdout)
     assert document["next_cursor"] == "continue-here"
     assert document["truncated"] is True
-    assert [item["operation_id"] for item in document["data"]] == ["op-1"]
+    assert [item["operation_id"] for item in document["data"]] == ["1"]
     assert {"result", "resource", "problem"}.isdisjoint(document["data"][0])
     assert client.operation_pages_requested == 3
     assert result.stderr == ""
