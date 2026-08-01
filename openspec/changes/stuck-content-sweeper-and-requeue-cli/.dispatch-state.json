@@ -1,0 +1,7 @@
+{
+  "change_id": "stuck-content-sweeper-and-requeue-cli",
+  "validator_vendors": [],
+  "worker_vendors": [
+    "codex"
+  ]
+}
