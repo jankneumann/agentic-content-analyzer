@@ -1,0 +1,44 @@
+# Category: workflow-submission — MUTATING. Runs only through the separately guarded
+# staging/ephemeral dispatch; the default PR selection cannot include this category.
+#
+# Target prerequisite: the protected gen-eval target enables a scheduled Gmail fixture
+# whose mailbox has no messages in this historical window. This is target fixture data,
+# not a repository or production assumption.
+
+id: workflow-submission-pipeline-zero-items
+name: aca pipeline run reports a successful zero-item ingestion stage
+description: >
+  Runs a guarded pipeline against the staging empty-mailbox fixture. A source that
+  succeeds with no items is a domain `zero_items` outcome, not a source failure: the
+  waiting CLI exits zero and prints the informational human summary. Keeping this in
+  workflow-submission makes the scenario impossible to select in the default PR run.
+category: workflow-submission
+priority: 1
+interfaces:
+  - "cli:pipeline"
+tags:
+  - mutating
+  - requires-target
+  - requires-seeded-zero-item-source
+steps:
+  - id: pipeline-zero-items-human
+    transport: cli
+    command: pipeline
+    args:
+      - run
+      - "--period"
+      - daily
+      - "--period-start"
+      - "2000-01-01T00:00:00Z"
+      - "--period-end"
+      - "2000-01-02T00:00:00Z"
+      - "--source"
+      - gmail
+      - "--wait"
+      - "--timeout"
+      - "300"
+      - "--idempotency-key"
+      - aca-gen-eval-pipeline-zero-items
+    expect:
+      exit_code: 0
+      error_contains: "Pipeline ingestion completed with zero items."

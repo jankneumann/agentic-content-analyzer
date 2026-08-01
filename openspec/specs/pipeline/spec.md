@@ -209,3 +209,30 @@ The pipeline SHALL resolve one canonical summarized content set after summarizat
 - **WHEN** a source-filtered pipeline completes
 - **THEN** its digest source IDs and count match the pipeline resolved content set
 - **AND** theme analysis does not include content from unrequested sources
+
+### Requirement: Pipeline ingestion outcomes are explicit
+
+Every terminal pipeline result SHALL include a bounded
+`result.ingestion_summary` derived from the authoritative source-child
+operations. Lifecycle failure takes precedence; otherwise child domain outcomes
+SHALL classify the ingestion stage as `success`, `zero_items`, `partial`, or
+`unknown` without discarding per-source operation identity.
+
+#### Scenario: Pipeline has mixed source outcomes
+- **WHEN** completed source children include success or zero items plus a partial, failed, or cancelled outcome
+- **THEN** the pipeline ingestion outcome is `partial`
+- **AND** each bounded source summary retains its operation ID, command, lifecycle, outcome, and counts
+
+#### Scenario: Pipeline has no ingested items
+- **WHEN** the pipeline has no source children or every source outcome is `zero_items`
+- **THEN** the pipeline ingestion outcome is `zero_items`
+- **AND** it is not classified as a source failure
+
+#### Scenario: Source continuation is disabled
+- **WHEN** any source is partial or failed and `continue_on_source_error` is false
+- **THEN** the pipeline operation fails
+- **AND** its waiting interface reports a nonzero result
+
+#### Scenario: Legacy child result lacks domain evidence
+- **WHEN** a completed source child has no typed result from which to recover its outcome
+- **THEN** that child and the aggregate are `unknown` unless stronger lifecycle evidence applies

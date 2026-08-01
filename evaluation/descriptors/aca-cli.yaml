@@ -134,6 +134,7 @@ services:
           - blog
           - files
           - gmail
+          - history
           - huggingface-papers
           - perplexity-search
           - podcast

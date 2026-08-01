@@ -283,6 +283,46 @@ publication dates with explicit ingestion-date fallback,
 filtered/failed/missing-summary exclusions, partial failure, force,
 idempotency, cancellation, retry, and queue payload version 1 projection.
 
+### Ingestion outcome, history, and retention evidence
+
+RI-07 keeps outcome semantics at three independently testable boundaries:
+typed durable results, compact terminal history, and pipeline aggregation.
+Focused tests should prove lifecycle and domain outcome separately; a completed
+operation can legitimately have `outcome=partial` or `outcome=zero_items`, while
+a pre-change completed row with no retained domain evidence is `unknown`.
+
+```bash
+# Typed ingestion projection, sanitization, and pipeline classification
+pytest tests/queue/test_workflow_handlers.py \
+  tests/ingestion/test_ingestion_service.py \
+  tests/ingestion/test_result_sanitizer.py \
+  tests/workflows/test_pipeline_workflow.py --no-cov
+
+# API/client/CLI parity and bounded operation summaries
+pytest tests/api/test_canonical_workflow_api.py \
+  tests/cli/test_canonical_workflows.py \
+  tests/clients/test_workflow_api_client.py \
+  tests/queue/test_operation_service.py --no-cov
+
+# Measured PostgreSQL query plans and graph-aware retention
+pytest tests/integration/test_ingestion_history_query_plan.py \
+  tests/integration/test_operation_retention.py -m integration --no-cov
+```
+
+History tests must assert that absent filters are omitted, cursors are signed
+and filter-bound, active operations do not enter terminal history, legacy
+counts remain null, and compact pages exclude full input/result/checkpoint,
+content IDs, diagnostic messages, and natural configured-source locators.
+Traversal tests must exercise the 100-row page limit and the client/CLI page
+budget, including a continuation cursor when `truncated=true`.
+
+Retention integration tests require PostgreSQL because they prove recursive
+graph selection, strict cutoff semantics, row-lock rechecks, advisory-lock
+exclusion, bounded batches, descendant-before-root deletion, and idempotent
+restart. Keep failed-graph and completed-graph horizons distinct, and include
+active descendants plus terminal rows with `completed_at=null` as preservation
+cases.
+
 ## CLI Generator-Evaluator Coverage
 
 The repository-owned CLI evaluation contract lives under `evaluation/`; the
@@ -316,6 +356,13 @@ When authoring a scenario:
    tests/cli_gen_eval/test_report.py --no-cov`.
 4. Keep the read-only and mutating selections separate; their combined
    scenario set exceeds the pinned runner's effective tier capacity.
+
+The canonical `aca ingest history` filtered scenario is read-only and belongs
+in the default `validation` selection. Pipeline `zero_items` and tolerated
+`partial` warning scenarios submit durable work, require their documented
+seeded staging fixtures, and therefore belong in `workflow-submission`. Never
+move them into a pull-request category to make them run more often; use the
+explicit protected-target dispatch instead.
 
 The roadmap used “operation status” as behavioral shorthand. The implemented
 CLI command is `aca operations get <id>`; there is no `operations status`

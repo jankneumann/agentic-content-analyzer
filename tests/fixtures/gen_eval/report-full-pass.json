@@ -6,12 +6,12 @@
     "time_minutes": 0.0
   },
   "coverage_pct": 100.0,
-  "duration_seconds": 6.494295874959789,
+  "duration_seconds": 7.494295874959789,
   "errors": 0,
   "failed": 0,
   "iterations_completed": 1,
   "pass_rate": 1.0,
-  "passed": 16,
+  "passed": 17,
   "per_category": {
     "discovery": {
       "error": 0,
@@ -28,8 +28,8 @@
     "validation": {
       "error": 0,
       "fail": 0,
-      "pass": 4,
-      "total": 4
+      "pass": 5,
+      "total": 5
     }
   },
   "per_interface": {
@@ -106,7 +106,7 @@
     "cli:ingest": {
       "error": 0,
       "fail": 0,
-      "pass": 1
+      "pass": 2
     },
     "cli:kb": {
       "error": 0,
@@ -196,7 +196,7 @@
   },
   "per_visibility": {},
   "skipped": 0,
-  "total_scenarios": 16,
+  "total_scenarios": 17,
   "unevaluated_interfaces": [],
   "verdicts": [
     {
@@ -2379,6 +2379,67 @@
           "side_effect_verdicts": null,
           "status": "pass",
           "step_id": "bad-cursor-is-rejected",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "validation",
+      "cleanup_warnings": [],
+      "duration_seconds": 1.0,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:ingest"
+      ],
+      "scenario_id": "validation-ingestion-history-filtered",
+      "scenario_name": "aca ingest history accepts canonical filters and emits one compact JSON page",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Ingestion history: no matching terminal operations"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 400.0,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "ingest-history-attributed",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "data": []
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 600.0,
+          "error_message": null,
+          "expected": {
+            "body_contains": {
+              "data": []
+            },
+            "exit_code": 0
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "ingest-history-filtered-json",
           "transport": "cli"
         }
       ]

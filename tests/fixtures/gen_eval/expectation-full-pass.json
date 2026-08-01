@@ -75,7 +75,7 @@
   "per_category": {
     "discovery": 3,
     "plumbing": 9,
-    "validation": 4
+    "validation": 5
   },
   "scenario_ids": [
     "discovery-capabilities",
@@ -91,9 +91,10 @@
     "plumbing-help-batch-08",
     "plumbing-root-surface",
     "validation-absent-optional-values-omitted",
+    "validation-ingestion-history-filtered",
     "validation-invalid-cursor",
     "validation-malformed-arguments",
     "validation-missing-required-argument"
   ],
-  "total_scenarios": 16
+  "total_scenarios": 17
 }

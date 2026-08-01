@@ -133,8 +133,8 @@ The system SHALL provide CLI commands for job management.
 
 #### Scenario: Automatic job retention
 - **WHEN** no manual cleanup is performed
-- **THEN** completed jobs older than `JOB_RETENTION_DAYS` (default: 30) are eligible for automatic cleanup
-- **AND** automatic cleanup runs via scheduled task (if configured)
+- **THEN** the worker runs automatic graph-aware cleanup at startup and at the configured interval
+- **AND** only whole eligible terminal operation graphs are removed
 
 ### Requirement: Frontend SSE Integration
 
@@ -172,9 +172,12 @@ The system SHALL enforce configurable timeouts for job execution.
 - **WHEN** `JOB_TIMEOUT=3600` is set in environment (seconds)
 - **THEN** jobs are considered stale after 3600 seconds of no progress update
 
-### Requirement: Job History API with Content Enrichment
+### Requirement: Compatibility Job History API with Content Enrichment
 
-The system SHALL provide an API endpoint for querying historical job records enriched with content metadata for audit purposes.
+The system SHALL retain `/api/v1/jobs/history` as a compatibility-only endpoint
+for the existing content-enriched Task History UI. New workflow audit behavior
+and ingestion-outcome queries SHALL use the canonical operation and ingestion
+history endpoints instead.
 
 #### Scenario: List job history with descriptions
 - **WHEN** `GET /api/v1/jobs/history` is called
@@ -244,6 +247,11 @@ The system SHALL provide an API endpoint for querying historical job records enr
 - **AND** these jobs do not have `content_id` in their payload
 - **THEN** the response includes these jobs with `content_id: null`
 - **AND** `description` is derived from the payload `source` field (e.g., "Gmail ingestion", "RSS ingestion")
+
+#### Scenario: New ingestion-history behavior is added
+- **WHEN** an operator needs source outcome, parent operation, or opaque configured-source filtering
+- **THEN** the behavior is exposed by `GET /api/v1/ingestions`
+- **AND** `/api/v1/jobs/history` remains a compatibility view rather than a second canonical history contract
 
 ### Requirement: Entrypoint Label Mapping
 
@@ -330,3 +338,58 @@ The job lifecycle SHALL include `cancelled`. Queued operations SHALL cancel atom
 - **WHEN** cancellation is requested for a completed operation
 - **THEN** the service returns a conflict problem
 - **AND** the resource and operation status remain unchanged
+
+### Requirement: Canonical ingestion history derives from operations
+
+`GET /api/v1/ingestions` SHALL project terminal ingestion history from
+authoritative `pgqueuer_jobs` records. It SHALL support command key, opaque
+configured-source key, domain outcome, terminal lifecycle status, parent
+operation, created-after, and created-before filters with signed filter-bound
+keyset cursors and a page limit of 1-100.
+
+#### Scenario: A partial RSS page is queried
+- **WHEN** a request selects `command_key=rss` and `outcome=partial`
+- **THEN** every row satisfies both filters
+- **AND** rows contain bounded counts, opaque source outcomes, retry count, problem code, status URL, and timestamps
+
+#### Scenario: A cursor is replayed with different filters
+- **WHEN** a cursor is supplied under a normalized filter set different from the one that created it
+- **THEN** the request is rejected as invalid
+- **AND** no query continues from the untrusted position
+
+#### Scenario: An ingestion operation is active
+- **WHEN** an ingestion operation is queued or in progress
+- **THEN** it remains visible through generic operations
+- **AND** it is absent from terminal ingestion history
+
+### Requirement: Automatic retention preserves operation graphs
+
+The worker SHALL delete only whole, fully terminal operation graphs after
+configurable completed and failed horizons. `JOB_RETENTION_DAYS` SHALL default
+to 30, `FAILED_JOB_RETENTION_DAYS` to 90,
+`JOB_RETENTION_INTERVAL_SECONDS` to 3600, and
+`JOB_RETENTION_BATCH_SIZE` to 100 root graphs.
+
+#### Scenario: Completed graph crosses its strict cutoff
+- **WHEN** every node is terminal with non-null completion time strictly older than the applicable cutoff
+- **THEN** descendants and then the root are deleted in one bounded maintenance transaction
+- **AND** no surviving row loses its parent identity
+
+#### Scenario: A graph is not fully eligible
+- **WHEN** any descendant is active or any terminal node has `completed_at=null`
+- **THEN** the entire graph is retained
+
+#### Scenario: A graph contains a failure
+- **WHEN** any graph node is failed
+- **THEN** the whole graph uses the longer finite failed-retention horizon
+- **AND** retry checkpoints and child identity remain until that strict cutoff passes
+
+#### Scenario: Multiple workers reach the interval
+- **WHEN** more than one worker attempts retention maintenance
+- **THEN** a PostgreSQL advisory lock permits at most one cleanup execution
+- **AND** lock contention does not block workflow processing
+
+#### Scenario: Retention settings are invalid
+- **WHEN** a horizon is outside 1-3650 days, the failed horizon is shorter, the interval is outside 60-86400 seconds, or the batch is outside 1-1000
+- **THEN** settings validation fails at startup
+- **AND** zero does not silently disable cleanup

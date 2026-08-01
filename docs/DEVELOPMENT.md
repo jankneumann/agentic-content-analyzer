@@ -233,6 +233,65 @@ aca operations retry 123
 aca operations cancel 123
 ```
 
+**Canonical ingestion history:**
+
+```bash
+# Terminal ingestion operations only; one compact page (limit 1-100)
+aca ingest history --command-key rss --outcome partial --status completed
+
+# Filter by opaque configured-source key, pipeline parent, or UTC window
+aca ingest history \
+  --configured-source-key src_0123456789abcdefabcd \
+  --parent-operation-id 123 \
+  --created-after 2026-07-01T00:00:00Z \
+  --created-before 2026-08-01T00:00:00Z
+
+# Bounded traversal: at most 20 pages by default, 100 rows per page
+aca --json ingest history --all --max-pages 20 --limit 100
+```
+
+`GET /api/v1/ingestions` and `aca ingest history` are the canonical compact
+history surfaces. They derive from terminal `pgqueuer_jobs` operations and
+accept the same `command_key`, opaque `configured_source_key`, `outcome`,
+terminal `status`, `parent_operation_id`, creation-window, `limit`, and signed
+cursor filters. Cursors are bound to the normalized filter set; changing a
+filter or tampering with the cursor returns a validation problem.
+
+Ingestion outcomes are domain results, separate from queue lifecycle:
+`success`, `zero_items`, `partial`, `failed`, `cancelled`, or `unknown` for
+legacy rows whose discarded detail cannot be reconstructed. Compact rows omit
+input, checkpoints, content IDs, diagnostic messages, and full problems. Use
+`aca operations get <id>` or `GET /api/v1/operations/{id}` for the exact typed
+result and provenance. Configured-source identity is an opaque `src_...` key;
+never expose a feed URL, mailbox query, prompt, or other natural locator.
+
+Pipeline results carry `result.ingestion_summary`. With source-error
+continuation enabled, a completed `partial` pipeline exits zero and warns on
+stderr; JSON stdout remains one document. `zero_items` is successful and is
+reported without changing the exit code. With continuation disabled, a partial
+or failed source makes the waiting CLI exit nonzero.
+
+`GET /api/v1/jobs/history` and the Task History UI remain a compatibility-only
+content-enriched view. Do not add new workflow history behavior there or treat
+it as the canonical ingestion audit contract.
+
+Automatic operation retention runs in the worker at startup and then at a
+bounded interval under a PostgreSQL advisory lock. It deletes only whole,
+fully terminal operation graphs in bounded batches. Any active descendant or
+missing completion timestamp retains the entire graph, and a graph containing
+a failure uses the longer finite failure horizon.
+
+```bash
+JOB_RETENTION_DAYS=30
+FAILED_JOB_RETENTION_DAYS=90
+JOB_RETENTION_INTERVAL_SECONDS=3600
+JOB_RETENTION_BATCH_SIZE=100
+```
+
+Retention horizons must be 1-3650 days, the failed horizon cannot be shorter
+than the completed horizon, the interval is 60-86400 seconds, and the batch is
+1-1000 root graphs. Zero is invalid rather than an implicit disable switch.
+
 `OperationService` is the only application boundary for workflow submission
 and controls. New producers must enqueue one of the canonical operation types;
 they must not accept arbitrary entrypoints or execute workflow services inline.
@@ -260,6 +319,7 @@ uvicorn src.api.app:app --reload
 # - POST /api/v1/podcast-scripts
 # - POST /api/v1/podcasts
 # - POST /api/v1/audio-digests
+# - GET /api/v1/ingestions (compact terminal ingestion history)
 # - GET/POST /api/v1/operations[/{id}[/events|retry|cancel]]
 # - GET /api/v1/capabilities
 #
