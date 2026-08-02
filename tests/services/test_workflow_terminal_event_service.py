@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from src.services.workflow_terminal_event_service import (
     PersistedTerminalSnapshot,
+    TerminalClassificationDeferredError,
     TerminalEventEvidence,
     WorkflowTerminalEventService,
     build_diagnostic_url,
@@ -181,10 +182,117 @@ def test_pipeline_child_keeps_telemetry_but_suppresses_external_route() -> None:
             operation_status="completed",
             result=_ingestion_result(),
             pipeline_root_id=99,
+            pipeline_root_status="completed",
+            pipeline_root_result={
+                "schema_version": 2,
+                "ingestion_summary": {
+                    "outcome": "partial",
+                    "sources": [],
+                    "sources_omitted": 0,
+                },
+            },
         ),
     )
 
     assert classified.outcome == "partial"
+    assert classified.external_eligible is True
+    assert classified.external_routed is False
+    assert classified.suppression_reason == "pipeline_root_aggregates"
+
+
+@pytest.mark.parametrize(
+    ("root_id", "root_status", "root_outcome"),
+    [
+        (None, None, None),
+        (99, "cancelled", None),
+        (99, "completed", "success"),
+    ],
+)
+def test_missing_cancelled_or_successful_root_does_not_suppress_child(
+    root_id: int | None,
+    root_status: str | None,
+    root_outcome: str | None,
+) -> None:
+    root_result = (
+        {
+            "schema_version": 2,
+            "ingestion_summary": {
+                "outcome": root_outcome,
+                "sources": [],
+                "sources_omitted": 0,
+            },
+        }
+        if root_outcome is not None
+        else None
+    )
+
+    classified = classify_terminal_event(
+        _operation_event(status="failed"),
+        PersistedTerminalSnapshot(
+            operation_type="ingestion.execute",
+            operation_status="failed",
+            pipeline_root_id=root_id,
+            pipeline_root_status=root_status,
+            pipeline_root_result=root_result,
+        ),
+    )
+
+    assert classified.external_routed is True
+    assert classified.suppression_reason is None
+
+
+@pytest.mark.parametrize("root_status", ["queued", "in_progress"])
+def test_nonterminal_or_stuck_pipeline_root_defers_child(root_status: str) -> None:
+    with pytest.raises(TerminalClassificationDeferredError):
+        classify_terminal_event(
+            _operation_event(status="failed"),
+            PersistedTerminalSnapshot(
+                operation_type="ingestion.execute",
+                operation_status="failed",
+                pipeline_root_id=99,
+                pipeline_root_status=root_status,
+                pipeline_root_result=None,
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    ("root_status", "root_outcome"),
+    [
+        ("failed", None),
+        ("completed", "partial"),
+        ("completed", "zero_items"),
+        ("completed", "unknown"),
+    ],
+)
+def test_alertable_terminal_pipeline_root_suppresses_child(
+    root_status: str,
+    root_outcome: str | None,
+) -> None:
+    root_result = (
+        {
+            "schema_version": 2,
+            "ingestion_summary": {
+                "outcome": root_outcome,
+                "sources": [],
+                "sources_omitted": 0,
+            },
+        }
+        if root_outcome is not None
+        else None
+    )
+
+    classified = classify_terminal_event(
+        _operation_event(status="failed"),
+        PersistedTerminalSnapshot(
+            operation_type="ingestion.execute",
+            operation_status="failed",
+            pipeline_root_id=99,
+            pipeline_root_status=root_status,
+            pipeline_root_result=root_result,
+        ),
+    )
+
     assert classified.external_eligible is True
     assert classified.external_routed is False
     assert classified.suppression_reason == "pipeline_root_aggregates"
@@ -374,6 +482,15 @@ async def test_pipeline_child_processing_is_telemetry_only() -> None:
                 "operation_status": "completed",
                 "result": _ingestion_result(),
                 "pipeline_root_id": 99,
+                "pipeline_root_status": "completed",
+                "pipeline_root_result": {
+                    "schema_version": 2,
+                    "ingestion_summary": {
+                        "outcome": "partial",
+                        "sources": [],
+                        "sources_omitted": 0,
+                    },
+                },
             },
             {"id": EVENT_ID},
         ]
@@ -392,6 +509,46 @@ async def test_pipeline_child_processing_is_telemetry_only() -> None:
     assert processed.classification_status == "telemetry_only"
     assert processed.envelope is None
     assert processed.classification.suppression_reason == "pipeline_root_aggregates"
+
+
+@pytest.mark.asyncio
+async def test_nonterminal_pipeline_root_leaves_child_event_pending() -> None:
+    connection = Mock()
+    connection.fetchrow = AsyncMock(
+        side_effect=[
+            {
+                "id": EVENT_ID,
+                "event_key": "operation:42:claim:2:status:failed",
+                "source_kind": "operation",
+                "operation_id": 42,
+                "claim_generation": 2,
+                "terminal_status": "failed",
+                "reconciliation_action_id": None,
+                "reconciliation_run_id": None,
+                "reconciliation_content_id": None,
+                "classification_status": "pending",
+                "occurred_at": NOW,
+            },
+            {
+                "operation_type": "ingestion.execute",
+                "operation_status": "failed",
+                "result": None,
+                "pipeline_root_id": 99,
+                "pipeline_root_status": "in_progress",
+                "pipeline_root_result": None,
+            },
+        ]
+    )
+    connection.execute = AsyncMock()
+    service = WorkflowTerminalEventService(
+        connection,
+        diagnostic_origin="https://ops.example.com",
+        external_delivery_enabled=True,
+    )
+
+    assert await service.process_pending_event(EVENT_ID) is None
+    assert connection.fetchrow.await_count == 2
+    connection.execute.assert_not_awaited()
 
 
 @pytest.mark.asyncio

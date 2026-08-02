@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any, Literal, cast
 from urllib.parse import urlsplit
@@ -66,6 +66,8 @@ class PersistedTerminalSnapshot:
     operation_status: str | None = None
     result: object = None
     pipeline_root_id: int | None = None
+    pipeline_root_status: str | None = None
+    pipeline_root_result: object = None
     reconciliation_reason: str | None = None
 
 
@@ -92,6 +94,10 @@ class ProcessedTerminalEvent:
     classification: TerminalClassification | None
     classification_status: Literal["ready", "telemetry_only", "rejected"]
     envelope: WorkflowAlertEnvelopeV1 | None
+
+
+class TerminalClassificationDeferredError(Exception):
+    """A nonterminal aggregate root must settle before routing its child."""
 
 
 class WorkflowTerminalEventService:
@@ -135,6 +141,8 @@ class WorkflowTerminalEventService:
             status: Literal["ready", "telemetry_only", "rejected"] = (
                 "ready" if envelope is not None else "telemetry_only"
             )
+        except TerminalClassificationDeferredError:
+            return None
         except (KeyError, TypeError, ValueError, ValidationError):
             updated = await self._store_classification(
                 event_id,
@@ -186,17 +194,14 @@ class WorkflowTerminalEventService:
             row = await self._connection.fetchrow(_OPERATION_SNAPSHOT_QUERY, event.operation_id)
             if row is None:
                 raise ValueError("terminal operation no longer exists")
-            result = row["result"]
-            if isinstance(result, str):
-                try:
-                    result = json.loads(result)
-                except json.JSONDecodeError:
-                    result = None
+            result = _decode_json(row["result"])
             return PersistedTerminalSnapshot(
                 operation_type=row["operation_type"],
                 operation_status=row["operation_status"],
                 result=result,
                 pipeline_root_id=row["pipeline_root_id"],
+                pipeline_root_status=row.get("pipeline_root_status"),
+                pipeline_root_result=_decode_json(row.get("pipeline_root_result")),
             )
         if event.source_kind == "reconciliation_action":
             row = await self._connection.fetchrow(
@@ -241,11 +246,12 @@ WHERE id = $1
 
 _OPERATION_SNAPSHOT_QUERY = """
 WITH RECURSIVE lineage AS (
-    SELECT id, parent_job_id, entrypoint, payload, ARRAY[id] AS visited
+    SELECT id, parent_job_id, entrypoint, payload, status, ARRAY[id] AS visited
     FROM pgqueuer_jobs
     WHERE id = $1
     UNION ALL
     SELECT parent.id, parent.parent_job_id, parent.entrypoint, parent.payload,
+           parent.status,
            child.visited || parent.id
     FROM pgqueuer_jobs AS parent
     JOIN lineage AS child ON parent.id = child.parent_job_id
@@ -256,7 +262,10 @@ WITH RECURSIVE lineage AS (
              WHEN payload->>'schema_version' = '2' THEN payload->>'operation_type'
              WHEN entrypoint = 'run_pipeline' THEN 'pipeline.run'
              ELSE NULL
-           END AS operation_type
+           END AS operation_type,
+           status AS operation_status,
+           CASE WHEN payload->>'schema_version' = '2'
+                THEN payload->'result' ELSE NULL END AS result
     FROM lineage
     WHERE parent_job_id IS NULL
 )
@@ -282,7 +291,11 @@ SELECT CASE
        CASE WHEN job.payload->>'schema_version' = '2'
             THEN job.payload->'result' ELSE NULL END AS result,
        CASE WHEN root.id <> job.id AND root.operation_type = 'pipeline.run'
-            THEN root.id ELSE NULL END AS pipeline_root_id
+            THEN root.id ELSE NULL END AS pipeline_root_id,
+       CASE WHEN root.id <> job.id AND root.operation_type = 'pipeline.run'
+            THEN root.operation_status ELSE NULL END AS pipeline_root_status,
+       CASE WHEN root.id <> job.id AND root.operation_type = 'pipeline.run'
+            THEN root.result ELSE NULL END AS pipeline_root_result
 FROM pgqueuer_jobs AS job
 LEFT JOIN root ON TRUE
 WHERE job.id = $1
@@ -307,6 +320,15 @@ UPDATE workflow_terminal_events
 SET telemetry_emitted_at = COALESCE(telemetry_emitted_at, NOW())
 WHERE id = $1 AND telemetry_emitted_at IS NULL
 """
+
+
+def _decode_json(value: object) -> object:
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return None
 
 
 def _event_from_row(row: Any) -> TerminalEventEvidence:
@@ -375,30 +397,32 @@ def classify_terminal_event(
     }:
         raise ValueError("persisted operation lifecycle does not match terminal intent")
     if lifecycle == "failed":
-        return _classification(
-            workflow_type=operation_type,
-            outcome="failed",
-            source_kind=event.source_kind,
-            pipeline_root_id=snapshot.pipeline_root_id,
-            codes=("operation_failed",),
+        return _apply_pipeline_routing(
+            _classification(
+                workflow_type=operation_type,
+                outcome="failed",
+                source_kind=event.source_kind,
+                codes=("operation_failed",),
+            ),
+            snapshot,
         )
     if lifecycle == "cancelled":
         return _classification(
             workflow_type=operation_type,
             outcome="cancelled",
             source_kind=event.source_kind,
-            pipeline_root_id=snapshot.pipeline_root_id,
         )
     if operation_type == "ingestion.execute":
-        return _classify_ingestion(event, snapshot)
-    if operation_type == "pipeline.run":
-        return _classify_pipeline(event, snapshot)
-    return _classification(
-        workflow_type=operation_type,
-        outcome="success",
-        source_kind=event.source_kind,
-        pipeline_root_id=snapshot.pipeline_root_id,
-    )
+        classification = _classify_ingestion(event, snapshot)
+    elif operation_type == "pipeline.run":
+        classification = _classify_pipeline(event, snapshot)
+    else:
+        classification = _classification(
+            workflow_type=operation_type,
+            outcome="success",
+            source_kind=event.source_kind,
+        )
+    return _apply_pipeline_routing(classification, snapshot)
 
 
 def build_diagnostic_url(
@@ -490,7 +514,6 @@ def _classify_ingestion(
             workflow_type="ingestion.execute",
             outcome="unknown",
             source_kind=event.source_kind,
-            pipeline_root_id=snapshot.pipeline_root_id,
         )
     outcome: WorkflowTerminalOutcome = (
         result.outcome
@@ -502,7 +525,6 @@ def _classify_ingestion(
             workflow_type="ingestion.execute",
             outcome="unknown",
             source_kind=event.source_kind,
-            pipeline_root_id=snapshot.pipeline_root_id,
         )
 
     resources, resources_omitted = _content_references(result.content_ids)
@@ -521,7 +543,6 @@ def _classify_ingestion(
         workflow_type="ingestion.execute",
         outcome=outcome,
         source_kind=event.source_kind,
-        pipeline_root_id=snapshot.pipeline_root_id,
         resource_refs=resources,
         source_keys=source_keys,
         counts=counts,
@@ -566,7 +587,6 @@ def _classification(
     workflow_type: WorkflowTypeName,
     outcome: WorkflowTerminalOutcome,
     source_kind: WorkflowTerminalSourceKind,
-    pipeline_root_id: int | None = None,
     resource_refs: tuple[WorkflowAlertResourceReference, ...] = (),
     source_keys: tuple[str, ...] = (),
     counts: WorkflowAlertCounts | None = None,
@@ -579,20 +599,56 @@ def _classification(
     else:
         severity = "info"
     external_eligible = severity != "info"
-    suppressed = external_eligible and pipeline_root_id is not None
     return TerminalClassification(
         workflow_type=workflow_type,
         outcome=outcome,
         severity=severity,
         source_kind=source_kind,
         external_eligible=external_eligible,
-        external_routed=external_eligible and not suppressed,
-        suppression_reason="pipeline_root_aggregates" if suppressed else None,
+        external_routed=external_eligible,
+        suppression_reason=None,
         resource_refs=resource_refs,
         source_keys=source_keys,
         counts=counts or WorkflowAlertCounts(),
         codes=codes,
     )
+
+
+def _apply_pipeline_routing(
+    classification: TerminalClassification,
+    snapshot: PersistedTerminalSnapshot,
+) -> TerminalClassification:
+    if not classification.external_eligible or snapshot.pipeline_root_id is None:
+        return classification
+    root_status = snapshot.pipeline_root_status
+    if root_status in {"queued", "in_progress"}:
+        raise TerminalClassificationDeferredError
+    if root_status == "cancelled":
+        return classification
+    suppress = root_status == "failed"
+    if root_status == "completed":
+        suppress = _pipeline_result_outcome(snapshot.pipeline_root_result) in {
+            "partial",
+            "zero_items",
+            "failed",
+            "unknown",
+        }
+    if not suppress:
+        return classification
+    return replace(
+        classification,
+        external_routed=False,
+        suppression_reason="pipeline_root_aggregates",
+    )
+
+
+def _pipeline_result_outcome(result_value: object) -> WorkflowTerminalOutcome:
+    try:
+        result = PipelineResultV2.model_validate(result_value)
+    except (TypeError, ValidationError):
+        return "unknown"
+    outcome = result.ingestion_summary.outcome
+    return outcome if outcome in {"success", "partial", "zero_items", "unknown"} else "unknown"
 
 
 def _validate_event_identity(event: TerminalEventEvidence) -> None:
