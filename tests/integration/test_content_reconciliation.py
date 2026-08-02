@@ -268,12 +268,57 @@ async def test_dry_run_rejects_multi_content_url_success_evidence(test_engine) -
 
 
 @pytest.mark.asyncio
-async def test_dry_run_rejects_out_of_range_url_content_id_evidence(test_engine) -> None:
+async def test_dry_run_rejects_non_array_url_content_id_evidence(test_engine) -> None:
     conn = await _connect(test_engine)
     transaction = conn.transaction()
     await transaction.start()
     content_id = _BASE_ID + 12
     operation_id = _BASE_ID + 112
+    try:
+        await _insert_owned_candidate(
+            conn,
+            content_id=content_id,
+            operation_id=operation_id,
+            phase="parsing",
+            content_status="parsing",
+            operation_status="completed",
+            completed_at=datetime.now(UTC),
+        )
+        result = {
+            "command_key": "url",
+            "resolved_route": "webpage",
+            "status": "ok",
+            "outcome": "success",
+            "content_ids": {"unexpected": content_id},
+        }
+        await conn.execute(
+            """
+            UPDATE pgqueuer_jobs
+            SET payload = payload || jsonb_build_object('result', $2::jsonb)
+            WHERE id = $1
+            """,
+            operation_id,
+            json.dumps(result),
+        )
+
+        report = await _service(conn, apply_enabled=False).reconcile(
+            ContentReconciliationRequest(apply=False)
+        )
+
+        item = next(item for item in report.items if item.content_id == content_id)
+        assert (item.action, item.reason) == ("none", "completed_output_missing")
+    finally:
+        await transaction.rollback()
+        await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_dry_run_rejects_out_of_range_url_content_id_evidence(test_engine) -> None:
+    conn = await _connect(test_engine)
+    transaction = conn.transaction()
+    await transaction.start()
+    content_id = _BASE_ID + 13
+    operation_id = _BASE_ID + 113
     try:
         await _insert_owned_candidate(
             conn,

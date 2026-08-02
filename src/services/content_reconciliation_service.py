@@ -776,8 +776,13 @@ class ContentReconciliationService:
                     AND j.payload->'result'->>'resolved_route' = 'webpage'
                     AND j.payload->'result'->>'status' = 'ok'
                     AND j.payload->'result'->>'outcome' = 'success'
-                    AND jsonb_typeof(j.payload->'result'->'content_ids') = 'array'
-                    AND jsonb_array_length(j.payload->'result'->'content_ids') = 1
+                    AND CASE
+                        WHEN jsonb_typeof(j.payload->'result'->'content_ids') = 'array'
+                        THEN jsonb_array_length(
+                            j.payload->'result'->'content_ids'
+                        ) = 1
+                        ELSE FALSE
+                    END
                     AND CASE
                         WHEN j.payload->'result'->'content_ids'->>0
                             ~ '^[1-9][0-9]{0,18}$'
