@@ -251,7 +251,7 @@ packages:
       steps:
         - name: lifecycle-reconciliation-tests
           kind: command
-          command: .venv/bin/pytest tests/queue/test_worker_extended.py tests/queue/test_operation_controls.py tests/api/test_settings_override_api.py tests/api/test_operation_routes.py tests/services/test_settings_service.py tests/services/test_content_reconciliation_service.py tests/integration/test_content_reconciliation.py tests/integration/test_workflow_alert_end_to_end.py --no-cov -q
+          command: .venv/bin/pytest tests/queue/test_worker_extended.py tests/queue/test_operation_service.py tests/queue/test_operation_controls.py tests/api/test_settings_override_api.py tests/api/test_operation_routes.py tests/services/test_settings_service.py tests/services/test_content_reconciliation_service.py tests/integration/test_content_reconciliation.py tests/integration/test_workflow_alert_end_to_end.py --no-cov -q
           expect_exit_code: 0
           evidence: {artifacts: [], result_keys: [test_count, pass_count, terminal_paths, reconciliation_cases]}
     outputs: {result_keys: [files_modified, test_count, terminal_paths, reconciliation_cases]}
