@@ -88,7 +88,7 @@
 
 - [ ] 5.1 [M] Write end-to-end operation tests covering worker completion/failure, queued/running cancellation, handler-owned terminal state, maintenance failure, stale claims, fresh persisted V2 result reads, and delayed terminal classification across retry reset
   **Spec scenarios**: all scenarios under Canonical terminal transitions persist event intent and Terminal projection reads committed state
-  **Review remediation**: classify or safely project the closed attempt while the canonical retry path still holds its graph/row locks, before mutable job state is reset
+  **Review remediation**: classify or safely project the closed attempt while the canonical retry path still holds its graph/row locks, before mutable job state is reset; a child retry beneath a nonterminal aggregate must close the old attempt as bounded telemetry without creating a premature external alert
   **Dependencies**: 2.2, 3.2
 - [ ] 5.2 [S] Write and implement a generic settings-override denylist for alert endpoint, secret, origin, and host-policy key names
   **Spec scenarios**: Webhook configuration is unsafe
