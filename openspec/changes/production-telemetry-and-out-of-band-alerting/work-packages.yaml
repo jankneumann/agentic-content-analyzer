@@ -1,0 +1,291 @@
+schema_version: 1
+
+feature:
+  id: production-telemetry-and-out-of-band-alerting
+  title: Durable terminal telemetry and webhook alerts
+  plan_revision: 1
+  created_by: codex
+  created_at: "2026-08-01T23:30:00Z"
+
+contracts:
+  revision: 1
+  openapi:
+    primary: openspec/contracts/content-workflows/openapi/v1.yaml
+    files:
+      - openspec/contracts/content-workflows/openapi/v1.yaml
+      - openspec/changes/production-telemetry-and-out-of-band-alerting/contracts/workflow-alert-envelope.schema.json
+      - openspec/changes/production-telemetry-and-out-of-band-alerting/contracts/staging-evidence.schema.json
+  generated:
+    pydantic_dir: src/contracts
+    typescript_dir: web/src/generated
+
+defaults:
+  priority: 5
+  lock_ttl_minutes: 180
+  timeout_minutes: 180
+  retry_budget: 1
+  verification_tier_required: B
+  min_trust_level: 3
+
+packages:
+  - package_id: wp-contracts
+    title: Closed alert contracts and policy
+    task_type: implement
+    description: Test and add strict alert/evidence models plus default-off validated sink, origin, retry, lease, and retention settings.
+    role: contract-engineer
+    priority: 1
+    depends_on: []
+    locks:
+      files:
+        - src/contracts/workflow_models.py
+        - src/config/settings.py
+      keys:
+        - contract:workflow-alert-envelope:v1
+        - env:workflow-alerting-policy
+      ttl_minutes: 180
+      reason: Canonical safe wire model and secret-bearing configuration boundary.
+    scope:
+      write_allow:
+        - openspec/changes/production-telemetry-and-out-of-band-alerting/contracts/**
+        - src/contracts/**
+        - src/config/settings.py
+        - tests/contract/**
+        - tests/config/**
+      read_allow: [src/**, tests/**, openspec/**]
+    worktree: {name: wp-contracts, mode: isolated}
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 4
+    metadata: {loc_estimate: 420, alternatives_count: 3, complexity: high, package_kind: data_model}
+    inputs: {tasks: ["1.1", "1.2", "1.3", "1.4"]}
+    verification:
+      tier_required: B
+      steps:
+        - name: contract-settings-tests
+          kind: command
+          command: .venv/bin/pytest tests/contract tests/config/test_settings.py --no-cov -q
+          expect_exit_code: 0
+          evidence: {artifacts: [], result_keys: [test_count, pass_count, secret_api_absent]}
+    outputs: {result_keys: [files_modified, test_count, contract_valid, secret_api_absent]}
+
+  - package_id: wp-persistence
+    title: Terminal event and delivery persistence
+    task_type: implement
+    description: Add tested append-only event/delivery tables, operation and reconciliation triggers, due-delivery indexes, bootstrap parity, and retention invariants.
+    role: database-engineer
+    priority: 2
+    depends_on: [wp-contracts]
+    locks:
+      files:
+        - alembic/versions
+        - src/models/workflow_alert.py
+        - src/queue/setup.py
+      keys:
+        - db:migration-slot
+        - db:schema:workflow_terminal_events
+        - event:workflow.terminal.intent
+      ttl_minutes: 240
+      reason: Additive transactional outbox and trigger ownership.
+    scope:
+      write_allow:
+        - alembic/versions/**
+        - openspec/contracts/content-workflows/db/schema.sql
+        - openspec/changes/production-telemetry-and-out-of-band-alerting/contracts/db/schema.sql
+        - src/models/workflow_alert.py
+        - src/models/__init__.py
+        - src/queue/setup.py
+        - tests/migrations/**
+        - tests/test_models/**
+        - tests/test_queue/test_setup.py
+        - tests/integration/test_workflow_alert_persistence.py
+      read_allow: [src/**, alembic/**, tests/**, openspec/**]
+    worktree: {name: wp-persistence, mode: isolated}
+    timeout_minutes: 240
+    retry_budget: 1
+    min_trust_level: 4
+    metadata: {loc_estimate: 620, alternatives_count: 3, complexity: high, package_kind: migration}
+    inputs: {tasks: ["2.1", "2.2", "2.3"]}
+    verification:
+      tier_required: A
+      steps:
+        - name: migration-persistence-tests
+          kind: command
+          command: .venv/bin/pytest tests/migrations tests/integration/test_workflow_alert_persistence.py tests/test_queue/test_setup.py --no-cov -q
+          expect_exit_code: 0
+          evidence: {artifacts: [], result_keys: [test_count, pass_count, trigger_cases, dedupe_cases]}
+    outputs: {result_keys: [files_modified, test_count, trigger_cases, dedupe_cases]}
+
+  - package_id: wp-classifier
+    title: Safe classification and telemetry
+    task_type: implement
+    description: Implement and test committed-state outcome classification, graph aggregation, allowlist-first envelope projection, diagnostic links, safe logs, and OTel events.
+    role: backend-engineer
+    priority: 3
+    depends_on: [wp-persistence]
+    locks:
+      files:
+        - src/services/workflow_terminal_event_service.py
+        - src/telemetry/workflow_events.py
+      keys:
+        - feature:workflow-alerting:classifier
+        - event:workflow.terminal.telemetry
+      ttl_minutes: 240
+      reason: Single closed classification and safe projection boundary.
+    scope:
+      write_allow:
+        - src/services/workflow_terminal_event_service.py
+        - src/telemetry/workflow_events.py
+        - src/telemetry/__init__.py
+        - tests/services/test_workflow_terminal_event_service.py
+        - tests/telemetry/test_workflow_events.py
+        - tests/property/test_workflow_alert_redaction.py
+      read_allow: [src/**, tests/**, openspec/**]
+    worktree: {name: wp-classifier, mode: isolated}
+    timeout_minutes: 240
+    retry_budget: 1
+    min_trust_level: 4
+    metadata: {loc_estimate: 740, alternatives_count: 3, complexity: high, package_kind: algorithm}
+    inputs: {tasks: ["3.1", "3.2", "3.3", "3.4", "3.5", "3.6"]}
+    verification:
+      tier_required: A
+      steps:
+        - name: classification-redaction-telemetry-tests
+          kind: command
+          command: .venv/bin/pytest tests/services/test_workflow_terminal_event_service.py tests/telemetry/test_workflow_events.py tests/property/test_workflow_alert_redaction.py --no-cov -q
+          expect_exit_code: 0
+          evidence: {artifacts: [], result_keys: [test_count, pass_count, outcome_cases, sentinel_cases]}
+    outputs: {result_keys: [files_modified, test_count, outcome_cases, sentinel_cases]}
+
+  - package_id: wp-delivery
+    title: Leased webhook delivery
+    task_type: implement
+    description: Implement and test the delivery repository, recoverable leases, bounded retry/retention, safe webhook transport, idempotency, HMAC, and destination validation.
+    role: security-engineer
+    priority: 3
+    depends_on: [wp-persistence]
+    locks:
+      files:
+        - src/services/workflow_alert_delivery.py
+        - src/services/alert_sinks.py
+      keys:
+        - feature:workflow-alerting:delivery
+        - event:workflow.alert.webhook
+      ttl_minutes: 240
+      reason: External transport, SSRF, retry, and lease boundary.
+    scope:
+      write_allow:
+        - src/services/workflow_alert_delivery.py
+        - src/services/alert_sinks.py
+        - tests/services/test_workflow_alert_delivery.py
+        - tests/services/test_alert_sinks.py
+        - tests/integration/test_workflow_alert_delivery.py
+      read_allow: [src/**, tests/**, openspec/**]
+    worktree: {name: wp-delivery, mode: isolated}
+    timeout_minutes: 240
+    retry_budget: 1
+    min_trust_level: 4
+    metadata: {loc_estimate: 760, alternatives_count: 3, complexity: high, package_kind: integration}
+    inputs: {tasks: ["4.1", "4.2", "4.3", "4.4"]}
+    verification:
+      tier_required: A
+      steps:
+        - name: delivery-security-tests
+          kind: command
+          command: .venv/bin/pytest tests/services/test_workflow_alert_delivery.py tests/services/test_alert_sinks.py tests/integration/test_workflow_alert_delivery.py --no-cov -q
+          expect_exit_code: 0
+          evidence: {artifacts: [], result_keys: [test_count, pass_count, lease_cases, transport_cases]}
+    outputs: {result_keys: [files_modified, test_count, lease_cases, transport_cases]}
+
+  - package_id: wp-integration
+    title: Canonical drain and reconciliation integration
+    task_type: implement
+    description: Integrate classification/delivery draining with worker maintenance, reconcile generic notifications, add safe apply-failure intent, and verify every terminal/reconciliation path under races.
+    role: integration-engineer
+    priority: 4
+    depends_on: [wp-classifier, wp-delivery]
+    locks:
+      files:
+        - src/queue/worker.py
+        - src/services/content_reconciliation_service.py
+        - src/services/notification_service.py
+      keys:
+        - feature:workflow-alerting:integration
+      ttl_minutes: 300
+      reason: Shared lifecycle and reconciliation integration boundary.
+    scope:
+      write_allow:
+        - src/queue/worker.py
+        - src/services/content_reconciliation_service.py
+        - src/services/notification_service.py
+        - tests/queue/test_worker_extended.py
+        - tests/queue/test_operation_controls.py
+        - tests/services/test_content_reconciliation_service.py
+        - tests/integration/test_content_reconciliation.py
+        - tests/integration/test_workflow_alert_end_to_end.py
+      read_allow: [src/**, tests/**, openspec/**]
+    worktree: {name: wp-integration, mode: isolated}
+    timeout_minutes: 300
+    retry_budget: 1
+    min_trust_level: 4
+    metadata: {loc_estimate: 820, alternatives_count: 2, complexity: high, package_kind: integration}
+    inputs: {tasks: ["4.5", "4.6", "5.1", "5.2", "5.3", "5.4", "5.5"]}
+    verification:
+      tier_required: A
+      steps:
+        - name: lifecycle-reconciliation-tests
+          kind: command
+          command: .venv/bin/pytest tests/queue/test_worker_extended.py tests/queue/test_operation_controls.py tests/services/test_content_reconciliation_service.py tests/integration/test_content_reconciliation.py tests/integration/test_workflow_alert_end_to_end.py --no-cov -q
+          expect_exit_code: 0
+          evidence: {artifacts: [], result_keys: [test_count, pass_count, terminal_paths, reconciliation_cases]}
+    outputs: {result_keys: [files_modified, test_count, terminal_paths, reconciliation_cases]}
+
+  - package_id: wp-verification
+    title: Staging verification and operator docs
+    task_type: validate
+    description: Add a non-production idempotent receiver fixture, sanitized evidence verifier, deployment documentation, and final contract/security/quality gates.
+    role: validation-engineer
+    priority: 5
+    depends_on: [wp-integration]
+    locks:
+      files:
+        - scripts/verify_workflow_alerting.py
+        - docs/SETUP.md
+        - docs/DEVELOPMENT.md
+      keys:
+        - feature:workflow-alerting:staging
+      ttl_minutes: 240
+      reason: Sanitized deployment proof and operator handoff.
+    scope:
+      write_allow:
+        - scripts/verify_workflow_alerting.py
+        - tests/scripts/test_verify_workflow_alerting.py
+        - tests/fixtures/workflow_alert_receiver/**
+        - docs/SETUP.md
+        - docs/DEVELOPMENT.md
+        - openspec/changes/production-telemetry-and-out-of-band-alerting/evidence/**
+      read_allow: [src/**, tests/**, scripts/**, docs/**, openspec/**]
+    worktree: {name: wp-verification, mode: isolated}
+    timeout_minutes: 240
+    retry_budget: 1
+    min_trust_level: 4
+    metadata: {loc_estimate: 480, alternatives_count: 2, complexity: high, package_kind: integration}
+    inputs: {tasks: ["6.1", "6.2", "6.3", "6.4"]}
+    verification:
+      tier_required: A
+      steps:
+        - name: verifier-tests
+          kind: command
+          command: .venv/bin/pytest tests/scripts/test_verify_workflow_alerting.py --no-cov -q
+          expect_exit_code: 0
+          evidence: {artifacts: [], result_keys: [test_count, pass_count, duplicate_case, redaction_case]}
+        - name: staging-alert-proof
+          kind: manual
+          manual_instructions: Run the verifier against the approved non-production idempotent receiver and validate the sanitized evidence schema.
+          evidence:
+            artifacts:
+              - openspec/changes/production-telemetry-and-out-of-band-alerting/evidence/staging-alert.json
+            result_keys: [schema_valid, one_receipt, redaction_assertions]
+    outputs:
+      result_keys: [files_modified, test_count, schema_valid, one_receipt]
+      artifacts:
+        - openspec/changes/production-telemetry-and-out-of-band-alerting/evidence/staging-alert.json

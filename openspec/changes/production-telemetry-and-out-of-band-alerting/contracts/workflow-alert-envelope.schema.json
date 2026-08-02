@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-content-aggregator.local/schemas/workflow-alert-envelope-v1.json",
+  "title": "WorkflowAlertEnvelopeV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_key",
+    "occurred_at",
+    "severity",
+    "outcome",
+    "source_kind",
+    "workflow_type",
+    "attempt",
+    "diagnostic_url",
+    "resource_refs",
+    "source_keys",
+    "counts",
+    "codes"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "event_id": {"type": "string", "format": "uuid"},
+    "event_key": {"type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[a-z0-9:_-]+$"},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "severity": {"enum": ["warning", "error"]},
+    "outcome": {"enum": ["partial", "zero_items", "failed", "unknown", "reconciled"]},
+    "source_kind": {"enum": ["operation", "reconciliation_action", "reconciliation_failure"]},
+    "workflow_type": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$"},
+    "operation_id": {"type": ["string", "null"], "maxLength": 19, "pattern": "^[1-9][0-9]*$"},
+    "attempt": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "diagnostic_url": {"type": "string", "format": "uri", "maxLength": 2048, "pattern": "^https://"},
+    "resource_refs": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "id"],
+        "properties": {
+          "type": {"type": "string", "minLength": 1, "maxLength": 40, "pattern": "^[a-z][a-z0-9_]*$"},
+          "id": {"type": "string", "minLength": 1, "maxLength": 80, "pattern": "^[A-Za-z0-9_-]+$"}
+        }
+      }
+    },
+    "source_keys": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {"type": "string", "pattern": "^src_[a-f0-9]{20}$"},
+      "uniqueItems": true
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items_ingested": {"type": "integer", "minimum": 0},
+        "items_skipped": {"type": "integer", "minimum": 0},
+        "items_failed": {"type": "integer", "minimum": 0},
+        "sources_total": {"type": "integer", "minimum": 0},
+        "sources_omitted": {"type": "integer", "minimum": 0},
+        "resources_omitted": {"type": "integer", "minimum": 0},
+        "codes_omitted": {"type": "integer", "minimum": 0}
+      }
+    },
+    "codes": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {"type": "string", "minLength": 1, "maxLength": 100, "pattern": "^[a-z][a-z0-9_.-]*$"},
+      "uniqueItems": true
+    }
+  }
+}

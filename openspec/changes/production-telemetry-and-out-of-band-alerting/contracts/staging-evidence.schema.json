@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-content-aggregator.local/schemas/workflow-alert-staging-evidence-v1.json",
+  "title": "WorkflowAlertStagingEvidenceV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "environment_class",
+    "operation_id",
+    "attempt",
+    "event_id",
+    "outcome",
+    "severity",
+    "terminal_at",
+    "received_at",
+    "receipt_sha256",
+    "delivery_count",
+    "redaction_assertions"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "environment_class": {"const": "staging"},
+    "operation_id": {"type": "string", "maxLength": 19, "pattern": "^[1-9][0-9]*$"},
+    "attempt": {"type": "integer", "minimum": 1},
+    "event_id": {"type": "string", "format": "uuid"},
+    "outcome": {"enum": ["partial", "zero_items", "failed", "unknown", "reconciled"]},
+    "severity": {"enum": ["warning", "error"]},
+    "terminal_at": {"type": "string", "format": "date-time"},
+    "received_at": {"type": "string", "format": "date-time"},
+    "receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "delivery_count": {"const": 1},
+    "redaction_assertions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["no_secrets", "no_pii", "no_user_content", "no_raw_urls", "schema_valid"],
+      "properties": {
+        "no_secrets": {"const": true},
+        "no_pii": {"const": true},
+        "no_user_content": {"const": true},
+        "no_raw_urls": {"const": true},
+        "schema_valid": {"const": true}
+      }
+    }
+  }
+}
