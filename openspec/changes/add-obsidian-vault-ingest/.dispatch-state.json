@@ -1,0 +1,7 @@
+{
+  "change_id": "add-obsidian-vault-ingest",
+  "validator_vendors": [],
+  "worker_vendors": [
+    "codex"
+  ]
+}

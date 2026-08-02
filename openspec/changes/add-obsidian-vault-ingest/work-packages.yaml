@@ -1,0 +1,310 @@
+schema_version: 1
+
+feature:
+  id: add-obsidian-vault-ingest
+  title: Canonical durable Obsidian vault ingestion
+  plan_revision: 2
+  created_by: codex
+  created_at: "2026-08-02T05:50:00Z"
+
+contracts:
+  revision: 1
+  openapi:
+    primary: openspec/contracts/content-workflows/openapi/v1.yaml
+    files:
+      - openspec/contracts/content-workflows/openapi/v1.yaml
+  generated:
+    pydantic_dir: src/contracts
+    typescript_dir: web/src/generated
+
+defaults:
+  priority: 5
+  lock_ttl_minutes: 240
+  timeout_minutes: 240
+  retry_budget: 1
+  verification_tier_required: A
+  min_trust_level: 4
+
+packages:
+  - package_id: wp-parser
+    title: Strict clip parser and Markdown normalizer
+    task_type: implement
+    description: Add pure bounded frontmatter parsing, inert Obsidian Markdown normalization, and canonical URL handling through TDD.
+    role: backend-engineer
+    priority: 1
+    depends_on: []
+    locks:
+      files:
+        - src/ingestion/obsidian_parser.py
+        - tests/ingestion/test_obsidian_parser.py
+      keys:
+        - feature:obsidian-vault:parser
+      ttl_minutes: 180
+      reason: Pure clip contract and normalization ownership.
+    scope:
+      write_allow:
+        - src/ingestion/obsidian_parser.py
+        - tests/ingestion/test_obsidian_parser.py
+      read_allow: [src/**, tests/**, openspec/**]
+      deny: [src/sync/**]
+    worktree: {name: wp-parser, mode: isolated}
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 4
+    metadata: {loc_estimate: 700, alternatives_count: 2, complexity: high, package_kind: algorithm}
+    inputs: {tasks: ["1.1", "1.2", "1.3", "1.4", "1.5"]}
+    verification:
+      tier_required: A
+      steps:
+        - name: parser-tests
+          kind: command
+          command: .venv/bin/pytest tests/ingestion/test_obsidian_parser.py --no-cov -q
+          expect_exit_code: 0
+          evidence: {artifacts: [], result_keys: [test_count, pass_count, adversarial_cases]}
+    outputs: {result_keys: [files_modified, test_count, adversarial_cases]}
+
+  - package_id: wp-state
+    title: Private state, immutable events, and claims
+    task_type: implement
+    description: Add migration, models, repository, transactional leases, event uniqueness, crash reconciliation, and redaction tests.
+    role: database-engineer
+    priority: 1
+    depends_on: []
+    locks:
+      files:
+        - alembic/versions
+        - src/models/obsidian_ingest.py
+        - src/repositories/obsidian_ingest.py
+      keys:
+        - db:migration-slot
+        - db:schema:obsidian_ingest_state
+        - feature:obsidian-vault:claims
+      ttl_minutes: 300
+      reason: Migration and transactional claim ownership.
+    scope:
+      write_allow:
+        - alembic/versions/**
+        - openspec/contracts/content-workflows/db/schema.sql
+        - src/models/obsidian_ingest.py
+        - src/models/__init__.py
+        - src/repositories/obsidian_ingest.py
+        - tests/migrations/test_obsidian_ingest_state.py
+        - tests/repositories/test_obsidian_ingest_repository.py
+        - tests/integration/test_obsidian_ingest_claims.py
+      read_allow: [src/**, alembic/**, tests/**, openspec/**]
+      deny: [src/sync/**]
+    worktree: {name: wp-state, mode: isolated}
+    timeout_minutes: 300
+    retry_budget: 1
+    min_trust_level: 4
+    metadata: {loc_estimate: 1100, alternatives_count: 3, complexity: high, package_kind: migration}
+    inputs: {tasks: ["2.1", "2.2", "2.3", "2.4", "2.5"]}
+    verification:
+      tier_required: A
+      steps:
+        - name: state-migration-claim-tests
+          kind: command
+          command: .venv/bin/pytest tests/migrations/test_obsidian_ingest_state.py tests/repositories/test_obsidian_ingest_repository.py tests/integration/test_obsidian_ingest_claims.py --no-cov -q
+          expect_exit_code: 0
+          evidence: {artifacts: [], result_keys: [test_count, pass_count, concurrency_cases, crash_cases]}
+    outputs: {result_keys: [files_modified, test_count, concurrency_cases, crash_cases]}
+
+  - package_id: wp-scanner
+    title: Path-safe bounded scanner
+    task_type: implement
+    description: Add fail-closed allowed-root policy and descriptor-relative bounded file scanning with deterministic race and stability tests.
+    role: security-engineer
+    priority: 1
+    depends_on: []
+    locks:
+      files:
+        - src/ingestion/obsidian_scanner.py
+        - tests/ingestion/test_obsidian_scanner.py
+      keys:
+        - feature:obsidian-vault:pathsafety
+        - env:obsidian-allowed-roots
+      ttl_minutes: 240
+      reason: Filesystem trust boundary and scan resource ceilings.
+    scope:
+      write_allow:
+        - src/ingestion/obsidian_scanner.py
+        - tests/ingestion/test_obsidian_scanner.py
+      read_allow: [src/**, tests/**, openspec/**]
+      deny: [src/sync/**]
+    worktree: {name: wp-scanner, mode: isolated}
+    timeout_minutes: 240
+    retry_budget: 1
+    min_trust_level: 4
+    metadata: {loc_estimate: 950, alternatives_count: 3, complexity: high, package_kind: algorithm}
+    inputs: {tasks: ["3.1", "3.2", "3.3", "3.4", "3.5"]}
+    verification:
+      tier_required: A
+      steps:
+        - name: scanner-security-tests
+          kind: command
+          command: .venv/bin/pytest tests/ingestion/test_obsidian_scanner.py --no-cov -q
+          expect_exit_code: 0
+          evidence: {artifacts: [], result_keys: [test_count, pass_count, containment_cases, limit_cases]}
+    outputs: {result_keys: [files_modified, test_count, containment_cases, limit_cases]}
+
+  - package_id: wp-adapter
+    title: Unregistered durable adapter orchestration
+    task_type: implement
+    description: Join parser, state, and scanner into a bounded cancellable adapter with canonical persistence, linking, outcomes, and redaction.
+    role: integration-engineer
+    priority: 2
+    depends_on: [wp-parser, wp-state, wp-scanner]
+    locks:
+      files:
+        - src/ingestion/obsidian_adapter.py
+        - tests/ingestion/test_obsidian_adapter.py
+      keys:
+        - feature:obsidian-vault:adapter
+      ttl_minutes: 300
+      reason: Single pre-registration orchestration and persistence boundary.
+    scope:
+      write_allow:
+        - src/ingestion/obsidian_adapter.py
+        - tests/ingestion/test_obsidian_adapter.py
+        - tests/integration/test_obsidian_ingest_adapter.py
+        - tests/architecture/test_obsidian_ownership.py
+      read_allow: [src/**, tests/**, openspec/**]
+      deny: [src/sync/**]
+    worktree: {name: wp-adapter, mode: isolated}
+    timeout_minutes: 300
+    retry_budget: 1
+    min_trust_level: 4
+    metadata: {loc_estimate: 1100, alternatives_count: 2, complexity: high, package_kind: integration}
+    inputs: {tasks: ["4.1", "4.2", "4.3", "4.4", "4.5", "4.6"]}
+    verification:
+      tier_required: A
+      steps:
+        - name: adapter-integration-tests
+          kind: command
+          command: .venv/bin/pytest tests/ingestion/test_obsidian_adapter.py tests/integration/test_obsidian_ingest_adapter.py tests/architecture/test_obsidian_ownership.py --no-cov -q
+          expect_exit_code: 0
+          evidence: {artifacts: [], result_keys: [test_count, pass_count, idempotency_cases, redaction_cases]}
+    outputs: {result_keys: [files_modified, test_count, idempotency_cases, redaction_cases]}
+
+  - package_id: wp-source-vertical
+    title: Atomic canonical source vertical
+    task_type: implement
+    description: Atomically register the typed command, config, registry, worker, MCP, CLI, HTTP, frontend, fixture, and live policy surfaces.
+    role: contract-engineer
+    priority: 3
+    depends_on: [wp-adapter]
+    locks:
+      files:
+        - openspec/contracts/content-workflows/openapi/v1.yaml
+        - src/config/sources.py
+        - src/ingestion/registry.py
+        - src/mcp_tools/ingestion.py
+        - src/mcp_tools/toolsets.py
+        - tests/fixtures/sources/library.py
+      keys:
+        - contract:ingestion-command:obsidian-vault
+        - feature:obsidian-vault:sourcevertical
+      ttl_minutes: 360
+      reason: Collection-sensitive canonical source registration synchronization point.
+    scope:
+      write_allow:
+        - openspec/contracts/content-workflows/openapi/v1.yaml
+        - openspec/contracts/content-workflows/generated/**
+        - src/contracts/**
+        - web/src/generated/**
+        - src/config/sources.py
+        - src/ingestion/registry.py
+        - src/ingestion/service.py
+        - src/ingestion/orchestrator.py
+        - src/ingestion/real_ingest_policy.py
+        - src/models/content.py
+        - src/queue/worker.py
+        - src/mcp_tools/ingestion.py
+        - src/mcp_tools/toolsets.py
+        - tests/fixtures/sources/library.py
+        - tests/contract/**
+        - tests/config/test_sources.py
+        - tests/services/test_capability_service.py
+        - tests/ingestion/test_registry.py
+        - tests/ingestion/test_real_ingest_policy.py
+        - tests/queue/**
+        - tests/mcp_tools/**
+        - tests/cli/**
+        - tests/api/**
+        - tests/real_ingestion/test_registry_completeness.py
+        - web/src/**
+      read_allow: [src/**, web/**, tests/**, openspec/**]
+      deny: [src/sync/**]
+    worktree: {name: wp-source-vertical, mode: isolated}
+    timeout_minutes: 360
+    retry_budget: 1
+    min_trust_level: 4
+    metadata: {loc_estimate: 1800, alternatives_count: 3, complexity: high, package_kind: integration}
+    inputs: {tasks: ["5.1", "5.2", "5.3", "5.4", "5.5", "5.6", "5.7"]}
+    verification:
+      tier_required: A
+      steps:
+        - name: source-vertical-contracts
+          kind: command
+          command: make workflow-contracts-check
+          expect_exit_code: 0
+          evidence: {artifacts: [], result_keys: [contract_valid, generated_clean]}
+        - name: source-vertical-tests
+          kind: command
+          command: .venv/bin/pytest tests/contract tests/services/test_capability_service.py tests/ingestion/test_registry.py tests/ingestion/test_real_ingest_policy.py tests/real_ingestion/test_registry_completeness.py tests/mcp_tools tests/cli tests/api --no-cov -q
+          expect_exit_code: 0
+          evidence: {artifacts: [], result_keys: [test_count, pass_count, surface_count]}
+    outputs: {result_keys: [files_modified, test_count, surface_count, generated_clean]}
+
+  - package_id: wp-verification
+    title: End-to-end reliability and documentation
+    task_type: validate
+    description: Extend real-ingestion evidence, complete security and operation regression coverage, document deployment, and run final gates.
+    role: validation-engineer
+    priority: 4
+    depends_on: [wp-source-vertical]
+    locks:
+      files:
+        - openspec/changes/add-obsidian-vault-ingest/tasks.md
+        - openspec/changes/add-obsidian-vault-ingest/session-log.md
+        - docs/SETUP.md
+        - docs/DEVELOPMENT.md
+      keys:
+        - feature:obsidian-vault:verification
+      ttl_minutes: 360
+      reason: Final evidence, documentation, and roadmap checkpoint ownership.
+    scope:
+      write_allow:
+        - tests/real_ingestion/**
+        - tests/integration/**
+        - tests/security/**
+        - tests/contract/**
+        - tests/fixtures/obsidian/**
+        - sources.d/obsidian-vault.yaml.example
+        - docs/SETUP.md
+        - docs/DEVELOPMENT.md
+        - docs/OBSIDIAN_VAULT_INGEST.md
+        - openspec/changes/add-obsidian-vault-ingest/**
+        - openspec/roadmaps/workflow-surface-reliability/**
+      read_allow: [src/**, web/**, tests/**, sources.d/**, docs/**, openspec/**]
+      deny: [src/sync/**]
+    worktree: {name: wp-verification, mode: isolated}
+    timeout_minutes: 360
+    retry_budget: 1
+    min_trust_level: 4
+    metadata: {loc_estimate: 1200, alternatives_count: 2, complexity: high, package_kind: integration}
+    inputs: {tasks: ["6.1", "6.2", "6.3", "6.4", "6.5"]}
+    verification:
+      tier_required: A
+      steps:
+        - name: final-obsidian-gates
+          kind: command
+          command: .venv/bin/pytest tests/ingestion tests/real_ingestion tests/integration tests/security --no-cov -q
+          expect_exit_code: 0
+          evidence: {artifacts: [], result_keys: [test_count, pass_count, migration_cases, security_cases]}
+        - name: strict-openspec
+          kind: command
+          command: openspec validate add-obsidian-vault-ingest --strict
+          expect_exit_code: 0
+          evidence: {artifacts: [], result_keys: [spec_valid]}
+    outputs: {result_keys: [files_modified, test_count, spec_valid, security_cases]}
