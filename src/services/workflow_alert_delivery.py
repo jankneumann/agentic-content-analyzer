@@ -13,10 +13,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID, uuid4
 
+from pydantic import ValidationError
 from sqlalchemy import Select, and_, delete, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.orm import Session
 
+from src.contracts.workflow_alert_models import WorkflowAlertEnvelopeV1
 from src.models.workflow_alert import (
     WorkflowAlertDelivery,
     WorkflowAlertDeliveryStatus,
@@ -56,7 +58,7 @@ class ClaimedWorkflowAlertDelivery:
     attempt_count: int
     lease_expires_at: datetime
     created_at: datetime
-    envelope: dict[str, Any]
+    envelope: WorkflowAlertEnvelopeV1
 
 
 def _aware(value: datetime) -> datetime:
@@ -158,6 +160,16 @@ def claim_due_deliveries(
         rows = db.execute(build_due_delivery_query(now=now, batch_size=batch_size)).all()
         lease_expires_at = now + timedelta(seconds=lease_seconds)
         for delivery, event in rows:
+            try:
+                envelope = WorkflowAlertEnvelopeV1.model_validate(event.envelope)
+            except ValidationError:
+                delivery.status = WorkflowAlertDeliveryStatus.PERMANENT_FAILURE.value
+                delivery.attempt_count = int(delivery.attempt_count or 0) + 1
+                delivery.lease_expires_at = None
+                delivery.delivered_at = None
+                delivery.last_error_code = "invalid_envelope"
+                delivery.updated_at = now
+                continue
             deadline = _aware(delivery.created_at) + timedelta(seconds=policy.max_age_seconds)
             if int(delivery.attempt_count or 0) >= policy.max_attempts or now >= deadline:
                 delivery.status = WorkflowAlertDeliveryStatus.EXHAUSTED.value
@@ -178,7 +190,7 @@ def claim_due_deliveries(
                     attempt_count=delivery.attempt_count,
                     lease_expires_at=lease_expires_at,
                     created_at=_aware(delivery.created_at),
-                    envelope=dict(event.envelope),
+                    envelope=envelope,
                 )
             )
         db.commit()
@@ -239,6 +251,7 @@ def mark_delivery_succeeded(
             WorkflowAlertDelivery.id == claim.delivery_id,
             WorkflowAlertDelivery.status == WorkflowAlertDeliveryStatus.LEASED.value,
             WorkflowAlertDelivery.lease_expires_at == claim.lease_expires_at,
+            WorkflowAlertDelivery.lease_expires_at > now,
         )
         .values(
             status=WorkflowAlertDeliveryStatus.DELIVERED.value,
@@ -298,6 +311,7 @@ def record_delivery_failure(
             WorkflowAlertDelivery.id == claim.delivery_id,
             WorkflowAlertDelivery.status == WorkflowAlertDeliveryStatus.LEASED.value,
             WorkflowAlertDelivery.lease_expires_at == claim.lease_expires_at,
+            WorkflowAlertDelivery.lease_expires_at > now,
         )
         .values(
             status=status,

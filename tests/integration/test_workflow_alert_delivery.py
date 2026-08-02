@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import sessionmaker
 
+from src.contracts.workflow_alert_models import WorkflowAlertEnvelopeV1
 from src.models.workflow_alert import (
     WorkflowAlertDelivery,
     WorkflowAlertDeliveryStatus,
@@ -37,7 +38,37 @@ def _policy(*, max_attempts: int = 5) -> DeliveryRetryPolicy:
     )
 
 
-def _insert_ready_delivery(session, *, now: datetime) -> WorkflowAlertDelivery:
+def _valid_envelope(
+    *,
+    event_id,
+    operation_id: int,
+    generation: int,
+    now: datetime,
+) -> dict:
+    return WorkflowAlertEnvelopeV1(
+        event_id=event_id,
+        event_key=f"operation:{operation_id}:claim:{generation}:status:failed",
+        occurred_at=now,
+        severity="error",
+        outcome="failed",
+        source_kind="operation",
+        workflow_type="ingestion.execute",
+        operation_id=str(operation_id),
+        attempt=generation + 1,
+        diagnostic_url=f"https://ops.example.com/api/v1/operations/{operation_id}",
+        resource_refs=[],
+        source_keys=[],
+        counts={"items_failed": 1},
+        codes=["operation_failed"],
+    ).model_dump(mode="json")
+
+
+def _insert_ready_delivery(
+    session,
+    *,
+    now: datetime,
+    envelope: dict | None = None,
+) -> WorkflowAlertDelivery:
     event_id = uuid4()
     operation_id = event_id.int % 9_000_000_000 + 1
     generation = int(now.timestamp())
@@ -49,7 +80,16 @@ def _insert_ready_delivery(session, *, now: datetime) -> WorkflowAlertDelivery:
         claim_generation=generation,
         terminal_status="failed",
         classification_status=WorkflowTerminalClassificationStatus.READY.value,
-        envelope={"schema_version": 1, "safe": True},
+        envelope=(
+            envelope
+            if envelope is not None
+            else _valid_envelope(
+                event_id=event_id,
+                operation_id=operation_id,
+                generation=generation,
+                now=now,
+            )
+        ),
         occurred_at=now,
     )
     delivery = WorkflowAlertDelivery(
@@ -65,6 +105,49 @@ def _insert_ready_delivery(session, *, now: datetime) -> WorkflowAlertDelivery:
     session.add(delivery)
     session.commit()
     return delivery
+
+
+def test_corrupt_persisted_envelope_is_closed_without_becoming_dispatchable(test_engine) -> None:
+    factory = sessionmaker(bind=test_engine, expire_on_commit=False)
+    now = datetime.now(UTC).replace(microsecond=0)
+    with factory() as seed:
+        delivery = _insert_ready_delivery(
+            seed,
+            now=now,
+            envelope={"schema_version": 0, "unsafe_manual_field": "must-not-dispatch"},
+        )
+        valid_delivery = _insert_ready_delivery(seed, now=now)
+
+    try:
+        with factory() as db:
+            claims = claim_due_deliveries(
+                db,
+                now=now,
+                lease_seconds=20,
+                batch_size=2,
+                policy=_policy(),
+            )
+            assert [claim.delivery_id for claim in claims] == [valid_delivery.id]
+            assert isinstance(claims[0].envelope, WorkflowAlertEnvelopeV1)
+            persisted = db.get(WorkflowAlertDelivery, delivery.id)
+            assert persisted is not None
+            assert persisted.status == WorkflowAlertDeliveryStatus.PERMANENT_FAILURE.value
+            assert persisted.attempt_count == 1
+            assert persisted.lease_expires_at is None
+            assert persisted.last_error_code == "invalid_envelope"
+    finally:
+        with factory() as cleanup:
+            cleanup.execute(
+                delete(WorkflowAlertDelivery).where(
+                    WorkflowAlertDelivery.id.in_([delivery.id, valid_delivery.id])
+                )
+            )
+            cleanup.execute(
+                delete(WorkflowTerminalEvent).where(
+                    WorkflowTerminalEvent.id.in_([delivery.event_id, valid_delivery.event_id])
+                )
+            )
+            cleanup.commit()
 
 
 def test_claim_is_committed_before_external_work_and_recovered_lease_is_unique(test_engine) -> None:
@@ -127,6 +210,84 @@ def test_claim_is_committed_before_external_work_and_recovered_lease_is_unique(t
             )
             cleanup.execute(
                 delete(WorkflowTerminalEvent).where(WorkflowTerminalEvent.id == delivery.event_id)
+            )
+            cleanup.commit()
+
+
+def test_results_after_logical_lease_expiry_are_discarded_and_recovered(test_engine) -> None:
+    factory = sessionmaker(bind=test_engine, expire_on_commit=False)
+    now = datetime.now(UTC).replace(microsecond=0)
+    policy = _policy()
+    with factory() as seed:
+        success_delivery = _insert_ready_delivery(seed, now=now)
+        failure_delivery = _insert_ready_delivery(seed, now=now)
+
+    deliveries = (success_delivery, failure_delivery)
+    try:
+        with factory() as claiming_db:
+            claims = {
+                claim.delivery_id: claim
+                for claim in claim_due_deliveries(
+                    claiming_db,
+                    now=now,
+                    lease_seconds=20,
+                    batch_size=2,
+                    policy=policy,
+                )
+            }
+        assert set(claims) == {delivery.id for delivery in deliveries}
+
+        expired_at = now + timedelta(seconds=20)
+        with factory() as expired_db:
+            assert not mark_delivery_succeeded(
+                expired_db,
+                claim=claims[success_delivery.id],
+                now=expired_at,
+            )
+            assert (
+                record_delivery_failure(
+                    expired_db,
+                    claim=claims[failure_delivery.id],
+                    now=expired_at,
+                    error_code="timeout",
+                    retryable=True,
+                    retry_after_seconds=None,
+                    policy=policy,
+                )
+                is None
+            )
+            states = dict(
+                expired_db.execute(
+                    select(WorkflowAlertDelivery.id, WorkflowAlertDelivery.status).where(
+                        WorkflowAlertDelivery.id.in_([delivery.id for delivery in deliveries])
+                    )
+                ).all()
+            )
+            assert set(states.values()) == {WorkflowAlertDeliveryStatus.LEASED.value}
+
+        with factory() as recovery_db:
+            recovered = claim_due_deliveries(
+                recovery_db,
+                now=expired_at,
+                lease_seconds=20,
+                batch_size=2,
+                policy=policy,
+            )
+        assert {claim.delivery_id for claim in recovered} == {
+            delivery.id for delivery in deliveries
+        }
+        assert {claim.attempt_count for claim in recovered} == {2}
+    finally:
+        with factory() as cleanup:
+            cleanup.execute(
+                delete(WorkflowAlertDelivery).where(
+                    WorkflowAlertDelivery.id.in_([delivery.id for delivery in deliveries])
+                )
+            )
+            cleanup.execute(
+                delete(WorkflowTerminalEvent).where(
+                    WorkflowTerminalEvent.id.in_([delivery.event_id for delivery in deliveries])
+                )
             )
             cleanup.commit()
 
