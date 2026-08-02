@@ -14,20 +14,20 @@
 
 ## 1. Closed contracts and policy
 
-- [ ] 1.1 [S] Write contract tests for the alert envelope and staging-evidence schemas, including all bounds and forbidden extension fields
+- [x] 1.1 [S] Write contract tests for the alert envelope and staging-evidence schemas, including all bounds and forbidden extension fields
   **Spec scenarios**: Unexpected field is presented; Controlled staging alert arrives
   **Contracts**: `contracts/workflow-alert-envelope.schema.json`, `contracts/staging-evidence.schema.json`
   **Dependencies**: None
-- [ ] 1.2 [M] Add strict terminal event, safe envelope, delivery, and staging-evidence models to canonical Python contracts
+- [x] 1.2 [M] Add strict terminal event, safe envelope, delivery, and staging-evidence models to canonical Python contracts
   **Dependencies**: 1.1
-- [ ] 1.3 [S] Write settings tests for default-off sink policy, trusted diagnostic origin, endpoint/host safety, secret types, and retry/lease/retention bounds
+- [x] 1.3 [S] Write settings tests for default-off sink policy, trusted diagnostic origin, endpoint/host safety, secret types, and retry/lease/retention bounds
   **Spec scenarios**: Webhook alerting is disabled; Webhook configuration is unsafe; Link input contains an untrusted component
   **Design decisions**: D4, D5, D8, D9
   **Dependencies**: None
-- [ ] 1.4 [S] Implement validated alert policy settings without database-backed secret registration
+- [x] 1.4 [S] Implement validated alert policy settings without database-backed secret registration
   **Dependencies**: 1.3
 
-- [ ] Checkpoint: run contract/settings tests and verify secret fields are absent from settings APIs
+- [x] Checkpoint: run contract/settings tests and verify secret fields are absent from settings APIs
 
 ## 2. Additive terminal-event persistence
 
@@ -89,16 +89,24 @@
 - [ ] 5.1 [M] Write end-to-end operation tests covering worker completion/failure, queued/running cancellation, handler-owned terminal state, maintenance failure, stale claims, and fresh persisted V2 result reads
   **Spec scenarios**: all scenarios under Canonical terminal transitions persist event intent and Terminal projection reads committed state
   **Dependencies**: 2.2, 3.2
-- [ ] 5.2 [S] Reconcile legacy job notifications so external routing never consumes generic raw title/summary/payload fields
+- [ ] 5.2 [S] Write and implement a generic settings-override denylist for alert endpoint, secret, origin, and host-policy key names
+  **Spec scenarios**: Webhook configuration is unsafe
+  **Design decisions**: D8
+  **Dependencies**: 1.4
+- [ ] 5.3 [S] Reconcile legacy job notifications so external routing never consumes generic raw title/summary/payload fields
   **Spec scenarios**: Generic notification contains unsafe fields; No SSE subscriber is connected
   **Dependencies**: 5.1
-- [ ] 5.3 [M] Write reconciliation integration tests for atomic action intent, apply rollback, bounded `apply_failed`, repeat/concurrent apply, and dry-run purity
+- [ ] 5.4 [M] Write reconciliation integration tests for atomic action intent, apply rollback, bounded `apply_failed`, repeat/concurrent apply, and dry-run purity
   **Spec scenarios**: all scenarios under Reconciliation telemetry follows committed action evidence
   **Dependencies**: 2.2, 3.2
-- [ ] 5.4 [M] Add safe post-rollback reconciliation failure intent while preserving transactional action-trigger evidence
-  **Dependencies**: 5.3
-- [ ] 5.5 [M] Run operation graph and reconciliation concurrency regressions with retention active
-  **Dependencies**: 4.6, 5.2, 5.4
+- [ ] 5.5 [M] Add safe post-rollback reconciliation failure intent while preserving transactional action-trigger evidence
+  **Dependencies**: 5.4
+- [ ] 5.6 [M] Add an authenticated bounded terminal-event diagnostic read and canonical OpenAPI contract
+  **Spec scenarios**: An operation event receives a valid origin; Link input contains an untrusted component
+  **Design decisions**: D4
+  **Dependencies**: 3.4, 4.2
+- [ ] 5.7 [M] Run operation graph and reconciliation concurrency regressions with retention active
+  **Dependencies**: 4.6, 5.2, 5.3, 5.5, 5.6
 
 - [ ] Checkpoint: compare terminal/action rows to event and delivery identities under forced races
 
@@ -125,4 +133,4 @@
 - Parallel branches after persistence: classification/telemetry and delivery repository/transport
 - Maximum package parallel width: 2
 - Shared-file conflicts: contracts precede all consumers; worker drain follows classifier and delivery repository; reconciliation integration follows persistence/classifier
-- Task sizes: S=9, M=19, L=0, XL=0
+- Task sizes: S=10, M=20, L=0, XL=0

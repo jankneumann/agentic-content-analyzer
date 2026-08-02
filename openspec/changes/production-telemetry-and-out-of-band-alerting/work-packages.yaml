@@ -3,12 +3,12 @@ schema_version: 1
 feature:
   id: production-telemetry-and-out-of-band-alerting
   title: Durable terminal telemetry and webhook alerts
-  plan_revision: 1
+  plan_revision: 2
   created_by: codex
   created_at: "2026-08-01T23:30:00Z"
 
 contracts:
-  revision: 1
+  revision: 2
   openapi:
     primary: openspec/contracts/content-workflows/openapi/v1.yaml
     files:
@@ -208,6 +208,10 @@ packages:
         - src/queue/worker.py
         - src/services/content_reconciliation_service.py
         - src/services/notification_service.py
+        - src/services/settings_service.py
+        - src/api/settings_override_routes.py
+        - src/api/operation_routes.py
+        - openspec/contracts/content-workflows/openapi/v1.yaml
       keys:
         - feature:workflow-alerting:integration
       ttl_minutes: 300
@@ -217,8 +221,18 @@ packages:
         - src/queue/worker.py
         - src/services/content_reconciliation_service.py
         - src/services/notification_service.py
+        - src/services/settings_service.py
+        - src/api/settings_override_routes.py
+        - src/api/operation_routes.py
+        - openspec/contracts/content-workflows/openapi/v1.yaml
+        - openspec/contracts/content-workflows/generated/**
+        - src/contracts/workflow_models.py
+        - web/src/generated/**
         - tests/queue/test_worker_extended.py
         - tests/queue/test_operation_controls.py
+        - tests/api/test_settings_override_api.py
+        - tests/api/test_operation_routes.py
+        - tests/services/test_settings_service.py
         - tests/services/test_content_reconciliation_service.py
         - tests/integration/test_content_reconciliation.py
         - tests/integration/test_workflow_alert_end_to_end.py
@@ -228,13 +242,13 @@ packages:
     retry_budget: 1
     min_trust_level: 4
     metadata: {loc_estimate: 820, alternatives_count: 2, complexity: high, package_kind: integration}
-    inputs: {tasks: ["4.5", "4.6", "5.1", "5.2", "5.3", "5.4", "5.5"]}
+    inputs: {tasks: ["4.5", "4.6", "5.1", "5.2", "5.3", "5.4", "5.5", "5.6", "5.7"]}
     verification:
       tier_required: A
       steps:
         - name: lifecycle-reconciliation-tests
           kind: command
-          command: .venv/bin/pytest tests/queue/test_worker_extended.py tests/queue/test_operation_controls.py tests/services/test_content_reconciliation_service.py tests/integration/test_content_reconciliation.py tests/integration/test_workflow_alert_end_to_end.py --no-cov -q
+          command: .venv/bin/pytest tests/queue/test_worker_extended.py tests/queue/test_operation_controls.py tests/api/test_settings_override_api.py tests/api/test_operation_routes.py tests/services/test_settings_service.py tests/services/test_content_reconciliation_service.py tests/integration/test_content_reconciliation.py tests/integration/test_workflow_alert_end_to_end.py --no-cov -q
           expect_exit_code: 0
           evidence: {artifacts: [], result_keys: [test_count, pass_count, terminal_paths, reconciliation_cases]}
     outputs: {result_keys: [files_modified, test_count, terminal_paths, reconciliation_cases]}
