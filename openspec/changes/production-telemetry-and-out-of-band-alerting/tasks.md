@@ -105,6 +105,7 @@
 - [x] 5.6 [M] Add an authenticated bounded terminal-event diagnostic read and canonical OpenAPI contract
   **Spec scenarios**: An operation event receives a valid origin; Link input contains an untrusted component
   **Design decisions**: D4
+  **Review remediation**: runtime 401, 403, and 404 responses use the canonical Problem media type and body declared by OpenAPI
   **Dependencies**: 3.4, 4.2
 - [x] 5.7 [M] Run operation graph and reconciliation concurrency regressions with retention active
   **Dependencies**: 4.6, 5.2, 5.3, 5.5, 5.6

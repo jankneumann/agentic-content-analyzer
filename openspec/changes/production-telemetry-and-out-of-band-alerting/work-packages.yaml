@@ -3,7 +3,7 @@ schema_version: 1
 feature:
   id: production-telemetry-and-out-of-band-alerting
   title: Durable terminal telemetry and webhook alerts
-  plan_revision: 5
+  plan_revision: 6
   created_by: codex
   created_at: "2026-08-01T23:30:00Z"
 
@@ -213,6 +213,7 @@ packages:
         - src/services/settings_service.py
         - src/api/settings_override_routes.py
         - src/api/operation_routes.py
+        - src/api/middleware/error_handler.py
         - openspec/contracts/content-workflows/openapi/v1.yaml
         - openspec/changes/production-telemetry-and-out-of-band-alerting/tasks.md
       keys:
@@ -229,6 +230,7 @@ packages:
         - src/services/settings_service.py
         - src/api/settings_override_routes.py
         - src/api/operation_routes.py
+        - src/api/middleware/error_handler.py
         - openspec/contracts/content-workflows/openapi/v1.yaml
         - openspec/changes/production-telemetry-and-out-of-band-alerting/tasks.md
         - openspec/contracts/content-workflows/generated/**
@@ -240,6 +242,7 @@ packages:
         - tests/services/test_workflow_terminal_event_service.py
         - tests/api/test_settings_override_api.py
         - tests/api/test_operation_routes.py
+        - tests/api/test_error_handler.py
         - tests/services/test_settings_service.py
         - tests/services/test_content_reconciliation_service.py
         - tests/integration/test_content_reconciliation.py
@@ -256,7 +259,7 @@ packages:
       steps:
         - name: lifecycle-reconciliation-tests
           kind: command
-          command: .venv/bin/pytest tests/queue/test_worker_extended.py tests/queue/test_operation_service.py tests/queue/test_operation_controls.py tests/api/test_settings_override_api.py tests/api/test_operation_routes.py tests/services/test_workflow_terminal_event_service.py tests/services/test_settings_service.py tests/services/test_content_reconciliation_service.py tests/integration/test_content_reconciliation.py tests/integration/test_workflow_alert_end_to_end.py --no-cov -q
+          command: .venv/bin/pytest tests/queue/test_worker_extended.py tests/queue/test_operation_service.py tests/queue/test_operation_controls.py tests/api/test_settings_override_api.py tests/api/test_operation_routes.py tests/api/test_error_handler.py tests/services/test_workflow_terminal_event_service.py tests/services/test_settings_service.py tests/services/test_content_reconciliation_service.py tests/integration/test_content_reconciliation.py tests/integration/test_workflow_alert_end_to_end.py --no-cov -q
           expect_exit_code: 0
           evidence: {artifacts: [], result_keys: [test_count, pass_count, terminal_paths, reconciliation_cases]}
     outputs: {result_keys: [files_modified, test_count, terminal_paths, reconciliation_cases]}
