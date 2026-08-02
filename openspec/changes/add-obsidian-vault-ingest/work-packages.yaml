@@ -159,6 +159,7 @@ packages:
         - alembic/versions
         - src/models/content.py
         - src/ingestion/obsidian_adapter.py
+        - src/ingestion/obsidian_scanner.py
         - tests/ingestion/test_obsidian_adapter.py
       keys:
         - db:migration-slot
@@ -171,8 +172,10 @@ packages:
         - openspec/contracts/content-workflows/db/schema.sql
         - src/models/content.py
         - src/ingestion/obsidian_adapter.py
+        - src/ingestion/obsidian_scanner.py
         - src/queue/execution_claim.py
         - tests/ingestion/test_obsidian_adapter.py
+        - tests/ingestion/test_obsidian_scanner.py
         - tests/integration/test_obsidian_ingest_adapter.py
         - tests/migrations/test_obsidian_content_source.py
         - tests/queue/test_execution_claim.py
