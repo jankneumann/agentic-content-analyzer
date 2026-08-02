@@ -195,6 +195,7 @@ packages:
     depends_on: [wp-adapter]
     locks:
       files:
+        - alembic/versions
         - openspec/contracts/content-workflows/openapi/v1.yaml
         - src/config/sources.py
         - src/ingestion/registry.py
@@ -202,12 +203,14 @@ packages:
         - src/mcp_tools/toolsets.py
         - tests/fixtures/sources/library.py
       keys:
+        - db:migration-slot
         - contract:ingestion-command:obsidian-vault
         - feature:obsidian-vault:sourcevertical
       ttl_minutes: 360
       reason: Collection-sensitive canonical source registration synchronization point.
     scope:
       write_allow:
+        - alembic/versions/**
         - openspec/contracts/content-workflows/openapi/v1.yaml
         - openspec/contracts/content-workflows/generated/**
         - src/contracts/**
@@ -232,6 +235,7 @@ packages:
         - tests/cli/**
         - tests/api/**
         - tests/real_ingestion/test_registry_completeness.py
+        - tests/migrations/test_obsidian_content_source.py
         - web/src/**
       read_allow: [src/**, web/**, tests/**, openspec/**]
       deny: [src/sync/**]
