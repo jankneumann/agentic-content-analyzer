@@ -50,7 +50,7 @@ def _valid_envelope() -> dict[str, object]:
         "source_kind": "operation",
         "workflow_type": "ingestion.execute",
         "operation_id": "42",
-        "attempt": 3,
+        "attempt": 4,
         "diagnostic_url": "https://ops.example.com/api/v1/operations/42",
         "resource_refs": [{"type": "content", "id": "42"}],
         "source_keys": ["src_0123456789abcdef0123"],
@@ -120,7 +120,7 @@ def test_workflow_alert_schemas_reject_unknown_extension_fields(
         (("event_id",), "x" * 37),
         (("event_key",), "x" * 161),
         (("occurred_at",), "2026-08-01T23:30:00.12345678901234567890Z"),
-        (("attempt",), 2_147_483_648),
+        (("attempt",), 2_147_483_649),
         (("diagnostic_url",), "https://example.com/" + "x" * 2048),
         (("resource_refs",), [{"type": "content", "id": "x"}] * 21),
         (("resource_refs", 0, "id"), "x" * 81),
@@ -196,7 +196,7 @@ def test_workflow_alert_envelope_rejects_pattern_shaped_untrusted_values(
             )
         },
         {"event_key": "operation:99:claim:3:status:failed"},
-        {"event_key": "operation:42:claim:4:status:failed"},
+        {"attempt": 3},
         {"event_key": "operation:42:claim:3:status:completed"},
         {"severity": "warning"},
         {"source_kind": "reconciliation_action", "outcome": "reconciled"},
@@ -332,7 +332,7 @@ def test_workflow_alert_schema_rejects_cross_field_classification_mismatches(
     ("field", "value"),
     [
         ("operation_id", "12345678901234567890"),
-        ("attempt", 2_147_483_648),
+        ("attempt", 2_147_483_649),
         ("event_id", "x" * 37),
         ("terminal_at", "2026-08-01T23:30:00.12345678901234567890Z"),
         ("received_at", "2026-08-01T23:30:00.12345678901234567890Z"),
@@ -386,7 +386,7 @@ def test_workflow_alert_python_models_are_strict_and_json_safe() -> None:
         source_kind="operation",
         workflow_type="ingestion.execute",
         operation_id="42",
-        attempt=3,
+        attempt=4,
         diagnostic_url="https://ops.example.com/api/v1/operations/42",
         resource_refs=[WorkflowAlertResourceReference(type="content", id="42")],
         source_keys=["src_0123456789abcdef0123"],
@@ -564,7 +564,7 @@ def test_delivery_state_accepts_each_consistent_lifecycle_state(
 def test_staging_evidence_python_model_matches_checked_in_schema() -> None:
     evidence = WorkflowAlertStagingEvidenceV1(
         operation_id="42",
-        attempt=3,
+        attempt=4,
         event_id=UUID("550e8400-e29b-41d4-a716-446655440000"),
         outcome="failed",
         severity="error",

@@ -183,7 +183,7 @@ class WorkflowAlertEnvelopeV1(StrictModel):
     source_kind: WorkflowTerminalSourceKind
     workflow_type: WorkflowTypeName
     operation_id: BoundedPositiveIdentifier | None
-    attempt: Annotated[int, Field(ge=1, le=2_147_483_647)]
+    attempt: Annotated[int, Field(ge=1, le=2_147_483_648)]
     diagnostic_url: WorkflowDiagnosticUrl
     resource_refs: Annotated[list[WorkflowAlertResourceReference], Field(max_length=20)]
     source_keys: Annotated[
@@ -233,8 +233,9 @@ class WorkflowAlertEnvelopeV1(StrictModel):
                 raise ValueError("operation alerts require an operation classification")
             expected_severity = "error" if self.outcome == "failed" else "warning"
             terminal_status = "failed" if self.outcome == "failed" else "completed"
+            claim_generation = self.attempt - 1
             expected_event_key = (
-                f"operation:{self.operation_id}:claim:{self.attempt}:status:{terminal_status}"
+                f"operation:{self.operation_id}:claim:{claim_generation}:status:{terminal_status}"
             )
             if self.severity != expected_severity or self.event_key != expected_event_key:
                 raise ValueError(
@@ -338,7 +339,7 @@ class WorkflowAlertStagingEvidenceV1(StrictModel):
     schema_version: Literal[1] = 1
     environment_class: Literal["staging"] = "staging"
     operation_id: BoundedPositiveIdentifier
-    attempt: Annotated[int, Field(ge=1, le=2_147_483_647)]
+    attempt: Annotated[int, Field(ge=1, le=2_147_483_648)]
     event_id: UUID
     outcome: Literal["partial", "zero_items", "failed", "unknown", "reconciled"]
     severity: WorkflowAlertExternalSeverity
