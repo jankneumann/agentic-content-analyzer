@@ -66,6 +66,13 @@ from src.models.source_override import SourceOverride
 from src.models.summary import NewsletterSummary, Summary, SummaryData
 from src.models.theme import ThemeAnalysis
 from src.models.topic import KBIndex, Topic, TopicNote, TopicNoteType, TopicStatus
+from src.models.workflow_alert import (
+    WorkflowAlertDelivery,
+    WorkflowAlertDeliveryStatus,
+    WorkflowTerminalClassificationStatus,
+    WorkflowTerminalEvent,
+    WorkflowTerminalSourceKind,
+)
 from src.models.youtube import (
     TimestampedQuote,
     TranscriptSegment,
@@ -187,6 +194,12 @@ __all__ = [
     # Ingestion filter
     "PersonaFilterProfile",
     "FilterFeedbackEvent",
+    # Workflow terminal alerting
+    "WorkflowTerminalEvent",
+    "WorkflowTerminalSourceKind",
+    "WorkflowTerminalClassificationStatus",
+    "WorkflowAlertDelivery",
+    "WorkflowAlertDeliveryStatus",
     # YouTube
     "YouTubeTranscript",
     "TranscriptSegment",
