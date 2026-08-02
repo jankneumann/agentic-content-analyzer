@@ -30,23 +30,23 @@
 
 Depends on: P0. Shared hot files: none.
 
-- [ ] 1.1 Add failing parser tests for valid required/optional frontmatter, defaults,
+- [x] 1.1 Add failing parser tests for valid required/optional frontmatter, defaults,
   frontmatter stripping, timezone enforcement, HTTP(S)-only URLs, userinfo rejection,
   invalid UTF-8, and unknown-field handling.
   Scenarios: `Required metadata is valid`, `Optional metadata is absent`, `Required
   metadata is missing or invalid`.
-- [ ] 1.2 Implement the strict clip metadata model and parser until 1.1 passes, with no
+- [x] 1.2 Implement the strict clip metadata model and parser until 1.1 passes, with no
   filesystem or persistence dependency.
-- [ ] 1.3 Add failing adversarial YAML tests for byte/node/depth/alias/string ceilings,
+- [x] 1.3 Add failing adversarial YAML tests for byte/node/depth/alias/string ceilings,
   custom tags, non-mapping roots, and unsupported values, then implement bounded safe
   loading.
   Scenario: `YAML exceeds the safe contract`.
-- [ ] 1.4 Add failing golden normalization tests for wikilinks, aliases, headings,
+- [x] 1.4 Add failing golden normalization tests for wikilinks, aliases, headings,
   callouts, embeds, unsupported syntax, raw HTML, macros, and dangerous URI text; then
   implement deterministic inert normalization without dereferencing files.
   Scenarios: `Wikilinks and callouts are normalized`, `An embed references another
   vault file`, `Active-looking content remains inert`.
-- [ ] 1.5 Add canonical URL tests for host/default-port normalization, tracking removal,
+- [x] 1.5 Add canonical URL tests for host/default-port normalization, tracking removal,
   bounded length, sensitive query redaction, and deterministic hashing; then implement
   the pure canonicalizer.
   Scenario: `A URL contains tracking or sensitive query data`.
@@ -148,8 +148,9 @@ green commit.
   then extend the discriminated config union.
   Scenario: `Database override is projected safely`.
 - [ ] 5.3 In the same package, add the `SOURCE_REGISTRY` descriptor, emitted
-  `ContentSource.OBSIDIAN`, service/worker dispatch, configured-source snapshot
-  enforcement, schedule metadata, and readiness resolver with completeness tests.
+  `ContentSource.OBSIDIAN` and its storage-enum migration, service/worker dispatch,
+  configured-source snapshot enforcement, schedule metadata, and readiness resolver
+  with migration/completeness tests.
 
   Scenarios: `New source requires complete surface coverage`, `A configured vault scan
   completes durably`.
