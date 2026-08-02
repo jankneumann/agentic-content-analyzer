@@ -1,0 +1,7 @@
+{
+  "change_id": "production-telemetry-and-out-of-band-alerting",
+  "validator_vendors": [],
+  "worker_vendors": [
+    "codex"
+  ]
+}
