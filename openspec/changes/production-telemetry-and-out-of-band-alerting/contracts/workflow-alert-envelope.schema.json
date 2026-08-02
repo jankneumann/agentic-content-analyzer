@@ -13,6 +13,7 @@
     "outcome",
     "source_kind",
     "workflow_type",
+    "operation_id",
     "attempt",
     "diagnostic_url",
     "resource_refs",
@@ -22,16 +23,21 @@
   ],
   "properties": {
     "schema_version": {"const": 1},
-    "event_id": {"type": "string", "format": "uuid"},
+    "event_id": {"type": "string", "format": "uuid", "maxLength": 36},
     "event_key": {"type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[a-z0-9:_-]+$"},
-    "occurred_at": {"type": "string", "format": "date-time"},
+    "occurred_at": {"type": "string", "format": "date-time", "maxLength": 35},
     "severity": {"enum": ["warning", "error"]},
     "outcome": {"enum": ["partial", "zero_items", "failed", "unknown", "reconciled"]},
     "source_kind": {"enum": ["operation", "reconciliation_action", "reconciliation_failure"]},
     "workflow_type": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$"},
     "operation_id": {"type": ["string", "null"], "maxLength": 19, "pattern": "^[1-9][0-9]*$"},
     "attempt": {"type": "integer", "minimum": 1, "maximum": 2147483647},
-    "diagnostic_url": {"type": "string", "format": "uri", "maxLength": 2048, "pattern": "^https://"},
+    "diagnostic_url": {
+      "type": "string",
+      "format": "uri",
+      "maxLength": 2048,
+      "pattern": "^https://[^/?#@]+/(?:api/v1/operations/[1-9][0-9]*|api/v1/workflow-terminal-events/[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$"
+    },
     "resource_refs": {
       "type": "array",
       "maxItems": 20,
@@ -55,13 +61,13 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "items_ingested": {"type": "integer", "minimum": 0},
-        "items_skipped": {"type": "integer", "minimum": 0},
-        "items_failed": {"type": "integer", "minimum": 0},
-        "sources_total": {"type": "integer", "minimum": 0},
-        "sources_omitted": {"type": "integer", "minimum": 0},
-        "resources_omitted": {"type": "integer", "minimum": 0},
-        "codes_omitted": {"type": "integer", "minimum": 0}
+        "items_ingested": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+        "items_skipped": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+        "items_failed": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+        "sources_total": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+        "sources_omitted": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+        "resources_omitted": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+        "codes_omitted": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807}
       }
     },
     "codes": {
