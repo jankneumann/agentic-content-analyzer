@@ -193,7 +193,7 @@ def test_workflow_alert_python_models_are_strict_and_json_safe() -> None:
         event_key="operation:42:claim:3:status:failed",
         source_kind="operation",
         operation_id="42",
-        attempt=3,
+        claim_generation=3,
         terminal_status="failed",
         occurred_at=occurred_at,
     )
@@ -243,6 +243,20 @@ def test_workflow_alert_python_models_are_strict_and_json_safe() -> None:
         WorkflowAlertEnvelopeV1.model_validate(
             {**_valid_envelope(), "occurred_at": "2026-08-01T23:30:00"}
         )
+
+
+def test_terminal_event_preserves_unclaimed_queued_cancellation_generation() -> None:
+    event = WorkflowTerminalEventV1(
+        event_id=UUID("550e8400-e29b-41d4-a716-446655440000"),
+        event_key="operation:42:claim:0:status:cancelled",
+        source_kind="operation",
+        operation_id="42",
+        claim_generation=0,
+        terminal_status="cancelled",
+        occurred_at=datetime(2026, 8, 1, 23, 30, tzinfo=UTC),
+    )
+
+    assert event.claim_generation == 0
 
 
 def test_staging_evidence_python_model_matches_checked_in_schema() -> None:

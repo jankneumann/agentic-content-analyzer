@@ -54,7 +54,7 @@ class WorkflowTerminalEventV1(StrictModel):
     event_key: WorkflowEventKey
     source_kind: WorkflowTerminalSourceKind
     operation_id: BoundedPositiveIdentifier | None = None
-    attempt: Annotated[int, Field(ge=1, le=2_147_483_647)]
+    claim_generation: Annotated[int, Field(ge=0, le=2_147_483_647)]
     terminal_status: TerminalOperationStatus | None = None
     occurred_at: AwareDatetime
 
