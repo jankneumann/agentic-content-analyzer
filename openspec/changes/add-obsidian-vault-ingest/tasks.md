@@ -79,23 +79,23 @@ Depends on: P0. Owns migration/model/repository files only.
 
 Depends on: P0. Owns new scanner modules/tests only.
 
-- [ ] 3.1 Add failing configuration-policy tests for deployment-owned allowed roots,
+- [x] 3.1 Add failing configuration-policy tests for deployment-owned allowed roots,
   empty-root disablement, override narrowing, worker-local mount readiness, and absence
   of path values from readiness errors; then implement the trusted root policy.
   Scenario: `The worker cannot access the configured mount`.
-- [ ] 3.2 Add failing containment tests for absolute paths, NUL/traversal, leaf and
+- [x] 3.2 Add failing containment tests for absolute paths, NUL/traversal, leaf and
   nested symlinks, non-regular files, root replacement, and swap-after-enumeration;
   then implement descriptor-relative no-follow enumeration/open/revalidation.
   Scenario: `A path or symlink escapes containment`.
-- [ ] 3.3 Add deterministic fake-filesystem/clock tests for temporary names, same-size
+- [x] 3.3 Add deterministic fake-filesystem/clock tests for temporary names, same-size
   modifications, partial writes, inode changes, settle checks, and post-read re-stat;
   then implement stabilization with injected clock/sleeper/filesystem dependencies.
   Scenario: `A synchronizing file changes during read`.
-- [ ] 3.4 Add failing tests for maximum files, bytes, depth, duration, note size, and
+- [x] 3.4 Add failing tests for maximum files, bytes, depth, duration, note size, and
   concurrency, plus per-directory error isolation and stable ordering/cursor behavior;
   then implement bounded scanning.
   Scenario: `Scan bounds are reached`.
-- [ ] 3.5 Add failing tests that ACA-managed export directories/metadata and embedded
+- [x] 3.5 Add failing tests that ACA-managed export directories/metadata and embedded
   targets are ignored without opening referenced files; then implement loop guards.
   Scenarios: `ACA-generated export content is present`, `An embed references another
   vault file`.

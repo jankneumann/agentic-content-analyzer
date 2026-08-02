@@ -8,13 +8,13 @@ contract and generated bindings atomically; those files will be recorded in Phas
 
 | Req ID | Spec Source | Description | Contract Ref | Design Decision | Files Changed | Test(s) | Evidence |
 |--------|------------|-------------|-------------|----------------|---------------|---------|----------|
-| obsidian-vault-ingest.1 | `specs/obsidian-vault-ingest/spec.md` | Worker-local bounded vault scan | --- | D1, D2, D6, D9 | --- | scanner bounds/readiness; adapter cancellation/outcome; durable surface integration | --- |
+| obsidian-vault-ingest.1 | `specs/obsidian-vault-ingest/spec.md` | Worker-local bounded vault scan | --- | D1, D2, D6, D9 | `src/ingestion/obsidian_scanner.py`; `tests/ingestion/test_obsidian_scanner.py` | scanner bounds/readiness; adapter cancellation/outcome; durable surface integration | --- |
 | obsidian-vault-ingest.2 | `specs/obsidian-vault-ingest/spec.md` | Strict bounded clip metadata contract | --- | D5 | `src/ingestion/obsidian_parser.py`; `tests/ingestion/test_obsidian_parser.py` | parser valid/default/invalid/adversarial YAML tests | --- |
-| obsidian-vault-ingest.3 | `specs/obsidian-vault-ingest/spec.md` | Race-safe filesystem containment | --- | D2, D6 | --- | symlink/TOCTOU/stability/embed scanner tests | --- |
+| obsidian-vault-ingest.3 | `specs/obsidian-vault-ingest/spec.md` | Race-safe filesystem containment | --- | D2, D6 | `src/ingestion/obsidian_scanner.py`; `tests/ingestion/test_obsidian_scanner.py` | symlink/TOCTOU/stability/embed scanner tests | --- |
 | obsidian-vault-ingest.4 | `specs/obsidian-vault-ingest/spec.md` | Deterministic inert Markdown normalization | --- | D5, D6 | `src/ingestion/obsidian_parser.py`; `tests/ingestion/test_obsidian_parser.py` | normalization goldens and renderer regression tests | --- |
 | obsidian-vault-ingest.5 | `specs/obsidian-vault-ingest/spec.md` | Incremental state and concurrent claims | --- | D7 | --- | migration/repository/two-session/crash tests | --- |
 | obsidian-vault-ingest.6 | `specs/obsidian-vault-ingest/spec.md` | Canonical identity preserves note context | --- | D5, D8 | `src/ingestion/obsidian_parser.py`; `tests/ingestion/test_obsidian_parser.py` | URL canonicalization and duplicate annotation integration tests | --- |
-| obsidian-vault-ingest.7 | `specs/obsidian-vault-ingest/spec.md` | Read-only ingress/export ownership boundary | --- | D10 | --- | mutation snapshot and import-boundary tests | --- |
+| obsidian-vault-ingest.7 | `specs/obsidian-vault-ingest/spec.md` | Read-only ingress/export ownership boundary | --- | D10 | `src/ingestion/obsidian_scanner.py`; `tests/ingestion/test_obsidian_scanner.py` | mutation snapshot and import-boundary tests | --- |
 | obsidian-vault-ingest.8 | `specs/obsidian-vault-ingest/spec.md` | Private diagnostics and path-free replay | --- | D3, D7, D9 | --- | state/operation/log/telemetry redaction and retry tests | --- |
 | source-capability-registry.1 | `specs/source-capability-registry/spec.md` | Registry-derived parity with private filesystem configuration | --- | D1, D3, D4, D9 | --- | generated contract, config, registry, CLI/HTTP/MCP/UI, fixture parity tests | --- |
 | real-ingestion-ci.1 | `specs/real-ingestion-ci/spec.md` | Every registry source maps to deterministic fixture/live policy | --- | D4 | --- | collection completeness and missing-mount policy tests | --- |
