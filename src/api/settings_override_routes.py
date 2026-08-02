@@ -134,7 +134,7 @@ async def set_override(
 )
 async def delete_override(key: str) -> dict:
     """Delete a settings override, reverting to default behavior."""
-    _validate_key(key)
+    _validate_key(key, allow_forbidden_policy=True)
 
     with get_db() as db:
         service = SettingsService(db)
@@ -144,7 +144,7 @@ async def delete_override(key: str) -> dict:
         return {"key": key, "deleted": True}
 
 
-def _validate_key(key: str) -> None:
+def _validate_key(key: str, *, allow_forbidden_policy: bool = False) -> None:
     """Validate settings key format (must be namespace.name pattern)."""
     if not KEY_PATTERN.match(key):
         raise HTTPException(
@@ -152,7 +152,7 @@ def _validate_key(key: str) -> None:
             detail=f"Invalid settings key format: {key}. "
             "Must match pattern: namespace.name (e.g., 'model.summarization')",
         )
-    if not is_database_override_allowed(key):
+    if not allow_forbidden_policy and not is_database_override_allowed(key):
         raise HTTPException(
             status_code=400,
             detail="Workflow alert transport policy cannot be database-backed",

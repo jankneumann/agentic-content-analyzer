@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Callable, Coroutine
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from time import monotonic
 from typing import Any
 
@@ -34,6 +34,56 @@ _BATCH_MAINTENANCE_INTERVAL_SECONDS = 60.0
 _RETENTION_MAINTENANCE_ADVISORY_LOCK = 2_104_711_916
 _WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK = 2_104_711_917
 _WORKFLOW_ALERT_MAINTENANCE_INTERVAL_SECONDS = 5.0
+_WORKFLOW_ALERT_MAX_CONCURRENT_DELIVERIES = 8
+
+_WORKFLOW_ALERT_PENDING_EVENT_QUERY = """
+    WITH root_cohort AS (
+        SELECT event.id, event.created_at, 0 AS cohort
+        FROM workflow_terminal_events AS event
+        LEFT JOIN pgqueuer_jobs AS job ON job.id = event.operation_id
+        WHERE event.classification_status = 'pending'
+          AND (
+              event.source_kind <> 'operation'
+              OR job.id IS NULL
+              OR job.parent_job_id IS NULL
+          )
+        ORDER BY event.created_at, event.id
+        LIMIT $1
+    ), child_cohort AS (
+        SELECT event.id, event.created_at, 1 AS cohort
+        FROM workflow_terminal_events AS event
+        JOIN pgqueuer_jobs AS job ON job.id = event.operation_id
+        WHERE event.classification_status = 'pending'
+          AND event.source_kind = 'operation'
+          AND job.parent_job_id IS NOT NULL
+        ORDER BY event.created_at, event.id
+        LIMIT $2
+    )
+    SELECT id
+    FROM (
+        SELECT * FROM root_cohort
+        UNION ALL
+        SELECT * FROM child_cohort
+    ) AS fair_cohorts
+    ORDER BY cohort, created_at, id
+"""
+
+_WORKFLOW_ALERT_ORPHAN_EVENT_CLEANUP_QUERY = """
+    WITH candidates AS (
+        SELECT event.id
+        FROM workflow_terminal_events AS event
+        WHERE event.classification_status IN ('telemetry_only', 'rejected')
+          AND event.created_at < NOW() - make_interval(days => $1)
+          AND NOT EXISTS (
+              SELECT 1 FROM workflow_alert_deliveries AS delivery
+              WHERE delivery.event_id = event.id
+          )
+        ORDER BY event.created_at, event.id
+        LIMIT $2
+    )
+    DELETE FROM workflow_terminal_events
+    WHERE id IN (SELECT id FROM candidates)
+"""
 
 
 def _sqlalchemy_url_to_asyncpg(url: str) -> str:
@@ -469,6 +519,200 @@ def _build_workflow_alert_sink(alert_settings: Any) -> Any:
     )
 
 
+def _workflow_alert_cohort_sizes(batch_size: int) -> tuple[int, int]:
+    """Reserve bounded root and child progress in every classification tick."""
+
+    bounded_size = max(1, min(int(batch_size), 500))
+    child_limit = max(1, bounded_size // 4)
+    root_limit = max(1, bounded_size - child_limit)
+    return root_limit, child_limit
+
+
+def _workflow_alert_retry_policy(alert_settings: Any) -> Any:
+    from src.services.workflow_alert_delivery import DeliveryRetryPolicy
+
+    return DeliveryRetryPolicy(
+        max_attempts=alert_settings.workflow_alert_max_attempts,
+        base_backoff_seconds=alert_settings.workflow_alert_base_backoff_seconds,
+        max_backoff_seconds=alert_settings.workflow_alert_max_backoff_seconds,
+        max_retry_after_seconds=alert_settings.workflow_alert_max_retry_after_seconds,
+        max_age_seconds=alert_settings.workflow_alert_delivery_max_age_seconds,
+    )
+
+
+async def _deliver_workflow_alert_claim(
+    sink: Any,
+    claim: Any,
+    *,
+    timeout_seconds: int,
+) -> tuple[Any, Any]:
+    """Run the complete sink coroutine inside the lease-backed wall-clock bound."""
+
+    from src.services.alert_sinks import SinkDeliveryResult
+    from src.services.workflow_alert_delivery import delivery_idempotency_key
+
+    try:
+        async with asyncio.timeout(timeout_seconds):
+            result = await sink.deliver(
+                claim.envelope,
+                idempotency_key=delivery_idempotency_key(claim),
+            )
+    except TimeoutError:
+        result = SinkDeliveryResult(disposition="retry", error_code="timeout")
+    except Exception:
+        logger.warning(
+            "workflow alert sink failed delivery_id=%s event_id=%s",
+            claim.delivery_id,
+            claim.event_id,
+        )
+        result = SinkDeliveryResult(disposition="retry", error_code="sink_failure")
+    return claim, result
+
+
+async def _drain_workflow_alert_deliveries(*, alert_settings: Any) -> int:
+    """Claim one tight window and persist each result as soon as it completes."""
+
+    from src.services.workflow_alert_delivery import (
+        claim_due_deliveries,
+        mark_delivery_succeeded,
+        record_delivery_failure,
+    )
+    from src.storage.database import get_db
+
+    policy = _workflow_alert_retry_policy(alert_settings)
+    window_size = min(
+        int(alert_settings.workflow_alert_batch_size),
+        _WORKFLOW_ALERT_MAX_CONCURRENT_DELIVERIES,
+    )
+    with get_db() as db:
+        claims = claim_due_deliveries(
+            db,
+            now=datetime.now(UTC),
+            lease_seconds=alert_settings.workflow_alert_lease_seconds,
+            batch_size=window_size,
+            policy=policy,
+        )
+    if not claims:
+        return 0
+
+    sink = _build_workflow_alert_sink(alert_settings)
+    tasks = [
+        asyncio.create_task(
+            _deliver_workflow_alert_claim(
+                sink,
+                claim,
+                timeout_seconds=alert_settings.workflow_alert_timeout_seconds,
+            )
+        )
+        for claim in claims
+    ]
+    persisted = 0
+    try:
+        for completed in asyncio.as_completed(tasks):
+            claim, result = await completed
+            completed_at = datetime.now(UTC)
+            with get_db() as db:
+                if result.disposition == "success":
+                    matched = mark_delivery_succeeded(db, claim=claim, now=completed_at)
+                    if not matched:
+                        logger.warning(
+                            "workflow alert result missed lease delivery_id=%s event_id=%s",
+                            claim.delivery_id,
+                            claim.event_id,
+                        )
+                    else:
+                        persisted += 1
+                    continue
+                failure_status = record_delivery_failure(
+                    db,
+                    claim=claim,
+                    now=completed_at,
+                    error_code=result.error_code or "sink_failure",
+                    retryable=result.disposition == "retry",
+                    retry_after_seconds=result.retry_after_seconds,
+                    policy=policy,
+                )
+                if failure_status is not None:
+                    persisted += 1
+                if failure_status == "exhausted":
+                    logger.error(
+                        "workflow alert delivery exhausted delivery_id=%s event_id=%s",
+                        claim.delivery_id,
+                        claim.event_id,
+                    )
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+    return persisted
+
+
+def _cleanup_terminal_workflow_alert_records(
+    db: Any,
+    *,
+    now: datetime,
+    retention_days: int,
+    exhausted_retention_days: int,
+    batch_size: int,
+) -> int:
+    """Atomically remove retained terminal deliveries with their ready intent."""
+
+    from sqlalchemy import and_, delete, exists, not_, or_, select
+
+    from src.models.workflow_alert import WorkflowAlertDelivery, WorkflowTerminalEvent
+
+    regular_cutoff = now - timedelta(days=retention_days)
+    exhausted_cutoff = now - timedelta(days=exhausted_retention_days)
+    terminal_retained = or_(
+        and_(
+            WorkflowAlertDelivery.status.in_(("delivered", "permanent_failure")),
+            WorkflowAlertDelivery.updated_at < regular_cutoff,
+        ),
+        and_(
+            WorkflowAlertDelivery.status == "exhausted",
+            WorkflowAlertDelivery.updated_at < exhausted_cutoff,
+        ),
+    )
+    has_delivery = exists(
+        select(WorkflowAlertDelivery.id).where(
+            WorkflowAlertDelivery.event_id == WorkflowTerminalEvent.id
+        )
+    )
+    has_unretained_delivery = exists(
+        select(WorkflowAlertDelivery.id).where(
+            WorkflowAlertDelivery.event_id == WorkflowTerminalEvent.id,
+            not_(terminal_retained),
+        )
+    )
+    candidate_ids = list(
+        db.scalars(
+            select(WorkflowTerminalEvent.id)
+            .where(
+                WorkflowTerminalEvent.classification_status == "ready",
+                has_delivery,
+                not_(has_unretained_delivery),
+            )
+            .order_by(WorkflowTerminalEvent.created_at, WorkflowTerminalEvent.id)
+            .limit(max(1, min(int(batch_size), 500)))
+            .with_for_update(skip_locked=True)
+        )
+    )
+    if not candidate_ids:
+        return 0
+    try:
+        db.execute(
+            delete(WorkflowAlertDelivery).where(WorkflowAlertDelivery.event_id.in_(candidate_ids))
+        )
+        db.flush()
+        db.execute(delete(WorkflowTerminalEvent).where(WorkflowTerminalEvent.id.in_(candidate_ids)))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return len(candidate_ids)
+
+
 async def _run_workflow_alert_maintenance_tick(
     conn: asyncpg.Connection,
     *,
@@ -482,154 +726,79 @@ async def _run_workflow_alert_maintenance_tick(
     )
     if not acquired:
         logger.debug("workflow alert maintenance tick skipped; advisory lock held")
-        return False
+    else:
+        try:
+            from src.services.workflow_alert_delivery import ensure_delivery
+            from src.services.workflow_terminal_event_service import (
+                WorkflowTerminalEventService,
+            )
+            from src.storage.database import get_db
 
-    try:
-        from src.services.workflow_alert_delivery import (
-            DeliveryRetryPolicy,
-            claim_due_deliveries,
-            cleanup_terminal_deliveries,
-            delivery_idempotency_key,
-            ensure_delivery,
-            mark_delivery_succeeded,
-            record_delivery_failure,
-        )
-        from src.services.workflow_terminal_event_service import (
-            WorkflowTerminalEventService,
-        )
-        from src.storage.database import get_db
+            batch_size = alert_settings.workflow_alert_batch_size
+            root_limit, child_limit = _workflow_alert_cohort_sizes(batch_size)
+            event_rows = await conn.fetch(
+                _WORKFLOW_ALERT_PENDING_EVENT_QUERY,
+                root_limit,
+                child_limit,
+            )
+            processor = WorkflowTerminalEventService(
+                conn,
+                diagnostic_origin=alert_settings.workflow_alert_diagnostic_origin,
+                external_delivery_enabled=alert_settings.workflow_alert_sink == "webhook",
+            )
+            for row in event_rows:
+                await processor.process_pending_event(row["id"])
 
-        batch_size = alert_settings.workflow_alert_batch_size
-        event_rows = await conn.fetch(
-            """
-            SELECT event.id
-            FROM workflow_terminal_events AS event
-            LEFT JOIN pgqueuer_jobs AS job ON job.id = event.operation_id
-            WHERE event.classification_status = 'pending'
-            ORDER BY
-                CASE
-                    WHEN event.source_kind <> 'operation'
-                      OR job.id IS NULL
-                      OR job.parent_job_id IS NULL
-                    THEN 0 ELSE 1
-                END,
-                event.created_at,
-                event.id
-            LIMIT $1
-            """,
-            batch_size,
-        )
-        processor = WorkflowTerminalEventService(
-            conn,
-            diagnostic_origin=alert_settings.workflow_alert_diagnostic_origin,
-            external_delivery_enabled=alert_settings.workflow_alert_sink == "webhook",
-        )
-        for row in event_rows:
-            await processor.process_pending_event(row["id"])
+            if alert_settings.workflow_alert_sink == "webhook":
+                ready_rows = await conn.fetch(
+                    """
+                    SELECT event.id
+                    FROM workflow_terminal_events AS event
+                    WHERE event.classification_status = 'ready'
+                      AND event.envelope IS NOT NULL
+                      AND NOT EXISTS (
+                          SELECT 1 FROM workflow_alert_deliveries AS delivery
+                          WHERE delivery.event_id = event.id AND delivery.sink_name = 'webhook'
+                      )
+                    ORDER BY event.created_at, event.id
+                    LIMIT $1
+                    """,
+                    batch_size,
+                )
+                for row in ready_rows:
+                    with get_db() as db:
+                        ensure_delivery(
+                            db,
+                            event_id=row["id"],
+                            sink_name="webhook",
+                            now=datetime.now(UTC),
+                        )
 
-        now = datetime.now(UTC)
-        policy = DeliveryRetryPolicy(
-            max_attempts=alert_settings.workflow_alert_max_attempts,
-            base_backoff_seconds=alert_settings.workflow_alert_base_backoff_seconds,
-            max_backoff_seconds=alert_settings.workflow_alert_max_backoff_seconds,
-            max_retry_after_seconds=alert_settings.workflow_alert_max_retry_after_seconds,
-            max_age_seconds=alert_settings.workflow_alert_delivery_max_age_seconds,
-        )
-        claims = []
-        if alert_settings.workflow_alert_sink == "webhook":
-            ready_rows = await conn.fetch(
-                """
-                SELECT event.id
-                FROM workflow_terminal_events AS event
-                WHERE event.classification_status = 'ready'
-                  AND event.envelope IS NOT NULL
-                  AND NOT EXISTS (
-                      SELECT 1 FROM workflow_alert_deliveries AS delivery
-                      WHERE delivery.event_id = event.id AND delivery.sink_name = 'webhook'
-                  )
-                ORDER BY event.created_at, event.id
-                LIMIT $1
-                """,
+            with get_db() as db:
+                _cleanup_terminal_workflow_alert_records(
+                    db,
+                    now=datetime.now(UTC),
+                    retention_days=alert_settings.workflow_alert_retention_days,
+                    exhausted_retention_days=(
+                        alert_settings.workflow_alert_exhausted_retention_days
+                    ),
+                    batch_size=batch_size,
+                )
+            await conn.execute(
+                _WORKFLOW_ALERT_ORPHAN_EVENT_CLEANUP_QUERY,
+                alert_settings.workflow_alert_retention_days,
                 batch_size,
             )
-            for row in ready_rows:
-                with get_db() as db:
-                    ensure_delivery(
-                        db,
-                        event_id=row["id"],
-                        sink_name="webhook",
-                        now=now,
-                    )
-            with get_db() as db:
-                claims = claim_due_deliveries(
-                    db,
-                    now=now,
-                    lease_seconds=alert_settings.workflow_alert_lease_seconds,
-                    batch_size=batch_size,
-                    policy=policy,
-                )
-
-            sink = _build_workflow_alert_sink(alert_settings)
-            for claim in claims:
-                result = await sink.deliver(
-                    claim.envelope,
-                    idempotency_key=delivery_idempotency_key(claim),
-                )
-                completed_at = datetime.now(UTC)
-                with get_db() as db:
-                    if result.disposition == "success":
-                        mark_delivery_succeeded(db, claim=claim, now=completed_at)
-                    else:
-                        failure_status = record_delivery_failure(
-                            db,
-                            claim=claim,
-                            now=completed_at,
-                            error_code=result.error_code or "sink_failure",
-                            retryable=result.disposition == "retry",
-                            retry_after_seconds=result.retry_after_seconds,
-                            policy=policy,
-                        )
-                        if failure_status == "exhausted":
-                            logger.error(
-                                "workflow alert delivery exhausted delivery_id=%s event_id=%s",
-                                claim.delivery_id,
-                                claim.event_id,
-                            )
-
-        with get_db() as db:
-            cleanup_terminal_deliveries(
-                db,
-                now=datetime.now(UTC),
-                retention_days=alert_settings.workflow_alert_retention_days,
-                exhausted_retention_days=(alert_settings.workflow_alert_exhausted_retention_days),
-                batch_size=batch_size,
+        finally:
+            await conn.execute(
+                "SELECT pg_advisory_unlock($1::bigint)",
+                _WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK,
             )
-        await conn.execute(
-            """
-            WITH candidates AS (
-                SELECT event.id
-                FROM workflow_terminal_events AS event
-                WHERE event.classification_status IN ('ready', 'telemetry_only', 'rejected')
-                  AND event.created_at < NOW() - make_interval(days => $1)
-                  AND NOT EXISTS (
-                      SELECT 1 FROM workflow_alert_deliveries AS delivery
-                      WHERE delivery.event_id = event.id
-                  )
-                ORDER BY event.created_at, event.id
-                LIMIT $2
-            )
-            DELETE FROM workflow_terminal_events
-            WHERE id IN (SELECT id FROM candidates)
-            """,
-            alert_settings.workflow_alert_retention_days,
-            batch_size,
-        )
-        return True
-    finally:
-        await conn.execute(
-            "SELECT pg_advisory_unlock($1::bigint)",
-            _WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK,
-        )
+
+    delivered = 0
+    if alert_settings.workflow_alert_sink == "webhook":
+        delivered = await _drain_workflow_alert_deliveries(alert_settings=alert_settings)
+    return bool(acquired or delivered)
 
 
 async def run_worker(

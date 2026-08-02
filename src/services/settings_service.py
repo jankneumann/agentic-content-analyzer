@@ -29,22 +29,25 @@ from sqlalchemy.orm import Session
 
 from src.models.settings_override import SettingsOverride
 
-_ALERT_POLICY_MARKERS = (
+_ALERT_TRANSPORT_MARKERS = (
     "endpoint",
     "secret",
-    "diagnostic_origin",
-    "allowed_hosts",
-    "host_policy",
-    "host_allowlist",
+    "diagnosticorigin",
+    "allowedhosts",
+    "hostpolicy",
+    "hostallowlist",
 )
 
 
 def is_database_override_allowed(key: str) -> bool:
     """Keep alert transport trust and secrets out of plaintext DB overrides."""
 
-    normalized = re.sub(r"[^a-z0-9]+", "_", key.strip().lower()).strip("_")
-    is_alert_key = "alert" in normalized
-    return not (is_alert_key and any(marker in normalized for marker in _ALERT_POLICY_MARKERS))
+    compact = re.sub(r"[^a-z0-9]+", "", key.casefold())
+    if "workflowalert" in compact:
+        return False
+    return not (
+        "alert" in compact and any(marker in compact for marker in _ALERT_TRANSPORT_MARKERS)
+    )
 
 
 def _require_database_override_allowed(key: str) -> None:
@@ -123,7 +126,6 @@ class SettingsService:
         Returns:
             True if an override was deleted, False if key didn't exist
         """
-        _require_database_override_allowed(key)
         if not self.db:
             raise ValueError("Database session required for deleting overrides")
 

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from src.models.base import Base
 from src.models.settings_override import SettingsOverride
-from src.services.settings_service import SettingsService
+from src.services.settings_service import SettingsService, is_database_override_allowed
 from tests.helpers.test_db import create_test_engine, get_test_database_url
 
 TEST_DATABASE_URL = get_test_database_url()
@@ -109,11 +109,23 @@ class TestSettingsServiceSet:
     @pytest.mark.parametrize(
         "key",
         [
+            "alerting.workflow_alert_sink",
             "alerting.workflow_alert_webhook_endpoint",
-            "alerting.webhook_secret",
-            "workflow.alert_diagnostic_origin",
-            "notifications.alert_host_policy",
-            "alerts.allowed_hosts",
+            "alerting.workflow_alert_webhook_secret",
+            "alerting.workflow_alert_diagnostic_origin",
+            "alerting.workflow_alert_allowed_hosts",
+            "alerting.workflow_alert_timeout_seconds",
+            "alerting.workflow_alert_lease_seconds",
+            "alerting.workflow_alert_max_attempts",
+            "alerting.workflow_alert_base_backoff_seconds",
+            "alerting.workflow_alert_max_backoff_seconds",
+            "alerting.workflow_alert_max_retry_after_seconds",
+            "alerting.workflow_alert_delivery_max_age_seconds",
+            "alerting.workflow_alert_retention_days",
+            "alerting.workflow_alert_exhausted_retention_days",
+            "alerting.workflow_alert_batch_size",
+            "work.flow-al_ert.web-hook.se_cret",
+            "CONFIG.WORKFLOW ALERT.TIMEOUT SECONDS",
         ],
     )
     def test_set_rejects_alert_transport_policy_keys(self, db, key):
@@ -140,6 +152,16 @@ class TestSettingsServiceDelete:
         service = SettingsService()
         with pytest.raises(ValueError, match="Database session required"):
             service.delete("model.summarization")
+
+    def test_delete_purges_hidden_legacy_alert_policy_row(self, db):
+        key = "alerting.workflow_alert_webhook_secret"
+        db.add(SettingsOverride(key=key, value="legacy-plaintext-secret", version=1))
+        db.commit()
+
+        service = SettingsService(db)
+        assert service.get(key) is None
+        assert service.delete(key) is True
+        assert db.query(SettingsOverride).filter_by(key=key).first() is None
 
 
 class TestSettingsServiceListByPrefix:
@@ -217,3 +239,16 @@ class TestSettingsServiceGetOverride:
     def test_get_override_without_db_returns_none(self):
         service = SettingsService()
         assert service.get_override("model.summarization") is None
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "notifications.alert_sound",
+        "workflow.retry_timeout_seconds",
+        "model.alert_summary",
+        "content.workflow_notes",
+    ],
+)
+def test_unrelated_settings_keys_remain_database_override_eligible(key):
+    assert is_database_override_allowed(key)

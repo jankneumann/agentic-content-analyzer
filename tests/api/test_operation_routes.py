@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 from uuid import UUID
 
 import yaml
+from fastapi.testclient import TestClient
 
 from src.api.app import app
 from src.api.dependencies import verify_admin_key
@@ -104,7 +105,33 @@ def test_terminal_event_diagnostic_returns_bounded_not_found(client, monkeypatch
     response = client.get(f"/api/v1/workflow-terminal-events/{EVENT_ID}")
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Not found"
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json() == {
+        "type": "https://aca.rotkohl.ai/problems/not-found",
+        "title": "Not Found",
+        "status": 404,
+        "detail": "Not found",
+    }
+
+
+def test_terminal_event_diagnostic_auth_errors_match_problem_contract(monkeypatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    from src.config.settings import get_settings
+
+    get_settings.cache_clear()
+    with TestClient(app) as production_client:
+        unauthorized = production_client.get(f"/api/v1/workflow-terminal-events/{EVENT_ID}")
+        forbidden = production_client.get(
+            f"/api/v1/workflow-terminal-events/{EVENT_ID}",
+            headers={"X-Admin-Key": "wrong-key"},
+        )
+
+    for response, status_code in ((unauthorized, 401), (forbidden, 403)):
+        assert response.status_code == status_code
+        assert response.headers["content-type"].startswith("application/problem+json")
+        body = response.json()
+        assert body["status"] == status_code
+        assert set(body) >= {"type", "title", "status", "detail"}
 
 
 def test_canonical_openapi_owns_terminal_event_diagnostic_contract() -> None:

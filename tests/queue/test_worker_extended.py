@@ -602,7 +602,8 @@ async def test_alert_maintenance_commits_claim_before_sink_io(
     processor.process_pending_event.assert_awaited_once_with(event_id)
     pending_query = connection.fetch.await_args_list[0].args[0]
     assert "job.parent_job_id IS NULL" in pending_query
-    assert "THEN 0 ELSE 1" in pending_query
+    assert "child_cohort" in pending_query
+    assert "UNION ALL" in pending_query
     ensure_delivery.assert_called_once()
     claim_due.assert_called_once()
     sink.deliver.assert_awaited_once()
@@ -624,6 +625,274 @@ async def test_alert_maintenance_commits_claim_before_sink_io(
         "SELECT pg_advisory_unlock($1::bigint)",
         worker._WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK,
     )
+
+
+@pytest.mark.asyncio
+async def test_alert_delivery_window_has_no_lease_queue_wait_and_persists_fast_first(
+    monkeypatch,
+) -> None:
+    from src.queue import worker
+
+    first_id = UUID("11111111-1111-4111-8111-111111111111")
+    second_id = UUID("22222222-2222-4222-8222-222222222222")
+    first_started = asyncio.Event()
+    second_started = asyncio.Event()
+    release_first = asyncio.Event()
+    second_persisted = asyncio.Event()
+    connection = MagicMock()
+    connection.fetchval = AsyncMock(return_value=True)
+    connection.fetch = AsyncMock(side_effect=[[], []])
+    connection.execute = AsyncMock(return_value="DELETE 0")
+
+    @contextmanager
+    def get_db():
+        yield MagicMock()
+
+    def claim(delivery_id: UUID) -> SimpleNamespace:
+        return SimpleNamespace(
+            delivery_id=delivery_id,
+            event_id=delivery_id,
+            sink_name="webhook",
+            attempt_count=1,
+            lease_expires_at=datetime(2026, 8, 1, 12, 1, tzinfo=UTC),
+            created_at=datetime(2026, 8, 1, 12, tzinfo=UTC),
+            envelope=MagicMock(),
+        )
+
+    claims = [claim(first_id), claim(second_id)]
+    claim_due = MagicMock(return_value=claims)
+
+    async def deliver(envelope, **_kwargs):
+        assert any(
+            call.args[0].startswith("SELECT pg_advisory_unlock")
+            for call in connection.execute.await_args_list
+        )
+        if envelope is claims[0].envelope:
+            first_started.set()
+            await release_first.wait()
+        else:
+            second_started.set()
+        return SimpleNamespace(
+            disposition="success",
+            error_code=None,
+            retry_after_seconds=None,
+        )
+
+    def mark_succeeded(_db, *, claim, now):
+        del now
+        if claim.delivery_id == second_id:
+            second_persisted.set()
+        return True
+
+    sink = MagicMock()
+    sink.deliver = AsyncMock(side_effect=deliver)
+    monkeypatch.setattr("src.storage.database.get_db", get_db)
+    monkeypatch.setattr("src.services.workflow_alert_delivery.ensure_delivery", MagicMock())
+    monkeypatch.setattr("src.services.workflow_alert_delivery.claim_due_deliveries", claim_due)
+    monkeypatch.setattr(
+        "src.services.workflow_alert_delivery.mark_delivery_succeeded", mark_succeeded
+    )
+    monkeypatch.setattr(
+        "src.services.workflow_alert_delivery.cleanup_terminal_deliveries", MagicMock()
+    )
+    monkeypatch.setattr(worker, "_build_workflow_alert_sink", MagicMock(return_value=sink))
+
+    task = asyncio.create_task(
+        worker._run_workflow_alert_maintenance_tick(
+            connection,
+            alert_settings=_alert_settings(),
+        )
+    )
+    try:
+        await asyncio.wait_for(first_started.wait(), timeout=1)
+        await asyncio.wait_for(second_started.wait(), timeout=1)
+        await asyncio.wait_for(second_persisted.wait(), timeout=1)
+        assert not task.done()
+    finally:
+        release_first.set()
+        await task
+
+    assert claim_due.call_args.kwargs["batch_size"] <= 8
+
+
+@pytest.mark.asyncio
+async def test_alert_delivery_cancellation_leaves_started_claim_for_lease_recovery(
+    monkeypatch,
+) -> None:
+    from src.queue import worker
+
+    event_id = UUID("33333333-3333-4333-8333-333333333333")
+    connection = MagicMock()
+    connection.fetchval = AsyncMock(return_value=True)
+    connection.fetch = AsyncMock(side_effect=[[], []])
+    connection.execute = AsyncMock(return_value="DELETE 0")
+    delivery_started = asyncio.Event()
+
+    @contextmanager
+    def get_db():
+        yield MagicMock()
+
+    claim = SimpleNamespace(
+        delivery_id=event_id,
+        event_id=event_id,
+        sink_name="webhook",
+        attempt_count=1,
+        lease_expires_at=datetime(2026, 8, 1, 12, 1, tzinfo=UTC),
+        created_at=datetime(2026, 8, 1, 12, tzinfo=UTC),
+        envelope=MagicMock(),
+    )
+
+    async def deliver(*_args, **_kwargs):
+        delivery_started.set()
+        await asyncio.Event().wait()
+
+    sink = MagicMock()
+    sink.deliver = AsyncMock(side_effect=deliver)
+    mark_succeeded = MagicMock()
+    record_failure = MagicMock()
+    monkeypatch.setattr("src.storage.database.get_db", get_db)
+    monkeypatch.setattr("src.services.workflow_alert_delivery.ensure_delivery", MagicMock())
+    monkeypatch.setattr(
+        "src.services.workflow_alert_delivery.claim_due_deliveries",
+        MagicMock(return_value=[claim]),
+    )
+    monkeypatch.setattr(
+        "src.services.workflow_alert_delivery.mark_delivery_succeeded", mark_succeeded
+    )
+    monkeypatch.setattr(
+        "src.services.workflow_alert_delivery.record_delivery_failure", record_failure
+    )
+    monkeypatch.setattr(
+        "src.services.workflow_alert_delivery.cleanup_terminal_deliveries", MagicMock()
+    )
+    monkeypatch.setattr(worker, "_build_workflow_alert_sink", MagicMock(return_value=sink))
+
+    task = asyncio.create_task(
+        worker._run_workflow_alert_maintenance_tick(
+            connection,
+            alert_settings=_alert_settings(),
+        )
+    )
+    await asyncio.wait_for(delivery_started.wait(), timeout=1)
+    connection.execute.assert_any_await(
+        "SELECT pg_advisory_unlock($1::bigint)",
+        worker._WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK,
+    )
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    mark_succeeded.assert_not_called()
+    record_failure.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_alert_delivery_outer_deadline_covers_hanging_sink_resolution() -> None:
+    from src.queue import worker
+
+    event_id = UUID("44444444-4444-4444-8444-444444444444")
+    claim = SimpleNamespace(
+        delivery_id=event_id,
+        event_id=event_id,
+        envelope=MagicMock(),
+    )
+
+    async def hang(*_args, **_kwargs):
+        await asyncio.Event().wait()
+
+    sink = MagicMock()
+    sink.deliver = AsyncMock(side_effect=hang)
+
+    returned_claim, result = await asyncio.wait_for(
+        worker._deliver_workflow_alert_claim(sink, claim, timeout_seconds=0.01),
+        timeout=0.5,
+    )
+
+    assert returned_claim is claim
+    assert result.disposition == "retry"
+    assert result.error_code == "timeout"
+
+
+@pytest.mark.asyncio
+async def test_late_alert_success_is_fenced_without_burning_another_attempt(monkeypatch) -> None:
+    from src.queue import worker
+
+    event_id = UUID("55555555-5555-4555-8555-555555555555")
+    claim = SimpleNamespace(
+        delivery_id=event_id,
+        event_id=event_id,
+        sink_name="webhook",
+        attempt_count=1,
+        lease_expires_at=datetime(2026, 8, 1, 12, 1, tzinfo=UTC),
+        created_at=datetime(2026, 8, 1, 12, tzinfo=UTC),
+        envelope=MagicMock(),
+    )
+
+    @contextmanager
+    def get_db():
+        yield MagicMock()
+
+    sink = MagicMock()
+    sink.deliver = AsyncMock(
+        return_value=SimpleNamespace(
+            disposition="success",
+            error_code=None,
+            retry_after_seconds=None,
+        )
+    )
+    mark_succeeded = MagicMock(return_value=False)
+    record_failure = MagicMock()
+    alert_logger = MagicMock()
+    monkeypatch.setattr("src.storage.database.get_db", get_db)
+    monkeypatch.setattr(
+        "src.services.workflow_alert_delivery.claim_due_deliveries",
+        MagicMock(return_value=[claim]),
+    )
+    monkeypatch.setattr(
+        "src.services.workflow_alert_delivery.mark_delivery_succeeded", mark_succeeded
+    )
+    monkeypatch.setattr(
+        "src.services.workflow_alert_delivery.record_delivery_failure", record_failure
+    )
+    monkeypatch.setattr(worker, "_build_workflow_alert_sink", MagicMock(return_value=sink))
+    monkeypatch.setattr(worker, "logger", alert_logger)
+
+    assert await worker._drain_workflow_alert_deliveries(alert_settings=_alert_settings()) == 0
+
+    mark_succeeded.assert_called_once()
+    record_failure.assert_not_called()
+    alert_logger.warning.assert_called_once_with(
+        "workflow alert result missed lease delivery_id=%s event_id=%s",
+        claim.delivery_id,
+        claim.event_id,
+    )
+
+
+def test_alert_event_retention_never_selects_ready_without_delivery() -> None:
+    from src.queue import worker
+
+    query = worker._WORKFLOW_ALERT_ORPHAN_EVENT_CLEANUP_QUERY
+
+    assert "classification_status IN ('telemetry_only', 'rejected')" in query
+    assert "classification_status IN ('ready'" not in query
+
+
+def test_alert_classification_reserves_child_slice_during_sustained_root_backlog() -> None:
+    from src.queue import worker
+
+    root_limit, child_limit = worker._workflow_alert_cohort_sizes(50)
+
+    assert root_limit + child_limit == 50
+    assert root_limit >= 1
+    assert child_limit >= 1
+
+
+def test_alert_classification_reserves_root_for_deferred_child_even_at_minimum_batch() -> None:
+    from src.queue import worker
+
+    root_limit, child_limit = worker._workflow_alert_cohort_sizes(1)
+
+    assert (root_limit, child_limit) == (1, 1)
 
 
 @pytest.mark.asyncio
