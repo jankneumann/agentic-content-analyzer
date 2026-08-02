@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
-CONTRACT_SHA256 = "6f9b9d07822021314fce36d3e7556e43414d7f2ad5892eefbcae74aacaa4f36a"
+CONTRACT_SHA256 = "1ed644ae9edbad88ba7f100dba87cf444b49be11d4e689a8ce11fc067eb3f6cb"
 
 OperationStatus = Literal["queued", "in_progress", "completed", "failed", "cancelled"]
 OperationType = Literal[

@@ -134,6 +134,27 @@ def test_terminal_event_diagnostic_auth_errors_match_problem_contract(monkeypatc
         assert set(body) >= {"type", "title", "status", "detail"}
 
 
+def test_terminal_event_diagnostic_malformed_uuid_matches_validation_problem_contract(
+    client,
+) -> None:
+    response = client.get("/api/v1/workflow-terminal-events/not-a-uuid")
+
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith("application/problem+json")
+    body = response.json()
+    assert body["type"] == "https://aca.rotkohl.ai/problems/validation_error"
+    assert body["title"] == "Unprocessable Entity"
+    assert body["status"] == 422
+    assert body["detail"] == "Request validation failed"
+    assert body["code"] == "validation_error"
+    assert len(body["errors"]) == 1
+    assert body["errors"][0]["path"] == ["path", "event_id"]
+    assert body["errors"][0]["code"] == "uuid_parsing"
+    assert len(body["errors"][0]["message"]) <= 200
+    assert "not-a-uuid" not in response.text
+    assert len(response.content) < 1024
+
+
 def test_canonical_openapi_owns_terminal_event_diagnostic_contract() -> None:
     with open("openspec/contracts/content-workflows/openapi/v1.yaml") as contract:
         openapi = yaml.safe_load(contract)
@@ -143,6 +164,7 @@ def test_canonical_openapi_owns_terminal_event_diagnostic_contract() -> None:
     assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/WorkflowTerminalEventDiagnostic"
     }
+    assert operation["responses"]["422"] == {"$ref": "#/components/responses/ValidationProblem"}
     schema = openapi["components"]["schemas"]["WorkflowTerminalEventDiagnostic"]
     assert schema["additionalProperties"] is False
     assert "error" not in schema["properties"]
