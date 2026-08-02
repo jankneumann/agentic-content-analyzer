@@ -3,7 +3,7 @@ schema_version: 1
 feature:
   id: production-telemetry-and-out-of-band-alerting
   title: Durable terminal telemetry and webhook alerts
-  plan_revision: 2
+  plan_revision: 3
   created_by: codex
   created_at: "2026-08-01T23:30:00Z"
 
@@ -206,6 +206,7 @@ packages:
     locks:
       files:
         - src/queue/worker.py
+        - src/services/operation_service.py
         - src/services/content_reconciliation_service.py
         - src/services/notification_service.py
         - src/services/settings_service.py
@@ -219,6 +220,7 @@ packages:
     scope:
       write_allow:
         - src/queue/worker.py
+        - src/services/operation_service.py
         - src/services/content_reconciliation_service.py
         - src/services/notification_service.py
         - src/services/settings_service.py
@@ -229,6 +231,7 @@ packages:
         - src/contracts/workflow_models.py
         - web/src/generated/**
         - tests/queue/test_worker_extended.py
+        - tests/queue/test_operation_service.py
         - tests/queue/test_operation_controls.py
         - tests/api/test_settings_override_api.py
         - tests/api/test_operation_routes.py
