@@ -9,3 +9,4 @@
 | ri-06 | implementation | Repo-owned evaluation contract plus a locked pinned runner; read-only suite enforced on every PR, mutating suite gated by a target-policy guard, a protected environment, and its own exit code |
 | ri-07 | validation | Reused pgqueuer_jobs typed results, checkpoints, retries, and parent-child ident |
 | ri-08 | validation | Added exact claim/content fencing and bounded default-off reconciliation; independent review closed the stale identity-map race and all final gates passed |
+| ri-09 | validation | Added transactional terminal evidence and one signed, redacted webhook receipt proven on an exact isolated staging revision |

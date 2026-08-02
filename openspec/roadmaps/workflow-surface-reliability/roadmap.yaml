@@ -187,7 +187,7 @@ items:
     or exceed retry budgets.
 - item_id: ri-09
   title: Add terminal-state telemetry and alerts
-  status: approved
+  status: completed
   priority: 9
   effort: L
   depends_on:
@@ -263,4 +263,4 @@ items:
     evaluation suites.
   - No speculative implementation from the existing 42-task proposal begins without
     a concrete incompatible case.
-updated_at: '2026-08-01T20:32:12.680767+00:00'
+updated_at: '2026-08-02T05:26:19+00:00'

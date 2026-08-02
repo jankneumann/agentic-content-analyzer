@@ -107,3 +107,34 @@ No live staging action was performed and no evidence artifact was created. Task 
 
 ### Validation Boundary
 No live staging action was performed and no evidence artifact was created. Task 6.4 remains open pending authenticated approved staging access.
+
+---
+
+## Phase: Validation (2026-08-02)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Use an isolated Railway environment and expiring managed PostgreSQL database** — The staging API, receiver, secrets, and database were separated from production, and every exercised surface was bound to one Railway commit SHA.
+2. **Use transaction-scoped maintenance leadership** — Live validation exposed a session-scoped advisory lock retained by a pooled PostgreSQL backend after deployment replacement. The worker now uses `pg_try_advisory_xact_lock`, so rollback, cancellation, and pool reuse cannot leak leadership.
+3. **Treat managed-provider extension denials as capability misses only at the extension boundary** — Fresh managed PostgreSQL bootstrap skips an invalid unconstrained-vector HNSW index and tolerates a provider-denied optional `pg_search` extension while preserving loud failures for installed-extension index syntax.
+
+### Staging Evidence
+- The API and receiver reported non-production readiness, and the API health plus authenticated verification context identified revision `60a8517549b5ae24308c63094d5f00eae9f83282` from `railway_commit_sha`.
+- A fresh controlled ingestion reached the required failed terminal state and produced exactly one signed receiver receipt.
+- The persisted evidence passed the closed schema with all no-secrets, no-PII, no-user-content, no-raw-URL, and schema-valid assertions true.
+- Sanitized artifact: `evidence/staging-alert.json`.
+
+### Validation Gates
+- Strict OpenSpec validation and generated workflow-contract drift checks passed.
+- The scoped regression matrix passed 594 tests; isolated PostgreSQL migration, persistence, delivery, reconciliation, and terminal-event suites passed 61 tests total.
+- RI-09 Python files passed Ruff and format checks, and mypy passed 428 source files.
+- The staged verifier passed against the exact deployed revision with one correlated delivery.
+
+### Context
+The staging run found and closed three production-relevant managed-environment gaps before recording evidence. No production service, database, origin, or credential was targeted.
+
+### Cleanup
+- Rotated the temporary database owner password after the diagnostic tool rejected and echoed an unsafe command form, revoking that ephemeral credential immediately.
+- Stopped both isolated staging deployments and restored the Railway CLI environment link to production without changing production state.
+- Left the empty staging environment and stopped service definitions available for audit; the unclaimed synthetic database remains scheduled for automatic expiration.

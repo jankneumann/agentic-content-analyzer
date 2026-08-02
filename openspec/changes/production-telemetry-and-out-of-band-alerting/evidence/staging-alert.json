@@ -1,0 +1,22 @@
+{
+  "attempt": 2,
+  "delivery_count": 1,
+  "environment_class": "staging",
+  "event_id": "030ed1c4-0072-4e7b-ab71-d4b89d5a5f8f",
+  "operation_id": "2",
+  "outcome": "failed",
+  "receipt_sha256": "a5d9dc7eefe0ef0edd81c351feaa1887682288b5b18f51dff21777d69ce5cb96",
+  "received_at": "2026-08-02T05:21:30.881668Z",
+  "redaction_assertions": {
+    "no_pii": true,
+    "no_raw_urls": true,
+    "no_secrets": true,
+    "no_user_content": true,
+    "schema_valid": true
+  },
+  "revision": "60a8517549b5ae24308c63094d5f00eae9f83282",
+  "revision_source": "railway_commit_sha",
+  "schema_version": 1,
+  "severity": "error",
+  "terminal_at": "2026-08-02T05:21:25.822039Z"
+}

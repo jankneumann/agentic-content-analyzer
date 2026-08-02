@@ -7,10 +7,10 @@
 ## Status
 
 - [x] Planning
-- [ ] Implementation
-- [ ] Testing
-- [ ] Review
-- [ ] Done
+- [x] Implementation
+- [x] Testing
+- [x] Review
+- [x] Done
 
 ## 1. Closed contracts and policy
 
@@ -123,10 +123,10 @@
   **Spec scenarios**: all
   **Design decisions**: D1-D10
   **Dependencies**: 5.5, 6.2
-- [ ] 6.4 [M] Run strict OpenSpec, contract drift, migration, lint, full test, security, query-plan, and staging verification gates
+- [x] 6.4 [M] Run strict OpenSpec, contract drift, migration, lint, full test, security, query-plan, and staging verification gates
   **Dependencies**: 6.3
 
-- [ ] Checkpoint: review cumulative diff, verify task/spec traceability, and record sanitized staging evidence
+- [x] Checkpoint: review cumulative diff, verify task/spec traceability, and record sanitized staging evidence
 
 ## Dependency Summary
 
