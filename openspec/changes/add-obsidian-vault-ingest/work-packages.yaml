@@ -3,7 +3,7 @@ schema_version: 1
 feature:
   id: add-obsidian-vault-ingest
   title: Canonical durable Obsidian vault ingestion
-  plan_revision: 7
+  plan_revision: 8
   created_by: codex
   created_at: "2026-08-02T05:50:00Z"
 
@@ -220,6 +220,7 @@ packages:
         - src/ingestion/commands.py
         - src/ingestion/registry.py
         - src/ingestion/result.py
+        - src/ingestion/result_sanitizer.py
         - src/mcp_tools/ingestion.py
         - src/mcp_tools/toolsets.py
         - src/services/capability_service.py
@@ -243,6 +244,7 @@ packages:
         - src/ingestion/orchestrator.py
         - src/ingestion/real_ingest_policy.py
         - src/ingestion/result.py
+        - src/ingestion/result_sanitizer.py
         - src/models/content.py
         - src/queue/worker.py
         - src/api/ingestion_routes.py
@@ -267,6 +269,7 @@ packages:
         - tests/ingestion/test_ingestion_service.py
         - tests/ingestion/test_orchestrator.py
         - tests/ingestion/test_real_ingest_policy.py
+        - tests/ingestion/test_result_sanitizer.py
         - tests/queue/**
         - tests/mcp/**
         - tests/mcp_tools/**
