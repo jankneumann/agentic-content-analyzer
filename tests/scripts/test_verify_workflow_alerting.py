@@ -26,6 +26,14 @@ RECEIVER_TOKEN = "receiver-secret-value"
 SIGNING_SECRET = "receiver-signing-secret-at-least-32-bytes"
 
 
+def test_receiver_dockerfile_uses_railway_dynamic_port() -> None:
+    dockerfile = (
+        Path(__file__).resolve().parents[2] / "tests/fixtures/workflow_alert_receiver/Dockerfile"
+    ).read_text(encoding="utf-8")
+
+    assert "${PORT:-8000}" in dockerfile
+
+
 def _envelope() -> dict[str, object]:
     return {
         "schema_version": 1,

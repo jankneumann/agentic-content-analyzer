@@ -11,4 +11,4 @@ COPY tests/fixtures/workflow_alert_receiver/app.py ./receiver_app.py
 
 ENV PATH="/app/.venv/bin:${PATH}"
 
-CMD ["uvicorn", "receiver_app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["sh", "-c", "exec uvicorn receiver_app:app --host 0.0.0.0 --port \"${PORT:-8000}\" --workers 1"]

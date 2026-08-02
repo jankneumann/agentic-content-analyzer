@@ -20,6 +20,7 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.engine import Connection
 from sqlalchemy.engine.reflection import Inspector
 
 # revision identifiers, used by Alembic.
@@ -27,6 +28,26 @@ revision: str = "c5f6a7b8d9e0"
 down_revision: Union[str, None] = "bc56c4b2e94d"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
+
+
+def _topics_embedding_is_dimensioned(conn: Connection) -> bool:
+    """Return whether pgvector recorded a fixed dimension for the topic embedding."""
+
+    type_modifier = conn.execute(
+        sa.text(
+            """
+            SELECT attribute.atttypmod
+            FROM pg_attribute AS attribute
+            JOIN pg_class AS relation ON relation.oid = attribute.attrelid
+            JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+            WHERE namespace.nspname = current_schema()
+              AND relation.relname = 'topics'
+              AND attribute.attname = 'embedding'
+              AND NOT attribute.attisdropped
+            """
+        )
+    ).scalar()
+    return isinstance(type_modifier, int) and type_modifier > 0
 
 
 def upgrade() -> None:
@@ -242,23 +263,16 @@ def upgrade() -> None:
             sa.UniqueConstraint("index_type", name="uq_kb_indices_index_type"),
         )
 
-    # 5. Create HNSW index on topics.embedding for semantic matching
-    op.execute(
-        """
-        DO $$
-        BEGIN
-            -- Only create HNSW index if pgvector supports it (v0.5+)
-            IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') THEN
-                BEGIN
-                    CREATE INDEX IF NOT EXISTS ix_topics_embedding_hnsw
-                    ON topics USING hnsw (embedding vector_cosine_ops);
-                EXCEPTION WHEN OTHERS THEN
-                    RAISE NOTICE 'Skipping topics HNSW index: %', SQLERRM;
-                END;
-            END IF;
-        END $$
-        """
-    )
+    # 5. HNSW requires a fixed vector dimension. Topics intentionally uses an
+    # unconstrained vector, so avoid sending invalid DDL that managed pgvector
+    # services may terminate instead of returning as a catchable SQL error.
+    if _topics_embedding_is_dimensioned(conn):
+        op.execute(
+            """
+            CREATE INDEX IF NOT EXISTS ix_topics_embedding_hnsw
+            ON topics USING hnsw (embedding vector_cosine_ops)
+            """
+        )
 
 
 def downgrade() -> None:
