@@ -35,6 +35,12 @@ def test_terminal_event_model_has_closed_shape_without_authority_foreign_keys() 
     assert table.c.event_key.unique is True
     assert "operation" in _checks(WorkflowTerminalEvent)["ck_workflow_terminal_events_source_kind"]
     assert ">= 0" in _checks(WorkflowTerminalEvent)["ck_workflow_terminal_events_claim_generation"]
+    identity = _checks(WorkflowTerminalEvent)["ck_workflow_terminal_events_event_identity"]
+    assert "operation_id" in identity
+    assert "claim_generation" in identity
+    assert "reconciliation_action_id" in identity
+    assert "reconciliation_run_id" in identity
+    assert "reconciliation_content_id" in identity
 
 
 def test_delivery_model_has_only_restrict_event_fk_and_bounded_indexes() -> None:
@@ -43,9 +49,18 @@ def test_delivery_model_has_only_restrict_event_fk_and_bounded_indexes() -> None
     event_fk = next(iter(table.foreign_keys))
     assert event_fk.target_fullname == "workflow_terminal_events.id"
     assert event_fk.ondelete == "RESTRICT"
-    assert "exhausted" in _checks(WorkflowAlertDelivery)["ck_workflow_alert_deliveries_status"]
+    checks = _checks(WorkflowAlertDelivery)
+    assert "exhausted" in checks["ck_workflow_alert_deliveries_status"]
+    state = checks["ck_workflow_alert_deliveries_state"]
+    assert "attempt_count >= 1" in state
+    assert "lease_expires_at IS NOT NULL" in state
+    assert "delivered_at IS NOT NULL" in state
+    assert "last_error_code IS NOT NULL" in state
     indexes = {index.name: index for index in table.indexes}
-    due = indexes["ix_workflow_alert_deliveries_due"]
-    assert [column.name for column in due.columns] == ["next_attempt_at", "id"]
-    assert due.dialect_options["postgresql"]["where"] is not None
+    pending = indexes["ix_workflow_alert_deliveries_pending_due"]
+    assert [column.name for column in pending.columns] == ["next_attempt_at", "id"]
+    assert str(pending.dialect_options["postgresql"]["where"]) == "status = 'pending'"
+    leased = indexes["ix_workflow_alert_deliveries_lease_expiry"]
+    assert [column.name for column in leased.columns] == ["lease_expires_at", "id"]
+    assert str(leased.dialect_options["postgresql"]["where"]) == "status = 'leased'"
     assert "ix_workflow_alert_deliveries_retention" in indexes

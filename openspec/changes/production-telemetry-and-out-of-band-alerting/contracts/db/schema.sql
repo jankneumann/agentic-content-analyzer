@@ -17,13 +17,17 @@ CREATE TABLE workflow_terminal_events (
     CONSTRAINT ck_workflow_terminal_events_source_kind CHECK (
         source_kind IN ('operation','reconciliation_action','reconciliation_failure')
     ),
-    CONSTRAINT ck_workflow_terminal_events_event_key CHECK (
-        (source_kind = 'operation' AND event_key ~
-          '^operation:[1-9][0-9]*:claim:[0-9]+:status:(completed|failed|cancelled)$')
-        OR (source_kind = 'reconciliation_action' AND event_key ~
-          '^reconciliation-action:[1-9][0-9]*$')
-        OR (source_kind = 'reconciliation_failure' AND event_key ~
-          '^reconciliation-failure:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:content:[1-9][0-9]*:reason:apply_failed$')
+    CONSTRAINT ck_workflow_terminal_events_event_identity CHECK (
+        (source_kind = 'operation' AND event_key =
+          'operation:' || operation_id::text || ':claim:' ||
+          claim_generation::text || ':status:' || terminal_status)
+        OR (source_kind = 'reconciliation_action' AND event_key =
+          'reconciliation-action:' || reconciliation_action_id::text)
+        OR (source_kind = 'reconciliation_failure' AND event_key =
+          'reconciliation-failure:' || reconciliation_run_id::text || ':content:' ||
+          reconciliation_content_id::text || ':reason:apply_failed'
+          AND event_key ~
+          '^reconciliation-failure:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}:content:[1-9][0-9]*:reason:apply_failed$')
     ),
     CONSTRAINT ck_workflow_terminal_events_terminal_status CHECK (
         terminal_status IS NULL OR terminal_status IN ('completed','failed','cancelled')
@@ -86,6 +90,18 @@ CREATE TABLE workflow_alert_deliveries (
     CONSTRAINT ck_workflow_alert_deliveries_attempt_count CHECK (attempt_count >= 0),
     CONSTRAINT ck_workflow_alert_deliveries_last_error_code CHECK (
         last_error_code IS NULL OR last_error_code ~ '^[a-z][a-z0-9_.-]{0,79}$'
+    ),
+    CONSTRAINT ck_workflow_alert_deliveries_state CHECK (
+        (status = 'pending'
+         AND lease_expires_at IS NULL AND delivered_at IS NULL)
+        OR (status = 'leased' AND attempt_count >= 1
+         AND lease_expires_at IS NOT NULL AND delivered_at IS NULL)
+        OR (status = 'delivered' AND attempt_count >= 1
+         AND lease_expires_at IS NULL AND delivered_at IS NOT NULL
+         AND last_error_code IS NULL)
+        OR (status IN ('permanent_failure','exhausted') AND attempt_count >= 1
+         AND lease_expires_at IS NULL AND delivered_at IS NULL
+         AND last_error_code IS NOT NULL)
     )
 );
 
@@ -97,9 +113,13 @@ CREATE INDEX ix_workflow_terminal_events_retention
 ON workflow_terminal_events (created_at, id)
 WHERE classification_status IN ('ready','telemetry_only','rejected');
 
-CREATE INDEX ix_workflow_alert_deliveries_due
+CREATE INDEX ix_workflow_alert_deliveries_pending_due
 ON workflow_alert_deliveries (next_attempt_at, id)
-WHERE status IN ('pending','leased');
+WHERE status = 'pending';
+
+CREATE INDEX ix_workflow_alert_deliveries_lease_expiry
+ON workflow_alert_deliveries (lease_expires_at, id)
+WHERE status = 'leased';
 
 CREATE INDEX ix_workflow_alert_deliveries_retention
 ON workflow_alert_deliveries (updated_at, id)

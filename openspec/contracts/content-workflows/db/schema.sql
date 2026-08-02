@@ -282,13 +282,17 @@ CREATE TABLE workflow_terminal_events (
     CONSTRAINT ck_workflow_terminal_events_source_kind CHECK (
         source_kind IN ('operation','reconciliation_action','reconciliation_failure')
     ),
-    CONSTRAINT ck_workflow_terminal_events_event_key CHECK (
-        (source_kind = 'operation' AND event_key ~
-          '^operation:[1-9][0-9]*:claim:[0-9]+:status:(completed|failed|cancelled)$')
-        OR (source_kind = 'reconciliation_action' AND event_key ~
-          '^reconciliation-action:[1-9][0-9]*$')
-        OR (source_kind = 'reconciliation_failure' AND event_key ~
-          '^reconciliation-failure:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:content:[1-9][0-9]*:reason:apply_failed$')
+    CONSTRAINT ck_workflow_terminal_events_event_identity CHECK (
+        (source_kind = 'operation' AND event_key =
+          'operation:' || operation_id::text || ':claim:' ||
+          claim_generation::text || ':status:' || terminal_status)
+        OR (source_kind = 'reconciliation_action' AND event_key =
+          'reconciliation-action:' || reconciliation_action_id::text)
+        OR (source_kind = 'reconciliation_failure' AND event_key =
+          'reconciliation-failure:' || reconciliation_run_id::text || ':content:' ||
+          reconciliation_content_id::text || ':reason:apply_failed'
+          AND event_key ~
+          '^reconciliation-failure:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}:content:[1-9][0-9]*:reason:apply_failed$')
     ),
     CONSTRAINT ck_workflow_terminal_events_terminal_status CHECK (
         terminal_status IS NULL OR terminal_status IN ('completed','failed','cancelled')
@@ -351,6 +355,18 @@ CREATE TABLE workflow_alert_deliveries (
     CONSTRAINT ck_workflow_alert_deliveries_attempt_count CHECK (attempt_count >= 0),
     CONSTRAINT ck_workflow_alert_deliveries_last_error_code CHECK (
         last_error_code IS NULL OR last_error_code ~ '^[a-z][a-z0-9_.-]{0,79}$'
+    ),
+    CONSTRAINT ck_workflow_alert_deliveries_state CHECK (
+        (status = 'pending'
+         AND lease_expires_at IS NULL AND delivered_at IS NULL)
+        OR (status = 'leased' AND attempt_count >= 1
+         AND lease_expires_at IS NOT NULL AND delivered_at IS NULL)
+        OR (status = 'delivered' AND attempt_count >= 1
+         AND lease_expires_at IS NULL AND delivered_at IS NOT NULL
+         AND last_error_code IS NULL)
+        OR (status IN ('permanent_failure','exhausted') AND attempt_count >= 1
+         AND lease_expires_at IS NULL AND delivered_at IS NULL
+         AND last_error_code IS NOT NULL)
     )
 );
 
@@ -360,15 +376,20 @@ CREATE INDEX ix_workflow_terminal_events_classification_due
 CREATE INDEX ix_workflow_terminal_events_retention
     ON workflow_terminal_events (created_at, id)
     WHERE classification_status IN ('ready','telemetry_only','rejected');
-CREATE INDEX ix_workflow_alert_deliveries_due
+CREATE INDEX ix_workflow_alert_deliveries_pending_due
     ON workflow_alert_deliveries (next_attempt_at, id)
-    WHERE status IN ('pending','leased');
+    WHERE status = 'pending';
+CREATE INDEX ix_workflow_alert_deliveries_lease_expiry
+    ON workflow_alert_deliveries (lease_expires_at, id)
+    WHERE status = 'leased';
 CREATE INDEX ix_workflow_alert_deliveries_retention
     ON workflow_alert_deliveries (updated_at, id)
     WHERE status IN ('delivered','permanent_failure','exhausted');
 
 CREATE FUNCTION capture_pgqueuer_terminal_event()
 RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    captured_event_id UUID;
 BEGIN
     INSERT INTO workflow_terminal_events (
         event_key, source_kind, operation_id, claim_generation,
@@ -378,7 +399,17 @@ BEGIN
                NEW.id, NEW.claim_generation, NEW.status),
         'operation', NEW.id, NEW.claim_generation, NEW.status,
         COALESCE(NEW.completed_at, NOW())
-    ) ON CONFLICT (event_key) DO NOTHING;
+    ) ON CONFLICT (event_key) DO UPDATE
+    SET event_key = EXCLUDED.event_key
+    WHERE workflow_terminal_events.source_kind = EXCLUDED.source_kind
+      AND workflow_terminal_events.operation_id = EXCLUDED.operation_id
+      AND workflow_terminal_events.claim_generation = EXCLUDED.claim_generation
+      AND workflow_terminal_events.terminal_status = EXCLUDED.terminal_status
+    RETURNING id INTO captured_event_id;
+    IF captured_event_id IS NULL THEN
+        RAISE EXCEPTION 'workflow terminal event identity collision'
+            USING ERRCODE = '23514';
+    END IF;
     RETURN NEW;
 END;
 $$;
@@ -392,6 +423,8 @@ EXECUTE FUNCTION capture_pgqueuer_terminal_event();
 
 CREATE FUNCTION capture_content_reconciliation_terminal_event()
 RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    captured_event_id UUID;
 BEGIN
     INSERT INTO workflow_terminal_events (
         event_key, source_kind, reconciliation_action_id,
@@ -399,10 +432,47 @@ BEGIN
     ) VALUES (
         format('reconciliation-action:%s', NEW.id),
         'reconciliation_action', NEW.id, NEW.run_id, NEW.content_id, NEW.created_at
-    ) ON CONFLICT (event_key) DO NOTHING;
+    ) ON CONFLICT (event_key) DO UPDATE
+    SET event_key = EXCLUDED.event_key
+    WHERE workflow_terminal_events.source_kind = EXCLUDED.source_kind
+      AND workflow_terminal_events.reconciliation_action_id =
+          EXCLUDED.reconciliation_action_id
+      AND workflow_terminal_events.reconciliation_run_id =
+          EXCLUDED.reconciliation_run_id
+      AND workflow_terminal_events.reconciliation_content_id =
+          EXCLUDED.reconciliation_content_id
+    RETURNING id INTO captured_event_id;
+    IF captured_event_id IS NULL THEN
+        RAISE EXCEPTION 'workflow terminal event identity collision'
+            USING ERRCODE = '23514';
+    END IF;
     RETURN NEW;
 END;
 $$;
 CREATE TRIGGER content_reconciliation_actions_capture_terminal_event
 AFTER INSERT ON content_reconciliation_actions
 FOR EACH ROW EXECUTE FUNCTION capture_content_reconciliation_terminal_event();
+
+CREATE FUNCTION deny_workflow_terminal_event_identity_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF ROW(
+        NEW.id, NEW.event_key, NEW.source_kind, NEW.operation_id,
+        NEW.claim_generation, NEW.terminal_status, NEW.reconciliation_action_id,
+        NEW.reconciliation_run_id, NEW.reconciliation_content_id,
+        NEW.occurred_at, NEW.created_at
+    ) IS DISTINCT FROM ROW(
+        OLD.id, OLD.event_key, OLD.source_kind, OLD.operation_id,
+        OLD.claim_generation, OLD.terminal_status, OLD.reconciliation_action_id,
+        OLD.reconciliation_run_id, OLD.reconciliation_content_id,
+        OLD.occurred_at, OLD.created_at
+    ) THEN
+        RAISE EXCEPTION 'workflow_terminal_events source identity is immutable'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER workflow_terminal_events_source_identity_immutable
+BEFORE UPDATE ON workflow_terminal_events
+FOR EACH ROW EXECUTE FUNCTION deny_workflow_terminal_event_identity_mutation();

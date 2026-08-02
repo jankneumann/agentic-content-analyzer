@@ -13,6 +13,7 @@ from src.queue.setup import (
     REQUIRED_QUEUE_COLUMNS,
     enqueue_queue_job,
     enqueue_summarization_job,
+    ensure_queue_schema_compatible,
     get_job_status,
     init_queue_schema,
     update_job_progress,
@@ -124,12 +125,86 @@ class TestQueueOwnershipBootstrap:
         ddl = "\n".join(call.args[0] for call in connection.execute.await_args_list)
         assert "CREATE TABLE IF NOT EXISTS workflow_terminal_events" in ddl
         assert "CREATE TABLE IF NOT EXISTS workflow_alert_deliveries" in ddl
-        assert "ix_workflow_alert_deliveries_due" in ddl
         assert "capture_pgqueuer_terminal_event" in ddl
         assert "pgqueuer_jobs_capture_terminal_event" in ddl
         assert "capture_content_reconciliation_terminal_event" in ddl
         assert "content_reconciliation_actions_capture_terminal_event" in ddl
         assert "operation:%s:claim:%s:status:%s" in ddl
+        assert "workflow_terminal_events_source_identity_immutable" in ddl
+        assert "ck_workflow_alert_deliveries_state" in ddl
+        assert "ix_workflow_alert_deliveries_pending_due" in ddl
+        assert "ix_workflow_alert_deliveries_lease_expiry" in ddl
+        assert "workflow alert bootstrap requires content_reconciliation_actions" in ddl
+
+    @pytest.mark.asyncio
+    async def test_compatibility_requires_alert_tables(self):
+        connection = MagicMock()
+        connection.fetch = AsyncMock(
+            side_effect=[
+                [
+                    {"table_name": "pgqueuer_jobs"},
+                    {"table_name": "content_reconciliation_actions"},
+                    {"table_name": "workflow_terminal_events"},
+                ]
+            ]
+        )
+        with patch("src.queue.setup._connection", connection):
+            with pytest.raises(RuntimeError, match="workflow_alert_deliveries"):
+                await ensure_queue_schema_compatible()
+
+    @pytest.mark.asyncio
+    async def test_compatibility_requires_terminal_capture_triggers(self):
+        connection = MagicMock()
+        connection.fetch = AsyncMock(
+            side_effect=[
+                [
+                    {"table_name": "pgqueuer_jobs"},
+                    {"table_name": "content_reconciliation_actions"},
+                    {"table_name": "workflow_terminal_events"},
+                    {"table_name": "workflow_alert_deliveries"},
+                ],
+                [{"column_name": column} for column in REQUIRED_QUEUE_COLUMNS],
+                [
+                    {
+                        "table_name": "pgqueuer_jobs",
+                        "trigger_name": "pgqueuer_jobs_capture_terminal_event",
+                    }
+                ],
+            ]
+        )
+        with patch("src.queue.setup._connection", connection):
+            with pytest.raises(
+                RuntimeError,
+                match="content_reconciliation_actions_capture_terminal_event",
+            ):
+                await ensure_queue_schema_compatible()
+
+    @pytest.mark.asyncio
+    async def test_compatibility_accepts_alert_tables_and_both_capture_triggers(self):
+        connection = MagicMock()
+        connection.fetch = AsyncMock(
+            side_effect=[
+                [
+                    {"table_name": "pgqueuer_jobs"},
+                    {"table_name": "content_reconciliation_actions"},
+                    {"table_name": "workflow_terminal_events"},
+                    {"table_name": "workflow_alert_deliveries"},
+                ],
+                [{"column_name": column} for column in REQUIRED_QUEUE_COLUMNS],
+                [
+                    {
+                        "table_name": "pgqueuer_jobs",
+                        "trigger_name": "pgqueuer_jobs_capture_terminal_event",
+                    },
+                    {
+                        "table_name": "content_reconciliation_actions",
+                        "trigger_name": "content_reconciliation_actions_capture_terminal_event",
+                    },
+                ],
+            ]
+        )
+        with patch("src.queue.setup._connection", connection):
+            await ensure_queue_schema_compatible()
 
     @pytest.mark.asyncio
     async def test_get_job_status_returns_none_when_missing(self, mock_connection):

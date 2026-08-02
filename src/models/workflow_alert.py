@@ -89,14 +89,17 @@ class WorkflowTerminalEvent(Base):
             name="ck_workflow_terminal_events_source_kind",
         ),
         CheckConstraint(
-            "(source_kind = 'operation' AND event_key ~ "
-            "'^operation:[1-9][0-9]*:claim:[0-9]+:status:(completed|failed|cancelled)$') "
-            "OR (source_kind = 'reconciliation_action' AND event_key ~ "
-            "'^reconciliation-action:[1-9][0-9]*$') "
-            "OR (source_kind = 'reconciliation_failure' AND event_key ~ "
-            "'^reconciliation-failure:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
-            "[0-9a-f]{4}-[0-9a-f]{12}:content:[1-9][0-9]*:reason:apply_failed$')",
-            name="ck_workflow_terminal_events_event_key",
+            "(source_kind = 'operation' AND event_key = 'operation:' || "
+            "operation_id::text || ':claim:' || claim_generation::text || "
+            "':status:' || terminal_status) OR "
+            "(source_kind = 'reconciliation_action' AND event_key = "
+            "'reconciliation-action:' || reconciliation_action_id::text) OR "
+            "(source_kind = 'reconciliation_failure' AND event_key = "
+            "'reconciliation-failure:' || reconciliation_run_id::text || ':content:' || "
+            "reconciliation_content_id::text || ':reason:apply_failed' AND event_key ~ "
+            "'^reconciliation-failure:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-"
+            "[89ab][0-9a-f]{3}-[0-9a-f]{12}:content:[1-9][0-9]*:reason:apply_failed$')",
+            name="ck_workflow_terminal_events_event_identity",
         ),
         CheckConstraint(
             "terminal_status IS NULL OR terminal_status IN ('completed','failed','cancelled')",
@@ -222,11 +225,28 @@ class WorkflowAlertDelivery(Base):
             "last_error_code IS NULL OR last_error_code ~ '^[a-z][a-z0-9_.-]{0,79}$'",
             name="ck_workflow_alert_deliveries_last_error_code",
         ),
+        CheckConstraint(
+            "(status = 'pending' AND lease_expires_at IS NULL AND delivered_at IS NULL) OR "
+            "(status = 'leased' AND attempt_count >= 1 AND lease_expires_at IS NOT NULL "
+            "AND delivered_at IS NULL) OR "
+            "(status = 'delivered' AND attempt_count >= 1 AND lease_expires_at IS NULL "
+            "AND delivered_at IS NOT NULL AND last_error_code IS NULL) OR "
+            "(status IN ('permanent_failure','exhausted') AND attempt_count >= 1 "
+            "AND lease_expires_at IS NULL AND delivered_at IS NULL "
+            "AND last_error_code IS NOT NULL)",
+            name="ck_workflow_alert_deliveries_state",
+        ),
         Index(
-            "ix_workflow_alert_deliveries_due",
+            "ix_workflow_alert_deliveries_pending_due",
             "next_attempt_at",
             "id",
-            postgresql_where=text("status IN ('pending','leased')"),
+            postgresql_where=text("status = 'pending'"),
+        ),
+        Index(
+            "ix_workflow_alert_deliveries_lease_expiry",
+            "lease_expires_at",
+            "id",
+            postgresql_where=text("status = 'leased'"),
         ),
         Index(
             "ix_workflow_alert_deliveries_retention",

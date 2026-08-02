@@ -26,6 +26,7 @@ async def test_queue_bootstrap_is_postgresql_valid_and_idempotent(
 
     await queue_setup.init_queue_schema()
     await queue_setup.init_queue_schema()
+    await queue_setup.ensure_queue_schema_compatible()
 
     conn = await _connect(test_engine)
     try:

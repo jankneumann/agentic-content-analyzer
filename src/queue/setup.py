@@ -75,6 +75,19 @@ REQUIRED_QUEUE_COLUMNS: set[str] = {
     "claim_generation",
     "claim_protocol_version",
 }
+REQUIRED_QUEUE_TABLES: set[str] = {
+    "pgqueuer_jobs",
+    "content_reconciliation_actions",
+    "workflow_terminal_events",
+    "workflow_alert_deliveries",
+}
+REQUIRED_QUEUE_TRIGGERS: set[tuple[str, str]] = {
+    ("pgqueuer_jobs", "pgqueuer_jobs_capture_terminal_event"),
+    (
+        "content_reconciliation_actions",
+        "content_reconciliation_actions_capture_terminal_event",
+    ),
+}
 
 _WORKFLOW_ALERT_BOOTSTRAP_DDL = """
 CREATE TABLE IF NOT EXISTS workflow_terminal_events (
@@ -95,15 +108,19 @@ CREATE TABLE IF NOT EXISTS workflow_terminal_events (
     CONSTRAINT ck_workflow_terminal_events_source_kind CHECK (
         source_kind IN ('operation','reconciliation_action','reconciliation_failure')
     ),
-    CONSTRAINT ck_workflow_terminal_events_event_key CHECK (
-        (source_kind = 'operation' AND event_key ~
-          '^operation:[1-9][0-9]*:claim:[0-9]+:status:(completed|failed|cancelled)$')
+    CONSTRAINT ck_workflow_terminal_events_event_identity CHECK (
+        (source_kind = 'operation' AND event_key =
+          'operation:' || operation_id::text || ':claim:' ||
+          claim_generation::text || ':status:' || terminal_status)
         OR
-        (source_kind = 'reconciliation_action' AND event_key ~
-          '^reconciliation-action:[1-9][0-9]*$')
+        (source_kind = 'reconciliation_action' AND event_key =
+          'reconciliation-action:' || reconciliation_action_id::text)
         OR
-        (source_kind = 'reconciliation_failure' AND event_key ~
-          '^reconciliation-failure:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:content:[1-9][0-9]*:reason:apply_failed$')
+        (source_kind = 'reconciliation_failure' AND event_key =
+          'reconciliation-failure:' || reconciliation_run_id::text || ':content:' ||
+          reconciliation_content_id::text || ':reason:apply_failed'
+         AND event_key ~
+          '^reconciliation-failure:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}:content:[1-9][0-9]*:reason:apply_failed$')
     ),
     CONSTRAINT ck_workflow_terminal_events_terminal_status CHECK (
         terminal_status IS NULL OR terminal_status IN ('completed','failed','cancelled')
@@ -168,6 +185,21 @@ CREATE TABLE IF NOT EXISTS workflow_alert_deliveries (
     CONSTRAINT ck_workflow_alert_deliveries_attempt_count CHECK (attempt_count >= 0),
     CONSTRAINT ck_workflow_alert_deliveries_last_error_code CHECK (
         last_error_code IS NULL OR last_error_code ~ '^[a-z][a-z0-9_.-]{0,79}$'
+    ),
+    CONSTRAINT ck_workflow_alert_deliveries_state CHECK (
+        (status = 'pending'
+         AND lease_expires_at IS NULL AND delivered_at IS NULL)
+        OR
+        (status = 'leased' AND attempt_count >= 1
+         AND lease_expires_at IS NOT NULL AND delivered_at IS NULL)
+        OR
+        (status = 'delivered' AND attempt_count >= 1
+         AND lease_expires_at IS NULL AND delivered_at IS NOT NULL
+         AND last_error_code IS NULL)
+        OR
+        (status IN ('permanent_failure','exhausted') AND attempt_count >= 1
+         AND lease_expires_at IS NULL AND delivered_at IS NULL
+         AND last_error_code IS NOT NULL)
     )
 );
 
@@ -177,9 +209,12 @@ CREATE INDEX IF NOT EXISTS ix_workflow_terminal_events_classification_due
 CREATE INDEX IF NOT EXISTS ix_workflow_terminal_events_retention
     ON workflow_terminal_events (created_at, id)
     WHERE classification_status IN ('ready','telemetry_only','rejected');
-CREATE INDEX IF NOT EXISTS ix_workflow_alert_deliveries_due
+CREATE INDEX IF NOT EXISTS ix_workflow_alert_deliveries_pending_due
     ON workflow_alert_deliveries (next_attempt_at, id)
-    WHERE status IN ('pending','leased');
+    WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS ix_workflow_alert_deliveries_lease_expiry
+    ON workflow_alert_deliveries (lease_expires_at, id)
+    WHERE status = 'leased';
 CREATE INDEX IF NOT EXISTS ix_workflow_alert_deliveries_retention
     ON workflow_alert_deliveries (updated_at, id)
     WHERE status IN ('delivered','permanent_failure','exhausted');
@@ -188,6 +223,7 @@ CREATE OR REPLACE FUNCTION capture_pgqueuer_terminal_event()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
     terminal_event_key TEXT;
+    captured_event_id UUID;
 BEGIN
     terminal_event_key := format(
         'operation:%s:claim:%s:status:%s',
@@ -201,7 +237,17 @@ BEGIN
     ) VALUES (
         terminal_event_key, 'operation', NEW.id, NEW.claim_generation,
         NEW.status, COALESCE(NEW.completed_at, NOW())
-    ) ON CONFLICT (event_key) DO NOTHING;
+    ) ON CONFLICT (event_key) DO UPDATE
+    SET event_key = EXCLUDED.event_key
+    WHERE workflow_terminal_events.source_kind = EXCLUDED.source_kind
+      AND workflow_terminal_events.operation_id = EXCLUDED.operation_id
+      AND workflow_terminal_events.claim_generation = EXCLUDED.claim_generation
+      AND workflow_terminal_events.terminal_status = EXCLUDED.terminal_status
+    RETURNING id INTO captured_event_id;
+    IF captured_event_id IS NULL THEN
+        RAISE EXCEPTION 'workflow terminal event identity collision'
+            USING ERRCODE = '23514';
+    END IF;
     RETURN NEW;
 END;
 $$;
@@ -217,6 +263,8 @@ EXECUTE FUNCTION capture_pgqueuer_terminal_event();
 
 CREATE OR REPLACE FUNCTION capture_content_reconciliation_terminal_event()
 RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    captured_event_id UUID;
 BEGIN
     INSERT INTO workflow_terminal_events (
         event_key, source_kind, reconciliation_action_id,
@@ -224,22 +272,63 @@ BEGIN
     ) VALUES (
         format('reconciliation-action:%s', NEW.id), 'reconciliation_action',
         NEW.id, NEW.run_id, NEW.content_id, NEW.created_at
-    ) ON CONFLICT (event_key) DO NOTHING;
+    ) ON CONFLICT (event_key) DO UPDATE
+    SET event_key = EXCLUDED.event_key
+    WHERE workflow_terminal_events.source_kind = EXCLUDED.source_kind
+      AND workflow_terminal_events.reconciliation_action_id =
+          EXCLUDED.reconciliation_action_id
+      AND workflow_terminal_events.reconciliation_run_id =
+          EXCLUDED.reconciliation_run_id
+      AND workflow_terminal_events.reconciliation_content_id =
+          EXCLUDED.reconciliation_content_id
+    RETURNING id INTO captured_event_id;
+    IF captured_event_id IS NULL THEN
+        RAISE EXCEPTION 'workflow terminal event identity collision'
+            USING ERRCODE = '23514';
+    END IF;
     RETURN NEW;
 END;
 $$;
 
 DO $$
 BEGIN
-    IF to_regclass('public.content_reconciliation_actions') IS NOT NULL THEN
-        EXECUTE 'DROP TRIGGER IF EXISTS content_reconciliation_actions_capture_terminal_event '
-                'ON content_reconciliation_actions';
-        EXECUTE 'CREATE TRIGGER content_reconciliation_actions_capture_terminal_event '
-                'AFTER INSERT ON content_reconciliation_actions FOR EACH ROW '
-                'EXECUTE FUNCTION capture_content_reconciliation_terminal_event()';
+    IF to_regclass('public.content_reconciliation_actions') IS NULL THEN
+        RAISE EXCEPTION
+            'workflow alert bootstrap requires content_reconciliation_actions; run migrations';
     END IF;
+    EXECUTE 'DROP TRIGGER IF EXISTS content_reconciliation_actions_capture_terminal_event '
+            'ON content_reconciliation_actions';
+    EXECUTE 'CREATE TRIGGER content_reconciliation_actions_capture_terminal_event '
+            'AFTER INSERT ON content_reconciliation_actions FOR EACH ROW '
+            'EXECUTE FUNCTION capture_content_reconciliation_terminal_event()';
 END;
 $$;
+
+CREATE OR REPLACE FUNCTION deny_workflow_terminal_event_identity_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF ROW(
+        NEW.id, NEW.event_key, NEW.source_kind, NEW.operation_id,
+        NEW.claim_generation, NEW.terminal_status, NEW.reconciliation_action_id,
+        NEW.reconciliation_run_id, NEW.reconciliation_content_id,
+        NEW.occurred_at, NEW.created_at
+    ) IS DISTINCT FROM ROW(
+        OLD.id, OLD.event_key, OLD.source_kind, OLD.operation_id,
+        OLD.claim_generation, OLD.terminal_status, OLD.reconciliation_action_id,
+        OLD.reconciliation_run_id, OLD.reconciliation_content_id,
+        OLD.occurred_at, OLD.created_at
+    ) THEN
+        RAISE EXCEPTION 'workflow_terminal_events source identity is immutable'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS workflow_terminal_events_source_identity_immutable
+    ON workflow_terminal_events;
+CREATE TRIGGER workflow_terminal_events_source_identity_immutable
+BEFORE UPDATE ON workflow_terminal_events
+FOR EACH ROW EXECUTE FUNCTION deny_workflow_terminal_event_identity_mutation();
 """
 
 
@@ -390,25 +479,65 @@ async def close_queue() -> None:
 async def ensure_queue_schema_compatible() -> None:
     """Fail fast if required queue schema migrations are missing."""
     async with _queue_connection() as conn:
+        table_rows = await conn.fetch(
+            """
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = current_schema()
+              AND table_name = ANY($1::text[])
+            """,
+            sorted(REQUIRED_QUEUE_TABLES),
+        )
+        actual_tables = {str(row["table_name"]) for row in table_rows}
+        missing_tables = sorted(REQUIRED_QUEUE_TABLES - actual_tables)
+        if missing_tables:
+            raise RuntimeError(
+                "Queue schema is outdated. Missing required tables: "
+                f"{', '.join(missing_tables)}. Run migrations first."
+            )
+
         rows = await conn.fetch(
             """
             SELECT column_name
             FROM information_schema.columns
-            WHERE table_name = 'pgqueuer_jobs'
+            WHERE table_schema = current_schema()
+              AND table_name = 'pgqueuer_jobs'
             """
         )
-    if not rows:
-        raise RuntimeError(
-            "Queue schema missing: table 'pgqueuer_jobs' not found. Run database migrations first."
+        actual = {str(row["column_name"]) for row in rows}
+        missing = sorted(REQUIRED_QUEUE_COLUMNS - actual)
+        if missing:
+            missing_csv = ", ".join(missing)
+            raise RuntimeError(
+                "Queue schema is outdated. Missing columns in 'pgqueuer_jobs': "
+                f"{missing_csv}. Run migrations first."
+            )
+
+        trigger_rows = await conn.fetch(
+            """
+            SELECT relation.relname AS table_name, trigger.tgname AS trigger_name
+            FROM pg_trigger AS trigger
+            JOIN pg_class AS relation ON relation.oid = trigger.tgrelid
+            JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+            WHERE NOT trigger.tgisinternal
+              AND namespace.nspname = current_schema()
+              AND (relation.relname, trigger.tgname) IN (
+                ('pgqueuer_jobs', 'pgqueuer_jobs_capture_terminal_event'),
+                ('content_reconciliation_actions',
+                 'content_reconciliation_actions_capture_terminal_event')
+              )
+            """
         )
-    actual = {str(row["column_name"]) for row in rows}
-    missing = sorted(REQUIRED_QUEUE_COLUMNS - actual)
-    if missing:
-        missing_csv = ", ".join(missing)
-        raise RuntimeError(
-            "Queue schema is outdated. Missing columns in 'pgqueuer_jobs': "
-            f"{missing_csv}. Run migrations first."
-        )
+        actual_triggers = {
+            (str(row["table_name"]), str(row["trigger_name"])) for row in trigger_rows
+        }
+        missing_triggers = sorted(REQUIRED_QUEUE_TRIGGERS - actual_triggers)
+        if missing_triggers:
+            missing_csv = ", ".join(trigger_name for _table, trigger_name in missing_triggers)
+            raise RuntimeError(
+                "Queue schema is outdated. Missing required terminal triggers: "
+                f"{missing_csv}. Run migrations first."
+            )
 
 
 async def init_queue_schema() -> None:
