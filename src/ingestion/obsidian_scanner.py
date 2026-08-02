@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 HARD_MAX_FILES = 10_000
+HARD_MAX_ENTRIES = 100_000
 HARD_MAX_TOTAL_BYTES = 256 * 1024 * 1024
 HARD_MAX_DEPTH = 32
 HARD_MAX_DURATION_SECONDS = 3_600.0
@@ -44,6 +45,10 @@ class _UnavailableError(ValueError):
 
     def __init__(self) -> None:
         super().__init__("source_unavailable")
+
+
+class _EntryLimitError(RuntimeError):
+    """Signal that bounded directory production consumed its complete allowance."""
 
 
 def validate_relative_path(value: str) -> tuple[str, ...]:
@@ -91,6 +96,7 @@ class ScanLimits:
     """Per-scan limits constrained by non-overridable hard ceilings."""
 
     max_files: int = 1_000
+    max_entries: int = 10_000
     max_total_bytes: int = 64 * 1024 * 1024
     max_depth: int = 8
     max_duration_seconds: float = 300.0
@@ -101,6 +107,7 @@ class ScanLimits:
     def __post_init__(self) -> None:
         integer_bounds = (
             (self.max_files, 1, HARD_MAX_FILES),
+            (self.max_entries, 1, HARD_MAX_ENTRIES),
             (self.max_total_bytes, 1, HARD_MAX_TOTAL_BYTES),
             (self.max_depth, 0, HARD_MAX_DEPTH),
             (self.max_note_bytes, 1, HARD_MAX_NOTE_BYTES),
@@ -113,6 +120,8 @@ class ScanLimits:
             or value > maximum
             for value, minimum, maximum in integer_bounds
         ):
+            raise ValueError("invalid_scan_limits")
+        if self.max_note_bytes > self.max_total_bytes:
             raise ValueError("invalid_scan_limits")
         numeric_bounds = (
             (self.max_duration_seconds, 0.0, HARD_MAX_DURATION_SECONDS, False),
@@ -188,6 +197,7 @@ class ScanResult:
     diagnostics: tuple[ScanDiagnostic, ...]
     bytes_read: int
     files_examined: int
+    entries_examined: int
     next_cursor: str | None = None
     concurrency_used: int = 1
 
@@ -228,20 +238,23 @@ class UnixFileSystem:
     def fstat(self, file_fd: int) -> FileIdentity:
         return FileIdentity.from_stat(os.fstat(file_fd))
 
-    def scan_directory(self, directory_fd: int) -> tuple[DirectoryEntry, ...]:
+    def scan_directory(self, directory_fd: int, max_entries: int) -> tuple[DirectoryEntry, ...]:
         duplicate = self.duplicate(directory_fd)
         try:
             with os.scandir(duplicate) as iterator:
-                entries = tuple(
-                    DirectoryEntry(
-                        name=entry.name,
-                        identity=FileIdentity.from_stat(entry.stat(follow_symlinks=False)),
+                entries: list[DirectoryEntry] = []
+                for entry in iterator:
+                    entries.append(
+                        DirectoryEntry(
+                            name=entry.name,
+                            identity=FileIdentity.from_stat(entry.stat(follow_symlinks=False)),
+                        )
                     )
-                    for entry in iterator
-                )
+                    if len(entries) >= max_entries:
+                        raise _EntryLimitError
         finally:
             os.close(duplicate)
-        return entries
+        return tuple(entries)
 
     def read_file(self, file_fd: int, byte_limit: int) -> bytes:
         chunks: list[bytes] = []
@@ -442,6 +455,7 @@ class _ScanState:
     diagnostics: list[ScanDiagnostic] = field(default_factory=list)
     bytes_read: int = 0
     files_examined: int = 0
+    entries_examined: int = 0
     cursor_seen: bool = True
     last_cursor: str | None = None
     next_cursor: str | None = None
@@ -500,6 +514,7 @@ class VaultScanner:
                 diagnostics=(ScanDiagnostic("source_unavailable"),),
                 bytes_read=0,
                 files_examined=0,
+                entries_examined=0,
             )
 
         state = _ScanState(start_time=self._clock(), cursor_seen=cursor is None)
@@ -522,6 +537,7 @@ class VaultScanner:
             diagnostics=tuple(state.diagnostics),
             bytes_read=state.bytes_read,
             files_examined=state.files_examined,
+            entries_examined=state.entries_examined,
             next_cursor=state.next_cursor,
             concurrency_used=1,
         )
@@ -538,18 +554,44 @@ class VaultScanner:
     ) -> None:
         if state.stopped or self._stop_for_duration(state):
             return
+        remaining_entries = self._limits.max_entries - state.entries_examined
+        if remaining_entries <= 0:
+            state.diagnostics.append(ScanDiagnostic("scan_entry_limit"))
+            state.next_cursor = state.last_cursor
+            state.stopped = True
+            return
         try:
             entries = sorted(
-                self._filesystem.scan_directory(directory_fd),
-                key=lambda entry: unicodedata.normalize("NFC", entry.name),
+                self._filesystem.scan_directory(directory_fd, remaining_entries),
+                key=lambda entry: (
+                    unicodedata.normalize("NFC", entry.name),
+                    entry.name,
+                ),
             )
+        except _EntryLimitError:
+            state.entries_examined += remaining_entries
+            state.diagnostics.append(ScanDiagnostic("scan_entry_limit"))
+            state.next_cursor = state.last_cursor
+            state.stopped = True
+            return
         except OSError:
             state.diagnostics.append(ScanDiagnostic("directory_unavailable"))
             return
+        state.entries_examined += len(entries)
+
+        canonical_counts: dict[str, int] = {}
+        for entry in entries:
+            canonical_name = unicodedata.normalize("NFC", entry.name)
+            canonical_counts[canonical_name] = canonical_counts.get(canonical_name, 0) + 1
+        collisions = {
+            canonical_name for canonical_name, count in canonical_counts.items() if count > 1
+        }
+        diagnosed_collisions: set[str] = set()
 
         for entry in entries:
             if state.stopped or self._stop_for_duration(state):
                 return
+            raw_name = entry.name
             name = unicodedata.normalize("NFC", entry.name)
             current_parts = (*relative_parts, name)
             relative_path = "/".join(current_parts)
@@ -560,6 +602,11 @@ class VaultScanner:
                 state.diagnostics.append(ScanDiagnostic("unsafe_path", path_digest))
                 continue
 
+            if name in collisions:
+                if name not in diagnosed_collisions:
+                    state.diagnostics.append(ScanDiagnostic("normalization_collision", path_digest))
+                    diagnosed_collisions.add(name)
+                continue
             if entry.identity.is_symlink:
                 state.diagnostics.append(ScanDiagnostic("unsafe_path", path_digest))
                 continue
@@ -570,7 +617,7 @@ class VaultScanner:
                     state.diagnostics.append(ScanDiagnostic("scan_depth_limit", path_digest))
                     continue
                 try:
-                    child_fd = self._filesystem.open_directory_at(directory_fd, name)
+                    child_fd = self._filesystem.open_directory_at(directory_fd, raw_name)
                 except OSError as exc:
                     code = "unsafe_path" if _is_no_follow_error(exc) else "directory_unavailable"
                     state.diagnostics.append(ScanDiagnostic(code, path_digest))
@@ -612,7 +659,7 @@ class VaultScanner:
             self._read_candidate(
                 mount=mount,
                 directory_fd=directory_fd,
-                name=name,
+                name=raw_name,
                 relative_path=relative_path,
                 path_digest=path_digest,
                 enumerated_identity=entry.identity,
@@ -691,41 +738,44 @@ class VaultScanner:
             state.diagnostics.append(ScanDiagnostic("unsafe_path", path_digest))
             return
         try:
-            opened = self._filesystem.fstat(file_fd)
-            if not opened.is_regular or opened != settled:
-                state.diagnostics.append(ScanDiagnostic("file_unstable", path_digest))
-                return
-            data = self._filesystem.read_file(file_fd, opened.size)
-            state.bytes_read += len(data)
-            after_read = self._filesystem.fstat(file_fd)
             try:
-                after_path = self._filesystem.stat_at(directory_fd, name)
-            except OSError:
-                state.diagnostics.append(ScanDiagnostic("unsafe_path", path_digest))
-                return
-            if after_path.is_symlink:
-                state.diagnostics.append(ScanDiagnostic("unsafe_path", path_digest))
-                return
-            if (
-                opened != after_read
-                or opened != after_path
-                or len(data) != opened.size
-                or not mount.verify(self._filesystem)
-            ):
-                state.diagnostics.append(ScanDiagnostic("file_unstable", path_digest))
-                return
-            if _is_aca_generated(data):
-                state.diagnostics.append(ScanDiagnostic("generated_content", path_digest))
-                return
-            state.notes.append(
-                ScannedNote(
-                    relative_path=relative_path,
-                    path_digest=path_digest,
-                    data=data,
-                    content_sha256=hashlib.sha256(data).hexdigest(),
-                    identity=opened,
+                opened = self._filesystem.fstat(file_fd)
+                if not opened.is_regular or opened != settled:
+                    state.diagnostics.append(ScanDiagnostic("file_unstable", path_digest))
+                    return
+                data = self._filesystem.read_file(file_fd, opened.size)
+                state.bytes_read += len(data)
+                after_read = self._filesystem.fstat(file_fd)
+                try:
+                    after_path = self._filesystem.stat_at(directory_fd, name)
+                except OSError:
+                    state.diagnostics.append(ScanDiagnostic("unsafe_path", path_digest))
+                    return
+                if after_path.is_symlink:
+                    state.diagnostics.append(ScanDiagnostic("unsafe_path", path_digest))
+                    return
+                if (
+                    opened != after_read
+                    or opened != after_path
+                    or len(data) != opened.size
+                    or not mount.verify(self._filesystem)
+                ):
+                    state.diagnostics.append(ScanDiagnostic("file_unstable", path_digest))
+                    return
+                if _is_aca_generated(data):
+                    state.diagnostics.append(ScanDiagnostic("generated_content", path_digest))
+                    return
+                state.notes.append(
+                    ScannedNote(
+                        relative_path=relative_path,
+                        path_digest=path_digest,
+                        data=data,
+                        content_sha256=hashlib.sha256(data).hexdigest(),
+                        identity=opened,
+                    )
                 )
-            )
+            except OSError:
+                state.diagnostics.append(ScanDiagnostic("file_unavailable", path_digest))
         finally:
             self._filesystem.close(file_fd)
 

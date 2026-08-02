@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -17,6 +18,8 @@ from src.ingestion.obsidian_scanner import (
     HARD_MAX_SETTLE_SECONDS,
     HARD_MAX_TOTAL_BYTES,
     AllowedRootPolicy,
+    DirectoryEntry,
+    FileIdentity,
     ScanLimits,
     UnixFileSystem,
     VaultScanner,
@@ -170,6 +173,82 @@ def test_vault_is_opened_relative_to_the_already_open_approved_root(
     assert len(result.notes) == 1
     assert filesystem.absolute_directories
     assert set(filesystem.absolute_directories) == {approved}
+
+
+class _DecomposedNameFileSystem(UnixFileSystem):
+    def __init__(self, raw_name: str) -> None:
+        self.raw_name = raw_name
+        self.descriptor_names: list[str] = []
+
+    def scan_directory(
+        self, directory_fd: int, max_entries: int = 10_000
+    ) -> tuple[DirectoryEntry, ...]:
+        entries = super().scan_directory(directory_fd, max_entries)
+        assert len(entries) == 1
+        return (DirectoryEntry(self.raw_name, entries[0].identity),)
+
+    def stat_at(self, directory_fd: int, name: str) -> FileIdentity:
+        self.descriptor_names.append(name)
+        if name != self.raw_name:
+            raise FileNotFoundError
+        return super().stat_at(directory_fd, name)
+
+    def open_file_at(self, directory_fd: int, name: str) -> int:
+        self.descriptor_names.append(name)
+        if name != self.raw_name:
+            raise FileNotFoundError
+        return super().open_file_at(directory_fd, name)
+
+
+def test_decomposed_unicode_name_uses_raw_descriptor_spelling_and_canonical_output(
+    tmp_path: Path,
+) -> None:
+    approved, inbox = _vault(tmp_path)
+    raw_name = "cafe\u0301.md"
+    inbox.joinpath(raw_name).write_text(_note("decomposed"))
+    filesystem = _DecomposedNameFileSystem(raw_name)
+
+    result = _scanner(approved, filesystem=filesystem).scan()
+
+    assert [note.relative_path for note in result.notes] == ["café.md"]
+    assert set(filesystem.descriptor_names) == {raw_name}
+
+
+class _NormalizationCollisionFileSystem(UnixFileSystem):
+    def __init__(self, backing_file: Path) -> None:
+        self.backing_file = backing_file
+        self.identity = FileIdentity.from_stat(backing_file.stat())
+        self.opened_names: list[str] = []
+
+    def scan_directory(
+        self, directory_fd: int, max_entries: int | None = None
+    ) -> tuple[DirectoryEntry, ...]:
+        return (
+            DirectoryEntry("cafe\u0301.md", self.identity),
+            DirectoryEntry("café.md", self.identity),
+        )
+
+    def stat_at(self, directory_fd: int, name: str) -> FileIdentity:
+        return self.identity
+
+    def open_file_at(self, directory_fd: int, name: str) -> int:
+        self.opened_names.append(name)
+        return os.open(self.backing_file, os.O_RDONLY)
+
+
+def test_normalization_equivalent_names_are_rejected_without_opening_either(
+    tmp_path: Path,
+) -> None:
+    approved, inbox = _vault(tmp_path)
+    backing_file = inbox / "backing"
+    backing_file.write_text(_note("ambiguous"))
+    filesystem = _NormalizationCollisionFileSystem(backing_file)
+
+    result = _scanner(approved, filesystem=filesystem).scan()
+
+    assert result.notes == ()
+    assert [diagnostic.code for diagnostic in result.diagnostics] == ["normalization_collision"]
+    assert filesystem.opened_names == []
 
 
 def test_nested_directory_symlink_is_rejected_without_reading_target(tmp_path: Path) -> None:
@@ -338,11 +417,15 @@ def test_total_byte_limit_stops_before_reading_next_candidate(tmp_path: Path) ->
     approved, inbox = _vault(tmp_path)
     first_data = _note("first")
     inbox.joinpath("a.md").write_text(first_data)
-    inbox.joinpath("b.md").write_text(_note("second"))
+    inbox.joinpath("b.md").write_text(_note("other"))
 
     result = _scanner(
         approved,
-        limits=ScanLimits(max_total_bytes=len(first_data.encode()), settle_seconds=0),
+        limits=ScanLimits(
+            max_total_bytes=len(first_data.encode()),
+            max_note_bytes=len(first_data.encode()),
+            settle_seconds=0,
+        ),
     ).scan()
 
     assert [note.relative_path for note in result.notes] == ["a.md"]
@@ -357,7 +440,11 @@ def test_byte_limit_cursor_resumes_after_last_completed_candidate(tmp_path: Path
         inbox.joinpath(name).write_text(note_data)
     scanner = _scanner(
         approved,
-        limits=ScanLimits(max_total_bytes=len(note_data.encode()), settle_seconds=0),
+        limits=ScanLimits(
+            max_total_bytes=len(note_data.encode()),
+            max_note_bytes=len(note_data.encode()),
+            settle_seconds=0,
+        ),
     )
 
     first = scanner.scan()
@@ -427,6 +514,11 @@ def test_note_size_limit_skips_oversized_note_without_returning_bytes(tmp_path: 
     assert [item.code for item in result.diagnostics] == ["note_too_large"]
 
 
+def test_note_size_limit_cannot_exceed_total_byte_limit() -> None:
+    with pytest.raises(ValueError, match="invalid_scan_limits"):
+        ScanLimits(max_note_bytes=5, max_total_bytes=4)
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
@@ -439,11 +531,12 @@ def test_note_size_limit_skips_oversized_note_without_returning_bytes(tmp_path: 
         ("max_concurrency", HARD_MAX_CONCURRENCY + 1),
         ("max_duration_seconds", float("nan")),
         ("settle_seconds", float("nan")),
+        ("max_entries", 100_001),
     ],
 )
 def test_scan_limits_reject_values_above_hard_ceiling(field: str, value: int | float) -> None:
     with pytest.raises(ValueError, match="invalid_scan_limits"):
-        ScanLimits(**{field: value})
+        ScanLimits(**cast("dict[str, Any]", {field: value}))
 
 
 def test_scanner_is_serial_and_reports_bounded_concurrency(tmp_path: Path) -> None:
@@ -459,11 +552,89 @@ def test_scanner_is_serial_and_reports_bounded_concurrency(tmp_path: Path) -> No
     assert result.concurrency_used <= HARD_MAX_CONCURRENCY
 
 
+def test_total_directory_fanout_is_bounded_before_non_markdown_entries_are_processed(
+    tmp_path: Path,
+) -> None:
+    approved, inbox = _vault(tmp_path)
+    inbox.joinpath("a.md").write_text(_note("first"))
+    fanout = inbox / "z-fanout"
+    fanout.mkdir()
+    for index in range(10):
+        fanout.joinpath(f"ignored-{index}.txt").write_text("ignored")
+    scanner = _scanner(
+        approved,
+        limits=ScanLimits(max_entries=4, settle_seconds=0),
+    )
+
+    first = scanner.scan()
+    resumed = scanner.scan(cursor=first.next_cursor)
+
+    assert [note.relative_path for note in first.notes] == ["a.md"]
+    assert first.entries_examined == 4
+    assert [diagnostic.code for diagnostic in first.diagnostics] == ["scan_entry_limit"]
+    assert first.next_cursor is not None
+    assert resumed.notes == ()
+    assert resumed.entries_examined == 4
+    assert [diagnostic.code for diagnostic in resumed.diagnostics] == ["scan_entry_limit"]
+
+
 class _BrokenDirectoryFileSystem(UnixFileSystem):
     def open_directory_at(self, directory_fd: int, name: str) -> int:
         if name == "broken":
             raise PermissionError("private filesystem detail")
         return super().open_directory_at(directory_fd, name)
+
+
+class _CandidateOSErrorFileSystem(UnixFileSystem):
+    def __init__(self, failure_phase: str) -> None:
+        self.failure_phase = failure_phase
+        self.target_fds: set[int] = set()
+        self.after_read: set[int] = set()
+
+    def open_file_at(self, directory_fd: int, name: str) -> int:
+        file_fd = super().open_file_at(directory_fd, name)
+        if name == "a-bad.md":
+            self.target_fds.add(file_fd)
+        return file_fd
+
+    def fstat(self, file_fd: int) -> FileIdentity:
+        if file_fd in self.target_fds and (
+            self.failure_phase == "open_fstat"
+            or (self.failure_phase == "post_read_fstat" and file_fd in self.after_read)
+        ):
+            raise OSError("private path and filesystem detail")
+        return super().fstat(file_fd)
+
+    def read_file(self, file_fd: int, byte_limit: int) -> bytes:
+        if file_fd in self.target_fds and self.failure_phase == "read":
+            raise OSError("private path and filesystem detail")
+        data = super().read_file(file_fd, byte_limit)
+        if file_fd in self.target_fds:
+            self.after_read.add(file_fd)
+        return data
+
+    def close(self, file_fd: int) -> None:
+        self.target_fds.discard(file_fd)
+        self.after_read.discard(file_fd)
+        super().close(file_fd)
+
+
+@pytest.mark.parametrize("failure_phase", ["open_fstat", "read", "post_read_fstat"])
+def test_candidate_io_error_is_redacted_and_does_not_abort_safe_siblings(
+    tmp_path: Path, failure_phase: str
+) -> None:
+    approved, inbox = _vault(tmp_path)
+    inbox.joinpath("a-bad.md").write_text(_note("bad"))
+    inbox.joinpath("z-safe.md").write_text(_note("safe"))
+
+    result = _scanner(
+        approved,
+        filesystem=_CandidateOSErrorFileSystem(failure_phase),
+    ).scan()
+
+    assert [note.relative_path for note in result.notes] == ["z-safe.md"]
+    assert [diagnostic.code for diagnostic in result.diagnostics] == ["file_unavailable"]
+    assert "private path and filesystem detail" not in repr(result)
 
 
 def test_directory_error_isolated_and_diagnostic_is_redacted(tmp_path: Path) -> None:
