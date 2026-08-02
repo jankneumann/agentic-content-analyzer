@@ -3,7 +3,7 @@ schema_version: 1
 feature:
   id: add-obsidian-vault-ingest
   title: Canonical durable Obsidian vault ingestion
-  plan_revision: 5
+  plan_revision: 6
   created_by: codex
   created_at: "2026-08-02T05:50:00Z"
 
@@ -216,9 +216,13 @@ packages:
       files:
         - openspec/contracts/content-workflows/openapi/v1.yaml
         - src/config/sources.py
+        - src/config/settings.py
+        - src/ingestion/commands.py
         - src/ingestion/registry.py
+        - src/ingestion/result.py
         - src/mcp_tools/ingestion.py
         - src/mcp_tools/toolsets.py
+        - src/services/capability_service.py
         - tests/fixtures/sources/library.py
       keys:
         - contract:ingestion-command:obsidian-vault
@@ -232,26 +236,42 @@ packages:
         - src/contracts/**
         - web/src/generated/**
         - src/config/sources.py
+        - src/config/settings.py
+        - src/ingestion/commands.py
         - src/ingestion/registry.py
         - src/ingestion/service.py
         - src/ingestion/orchestrator.py
         - src/ingestion/real_ingest_policy.py
+        - src/ingestion/result.py
         - src/models/content.py
         - src/queue/worker.py
+        - src/api/ingestion_routes.py
+        - src/api/source_routes.py
+        - src/api/source_write_routes.py
+        - src/cli/source_commands.py
+        - src/services/capability_service.py
+        - src/services/source_override_service.py
         - src/mcp_tools/ingestion.py
         - src/mcp_tools/toolsets.py
-        - tests/fixtures/sources/library.py
+        - evaluation/descriptors/aca-cli.yaml
+        - tests/fixtures/sources/**
         - tests/contract/**
         - tests/config/test_sources.py
+        - tests/test_config/test_sources.py
+        - tests/config/test_settings.py
+        - tests/config/test_source_overrides_merge.py
+        - tests/services/test_source_override_service.py
         - tests/services/test_capability_service.py
         - tests/ingestion/test_registry.py
         - tests/ingestion/test_real_ingest_policy.py
         - tests/queue/**
+        - tests/mcp/**
         - tests/mcp_tools/**
         - tests/cli/**
         - tests/api/**
-        - tests/real_ingestion/test_registry_completeness.py
+        - tests/real_ingestion/**
         - web/src/**
+        - web/tests/e2e/**
       read_allow: [src/**, web/**, tests/**, openspec/**]
       deny: [src/sync/**]
     worktree: {name: wp-source-vertical, mode: isolated}
