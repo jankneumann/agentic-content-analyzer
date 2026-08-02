@@ -3,7 +3,7 @@ schema_version: 1
 feature:
   id: add-obsidian-vault-ingest
   title: Canonical durable Obsidian vault ingestion
-  plan_revision: 2
+  plan_revision: 3
   created_by: codex
   created_at: "2026-08-02T05:50:00Z"
 
@@ -156,17 +156,26 @@ packages:
     depends_on: [wp-parser, wp-state, wp-scanner]
     locks:
       files:
+        - alembic/versions
+        - src/models/content.py
         - src/ingestion/obsidian_adapter.py
         - tests/ingestion/test_obsidian_adapter.py
       keys:
+        - db:migration-slot
         - feature:obsidian-vault:adapter
       ttl_minutes: 300
       reason: Single pre-registration orchestration and persistence boundary.
     scope:
       write_allow:
+        - alembic/versions/**
+        - openspec/contracts/content-workflows/db/schema.sql
+        - src/models/content.py
         - src/ingestion/obsidian_adapter.py
+        - src/queue/execution_claim.py
         - tests/ingestion/test_obsidian_adapter.py
         - tests/integration/test_obsidian_ingest_adapter.py
+        - tests/migrations/test_obsidian_content_source.py
+        - tests/queue/test_execution_claim.py
         - tests/architecture/test_obsidian_ownership.py
       read_allow: [src/**, tests/**, openspec/**]
       deny: [src/sync/**]
@@ -195,7 +204,6 @@ packages:
     depends_on: [wp-adapter]
     locks:
       files:
-        - alembic/versions
         - openspec/contracts/content-workflows/openapi/v1.yaml
         - src/config/sources.py
         - src/ingestion/registry.py
@@ -203,14 +211,12 @@ packages:
         - src/mcp_tools/toolsets.py
         - tests/fixtures/sources/library.py
       keys:
-        - db:migration-slot
         - contract:ingestion-command:obsidian-vault
         - feature:obsidian-vault:sourcevertical
       ttl_minutes: 360
       reason: Collection-sensitive canonical source registration synchronization point.
     scope:
       write_allow:
-        - alembic/versions/**
         - openspec/contracts/content-workflows/openapi/v1.yaml
         - openspec/contracts/content-workflows/generated/**
         - src/contracts/**
@@ -235,7 +241,6 @@ packages:
         - tests/cli/**
         - tests/api/**
         - tests/real_ingestion/test_registry_completeness.py
-        - tests/migrations/test_obsidian_content_source.py
         - web/src/**
       read_allow: [src/**, web/**, tests/**, openspec/**]
       deny: [src/sync/**]

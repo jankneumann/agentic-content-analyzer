@@ -104,9 +104,10 @@ Depends on: P0. Owns new scanner modules/tests only.
 
 Depends on: P1, P2, P3. Does not edit registry/OpenAPI/config union/MCP/fixture maps.
 
-- [ ] 4.1 Add adapter tests for a bounded scan mapping parsed authoritative Markdown to
-  `ContentSource.OBSIDIAN`, exact persisted/skipped/failed counts, source outcomes, and
-  bounded diagnostics; then implement the unregistered orchestrator.
+- [ ] 4.1 Add the `ContentSource.OBSIDIAN` storage-enum migration and adapter tests for
+  a bounded scan mapping parsed authoritative Markdown to that source, exact
+  persisted/skipped/failed counts, source outcomes, and bounded diagnostics; then
+  implement the unregistered orchestrator.
   Scenario: `A configured vault scan completes durably`.
 - [ ] 4.2 Add integration tests for unchanged, changed, renamed, deleted/reappearing,
   duplicate-URL, and different-annotation clips; then implement stable source identity
@@ -148,9 +149,8 @@ green commit.
   then extend the discriminated config union.
   Scenario: `Database override is projected safely`.
 - [ ] 5.3 In the same package, add the `SOURCE_REGISTRY` descriptor, emitted
-  `ContentSource.OBSIDIAN` and its storage-enum migration, service/worker dispatch,
-  configured-source snapshot enforcement, schedule metadata, and readiness resolver
-  with migration/completeness tests.
+  `ContentSource.OBSIDIAN`, service/worker dispatch, configured-source snapshot
+  enforcement, schedule metadata, and readiness resolver with completeness tests.
 
   Scenarios: `New source requires complete surface coverage`, `A configured vault scan
   completes durably`.
