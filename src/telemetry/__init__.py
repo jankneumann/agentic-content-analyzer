@@ -15,7 +15,10 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
 
 from src.telemetry.providers import ObservabilityProvider, get_observability_provider
+from src.telemetry.workflow_events import emit_workflow_terminal_telemetry
 from src.utils.logging import get_logger
+
+__all__ = ["emit_workflow_terminal_telemetry"]
 
 logger = get_logger(__name__)
 
