@@ -94,14 +94,20 @@ dependencies = [
     "langfuse>=4.3.0",
 
     # CLI
-    "typer>=0.9.0",
+    # <0.20: typer 0.20 vendors click as `typer._click`, so TyperGroup.get_command
+    # is typed against `typer._click.core.Command` while src/cli/app.py overrides it
+    # with `click.core.Command` — mypy rejects the override. Lift once app.py is
+    # migrated to the vendored types.
+    "typer>=0.9.0,<0.20",
     "rich>=13.0.0",
 
     # Vector Search
     "pgvector>=0.3.0",  # PostgreSQL pgvector Python bindings
 
     # MCP Server
-    "mcp[cli]>=1.0.0",  # Model Context Protocol server
+    # <2: mcp 2.0 renamed McpError -> MCPError in mcp.shared.exceptions, which
+    # breaks src/mcp_tools/runtime.py at import. Lift once that migration lands.
+    "mcp[cli]>=1.0.0,<2",  # Model Context Protocol server
 ]
 
 [project.scripts]
