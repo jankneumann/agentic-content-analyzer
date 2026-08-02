@@ -1,0 +1,424 @@
+"""PostgreSQL migration coverage for durable workflow alert intent."""
+
+from __future__ import annotations
+
+import importlib.util
+from pathlib import Path
+from types import ModuleType
+from uuid import UUID
+
+import pytest
+import sqlalchemy as sa
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from sqlalchemy.engine import Engine
+
+
+def _load_migration() -> ModuleType:
+    repo_root = Path(__file__).resolve().parents[2]
+    migrations = list(repo_root.glob("alembic/versions/*workflow_alert_persistence*.py"))
+    assert len(migrations) == 1, "expected exactly one workflow alert persistence migration"
+    spec = importlib.util.spec_from_file_location("workflow_alert_persistence", migrations[0])
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _insert_job(connection: sa.Connection, *, status: str = "queued") -> int:
+    return connection.execute(
+        sa.text(
+            """
+            INSERT INTO pgqueuer_jobs (entrypoint, payload, status)
+            VALUES ('ingestion.execute', '{}'::jsonb, :status)
+            RETURNING id
+            """
+        ),
+        {"status": status},
+    ).scalar_one()
+
+
+def _insert_content(connection: sa.Connection, suffix: str) -> int:
+    return connection.execute(
+        sa.text(
+            """
+            INSERT INTO contents (
+                source_type, source_id, title, markdown_content, content_hash, status
+            ) VALUES (
+                'manual', :source_id, 'Alert persistence', '# test', :content_hash, 'failed'
+            )
+            RETURNING id
+            """
+        ),
+        {"source_id": f"workflow-alert-{suffix}", "content_hash": f"workflow-alert-{suffix}"},
+    ).scalar_one()
+
+
+def _insert_reconciliation_action(
+    connection: sa.Connection,
+    *,
+    run_id: str,
+    content_id: int,
+    operation_id: int,
+) -> int:
+    return connection.execute(
+        sa.text(
+            """
+            INSERT INTO content_reconciliation_actions (
+                run_id, content_id, operation_id, claim_generation,
+                claim_protocol_version, phase, content_status_before,
+                content_status_after, operation_status_before,
+                operation_status_after, retry_count_before, retry_count_after,
+                action, reason
+            ) VALUES (
+                :run_id, :content_id, :operation_id, 1, 2, 'parsing',
+                'failed', 'pending', 'failed', 'queued', 0, 1,
+                'retry_operation', 'failed_operation'
+            )
+            RETURNING id
+            """
+        ),
+        {"run_id": run_id, "content_id": content_id, "operation_id": operation_id},
+    ).scalar_one()
+
+
+def test_migration_is_additive_on_the_current_head() -> None:
+    migration = _load_migration()
+    assert migration.down_revision == "8a5c3e7f9b21"
+
+
+def test_deployed_schema_has_closed_tables_indexes_and_trigger_identity(
+    test_engine: Engine,
+) -> None:
+    inspector = sa.inspect(test_engine)
+    assert {"workflow_terminal_events", "workflow_alert_deliveries"} <= set(
+        inspector.get_table_names()
+    )
+
+    event_columns = {column["name"] for column in inspector.get_columns("workflow_terminal_events")}
+    assert {
+        "id",
+        "event_key",
+        "source_kind",
+        "operation_id",
+        "claim_generation",
+        "terminal_status",
+        "reconciliation_action_id",
+        "reconciliation_run_id",
+        "reconciliation_content_id",
+        "classification_status",
+        "envelope",
+        "telemetry_emitted_at",
+        "occurred_at",
+        "created_at",
+    } == event_columns
+    assert inspector.get_foreign_keys("workflow_terminal_events") == []
+
+    delivery_fks = inspector.get_foreign_keys("workflow_alert_deliveries")
+    assert len(delivery_fks) == 1
+    assert delivery_fks[0]["referred_table"] == "workflow_terminal_events"
+    assert delivery_fks[0]["options"]["ondelete"] == "RESTRICT"
+
+    with test_engine.connect() as connection:
+        indexes = {
+            row.name: row.indexdef
+            for row in connection.execute(
+                sa.text(
+                    """
+                    SELECT indexname AS name, indexdef
+                    FROM pg_indexes
+                    WHERE schemaname = current_schema()
+                      AND tablename IN ('workflow_terminal_events', 'workflow_alert_deliveries')
+                    """
+                )
+            )
+        }
+        due = indexes["ix_workflow_alert_deliveries_due"]
+        assert "(next_attempt_at, id)" in due
+        assert "status" in due and "pending" in due and "leased" in due
+        assert "ix_workflow_terminal_events_classification_due" in indexes
+        assert "ix_workflow_terminal_events_retention" in indexes
+        assert "ix_workflow_alert_deliveries_retention" in indexes
+
+        triggers = {
+            row.name: row.definition
+            for row in connection.execute(
+                sa.text(
+                    """
+                    SELECT tgname AS name, pg_get_triggerdef(oid) AS definition
+                    FROM pg_trigger
+                    WHERE NOT tgisinternal
+                      AND tgrelid IN (
+                          'pgqueuer_jobs'::regclass,
+                          'content_reconciliation_actions'::regclass
+                      )
+                    """
+                )
+            )
+        }
+    assert "pgqueuer_jobs_capture_terminal_event" in triggers
+    assert "AFTER UPDATE OF status" in triggers["pgqueuer_jobs_capture_terminal_event"]
+    assert "content_reconciliation_actions_capture_terminal_event" in triggers
+    assert "AFTER INSERT" in triggers["content_reconciliation_actions_capture_terminal_event"]
+
+
+def test_operation_trigger_is_literal_attempt_aware_and_idempotent(test_engine: Engine) -> None:
+    with test_engine.begin() as connection:
+        queued_id = _insert_job(connection)
+        connection.execute(
+            sa.text(
+                "UPDATE pgqueuer_jobs SET status = 'cancelled', completed_at = NOW() WHERE id = :id"
+            ),
+            {"id": queued_id},
+        )
+        queued_event = connection.execute(
+            sa.text(
+                """
+                SELECT event_key, operation_id, claim_generation, terminal_status
+                FROM workflow_terminal_events WHERE operation_id = :id
+                """
+            ),
+            {"id": queued_id},
+        ).one()
+        assert queued_event == (
+            f"operation:{queued_id}:claim:0:status:cancelled",
+            queued_id,
+            0,
+            "cancelled",
+        )
+
+        connection.execute(
+            sa.text("UPDATE pgqueuer_jobs SET status = status WHERE id = :id"),
+            {"id": queued_id},
+        )
+        assert (
+            connection.execute(
+                sa.text("SELECT COUNT(*) FROM workflow_terminal_events WHERE operation_id = :id"),
+                {"id": queued_id},
+            ).scalar_one()
+            == 1
+        )
+
+        claimed_id = _insert_job(connection)
+        connection.execute(
+            sa.text("UPDATE pgqueuer_jobs SET status = 'in_progress' WHERE id = :id"),
+            {"id": claimed_id},
+        )
+        connection.execute(
+            sa.text(
+                "UPDATE pgqueuer_jobs SET status = 'failed', completed_at = NOW() "
+                "WHERE id = :id AND claim_generation = 1"
+            ),
+            {"id": claimed_id},
+        )
+        connection.execute(
+            sa.text("UPDATE pgqueuer_jobs SET status = 'queued' WHERE id = :id"),
+            {"id": claimed_id},
+        )
+        connection.execute(
+            sa.text("UPDATE pgqueuer_jobs SET status = 'in_progress' WHERE id = :id"),
+            {"id": claimed_id},
+        )
+        stale = connection.execute(
+            sa.text(
+                "UPDATE pgqueuer_jobs SET status = 'failed' WHERE id = :id AND claim_generation = 1"
+            ),
+            {"id": claimed_id},
+        )
+        assert stale.rowcount == 0
+        connection.execute(
+            sa.text(
+                "UPDATE pgqueuer_jobs SET status = 'failed', completed_at = NOW() "
+                "WHERE id = :id AND claim_generation = 2"
+            ),
+            {"id": claimed_id},
+        )
+        keys = (
+            connection.execute(
+                sa.text(
+                    "SELECT event_key FROM workflow_terminal_events "
+                    "WHERE operation_id = :id ORDER BY claim_generation"
+                ),
+                {"id": claimed_id},
+            )
+            .scalars()
+            .all()
+        )
+        assert keys == [
+            f"operation:{claimed_id}:claim:1:status:failed",
+            f"operation:{claimed_id}:claim:2:status:failed",
+        ]
+
+
+def test_reconciliation_trigger_is_atomic_and_uses_immutable_action_identity(
+    test_engine: Engine,
+) -> None:
+    with test_engine.begin() as connection:
+        operation_id = _insert_job(connection, status="failed")
+        content_id = _insert_content(connection, "committed")
+        action_id = _insert_reconciliation_action(
+            connection,
+            run_id="00000000-0000-0000-0000-000000000031",
+            content_id=content_id,
+            operation_id=operation_id,
+        )
+        event = connection.execute(
+            sa.text(
+                """
+                SELECT event_key, source_kind, reconciliation_action_id,
+                       reconciliation_run_id, reconciliation_content_id
+                FROM workflow_terminal_events
+                WHERE reconciliation_action_id = :action_id
+                """
+            ),
+            {"action_id": action_id},
+        ).one()
+        assert event == (
+            f"reconciliation-action:{action_id}",
+            "reconciliation_action",
+            action_id,
+            UUID("00000000-0000-0000-0000-000000000031"),
+            content_id,
+        )
+
+        rolled_back_content = _insert_content(connection, "rolled-back")
+        savepoint = connection.begin_nested()
+        rolled_back_action = _insert_reconciliation_action(
+            connection,
+            run_id="00000000-0000-0000-0000-000000000032",
+            content_id=rolled_back_content,
+            operation_id=operation_id,
+        )
+        savepoint.rollback()
+        assert (
+            connection.execute(
+                sa.text(
+                    "SELECT COUNT(*) FROM workflow_terminal_events "
+                    "WHERE reconciliation_action_id = :action_id"
+                ),
+                {"action_id": rolled_back_action},
+            ).scalar_one()
+            == 0
+        )
+
+
+def test_terminal_event_keys_follow_the_closed_source_specific_grammar(test_engine: Engine) -> None:
+    with test_engine.begin() as connection:
+        invalid = connection.begin_nested()
+        with pytest.raises(sa.exc.IntegrityError):
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO workflow_terminal_events (
+                        event_key, source_kind, operation_id, claim_generation,
+                        terminal_status, occurred_at
+                    ) VALUES (
+                        'operation:1:claim:0:status:queued', 'operation', 1, 0,
+                        'completed', NOW()
+                    )
+                    """
+                )
+            )
+        invalid.rollback()
+
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO workflow_terminal_events (
+                    event_key, source_kind, reconciliation_run_id,
+                    reconciliation_content_id, occurred_at
+                ) VALUES (
+                    'reconciliation-failure:00000000-0000-0000-0000-000000000041:content:7:reason:apply_failed',
+                    'reconciliation_failure',
+                    '00000000-0000-0000-0000-000000000041', 7, NOW()
+                )
+                """
+            )
+        )
+
+
+def test_event_survives_operation_cleanup_and_delivery_uniqueness_is_bounded(
+    test_engine: Engine,
+) -> None:
+    with test_engine.begin() as connection:
+        operation_id = _insert_job(connection)
+        connection.execute(
+            sa.text(
+                "UPDATE pgqueuer_jobs SET status = 'completed', completed_at = NOW() WHERE id = :id"
+            ),
+            {"id": operation_id},
+        )
+        event_id = connection.execute(
+            sa.text("SELECT id FROM workflow_terminal_events WHERE operation_id = :id"),
+            {"id": operation_id},
+        ).scalar_one()
+
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO workflow_alert_deliveries (event_id, sink_name)
+                VALUES (:event_id, 'webhook')
+                """
+            ),
+            {"event_id": event_id},
+        )
+        duplicate = connection.begin_nested()
+        with pytest.raises(sa.exc.IntegrityError):
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO workflow_alert_deliveries (event_id, sink_name)
+                    VALUES (:event_id, 'webhook')
+                    """
+                ),
+                {"event_id": event_id},
+            )
+        duplicate.rollback()
+
+        connection.execute(
+            sa.text("DELETE FROM pgqueuer_jobs WHERE id = :id"),
+            {"id": operation_id},
+        )
+        assert (
+            connection.execute(
+                sa.text("SELECT event_key FROM workflow_terminal_events WHERE id = :id"),
+                {"id": event_id},
+            ).scalar_one()
+            == f"operation:{operation_id}:claim:0:status:completed"
+        )
+
+
+def test_due_delivery_query_uses_the_bounded_partial_index(test_engine: Engine) -> None:
+    with test_engine.connect() as connection:
+        connection.execute(sa.text("SET LOCAL enable_seqscan = off"))
+        plan = "\n".join(
+            row[0]
+            for row in connection.execute(
+                sa.text(
+                    """
+                    EXPLAIN (COSTS OFF)
+                    SELECT id
+                    FROM workflow_alert_deliveries
+                    WHERE status IN ('pending', 'leased')
+                      AND next_attempt_at <= NOW()
+                    ORDER BY next_attempt_at, id
+                    LIMIT 50
+                    """
+                )
+            )
+        )
+    assert "ix_workflow_alert_deliveries_due" in plan
+
+
+def test_migration_downgrade_removes_only_workflow_alert_objects(test_engine: Engine) -> None:
+    migration = _load_migration()
+    with test_engine.connect() as connection:
+        transaction = connection.begin()
+        migration.op = Operations(MigrationContext.configure(connection))
+        migration.downgrade()
+        inspector = sa.inspect(connection)
+        assert "workflow_terminal_events" not in inspector.get_table_names()
+        assert "workflow_alert_deliveries" not in inspector.get_table_names()
+        assert "pgqueuer_jobs" in inspector.get_table_names()
+        assert "content_reconciliation_actions" in inspector.get_table_names()
+        transaction.rollback()

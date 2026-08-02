@@ -112,6 +112,26 @@ class TestQueueOwnershipBootstrap:
         assert "pgqueuer_jobs_reset_claim_protocol" in ddl
 
     @pytest.mark.asyncio
+    async def test_bootstrap_installs_workflow_alert_tables_indexes_and_triggers(self):
+        connection = AsyncMock()
+        connection.close = AsyncMock()
+        with (
+            patch("src.queue.setup.get_queue_connection_string", return_value="postgresql://db"),
+            patch("src.queue.setup.asyncpg.connect", AsyncMock(return_value=connection)),
+        ):
+            await init_queue_schema()
+
+        ddl = "\n".join(call.args[0] for call in connection.execute.await_args_list)
+        assert "CREATE TABLE IF NOT EXISTS workflow_terminal_events" in ddl
+        assert "CREATE TABLE IF NOT EXISTS workflow_alert_deliveries" in ddl
+        assert "ix_workflow_alert_deliveries_due" in ddl
+        assert "capture_pgqueuer_terminal_event" in ddl
+        assert "pgqueuer_jobs_capture_terminal_event" in ddl
+        assert "capture_content_reconciliation_terminal_event" in ddl
+        assert "content_reconciliation_actions_capture_terminal_event" in ddl
+        assert "operation:%s:claim:%s:status:%s" in ddl
+
+    @pytest.mark.asyncio
     async def test_get_job_status_returns_none_when_missing(self, mock_connection):
         mock_connection.fetchrow.return_value = None
         with patch("src.queue.setup._connection", mock_connection):

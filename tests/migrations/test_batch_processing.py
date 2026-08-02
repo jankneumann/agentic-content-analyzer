@@ -48,7 +48,7 @@ def test_migration_graph_has_one_head():
     config = Config(str(Path(__file__).parents[2] / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["8a5c3e7f9b21"]
+    assert scripts.get_heads() == ["91c7d2e4f8a6"]
 
 
 def test_upgrade_matches_revised_typed_lifecycle_contract(monkeypatch):
