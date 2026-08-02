@@ -558,6 +558,7 @@ async def test_alert_maintenance_commits_claim_before_sink_io(
 
     async def deliver(*_args, **_kwargs):
         assert session_open is False
+        connection.transaction.return_value.__aexit__.assert_awaited_once()
         return SimpleNamespace(
             disposition=disposition,
             error_code=None if disposition == "success" else "timeout",
@@ -621,9 +622,13 @@ async def test_alert_maintenance_commits_claim_before_sink_io(
         )
     generic_dispatcher.assert_not_called()
     assert len(sessions) >= 4
-    connection.execute.assert_any_await(
-        "SELECT pg_advisory_unlock($1::bigint)",
+    connection.fetchval.assert_awaited_once_with(
+        "SELECT pg_try_advisory_xact_lock($1::bigint)",
         worker._WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK,
+    )
+    assert not any(
+        call.args[0].startswith("SELECT pg_advisory_unlock")
+        for call in connection.execute.await_args_list
     )
 
 
@@ -663,10 +668,7 @@ async def test_alert_delivery_window_has_no_lease_queue_wait_and_persists_fast_f
     claim_due = MagicMock(return_value=claims)
 
     async def deliver(envelope, **_kwargs):
-        assert any(
-            call.args[0].startswith("SELECT pg_advisory_unlock")
-            for call in connection.execute.await_args_list
-        )
+        connection.transaction.return_value.__aexit__.assert_awaited_once()
         if envelope is claims[0].envelope:
             first_started.set()
             await release_first.wait()
@@ -774,9 +776,10 @@ async def test_alert_delivery_cancellation_leaves_started_claim_for_lease_recove
         )
     )
     await asyncio.wait_for(delivery_started.wait(), timeout=1)
-    connection.execute.assert_any_await(
-        "SELECT pg_advisory_unlock($1::bigint)",
-        worker._WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK,
+    connection.transaction.return_value.__aexit__.assert_awaited_once()
+    assert not any(
+        call.args[0].startswith("SELECT pg_advisory_unlock")
+        for call in connection.execute.await_args_list
     )
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -896,7 +899,7 @@ def test_alert_classification_reserves_root_for_deferred_child_even_at_minimum_b
 
 
 @pytest.mark.asyncio
-async def test_alert_maintenance_cancellation_releases_leader_lock(monkeypatch) -> None:
+async def test_alert_maintenance_cancellation_releases_transaction_leader_lock(monkeypatch) -> None:
     from src.queue import worker
 
     event_id = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
@@ -928,9 +931,10 @@ async def test_alert_maintenance_cancellation_releases_leader_lock(monkeypatch) 
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    connection.execute.assert_awaited_once_with(
-        "SELECT pg_advisory_unlock($1::bigint)",
-        worker._WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK,
+    connection.transaction.return_value.__aexit__.assert_awaited_once()
+    assert not any(
+        call.args[0].startswith("SELECT pg_advisory_unlock")
+        for call in connection.execute.await_args_list
     )
 
 

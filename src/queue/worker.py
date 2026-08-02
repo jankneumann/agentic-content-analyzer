@@ -720,14 +720,15 @@ async def _run_workflow_alert_maintenance_tick(
 ) -> bool:
     """Classify, claim, deliver, and retain one bounded alert batch."""
 
-    acquired = await conn.fetchval(
-        "SELECT pg_try_advisory_lock($1::bigint)",
-        _WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK,
-    )
-    if not acquired:
-        logger.debug("workflow alert maintenance tick skipped; advisory lock held")
-    else:
-        try:
+    acquired = False
+    async with conn.transaction():
+        acquired = await conn.fetchval(
+            "SELECT pg_try_advisory_xact_lock($1::bigint)",
+            _WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK,
+        )
+        if not acquired:
+            logger.debug("workflow alert maintenance tick skipped; advisory lock held")
+        else:
             from src.services.workflow_alert_delivery import ensure_delivery
             from src.services.workflow_terminal_event_service import (
                 WorkflowTerminalEventService,
@@ -749,51 +750,48 @@ async def _run_workflow_alert_maintenance_tick(
             for row in event_rows:
                 await processor.process_pending_event(row["id"])
 
-            if alert_settings.workflow_alert_sink == "webhook":
-                ready_rows = await conn.fetch(
-                    """
-                    SELECT event.id
-                    FROM workflow_terminal_events AS event
-                    WHERE event.classification_status = 'ready'
-                      AND event.envelope IS NOT NULL
-                      AND NOT EXISTS (
-                          SELECT 1 FROM workflow_alert_deliveries AS delivery
-                          WHERE delivery.event_id = event.id AND delivery.sink_name = 'webhook'
-                      )
-                    ORDER BY event.created_at, event.id
-                    LIMIT $1
-                    """,
-                    batch_size,
-                )
-                for row in ready_rows:
-                    with get_db() as db:
-                        ensure_delivery(
-                            db,
-                            event_id=row["id"],
-                            sink_name="webhook",
-                            now=datetime.now(UTC),
-                        )
-
+    # Classification commits with the transaction-scoped leader lock before
+    # synchronous sessions create delivery intents. The unique event/sink key
+    # and delivery leases keep these post-election operations idempotent.
+    if acquired and alert_settings.workflow_alert_sink == "webhook":
+        ready_rows = await conn.fetch(
+            """
+            SELECT event.id
+            FROM workflow_terminal_events AS event
+            WHERE event.classification_status = 'ready'
+              AND event.envelope IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM workflow_alert_deliveries AS delivery
+                  WHERE delivery.event_id = event.id AND delivery.sink_name = 'webhook'
+              )
+            ORDER BY event.created_at, event.id
+            LIMIT $1
+            """,
+            batch_size,
+        )
+        for row in ready_rows:
             with get_db() as db:
-                _cleanup_terminal_workflow_alert_records(
+                ensure_delivery(
                     db,
+                    event_id=row["id"],
+                    sink_name="webhook",
                     now=datetime.now(UTC),
-                    retention_days=alert_settings.workflow_alert_retention_days,
-                    exhausted_retention_days=(
-                        alert_settings.workflow_alert_exhausted_retention_days
-                    ),
-                    batch_size=batch_size,
                 )
-            await conn.execute(
-                _WORKFLOW_ALERT_ORPHAN_EVENT_CLEANUP_QUERY,
-                alert_settings.workflow_alert_retention_days,
-                batch_size,
+
+    if acquired:
+        with get_db() as db:
+            _cleanup_terminal_workflow_alert_records(
+                db,
+                now=datetime.now(UTC),
+                retention_days=alert_settings.workflow_alert_retention_days,
+                exhausted_retention_days=(alert_settings.workflow_alert_exhausted_retention_days),
+                batch_size=batch_size,
             )
-        finally:
-            await conn.execute(
-                "SELECT pg_advisory_unlock($1::bigint)",
-                _WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK,
-            )
+        await conn.execute(
+            _WORKFLOW_ALERT_ORPHAN_EVENT_CLEANUP_QUERY,
+            alert_settings.workflow_alert_retention_days,
+            batch_size,
+        )
 
     delivered = 0
     if alert_settings.workflow_alert_sink == "webhook":
