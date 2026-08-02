@@ -3,7 +3,7 @@ schema_version: 1
 feature:
   id: production-telemetry-and-out-of-band-alerting
   title: Durable terminal telemetry and webhook alerts
-  plan_revision: 4
+  plan_revision: 5
   created_by: codex
   created_at: "2026-08-01T23:30:00Z"
 
@@ -214,6 +214,7 @@ packages:
         - src/api/settings_override_routes.py
         - src/api/operation_routes.py
         - openspec/contracts/content-workflows/openapi/v1.yaml
+        - openspec/changes/production-telemetry-and-out-of-band-alerting/tasks.md
       keys:
         - feature:workflow-alerting:integration
       ttl_minutes: 300
@@ -229,6 +230,7 @@ packages:
         - src/api/settings_override_routes.py
         - src/api/operation_routes.py
         - openspec/contracts/content-workflows/openapi/v1.yaml
+        - openspec/changes/production-telemetry-and-out-of-band-alerting/tasks.md
         - openspec/contracts/content-workflows/generated/**
         - src/contracts/workflow_models.py
         - web/src/generated/**
@@ -271,6 +273,7 @@ packages:
         - scripts/verify_workflow_alerting.py
         - docs/SETUP.md
         - docs/DEVELOPMENT.md
+        - openspec/changes/production-telemetry-and-out-of-band-alerting/tasks.md
       keys:
         - feature:workflow-alerting:staging
       ttl_minutes: 240
@@ -282,6 +285,7 @@ packages:
         - tests/fixtures/workflow_alert_receiver/**
         - docs/SETUP.md
         - docs/DEVELOPMENT.md
+        - openspec/changes/production-telemetry-and-out-of-band-alerting/tasks.md
         - openspec/changes/production-telemetry-and-out-of-band-alerting/evidence/**
       read_allow: [src/**, tests/**, scripts/**, docs/**, openspec/**]
     worktree: {name: wp-verification, mode: isolated}
