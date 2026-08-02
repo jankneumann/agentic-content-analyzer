@@ -3,7 +3,7 @@ schema_version: 1
 feature:
   id: add-obsidian-vault-ingest
   title: Canonical durable Obsidian vault ingestion
-  plan_revision: 3
+  plan_revision: 4
   created_by: codex
   created_at: "2026-08-02T05:50:00Z"
 
@@ -158,8 +158,10 @@ packages:
       files:
         - alembic/versions
         - src/models/content.py
+        - src/models/obsidian_ingest.py
         - src/ingestion/obsidian_adapter.py
         - src/ingestion/obsidian_scanner.py
+        - src/repositories/obsidian_ingest.py
         - tests/ingestion/test_obsidian_adapter.py
       keys:
         - db:migration-slot
@@ -171,14 +173,18 @@ packages:
         - alembic/versions/**
         - openspec/contracts/content-workflows/db/schema.sql
         - src/models/content.py
+        - src/models/obsidian_ingest.py
         - src/ingestion/obsidian_adapter.py
         - src/ingestion/obsidian_scanner.py
         - src/queue/execution_claim.py
+        - src/repositories/obsidian_ingest.py
         - tests/ingestion/test_obsidian_adapter.py
         - tests/ingestion/test_obsidian_scanner.py
         - tests/integration/test_obsidian_ingest_adapter.py
+        - tests/integration/test_obsidian_ingest_claims.py
         - tests/migrations/test_obsidian_content_source.py
         - tests/queue/test_execution_claim.py
+        - tests/repositories/test_obsidian_ingest_repository.py
         - tests/architecture/test_obsidian_ownership.py
       read_allow: [src/**, tests/**, openspec/**]
       deny: [src/sync/**]
