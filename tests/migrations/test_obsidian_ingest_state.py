@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 from pathlib import Path
 from types import ModuleType
 
@@ -10,6 +11,8 @@ import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from sqlalchemy.engine import Engine
+
+from src.models.obsidian_ingest import OBSIDIAN_ERROR_CODES
 
 
 def _load_migration() -> ModuleType:
@@ -27,6 +30,30 @@ def test_migration_is_additive_on_the_current_head() -> None:
     migration = _load_migration()
     assert migration.revision == "a6c3e8f1d204"
     assert migration.down_revision == "91c7d2e4f8a6"
+
+
+def test_model_migration_and_canonical_schema_share_bounded_error_codes(
+    test_engine: Engine,
+) -> None:
+    inspector = sa.inspect(test_engine)
+    for table in ("obsidian_ingest_state", "obsidian_ingest_events"):
+        constraint = next(
+            check
+            for check in inspector.get_check_constraints(table)
+            if check["name"] == f"ck_{table}_error_code"
+        )
+        assert set(re.findall(r"'([a-z_]+)'", constraint["sqltext"])) == set(OBSIDIAN_ERROR_CODES)
+
+    schema = (
+        Path(__file__).resolve().parents[2] / "openspec/contracts/content-workflows/db/schema.sql"
+    ).read_text()
+    for code in OBSIDIAN_ERROR_CODES:
+        assert schema.count(f"'{code}'") >= 2
+    assert {
+        "normalization_collision",
+        "scan_entry_limit",
+        "file_unavailable",
+    } <= OBSIDIAN_ERROR_CODES
 
 
 def test_deployed_schema_is_digest_only_bounded_and_indexed(test_engine: Engine) -> None:

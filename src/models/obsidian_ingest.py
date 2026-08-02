@@ -57,7 +57,10 @@ OBSIDIAN_ERROR_CODES = frozenset(
         "body_too_large",
         "unsafe_path",
         "directory_unavailable",
+        "file_unavailable",
+        "normalization_collision",
         "scan_depth_limit",
+        "scan_entry_limit",
         "scan_file_limit",
         "non_regular_file",
         "file_unstable",
@@ -141,7 +144,7 @@ class ObsidianIngestState(Base):
             name="ck_obsidian_ingest_state_observation",
         ),
         CheckConstraint(
-            "(status = 'discovered' AND claim_token IS NULL AND lease_expires_at IS NULL AND error_code IS NULL AND missing_since IS NULL) OR (status = 'claimed' AND claim_token IS NOT NULL AND lease_expires_at IS NOT NULL AND attempt_count >= 1 AND error_code IS NULL AND missing_since IS NULL) OR (status = 'ingested' AND claim_token IS NULL AND lease_expires_at IS NULL AND error_code IS NULL AND missing_since IS NULL) OR (status = 'failed' AND claim_token IS NULL AND lease_expires_at IS NULL AND error_code IS NOT NULL AND missing_since IS NULL) OR (status = 'deferred' AND claim_token IS NULL AND lease_expires_at IS NULL AND error_code IS NOT NULL)",
+            "(status = 'discovered' AND claim_token IS NULL AND lease_expires_at IS NULL AND error_code IS NULL) OR (status = 'claimed' AND claim_token IS NOT NULL AND lease_expires_at IS NOT NULL AND attempt_count >= 1 AND error_code IS NULL) OR (status = 'ingested' AND claim_token IS NULL AND lease_expires_at IS NULL AND error_code IS NULL) OR (status = 'failed' AND claim_token IS NULL AND lease_expires_at IS NULL AND error_code IS NOT NULL) OR (status = 'deferred' AND claim_token IS NULL AND lease_expires_at IS NULL AND error_code IS NOT NULL)",
             name="ck_obsidian_ingest_state_shape",
         ),
         Index(

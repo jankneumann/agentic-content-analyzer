@@ -520,7 +520,8 @@ CREATE TABLE obsidian_ingest_state (
             'yaml_alias_limit','yaml_string_limit','missing_required_metadata',
             'invalid_url','invalid_captured_at','invalid_capture_client',
             'invalid_content_type_hint','body_too_large','unsafe_path',
-            'directory_unavailable','scan_depth_limit','scan_file_limit',
+            'directory_unavailable','file_unavailable','normalization_collision',
+            'scan_depth_limit','scan_entry_limit','scan_file_limit',
             'non_regular_file','file_unstable','scan_byte_limit','generated_content',
             'scan_duration_limit','source_unavailable','invalid_cursor',
             'persistence_error','file_missing',
@@ -535,17 +536,13 @@ CREATE TABLE obsidian_ingest_state (
     ),
     CONSTRAINT ck_obsidian_ingest_state_shape CHECK (
         (status = 'discovered' AND claim_token IS NULL
-         AND lease_expires_at IS NULL AND error_code IS NULL
-         AND missing_since IS NULL)
+         AND lease_expires_at IS NULL AND error_code IS NULL)
         OR (status = 'claimed' AND claim_token IS NOT NULL
-         AND lease_expires_at IS NOT NULL AND attempt_count >= 1 AND error_code IS NULL
-         AND missing_since IS NULL)
+         AND lease_expires_at IS NOT NULL AND attempt_count >= 1 AND error_code IS NULL)
         OR (status = 'ingested' AND claim_token IS NULL
-         AND lease_expires_at IS NULL AND error_code IS NULL
-         AND missing_since IS NULL)
+         AND lease_expires_at IS NULL AND error_code IS NULL)
         OR (status = 'failed' AND claim_token IS NULL
-         AND lease_expires_at IS NULL AND error_code IS NOT NULL
-         AND missing_since IS NULL)
+         AND lease_expires_at IS NULL AND error_code IS NOT NULL)
         OR (status = 'deferred' AND claim_token IS NULL
          AND lease_expires_at IS NULL AND error_code IS NOT NULL)
     )
@@ -592,7 +589,8 @@ CREATE TABLE obsidian_ingest_events (
             'yaml_alias_limit','yaml_string_limit','missing_required_metadata',
             'invalid_url','invalid_captured_at','invalid_capture_client',
             'invalid_content_type_hint','body_too_large','unsafe_path',
-            'directory_unavailable','scan_depth_limit','scan_file_limit',
+            'directory_unavailable','file_unavailable','normalization_collision',
+            'scan_depth_limit','scan_entry_limit','scan_file_limit',
             'non_regular_file','file_unstable','scan_byte_limit','generated_content',
             'scan_duration_limit','source_unavailable','invalid_cursor',
             'persistence_error','file_missing',

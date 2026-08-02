@@ -8,10 +8,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, cast
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
+from src.models.content import Content
 from src.models.obsidian_ingest import (
     OBSIDIAN_ERROR_CODES,
     ObsidianIngestEvent,
@@ -21,6 +22,7 @@ from src.models.obsidian_ingest import (
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _MAX_ATTEMPTS = 10
 _MAX_LEASE_SECONDS = 3600
+_MAX_MISSING_GRACE_SECONDS = 86_400
 
 
 class ObsidianIngestRepositoryError(ValueError):
@@ -54,7 +56,7 @@ class ObsidianClaim:
 class ObsidianIngestRepository:
     """Own state/event transitions without committing the caller's transaction."""
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: Session) -> None:
         self._session = session
 
     @staticmethod
@@ -71,6 +73,12 @@ class ObsidianIngestRepository:
     def _validate_positive_id(value: int) -> None:
         if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
             raise ObsidianIngestRepositoryError("invalid_identifier")
+
+    def _database_now(self) -> datetime:
+        value = self._session.scalar(select(func.clock_timestamp()))
+        if not isinstance(value, datetime) or value.tzinfo is None:
+            raise ObsidianIngestRepositoryError("database_time_unavailable")
+        return value
 
     @staticmethod
     def _observation(
@@ -90,7 +98,7 @@ class ObsidianIngestRepository:
             error_code=event.error_code,
         )
 
-    async def observe_file_version(
+    def observe_file_version(
         self,
         configured_source_digest: str,
         relative_path_digest: str,
@@ -115,7 +123,7 @@ class ObsidianIngestRepository:
         ):
             raise ObsidianIngestRepositoryError("invalid_observation")
 
-        await self._session.execute(
+        self._session.execute(
             insert(ObsidianIngestState)
             .values(
                 configured_source_digest=configured_source_digest,
@@ -133,18 +141,44 @@ class ObsidianIngestRepository:
             )
         )
         state = (
-            await self._session.execute(
+            self._session.execute(
                 select(ObsidianIngestState)
                 .where(
                     ObsidianIngestState.configured_source_digest == configured_source_digest,
                     ObsidianIngestState.relative_path_digest == relative_path_digest,
                 )
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
         ).scalar_one()
         previous_hash = str(state.current_file_hash)
 
-        event_insert_result = await self._session.execute(
+        if previous_hash != file_hash:
+            previous_event = (
+                self._session.execute(
+                    select(ObsidianIngestEvent)
+                    .where(
+                        ObsidianIngestEvent.state_id == state.id,
+                        ObsidianIngestEvent.file_hash == previous_hash,
+                    )
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+            ).scalar_one_or_none()
+            if previous_event is not None and previous_event.status in {
+                "claimed",
+                "discovered",
+                "deferred",
+            }:
+                previous_event.status = "deferred"
+                previous_event.claim_token = None
+                previous_event.lease_expires_at = None
+                previous_event.error_code = "claim_released"
+                database_now = self._database_now()
+                previous_event.completed_at = database_now
+                previous_event.updated_at = database_now
+
+        event_insert_result = self._session.execute(
             insert(ObsidianIngestEvent)
             .values(
                 state_id=state.id,
@@ -167,7 +201,7 @@ class ObsidianIngestRepository:
         )
         inserted_event_id = event_insert_result.scalar_one_or_none()
         event = (
-            await self._session.execute(
+            self._session.execute(
                 select(ObsidianIngestEvent)
                 .where(
                     ObsidianIngestEvent.configured_source_digest == configured_source_digest,
@@ -175,6 +209,7 @@ class ObsidianIngestRepository:
                     ObsidianIngestEvent.file_hash == file_hash,
                 )
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
         ).scalar_one()
 
@@ -199,7 +234,7 @@ class ObsidianIngestRepository:
         state.attempt_count = event.attempt_count
         state.missing_since = None
         state.updated_at = now
-        await self._session.flush()
+        self._session.flush()
 
         eligible = bool(changed or is_new_version or event_was_missing)
         return self._observation(
@@ -209,7 +244,7 @@ class ObsidianIngestRepository:
             unchanged=not changed and not is_new_version and not event_was_missing,
         )
 
-    async def lookup_event(
+    def lookup_event(
         self,
         configured_source_digest: str,
         relative_path_digest: str,
@@ -219,22 +254,30 @@ class ObsidianIngestRepository:
         self._validate_digest(relative_path_digest)
         self._validate_digest(file_hash)
         event = (
-            await self._session.execute(
-                select(ObsidianIngestEvent).where(
+            self._session.execute(
+                select(ObsidianIngestEvent)
+                .where(
                     ObsidianIngestEvent.configured_source_digest == configured_source_digest,
                     ObsidianIngestEvent.relative_path_digest == relative_path_digest,
                     ObsidianIngestEvent.file_hash == file_hash,
                 )
+                .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
         if event is None:
             return None
-        state = await self._session.get(ObsidianIngestState, event.state_id)
+        state = (
+            self._session.execute(
+                select(ObsidianIngestState)
+                .where(ObsidianIngestState.id == event.state_id)
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
         if state is None:
             return None
         return self._observation(state, event, eligible=False, unchanged=True)
 
-    async def claim_file_version(
+    def claim_file_version(
         self,
         event_id: int,
         operation_id: int,
@@ -260,32 +303,39 @@ class ObsidianIngestRepository:
         ):
             raise ObsidianIngestRepositoryError("invalid_attempt_limit")
 
-        state_id = await self._session.scalar(
+        state_id = self._session.scalar(
             select(ObsidianIngestEvent.state_id).where(ObsidianIngestEvent.id == event_id)
         )
         if state_id is None:
             return None
         state = (
-            await self._session.execute(
+            self._session.execute(
                 select(ObsidianIngestState)
                 .where(ObsidianIngestState.id == state_id)
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
         if state is None:
             return None
         event = (
-            await self._session.execute(
+            self._session.execute(
                 select(ObsidianIngestEvent)
                 .where(ObsidianIngestEvent.id == event_id)
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
-        if event is None or state.current_file_hash != event.file_hash:
+        if (
+            event is None
+            or state.current_file_hash != event.file_hash
+            or state.missing_since is not None
+        ):
             return None
+        database_now = self._database_now()
         if event.status == "ingested":
             return None
-        if event.status == "claimed" and cast(datetime, event.lease_expires_at) > now:
+        if event.status == "claimed" and cast(datetime, event.lease_expires_at) > database_now:
             return None
         attempt_count = cast(int, event.attempt_count)
         if attempt_count >= max_attempts:
@@ -293,14 +343,14 @@ class ObsidianIngestRepository:
             event.claim_token = None
             event.lease_expires_at = None
             event.error_code = "retry_exhausted"
-            event.completed_at = now
-            event.updated_at = now
-            self._copy_event_to_state(state, event, now=now)
-            await self._session.flush()
+            event.completed_at = database_now
+            event.updated_at = database_now
+            self._copy_event_to_state(state, event, now=database_now)
+            self._session.flush()
             return None
 
         token = uuid.uuid4()
-        lease_expires_at = now + timedelta(seconds=lease_seconds)
+        lease_expires_at = database_now + timedelta(seconds=lease_seconds)
         event.status = "claimed"
         event.claim_token = cast(Any, token)
         event.lease_expires_at = lease_expires_at
@@ -309,9 +359,9 @@ class ObsidianIngestRepository:
         event.error_code = None
         event.attempt_count = attempt_count + 1
         event.completed_at = None
-        event.updated_at = now
-        self._copy_event_to_state(state, event, now=now)
-        await self._session.flush()
+        event.updated_at = database_now
+        self._copy_event_to_state(state, event, now=database_now)
+        self._session.flush()
         return ObsidianClaim(
             state_id=cast(int, state.id),
             event_id=cast(int, event.id),
@@ -324,7 +374,7 @@ class ObsidianIngestRepository:
             operation_id=operation_id,
         )
 
-    async def complete_claim(
+    def complete_claim(
         self,
         claim: ObsidianClaim,
         *,
@@ -333,24 +383,25 @@ class ObsidianIngestRepository:
     ) -> bool:
         self._validate_positive_id(content_id)
         self._validate_now(now)
-        locked = await self._lock_claim(claim)
+        locked = self._lock_claim(claim)
         if locked is None:
             return False
         state, event = locked
-        if not self._claim_matches(state, event, claim, now=now):
+        database_now = self._database_now()
+        if not self._claim_matches(state, event, claim, now=database_now):
             return False
         event.status = "ingested"
         event.claim_token = None
         event.lease_expires_at = None
         event.content_id = content_id
         event.error_code = None
-        event.completed_at = now
-        event.updated_at = now
-        self._copy_event_to_state(state, event, now=now)
-        await self._session.flush()
+        event.completed_at = database_now
+        event.updated_at = database_now
+        self._copy_event_to_state(state, event, now=database_now)
+        self._session.flush()
         return True
 
-    async def fail_claim(
+    def fail_claim(
         self,
         claim: ObsidianClaim,
         *,
@@ -361,138 +412,183 @@ class ObsidianIngestRepository:
         if error_code not in OBSIDIAN_ERROR_CODES:
             raise ObsidianIngestRepositoryError("invalid_error_code")
         self._validate_now(now)
-        locked = await self._lock_claim(claim)
+        locked = self._lock_claim(claim)
         if locked is None:
             return False
         state, event = locked
-        if not self._claim_matches(state, event, claim, now=now):
+        database_now = self._database_now()
+        if not self._claim_matches(state, event, claim, now=database_now):
             return False
         event.status = "deferred" if deferred else "failed"
         event.claim_token = None
         event.lease_expires_at = None
         event.error_code = error_code
-        event.completed_at = now
-        event.updated_at = now
-        self._copy_event_to_state(state, event, now=now)
-        await self._session.flush()
+        event.completed_at = database_now
+        event.updated_at = database_now
+        self._copy_event_to_state(state, event, now=database_now)
+        self._session.flush()
         return True
 
-    async def mark_missing(
+    def mark_missing(
         self,
         configured_source_digest: str,
         relative_path_digest: str,
         *,
         now: datetime,
+        grace_seconds: int = 300,
     ) -> bool:
-        """Tombstone a missing file without deleting its event or content."""
+        """Tombstone a missing file after a bounded database-timed grace."""
         self._validate_digest(configured_source_digest)
         self._validate_digest(relative_path_digest)
         self._validate_now(now)
+        if (
+            not isinstance(grace_seconds, int)
+            or isinstance(grace_seconds, bool)
+            or not 1 <= grace_seconds <= _MAX_MISSING_GRACE_SECONDS
+        ):
+            raise ObsidianIngestRepositoryError("invalid_missing_grace")
         state = (
-            await self._session.execute(
+            self._session.execute(
                 select(ObsidianIngestState)
                 .where(
                     ObsidianIngestState.configured_source_digest == configured_source_digest,
                     ObsidianIngestState.relative_path_digest == relative_path_digest,
                 )
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
-        if state is None or state.status == "claimed":
+        if state is None:
+            return False
+        database_now = self._database_now()
+        if state.missing_since is None:
+            state.missing_since = database_now
+            state.updated_at = database_now
+            self._session.flush()
+            return False
+        if state.missing_since + timedelta(seconds=grace_seconds) > database_now:
             return False
         event = (
-            await self._session.execute(
+            self._session.execute(
                 select(ObsidianIngestEvent)
                 .where(
                     ObsidianIngestEvent.state_id == state.id,
                     ObsidianIngestEvent.file_hash == state.current_file_hash,
                 )
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
         ).scalar_one()
+        if (
+            state.status == "claimed"
+            and state.lease_expires_at is not None
+            and state.lease_expires_at > database_now
+        ):
+            return False
         state.status = "deferred"
         state.claim_token = None
         state.lease_expires_at = None
         state.error_code = "file_missing"
-        state.missing_since = state.missing_since or now
-        state.updated_at = now
+        state.updated_at = database_now
         if event.status != "ingested":
             event.status = "deferred"
             event.claim_token = None
             event.lease_expires_at = None
             event.error_code = "file_missing"
-            event.completed_at = now
-            event.updated_at = now
-        await self._session.flush()
+            event.completed_at = database_now
+            event.updated_at = database_now
+        self._session.flush()
         return True
 
-    async def reconcile_content(
+    def reconcile_content(
         self,
         event_id: int,
         *,
         content_id: int,
+        expected_source_id: str,
         now: datetime,
     ) -> bool:
         """Idempotently close the gap after content committed before state."""
         self._validate_positive_id(event_id)
         self._validate_positive_id(content_id)
         self._validate_now(now)
-        state_id = await self._session.scalar(
+        if (
+            not isinstance(expected_source_id, str)
+            or not 1 <= len(expected_source_id) <= 500
+            or "\x00" in expected_source_id
+        ):
+            raise ObsidianIngestRepositoryError("invalid_source_identity")
+        state_id = self._session.scalar(
             select(ObsidianIngestEvent.state_id).where(ObsidianIngestEvent.id == event_id)
         )
         if state_id is None:
             return False
         state = (
-            await self._session.execute(
+            self._session.execute(
                 select(ObsidianIngestState)
                 .where(ObsidianIngestState.id == state_id)
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
         if state is None:
             return False
         event = (
-            await self._session.execute(
+            self._session.execute(
                 select(ObsidianIngestEvent)
                 .where(ObsidianIngestEvent.id == event_id)
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
         if event is None:
             return False
+        content = (
+            self._session.execute(
+                select(Content)
+                .where(Content.id == content_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if content is None or content.source_id != expected_source_id:
+            return False
         if event.status == "ingested":
             return event.content_id == content_id
+        database_now = self._database_now()
         event.status = "ingested"
         event.claim_token = None
         event.lease_expires_at = None
         event.content_id = content_id
         event.error_code = None
-        event.completed_at = now
-        event.updated_at = now
+        event.completed_at = database_now
+        event.updated_at = database_now
         if state.current_file_hash == event.file_hash:
-            self._copy_event_to_state(state, event, now=now)
-        await self._session.flush()
+            self._copy_event_to_state(state, event, now=database_now)
+        self._session.flush()
         return True
 
-    async def _lock_claim(
+    def _lock_claim(
         self, claim: ObsidianClaim
     ) -> tuple[ObsidianIngestState, ObsidianIngestEvent] | None:
         if not isinstance(claim, ObsidianClaim):
             raise ObsidianIngestRepositoryError("invalid_claim")
         state = (
-            await self._session.execute(
+            self._session.execute(
                 select(ObsidianIngestState)
                 .where(ObsidianIngestState.id == claim.state_id)
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
         if state is None:
             return None
         event = (
-            await self._session.execute(
+            self._session.execute(
                 select(ObsidianIngestEvent)
                 .where(ObsidianIngestEvent.id == claim.event_id)
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
         if event is None:
