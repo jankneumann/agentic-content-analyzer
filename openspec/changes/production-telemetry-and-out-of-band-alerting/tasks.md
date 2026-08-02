@@ -31,18 +31,18 @@
 
 ## 2. Additive terminal-event persistence
 
-- [ ] 2.1 [M] Write migration/bootstrap tests for append-only event/delivery constraints, operation terminal trigger coverage, reconciliation action trigger coverage, retention indexes, and downgrade
+- [x] 2.1 [M] Write migration/bootstrap tests for append-only event/delivery constraints, operation terminal trigger coverage, reconciliation action trigger coverage, retention indexes, and downgrade
   **Spec scenarios**: Terminal transition commits; Stale claim loses its terminal race; Apply commits an action; Apply action rolls back
   **Contracts**: `contracts/db/schema.sql`
   **Dependencies**: 1.2
-- [ ] 2.2 [M] Add Alembic, ORM, and queue-bootstrap persistence for terminal events, deliveries, and trigger functions
+- [x] 2.2 [M] Add Alembic, ORM, and queue-bootstrap persistence for terminal events, deliveries, and trigger functions
   **Dependencies**: 2.1
-- [ ] 2.3 [S] Write PostgreSQL tests proving duplicate terminal updates/actions cannot duplicate event intent and retained events survive operation cleanup
+- [x] 2.3 [S] Write PostgreSQL tests proving duplicate terminal updates/actions cannot duplicate event intent and retained events survive operation cleanup
   **Spec scenarios**: Apply is repeated; Terminal intent cannot be persisted
   **Design decisions**: D1, D2, D9
   **Dependencies**: 2.2
 
-- [ ] Checkpoint: inspect trigger SQL, upgrade/downgrade, uniqueness, and bounded due-delivery query plan
+- [x] Checkpoint: inspect trigger SQL, upgrade/downgrade, uniqueness, and bounded due-delivery query plan
 
 ## 3. Classification, safe projection, and telemetry
 
