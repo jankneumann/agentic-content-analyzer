@@ -256,6 +256,24 @@ def test_nonterminal_or_stuck_pipeline_root_defers_child(root_status: str) -> No
         )
 
 
+def test_retry_closure_turns_nonterminal_root_deferral_into_bounded_telemetry() -> None:
+    classified = classify_terminal_event(
+        _operation_event(status="failed"),
+        PersistedTerminalSnapshot(
+            operation_type="ingestion.execute",
+            operation_status="failed",
+            pipeline_root_id=99,
+            pipeline_root_status="in_progress",
+            pipeline_root_result=None,
+        ),
+        defer_nonterminal_root=False,
+    )
+
+    assert classified.external_eligible is True
+    assert classified.external_routed is False
+    assert classified.suppression_reason == "pipeline_root_aggregates"
+
+
 @pytest.mark.parametrize(
     ("root_status", "root_outcome"),
     [
@@ -549,6 +567,55 @@ async def test_nonterminal_pipeline_root_leaves_child_event_pending() -> None:
     assert await service.process_pending_event(EVENT_ID) is None
     assert connection.fetchrow.await_count == 2
     connection.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retry_closure_processes_matching_pending_attempt_before_reset() -> None:
+    connection = Mock()
+    connection.fetch = AsyncMock(return_value=[{"id": EVENT_ID}])
+    connection.fetchrow = AsyncMock(
+        side_effect=[
+            {
+                "id": EVENT_ID,
+                "event_key": "operation:42:claim:2:status:failed",
+                "source_kind": "operation",
+                "operation_id": 42,
+                "claim_generation": 2,
+                "terminal_status": "failed",
+                "reconciliation_action_id": None,
+                "reconciliation_run_id": None,
+                "reconciliation_content_id": None,
+                "classification_status": "pending",
+                "occurred_at": NOW,
+            },
+            {
+                "operation_type": "ingestion.execute",
+                "operation_status": "failed",
+                "result": None,
+                "pipeline_root_id": 99,
+                "pipeline_root_status": "in_progress",
+                "pipeline_root_result": None,
+            },
+            {"id": EVENT_ID},
+        ]
+    )
+    connection.execute = AsyncMock(return_value="UPDATE 1")
+    service = WorkflowTerminalEventService(
+        connection,
+        diagnostic_origin="https://ops.example.com",
+        external_delivery_enabled=True,
+        telemetry_emitter=Mock(return_value=True),
+    )
+
+    processed = await service.process_pending_operation_events(
+        [42],
+        close_deferred_children=True,
+    )
+
+    assert [item.classification_status for item in processed] == ["telemetry_only"]
+    query, operation_ids = connection.fetch.await_args.args
+    assert "event.claim_generation = job.claim_generation" in query
+    assert operation_ids == [42]
 
 
 @pytest.mark.asyncio

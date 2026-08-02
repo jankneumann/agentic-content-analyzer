@@ -76,40 +76,40 @@
   **Dependencies**: 1.4
 - [x] 4.4 [M] Implement the `AlertSink` protocol and noop/webhook adapters with stable `Idempotency-Key`
   **Dependencies**: 3.4, 4.3
-- [ ] 4.5 [M] Write drain-loop tests covering projection, telemetry-only events, graph suppression, crash windows, exhausted delivery, and graceful shutdown
+- [x] 4.5 [M] Write drain-loop tests covering projection, telemetry-only events, graph suppression, crash windows, exhausted delivery, and graceful shutdown
   **Spec scenarios**: Multiple pipeline children fail; Retried operation fails again; Webhook alerting is disabled
   **Dependencies**: 3.6, 4.2, 4.4
-- [ ] 4.6 [M] Integrate the bounded terminal-event/delivery drain into worker maintenance
+- [x] 4.6 [M] Integrate the bounded terminal-event/delivery drain into worker maintenance
   **Dependencies**: 4.5
 
-- [ ] Checkpoint: run concurrent Postgres plus MockTransport suites and verify no transaction spans network I/O
+- [x] Checkpoint: run concurrent Postgres plus MockTransport suites and verify no transaction spans network I/O
 
 ## 5. Canonical transition and reconciliation integration
 
-- [ ] 5.1 [M] Write end-to-end operation tests covering worker completion/failure, queued/running cancellation, handler-owned terminal state, maintenance failure, stale claims, fresh persisted V2 result reads, and delayed terminal classification across retry reset
+- [x] 5.1 [M] Write end-to-end operation tests covering worker completion/failure, queued/running cancellation, handler-owned terminal state, maintenance failure, stale claims, fresh persisted V2 result reads, and delayed terminal classification across retry reset
   **Spec scenarios**: all scenarios under Canonical terminal transitions persist event intent and Terminal projection reads committed state
   **Review remediation**: classify or safely project the closed attempt while the canonical retry path still holds its graph/row locks, before mutable job state is reset; a child retry beneath a nonterminal aggregate must close the old attempt as bounded telemetry without creating a premature external alert
   **Dependencies**: 2.2, 3.2
-- [ ] 5.2 [S] Write and implement a generic settings-override denylist for alert endpoint, secret, origin, and host-policy key names
+- [x] 5.2 [S] Write and implement a generic settings-override denylist for alert endpoint, secret, origin, and host-policy key names
   **Spec scenarios**: Webhook configuration is unsafe
   **Design decisions**: D8
   **Dependencies**: 1.4
-- [ ] 5.3 [S] Reconcile legacy job notifications so external routing never consumes generic raw title/summary/payload fields
+- [x] 5.3 [S] Reconcile legacy job notifications so external routing never consumes generic raw title/summary/payload fields
   **Spec scenarios**: Generic notification contains unsafe fields; No SSE subscriber is connected
   **Dependencies**: 5.1
-- [ ] 5.4 [M] Write reconciliation integration tests for atomic action intent, apply rollback, bounded `apply_failed`, repeat/concurrent apply, and dry-run purity
+- [x] 5.4 [M] Write reconciliation integration tests for atomic action intent, apply rollback, bounded `apply_failed`, repeat/concurrent apply, and dry-run purity
   **Spec scenarios**: all scenarios under Reconciliation telemetry follows committed action evidence
   **Dependencies**: 2.2, 3.2
-- [ ] 5.5 [M] Add safe post-rollback reconciliation failure intent while preserving transactional action-trigger evidence
+- [x] 5.5 [M] Add safe post-rollback reconciliation failure intent while preserving transactional action-trigger evidence
   **Dependencies**: 5.4
-- [ ] 5.6 [M] Add an authenticated bounded terminal-event diagnostic read and canonical OpenAPI contract
+- [x] 5.6 [M] Add an authenticated bounded terminal-event diagnostic read and canonical OpenAPI contract
   **Spec scenarios**: An operation event receives a valid origin; Link input contains an untrusted component
   **Design decisions**: D4
   **Dependencies**: 3.4, 4.2
-- [ ] 5.7 [M] Run operation graph and reconciliation concurrency regressions with retention active
+- [x] 5.7 [M] Run operation graph and reconciliation concurrency regressions with retention active
   **Dependencies**: 4.6, 5.2, 5.3, 5.5, 5.6
 
-- [ ] Checkpoint: compare terminal/action rows to event and delivery identities under forced races
+- [x] Checkpoint: compare terminal/action rows to event and delivery identities under forced races
 
 ## 6. Verification, documentation, and closeout
 

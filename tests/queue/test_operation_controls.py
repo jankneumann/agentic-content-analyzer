@@ -283,6 +283,7 @@ class _MutationConnection:
                 return None
 
         self.returned_job = returned_job
+        self.fetch = AsyncMock(return_value=[])
         self.fetchrow = AsyncMock(side_effect=self._fetchrow)
         self.fetchval = AsyncMock(return_value=8123)
         self.execute = AsyncMock(return_value="SELECT 1")
@@ -452,6 +453,7 @@ class _LockedRetryConnection:
         self.retried = retried
         self.owner_matches = owner_matches
         self.fetchrow = AsyncMock(side_effect=self._fetchrow)
+        self.fetch = AsyncMock(return_value=[])
         self.holds_lock = holds_lock
         self.fetchval = AsyncMock(side_effect=self._fetchval)
         self.execute = AsyncMock()
@@ -490,6 +492,26 @@ async def test_locked_retry_applies_atomic_optional_ceiling_and_notifies_on_conn
         "SELECT pg_notify('pgqueuer', $1)",
         "operation_retry",
     )
+
+
+@pytest.mark.asyncio
+async def test_locked_retry_closes_current_terminal_attempt_before_state_reset(
+    monkeypatch,
+) -> None:
+    target = _job(status=JobStatus.FAILED, retry_count=1)
+    target.claim_generation = 7
+    conn = _LockedRetryConnection(target, _job(status=JobStatus.QUEUED, retry_count=2))
+    close_attempts = AsyncMock()
+    monkeypatch.setattr(
+        OperationService,
+        "_close_terminal_attempts_before_retry",
+        close_attempts,
+    )
+
+    await OperationService(connection=conn)._retry_locked(conn, 8123)
+
+    close_attempts.assert_awaited_once_with(conn, [8123])
+    assert conn.fetchrow.await_args_list[-1].args[0].lstrip().startswith("WITH retried_children")
 
 
 @pytest.mark.asyncio

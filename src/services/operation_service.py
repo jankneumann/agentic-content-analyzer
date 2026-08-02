@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import monotonic
@@ -1215,6 +1216,36 @@ class OperationService:
         )
         if target is None:
             raise OperationNotFoundError(f"Operation {job_id} was not found")
+        current = self.project(self._job_from_row(target))
+        if current.status is not OperationStatus.FAILED:
+            raise OperationConflictError(
+                f"Operation {job_id} cannot be retried from state {current.status.value}"
+            )
+        if max_retries is not None and int(target["retry_count"] or 0) >= max_retries:
+            raise OperationConflictError(f"Operation {job_id} reached retry ceiling {max_retries}")
+
+        affected_operation_ids = [job_id]
+        if str(target["entrypoint"]) == OperationType.PIPELINE_RUN.value:
+            child_rows = await conn.fetch(
+                """
+                SELECT child.id
+                FROM pgqueuer_jobs AS child
+                WHERE child.parent_job_id = $1
+                  AND child.status IN ('failed', 'cancelled')
+                  AND child.id = ANY (
+                      SELECT jsonb_array_elements_text(
+                          COALESCE(parent.payload->'result'->'retry_child_operation_ids', '[]'::jsonb)
+                      )::bigint
+                      FROM pgqueuer_jobs AS parent
+                      WHERE parent.id = $1
+                  )
+                ORDER BY child.id
+                FOR UPDATE
+                """,
+                job_id,
+            )
+            affected_operation_ids.extend(int(row["id"]) for row in child_rows)
+        await self._close_terminal_attempts_before_retry(conn, affected_operation_ids)
 
         reset = {
             "progress": 0,
@@ -1285,16 +1316,31 @@ class OperationService:
             max_retries,
         )
         if row is None:
-            current = self.project(self._job_from_row(target))
-            if max_retries is not None and int(target["retry_count"] or 0) >= max_retries:
-                raise OperationConflictError(
-                    f"Operation {job_id} reached retry ceiling {max_retries}"
-                )
             raise OperationConflictError(
                 f"Operation {job_id} cannot be retried from state {current.status.value}"
             )
         await conn.execute("SELECT pg_notify('pgqueuer', $1)", "operation_retry")
         return row
+
+    @staticmethod
+    async def _close_terminal_attempts_before_retry(
+        conn: asyncpg.Connection,
+        operation_ids: Sequence[int],
+    ) -> None:
+        """Classify locked terminal attempts locally before retry resets mutable rows."""
+
+        from src.config.settings import get_settings
+        from src.services.workflow_terminal_event_service import WorkflowTerminalEventService
+
+        settings = get_settings()
+        await WorkflowTerminalEventService(
+            conn,
+            diagnostic_origin=settings.workflow_alert_diagnostic_origin,
+            external_delivery_enabled=settings.workflow_alert_sink == "webhook",
+        ).process_pending_operation_events(
+            operation_ids,
+            close_deferred_children=True,
+        )
 
     @staticmethod
     async def _validated_url_retry_checkpoint(

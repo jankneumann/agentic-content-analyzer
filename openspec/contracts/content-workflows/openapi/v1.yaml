@@ -398,6 +398,26 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationProblem" }
 
+  /api/v1/workflow-terminal-events/{event_id}:
+    get:
+      operationId: getWorkflowTerminalEvent
+      summary: Read one bounded sanitized workflow terminal-event diagnostic
+      tags: [operations, observability]
+      parameters:
+        - name: event_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Sanitized terminal-event diagnostic
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkflowTerminalEventDiagnostic" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFoundProblem" }
+
   /api/v1/operations/reconcile-content:
     post:
       operationId: reconcileContent
@@ -1017,6 +1037,57 @@ components:
           maxItems: 100
           items: { $ref: "#/components/schemas/OperationSummary" }
         next_cursor: { type: [string, "null"], maxLength: 2048 }
+
+    WorkflowTerminalDeliveryCounts:
+      type: object
+      additionalProperties: false
+      required: [pending, leased, delivered, permanent_failure, exhausted]
+      properties:
+        pending: { type: integer, minimum: 0, maximum: 9223372036854775807 }
+        leased: { type: integer, minimum: 0, maximum: 9223372036854775807 }
+        delivered: { type: integer, minimum: 0, maximum: 9223372036854775807 }
+        permanent_failure: { type: integer, minimum: 0, maximum: 9223372036854775807 }
+        exhausted: { type: integer, minimum: 0, maximum: 9223372036854775807 }
+
+    WorkflowTerminalEventDiagnostic:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - event_id
+        - event_key
+        - source_kind
+        - operation_id
+        - claim_generation
+        - terminal_status
+        - classification_status
+        - occurred_at
+        - telemetry_emitted_at
+        - delivery_counts
+      properties:
+        schema_version: { type: integer, const: 1 }
+        event_id: { type: string, format: uuid }
+        event_key: { type: string, minLength: 1, maxLength: 160, pattern: "^[a-z0-9:_-]+$" }
+        source_kind:
+          type: string
+          enum: [operation, reconciliation_action, reconciliation_failure]
+        operation_id:
+          type: [string, "null"]
+          maxLength: 19
+          pattern: "^[1-9][0-9]*$"
+        claim_generation:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 2147483647
+        terminal_status:
+          type: [string, "null"]
+          enum: [completed, failed, cancelled, null]
+        classification_status:
+          type: string
+          enum: [pending, ready, telemetry_only, rejected]
+        occurred_at: { type: string, format: date-time }
+        telemetry_emitted_at: { type: [string, "null"], format: date-time }
+        delivery_counts: { $ref: "#/components/schemas/WorkflowTerminalDeliveryCounts" }
 
     ContentReconciliationMode:
       type: string

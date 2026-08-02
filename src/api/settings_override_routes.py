@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.api.dependencies import verify_admin_key
-from src.services.settings_service import SettingsService
+from src.services.settings_service import SettingsService, is_database_override_allowed
 from src.storage.database import get_db
 
 router = APIRouter(prefix="/api/v1/settings/overrides", tags=["settings"])
@@ -151,4 +151,9 @@ def _validate_key(key: str) -> None:
             status_code=400,
             detail=f"Invalid settings key format: {key}. "
             "Must match pattern: namespace.name (e.g., 'model.summarization')",
+        )
+    if not is_database_override_allowed(key):
+        raise HTTPException(
+            status_code=400,
+            detail="Workflow alert transport policy cannot be database-backed",
         )

@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
-CONTRACT_SHA256 = "1c9b4bf85f2865b099d18d6fbd715a96bd159fd0e52071369910829c006c434f"
+CONTRACT_SHA256 = "6f9b9d07822021314fce36d3e7556e43414d7f2ad5892eefbcae74aacaa4f36a"
 
 OperationStatus = Literal["queued", "in_progress", "completed", "failed", "cancelled"]
 OperationType = Literal[
@@ -440,6 +440,28 @@ class OperationHandle(StrictModel):
 class OperationPage(StrictModel):
     data: Annotated[list[OperationSummary], Field(max_length=100)]
     next_cursor: str | None = Field(None, max_length=2048)
+
+
+class WorkflowTerminalDeliveryCounts(StrictModel):
+    pending: Annotated[int, Field(ge=0, le=9223372036854775807)]
+    leased: Annotated[int, Field(ge=0, le=9223372036854775807)]
+    delivered: Annotated[int, Field(ge=0, le=9223372036854775807)]
+    permanent_failure: Annotated[int, Field(ge=0, le=9223372036854775807)]
+    exhausted: Annotated[int, Field(ge=0, le=9223372036854775807)]
+
+
+class WorkflowTerminalEventDiagnostic(StrictModel):
+    schema_version: Literal[1] = 1
+    event_id: UUID
+    event_key: Annotated[str, Field(min_length=1, max_length=160, pattern="^[a-z0-9:_-]+$")]
+    source_kind: Literal["operation", "reconciliation_action", "reconciliation_failure"]
+    operation_id: Annotated[str | None, Field(max_length=19, pattern="^[1-9][0-9]*$")]
+    claim_generation: Annotated[int | None, Field(ge=0, le=2147483647)]
+    terminal_status: Literal["completed", "failed", "cancelled", None]
+    classification_status: Literal["pending", "ready", "telemetry_only", "rejected"]
+    occurred_at: datetime
+    telemetry_emitted_at: datetime | None
+    delivery_counts: WorkflowTerminalDeliveryCounts
 
 
 class ContentReconciliationRequest(StrictModel):

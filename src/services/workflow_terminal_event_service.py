@@ -23,7 +23,13 @@ from src.contracts.workflow_alert_models import (
     WorkflowTerminalSourceKind,
     WorkflowTypeName,
 )
-from src.contracts.workflow_models import IngestionResultV2, OperationType, PipelineResultV2
+from src.contracts.workflow_models import (
+    IngestionResultV2,
+    OperationType,
+    PipelineResultV2,
+    WorkflowTerminalDeliveryCounts,
+    WorkflowTerminalEventDiagnostic,
+)
 from src.telemetry.workflow_events import emit_workflow_terminal_telemetry
 
 _MAX_COUNT = 9_223_372_036_854_775_807
@@ -119,6 +125,8 @@ class WorkflowTerminalEventService:
     async def process_pending_event(
         self,
         event_id: UUID,
+        *,
+        close_deferred_child: bool = False,
     ) -> ProcessedTerminalEvent | None:
         """Process one event without making telemetry or delivery authoritative."""
 
@@ -128,7 +136,11 @@ class WorkflowTerminalEventService:
         try:
             event = _event_from_row(row)
             snapshot = await self._fresh_snapshot(event)
-            classification = classify_terminal_event(event, snapshot)
+            classification = classify_terminal_event(
+                event,
+                snapshot,
+                defer_nonterminal_root=not close_deferred_child,
+            )
             envelope = None
             if self._external_delivery_enabled and classification.external_routed:
                 if self._diagnostic_origin is None:
@@ -186,6 +198,59 @@ class WorkflowTerminalEventService:
             envelope=envelope,
         )
 
+    async def get_diagnostic(
+        self,
+        event_id: UUID,
+    ) -> WorkflowTerminalEventDiagnostic | None:
+        """Return one closed diagnostic projection without raw payloads or errors."""
+
+        row = await self._connection.fetchrow(_DIAGNOSTIC_QUERY, event_id)
+        if row is None:
+            return None
+        operation_id = row["operation_id"]
+        return WorkflowTerminalEventDiagnostic(
+            event_id=row["id"],
+            event_key=row["event_key"],
+            source_kind=row["source_kind"],
+            operation_id=str(operation_id) if operation_id is not None else None,
+            claim_generation=row["claim_generation"],
+            terminal_status=row["terminal_status"],
+            classification_status=row["classification_status"],
+            occurred_at=row["occurred_at"],
+            telemetry_emitted_at=row["telemetry_emitted_at"],
+            delivery_counts=WorkflowTerminalDeliveryCounts(
+                pending=row["deliveries_pending"],
+                leased=row["deliveries_leased"],
+                delivered=row["deliveries_delivered"],
+                permanent_failure=row["deliveries_permanent_failure"],
+                exhausted=row["deliveries_exhausted"],
+            ),
+        )
+
+    async def process_pending_operation_events(
+        self,
+        operation_ids: list[int],
+        *,
+        close_deferred_children: bool = False,
+    ) -> list[ProcessedTerminalEvent]:
+        """Close current terminal attempts before canonical retry clears job state."""
+
+        if not operation_ids:
+            return []
+        rows = await self._connection.fetch(
+            _PENDING_OPERATION_EVENTS_QUERY,
+            operation_ids,
+        )
+        processed: list[ProcessedTerminalEvent] = []
+        for row in rows:
+            result = await self.process_pending_event(
+                row["id"],
+                close_deferred_child=close_deferred_children,
+            )
+            if result is not None:
+                processed.append(result)
+        return processed
+
     async def _fresh_snapshot(
         self,
         event: TerminalEventEvidence,
@@ -242,6 +307,23 @@ SELECT id, event_key, source_kind, operation_id, claim_generation,
        reconciliation_content_id, classification_status, occurred_at
 FROM workflow_terminal_events
 WHERE id = $1
+"""
+
+_DIAGNOSTIC_QUERY = """
+SELECT event.id, event.event_key, event.source_kind, event.operation_id,
+       event.claim_generation, event.terminal_status, event.classification_status,
+       event.occurred_at, event.telemetry_emitted_at,
+       COUNT(delivery.id) FILTER (WHERE delivery.status = 'pending') AS deliveries_pending,
+       COUNT(delivery.id) FILTER (WHERE delivery.status = 'leased') AS deliveries_leased,
+       COUNT(delivery.id) FILTER (WHERE delivery.status = 'delivered') AS deliveries_delivered,
+       COUNT(delivery.id) FILTER (
+           WHERE delivery.status = 'permanent_failure'
+       ) AS deliveries_permanent_failure,
+       COUNT(delivery.id) FILTER (WHERE delivery.status = 'exhausted') AS deliveries_exhausted
+FROM workflow_terminal_events AS event
+LEFT JOIN workflow_alert_deliveries AS delivery ON delivery.event_id = event.id
+WHERE event.id = $1
+GROUP BY event.id
 """
 
 _OPERATION_SNAPSHOT_QUERY = """
@@ -307,6 +389,18 @@ FROM content_reconciliation_actions
 WHERE id = $1 AND run_id = $2 AND content_id = $3
 """
 
+_PENDING_OPERATION_EVENTS_QUERY = """
+SELECT event.id
+FROM workflow_terminal_events AS event
+JOIN pgqueuer_jobs AS job ON job.id = event.operation_id
+WHERE event.source_kind = 'operation'
+  AND event.classification_status = 'pending'
+  AND event.operation_id = ANY($1::bigint[])
+  AND event.claim_generation = job.claim_generation
+  AND event.terminal_status = job.status
+ORDER BY event.created_at, event.id
+"""
+
 _CLASSIFICATION_UPDATE_QUERY = """
 UPDATE workflow_terminal_events
 SET classification_status = $2,
@@ -364,6 +458,8 @@ def _event_from_row(row: Any) -> TerminalEventEvidence:
 def classify_terminal_event(
     event: TerminalEventEvidence,
     snapshot: PersistedTerminalSnapshot,
+    *,
+    defer_nonterminal_root: bool = True,
 ) -> TerminalClassification:
     """Classify only closed, committed lifecycle/result evidence."""
 
@@ -405,6 +501,7 @@ def classify_terminal_event(
                 codes=("operation_failed",),
             ),
             snapshot,
+            defer_nonterminal_root=defer_nonterminal_root,
         )
     if lifecycle == "cancelled":
         return _classification(
@@ -422,7 +519,11 @@ def classify_terminal_event(
             outcome="success",
             source_kind=event.source_kind,
         )
-    return _apply_pipeline_routing(classification, snapshot)
+    return _apply_pipeline_routing(
+        classification,
+        snapshot,
+        defer_nonterminal_root=defer_nonterminal_root,
+    )
 
 
 def build_diagnostic_url(
@@ -617,12 +718,20 @@ def _classification(
 def _apply_pipeline_routing(
     classification: TerminalClassification,
     snapshot: PersistedTerminalSnapshot,
+    *,
+    defer_nonterminal_root: bool,
 ) -> TerminalClassification:
     if not classification.external_eligible or snapshot.pipeline_root_id is None:
         return classification
     root_status = snapshot.pipeline_root_status
     if root_status in {"queued", "in_progress"}:
-        raise TerminalClassificationDeferredError
+        if defer_nonterminal_root:
+            raise TerminalClassificationDeferredError
+        return replace(
+            classification,
+            external_routed=False,
+            suppression_reason="pipeline_root_aggregates",
+        )
     if root_status == "cancelled":
         return classification
     suppress = root_status == "failed"

@@ -1,5 +1,5 @@
 // Generated from contracts/openapi/v1.yaml; do not edit.
-export const CONTRACT_SHA256 = "1c9b4bf85f2865b099d18d6fbd715a96bd159fd0e52071369910829c006c434f" as const;
+export const CONTRACT_SHA256 = "6f9b9d07822021314fce36d3e7556e43414d7f2ad5892eefbcae74aacaa4f36a" as const;
 
 export type OperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 export type OperationType = "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
@@ -187,6 +187,28 @@ export interface OperationHandle {
 export interface OperationPage {
   data: Array<OperationSummary>;
   next_cursor?: string | null;
+}
+
+export interface WorkflowTerminalDeliveryCounts {
+  pending: number;
+  leased: number;
+  delivered: number;
+  permanent_failure: number;
+  exhausted: number;
+}
+
+export interface WorkflowTerminalEventDiagnostic {
+  schema_version: 1;
+  event_id: string;
+  event_key: string;
+  source_kind: "operation" | "reconciliation_action" | "reconciliation_failure";
+  operation_id: string | null;
+  claim_generation: number | null;
+  terminal_status: "completed" | "failed" | "cancelled" | null;
+  classification_status: "pending" | "ready" | "telemetry_only" | "rejected";
+  occurred_at: string;
+  telemetry_emitted_at: string | null;
+  delivery_counts: WorkflowTerminalDeliveryCounts;
 }
 
 export interface ContentReconciliationRequest {

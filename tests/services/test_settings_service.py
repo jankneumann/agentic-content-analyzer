@@ -106,6 +106,22 @@ class TestSettingsServiceSet:
         with pytest.raises(ValueError, match="Database session required"):
             service.set("model.summarization", "claude-haiku-4-5")
 
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "alerting.workflow_alert_webhook_endpoint",
+            "alerting.webhook_secret",
+            "workflow.alert_diagnostic_origin",
+            "notifications.alert_host_policy",
+            "alerts.allowed_hosts",
+        ],
+    )
+    def test_set_rejects_alert_transport_policy_keys(self, db, key):
+        service = SettingsService(db)
+
+        with pytest.raises(ValueError, match="cannot be database-backed"):
+            service.set(key, "hostile-runtime-value")
+
 
 class TestSettingsServiceDelete:
     """Tests for SettingsService.delete()."""
@@ -169,6 +185,18 @@ class TestSettingsServiceListByPrefix:
         results = service.list_by_prefix("model")
         keys = [r["key"] for r in results]
         assert keys == sorted(keys)
+
+    def test_list_never_returns_legacy_alert_transport_policy_rows(self, db):
+        db.add(
+            SettingsOverride(
+                key="alerting.webhook_secret",
+                value="legacy-plaintext-secret",
+                version=1,
+            )
+        )
+        db.commit()
+
+        assert SettingsService(db).list_by_prefix("alerting") == []
 
 
 class TestSettingsServiceGetOverride:

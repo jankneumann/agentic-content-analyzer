@@ -22,11 +22,34 @@ Usage:
     value = service.get("voice.provider")
 """
 
+import re
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from src.models.settings_override import SettingsOverride
+
+_ALERT_POLICY_MARKERS = (
+    "endpoint",
+    "secret",
+    "diagnostic_origin",
+    "allowed_hosts",
+    "host_policy",
+    "host_allowlist",
+)
+
+
+def is_database_override_allowed(key: str) -> bool:
+    """Keep alert transport trust and secrets out of plaintext DB overrides."""
+
+    normalized = re.sub(r"[^a-z0-9]+", "_", key.strip().lower()).strip("_")
+    is_alert_key = "alert" in normalized
+    return not (is_alert_key and any(marker in normalized for marker in _ALERT_POLICY_MARKERS))
+
+
+def _require_database_override_allowed(key: str) -> None:
+    if not is_database_override_allowed(key):
+        raise ValueError("Workflow alert transport policy cannot be database-backed")
 
 
 class SettingsService:
@@ -50,6 +73,8 @@ class SettingsService:
         Returns:
             Override value if exists, None otherwise
         """
+        if not is_database_override_allowed(key):
+            return None
         if self.db:
             override = self.db.query(SettingsOverride).filter_by(key=key).first()
             if override:
@@ -72,6 +97,7 @@ class SettingsService:
         Raises:
             ValueError: If no database session is available or value is empty
         """
+        _require_database_override_allowed(key)
         if not self.db:
             raise ValueError("Database session required for setting overrides")
 
@@ -97,6 +123,7 @@ class SettingsService:
         Returns:
             True if an override was deleted, False if key didn't exist
         """
+        _require_database_override_allowed(key)
         if not self.db:
             raise ValueError("Database session required for deleting overrides")
 
@@ -130,6 +157,7 @@ class SettingsService:
                 "description": override.description,
             }
             for override in query.all()
+            if is_database_override_allowed(str(override.key))
         ]
 
     def get_override(self, key: str) -> SettingsOverride | None:
@@ -141,7 +169,7 @@ class SettingsService:
         Returns:
             SettingsOverride record if exists, None otherwise
         """
-        if not self.db:
+        if not is_database_override_allowed(key) or not self.db:
             return None
         return self.db.query(SettingsOverride).filter_by(key=key).first()
 
@@ -152,6 +180,8 @@ class SettingsService:
         a db session still get override support. Returns None if no
         override exists or if the database is unavailable.
         """
+        if not is_database_override_allowed(key):
+            return None
         try:
             from src.storage.database import get_db
 

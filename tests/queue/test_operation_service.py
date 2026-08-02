@@ -1077,6 +1077,7 @@ async def test_pipeline_retry_preserves_checkpoint_and_requeues_failed_children(
     conn = MagicMock()
     conn.transaction.return_value = Transaction()
     conn.fetchval = AsyncMock(side_effect=[8123, None, 8123, 8123, True])
+    conn.fetch = AsyncMock(return_value=[])
     conn.fetchrow = AsyncMock(side_effect=[locked, queued])
     conn.execute = AsyncMock()
     service = OperationService(connection=conn)

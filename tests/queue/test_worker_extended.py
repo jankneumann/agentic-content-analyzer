@@ -6,8 +6,12 @@ to the corresponding orchestrator function with the right keyword arguments.
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import contextmanager
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from uuid import UUID
 
 import pytest
 
@@ -505,6 +509,181 @@ async def test_claimed_job_uses_a_dedicated_lifecycle_connection(monkeypatch) ->
     connect.assert_awaited_once_with("postgres://queue")
     process.assert_awaited_once_with(connection, job)
     connection.close.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    ("disposition", "failure_status"),
+    (("success", None), ("retry", "exhausted")),
+)
+@pytest.mark.asyncio
+async def test_alert_maintenance_commits_claim_before_sink_io(
+    monkeypatch,
+    disposition: str,
+    failure_status: str | None,
+) -> None:
+    from src.queue import worker
+
+    event_id = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+    connection = MagicMock()
+    connection.fetchval = AsyncMock(return_value=True)
+    connection.fetch = AsyncMock(side_effect=[[{"id": event_id}], [{"id": event_id}]])
+    connection.execute = AsyncMock(return_value="DELETE 0")
+    session_open = False
+    sessions: list[MagicMock] = []
+
+    @contextmanager
+    def get_db():
+        nonlocal session_open
+        session = MagicMock()
+        sessions.append(session)
+        session_open = True
+        try:
+            yield session
+        finally:
+            session_open = False
+
+    processor = MagicMock()
+    processor.process_pending_event = AsyncMock(return_value=SimpleNamespace())
+    processor_type = MagicMock(return_value=processor)
+    claim = SimpleNamespace(
+        delivery_id=event_id,
+        event_id=event_id,
+        sink_name="webhook",
+        attempt_count=1,
+        lease_expires_at=datetime(2026, 8, 1, 12, 1, tzinfo=UTC),
+        created_at=datetime(2026, 8, 1, 12, tzinfo=UTC),
+        envelope=MagicMock(),
+    )
+    sink = MagicMock()
+
+    async def deliver(*_args, **_kwargs):
+        assert session_open is False
+        return SimpleNamespace(
+            disposition=disposition,
+            error_code=None if disposition == "success" else "timeout",
+            retry_after_seconds=None,
+        )
+
+    sink.deliver = AsyncMock(side_effect=deliver)
+    monkeypatch.setattr("src.storage.database.get_db", get_db)
+    monkeypatch.setattr(
+        "src.services.workflow_terminal_event_service.WorkflowTerminalEventService",
+        processor_type,
+    )
+    ensure_delivery = MagicMock()
+    claim_due = MagicMock(return_value=[claim])
+    mark_succeeded = MagicMock(return_value=True)
+    record_failure = MagicMock(return_value=failure_status)
+    cleanup = MagicMock(return_value=0)
+    alert_logger = MagicMock()
+    generic_dispatcher = MagicMock()
+    monkeypatch.setattr(
+        "src.services.notification_service.get_dispatcher",
+        generic_dispatcher,
+    )
+    monkeypatch.setattr("src.services.workflow_alert_delivery.ensure_delivery", ensure_delivery)
+    monkeypatch.setattr("src.services.workflow_alert_delivery.claim_due_deliveries", claim_due)
+    monkeypatch.setattr(
+        "src.services.workflow_alert_delivery.mark_delivery_succeeded", mark_succeeded
+    )
+    monkeypatch.setattr(
+        "src.services.workflow_alert_delivery.record_delivery_failure", record_failure
+    )
+    monkeypatch.setattr("src.services.workflow_alert_delivery.cleanup_terminal_deliveries", cleanup)
+    monkeypatch.setattr(worker, "_build_workflow_alert_sink", MagicMock(return_value=sink))
+    monkeypatch.setattr(worker, "logger", alert_logger)
+    settings = _alert_settings()
+
+    assert await worker._run_workflow_alert_maintenance_tick(
+        connection,
+        alert_settings=settings,
+    )
+
+    processor.process_pending_event.assert_awaited_once_with(event_id)
+    pending_query = connection.fetch.await_args_list[0].args[0]
+    assert "job.parent_job_id IS NULL" in pending_query
+    assert "THEN 0 ELSE 1" in pending_query
+    ensure_delivery.assert_called_once()
+    claim_due.assert_called_once()
+    sink.deliver.assert_awaited_once()
+    if disposition == "success":
+        mark_succeeded.assert_called_once()
+        record_failure.assert_not_called()
+        alert_logger.error.assert_not_called()
+    else:
+        mark_succeeded.assert_not_called()
+        record_failure.assert_called_once()
+        alert_logger.error.assert_called_once_with(
+            "workflow alert delivery exhausted delivery_id=%s event_id=%s",
+            claim.delivery_id,
+            claim.event_id,
+        )
+    generic_dispatcher.assert_not_called()
+    assert len(sessions) >= 4
+    connection.execute.assert_any_await(
+        "SELECT pg_advisory_unlock($1::bigint)",
+        worker._WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK,
+    )
+
+
+@pytest.mark.asyncio
+async def test_alert_maintenance_cancellation_releases_leader_lock(monkeypatch) -> None:
+    from src.queue import worker
+
+    event_id = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+    connection = MagicMock()
+    connection.fetchval = AsyncMock(return_value=True)
+    connection.fetch = AsyncMock(return_value=[{"id": event_id}])
+    connection.execute = AsyncMock()
+    started = asyncio.Event()
+
+    async def block_until_cancelled(_event_id):
+        started.set()
+        await asyncio.Event().wait()
+
+    processor = MagicMock()
+    processor.process_pending_event = AsyncMock(side_effect=block_until_cancelled)
+    monkeypatch.setattr(
+        "src.services.workflow_terminal_event_service.WorkflowTerminalEventService",
+        MagicMock(return_value=processor),
+    )
+
+    task = asyncio.create_task(
+        worker._run_workflow_alert_maintenance_tick(
+            connection,
+            alert_settings=_alert_settings(),
+        )
+    )
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    connection.execute.assert_awaited_once_with(
+        "SELECT pg_advisory_unlock($1::bigint)",
+        worker._WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK,
+    )
+
+
+def _alert_settings() -> SimpleNamespace:
+    return SimpleNamespace(
+        workflow_alert_sink="webhook",
+        workflow_alert_diagnostic_origin="https://ops.example.com",
+        workflow_alert_webhook_endpoint="https://alerts.example.com/hook",
+        workflow_alert_webhook_secret=None,
+        workflow_alert_timeout_seconds=10,
+        workflow_alert_lease_seconds=60,
+        workflow_alert_max_attempts=5,
+        workflow_alert_base_backoff_seconds=30,
+        workflow_alert_max_backoff_seconds=3600,
+        workflow_alert_max_retry_after_seconds=3600,
+        workflow_alert_delivery_max_age_seconds=604800,
+        workflow_alert_retention_days=30,
+        workflow_alert_exhausted_retention_days=90,
+        workflow_alert_batch_size=50,
+        get_workflow_alert_allowed_hosts=lambda: ("alerts.example.com",),
+        is_development=False,
+    )
 
 
 # ---------------------------------------------------------------------------

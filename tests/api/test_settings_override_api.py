@@ -208,6 +208,27 @@ class TestSettingsOverridePut:
         )
         assert resp.status_code == 422  # Pydantic min_length validation
 
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "alerting.workflow_alert_webhook_endpoint",
+            "alerting.webhook_secret",
+            "workflow.alert_diagnostic_origin",
+            "notifications.alert_host_policy",
+            "alerts.allowed_hosts",
+        ],
+    )
+    def test_put_rejects_alert_transport_policy_keys(self, client, key):
+        response = client.put(
+            f"/api/v1/settings/overrides/{key}",
+            json={"value": "hostile-runtime-value"},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == (
+            "Workflow alert transport policy cannot be database-backed"
+        )
+
 
 class TestSettingsOverrideDelete:
     """Test deleting overrides."""

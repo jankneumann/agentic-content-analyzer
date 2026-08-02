@@ -566,6 +566,22 @@ async def test_audit_failure_rolls_back_item_and_continues_later_items(
         )
         assert report.counts.failed == 1
         assert report.counts.applied == 1
+        failure_event = await conn.fetchrow(
+            """
+            SELECT event_key, classification_status, envelope
+            FROM workflow_terminal_events
+            WHERE reconciliation_run_id = $1
+              AND reconciliation_content_id = $2
+            """,
+            report.run_id,
+            first_content,
+        )
+        assert failure_event is not None
+        assert failure_event["event_key"] == (
+            f"reconciliation-failure:{report.run_id}:content:{first_content}:reason:apply_failed"
+        )
+        assert failure_event["classification_status"] == "pending"
+        assert failure_event["envelope"] is None
     finally:
         await transaction.rollback()
         await conn.close()
@@ -704,6 +720,19 @@ async def test_apply_reports_apply_failed_when_operation_graph_vanishes(
         )
         assert report.counts.retried == 0
         assert report.counts.failed == 1
+        assert (
+            await conn.fetchval(
+                """
+                SELECT COUNT(*) FROM workflow_terminal_events
+                WHERE reconciliation_run_id = $1
+                  AND reconciliation_content_id = $2
+                  AND source_kind = 'reconciliation_failure'
+                """,
+                report.run_id,
+                content_id,
+            )
+            == 1
+        )
     finally:
         await transaction.rollback()
         await conn.close()

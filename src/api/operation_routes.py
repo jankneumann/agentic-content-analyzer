@@ -6,10 +6,12 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
+from src.api.dependencies import verify_admin_key
 from src.api.middleware.audit import audited
 from src.api.workflow_dependencies import (
     get_capability_service,
@@ -26,14 +28,17 @@ from src.contracts.workflow_models import (
     OperationHandle,
     OperationPage,
     Problem,
+    WorkflowTerminalEventDiagnostic,
 )
 from src.models.jobs import OperationStatus
+from src.queue import setup as queue_setup
 from src.services.capability_service import CapabilityService
 from src.services.content_reconciliation_service import (
     ContentReconciliationApplyDisabledError,
     ContentReconciliationService,
 )
 from src.services.operation_service import OperationService
+from src.services.workflow_terminal_event_service import WorkflowTerminalEventService
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
 
@@ -66,6 +71,23 @@ async def list_operations(
 ) -> OperationPage:
     page = await service.list(limit=limit, cursor=cursor, status=status)
     return OperationPage.model_validate(page.model_dump(mode="json"))
+
+
+@router.get(
+    "/workflow-terminal-events/{event_id}",
+    response_model=WorkflowTerminalEventDiagnostic,
+    dependencies=[Depends(verify_admin_key)],
+)
+async def get_workflow_terminal_event(
+    event_id: UUID,
+) -> WorkflowTerminalEventDiagnostic:
+    """Read one bounded, allowlist-first terminal-event diagnostic."""
+
+    async with queue_setup._queue_connection() as connection:
+        diagnostic = await WorkflowTerminalEventService(connection).get_diagnostic(event_id)
+    if diagnostic is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return diagnostic
 
 
 @router.post(

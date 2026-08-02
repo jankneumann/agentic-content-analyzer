@@ -23,6 +23,9 @@ from src.contracts.workflow_models import (
 from src.queue import setup as queue_setup
 from src.queue.content_execution_lock import _CONTENT_EXECUTION_LOCK_NAMESPACE
 from src.services.operation_service import OperationService
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class LockState(StrEnum):
@@ -371,8 +374,40 @@ class ContentReconciliationService:
                     projection="observed",
                     applied=False,
                 )
+                try:
+                    await self._insert_apply_failed_event(
+                        run_id=run_id,
+                        content_id=candidate.content_id,
+                    )
+                except Exception:
+                    logger.error(
+                        "content reconciliation failure intent could not be persisted",
+                        extra={"reconciliation_run_id": str(run_id)},
+                    )
             items.append(item)
         return items
+
+    async def _insert_apply_failed_event(
+        self,
+        *,
+        run_id: UUID,
+        content_id: int,
+    ) -> None:
+        """Persist bounded post-rollback evidence without exception text or input data."""
+
+        event_key = f"reconciliation-failure:{run_id}:content:{content_id}:reason:apply_failed"
+        await self._connection.execute(
+            """
+            INSERT INTO workflow_terminal_events (
+                event_key, source_kind, reconciliation_run_id,
+                reconciliation_content_id, occurred_at
+            ) VALUES ($1, 'reconciliation_failure', $2, $3, NOW())
+            ON CONFLICT (event_key) DO NOTHING
+            """,
+            event_key,
+            run_id,
+            content_id,
+        )
 
     async def _apply_one(
         self,
