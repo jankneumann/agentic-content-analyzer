@@ -233,6 +233,51 @@ aca operations retry 123
 aca operations cancel 123
 ```
 
+**Content reconciliation runbook:** Preview is the default and is strictly
+read-only. Each invocation requests exactly one ascending Content-ID page; it
+never follows `next_after_content_id` automatically.
+
+```bash
+# Preview one bounded page (server default 50, maximum 100)
+aca operations reconcile-content --limit 50
+
+# Continue from the previous report's next_after_content_id
+aca operations reconcile-content --limit 50 --after-content-id 1234
+
+# API server/deployment setting (this is not a client-side override)
+CONTENT_RECONCILIATION_APPLY_ENABLED=true
+
+# After the updated server configuration is deployed, apply one guarded page
+aca operations reconcile-content --apply --limit 50
+
+# Machine-readable output remains exactly one safe JSON document on stdout
+aca --json operations reconcile-content --limit 50
+```
+
+Apply is disabled by default and returns an RFC 7807 `503` problem until
+`CONTENT_RECONCILIATION_APPLY_ENABLED=true` is configured on the API server.
+The client is remote-only: it calls the authenticated operation endpoint and
+never opens a database connection. Review each page before manually continuing.
+For an apply page, a request/transport failure or any item whose reason is
+`apply_failed` exits nonzero; classified no-ops such as `active_operation`,
+`execution_locked`, `retry_budget_exhausted`, `incompatible_worker`, and
+ownership/revalidation conflicts remain successful reports for operator
+decision-making.
+
+The JSON report is the closed public projection: run ID, mode, bounded counts,
+safe lifecycle/ownership fields, actions, reasons, timestamps, and continuation
+ID. It excludes payloads, source URLs, titles, markdown, errors, credentials,
+and arbitrary exception text. Applied items are observed committed values;
+preview items are proposed values and do not create audit rows or notifications.
+
+Reconciliation policy is bounded by
+`CONTENT_RECONCILIATION_STALE_SECONDS` (default 3600),
+`CONTENT_RECONCILIATION_MAX_RETRIES` (3),
+`CONTENT_RECONCILIATION_BATCH_SIZE` (50),
+`CONTENT_RECONCILIATION_LOCK_TIMEOUT_MS` (250), and
+`CONTENT_RECONCILIATION_STATEMENT_TIMEOUT_MS` (5000). Keep the statement timeout
+greater than or equal to the lock timeout.
+
 **Canonical ingestion history:**
 
 ```bash

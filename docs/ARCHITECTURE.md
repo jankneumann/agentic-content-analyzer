@@ -120,6 +120,20 @@ Successful resource-producing operations attach a typed resource reference.
 All interfaces expose the same RFC 7807 problem, operation, capability, and
 resource contracts.
 
+Current queue claims carry a database-generated attempt generation and protocol
+version. Supported parsing and processing writers persist the matching
+operation/generation/phase/version token on Content, then revalidate both the
+job claim and Content token before committing output. A requeue resets the
+protocol to the legacy-safe value; a current worker opts into protocol 2 while
+claiming. This fences late writes from cancelled or superseded attempts.
+
+Canonical webpage ingestion keeps failed extraction resumable. Retry preserves
+only a strict single-Content partial URL checkpoint; if the process died before
+checkpoint attachment, recovery may use exactly one failed/parsing Content row
+owned by that operation. The newer claim invokes `URLExtractor` directly,
+bypassing URL reclassification and aggregate deduplication, and fails closed for
+zero or ambiguous owners.
+
 ### Knowledge Graph (Graphiti) Usage
 
 The knowledge graph supports pluggable backends via `GraphDBProvider`. The default backend is Neo4j (local Docker or AuraDB cloud), with FalkorDB available as a lightweight alternative. FalkorDB is Redis-protocol-compatible and supports local Docker, cloud (Railway), and embedded (FalkorDB Lite) modes. The backend is selected via `GRAPHDB_PROVIDER` and `GRAPHDB_MODE` settings, with all graph operations abstracted behind the provider interface.
@@ -501,6 +515,7 @@ aca operations get 123
 aca operations wait 123 --timeout 300
 aca operations retry 123
 aca operations cancel 123
+aca operations reconcile-content --limit 50
 ```
 
 Submission is idempotent for equivalent normalized input unless an explicit
@@ -509,6 +524,15 @@ checks cancellation at workflow checkpoints. Retry resets transient control
 state while retaining normalized input and any durable pipeline checkpoint.
 Workers accept payload schema versions 1 and 2 during the coordinated migration,
 while every interface emits only version 2.
+
+Content reconciliation is a synchronous, bounded control plane over those
+ownership tokens. Dry-run executes a SELECT-only keyset page. Apply is
+server-gated off by default and, per candidate, takes the Content advisory lock
+before operation graph/root/target and domain-row locks, revalidates evidence,
+then commits mutation, append-only audit evidence, and retry notification in one
+savepoint. Lock contention and unsupported evidence are reported as closed
+no-op reasons; one item failure rolls back only that item and is reported as
+`apply_failed`.
 
 ### Coordinated Cutover and Rollback
 
@@ -562,6 +586,7 @@ separate from read resources.
 | GET | `/operations/{id}/events` | Resume named SSE progress events |
 | POST | `/operations/{id}/retry` | Retry failed durable work |
 | POST | `/operations/{id}/cancel` | Cancel or request cancellation |
+| POST | `/operations/reconcile-content` | Preview or apply one bounded Content reconciliation page |
 | GET | `/capabilities` | Cursor-page registry and transport capabilities |
 
 ### Content API (`/api/v1/contents`)

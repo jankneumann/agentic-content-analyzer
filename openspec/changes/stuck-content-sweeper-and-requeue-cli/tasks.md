@@ -121,15 +121,15 @@
 
 ## 7. Integration evidence
 
-- [ ] 7.1 [S] Write CLI gen-eval scenarios covering preview, disabled apply, guarded apply, safe JSON
+- [x] 7.1 [S] Write CLI gen-eval scenarios covering preview, disabled apply, guarded apply, safe JSON
   **Spec scenarios**: Default CLI invocation previews; CLI apply contains item failures
   **Dependencies**: 6.4
-- [ ] 7.2 [S] Add the checked-in reconciliation gen-eval cases
+- [x] 7.2 [S] Add the checked-in reconciliation gen-eval cases
   **Dependencies**: 7.1
-- [ ] 7.3 [M] Run canonical URL recovery end-to-end regression
+- [x] 7.3 [M] Run canonical URL recovery end-to-end regression
   **Spec scenarios**: Canonical URL extraction failure is checkpointed; Canonical URL retry resumes exact Content; Failed exact owner remains within budget
   **Dependencies**: 5.5, 6.2
-- [ ] 7.4 [S] Update operator documentation plus canonical specification reconciliation notes
+- [x] 7.4 [S] Update operator documentation plus canonical specification reconciliation notes
   **Spec scenarios**: all
   **Design decisions**: D1-D11
   **Dependencies**: 5.7, 7.2, 7.3

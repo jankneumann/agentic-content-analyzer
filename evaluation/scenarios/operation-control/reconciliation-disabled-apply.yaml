@@ -1,0 +1,38 @@
+# Mutating category even though the configured target refuses the request. This keeps
+# every invocation carrying --apply behind the non-production mutation guard.
+
+id: operation-control-reconciliation-disabled-apply
+name: aca operations reconcile-content fails closed when apply is disabled
+description: >
+  Runs only against a target whose server-side reconciliation apply gate is disabled.
+  Both human and JSON surfaces must return the canonical 503 problem without mutation.
+category: operation-control
+priority: 1
+interfaces:
+  - "cli:operations"
+tags:
+  - mutating
+  - requires-target
+  - requires-apply-disabled
+steps:
+  - id: reconciliation-disabled-attributed
+    transport: cli
+    command: operations
+    args:
+      - reconcile-content
+      - "--apply"
+    expect:
+      exit_code: 1
+      not_empty: true
+
+  - id: reconciliation-disabled-json
+    transport: cli
+    command: "--json"
+    args:
+      - operations
+      - reconcile-content
+      - "--apply"
+    expect:
+      exit_code: 1
+      body_contains:
+        status: 503

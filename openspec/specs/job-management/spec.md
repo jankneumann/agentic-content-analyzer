@@ -317,6 +317,47 @@ The system SHALL provide a web page at `/task-history` under the Management navi
 - **THEN** workers and status readers continue to process it through a compatibility parser
 - **AND** new submissions emit only version 2
 
+### Requirement: Queue claims carry fencing generations
+
+Each queued-to-in-progress claim SHALL atomically increment `claim_generation`
+at the database boundary. Every transition to queued SHALL reset the claim
+protocol to its legacy value, and a compatible worker SHALL set the current
+protocol while claiming. Progress, heartbeat, cancellation, and terminal writes
+SHALL require the current in-progress generation.
+
+#### Scenario: Current worker updates lifecycle
+- **WHEN** a worker writes with the generation it claimed and the row remains in progress
+- **THEN** the lifecycle update succeeds
+
+#### Scenario: Superseded worker updates lifecycle
+- **WHEN** a worker writes after generation changes or status becomes terminal or queued
+- **THEN** the lifecycle update affects no row
+
+#### Scenario: Every requeue path resets protocol
+- **WHEN** retry, stale recovery, defer, or legacy SQL changes a nonqueued job to queued
+- **THEN** the database trigger resets the protocol in the same statement
+- **AND** an old worker claim remains incompatible with reconciliation apply
+
+### Requirement: Supported content writes validate operation claims
+
+Supported parsing and summarization writers SHALL persist Content ownership and
+MUST validate both operation claim and Content ownership before every domain
+commit after acquisition. Initial or same-operation retry acquisition SHALL use
+a narrow compare-and-swap.
+
+#### Scenario: Current claim commits content
+- **WHEN** job generation and Content ownership both match
+- **THEN** the supported writer may commit its phase transition or output
+
+#### Scenario: New generation acquires a retained failed phase
+- **WHEN** generation N+1 finds failed Content owned by the same operation and phase at N
+- **THEN** it may atomically renew ownership to N+1
+- **AND** it does not renew another operation's or phase's ownership
+
+#### Scenario: Old computation reaches commit after reclaim
+- **WHEN** a newer claim supersedes an older handler before domain commit
+- **THEN** the old generation-guarded transaction rolls back
+
 ### Requirement: Complete workflow handler registry
 
 The worker SHALL register handlers for ingestion, summarization, theme analysis, digest creation, pipeline execution, podcast script creation, podcast audio creation, and audio digest creation. Handler registration MUST be validated against declared operation types at startup.

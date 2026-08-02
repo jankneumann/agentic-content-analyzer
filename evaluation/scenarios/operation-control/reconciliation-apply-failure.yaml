@@ -1,0 +1,45 @@
+# The protected target seeds a repair whose audit insert is forced to fail. The item
+# savepoint rolls back, so both steps observe the same repeatable apply_failed finding.
+
+id: operation-control-reconciliation-apply-failure
+name: aca operations reconcile-content returns safe JSON and nonzero for item failure
+description: >
+  Confirms that a guarded apply can continue and return its bounded report while the CLI
+  exits nonzero whenever any item reports apply_failed. The failed item contains only
+  the closed reconciliation projection, never queue payloads, worker IDs, or tracebacks.
+category: operation-control
+priority: 1
+interfaces:
+  - "cli:operations"
+tags:
+  - mutating
+  - requires-target
+  - requires-seeded-reconciliation-apply-failure
+steps:
+  - id: reconciliation-apply-failure-attributed
+    transport: cli
+    command: operations
+    args:
+      - reconcile-content
+      - "--apply"
+      - "--limit"
+      - "1"
+    expect:
+      exit_code: 1
+      not_empty: true
+
+  - id: reconciliation-apply-failure-json
+    transport: cli
+    command: "--json"
+    args:
+      - operations
+      - reconcile-content
+      - "--apply"
+      - "--limit"
+      - "1"
+    expect:
+      exit_code: 1
+      body_contains:
+        mode: apply
+        items:
+          - reason: apply_failed

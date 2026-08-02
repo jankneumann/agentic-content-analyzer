@@ -51,6 +51,36 @@ Operation submission SHALL use the existing queue idempotency key. The system SH
 - **THEN** the latest nonterminal operation handle is returned
 - **AND** execution continues in the queue
 
+### Requirement: Internal retry supports an optional atomic ceiling
+
+The canonical operation service SHALL expose one connection-scoped retry
+primitive that can enforce an optional retry-count ceiling in the lifecycle
+UPDATE while preserving graph lock order, normalized input, parent linkage,
+idempotency, and checkpoints.
+
+#### Scenario: Reconciliation supplies a ceiling
+- **WHEN** locked reconciliation retries a failed leaf below its ceiling
+- **THEN** the same operation row becomes queued and increments once
+- **AND** notification remains transactional with the caller
+
+#### Scenario: Public manual retry omits a ceiling
+- **WHEN** the existing operation retry API is called outside reconciliation
+- **THEN** compatibility behavior remains unchanged through the same locked primitive
+
+#### Scenario: Retry preserves a resumable operation result
+- **WHEN** a failed canonical URL operation carries a strict single-Content webpage extraction checkpoint
+- **THEN** retry preserves it until the newer claim consumes and replaces it
+- **AND** the handler does not restart aggregate URL routing
+
+#### Scenario: Retry validates or clears result evidence
+- **WHEN** a non-pipeline result is considered for preservation
+- **THEN** only the closed strict-v2 URL resume profile with matching ownership is retained
+- **AND** malformed, mismatched, zero-ID, multi-ID, or ordinary stale results are cleared
+
+#### Scenario: Locked caller uses the wrong connection order
+- **WHEN** the graph/root locks were not acquired on the supplied connection
+- **THEN** the locked retry primitive rejects the caller
+
 ### Requirement: Agent-usable structured interfaces
 
 CLI JSON output, HTTP responses, MCP structured results, and frontend client models SHALL conform to the same operation and resource schemas. Expected failures MUST be represented as RFC 7807 problems over HTTP and as protocol-level MCP errors rather than successful payloads containing an `error` key.

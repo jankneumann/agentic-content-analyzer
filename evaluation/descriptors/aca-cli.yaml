@@ -200,6 +200,7 @@ services:
           - cancel
           - get
           - list
+          - reconcile-content
           - retry
           - wait
       - name: pipeline
