@@ -7,10 +7,10 @@
 ## Status
 
 - [x] Planning
-- [ ] Implementation
-- [ ] Testing
-- [ ] Review
-- [ ] Done
+- [x] Implementation
+- [x] Testing
+- [x] Review
+- [x] Done
 
 ## 1. Wire contracts plus policy
 
@@ -133,10 +133,10 @@
   **Spec scenarios**: all
   **Design decisions**: D1-D11
   **Dependencies**: 5.7, 7.2, 7.3
-- [ ] 7.5 [M] Run final quality gates plus independent security/concurrency review
+- [x] 7.5 [M] Run final quality gates plus independent security/concurrency review
   **Dependencies**: 7.4
 
-- [ ] Checkpoint: review cumulative diff, confirm task/spec traceability, record final validation evidence
+- [x] Checkpoint: review cumulative diff, confirm task/spec traceability, record final validation evidence
 
 ## Dependency Summary
 

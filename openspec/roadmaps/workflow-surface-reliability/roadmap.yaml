@@ -164,7 +164,7 @@ items:
     unmet query or retention requirement.
 - item_id: ri-08
   title: Reconcile stuck content states
-  status: approved
+  status: completed
   priority: 8
   effort: L
   depends_on:

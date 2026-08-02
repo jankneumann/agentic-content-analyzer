@@ -67,3 +67,39 @@ Planned a bounded, dry-run-first reconciliation surface backed by exact operatio
 
 ### Context
 Independent review exposed attempt-ownership, mixed-worker, URL-resume, and package-ordering gaps. Revision 3 resolves every critical, high, and medium finding and passes strict OpenSpec plus package validation.
+
+---
+
+## Phase: Implementation (2026-08-02)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Fence domain commits with exact claim ownership** `architectural: job-management` — Persisted operation, generation, phase, and owner version make late-worker writes fail closed.
+2. **Keep reconciliation one-page and default-off** `architectural: agentic-operations` — Dry-run is read-only and apply requires an explicit server gate while canonical retry remains authoritative.
+3. **Reuse the existing status index** — The 10,001-row plan scanned one candidate, so an additional ownership index was not justified.
+
+### Alternatives Considered
+- Create a second recovery state machine: rejected because durable operations, checkpoints, retries, and cancellation already provide the authoritative lifecycle
+- Infer successful URL output from loose payload shape: rejected because only strict one-content checkpoint evidence or an unambiguous exact persisted owner is safe
+
+### Trade-offs
+- Accepted manual bounded reconciliation over automatic periodic sweeping because RI-09 telemetry should establish stable production evidence before automation
+- Accepted additive ownership/provenance storage over schema-free inference because stale computations must be rejected deterministically
+
+### Completed Work
+- Added claim-generation/protocol fencing, exact Content ownership, Summary provenance, and append-only reconciliation audit storage.
+- Added guarded URL and Summary domain commits, connection-scoped canonical retry, bounded dry-run/apply reconciliation, and authenticated API/client/CLI controls.
+- Passed the exact 6,146-test cumulative suite, strict OpenSpec, contract drift, 192 CLI gen-eval tests, 111 surface tests, 23 service/query-plan tests, 11 concurrency tests, and 2 URL recovery E2E tests.
+- Resolved the independent High finding by refreshing locked Content state before ownership checks and hardened malformed URL evidence handling.
+
+### Next Steps
+- Plan and refine RI-09 production telemetry and out-of-band alerting using RI-08 terminal and reconciliation evidence.
+
+### Relevant Files
+- `src/services/content_reconciliation_service.py` — bounded classifier, scan, and atomic apply engine
+- `src/queue/execution_claim.py` — claim context and exact ownership fencing
+- `openspec/changes/stuck-content-sweeper-and-requeue-cli/change-context.md` — requirement traceability and validation evidence
+
+### Context
+Implemented and independently validated bounded content reconciliation with durable claim fencing, exact ownership, canonical retry, and authenticated API/CLI controls.
