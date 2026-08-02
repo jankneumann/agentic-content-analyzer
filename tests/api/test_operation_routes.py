@@ -13,11 +13,80 @@ from fastapi.testclient import TestClient
 from src.api.app import app
 from src.api.dependencies import verify_admin_key
 from src.contracts.workflow_models import (
+    WorkflowAlertVerificationContext,
     WorkflowTerminalDeliveryCounts,
     WorkflowTerminalEventDiagnostic,
 )
 
 EVENT_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+REVISION = "a" * 40
+
+
+def test_workflow_alert_verification_context_is_authenticated_positive_staging_proof(
+    client,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "src.api.operation_routes.get_settings",
+        lambda: type("Settings", (), {"environment": "staging"})(),
+    )
+    monkeypatch.setattr(
+        "src.api.operation_routes.release_identity",
+        lambda: (REVISION, "railway_commit_sha"),
+    )
+
+    response = client.get("/api/v1/workflow-alert-verification-context")
+
+    assert response.status_code == 200
+    assert response.json() == WorkflowAlertVerificationContext(
+        environment_class="staging",
+        revision=REVISION,
+        revision_source="railway_commit_sha",
+    ).model_dump(mode="json")
+    route = next(
+        route
+        for route in app.routes
+        if getattr(route, "path", None) == "/api/v1/workflow-alert-verification-context"
+    )
+    assert verify_admin_key in [dependency.call for dependency in route.dependant.dependencies]
+
+
+def test_workflow_alert_verification_context_fails_closed_outside_verified_staging(
+    client,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "src.api.operation_routes.get_settings",
+        lambda: type("Settings", (), {"environment": "production"})(),
+    )
+    monkeypatch.setattr(
+        "src.api.operation_routes.release_identity",
+        lambda: (REVISION, "railway_commit_sha"),
+    )
+
+    response = client.get("/api/v1/workflow-alert-verification-context")
+
+    assert response.status_code == 503
+    assert "production" not in response.text
+
+
+def test_workflow_alert_verification_context_rejects_untrusted_revision_provenance(
+    client,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "src.api.operation_routes.get_settings",
+        lambda: type("Settings", (), {"environment": "staging"})(),
+    )
+    monkeypatch.setattr(
+        "src.api.operation_routes.release_identity",
+        lambda: ("secret-revision-marker", "unavailable"),
+    )
+
+    response = client.get("/api/v1/workflow-alert-verification-context")
+
+    assert response.status_code == 503
+    assert "secret-revision-marker" not in response.text
 
 
 def _diagnostic() -> WorkflowTerminalEventDiagnostic:
@@ -29,6 +98,8 @@ def _diagnostic() -> WorkflowTerminalEventDiagnostic:
         claim_generation=2,
         terminal_status="failed",
         classification_status="ready",
+        release_revision=REVISION,
+        release_revision_source="railway_commit_sha",
         occurred_at=datetime(2026, 8, 1, 12, tzinfo=UTC),
         telemetry_emitted_at=datetime(2026, 8, 1, 12, 0, 1, tzinfo=UTC),
         delivery_counts=WorkflowTerminalDeliveryCounts(
@@ -74,6 +145,8 @@ def test_terminal_event_diagnostic_is_authenticated_and_allowlist_first(
         "claim_generation",
         "terminal_status",
         "classification_status",
+        "release_revision",
+        "release_revision_source",
         "occurred_at",
         "telemetry_emitted_at",
         "delivery_counts",
@@ -169,3 +242,26 @@ def test_canonical_openapi_owns_terminal_event_diagnostic_contract() -> None:
     assert schema["additionalProperties"] is False
     assert "error" not in schema["properties"]
     assert "envelope" not in schema["properties"]
+
+
+def test_canonical_openapi_owns_alert_verification_context_contract() -> None:
+    with open("openspec/contracts/content-workflows/openapi/v1.yaml") as contract:
+        openapi = yaml.safe_load(contract)
+
+    operation = openapi["paths"]["/api/v1/workflow-alert-verification-context"]["get"]
+    assert operation["operationId"] == "getWorkflowAlertVerificationContext"
+    assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/WorkflowAlertVerificationContext"
+    }
+    schema = openapi["components"]["schemas"]["WorkflowAlertVerificationContext"]
+    assert schema["additionalProperties"] is False
+    assert schema["properties"]["environment_class"] == {"type": "string", "const": "staging"}
+    assert schema["properties"]["revision_source"] == {
+        "type": "string",
+        "const": "railway_commit_sha",
+    }
+    ingestion_response = openapi["components"]["responses"]["AcceptedIngestionOperation"]
+    assert set(ingestion_response["headers"]) == {
+        "X-Release-Revision",
+        "X-Release-Revision-Source",
+    }

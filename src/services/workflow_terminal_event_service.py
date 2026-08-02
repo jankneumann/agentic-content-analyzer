@@ -12,12 +12,15 @@ from uuid import UUID
 
 from pydantic import TypeAdapter, ValidationError
 
+from src.config.release_identity import release_identity
 from src.contracts.workflow_alert_models import (
     WorkflowAlertCounts,
     WorkflowAlertDiagnosticCode,
     WorkflowAlertEnvelopeV1,
     WorkflowAlertResourceReference,
     WorkflowAlertSeverity,
+    WorkflowReleaseRevision,
+    WorkflowReleaseRevisionSource,
     WorkflowTerminalEventV1,
     WorkflowTerminalOutcome,
     WorkflowTerminalSourceKind,
@@ -116,11 +119,15 @@ class WorkflowTerminalEventService:
         diagnostic_origin: str | None = None,
         external_delivery_enabled: bool = False,
         telemetry_emitter: Callable[..., bool] = emit_workflow_terminal_telemetry,
+        release_identity: Callable[
+            [], tuple[str, WorkflowReleaseRevisionSource]
+        ] = release_identity,
     ) -> None:
         self._connection = connection
         self._diagnostic_origin = diagnostic_origin
         self._external_delivery_enabled = external_delivery_enabled
         self._telemetry_emitter = telemetry_emitter
+        self._release_identity = release_identity
 
     async def process_pending_event(
         self,
@@ -145,10 +152,13 @@ class WorkflowTerminalEventService:
             if self._external_delivery_enabled and classification.external_routed:
                 if self._diagnostic_origin is None:
                     raise ValueError("enabled external delivery requires a diagnostic origin")
+                revision, revision_source = self._release_identity()
                 envelope = project_alert_envelope(
                     event,
                     classification,
                     self._diagnostic_origin,
+                    release_revision=revision,
+                    release_revision_source=revision_source,
                 )
             status: Literal["ready", "telemetry_only", "rejected"] = (
                 "ready" if envelope is not None else "telemetry_only"
@@ -216,6 +226,8 @@ class WorkflowTerminalEventService:
             claim_generation=row["claim_generation"],
             terminal_status=row["terminal_status"],
             classification_status=row["classification_status"],
+            release_revision=row["release_revision"],
+            release_revision_source=row["release_revision_source"],
             occurred_at=row["occurred_at"],
             telemetry_emitted_at=row["telemetry_emitted_at"],
             delivery_counts=WorkflowTerminalDeliveryCounts(
@@ -312,6 +324,8 @@ WHERE id = $1
 _DIAGNOSTIC_QUERY = """
 SELECT event.id, event.event_key, event.source_kind, event.operation_id,
        event.claim_generation, event.terminal_status, event.classification_status,
+       event.envelope->>'release_revision' AS release_revision,
+       event.envelope->>'release_revision_source' AS release_revision_source,
        event.occurred_at, event.telemetry_emitted_at,
        COUNT(delivery.id) FILTER (WHERE delivery.status = 'pending') AS deliveries_pending,
        COUNT(delivery.id) FILTER (WHERE delivery.status = 'leased') AS deliveries_leased,
@@ -563,6 +577,9 @@ def project_alert_envelope(
     event: TerminalEventEvidence,
     classification: TerminalClassification,
     trusted_origin: str,
+    *,
+    release_revision: WorkflowReleaseRevision = "development",
+    release_revision_source: WorkflowReleaseRevisionSource = "local_development",
 ) -> WorkflowAlertEnvelopeV1:
     """Project an allowlist-first v1 external envelope or fail closed."""
 
@@ -594,6 +611,8 @@ def project_alert_envelope(
         ),
         source_kind=event.source_kind,
         workflow_type=classification.workflow_type,
+        release_revision=release_revision,
+        release_revision_source=release_revision_source,
         operation_id=operation_id,
         attempt=attempt,
         diagnostic_url=diagnostic_url,

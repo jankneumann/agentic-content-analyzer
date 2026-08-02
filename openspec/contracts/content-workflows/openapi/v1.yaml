@@ -164,7 +164,7 @@ paths:
               force_reprocess: false
       responses:
         "202":
-          $ref: "#/components/responses/AcceptedOperation"
+          $ref: "#/components/responses/AcceptedIngestionOperation"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/ConflictProblem" }
@@ -398,6 +398,21 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationProblem" }
 
+  /api/v1/workflow-alert-verification-context:
+    get:
+      operationId: getWorkflowAlertVerificationContext
+      summary: Read positive staging deployment identity for destructive alert verification
+      tags: [operations, observability]
+      responses:
+        "200":
+          description: Authenticated staging deployment identity
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkflowAlertVerificationContext" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ProblemResponse" }
+
   /api/v1/workflow-terminal-events/{event_id}:
     get:
       operationId: getWorkflowTerminalEvent
@@ -562,6 +577,23 @@ components:
             created_at: "2026-07-13T10:00:00Z"
             started_at: null
             completed_at: null
+    AcceptedIngestionOperation:
+      description: Durable ingestion accepted with the serving release identity
+      headers:
+        X-Release-Revision:
+          required: true
+          schema:
+            type: string
+            maxLength: 40
+            pattern: "^(?:[a-f0-9]{40}|development|unavailable)$"
+        X-Release-Revision-Source:
+          required: true
+          schema:
+            type: string
+            enum: [railway_commit_sha, local_development, unavailable]
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/OperationHandle" }
     ProblemResponse:
       description: RFC 7807 problem
       content:
@@ -1039,6 +1071,16 @@ components:
           items: { $ref: "#/components/schemas/OperationSummary" }
         next_cursor: { type: [string, "null"], maxLength: 2048 }
 
+    WorkflowAlertVerificationContext:
+      type: object
+      additionalProperties: false
+      required: [schema_version, environment_class, revision, revision_source]
+      properties:
+        schema_version: { type: integer, const: 1 }
+        environment_class: { type: string, const: staging }
+        revision: { type: string, minLength: 40, maxLength: 40, pattern: "^[a-f0-9]{40}$" }
+        revision_source: { type: string, const: railway_commit_sha }
+
     WorkflowTerminalDeliveryCounts:
       type: object
       additionalProperties: false
@@ -1062,6 +1104,8 @@ components:
         - claim_generation
         - terminal_status
         - classification_status
+        - release_revision
+        - release_revision_source
         - occurred_at
         - telemetry_emitted_at
         - delivery_counts
@@ -1086,6 +1130,13 @@ components:
         classification_status:
           type: string
           enum: [pending, ready, telemetry_only, rejected]
+        release_revision:
+          type: [string, "null"]
+          maxLength: 40
+          pattern: "^(?:[a-f0-9]{40}|development|unavailable)$"
+        release_revision_source:
+          type: [string, "null"]
+          enum: [railway_commit_sha, local_development, unavailable, null]
         occurred_at: { type: string, format: date-time }
         telemetry_emitted_at: { type: [string, "null"], format: date-time }
         delivery_counts: { $ref: "#/components/schemas/WorkflowTerminalDeliveryCounts" }

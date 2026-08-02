@@ -6,13 +6,25 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 
 from src.api.workflow_dependencies import (
     get_operation_service,
     get_sources_config,
     get_upload_service,
 )
+from src.config.release_identity import release_identity
 from src.config.sources import SourcesConfig
 from src.contracts.workflow_models import (
     IngestCommand,
@@ -166,6 +178,7 @@ async def create_upload(
 )
 async def submit_ingestion(
     command: IngestCommand,
+    response: Response,
     idempotency_key: Annotated[
         str | None, Header(alias="Idempotency-Key", min_length=8, max_length=200)
     ] = None,
@@ -194,4 +207,7 @@ async def submit_ingestion(
         payload,
         idempotency_key=idempotency_key,
     )
+    revision, revision_source = release_identity()
+    response.headers["X-Release-Revision"] = revision
+    response.headers["X-Release-Revision-Source"] = revision_source
     return OperationHandle.model_validate(handle.model_dump(mode="json"))

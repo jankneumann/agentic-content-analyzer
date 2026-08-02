@@ -19,6 +19,8 @@ from src.api.workflow_dependencies import (
     get_operation_service,
     get_sources_config,
 )
+from src.config.release_identity import release_identity
+from src.config.settings import get_settings
 from src.config.sources import SourcesConfig
 from src.contracts.workflow_models import (
     CapabilityDocument,
@@ -28,6 +30,7 @@ from src.contracts.workflow_models import (
     OperationHandle,
     OperationPage,
     Problem,
+    WorkflowAlertVerificationContext,
     WorkflowTerminalEventDiagnostic,
 )
 from src.models.jobs import OperationStatus
@@ -41,6 +44,8 @@ from src.services.operation_service import OperationService
 from src.services.workflow_terminal_event_service import WorkflowTerminalEventService
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
+
+_TRUSTED_ALERT_VERIFICATION_REVISION_SOURCE = "railway_commit_sha"
 
 
 @router.get("/capabilities", response_model=CapabilityDocument)
@@ -71,6 +76,31 @@ async def list_operations(
 ) -> OperationPage:
     page = await service.list(limit=limit, cursor=cursor, status=status)
     return OperationPage.model_validate(page.model_dump(mode="json"))
+
+
+@router.get(
+    "/workflow-alert-verification-context",
+    response_model=WorkflowAlertVerificationContext,
+    dependencies=[Depends(verify_admin_key)],
+)
+async def get_workflow_alert_verification_context() -> WorkflowAlertVerificationContext:
+    """Return positive deployment identity only for verified Railway staging."""
+
+    revision, revision_source = release_identity()
+    if (
+        get_settings().environment != "staging"
+        or revision_source != _TRUSTED_ALERT_VERIFICATION_REVISION_SOURCE
+        or len(revision) != 40
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Workflow alert verification context not ready",
+        )
+    return WorkflowAlertVerificationContext(
+        environment_class="staging",
+        revision=revision,
+        revision_source=_TRUSTED_ALERT_VERIFICATION_REVISION_SOURCE,
+    )
 
 
 @router.get(

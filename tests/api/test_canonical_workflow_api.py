@@ -468,8 +468,12 @@ def test_operation_failures_are_rfc7807(
 
 
 def test_ingestion_is_strict_queued_and_rejects_internal_snapshots(
-    canonical_client, operation_service
+    canonical_client, operation_service, monkeypatch
 ) -> None:
+    monkeypatch.setattr(
+        "src.api.ingestion_routes.release_identity",
+        lambda: ("development", "local_development"),
+    )
     response = canonical_client.post(
         "/api/v1/ingestions",
         json={"kind": "arxiv_paper", "identifier": "2401.12345"},
@@ -488,6 +492,8 @@ def test_ingestion_is_strict_queued_and_rejects_internal_snapshots(
         json={"kind": "x_search", "prompt": "agents", "max_threads": 0},
     )
     assert response.status_code == 202
+    assert response.headers["X-Release-Revision"] == "development"
+    assert response.headers["X-Release-Revision-Source"] == "local_development"
     assert extra.status_code == internal.status_code == invalid.status_code == 422
     assert extra.headers["content-type"].startswith("application/problem+json")
     assert extra.json()["code"] == "validation_error"

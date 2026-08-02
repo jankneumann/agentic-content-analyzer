@@ -26,6 +26,8 @@ def _envelope() -> WorkflowAlertEnvelopeV1:
         outcome="failed",
         source_kind="operation",
         workflow_type="ingestion.execute",
+        release_revision="development",
+        release_revision_source="local_development",
         operation_id="42",
         attempt=1,
         diagnostic_url="https://ops.example.com/api/v1/operations/42",

@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
-CONTRACT_SHA256 = "1ed644ae9edbad88ba7f100dba87cf444b49be11d4e689a8ce11fc067eb3f6cb"
+CONTRACT_SHA256 = "13f4e790854394071189426bb8ac7818621879b46398fcc7effe58503b63d29d"
 
 OperationStatus = Literal["queued", "in_progress", "completed", "failed", "cancelled"]
 OperationType = Literal[
@@ -442,6 +442,13 @@ class OperationPage(StrictModel):
     next_cursor: str | None = Field(None, max_length=2048)
 
 
+class WorkflowAlertVerificationContext(StrictModel):
+    schema_version: Literal[1] = 1
+    environment_class: Literal["staging"] = "staging"
+    revision: Annotated[str, Field(min_length=40, max_length=40, pattern="^[a-f0-9]{40}$")]
+    revision_source: Literal["railway_commit_sha"] = "railway_commit_sha"
+
+
 class WorkflowTerminalDeliveryCounts(StrictModel):
     pending: Annotated[int, Field(ge=0, le=9223372036854775807)]
     leased: Annotated[int, Field(ge=0, le=9223372036854775807)]
@@ -459,6 +466,10 @@ class WorkflowTerminalEventDiagnostic(StrictModel):
     claim_generation: Annotated[int | None, Field(ge=0, le=2147483647)]
     terminal_status: Literal["completed", "failed", "cancelled", None]
     classification_status: Literal["pending", "ready", "telemetry_only", "rejected"]
+    release_revision: Annotated[
+        str | None, Field(max_length=40, pattern="^(?:[a-f0-9]{40}|development|unavailable)$")
+    ]
+    release_revision_source: Literal["railway_commit_sha", "local_development", "unavailable", None]
     occurred_at: datetime
     telemetry_emitted_at: datetime | None
     delivery_counts: WorkflowTerminalDeliveryCounts

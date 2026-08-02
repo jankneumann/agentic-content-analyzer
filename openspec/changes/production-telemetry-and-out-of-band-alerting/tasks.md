@@ -114,12 +114,12 @@
 
 ## 6. Verification, documentation, and closeout
 
-- [ ] 6.1 [M] Write verifier tests for deadline, schema validation, receiver deduplication, receipt hashing, redaction assertions, and safe failure output
+- [x] 6.1 [M] Write verifier tests for deadline, schema validation, receiver deduplication, receipt hashing, redaction assertions, and safe failure output
   **Spec scenarios**: Controlled staging alert arrives; Staging receipt is missing or duplicated
   **Dependencies**: 1.2, 4.6
-- [ ] 6.2 [M] Implement the non-production idempotent receiver fixture and sanitized staging verification command/evidence path
+- [x] 6.2 [M] Implement the non-production idempotent receiver fixture and sanitized staging verification command/evidence path
   **Dependencies**: 6.1
-- [ ] 6.3 [S] Document configuration, secret provisioning, receiver idempotency contract, retry/exhaustion operations, staging procedure, and rollback
+- [x] 6.3 [S] Document configuration, secret provisioning, receiver idempotency contract, retry/exhaustion operations, staging procedure, and rollback
   **Spec scenarios**: all
   **Design decisions**: D1-D10
   **Dependencies**: 5.5, 6.2

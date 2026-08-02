@@ -405,6 +405,8 @@ def test_diagnostic_url_and_envelope_correlate_exact_identity() -> None:
     assert envelope.operation_id == "42"
     assert envelope.event_key == "operation:42:claim:2:status:failed"
     assert envelope.attempt == 3
+    assert envelope.release_revision == "development"
+    assert envelope.release_revision_source == "local_development"
     assert str(envelope.diagnostic_url) == "https://ops.example.com/api/v1/operations/42"
 
 
@@ -452,6 +454,7 @@ async def test_processing_reads_fresh_closed_state_then_checkpoints_telemetry() 
         diagnostic_origin="https://ops.example.com",
         external_delivery_enabled=True,
         telemetry_emitter=emitter,
+        release_identity=lambda: ("a" * 40, "railway_commit_sha"),
     )
 
     processed = await service.process_pending_event(EVENT_ID)
@@ -461,6 +464,8 @@ async def test_processing_reads_fresh_closed_state_then_checkpoints_telemetry() 
     assert processed.envelope is not None
     assert processed.envelope.event_key == "operation:42:claim:0:status:failed"
     assert processed.envelope.attempt == 1
+    assert processed.envelope.release_revision == "a" * 40
+    assert processed.envelope.release_revision_source == "railway_commit_sha"
     operation_sql = connection.fetchrow.await_args_list[1].args[0]
     assert "payload->'result'" in operation_sql
     assert "problem" not in operation_sql

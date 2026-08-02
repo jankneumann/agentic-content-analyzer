@@ -337,6 +337,119 @@ Retention horizons must be 1-3650 days, the failed horizon cannot be shorter
 than the completed horizon, the interval is 60-86400 seconds, and the batch is
 1-1000 root graphs. Zero is invalid rather than an implicit disable switch.
 
+#### Workflow alert operations and staging proof
+
+Workflow alerts are durable at-least-once deliveries. Every retry for one
+delivery uses the same `Idempotency-Key`; the receiver must collapse that key
+into one operator notification. A committed claim has a recoverable lease and
+network I/O occurs after the claim transaction. A 2xx response succeeds; 408,
+429, 5xx, timeouts, and connection failures retry with bounded backoff; other
+4xx responses are permanent. Attempt or age ceilings produce queryable
+`exhausted` evidence without recursively alerting.
+
+Use the authenticated terminal-event diagnostic route linked from an alert to
+inspect the closed lifecycle and delivery counts. It intentionally excludes
+the envelope, endpoint, response body, input, result, raw error, and secrets:
+
+```bash
+curl -fsS \
+  -H "X-Admin-Key: ${ADMIN_API_KEY}" \
+  "https://api.staging.example/api/v1/workflow-terminal-events/<event-uuid>"
+```
+
+The repository includes a bounded, single-process receiver fixture for an
+approved non-production staging deployment. It validates the closed v1
+envelope, requires and verifies HMAC-SHA256, retains at most 1,000 metadata-only
+receipts, and collapses stable delivery keys. It is not a production receiver
+and must run with one process because its short-lived receipt registry is
+in-memory. Run it from a source checkout for a local rehearsal:
+
+```bash
+WORKFLOW_ALERT_RECEIVER_ADMIN_TOKEN=<random-staging-token> \
+WORKFLOW_ALERT_WEBHOOK_SECRET=<same-staging-signing-secret-as-api> \
+uv run uvicorn tests.fixtures.workflow_alert_receiver.app:app \
+  --host 0.0.0.0 --port 8000 --workers 1
+```
+
+The normal application image intentionally excludes `tests/`. For a separate
+staging receiver service, use the fixture's dedicated validation image instead
+of the application Dockerfile:
+
+```bash
+docker build \
+  -f tests/fixtures/workflow_alert_receiver/Dockerfile \
+  -t aca-workflow-alert-receiver:staging .
+```
+
+On Railway, configure the receiver service's Dockerfile path as
+`tests/fixtures/workflow_alert_receiver/Dockerfile`, keep it in a staging-only
+environment, set the two receiver secrets as protected service variables, and
+retain the image's fixed one-worker command.
+
+Expose the receiver through the staging platform's HTTPS ingress, then set the
+API deployment's `WORKFLOW_ALERT_WEBHOOK_ENDPOINT` to its exact `/webhook`
+route and `WORKFLOW_ALERT_ALLOWED_HOSTS` to that one public hostname. Do not
+weaken private-address policy to connect services over an internal hostname;
+the staging proof exercises the same exact-host and DNS policy required for
+production.
+
+Before it mutates anything, the verifier reads an authenticated positive
+staging attestation from the API. The attestation must report `staging`, the
+trusted Railway commit-SHA provenance, and the exact expected 40-character
+revision. The same attestation is checked again after correlation so a rollout
+during the run fails closed. The submission response identifies the serving API
+revision, while the classifying worker persists its revision and provenance in
+the closed envelope delivered to the receiver. The diagnostic and metadata-only
+receipt expose those same safe fields. The verifier requires all four surfaces
+to match the pre/post attestation, and includes the verified revision and
+provenance in v1 evidence. It submits one controlled `files` ingestion with a
+nonexistent opaque upload reference. The durable worker failure is
+alert-eligible and contains a synthetic redaction marker internally; neither
+that input nor its raw failure may reach the receiver receipt or evidence.
+
+During a rolling upgrade, pre-upgrade persisted v1 envelopes without release
+provenance remain dispatchable. The generic v1 contract accepts the provenance
+fields only as an all-or-none pair and omits them when absent; every newly
+classified envelope includes both. Staging proof is intentionally stricter and
+rejects a legacy receipt because it cannot bind that delivery to the expected
+revision.
+
+Credentials and origins are environment-only:
+
+```bash
+export WORKFLOW_ALERT_VERIFY_TARGET_CLASS=staging
+export WORKFLOW_ALERT_VERIFY_API_ORIGIN=https://api.staging.example
+export WORKFLOW_ALERT_VERIFY_RECEIVER_ORIGIN=https://alerts.staging.example
+export WORKFLOW_ALERT_VERIFY_EXPECTED_REVISION=<full-deployed-commit-sha>
+export WORKFLOW_ALERT_VERIFY_PRODUCTION_ORIGINS=https://api.example,https://alerts.example
+export ADMIN_API_KEY=<staging-admin-key>
+export WORKFLOW_ALERT_RECEIVER_ADMIN_TOKEN=<staging-receiver-token>
+
+uv run python scripts/verify_workflow_alerting.py \
+  --deadline-seconds 180 \
+  --output openspec/changes/production-telemetry-and-out-of-band-alerting/evidence/staging-alert.json
+```
+
+The command exits nonzero for a deadline, missing or duplicate receipt,
+revision mismatch, correlation mismatch, redaction failure, schema failure, or
+unsafe/production origin. Before the first network request it removes an
+existing output only when that regular file is already schema-valid staging
+evidence. Unknown files, symlinks, and legacy temporary paths remain untouched
+and fail closed. Current-run writes use a uniquely created temporary file and
+atomic replacement. Receiver input and verifier HTTP responses stream through
+finite byte ceilings. Failure output is a closed code: it never prints the
+endpoint, headers, body, credentials, operation result, or raw error. Commit
+`staging-alert.json` only when this exact command ran against an approved real
+staging API and receiver. Local or mocked rehearsals belong under `/tmp` and
+must not be presented as staging evidence.
+
+Rollback external delivery by setting `WORKFLOW_ALERT_SINK=noop` and deploying
+that configuration. Terminal event classification and safe local telemetry
+continue, no new webhook request is made, and existing delivery/evidence rows
+remain available under retention policy. After confirming no request is in
+flight, the staging fixture can be stopped; do not delete durable evidence as
+part of alert rollback.
+
 `OperationService` is the only application boundary for workflow submission
 and controls. New producers must enqueue one of the canonical operation types;
 they must not accept arbitrary entrypoints or execute workflow services inline.

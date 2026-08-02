@@ -1,5 +1,5 @@
 // Generated from contracts/openapi/v1.yaml; do not edit.
-export const CONTRACT_SHA256 = "1ed644ae9edbad88ba7f100dba87cf444b49be11d4e689a8ce11fc067eb3f6cb" as const;
+export const CONTRACT_SHA256 = "13f4e790854394071189426bb8ac7818621879b46398fcc7effe58503b63d29d" as const;
 
 export type OperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 export type OperationType = "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
@@ -189,6 +189,13 @@ export interface OperationPage {
   next_cursor?: string | null;
 }
 
+export interface WorkflowAlertVerificationContext {
+  schema_version: 1;
+  environment_class: "staging";
+  revision: string;
+  revision_source: "railway_commit_sha";
+}
+
 export interface WorkflowTerminalDeliveryCounts {
   pending: number;
   leased: number;
@@ -206,6 +213,8 @@ export interface WorkflowTerminalEventDiagnostic {
   claim_generation: number | null;
   terminal_status: "completed" | "failed" | "cancelled" | null;
   classification_status: "pending" | "ready" | "telemetry_only" | "rejected";
+  release_revision: string | null;
+  release_revision_source: "railway_commit_sha" | "local_development" | "unavailable" | null;
   occurred_at: string;
   telemetry_emitted_at: string | null;
   delivery_counts: WorkflowTerminalDeliveryCounts;

@@ -53,6 +53,8 @@ def _valid_envelope(
         outcome="failed",
         source_kind="operation",
         workflow_type="ingestion.execute",
+        release_revision="development",
+        release_revision_source="local_development",
         operation_id=str(operation_id),
         attempt=generation + 1,
         diagnostic_url=f"https://ops.example.com/api/v1/operations/{operation_id}",
@@ -146,6 +148,45 @@ def test_corrupt_persisted_envelope_is_closed_without_becoming_dispatchable(test
                 delete(WorkflowTerminalEvent).where(
                     WorkflowTerminalEvent.id.in_([delivery.event_id, valid_delivery.event_id])
                 )
+            )
+            cleanup.commit()
+
+
+def test_legacy_persisted_v1_envelope_remains_dispatchable_during_upgrade(test_engine) -> None:
+    factory = sessionmaker(bind=test_engine, expire_on_commit=False)
+    now = datetime.now(UTC).replace(microsecond=0)
+    legacy = _valid_envelope(
+        event_id=uuid4(),
+        operation_id=42,
+        generation=0,
+        now=now,
+    )
+    legacy.pop("release_revision")
+    legacy.pop("release_revision_source")
+    with factory() as seed:
+        delivery = _insert_ready_delivery(seed, now=now, envelope=legacy)
+
+    try:
+        with factory() as db:
+            claims = claim_due_deliveries(
+                db,
+                now=now,
+                lease_seconds=20,
+                batch_size=1,
+                policy=_policy(),
+            )
+
+        assert len(claims) == 1
+        assert claims[0].delivery_id == delivery.id
+        assert claims[0].envelope.release_revision is None
+        assert claims[0].envelope.release_revision_source is None
+    finally:
+        with factory() as cleanup:
+            cleanup.execute(
+                delete(WorkflowAlertDelivery).where(WorkflowAlertDelivery.id == delivery.id)
+            )
+            cleanup.execute(
+                delete(WorkflowTerminalEvent).where(WorkflowTerminalEvent.id == delivery.event_id)
             )
             cleanup.commit()
 

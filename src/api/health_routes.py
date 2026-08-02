@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
-import re
-from collections.abc import Mapping
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
@@ -13,6 +10,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from src.config import settings
+from src.config.release_identity import release_identity
 from src.utils.logging import get_logger
 
 if TYPE_CHECKING:
@@ -22,26 +20,7 @@ logger = get_logger(__name__)
 
 router = APIRouter(tags=["system"])
 
-_COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")
-
-
-def _release_identity(environ: Mapping[str, str] | None = None) -> tuple[str, str]:
-    """Return the immutable platform revision and its provenance.
-
-    A present but malformed higher-priority platform value fails closed instead
-    of falling through to a lower-trust label. Application-specific runtime
-    overrides are intentionally ignored.
-    """
-    values = os.environ if environ is None else environ
-    railway_revision = values.get("RAILWAY_GIT_COMMIT_SHA")
-    if railway_revision is not None:
-        if _COMMIT_SHA.fullmatch(railway_revision):
-            return railway_revision, "railway_commit_sha"
-        return "unavailable", "unavailable"
-
-    if values.get("GITHUB_SHA") is not None:
-        return "unavailable", "unavailable"
-    return "development", "local_development"
+_release_identity = release_identity
 
 
 @lru_cache(maxsize=1)

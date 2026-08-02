@@ -101,6 +101,8 @@ def test_allowlist_projection_never_exports_hostile_diagnostics_or_extensions(
         "outcome",
         "source_kind",
         "workflow_type",
+        "release_revision",
+        "release_revision_source",
         "operation_id",
         "attempt",
         "diagnostic_url",

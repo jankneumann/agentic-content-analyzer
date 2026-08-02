@@ -42,6 +42,14 @@
         "content.reconciliation"
       ]
     },
+    "release_revision": {
+      "type": "string",
+      "maxLength": 40,
+      "pattern": "^(?:[a-f0-9]{40}|development|unavailable)$"
+    },
+    "release_revision_source": {
+      "enum": ["railway_commit_sha", "local_development", "unavailable"]
+    },
     "operation_id": {"type": ["string", "null"], "maxLength": 19, "pattern": "^[1-9][0-9]*$"},
     "attempt": {"type": "integer", "minimum": 1, "maximum": 2147483648},
     "diagnostic_url": {
@@ -150,7 +158,32 @@
       "uniqueItems": true
     }
   },
+  "dependentRequired": {
+    "release_revision": ["release_revision_source"],
+    "release_revision_source": ["release_revision"]
+  },
   "allOf": [
+    {
+      "if": {
+        "required": ["release_revision_source"],
+        "properties": {"release_revision_source": {"const": "railway_commit_sha"}}
+      },
+      "then": {"properties": {"release_revision": {"pattern": "^[a-f0-9]{40}$"}}}
+    },
+    {
+      "if": {
+        "required": ["release_revision_source"],
+        "properties": {"release_revision_source": {"const": "local_development"}}
+      },
+      "then": {"properties": {"release_revision": {"const": "development"}}}
+    },
+    {
+      "if": {
+        "required": ["release_revision_source"],
+        "properties": {"release_revision_source": {"const": "unavailable"}}
+      },
+      "then": {"properties": {"release_revision": {"const": "unavailable"}}}
+    },
     {
       "if": {"properties": {"source_kind": {"const": "operation"}}},
       "then": {

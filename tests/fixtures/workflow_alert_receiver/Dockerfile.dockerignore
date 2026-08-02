@@ -1,0 +1,5 @@
+**
+!pyproject.toml
+!uv.lock
+!src/**
+!tests/fixtures/workflow_alert_receiver/app.py

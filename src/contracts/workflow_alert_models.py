@@ -33,6 +33,11 @@ WorkflowTerminalSourceKind = Literal["operation", "reconciliation_action", "reco
 WorkflowAlertDeliveryStatus = Literal[
     "pending", "leased", "delivered", "permanent_failure", "exhausted"
 ]
+WorkflowReleaseRevision = Annotated[
+    str,
+    Field(pattern="^(?:[a-f0-9]{40}|development|unavailable)$", max_length=40),
+]
+WorkflowReleaseRevisionSource = Literal["railway_commit_sha", "local_development", "unavailable"]
 
 BoundedPositiveIdentifier = Annotated[
     str,
@@ -182,6 +187,8 @@ class WorkflowAlertEnvelopeV1(StrictModel):
     outcome: Literal["partial", "zero_items", "failed", "unknown", "reconciled"]
     source_kind: WorkflowTerminalSourceKind
     workflow_type: WorkflowTypeName
+    release_revision: WorkflowReleaseRevision | None = None
+    release_revision_source: WorkflowReleaseRevisionSource | None = None
     operation_id: BoundedPositiveIdentifier | None
     attempt: Annotated[int, Field(ge=1, le=2_147_483_648)]
     diagnostic_url: WorkflowDiagnosticUrl
@@ -192,6 +199,17 @@ class WorkflowAlertEnvelopeV1(StrictModel):
     ]
     counts: WorkflowAlertCounts
     codes: Annotated[list[WorkflowAlertDiagnosticCode], Field(max_length=20)]
+
+    @model_serializer(mode="wrap")
+    def serialize_legacy_compatible(
+        self,
+        serializer: SerializerFunctionWrapHandler,
+    ) -> dict[str, Any]:
+        serialized: dict[str, Any] = serializer(self)
+        if self.release_revision is None:
+            serialized.pop("release_revision", None)
+            serialized.pop("release_revision_source", None)
+        return serialized
 
     @field_validator("diagnostic_url")
     @classmethod
@@ -220,6 +238,23 @@ class WorkflowAlertEnvelopeV1(StrictModel):
 
     @model_validator(mode="after")
     def validate_closed_identity_and_collections(self) -> WorkflowAlertEnvelopeV1:
+        if (self.release_revision is None) != (self.release_revision_source is None):
+            raise ValueError("release revision and provenance must be present together")
+        if self.release_revision is None or self.release_revision_source is None:
+            return self._validate_identity_and_collections()
+        expected_revision = {
+            "railway_commit_sha": self.release_revision,
+            "local_development": "development",
+            "unavailable": "unavailable",
+        }[self.release_revision_source]
+        if self.release_revision_source == "railway_commit_sha":
+            if re.fullmatch(r"[a-f0-9]{40}", self.release_revision) is None:
+                raise ValueError("Railway release provenance requires a commit SHA")
+        elif self.release_revision != expected_revision:
+            raise ValueError("release revision must match its closed provenance")
+        return self._validate_identity_and_collections()
+
+    def _validate_identity_and_collections(self) -> WorkflowAlertEnvelopeV1:
         if len(self.source_keys) != len(set(self.source_keys)):
             raise ValueError("workflow alert source_keys must be unique")
         if len(self.codes) != len(set(self.codes)):
@@ -338,6 +373,8 @@ class WorkflowAlertStagingEvidenceV1(StrictModel):
 
     schema_version: Literal[1] = 1
     environment_class: Literal["staging"] = "staging"
+    revision: Annotated[str, Field(min_length=40, max_length=40, pattern="^[a-f0-9]{40}$")]
+    revision_source: Literal["railway_commit_sha"] = "railway_commit_sha"
     operation_id: BoundedPositiveIdentifier
     attempt: Annotated[int, Field(ge=1, le=2_147_483_648)]
     event_id: UUID

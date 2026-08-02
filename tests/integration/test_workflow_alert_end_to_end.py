@@ -101,6 +101,8 @@ def _ready_event(*, operation_id: int, event_id: UUID, now: datetime) -> Workflo
         outcome="failed",
         source_kind="operation",
         workflow_type="ingestion.execute",
+        release_revision="development",
+        release_revision_source="local_development",
         operation_id=str(operation_id),
         attempt=1,
         diagnostic_url=f"https://ops.example.com/api/v1/operations/{operation_id}",

@@ -50,3 +50,60 @@ Expanded the RI-09 scaffold into a coordinated, test-first plan for transactiona
 
 ### Context
 Resolved the scaffold review findings by specifying classification precedence, graph aggregation, secure diagnostic links, SSRF-safe webhook delivery, leases, retry exhaustion, reconciliation atomicity, and staging evidence. The plan now has explicit dependencies and two conflict-free parallel implementation branches.
+
+---
+
+## Phase: Implementation Review Remediation (2026-08-02)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Attest staging and revision through an authenticated canonical endpoint** — The verifier requires a staging-only response backed by Railway's deployed commit identity before mutation and rechecks it after correlation.
+2. **Require receiver signing readiness** — The bounded fixture reports ready and accepts delivery only when a signing secret of at least 32 characters is configured.
+3. **Fail closed around response and evidence storage** — Network bodies are streamed under a fixed cap, stale output is removed before the run, and filesystem failures leave no evidence artifact.
+
+### Review Findings Resolved
+- Added the verified 40-character revision to the evidence schema and typed model.
+- Added the authenticated staging verification-context contract, generated bindings, route, and API regressions.
+- Added request-body streaming and early size rejection to the receiver fixture.
+- Added pre-run stale evidence cleanup and closed filesystem error handling.
+- Added pre-submit and post-correlation environment/revision verification.
+- Added mandatory HMAC readiness plus bounded response streaming and tests.
+
+### Validation Boundary
+Tasks 6.1 through 6.3 are implemented and locally validated. Task 6.4 remains open because Railway and Neon were not authenticated in this environment and no approved staging receiver was discoverable. No staging evidence artifact was created.
+
+---
+
+## Phase: Implementation Review Remediation 2 (2026-08-02)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Persist classifying-worker provenance in the closed envelope** — The existing JSONB envelope now carries the worker's release revision and source, so no operation-table migration is required.
+2. **Bind every exercised surface to one release** — Ingestion response headers identify the serving API revision; the diagnostic reads persisted envelope provenance; delivery sends that envelope unchanged; and the receiver copies the same fields into its closed receipt.
+3. **Never infer ownership from an arbitrary output path** — Only a regular schema-valid prior staging-evidence file may be removed. Unknown files, symlinks, and legacy temporary files are preserved and fail closed; current-run temporary files are uniquely created.
+
+### Review Findings Resolved
+- Closed the mixed-revision rollout gap by requiring submit, worker/event, delivery receipt, and pre/post authenticated context identities to match the expected Railway SHA.
+- Added verification-context routes to the RFC 7807 Problem-path allowlist.
+- Canonicalized implicit and explicit HTTPS port 443 and reconstructed IPv6 origins with brackets.
+- Added output and legacy-temporary ownership regressions plus unique atomic temporary writes.
+
+### Validation Boundary
+No live staging action was performed and no evidence artifact was created. Task 6.4 remains open pending authenticated approved staging access.
+
+---
+
+## Phase: Implementation Review Remediation 3 (2026-08-02)
+
+**Agent**: codex | **Session**: N/A
+
+### Decision
+**Preserve schema-version 1 rolling-upgrade compatibility** — Generic alert envelopes accept release revision/provenance only as an optional all-or-none pair. Newly classified envelopes always persist the pair, while legacy stored envelopes serialize and deliver without synthetic null fields. The staging verifier remains stricter and requires the exact non-null Railway pair.
+
+### Review Finding Resolved
+- Added schema, model, receiver, and PostgreSQL delivery regressions proving that pre-upgrade v1 envelopes remain dispatchable, one-sided provenance is rejected, and missing provenance can never satisfy staging evidence verification.
+
+### Validation Boundary
+No live staging action was performed and no evidence artifact was created. Task 6.4 remains open pending authenticated approved staging access.

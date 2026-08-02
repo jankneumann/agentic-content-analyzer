@@ -7,6 +7,8 @@
   "required": [
     "schema_version",
     "environment_class",
+    "revision",
+    "revision_source",
     "operation_id",
     "attempt",
     "event_id",
@@ -21,6 +23,8 @@
   "properties": {
     "schema_version": {"const": 1},
     "environment_class": {"const": "staging"},
+    "revision": {"type": "string", "maxLength": 40, "pattern": "^[a-f0-9]{40}$"},
+    "revision_source": {"const": "railway_commit_sha"},
     "operation_id": {"type": "string", "maxLength": 19, "pattern": "^[1-9][0-9]*$"},
     "attempt": {"type": "integer", "minimum": 1, "maximum": 2147483648},
     "event_id": {"type": "string", "format": "uuid", "maxLength": 36},

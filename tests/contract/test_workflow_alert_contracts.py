@@ -49,6 +49,8 @@ def _valid_envelope() -> dict[str, object]:
         "outcome": "failed",
         "source_kind": "operation",
         "workflow_type": "ingestion.execute",
+        "release_revision": "a" * 40,
+        "release_revision_source": "railway_commit_sha",
         "operation_id": "42",
         "attempt": 4,
         "diagnostic_url": "https://ops.example.com/api/v1/operations/42",
@@ -63,6 +65,8 @@ def _valid_staging_evidence() -> dict[str, object]:
     return {
         "schema_version": 1,
         "environment_class": "staging",
+        "revision": "a" * 40,
+        "revision_source": "railway_commit_sha",
         "operation_id": "42",
         "attempt": 3,
         "event_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -182,6 +186,53 @@ def test_workflow_alert_envelope_rejects_pattern_shaped_untrusted_values(
     with pytest.raises(JsonSchemaValidationError):
         _validate(_load_schema("workflow-alert-envelope.schema.json"), instance)
     with pytest.raises(ValidationError):
+        WorkflowAlertEnvelopeV1.model_validate(instance)
+
+
+@pytest.mark.parametrize(
+    ("revision", "source"),
+    [
+        ("development", "railway_commit_sha"),
+        ("a" * 40, "local_development"),
+        ("a" * 40, "unavailable"),
+    ],
+)
+def test_workflow_alert_envelope_rejects_mismatched_release_provenance(
+    revision: str,
+    source: str,
+) -> None:
+    instance = {
+        **_valid_envelope(),
+        "release_revision": revision,
+        "release_revision_source": source,
+    }
+
+    with pytest.raises(JsonSchemaValidationError):
+        _validate(_load_schema("workflow-alert-envelope.schema.json"), instance)
+    with pytest.raises(ValidationError, match="release"):
+        WorkflowAlertEnvelopeV1.model_validate(instance)
+
+
+def test_workflow_alert_envelope_accepts_legacy_absent_release_provenance() -> None:
+    instance = _valid_envelope()
+    instance.pop("release_revision")
+    instance.pop("release_revision_source")
+
+    _validate(_load_schema("workflow-alert-envelope.schema.json"), instance)
+    envelope = WorkflowAlertEnvelopeV1.model_validate(instance)
+
+    assert envelope.release_revision is None
+    assert envelope.release_revision_source is None
+
+
+@pytest.mark.parametrize("missing", ["release_revision", "release_revision_source"])
+def test_workflow_alert_envelope_rejects_one_sided_release_provenance(missing: str) -> None:
+    instance = _valid_envelope()
+    instance.pop(missing)
+
+    with pytest.raises(JsonSchemaValidationError):
+        _validate(_load_schema("workflow-alert-envelope.schema.json"), instance)
+    with pytest.raises(ValidationError, match="present together"):
         WorkflowAlertEnvelopeV1.model_validate(instance)
 
 
@@ -385,6 +436,8 @@ def test_workflow_alert_python_models_are_strict_and_json_safe() -> None:
         outcome="failed",
         source_kind="operation",
         workflow_type="ingestion.execute",
+        release_revision="a" * 40,
+        release_revision_source="railway_commit_sha",
         operation_id="42",
         attempt=4,
         diagnostic_url="https://ops.example.com/api/v1/operations/42",
@@ -563,6 +616,8 @@ def test_delivery_state_accepts_each_consistent_lifecycle_state(
 
 def test_staging_evidence_python_model_matches_checked_in_schema() -> None:
     evidence = WorkflowAlertStagingEvidenceV1(
+        revision="a" * 40,
+        revision_source="railway_commit_sha",
         operation_id="42",
         attempt=4,
         event_id=UUID("550e8400-e29b-41d4-a716-446655440000"),

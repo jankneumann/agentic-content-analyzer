@@ -117,3 +117,16 @@ class TestStructuredErrorHandler:
             "status": status_code,
             "detail": title,
         }
+
+    def test_workflow_alert_verification_context_errors_are_problem_json(self) -> None:
+        app = FastAPI()
+        register_error_handlers(app)
+
+        @app.get("/api/v1/workflow-alert-verification-context")
+        async def context_failure():
+            raise HTTPException(status_code=503, detail="Not ready")
+
+        response = TestClient(app).get("/api/v1/workflow-alert-verification-context")
+
+        assert response.status_code == 503
+        assert response.headers["content-type"].startswith("application/problem+json")
