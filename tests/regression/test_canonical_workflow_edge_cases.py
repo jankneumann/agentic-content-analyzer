@@ -73,7 +73,7 @@ class _MutationConnection:
 
         self.returned = returned
         self.fetchrow = AsyncMock(side_effect=self._fetchrow)
-        self.fetchval = AsyncMock(side_effect=[returned.id, None, returned.id, returned.id])
+        self.fetchval = AsyncMock(return_value=returned.id)
         self.execute = AsyncMock(return_value="SELECT 1")
         self.transaction = lambda: _Transaction()
 
@@ -216,9 +216,10 @@ async def test_cancel_and_retry_preserve_normalized_input_and_reset_only_control
     retried = _job(status=JobStatus.QUEUED, retry_count=2)
     retry_connection = _MutationConnection(retried)
     retry_handle = await OperationService(connection=retry_connection).retry("9123")
-    query, reset_json, operation_id = retry_connection.fetchrow.await_args.args
+    query, reset_json, operation_id, retry_ceiling = retry_connection.fetchrow.await_args.args
 
     assert operation_id == 9123
+    assert retry_ceiling is None
     assert "retry_count = retry_count + 1" in query
     assert json.loads(reset_json) == {
         "progress": 0,

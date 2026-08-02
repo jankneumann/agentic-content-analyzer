@@ -85,7 +85,15 @@ async def test_worker_releases_slot_after_parent_defers(monkeypatch) -> None:
     monkeypatch.setitem(
         worker._handlers, entrypoint, registry.worker_handler(OperationType.SUMMARIZATION_RUN)
     )
-    monkeypatch.setattr("src.queue.setup.touch_job_heartbeat", AsyncMock())
+    monkeypatch.setattr(
+        "src.queue.setup.touch_job_heartbeat",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        worker,
+        "_checkpoint_job_cancellation",
+        AsyncMock(return_value=False),
+    )
     notification = AsyncMock()
     monkeypatch.setattr(worker, "_emit_job_notification", notification)
     conn = AsyncMock()
@@ -96,6 +104,8 @@ async def test_worker_releases_slot_after_parent_defers(monkeypatch) -> None:
         {
             "id": 20,
             "entrypoint": entrypoint,
+            "claim_generation": 1,
+            "claim_protocol_version": 2,
             "payload": {
                 "schema_version": 2,
                 "operation_type": entrypoint,
@@ -558,7 +568,15 @@ async def test_worker_persists_controlled_retry_exhaustion_diagnostic(monkeypatc
 
     fail_job = AsyncMock()
     notification = AsyncMock()
-    monkeypatch.setattr("src.queue.setup.touch_job_heartbeat", AsyncMock())
+    monkeypatch.setattr(
+        "src.queue.setup.touch_job_heartbeat",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        worker,
+        "_checkpoint_job_cancellation",
+        AsyncMock(return_value=False),
+    )
     monkeypatch.setattr(worker, "_fail_job", fail_job)
     monkeypatch.setattr(worker, "_emit_job_notification", notification)
     monkeypatch.setitem(worker._handlers, OperationType.INGESTION_EXECUTE.value, handler)
@@ -568,11 +586,13 @@ async def test_worker_persists_controlled_retry_exhaustion_diagnostic(monkeypatc
         {
             "id": 18,
             "entrypoint": OperationType.INGESTION_EXECUTE.value,
+            "claim_generation": 1,
+            "claim_protocol_version": 2,
             "payload": {},
         },
     )
 
-    fail_job.assert_awaited_once_with(ANY, 18, diagnostic)
+    fail_job.assert_awaited_once_with(ANY, 18, 1, diagnostic)
     assert notification.await_args.kwargs["error"] == diagnostic
 
 
@@ -581,7 +601,6 @@ async def test_worker_cancellation_wins_race_with_final_completion(monkeypatch) 
     from src.queue import worker
 
     entrypoint = "test.cancel-race"
-    cancelled = False
 
     async def handler(_job_id: int, _payload: dict) -> None:
         return None
@@ -590,21 +609,29 @@ async def test_worker_cancellation_wins_race_with_final_completion(monkeypatch) 
         assert "cancel_requested" in query
         return None
 
-    async def fetchrow(query: str, *_args):
-        nonlocal cancelled
-        assert "SET status = 'cancelled'" in query
-        cancelled = True
-        return {"id": 22}
-
     conn = SimpleNamespace(
-        fetchval=AsyncMock(side_effect=fetchval), fetchrow=AsyncMock(side_effect=fetchrow)
+        fetchval=AsyncMock(side_effect=fetchval),
+        fetchrow=AsyncMock(side_effect=[None, {"id": 22}]),
     )
     notification = AsyncMock()
-    monkeypatch.setattr("src.queue.setup.touch_job_heartbeat", AsyncMock())
+    monkeypatch.setattr(
+        "src.queue.setup.touch_job_heartbeat",
+        AsyncMock(return_value=True),
+    )
     monkeypatch.setattr(worker, "_emit_job_notification", notification)
     monkeypatch.setitem(worker._handlers, entrypoint, handler)
 
-    await worker._process_job(conn, {"id": 22, "entrypoint": entrypoint, "payload": {}})
+    await worker._process_job(
+        conn,
+        {
+            "id": 22,
+            "entrypoint": entrypoint,
+            "claim_generation": 1,
+            "claim_protocol_version": 2,
+            "payload": {},
+        },
+    )
 
-    assert cancelled is True
+    assert conn.fetchrow.await_count == 2
+    assert "SET status = 'cancelled'" in conn.fetchrow.await_args.args[0]
     notification.assert_not_awaited()
