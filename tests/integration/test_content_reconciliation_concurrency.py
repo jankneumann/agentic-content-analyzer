@@ -335,6 +335,59 @@ async def test_url_extraction_superseded_during_compute_cannot_commit(
         assert generation == 2
 
 
+@pytest.mark.asyncio
+async def test_url_extraction_content_displaced_during_compute_cannot_commit(
+    test_db_engine: Engine, monkeypatch
+) -> None:
+    from src.services.url_extractor import URLExtractor
+
+    SessionLocal = sessionmaker(bind=test_db_engine)
+    setup = SessionLocal()
+    content = _create_content(setup, source_id="url-content-displaced")
+    job_id = _create_claimed_job(setup, content_id=content.id)
+    content_id = content.id
+    setup.commit()
+    setup.close()
+
+    writer = SessionLocal()
+    extractor = URLExtractor(writer)
+    monkeypatch.setattr(
+        extractor,
+        "_fetch_url",
+        AsyncMock(return_value=("<p>fresh</p>", "https://example.com/final")),
+    )
+
+    async def displace_during_parse(_html: str, _url: str):
+        with SessionLocal.begin() as displacer:
+            displacer.execute(
+                sa.text(
+                    """
+                    UPDATE contents
+                    SET status = 'pending', status_operation_id = NULL,
+                        status_claim_generation = NULL, status_operation_phase = NULL,
+                        status_owner_version = NULL
+                    WHERE id = :content_id
+                    """
+                ),
+                {"content_id": content_id},
+            )
+        return "# fresh", {"title": "Fresh"}
+
+    monkeypatch.setattr(extractor, "_parse_html", displace_during_parse)
+
+    with bind_execution_claim(ExecutionClaim(job_id=job_id, claim_generation=1)):
+        with pytest.raises(ClaimSuperseded):
+            await extractor.extract_content(content_id)
+
+    writer.close()
+    with SessionLocal() as verifier:
+        persisted = verifier.get(Content, content_id)
+        assert persisted is not None
+        assert persisted.status is ContentStatus.PENDING
+        assert persisted.markdown_content == "# pending"
+        assert persisted.status_operation_id is None
+
+
 def test_summary_commit_records_exact_provenance(db_session: Session, monkeypatch) -> None:
     content = _create_content(db_session, source_id="summary-provenance")
     content.status = ContentStatus.PARSED
@@ -438,3 +491,74 @@ def test_summary_superseded_during_compute_inserts_nothing(
             {"job_id": job_id},
         ).scalar_one()
         assert generation == 2
+
+
+def test_summary_content_displaced_during_compute_inserts_nothing(
+    test_db_engine: Engine, monkeypatch
+) -> None:
+    SessionLocal = sessionmaker(bind=test_db_engine)
+    setup = SessionLocal()
+    content = _create_content(setup, source_id="summary-content-displaced")
+    content.status = ContentStatus.PARSED
+    setup.flush()
+    job_id = _create_claimed_job(setup, content_id=content.id)
+    content_id = content.id
+    setup.commit()
+    setup.close()
+
+    writer = SessionLocal()
+
+    class Agent:
+        def summarize_content(self, _content: Content) -> AgentResponse:
+            with SessionLocal.begin() as displacer:
+                displacer.execute(
+                    sa.text(
+                        """
+                        UPDATE contents
+                        SET status = 'parsed', status_operation_id = NULL,
+                            status_claim_generation = NULL, status_operation_phase = NULL,
+                            status_owner_version = NULL
+                        WHERE id = :content_id
+                        """
+                    ),
+                    {"content_id": content_id},
+                )
+            return AgentResponse(
+                success=True,
+                data=SummaryData(
+                    content_id=content_id,
+                    executive_summary="Must not persist",
+                    key_themes=[],
+                    strategic_insights=[],
+                    technical_details=[],
+                    actionable_items=[],
+                    notable_quotes=[],
+                    relevance_scores={},
+                    agent_framework="test",
+                    model_used="test",
+                ),
+            )
+
+    @contextmanager
+    def get_test_db():
+        yield writer
+
+    monkeypatch.setattr("src.processors.summarizer.get_db", get_test_db)
+    summarizer = ContentSummarizer(agent=Agent())
+
+    with bind_execution_claim(ExecutionClaim(job_id=job_id, claim_generation=1)):
+        with pytest.raises(ClaimSuperseded):
+            summarizer.summarize_content(content_id)
+
+    writer.close()
+    with SessionLocal() as verifier:
+        assert verifier.query(Summary).filter(Summary.content_id == content_id).count() == 0
+        persisted = verifier.get(Content, content_id)
+        assert persisted is not None
+        assert persisted.status is ContentStatus.PARSED
+        assert persisted.status_operation_id is None
+        generation = verifier.execute(
+            sa.text("SELECT claim_generation FROM pgqueuer_jobs WHERE id = :job_id"),
+            {"job_id": job_id},
+        ).scalar_one()
+        assert generation == 1

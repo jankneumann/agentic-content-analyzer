@@ -119,7 +119,10 @@ def _lock_content(session: Session, content_id: int, claim: ExecutionClaim) -> C
         lock_content_transaction(session, content_id)
         _lock_and_validate_job(session, claim)
         content = session.execute(
-            select(Content).where(Content.id == content_id).with_for_update()
+            select(Content)
+            .where(Content.id == content_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         ).scalar_one_or_none()
     if content is None:
         raise ClaimSuperseded(f"Content {content_id} no longer exists")
