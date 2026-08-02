@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -16,7 +17,12 @@ from pydantic import (
     model_validator,
 )
 
-from src.contracts.workflow_models import StrictModel, TerminalOperationStatus
+from src.contracts.workflow_models import (
+    ContentReconciliationReason,
+    OperationType,
+    StrictModel,
+    TerminalOperationStatus,
+)
 
 WorkflowTerminalOutcome = Literal[
     "success", "partial", "zero_items", "cancelled", "failed", "unknown", "reconciled"
@@ -36,10 +42,50 @@ WorkflowEventKey = Annotated[
     str,
     Field(min_length=1, max_length=160, pattern="^[a-z0-9:_-]+$"),
 ]
-WorkflowTypeName = Annotated[
-    str,
-    Field(min_length=1, max_length=64, pattern="^[a-z][a-z0-9_.-]*$"),
+WorkflowTypeName = OperationType | Literal["content.reconciliation"]
+WorkflowAlertResourceType = Literal[
+    "content",
+    "ingestion_run",
+    "summary_batch",
+    "theme_analysis",
+    "digest",
+    "pipeline_run",
+    "podcast_script",
+    "podcast",
+    "audio_digest",
 ]
+WorkflowAlertDiagnosticCode = (
+    ContentReconciliationReason
+    | Literal[
+        "arxiv_paper_error",
+        "arxiv_source_error",
+        "channel_ingest_error",
+        "channel_unresolvable",
+        "empty_response",
+        "extraction_failed",
+        "feed_ingest_error",
+        "feed_redirected",
+        "fetch_error",
+        "file_ingest_error",
+        "file_not_found",
+        "invalid_youtube_playlist",
+        "invalid_youtube_url",
+        "oauth_unavailable",
+        "operation_failed",
+        "parse_error",
+        "persistence_error",
+        "playlist_ingest_error",
+        "scholar_paper_error",
+        "scholar_source_error",
+        "search_failed",
+        "source_partial",
+        "storage_error",
+        "unexpected_error",
+        "video_processing_error",
+        "youtube_metadata_failed",
+        "youtube_video_not_found",
+    ]
+)
 WorkflowDiagnosticUrl = Annotated[
     AnyUrl,
     UrlConstraints(max_length=2048, allowed_schemes=["https"]),
@@ -54,14 +100,51 @@ class WorkflowTerminalEventV1(StrictModel):
     event_key: WorkflowEventKey
     source_kind: WorkflowTerminalSourceKind
     operation_id: BoundedPositiveIdentifier | None = None
-    claim_generation: Annotated[int, Field(ge=0, le=2_147_483_647)]
+    claim_generation: Annotated[int, Field(ge=0, le=2_147_483_647)] | None = None
     terminal_status: TerminalOperationStatus | None = None
     occurred_at: AwareDatetime
 
+    @model_validator(mode="after")
+    def validate_source_identity(self) -> WorkflowTerminalEventV1:
+        if self.source_kind == "operation":
+            if (
+                self.operation_id is None
+                or self.claim_generation is None
+                or self.terminal_status is None
+            ):
+                raise ValueError("operation terminal events require operation claim identity")
+            expected_key = (
+                f"operation:{self.operation_id}:claim:{self.claim_generation}:"
+                f"status:{self.terminal_status}"
+            )
+            if self.event_key != expected_key:
+                raise ValueError("operation terminal event_key must match literal claim identity")
+            return self
+
+        if (
+            self.operation_id is not None
+            or self.claim_generation is not None
+            or self.terminal_status is not None
+        ):
+            raise ValueError("reconciliation terminal events must omit operation claim fields")
+        if self.source_kind == "reconciliation_action":
+            valid_key = re.fullmatch(r"reconciliation-action:[1-9][0-9]*", self.event_key)
+        else:
+            valid_key = re.fullmatch(
+                r"reconciliation-failure:"
+                r"[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-"
+                r"[89ab][a-f0-9]{3}-[a-f0-9]{12}:"
+                r"content:[1-9][0-9]*:reason:apply_failed",
+                self.event_key,
+            )
+        if valid_key is None:
+            raise ValueError("reconciliation terminal event_key has an invalid identity")
+        return self
+
 
 class WorkflowAlertResourceReference(StrictModel):
-    type: Annotated[str, Field(min_length=1, max_length=40, pattern="^[a-z][a-z0-9_]*$")]
-    id: Annotated[str, Field(min_length=1, max_length=80, pattern="^[A-Za-z0-9_-]+$")]
+    type: WorkflowAlertResourceType
+    id: BoundedPositiveIdentifier
 
 
 class WorkflowAlertCounts(StrictModel):
@@ -108,15 +191,7 @@ class WorkflowAlertEnvelopeV1(StrictModel):
         Field(max_length=100),
     ]
     counts: WorkflowAlertCounts
-    codes: Annotated[
-        list[
-            Annotated[
-                str,
-                Field(min_length=1, max_length=100, pattern="^[a-z][a-z0-9_.-]*$"),
-            ]
-        ],
-        Field(max_length=20),
-    ]
+    codes: Annotated[list[WorkflowAlertDiagnosticCode], Field(max_length=20)]
 
     @field_validator("diagnostic_url")
     @classmethod
@@ -144,11 +219,53 @@ class WorkflowAlertEnvelopeV1(StrictModel):
         return value
 
     @model_validator(mode="after")
-    def validate_unique_collections(self) -> WorkflowAlertEnvelopeV1:
+    def validate_closed_identity_and_collections(self) -> WorkflowAlertEnvelopeV1:
         if len(self.source_keys) != len(set(self.source_keys)):
             raise ValueError("workflow alert source_keys must be unique")
         if len(self.codes) != len(set(self.codes)):
             raise ValueError("workflow alert codes must be unique")
+
+        path = self.diagnostic_url.path or ""
+        if self.source_kind == "operation":
+            if self.operation_id is None:
+                raise ValueError("operation alerts require operation_id")
+            if self.workflow_type == "content.reconciliation" or self.outcome == "reconciled":
+                raise ValueError("operation alerts require an operation classification")
+            expected_severity = "error" if self.outcome == "failed" else "warning"
+            terminal_status = "failed" if self.outcome == "failed" else "completed"
+            expected_event_key = (
+                f"operation:{self.operation_id}:claim:{self.attempt}:status:{terminal_status}"
+            )
+            if self.severity != expected_severity or self.event_key != expected_event_key:
+                raise ValueError(
+                    "operation alert classification must match terminal claim identity"
+                )
+            if path != f"/api/v1/operations/{self.operation_id}":
+                raise ValueError("operation diagnostic_url must match operation_id")
+            return self
+
+        if self.operation_id is not None or self.workflow_type != "content.reconciliation":
+            raise ValueError("reconciliation alerts must omit operation_id and use workflow type")
+        if self.attempt != 1:
+            raise ValueError("reconciliation alerts use immutable attempt 1")
+        expected_event_path = f"/api/v1/workflow-terminal-events/{self.event_id}"
+        if path != expected_event_path:
+            raise ValueError("reconciliation diagnostic_url must match event_id")
+
+        if self.source_kind == "reconciliation_action":
+            valid_key = re.fullmatch(r"reconciliation-action:[1-9][0-9]*", self.event_key)
+            valid_classification = self.outcome == "reconciled" and self.severity == "warning"
+        else:
+            valid_key = re.fullmatch(
+                r"reconciliation-failure:"
+                r"[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-"
+                r"[89ab][a-f0-9]{3}-[a-f0-9]{12}:"
+                r"content:[1-9][0-9]*:reason:apply_failed",
+                self.event_key,
+            )
+            valid_classification = self.outcome == "failed" and self.severity == "error"
+        if valid_key is None or not valid_classification:
+            raise ValueError("reconciliation alert classification must match source identity")
         return self
 
 
@@ -174,6 +291,38 @@ class WorkflowAlertDeliveryV1(StrictModel):
         pattern="^[a-z][a-z0-9_.-]*$",
     )
 
+    @model_validator(mode="after")
+    def validate_delivery_state(self) -> WorkflowAlertDeliveryV1:
+        if self.status == "pending":
+            if self.lease_expires_at is not None or self.delivered_at is not None:
+                raise ValueError("pending delivery must not retain lease or delivery timestamps")
+            return self
+        if self.status == "leased":
+            if (
+                self.attempt_count < 1
+                or self.lease_expires_at is None
+                or self.delivered_at is not None
+            ):
+                raise ValueError("leased delivery requires an active attempted lease")
+            return self
+        if self.status == "delivered":
+            if (
+                self.attempt_count < 1
+                or self.lease_expires_at is not None
+                or self.delivered_at is None
+                or self.last_error_code is not None
+            ):
+                raise ValueError("delivered state requires a clean completed attempt")
+            return self
+        if (
+            self.attempt_count < 1
+            or self.lease_expires_at is not None
+            or self.delivered_at is not None
+            or self.last_error_code is None
+        ):
+            raise ValueError("failed terminal delivery requires an attempted closed error")
+        return self
+
 
 class WorkflowAlertStagingRedactionAssertions(StrictModel):
     no_secrets: Literal[True]
@@ -198,6 +347,13 @@ class WorkflowAlertStagingEvidenceV1(StrictModel):
     receipt_sha256: Annotated[str, Field(pattern="^[a-f0-9]{64}$")]
     delivery_count: Literal[1]
     redaction_assertions: WorkflowAlertStagingRedactionAssertions
+
+    @model_validator(mode="after")
+    def validate_outcome_severity(self) -> WorkflowAlertStagingEvidenceV1:
+        expected_severity = "error" if self.outcome == "failed" else "warning"
+        if self.severity != expected_severity:
+            raise ValueError("staging evidence severity must match its closed outcome")
+        return self
 
 
 def _is_canonical_uuid(value: str) -> bool:

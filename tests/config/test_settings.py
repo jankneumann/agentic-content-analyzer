@@ -299,6 +299,22 @@ def test_workflow_alert_policy_rejects_inverted_backoff_and_retention() -> None:
         )
 
 
+def test_workflow_alert_lease_includes_five_second_transport_safety_margin() -> None:
+    with pytest.raises(ValidationError, match="five-second transport safety margin"):
+        Settings(
+            _env_file=None,
+            workflow_alert_timeout_seconds=10,
+            workflow_alert_lease_seconds=14,
+        )
+
+    settings = Settings(
+        _env_file=None,
+        workflow_alert_timeout_seconds=10,
+        workflow_alert_lease_seconds=15,
+    )
+    assert settings.workflow_alert_lease_seconds == 15
+
+
 @pytest.mark.parametrize(
     ("endpoint", "origin", "allowed_hosts", "expected"),
     [
@@ -370,17 +386,29 @@ def test_workflow_alert_webhook_rejects_unsafe_production_configuration(
         )
 
 
-def test_workflow_alert_webhook_allows_explicit_loopback_development_policy() -> None:
+def test_workflow_alert_webhook_allows_http_loopback_sink_with_https_diagnostic_origin() -> None:
     settings = Settings(
         _env_file=None,
         environment="development",
         workflow_alert_sink="webhook",
         workflow_alert_webhook_endpoint="http://127.0.0.1:9080/hook",
-        workflow_alert_diagnostic_origin="http://127.0.0.1:8000",
+        workflow_alert_diagnostic_origin="https://127.0.0.1:8000",
         workflow_alert_allowed_hosts="127.0.0.1",
     )
 
     assert settings.get_workflow_alert_allowed_hosts() == ("127.0.0.1",)
+
+
+def test_workflow_alert_diagnostic_origin_requires_https_in_development() -> None:
+    with pytest.raises(ValidationError, match="diagnostic origin must use HTTPS"):
+        Settings(
+            _env_file=None,
+            environment="development",
+            workflow_alert_sink="webhook",
+            workflow_alert_webhook_endpoint="http://127.0.0.1:9080/hook",
+            workflow_alert_diagnostic_origin="http://127.0.0.1:8000",
+            workflow_alert_allowed_hosts="127.0.0.1",
+        )
 
 
 def test_workflow_alert_host_allowlist_is_normalized_and_rejects_wildcards() -> None:

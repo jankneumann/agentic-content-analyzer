@@ -29,7 +29,19 @@
     "severity": {"enum": ["warning", "error"]},
     "outcome": {"enum": ["partial", "zero_items", "failed", "unknown", "reconciled"]},
     "source_kind": {"enum": ["operation", "reconciliation_action", "reconciliation_failure"]},
-    "workflow_type": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$"},
+    "workflow_type": {
+      "enum": [
+        "ingestion.execute",
+        "summarization.run",
+        "theme_analysis.create",
+        "digest.create",
+        "pipeline.run",
+        "podcast_script.create",
+        "podcast_audio.create",
+        "audio_digest.create",
+        "content.reconciliation"
+      ]
+    },
     "operation_id": {"type": ["string", "null"], "maxLength": 19, "pattern": "^[1-9][0-9]*$"},
     "attempt": {"type": "integer", "minimum": 1, "maximum": 2147483647},
     "diagnostic_url": {
@@ -46,8 +58,20 @@
         "additionalProperties": false,
         "required": ["type", "id"],
         "properties": {
-          "type": {"type": "string", "minLength": 1, "maxLength": 40, "pattern": "^[a-z][a-z0-9_]*$"},
-          "id": {"type": "string", "minLength": 1, "maxLength": 80, "pattern": "^[A-Za-z0-9_-]+$"}
+          "type": {
+            "enum": [
+              "content",
+              "ingestion_run",
+              "summary_batch",
+              "theme_analysis",
+              "digest",
+              "pipeline_run",
+              "podcast_script",
+              "podcast",
+              "audio_digest"
+            ]
+          },
+          "id": {"type": "string", "maxLength": 19, "pattern": "^[1-9][0-9]*$"}
         }
       }
     },
@@ -73,8 +97,135 @@
     "codes": {
       "type": "array",
       "maxItems": 20,
-      "items": {"type": "string", "minLength": 1, "maxLength": 100, "pattern": "^[a-z][a-z0-9_.-]*$"},
+      "items": {
+        "enum": [
+          "active_operation",
+          "apply_failed",
+          "arxiv_paper_error",
+          "arxiv_source_error",
+          "cancellation_pending",
+          "cancellation_requested",
+          "channel_ingest_error",
+          "channel_unresolvable",
+          "completed_output_missing",
+          "empty_response",
+          "execution_locked",
+          "extraction_cancelled",
+          "extraction_completed",
+          "extraction_failed",
+          "failed_operation",
+          "feed_ingest_error",
+          "feed_redirected",
+          "fetch_error",
+          "file_ingest_error",
+          "file_not_found",
+          "forced_reprocessing",
+          "incompatible_worker",
+          "invalid_youtube_playlist",
+          "invalid_youtube_url",
+          "missing_operation",
+          "oauth_unavailable",
+          "operation_failed",
+          "output_owner_mismatch",
+          "ownership_conflict",
+          "parse_error",
+          "persistence_error",
+          "playlist_ingest_error",
+          "retry_budget_exhausted",
+          "revalidation_conflict",
+          "scholar_paper_error",
+          "scholar_source_error",
+          "search_failed",
+          "source_partial",
+          "stale_operation",
+          "storage_error",
+          "summary_exists",
+          "summarization_cancelled",
+          "unexpected_error",
+          "video_processing_error",
+          "youtube_metadata_failed",
+          "youtube_video_not_found"
+        ]
+      },
       "uniqueItems": true
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"source_kind": {"const": "operation"}}},
+      "then": {
+        "properties": {
+          "event_key": {"pattern": "^operation:[1-9][0-9]*:claim:[1-9][0-9]*:status:(?:completed|failed)$"},
+          "outcome": {"enum": ["partial", "zero_items", "failed", "unknown"]},
+          "workflow_type": {
+            "enum": [
+              "ingestion.execute",
+              "summarization.run",
+              "theme_analysis.create",
+              "digest.create",
+              "pipeline.run",
+              "podcast_script.create",
+              "podcast_audio.create",
+              "audio_digest.create"
+            ]
+          },
+          "operation_id": {"type": "string"},
+          "diagnostic_url": {
+            "pattern": "^https://[^/?#@]+/api/v1/operations/[1-9][0-9]*$"
+          }
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"outcome": {"const": "failed"}}},
+            "then": {
+              "properties": {
+                "severity": {"const": "error"},
+                "event_key": {"pattern": ":status:failed$"}
+              }
+            },
+            "else": {
+              "properties": {
+                "severity": {"const": "warning"},
+                "event_key": {"pattern": ":status:completed$"}
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {"properties": {"source_kind": {"const": "reconciliation_action"}}},
+      "then": {
+        "properties": {
+          "event_key": {"pattern": "^reconciliation-action:[1-9][0-9]*$"},
+          "severity": {"const": "warning"},
+          "outcome": {"const": "reconciled"},
+          "workflow_type": {"const": "content.reconciliation"},
+          "operation_id": {"const": null},
+          "attempt": {"const": 1},
+          "diagnostic_url": {
+            "pattern": "^https://[^/?#@]+/api/v1/workflow-terminal-events/[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"source_kind": {"const": "reconciliation_failure"}}},
+      "then": {
+        "properties": {
+          "event_key": {
+            "pattern": "^reconciliation-failure:[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}:content:[1-9][0-9]*:reason:apply_failed$"
+          },
+          "severity": {"const": "error"},
+          "outcome": {"const": "failed"},
+          "workflow_type": {"const": "content.reconciliation"},
+          "operation_id": {"const": null},
+          "attempt": {"const": 1},
+          "diagnostic_url": {
+            "pattern": "^https://[^/?#@]+/api/v1/workflow-terminal-events/[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+          }
+        }
+      }
+    }
+  ]
 }

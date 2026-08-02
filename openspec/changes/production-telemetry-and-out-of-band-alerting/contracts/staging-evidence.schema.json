@@ -42,5 +42,12 @@
         "schema_valid": {"const": true}
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"outcome": {"const": "failed"}}},
+      "then": {"properties": {"severity": {"const": "error"}}},
+      "else": {"properties": {"severity": {"const": "warning"}}}
+    }
+  ]
 }

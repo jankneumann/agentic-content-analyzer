@@ -935,8 +935,20 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_workflow_alert_policy(self) -> Settings:
-        """Validate retry, retention, origin, and sink safety as one policy."""
+        """Validate retry, retention, origin, and sink safety as one policy.
 
+        A lease includes a fixed five-second margin beyond the complete HTTP
+        timeout so another worker cannot reclaim a request still in flight.
+        """
+
+        lease_safety_margin_seconds = 5
+        if self.workflow_alert_lease_seconds < (
+            self.workflow_alert_timeout_seconds + lease_safety_margin_seconds
+        ):
+            raise ValueError(
+                "workflow_alert_lease_seconds must include a five-second transport safety "
+                "margin beyond workflow_alert_timeout_seconds"
+            )
         if self.workflow_alert_max_backoff_seconds < self.workflow_alert_base_backoff_seconds:
             raise ValueError(
                 "workflow_alert_max_backoff_seconds must be greater than or equal to "
@@ -997,10 +1009,8 @@ class Settings(BaseSettings):
         if deployed and endpoint_ip is not None and not endpoint_ip.is_global:
             raise ValueError("workflow alert webhook endpoint must resolve to a public address")
 
-        if origin_parts.scheme not in allowed_schemes:
-            raise ValueError(
-                "workflow alert diagnostic origin must use HTTPS in deployed environments"
-            )
+        if origin_parts.scheme != "https":
+            raise ValueError("workflow alert diagnostic origin must use HTTPS")
         if not origin_parts.hostname:
             raise ValueError("workflow alert diagnostic origin must include a host")
         if origin_parts.username is not None or origin_parts.password is not None:

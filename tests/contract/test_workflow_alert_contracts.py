@@ -52,10 +52,10 @@ def _valid_envelope() -> dict[str, object]:
         "operation_id": "42",
         "attempt": 3,
         "diagnostic_url": "https://ops.example.com/api/v1/operations/42",
-        "resource_refs": [{"type": "content", "id": "opaque_42"}],
+        "resource_refs": [{"type": "content", "id": "42"}],
         "source_keys": ["src_0123456789abcdef0123"],
         "counts": {"items_failed": 1, "sources_total": 1},
-        "codes": ["source_timeout"],
+        "codes": ["operation_failed"],
     }
 
 
@@ -167,6 +167,170 @@ def test_workflow_alert_envelope_rejects_untrusted_diagnostic_urls(
 @pytest.mark.parametrize(
     ("field", "value"),
     [
+        ("workflow_type", "secret-token"),
+        ("resource_refs", [{"type": "credential", "id": "42"}]),
+        ("resource_refs", [{"type": "content", "id": "TOPSECRET123"}]),
+        ("codes", ["sk-live-secret"]),
+    ],
+)
+def test_workflow_alert_envelope_rejects_pattern_shaped_untrusted_values(
+    field: str,
+    value: object,
+) -> None:
+    instance = {**_valid_envelope(), field: value}
+
+    with pytest.raises(JsonSchemaValidationError):
+        _validate(_load_schema("workflow-alert-envelope.schema.json"), instance)
+    with pytest.raises(ValidationError):
+        WorkflowAlertEnvelopeV1.model_validate(instance)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"diagnostic_url": "https://ops.example.com/api/v1/operations/99"},
+        {
+            "diagnostic_url": (
+                "https://ops.example.com/api/v1/workflow-terminal-events/"
+                "550e8400-e29b-41d4-a716-446655440000"
+            )
+        },
+        {"event_key": "operation:99:claim:3:status:failed"},
+        {"event_key": "operation:42:claim:4:status:failed"},
+        {"event_key": "operation:42:claim:3:status:completed"},
+        {"severity": "warning"},
+        {"source_kind": "reconciliation_action", "outcome": "reconciled"},
+    ],
+)
+def test_operation_alert_envelope_rejects_inconsistent_identity_and_classification(
+    changes: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        WorkflowAlertEnvelopeV1.model_validate({**_valid_envelope(), **changes})
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"operation_id": "42"},
+        {"severity": "error"},
+        {"outcome": "failed"},
+        {"attempt": 2},
+        {"workflow_type": "ingestion.execute"},
+        {"event_key": "reconciliation-action:0"},
+        {"diagnostic_url": "https://ops.example.com/api/v1/operations/42"},
+        {
+            "diagnostic_url": (
+                "https://ops.example.com/api/v1/workflow-terminal-events/"
+                "16fd2706-8baf-433b-82eb-8c7fada847da"
+            )
+        },
+    ],
+)
+def test_reconciliation_alert_envelope_rejects_inconsistent_identity_and_classification(
+    changes: dict[str, object],
+) -> None:
+    instance = {
+        **_valid_envelope(),
+        "event_key": "reconciliation-action:7",
+        "severity": "warning",
+        "outcome": "reconciled",
+        "source_kind": "reconciliation_action",
+        "workflow_type": "content.reconciliation",
+        "operation_id": None,
+        "attempt": 1,
+        "diagnostic_url": (
+            "https://ops.example.com/api/v1/workflow-terminal-events/"
+            "550e8400-e29b-41d4-a716-446655440000"
+        ),
+        "codes": ["summary_exists"],
+        **changes,
+    }
+
+    with pytest.raises(ValidationError):
+        WorkflowAlertEnvelopeV1.model_validate(instance)
+
+
+def test_reconciliation_alert_envelope_matches_checked_in_schema() -> None:
+    instance = {
+        **_valid_envelope(),
+        "event_key": "reconciliation-action:7",
+        "severity": "warning",
+        "outcome": "reconciled",
+        "source_kind": "reconciliation_action",
+        "workflow_type": "content.reconciliation",
+        "operation_id": None,
+        "attempt": 1,
+        "diagnostic_url": (
+            "https://ops.example.com/api/v1/workflow-terminal-events/"
+            "550e8400-e29b-41d4-a716-446655440000"
+        ),
+        "codes": ["summary_exists"],
+    }
+
+    envelope = WorkflowAlertEnvelopeV1.model_validate(instance)
+    _validate(
+        _load_schema("workflow-alert-envelope.schema.json"),
+        envelope.model_dump(mode="json"),
+    )
+
+
+def test_reconciliation_failure_envelope_matches_checked_in_schema() -> None:
+    instance = {
+        **_valid_envelope(),
+        "event_key": (
+            "reconciliation-failure:550e8400-e29b-41d4-a716-446655440000:"
+            "content:42:reason:apply_failed"
+        ),
+        "source_kind": "reconciliation_failure",
+        "workflow_type": "content.reconciliation",
+        "operation_id": None,
+        "attempt": 1,
+        "diagnostic_url": (
+            "https://ops.example.com/api/v1/workflow-terminal-events/"
+            "550e8400-e29b-41d4-a716-446655440000"
+        ),
+        "codes": ["apply_failed"],
+    }
+
+    envelope = WorkflowAlertEnvelopeV1.model_validate(instance)
+    _validate(
+        _load_schema("workflow-alert-envelope.schema.json"),
+        envelope.model_dump(mode="json"),
+    )
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"severity": "warning"},
+        {"event_key": "operation:42:claim:3:status:completed"},
+        {
+            "diagnostic_url": (
+                "https://ops.example.com/api/v1/workflow-terminal-events/"
+                "550e8400-e29b-41d4-a716-446655440000"
+            )
+        },
+        {
+            "source_kind": "reconciliation_action",
+            "outcome": "reconciled",
+            "event_key": "reconciliation-action:7",
+        },
+    ],
+)
+def test_workflow_alert_schema_rejects_cross_field_classification_mismatches(
+    changes: dict[str, object],
+) -> None:
+    with pytest.raises(JsonSchemaValidationError):
+        _validate(
+            _load_schema("workflow-alert-envelope.schema.json"),
+            {**_valid_envelope(), **changes},
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
         ("operation_id", "12345678901234567890"),
         ("attempt", 2_147_483_648),
         ("event_id", "x" * 37),
@@ -183,6 +347,22 @@ def test_staging_evidence_schema_enforces_every_declared_bound(
 
     with pytest.raises(JsonSchemaValidationError):
         _validate(_load_schema("staging-evidence.schema.json"), instance)
+
+
+@pytest.mark.parametrize(
+    ("outcome", "severity"),
+    [("failed", "warning"), ("partial", "error"), ("reconciled", "error")],
+)
+def test_staging_evidence_rejects_inconsistent_outcome_severity(
+    outcome: str,
+    severity: str,
+) -> None:
+    instance = {**_valid_staging_evidence(), "outcome": outcome, "severity": severity}
+
+    with pytest.raises(JsonSchemaValidationError):
+        _validate(_load_schema("staging-evidence.schema.json"), instance)
+    with pytest.raises(ValidationError):
+        WorkflowAlertStagingEvidenceV1.model_validate(instance)
 
 
 def test_workflow_alert_python_models_are_strict_and_json_safe() -> None:
@@ -208,10 +388,10 @@ def test_workflow_alert_python_models_are_strict_and_json_safe() -> None:
         operation_id="42",
         attempt=3,
         diagnostic_url="https://ops.example.com/api/v1/operations/42",
-        resource_refs=[WorkflowAlertResourceReference(type="content", id="opaque_42")],
+        resource_refs=[WorkflowAlertResourceReference(type="content", id="42")],
         source_keys=["src_0123456789abcdef0123"],
         counts=WorkflowAlertCounts(items_failed=1, sources_total=1),
-        codes=["source_timeout"],
+        codes=["operation_failed"],
     )
     delivery = WorkflowAlertDeliveryV1(
         delivery_id=UUID("16fd2706-8baf-433b-82eb-8c7fada847da"),
@@ -257,6 +437,128 @@ def test_terminal_event_preserves_unclaimed_queued_cancellation_generation() -> 
     )
 
     assert event.claim_generation == 0
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"event_key": "operation:42:claim:1:status:cancelled"},
+        {"operation_id": None},
+        {"claim_generation": None},
+        {"terminal_status": None},
+    ],
+)
+def test_terminal_operation_event_requires_exact_claim_identity(
+    changes: dict[str, object],
+) -> None:
+    values: dict[str, object] = {
+        "event_id": UUID("550e8400-e29b-41d4-a716-446655440000"),
+        "event_key": "operation:42:claim:0:status:cancelled",
+        "source_kind": "operation",
+        "operation_id": "42",
+        "claim_generation": 0,
+        "terminal_status": "cancelled",
+        "occurred_at": datetime(2026, 8, 1, 23, 30, tzinfo=UTC),
+        **changes,
+    }
+
+    with pytest.raises(ValidationError):
+        WorkflowTerminalEventV1.model_validate(values)
+
+
+@pytest.mark.parametrize(
+    ("source_kind", "event_key"),
+    [
+        ("reconciliation_action", "reconciliation-action:7"),
+        (
+            "reconciliation_failure",
+            (
+                "reconciliation-failure:550e8400-e29b-41d4-a716-446655440000:"
+                "content:42:reason:apply_failed"
+            ),
+        ),
+    ],
+)
+def test_terminal_reconciliation_event_uses_closed_identity_without_operation_fields(
+    source_kind: str,
+    event_key: str,
+) -> None:
+    event = WorkflowTerminalEventV1(
+        event_id=UUID("550e8400-e29b-41d4-a716-446655440000"),
+        event_key=event_key,
+        source_kind=source_kind,
+        occurred_at=datetime(2026, 8, 1, 23, 30, tzinfo=UTC),
+    )
+
+    assert event.operation_id is None
+    assert event.claim_generation is None
+    assert event.terminal_status is None
+
+
+@pytest.mark.parametrize(
+    ("status", "attempt_count", "lease_expires_at", "delivered_at", "error_code"),
+    [
+        ("pending", 0, datetime(2026, 8, 1, 23, 31, tzinfo=UTC), None, None),
+        ("leased", 1, None, None, None),
+        ("leased", 0, datetime(2026, 8, 1, 23, 31, tzinfo=UTC), None, None),
+        ("delivered", 1, None, None, None),
+        ("delivered", 1, None, datetime(2026, 8, 1, 23, 31, tzinfo=UTC), "timeout"),
+        ("permanent_failure", 1, None, None, None),
+        ("exhausted", 0, None, None, "retry_exhausted"),
+    ],
+)
+def test_delivery_state_rejects_inconsistent_timestamps_and_error_codes(
+    status: str,
+    attempt_count: int,
+    lease_expires_at: datetime | None,
+    delivered_at: datetime | None,
+    error_code: str | None,
+) -> None:
+    with pytest.raises(ValidationError):
+        WorkflowAlertDeliveryV1(
+            delivery_id=UUID("16fd2706-8baf-433b-82eb-8c7fada847da"),
+            event_id=UUID("550e8400-e29b-41d4-a716-446655440000"),
+            sink_name="webhook",
+            status=status,
+            attempt_count=attempt_count,
+            next_attempt_at=datetime(2026, 8, 1, 23, 30, tzinfo=UTC),
+            lease_expires_at=lease_expires_at,
+            delivered_at=delivered_at,
+            last_error_code=error_code,
+        )
+
+
+@pytest.mark.parametrize(
+    ("status", "attempt_count", "lease_expires_at", "delivered_at", "error_code"),
+    [
+        ("pending", 0, None, None, None),
+        ("pending", 1, None, None, "timeout"),
+        ("leased", 1, datetime(2026, 8, 1, 23, 31, tzinfo=UTC), None, "timeout"),
+        ("delivered", 1, None, datetime(2026, 8, 1, 23, 31, tzinfo=UTC), None),
+        ("permanent_failure", 1, None, None, "http_4xx"),
+        ("exhausted", 5, None, None, "retry_exhausted"),
+    ],
+)
+def test_delivery_state_accepts_each_consistent_lifecycle_state(
+    status: str,
+    attempt_count: int,
+    lease_expires_at: datetime | None,
+    delivered_at: datetime | None,
+    error_code: str | None,
+) -> None:
+    delivery = WorkflowAlertDeliveryV1(
+        delivery_id=UUID("16fd2706-8baf-433b-82eb-8c7fada847da"),
+        event_id=UUID("550e8400-e29b-41d4-a716-446655440000"),
+        sink_name="webhook",
+        status=status,
+        attempt_count=attempt_count,
+        next_attempt_at=datetime(2026, 8, 1, 23, 30, tzinfo=UTC),
+        lease_expires_at=lease_expires_at,
+        delivered_at=delivered_at,
+        last_error_code=error_code,
+    )
+
+    assert delivery.status == status
 
 
 def test_staging_evidence_python_model_matches_checked_in_schema() -> None:
