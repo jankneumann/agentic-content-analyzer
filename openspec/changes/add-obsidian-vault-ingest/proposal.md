@@ -1,121 +1,116 @@
-# Change: Add Obsidian Vault Ingestion Bridge
+# Change: Add Obsidian Vault Ingestion
 
 ## Why
 
-The Obsidian Web Clipper already solves a hard UX problem for capture across desktop browsers, mobile browsers, and the Obsidian desktop app. Instead of building and maintaining separate capture clients, we can use Obsidian + a remote-synced vault as a lightweight capture bus into ACA ingestion.
+Obsidian Web Clipper provides a useful cross-device capture surface, but ACA has no
+durable way to ingest those captured notes. A vault adapter can reuse plain Markdown
+without creating another browser or mobile client, provided it participates in the
+same typed source, queue, persistence, recovery, and alerting contracts as every other
+ingestion source.
 
-This can simplify capture because:
-
-1. **Capture surface is outsourced** to an existing mature tool (Obsidian Web Clipper)
-2. **Cross-device behavior comes for free** via Obsidian Sync / iCloud / Dropbox / Git-backed vaults
-3. **Ingestion becomes filesystem-first** (watch vault, process queue notes), reducing client API complexity
-4. **Users keep ownership** of captured notes in plain markdown
+The earlier bridge proposal assumed a process-local poller and paths in public source
+configuration. That model predates `SOURCE_REGISTRY`, generated workflow contracts,
+opaque configured-source keys, and durable ingestion outcomes. It also cannot safely
+route a laptop path to an arbitrary cloud worker. This revision makes the deployment
+and security boundary explicit before implementation.
 
 ## What Changes
 
-### New Ingestion Mode: Vault Queue
-- **NEW**: A configurable ingest source pointing to a vault subfolder, e.g. `Inbox/WebClipper/`
-- **NEW**: Polling + optional filesystem watching for new/modified markdown notes
-- **NEW**: Note-state tracking table (or metadata file) to ensure idempotent processing
+### Canonical Source Vertical
 
-### New Capture Contract
-- **NEW**: Standard frontmatter contract for clipper-generated notes:
-  - `source_url`
-  - `captured_at`
-  - `capture_client` (`obsidian-web-clipper`)
-  - `content_type_hint` (`article|thread|video|paper|other`)
-  - `ingest_status` (`queued|ingested|failed`) (managed by ACA)
+- **NEW**: An `obsidian_vault` configured source and typed ingestion command in the
+  canonical OpenAPI discriminator, generated Python and TypeScript contracts, and
+  `SOURCE_REGISTRY`.
+- **NEW**: Equivalent CLI, HTTP, MCP, worker, scheduler, and capability-driven frontend
+  projections. CLI and MCP submissions return the standard durable
+  `OperationHandle`; there is no transport-specific task or polling API.
+- **NEW**: Deterministic fixtures and explicit real-ingestion policy so registry
+  completeness remains enforced at test collection.
 
-### Markdown Normalization
-- **NEW**: Normalizer for Obsidian-specific markdown patterns (wikilinks, embeds, callouts, attachments)
-- **NEW**: Deterministic extraction of canonical URL and body content for the existing pipeline
+### Worker-Local, Bounded Scan
 
-### Sync Strategy
-- **NEW**: Documented support matrix for remote storage backends:
-  - Obsidian Sync
-  - iCloud Drive
-  - Dropbox / Google Drive
-  - Git-based sync (advanced)
-- **NEW**: Sync-safety rules (settling delay, lock-file handling, partial-write detection)
+- **NEW**: One `ingestion.execute` operation performs one bounded scan of a vault that
+  is mounted on the executing worker. A deployment may schedule repeated commands,
+  but no adapter-owned daemon, filesystem watcher, or parallel run-state model is
+  introduced.
+- **NEW**: Startup and capability readiness report a source unavailable when its mount
+  is absent. A personal-device vault is not remotely accessible to Railway unless the
+  deployment deliberately mounts or synchronizes it onto the worker selected for the
+  operation.
+- **NEW**: Scan bounds cover files, bytes, recursion depth, elapsed time, note size,
+  frontmatter size/complexity, and concurrency. Cancellation is checked between files.
 
-### Operational Controls
-- **NEW**: Configuration knobs:
-  - `OBSIDIAN_VAULT_PATH`
-  - `OBSIDIAN_INGEST_FOLDER`
-  - `OBSIDIAN_POLL_INTERVAL_SECONDS`
-  - `OBSIDIAN_FILE_SETTLE_MS`
-  - `OBSIDIAN_MOVE_PROCESSED_TO`
-- **NEW**: Optional archive/move-after-ingest behavior to keep queue folders clean
+### Private Configuration and Path Safety
 
-## Pros / Cons
+- **NEW**: Each configured vault has a stable non-secret `vault_id`; its absolute
+  `vault_path` remains private configuration and never becomes a command field,
+  natural locator, public capability value, log field, or durable operation result.
+- **NEW**: Database overrides may store the private path because source configuration
+  is server-side, but every public/admin projection substitutes an opaque HMAC source
+  key and safe allowlisted fields. Deployment-owned allowed roots cannot be widened by
+  a database override.
+- **NEW**: Reads are relative to an approved root, reject every symlink and traversal
+  component, use no-follow file access with post-open identity checks, and never
+  dereference Obsidian embeds or attachments.
 
-### Pros
-- **Fast path to value**: little or no custom extension/app work
-- **Cross-platform capture**: mobile + desktop + browser extension already available
-- **Offline-first**: captures can happen offline and sync later
-- **Open format**: markdown files are user-visible and portable
-- **Reduced API exposure**: no public ingest endpoint required for capture clients
+### Strict Clip and Incremental State Contracts
 
-### Cons
-- **Sync eventual consistency**: ingest may lag behind capture depending on provider
-- **File race conditions**: partially synced files can cause parse errors without settle logic
-- **Template drift risk**: clipper templates can vary across users and versions
-- **Security/privacy surface**: local vault path and sync provider become part of threat model
-- **Duplicate handling complexity**: same URL clipped multiple times with edits/annotations
+- **NEW**: UTF-8 notes require bounded YAML frontmatter containing an HTTP(S)
+  `source_url` and timezone-aware `captured_at`. Optional `capture_client` and
+  `content_type_hint` fields have closed, documented values; missing required or
+  malformed values produce typed failures.
+- **NEW**: The captured Markdown is authoritative content. `source_url` supplies
+  provenance and canonical identity only; the adapter does not refetch it.
+- **NEW**: A private state store keyed by opaque vault identity and normalized relative
+  path records file fingerprints, claims, terminal status, and the linked content.
+  Transactional claims and immutable ingest-event identity make overlapping scans and
+  crash reconciliation idempotent.
+- **NEW**: Re-observing unchanged bytes is a no-op. Changed bytes at the same path are
+  reprocessed. A rename is a new note-level event but canonical identity can link it to
+  existing primary content without deleting the old state or content.
 
-## Specific Details to Consider
+### Read-Only Markdown Normalization
 
-1. **Canonical identity strategy**
-   - Deduplicate by canonicalized URL first, file hash second
-   - Preserve note annotations as separate user commentary metadata
+- **NEW**: Frontmatter is removed from the stored body; wikilinks, callouts, and embeds
+  receive deterministic readable fallbacks. Raw HTML and URI text remain inert data
+  and continue through existing renderer sanitization.
+- **NEW**: Multiple clips of the same canonical URL preserve note-level Markdown and
+  annotations as distinct Obsidian content records linked to one canonical primary.
+- **NEW**: ACA never writes `ingest_status`, tags, or generated content into the vault,
+  and never moves files in v1.
 
-2. **Ingest trigger strategy**
-   - Prefer poller for reliability across OS/providers
-   - Optional FS notify watcher where supported; always keep poll fallback
+## Scope and Non-Goals
 
-3. **File settle and lock semantics**
-   - Wait for stable mtime/size over settle window before parsing
-   - Skip known temp/lock patterns from sync tools
+Version 1 does not include:
 
-4. **Template compatibility layer**
-   - Provide ACA-recommended clipper template
-   - Gracefully ingest notes missing optional fields
-
-5. **Failure handling and replay**
-   - Store parse failures with actionable reason
-   - Reprocess notes when file changes or when manually retried
-
-6. **Attachment handling**
-   - Decide whether images/PDFs are in-scope for v1
-   - If deferred, ignore gracefully and retain source links
-
-7. **Security model**
-   - Run least-privilege read-only on ingest folder when possible
-   - Validate allowed vault roots to prevent path traversal
-
-8. **User workflow ergonomics**
-   - Optional post-ingest tagging in note frontmatter
-   - Optional move note to `Processed/` folder
-
-## Non-Goals (v1)
-
-- Bi-directional sync back into Obsidian notes
-- Full Obsidian plugin development
-- Real-time collaborative conflict resolution
-- Parsing every custom user template variant
+- a laptop-to-cloud companion bridge or remote filesystem transport;
+- a long-lived poller or filesystem watcher owned by the adapter;
+- attachment or embedded-file dereferencing;
+- moving, deleting, tagging, or otherwise writing vault files;
+- missing-`captured_at` fallback to filesystem metadata;
+- knowledge-base export, bidirectional sync, or changes to
+  `src/sync/obsidian_exporter.py` ownership;
+- a new operation type, manual path-based replay API, or a second status machine.
 
 ## Impact
 
-- **New spec**: `obsidian-vault-ingest`
-- **Likely touched areas**:
-  - ingestion source configuration
-  - markdown parsing/normalization
-  - job orchestration for filesystem queue
-  - docs for setup and security guidance
-- **No mandatory new external service** (reuses user-selected vault sync)
+- **New capability**: `obsidian-vault-ingest`
+- **Modified capability**: `source-capability-registry`
+- **Modified capability**: `real-ingestion-ci`
+- **Likely implementation areas**:
+  - OpenAPI and generated workflow contracts
+  - typed source configuration and safe override projection
+  - source registry, MCP manifest, worker dispatch, and capability UI tests
+  - path-safe scanner, strict parser/normalizer, state migration/repository
+  - canonical content persistence, fixture matrix, live-adapter policy, and docs
+- **Operational dependency**: a worker-local, deployment-approved filesystem mount;
+  no mandatory external service or sync provider is added.
 
-## Recommendation
+## Acceptance Boundary
 
-Adopt Obsidian vault ingestion as a **capture ingress adapter**. Keep the core ACA pipeline unchanged by normalizing vault notes into the existing content ingestion contract.
-
-This provides a pragmatic “build less, integrate more” path while preserving optional direct-capture APIs for non-Obsidian users.
+The change is complete only when an Obsidian command can be submitted through CLI,
+HTTP, MCP, and the frontend, reaches a terminal standard `OperationHandle`, persists
+an operation-native typed outcome, and passes registry parity, fixture, real-ingestion,
+migration, path-security, concurrency, cancellation, retry, idempotency, and redaction
+tests. Vault ingress must remain demonstrably independent of knowledge-base export and
+sync modules.
