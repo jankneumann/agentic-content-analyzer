@@ -36,6 +36,11 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.types import JSON
 
+# No repository test requires the embedded API worker. Set this before any
+# factory or test module can import ``src.api.app`` so full-suite collection is
+# not sensitive to whether the API-local conftest has loaded yet.
+os.environ.setdefault("WORKER_ENABLED", "false")
+
 # Monkeypatch JSONB to JSON for SQLite compatibility in tests
 # This must happen BEFORE any models are imported
 if "sqlite" in os.environ.get("TEST_DATABASE_URL", ""):
