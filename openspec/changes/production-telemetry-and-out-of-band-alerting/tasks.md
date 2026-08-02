@@ -46,35 +46,35 @@
 
 ## 3. Classification, safe projection, and telemetry
 
-- [ ] 3.1 [M] Write pure table tests for lifecycle/result precedence across success, partial, zero-item, failed, cancelled, unknown, pipeline aggregation, retries, and reconciliation
+- [x] 3.1 [M] Write pure table tests for lifecycle/result precedence across success, partial, zero-item, failed, cancelled, unknown, pipeline aggregation, retries, and reconciliation
   **Spec scenarios**: all scenarios under Terminal outcomes use a closed classification policy and Alert routing bounds operation graph noise
   **Dependencies**: 1.2
-- [ ] 3.2 [M] Implement the closed classifier from fresh persisted state and immutable reconciliation evidence
+- [x] 3.2 [M] Implement the closed classifier from fresh persisted state and immutable reconciliation evidence
   **Dependencies**: 2.2, 3.1
-- [ ] 3.3 [M] Write sentinel and property tests proving secrets, PII, user content, natural source keys, raw errors, arbitrary URLs, and extension fields cannot enter safe projection
+- [x] 3.3 [M] Write sentinel and property tests proving secrets, PII, user content, natural source keys, raw errors, arbitrary URLs, and extension fields cannot enter safe projection
   **Spec scenarios**: Typed ingestion evidence contains hostile diagnostics; Unexpected field is presented
   **Dependencies**: 1.2
-- [ ] 3.4 [M] Implement allowlist-first envelope projection and strict same-origin diagnostic URL construction
+- [x] 3.4 [M] Implement allowlist-first envelope projection and strict same-origin diagnostic URL construction
   **Dependencies**: 3.2, 3.3
-- [ ] 3.5 [S] Write telemetry tests for stable event names, low-cardinality dimensions, correlation fields, disabled OTel, and exporter failure
+- [x] 3.5 [S] Write telemetry tests for stable event names, low-cardinality dimensions, correlation fields, disabled OTel, and exporter failure
   **Spec scenarios**: Terminal telemetry is emitted; OTel is disabled or rejects export
   **Dependencies**: 3.2
-- [ ] 3.6 [S] Implement structured terminal logs/OTel emission plus idempotent telemetry checkpoints
+- [x] 3.6 [S] Implement structured terminal logs/OTel emission plus idempotent telemetry checkpoints
   **Dependencies**: 3.4, 3.5
 
-- [ ] Checkpoint: run classifier/redaction/telemetry tests and inspect every emitted attribute
+- [x] Checkpoint: run classifier/redaction/telemetry tests and inspect every emitted attribute
 
 ## 4. Leased webhook delivery
 
-- [ ] 4.1 [M] Write repository tests for due-row `SKIP LOCKED` claims, lease recovery, concurrent workers, delivery uniqueness, and pending/exhausted retention
+- [x] 4.1 [M] Write repository tests for due-row `SKIP LOCKED` claims, lease recovery, concurrent workers, delivery uniqueness, and pending/exhausted retention
   **Spec scenarios**: Worker dies around an ambiguous response; Delivery reaches its retry ceiling
   **Dependencies**: 2.2
-- [ ] 4.2 [M] Implement delivery repository claims, state transitions, retry schedule, and bounded cleanup
+- [x] 4.2 [M] Implement delivery repository claims, state transitions, retry schedule, and bounded cleanup
   **Dependencies**: 4.1
-- [ ] 4.3 [M] Write HTTP adapter tests for 2xx, permanent 4xx, 408/429/5xx, bounded `Retry-After`, timeout, redirects, DNS/address policy, HMAC, response-size limits, and log redaction
+- [x] 4.3 [M] Write HTTP adapter tests for 2xx, permanent 4xx, 408/429/5xx, bounded `Retry-After`, timeout, redirects, DNS/address policy, HMAC, response-size limits, and log redaction
   **Spec scenarios**: Transient delivery fails and then succeeds; Webhook configuration is unsafe
   **Dependencies**: 1.4
-- [ ] 4.4 [M] Implement the `AlertSink` protocol and noop/webhook adapters with stable `Idempotency-Key`
+- [x] 4.4 [M] Implement the `AlertSink` protocol and noop/webhook adapters with stable `Idempotency-Key`
   **Dependencies**: 3.4, 4.3
 - [ ] 4.5 [M] Write drain-loop tests covering projection, telemetry-only events, graph suppression, crash windows, exhausted delivery, and graceful shutdown
   **Spec scenarios**: Multiple pipeline children fail; Retried operation fails again; Webhook alerting is disabled
