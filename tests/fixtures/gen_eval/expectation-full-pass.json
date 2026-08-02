@@ -75,7 +75,7 @@
   "per_category": {
     "discovery": 3,
     "plumbing": 9,
-    "validation": 5
+    "validation": 6
   },
   "scenario_ids": [
     "discovery-capabilities",
@@ -94,7 +94,8 @@
     "validation-ingestion-history-filtered",
     "validation-invalid-cursor",
     "validation-malformed-arguments",
-    "validation-missing-required-argument"
+    "validation-missing-required-argument",
+    "validation-reconciliation-preview"
   ],
-  "total_scenarios": 17
+  "total_scenarios": 18
 }

@@ -11,7 +11,7 @@
   "failed": 0,
   "iterations_completed": 1,
   "pass_rate": 1.0,
-  "passed": 17,
+  "passed": 18,
   "per_category": {
     "discovery": {
       "error": 0,
@@ -28,8 +28,8 @@
     "validation": {
       "error": 0,
       "fail": 0,
-      "pass": 5,
-      "total": 5
+      "pass": 6,
+      "total": 6
     }
   },
   "per_interface": {
@@ -131,7 +131,7 @@
     "cli:operations": {
       "error": 0,
       "fail": 0,
-      "pass": 5
+      "pass": 6
     },
     "cli:pipeline": {
       "error": 0,
@@ -196,7 +196,7 @@
   },
   "per_visibility": {},
   "skipped": 0,
-  "total_scenarios": 17,
+  "total_scenarios": 18,
   "unevaluated_interfaces": [],
   "verdicts": [
     {
@@ -3447,6 +3447,103 @@
           "side_effect_verdicts": null,
           "status": "pass",
           "step_id": "help-worker",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "validation",
+      "cleanup_warnings": [],
+      "duration_seconds": 0.8,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:operations"
+      ],
+      "scenario_id": "validation-reconciliation-preview",
+      "scenario_name": "aca operations reconcile-content defaults to one safe dry-run page",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Content reconciliation: dry_run, one bounded page"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 300.0,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "reconciliation-preview-attributed",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "mode": "dry_run",
+              "scanned": 0,
+              "reported": 0,
+              "counts": {
+                "applied": 0,
+                "retried": 0,
+                "projected": 0,
+                "restored": 0,
+                "active": 0,
+                "locked": 0,
+                "missing": 0,
+                "conflicted": 0,
+                "cancelled": 0,
+                "forced": 0,
+                "exhausted": 0,
+                "incompatible": 0,
+                "failed": 0
+              },
+              "items": []
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 500.0,
+          "error_message": null,
+          "expected": {
+            "body_contains": {
+              "mode": "dry_run",
+              "scanned": 0,
+              "reported": 0,
+              "counts": {
+                "applied": 0,
+                "retried": 0,
+                "projected": 0,
+                "restored": 0,
+                "active": 0,
+                "locked": 0,
+                "missing": 0,
+                "conflicted": 0,
+                "cancelled": 0,
+                "forced": 0,
+                "exhausted": 0,
+                "incompatible": 0,
+                "failed": 0
+              },
+              "items": []
+            },
+            "exit_code": 0
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "reconciliation-preview-json",
           "transport": "cli"
         }
       ]

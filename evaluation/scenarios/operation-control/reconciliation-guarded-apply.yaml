@@ -1,0 +1,42 @@
+# Requires an approval-bound staging or ephemeral target with apply enabled. No seeded
+# failure is present; the report may apply work or safely report no-op findings.
+
+id: operation-control-reconciliation-guarded-apply
+name: aca operations reconcile-content emits one guarded apply report
+description: >
+  Exercises one bounded server-side apply page only after the mutation gate binds the
+  runner to a non-production target. JSON output remains the canonical report object.
+category: operation-control
+priority: 1
+interfaces:
+  - "cli:operations"
+tags:
+  - mutating
+  - requires-target
+  - requires-apply-enabled
+steps:
+  - id: reconciliation-guarded-attributed
+    transport: cli
+    command: operations
+    args:
+      - reconcile-content
+      - "--apply"
+      - "--limit"
+      - "1"
+    expect:
+      exit_code: 0
+      not_empty: true
+
+  - id: reconciliation-guarded-json
+    transport: cli
+    command: "--json"
+    args:
+      - operations
+      - reconcile-content
+      - "--apply"
+      - "--limit"
+      - "1"
+    expect:
+      exit_code: 0
+      body_contains:
+        mode: apply

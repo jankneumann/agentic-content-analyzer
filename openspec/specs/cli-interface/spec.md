@@ -324,6 +324,25 @@ retired `aca jobs history` command as a second workflow history contract.
 - **THEN** the operator uses `aca ingest history`
 - **AND** no compatibility job-history alias is required
 
+### Requirement: CLI reconciles one bounded content page remotely
+
+The CLI SHALL expose `aca operations reconcile-content` as a remote-only,
+dry-run-by-default command with explicit `--apply`, `--limit`, and
+`--after-content-id` controls.
+
+#### Scenario: Operator previews one page
+- **WHEN** the command is invoked without `--apply`
+- **THEN** it requests one dry-run page and exits zero after rendering it
+
+#### Scenario: Operator applies one page
+- **WHEN** `--apply` is supplied
+- **THEN** the CLI requests one enabled apply page through `WorkflowApiClient`
+- **AND** it does not connect directly to the application database
+
+#### Scenario: Apply is disabled
+- **WHEN** the server returns the apply-disabled RFC 7807 problem
+- **THEN** the CLI renders the safe problem and exits nonzero
+
 ### Requirement: Prompt Management CLI Commands
 
 The system SHALL provide `aca prompts` subcommands for managing LLM prompt configuration from the command line.
