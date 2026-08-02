@@ -3,7 +3,7 @@ schema_version: 1
 feature:
   id: add-obsidian-vault-ingest
   title: Canonical durable Obsidian vault ingestion
-  plan_revision: 6
+  plan_revision: 7
   created_by: codex
   created_at: "2026-08-02T05:50:00Z"
 
@@ -263,6 +263,9 @@ packages:
         - tests/services/test_source_override_service.py
         - tests/services/test_capability_service.py
         - tests/ingestion/test_registry.py
+        - tests/ingestion/test_source_registry.py
+        - tests/ingestion/test_ingestion_service.py
+        - tests/ingestion/test_orchestrator.py
         - tests/ingestion/test_real_ingest_policy.py
         - tests/queue/**
         - tests/mcp/**
