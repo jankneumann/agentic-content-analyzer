@@ -55,23 +55,23 @@ Depends on: P0. Shared hot files: none.
 
 Depends on: P0. Owns migration/model/repository files only.
 
-- [ ] 2.1 Add migration upgrade/downgrade tests for private Obsidian state and immutable
+- [x] 2.1 Add migration upgrade/downgrade tests for private Obsidian state and immutable
   ingest-event tables, composite digest uniqueness, content/operation foreign keys,
   bounded status/error fields, claim indexes, and absence of plaintext path/URL/body
   columns; then add the migration.
-- [ ] 2.2 Add repository tests proving unchanged event lookup, changed hash eligibility,
+- [x] 2.2 Add repository tests proving unchanged event lookup, changed hash eligibility,
   source/path isolation, and non-destructive missing-file tombstones; then implement
   state/event persistence.
   Scenarios: `An unchanged file is observed again`, `A changed, renamed, or missing
   note is observed`.
-- [ ] 2.3 Add two-session PostgreSQL tests for transactional claim acquisition, losing
+- [x] 2.3 Add two-session PostgreSQL tests for transactional claim acquisition, losing
   contenders, lease expiry, bounded attempt count, and compare-and-set completion;
   then implement claim APIs.
   Scenario: `Two workers claim the same file version`.
-- [ ] 2.4 Add crash-point tests for before/after claim, content persistence, and state
+- [x] 2.4 Add crash-point tests for before/after claim, content persistence, and state
   completion; then implement event/content reconciliation without duplicate inserts.
   Scenario: `A worker crashes around persistence`.
-- [ ] 2.5 Add persistence redaction tests showing state and repository errors retain only
+- [x] 2.5 Add persistence redaction tests showing state and repository errors retain only
   digests, opaque IDs, and stable bounded error codes.
   Scenario: `A malformed note fails`.
 

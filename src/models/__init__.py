@@ -47,6 +47,12 @@ from src.models.filter_feedback_event import FilterFeedbackEvent
 from src.models.highlight import Highlight, HighlightResponse, HighlightSource, HighlightTargetKind
 from src.models.image import Image, ImageSource
 from src.models.notification import DeviceRegistration, NotificationEvent, NotificationEventType
+from src.models.obsidian_ingest import (
+    OBSIDIAN_ERROR_CODES,
+    ObsidianIngestEvent,
+    ObsidianIngestState,
+    ObsidianIngestStatus,
+)
 from src.models.persona_filter_profile import PersonaFilterProfile
 from src.models.podcast import Podcast, PodcastLength, PodcastScriptRecord, PodcastStatus
 from src.models.revision import RevisionContext, RevisionResult, RevisionTurn
@@ -194,6 +200,11 @@ __all__ = [
     # Ingestion filter
     "PersonaFilterProfile",
     "FilterFeedbackEvent",
+    # Private Obsidian ingest state
+    "ObsidianIngestState",
+    "ObsidianIngestEvent",
+    "ObsidianIngestStatus",
+    "OBSIDIAN_ERROR_CODES",
     # Workflow terminal alerting
     "WorkflowTerminalEvent",
     "WorkflowTerminalSourceKind",
