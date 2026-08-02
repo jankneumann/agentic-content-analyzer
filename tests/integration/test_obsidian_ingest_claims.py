@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from threading import Barrier
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
@@ -328,6 +329,7 @@ def test_expired_claim_becomes_missing_only_after_database_timed_grace(test_engi
             assert not repository.mark_missing(
                 SOURCE,
                 PATH,
+                expected_observation_generation=observed.observation_generation,
                 now=datetime(2099, 1, 1, tzinfo=UTC),
                 grace_seconds=60,
             )
@@ -353,6 +355,7 @@ def test_expired_claim_becomes_missing_only_after_database_timed_grace(test_engi
             assert repository.mark_missing(
                 SOURCE,
                 PATH,
+                expected_observation_generation=observed.observation_generation,
                 now=datetime(2000, 1, 1, tzinfo=UTC),
                 grace_seconds=60,
             )
@@ -366,5 +369,54 @@ def test_expired_claim_becomes_missing_only_after_database_timed_grace(test_engi
                 now=datetime(2000, 1, 1, tzinfo=UTC),
             )
             session.rollback()
+    finally:
+        _cleanup(sessions)
+
+
+def test_reappearance_observation_wins_against_older_missing_scan(test_engine) -> None:
+    sessions = _sessions(test_engine)
+    now = datetime(2026, 8, 2, 12, tzinfo=UTC)
+    boundary = Barrier(2)
+    try:
+        with sessions.begin() as setup:
+            snapshot = ObsidianIngestRepository(setup).observe_file_version(
+                SOURCE, PATH, FILE, observed_mtime_ns=10, observed_size=20, now=now
+            )
+
+        def stale_missing() -> bool:
+            boundary.wait(timeout=2)
+            with sessions.begin() as old_scan:
+                return ObsidianIngestRepository(old_scan).mark_missing(
+                    SOURCE,
+                    PATH,
+                    expected_observation_generation=snapshot.observation_generation,
+                    now=now + timedelta(seconds=1),
+                    grace_seconds=60,
+                )
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(stale_missing)
+            with sessions.begin() as reappearance:
+                refreshed = ObsidianIngestRepository(reappearance).observe_file_version(
+                    SOURCE,
+                    PATH,
+                    FILE,
+                    observed_mtime_ns=11,
+                    observed_size=20,
+                    now=now + timedelta(seconds=1),
+                )
+            boundary.wait(timeout=2)
+            assert future.result(timeout=2) is False
+
+        with sessions() as verifier:
+            state = verifier.execute(
+                text(
+                    "SELECT observation_generation, missing_since "
+                    "FROM obsidian_ingest_state WHERE configured_source_digest=:source"
+                ),
+                {"source": SOURCE},
+            ).one()
+            assert state.observation_generation == refreshed.observation_generation
+            assert state.missing_since is None
     finally:
         _cleanup(sessions)

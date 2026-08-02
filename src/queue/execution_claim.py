@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from sqlalchemy import select, text
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from src.models.content import Content, ContentStatus
@@ -82,24 +83,7 @@ def _require_current_claim() -> ExecutionClaim:
     return claim
 
 
-def _lock_and_validate_job(session: Session, claim: ExecutionClaim) -> None:
-    row = (
-        session.execute(
-            text(
-                """
-                SELECT status, claim_generation, claim_protocol_version,
-                       COALESCE((payload->>'cancel_requested')::boolean, FALSE)
-                         AS cancel_requested
-                FROM pgqueuer_jobs
-                WHERE id = :job_id
-                FOR UPDATE
-                """
-            ),
-            {"job_id": claim.job_id},
-        )
-        .mappings()
-        .first()
-    )
+def _validate_job_row(row: RowMapping | None, claim: ExecutionClaim) -> None:
     if (
         row is None
         or row["status"] != "in_progress"
@@ -112,6 +96,59 @@ def _lock_and_validate_job(session: Session, claim: ExecutionClaim) -> None:
         )
     if bool(row["cancel_requested"]):
         raise ClaimCancelled(f"Operation {claim.job_id} was cancelled")
+
+
+def _job_row(session: Session, claim: ExecutionClaim, *, locking: bool) -> RowMapping | None:
+    statement = (
+        text(
+            """
+            SELECT status, claim_generation, claim_protocol_version,
+                   COALESCE((payload->>'cancel_requested')::boolean, FALSE)
+                     AS cancel_requested
+            FROM pgqueuer_jobs
+            WHERE id = :job_id
+            FOR UPDATE
+            """
+        )
+        if locking
+        else text(
+            """
+            SELECT status, claim_generation, claim_protocol_version,
+                   COALESCE((payload->>'cancel_requested')::boolean, FALSE)
+                     AS cancel_requested
+            FROM pgqueuer_jobs
+            WHERE id = :job_id
+            """
+        )
+    )
+    return (
+        session.execute(
+            statement,
+            {"job_id": claim.job_id},
+        )
+        .mappings()
+        .first()
+    )
+
+
+def check_execution_claim(session: Session) -> ExecutionClaim:
+    """Fail closed at a non-locking cancellation and generation checkpoint."""
+
+    claim = _require_current_claim()
+    _validate_job_row(_job_row(session, claim, locking=False), claim)
+    return claim
+
+
+def guard_execution_claim(session: Session) -> ExecutionClaim:
+    """Lock and validate the job before acquiring domain persistence locks."""
+
+    claim = _require_current_claim()
+    _validate_job_row(_job_row(session, claim, locking=True), claim)
+    return claim
+
+
+def _lock_and_validate_job(session: Session, claim: ExecutionClaim) -> None:
+    _validate_job_row(_job_row(session, claim, locking=True), claim)
 
 
 def _lock_content(session: Session, content_id: int, claim: ExecutionClaim) -> Content:

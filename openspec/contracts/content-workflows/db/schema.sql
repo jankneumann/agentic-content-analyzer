@@ -1,6 +1,9 @@
 -- Contract delta for canonical content provenance and queue-backed operations.
 -- Implementation must translate this contract into an idempotent Alembic migration.
 
+-- Private Obsidian Web Clipper notes have a distinct immutable Content source.
+ALTER TYPE contentsource ADD VALUE IF NOT EXISTS 'obsidian';
+
 -- Each generated resource is durably owned by at most one queue operation.
 -- Nullable ownership preserves legacy writers while allowing a worker to recover
 -- a committed resource if its operation projection was not attached before a crash.
@@ -487,6 +490,7 @@ CREATE TABLE obsidian_ingest_state (
     current_file_hash CHAR(64) NOT NULL,
     observed_mtime_ns BIGINT NOT NULL,
     observed_size BIGINT NOT NULL,
+    observation_generation BIGINT NOT NULL DEFAULT 0,
     status VARCHAR(16) NOT NULL DEFAULT 'discovered',
     claim_token UUID,
     lease_expires_at TIMESTAMPTZ,
@@ -533,6 +537,9 @@ CREATE TABLE obsidian_ingest_state (
     ),
     CONSTRAINT ck_obsidian_ingest_state_observation CHECK (
         observed_mtime_ns >= 0 AND observed_size >= 0
+    ),
+    CONSTRAINT ck_obsidian_ingest_state_observation_generation CHECK (
+        observation_generation >= 0
     ),
     CONSTRAINT ck_obsidian_ingest_state_shape CHECK (
         (status = 'discovered' AND claim_token IS NULL

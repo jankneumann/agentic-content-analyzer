@@ -38,6 +38,7 @@ class ObsidianObservation:
     unchanged: bool
     content_id: int | None
     error_code: str | None
+    observation_generation: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +97,7 @@ class ObsidianIngestRepository:
             unchanged=unchanged,
             content_id=event.content_id,
             error_code=event.error_code,
+            observation_generation=cast(int, state.observation_generation),
         )
 
     def observe_file_version(
@@ -131,6 +133,7 @@ class ObsidianIngestRepository:
                 current_file_hash=file_hash,
                 observed_mtime_ns=observed_mtime_ns,
                 observed_size=observed_size,
+                observation_generation=0,
                 status="discovered",
                 attempt_count=0,
                 first_seen_at=now,
@@ -152,6 +155,7 @@ class ObsidianIngestRepository:
             )
         ).scalar_one()
         previous_hash = str(state.current_file_hash)
+        state.observation_generation = cast(int, state.observation_generation) + 1
 
         if previous_hash != file_hash:
             previous_event = (
@@ -434,6 +438,7 @@ class ObsidianIngestRepository:
         configured_source_digest: str,
         relative_path_digest: str,
         *,
+        expected_observation_generation: int,
         now: datetime,
         grace_seconds: int = 300,
     ) -> bool:
@@ -441,6 +446,12 @@ class ObsidianIngestRepository:
         self._validate_digest(configured_source_digest)
         self._validate_digest(relative_path_digest)
         self._validate_now(now)
+        if (
+            not isinstance(expected_observation_generation, int)
+            or isinstance(expected_observation_generation, bool)
+            or expected_observation_generation < 0
+        ):
+            raise ObsidianIngestRepositoryError("invalid_observation_generation")
         if (
             not isinstance(grace_seconds, int)
             or isinstance(grace_seconds, bool)
@@ -459,6 +470,8 @@ class ObsidianIngestRepository:
             )
         ).scalar_one_or_none()
         if state is None:
+            return False
+        if cast(int, state.observation_generation) != expected_observation_generation:
             return False
         database_now = self._database_now()
         if state.missing_since is None:

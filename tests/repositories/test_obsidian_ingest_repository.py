@@ -89,6 +89,7 @@ def test_missing_marker_is_non_destructive_and_reobservation_restores_state(
             assert not repository.mark_missing(
                 SOURCE_A,
                 PATH_A,
+                expected_observation_generation=observed.observation_generation,
                 now=now + timedelta(hours=1),
                 grace_seconds=60,
             )
@@ -112,6 +113,7 @@ def test_missing_marker_is_non_destructive_and_reobservation_restores_state(
             assert repository.mark_missing(
                 SOURCE_A,
                 PATH_A,
+                expected_observation_generation=observed.observation_generation,
                 now=now + timedelta(hours=2),
                 grace_seconds=60,
             )
@@ -154,3 +156,74 @@ def test_validation_errors_are_bounded_codes_without_private_input() -> None:
         )
     assert str(code_error.value) == "invalid_error_code"
     assert secret_path not in repr(code_error.value)
+
+    for invalid_generation in (-1, True):
+        with pytest.raises(ObsidianIngestRepositoryError, match="^invalid_observation_generation$"):
+            repository.mark_missing(
+                SOURCE_A,
+                PATH_A,
+                expected_observation_generation=invalid_generation,
+                now=datetime.now(UTC),
+            )
+
+
+def test_first_post_upgrade_missing_scan_accepts_generation_zero(test_engine) -> None:
+    sessions = _sessions(test_engine)
+    now = datetime(2026, 8, 2, 12, tzinfo=UTC)
+    try:
+        with sessions.begin() as session:
+            repository = ObsidianIngestRepository(session)
+            repository.observe_file_version(
+                SOURCE_A, PATH_A, FILE_A, observed_mtime_ns=10, observed_size=20, now=now
+            )
+            session.execute(
+                text(
+                    "UPDATE obsidian_ingest_state SET observation_generation = 0 "
+                    "WHERE configured_source_digest = :source "
+                    "AND relative_path_digest = :path"
+                ),
+                {"source": SOURCE_A, "path": PATH_A},
+            )
+
+            assert not repository.mark_missing(
+                SOURCE_A,
+                PATH_A,
+                expected_observation_generation=0,
+                now=now,
+                grace_seconds=60,
+            )
+            missing_since = session.scalar(
+                text(
+                    "SELECT missing_since FROM obsidian_ingest_state "
+                    "WHERE configured_source_digest = :source "
+                    "AND relative_path_digest = :path"
+                ),
+                {"source": SOURCE_A, "path": PATH_A},
+            )
+            assert missing_since is not None
+    finally:
+        _cleanup(sessions, SOURCE_A)
+
+
+def test_missing_compare_and_set_rejects_stale_observation_generation(test_engine) -> None:
+    sessions = _sessions(test_engine)
+    now = datetime(2026, 8, 2, 12, tzinfo=UTC)
+    try:
+        with sessions.begin() as session:
+            repository = ObsidianIngestRepository(session)
+            first = repository.observe_file_version(
+                SOURCE_A, PATH_A, FILE_A, observed_mtime_ns=10, observed_size=20, now=now
+            )
+            reappeared = repository.observe_file_version(
+                SOURCE_A, PATH_A, FILE_A, observed_mtime_ns=11, observed_size=20, now=now
+            )
+            assert reappeared.observation_generation == first.observation_generation + 1
+            assert not repository.mark_missing(
+                SOURCE_A,
+                PATH_A,
+                expected_observation_generation=first.observation_generation,
+                now=now,
+                grace_seconds=60,
+            )
+    finally:
+        _cleanup(sessions, SOURCE_A)

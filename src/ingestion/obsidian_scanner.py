@@ -505,7 +505,14 @@ class VaultScanner:
         mount.close(self._filesystem)
         return SourceReadiness(ready=True)
 
-    def scan(self, *, cursor: str | None = None) -> ScanResult:
+    def scan(
+        self,
+        *,
+        cursor: str | None = None,
+        checkpoint: Callable[[], None] | None = None,
+    ) -> ScanResult:
+        if checkpoint is not None:
+            checkpoint()
         try:
             mount = self._open_mount()
         except _UnavailableError:
@@ -526,6 +533,7 @@ class VaultScanner:
                 depth=0,
                 cursor=cursor,
                 state=state,
+                checkpoint=checkpoint,
             )
             if cursor is not None and not state.cursor_seen and not state.stopped:
                 state.diagnostics.append(ScanDiagnostic("invalid_cursor"))
@@ -551,7 +559,10 @@ class VaultScanner:
         depth: int,
         cursor: str | None,
         state: _ScanState,
+        checkpoint: Callable[[], None] | None,
     ) -> None:
+        if checkpoint is not None:
+            checkpoint()
         if state.stopped or self._stop_for_duration(state):
             return
         remaining_entries = self._limits.max_entries - state.entries_examined
@@ -589,6 +600,8 @@ class VaultScanner:
         diagnosed_collisions: set[str] = set()
 
         for entry in entries:
+            if checkpoint is not None:
+                checkpoint()
             if state.stopped or self._stop_for_duration(state):
                 return
             raw_name = entry.name
@@ -634,6 +647,7 @@ class VaultScanner:
                         depth=depth + 1,
                         cursor=cursor,
                         state=state,
+                        checkpoint=checkpoint,
                     )
                 finally:
                     self._filesystem.close(child_fd)
@@ -656,6 +670,8 @@ class VaultScanner:
                 state.diagnostics.append(ScanDiagnostic("non_regular_file", path_digest))
                 state.last_cursor = path_digest
                 continue
+            if checkpoint is not None:
+                checkpoint()
             self._read_candidate(
                 mount=mount,
                 directory_fd=directory_fd,

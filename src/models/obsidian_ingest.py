@@ -91,6 +91,7 @@ class ObsidianIngestState(Base):
     current_file_hash = Column(CHAR(64), nullable=False)
     observed_mtime_ns = Column(BigInteger, nullable=False)
     observed_size = Column(BigInteger, nullable=False)
+    observation_generation = Column(BigInteger, nullable=False, default=0, server_default=text("0"))
     status = Column(String(16), nullable=False, default="discovered", server_default="discovered")
     claim_token = Column(UUID(as_uuid=True), nullable=True)
     lease_expires_at = Column(DateTime(timezone=True), nullable=True)
@@ -142,6 +143,10 @@ class ObsidianIngestState(Base):
         CheckConstraint(
             "observed_mtime_ns >= 0 AND observed_size >= 0",
             name="ck_obsidian_ingest_state_observation",
+        ),
+        CheckConstraint(
+            "observation_generation >= 0",
+            name="ck_obsidian_ingest_state_observation_generation",
         ),
         CheckConstraint(
             "(status = 'discovered' AND claim_token IS NULL AND lease_expires_at IS NULL AND error_code IS NULL) OR (status = 'claimed' AND claim_token IS NOT NULL AND lease_expires_at IS NOT NULL AND attempt_count >= 1 AND error_code IS NULL) OR (status = 'ingested' AND claim_token IS NULL AND lease_expires_at IS NULL AND error_code IS NULL) OR (status = 'failed' AND claim_token IS NULL AND lease_expires_at IS NULL AND error_code IS NOT NULL) OR (status = 'deferred' AND claim_token IS NULL AND lease_expires_at IS NULL AND error_code IS NOT NULL)",

@@ -73,6 +73,7 @@ def test_deployed_schema_is_digest_only_bounded_and_indexed(test_engine: Engine)
         "current_file_hash",
         "observed_mtime_ns",
         "observed_size",
+        "observation_generation",
         "status",
         "claim_token",
         "lease_expires_at",
@@ -112,6 +113,8 @@ def test_deployed_schema_is_digest_only_bounded_and_indexed(test_engine: Engine)
         )
         for name in names
     )
+    assert state_columns["observation_generation"]["nullable"] is False
+    assert "0" in str(state_columns["observation_generation"]["default"])
     for column_name in (*state_columns, *event_columns):
         lowered = column_name.lower()
         assert "url" not in lowered
@@ -162,6 +165,7 @@ def test_deployed_schema_is_digest_only_bounded_and_indexed(test_engine: Engine)
         "ck_obsidian_ingest_state_status",
         "ck_obsidian_ingest_state_error_code",
         "ck_obsidian_ingest_state_attempt_count",
+        "ck_obsidian_ingest_state_observation_generation",
         "ck_obsidian_ingest_state_shape",
         "ck_obsidian_ingest_events_digests",
         "ck_obsidian_ingest_events_status",

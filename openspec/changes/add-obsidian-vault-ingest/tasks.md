@@ -104,29 +104,29 @@ Depends on: P0. Owns new scanner modules/tests only.
 
 Depends on: P1, P2, P3. Does not edit registry/OpenAPI/config union/MCP/fixture maps.
 
-- [ ] 4.1 Add the `ContentSource.OBSIDIAN` storage-enum migration and adapter tests for
+- [x] 4.1 Add the `ContentSource.OBSIDIAN` storage-enum migration and adapter tests for
   a bounded scan mapping parsed authoritative Markdown to that source, exact
   persisted/skipped/failed counts, source outcomes, and bounded diagnostics; then
   implement the unregistered orchestrator.
   Scenario: `A configured vault scan completes durably`.
-- [ ] 4.2 Add integration tests for unchanged, changed, renamed, deleted/reappearing,
+- [x] 4.2 Add integration tests for unchanged, changed, renamed, deleted/reappearing,
   duplicate-URL, and different-annotation clips; then implement stable source identity
   and existing `canonical_id` linking while preserving each note body.
   Scenarios: `An unchanged file is observed again`, `A changed, renamed, or missing
   note is observed`, `Two distinct notes clip the same URL`.
-- [ ] 4.3 Add two-worker and retry integration tests proving immutable event/content
+- [x] 4.3 Add two-worker and retry integration tests proving immutable event/content
   uniqueness under overlap and terminal-operation replay; then integrate transactional
   claims and reconciliation.
   Scenarios: `Two workers claim the same file version`, `A worker crashes around
   persistence`, `A caller forces replay`.
-- [ ] 4.4 Add cancellation tests at enumeration, between candidates, before persistence,
+- [x] 4.4 Add cancellation tests at enumeration, between candidates, before persistence,
   and while a claim is held; then implement cancellation checkpoints and claim release.
   Scenario: `A scan is cancelled`.
-- [ ] 4.5 Add outcome/redaction tests for parse, encoding, path, size, stability, mount,
+- [x] 4.5 Add outcome/redaction tests for parse, encoding, path, size, stability, mount,
   and persistence failures across operation input/result, progress/events, logs, and
   RI-09 telemetry; then add safe diagnostic mapping.
   Scenarios: `A malformed note fails`, `The worker cannot access the configured mount`.
-- [ ] 4.6 Add a dependency-boundary test proving ingress and
+- [x] 4.6 Add a dependency-boundary test proving ingress and
   `src/sync/obsidian_exporter.py` do not import one another and that successful/failed
   scans never mutate vault files.
   Scenarios: `A note succeeds or fails ingestion`, `ACA-generated export content is

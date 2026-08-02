@@ -8,14 +8,14 @@ contract and generated bindings atomically; those files will be recorded in Phas
 
 | Req ID | Spec Source | Description | Contract Ref | Design Decision | Files Changed | Test(s) | Evidence |
 |--------|------------|-------------|-------------|----------------|---------------|---------|----------|
-| obsidian-vault-ingest.1 | `specs/obsidian-vault-ingest/spec.md` | Worker-local bounded vault scan | --- | D1, D2, D6, D9 | `src/ingestion/obsidian_scanner.py`; `tests/ingestion/test_obsidian_scanner.py` | scanner bounds/readiness; adapter cancellation/outcome; durable surface integration | --- |
-| obsidian-vault-ingest.2 | `specs/obsidian-vault-ingest/spec.md` | Strict bounded clip metadata contract | --- | D5 | `src/ingestion/obsidian_parser.py`; `tests/ingestion/test_obsidian_parser.py` | parser valid/default/invalid/adversarial YAML tests | --- |
-| obsidian-vault-ingest.3 | `specs/obsidian-vault-ingest/spec.md` | Race-safe filesystem containment | --- | D2, D6 | `src/ingestion/obsidian_scanner.py`; `tests/ingestion/test_obsidian_scanner.py` | symlink/TOCTOU/stability/embed scanner tests | --- |
-| obsidian-vault-ingest.4 | `specs/obsidian-vault-ingest/spec.md` | Deterministic inert Markdown normalization | --- | D5, D6 | `src/ingestion/obsidian_parser.py`; `tests/ingestion/test_obsidian_parser.py` | normalization goldens and renderer regression tests | --- |
-| obsidian-vault-ingest.5 | `specs/obsidian-vault-ingest/spec.md` | Incremental state and concurrent claims | --- | D7 | `alembic/versions/a6c3e8f1d204_add_obsidian_ingest_state.py`; `src/models/obsidian_ingest.py`; `src/repositories/obsidian_ingest.py`; state/migration tests | migration/repository/two-session/crash tests | --- |
-| obsidian-vault-ingest.6 | `specs/obsidian-vault-ingest/spec.md` | Canonical identity preserves note context | --- | D5, D8 | `src/ingestion/obsidian_parser.py`; `tests/ingestion/test_obsidian_parser.py` | URL canonicalization and duplicate annotation integration tests | --- |
-| obsidian-vault-ingest.7 | `specs/obsidian-vault-ingest/spec.md` | Read-only ingress/export ownership boundary | --- | D10 | `src/ingestion/obsidian_scanner.py`; `tests/ingestion/test_obsidian_scanner.py` | mutation snapshot and import-boundary tests | --- |
-| obsidian-vault-ingest.8 | `specs/obsidian-vault-ingest/spec.md` | Private diagnostics and path-free replay | --- | D3, D7, D9 | `alembic/versions/a6c3e8f1d204_add_obsidian_ingest_state.py`; `src/models/obsidian_ingest.py`; `src/repositories/obsidian_ingest.py`; persistence tests | state/operation/log/telemetry redaction and retry tests | --- |
+| obsidian-vault-ingest.1 | `specs/obsidian-vault-ingest/spec.md` | Worker-local bounded vault scan | --- | D1, D2, D6, D9 | `src/ingestion/obsidian_scanner.py`; `src/ingestion/obsidian_adapter.py`; `src/queue/execution_claim.py`; scanner/adapter/claim tests | scanner bounds/readiness; real cancellation between committed notes; exact adapter outcomes | 134-test P1-P4 PostgreSQL gate passed |
+| obsidian-vault-ingest.2 | `specs/obsidian-vault-ingest/spec.md` | Strict bounded clip metadata contract | --- | D5 | `src/ingestion/obsidian_parser.py`; `tests/ingestion/test_obsidian_parser.py` | parser valid/default/invalid/adversarial YAML tests | 134-test P1-P4 PostgreSQL gate passed |
+| obsidian-vault-ingest.3 | `specs/obsidian-vault-ingest/spec.md` | Race-safe filesystem containment | --- | D2, D6 | `src/ingestion/obsidian_scanner.py`; `tests/ingestion/test_obsidian_scanner.py` | symlink/TOCTOU/stability/embed scanner tests | 134-test P1-P4 PostgreSQL gate passed |
+| obsidian-vault-ingest.4 | `specs/obsidian-vault-ingest/spec.md` | Deterministic inert Markdown normalization | --- | D5, D6 | `src/ingestion/obsidian_parser.py`; `tests/ingestion/test_obsidian_parser.py` | normalization goldens and renderer regression tests | 134-test P1-P4 PostgreSQL gate passed |
+| obsidian-vault-ingest.5 | `specs/obsidian-vault-ingest/spec.md` | Incremental state and concurrent claims | --- | D7 | state/generation migrations; `src/models/obsidian_ingest.py`; `src/repositories/obsidian_ingest.py`; `src/ingestion/obsidian_adapter.py`; state/adapter tests | barrier-backed claims; retry exhaustion; crash reconciliation; observation-generation CAS | 134-test P1-P4 PostgreSQL gate passed |
+| obsidian-vault-ingest.6 | `specs/obsidian-vault-ingest/spec.md` | Canonical identity preserves note context | --- | D5, D8 | parser; `src/ingestion/obsidian_adapter.py`; `src/models/content.py`; content-source migrations; adapter integration tests | URL canonicalization; duplicate annotations; advisory-lock canonical race | 134-test P1-P4 PostgreSQL gate passed |
+| obsidian-vault-ingest.7 | `specs/obsidian-vault-ingest/spec.md` | Read-only ingress/export ownership boundary | --- | D10 | scanner/adapter; `tests/architecture/test_obsidian_ownership.py`; scanner/adapter tests | byte-for-byte mutation snapshots; generated-note loop guard; import boundary | 134-test P1-P4 PostgreSQL gate passed |
+| obsidian-vault-ingest.8 | `specs/obsidian-vault-ingest/spec.md` | Private diagnostics and path-free replay | --- | D3, D7, D9 | state migrations/model/repository; adapter/execution-claim code; redaction/retry tests | bounded parse/persistence/mount diagnostics; commit rollback; retry exhaustion | 134-test P1-P4 PostgreSQL gate passed |
 | source-capability-registry.1 | `specs/source-capability-registry/spec.md` | Registry-derived parity with private filesystem configuration | --- | D1, D3, D4, D9 | --- | generated contract, config, registry, CLI/HTTP/MCP/UI, fixture parity tests | --- |
 | real-ingestion-ci.1 | `specs/real-ingestion-ci/spec.md` | Every registry source maps to deterministic fixture/live policy | --- | D4 | --- | collection completeness and missing-mount policy tests | --- |
 | real-ingestion-ci.2 | `specs/real-ingestion-ci/spec.md` | Offline durable results match Content/state deltas | --- | D7, D8, D9 | --- | OperationService incremental/duplicate/failure DB-delta tests | --- |
@@ -46,11 +46,17 @@ contract and generated bindings atomically; those files will be recorded in Phas
 | plan-2.5 | wp-scanner | security | high | fixed | No-follow descriptor access, all symlinks rejected, hard bounds. |
 | plan-2.6 | wp-parser | contract | high | fixed | Strict URL/timestamp/YAML and inert normalization. |
 | plan-2.7 | all | privacy | high | fixed | Opaque IDs and allowlist-first diagnostics/projections. |
+| impl-p4.1 | wp-adapter | concurrency | high | fixed | Canonical URL identity is serialized by transaction advisory lock and a barrier-backed two-session test. |
+| impl-p4.2 | wp-adapter | outcomes | high | fixed | Durable `retry_exhausted` state is reported as failed with a bounded diagnostic. |
+| impl-p4.3 | wp-adapter | transactions | high | fixed | Content references publish only after the per-note transaction commits. |
+| impl-p4.4 | wp-adapter | recovery | medium | fixed | Monotonic observation generation provides CAS protection against stale missing scans. |
+| impl-p4.5 | wp-adapter | evidence | medium | fixed | Real barriers/failpoints force claim, crash-gap, cancellation, and canonical races. |
+| impl-p4.6 | wp-adapter | migration | medium | fixed | Generation zero remains valid for pre-upgrade rows while negatives and booleans fail closed. |
 
 ## Coverage Summary
 
 - **Requirements traced**: 11/11
 - **Tests mapped**: 11 requirements have at least one planned test
-- **Evidence collected**: 0/11 requirements have pass/fail evidence
-- **Gaps identified**: Phase 2 implementation files and Phase 3 revision evidence pending
+- **Evidence collected**: 8/11 requirements have P1-P4 pass/fail evidence
+- **Gaps identified**: P5 canonical source surfaces and P6 revision/evidence validation pending
 - **Deferred items**: watcher, device bridge, attachments, write/move behavior, custom templates

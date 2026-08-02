@@ -712,3 +712,37 @@ def test_embed_target_is_never_dereferenced(tmp_path: Path) -> None:
     assert filesystem.opened_files == ["clip.md"]
     assert result.notes[0].data.decode() == _note(body)
     assert "TOP-SECRET" not in repr(result)
+
+
+def test_cancellation_checkpoint_runs_before_vault_enumeration(tmp_path: Path) -> None:
+    approved, inbox = _vault(tmp_path)
+    inbox.joinpath("clip.md").write_text(_note())
+
+    class CancelledError(RuntimeError):
+        pass
+
+    def checkpoint() -> None:
+        raise CancelledError("cancelled")
+
+    with pytest.raises(CancelledError, match="cancelled"):
+        _scanner(approved).scan(checkpoint=checkpoint)
+
+
+def test_cancellation_checkpoint_runs_during_enumeration_and_before_reads(tmp_path: Path) -> None:
+    approved, inbox = _vault(tmp_path)
+    for name in ("a.md", "b.md"):
+        inbox.joinpath(name).write_text(_note(name))
+    calls = 0
+
+    class CancelledError(RuntimeError):
+        pass
+
+    def checkpoint() -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 4:
+            raise CancelledError("cancelled")
+
+    with pytest.raises(CancelledError, match="cancelled"):
+        _scanner(approved).scan(checkpoint=checkpoint)
+    assert calls == 4
