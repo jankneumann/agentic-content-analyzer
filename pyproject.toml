@@ -98,7 +98,7 @@ dependencies = [
     # is typed against `typer._click.core.Command` while src/cli/app.py overrides it
     # with `click.core.Command` — mypy rejects the override. Lift once app.py is
     # migrated to the vendored types.
-    "typer>=0.9.0,<0.20",
+    "typer>=0.9.0,<0.28",
     "rich>=13.0.0",
 
     # Vector Search
