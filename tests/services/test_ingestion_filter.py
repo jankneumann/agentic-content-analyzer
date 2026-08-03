@@ -7,7 +7,6 @@ Content row via a lightweight fake Session.
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -21,7 +20,6 @@ from src.services.ingestion_filter import (
     IngestionFilterService,
     _parse_llm_response,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -67,9 +65,7 @@ class _FakeEmbeddingProvider:
     async def embed(self, text: str, *, is_query: bool = False) -> list[float]:
         return list(self._vector)
 
-    async def embed_batch(
-        self, texts: list[str], *, is_query: bool = False
-    ) -> list[list[float]]:
+    async def embed_batch(self, texts: list[str], *, is_query: bool = False) -> list[list[float]]:
         return [list(self._vector) for _ in texts]
 
 
@@ -151,8 +147,11 @@ def test_parse_llm_response_recovers_on_bad_json() -> None:
 def test_heuristic_must_exclude_short_circuits() -> None:
     cfg = _make_config(must_exclude=("press release",))
     svc = IngestionFilterService(
-        _FakeSession(), config=cfg, persona_id="p",
-        embedding_provider=_FakeEmbeddingProvider(), llm_client=_FakeLLM(),
+        _FakeSession(),
+        config=cfg,
+        persona_id="p",
+        embedding_provider=_FakeEmbeddingProvider(),
+        llm_client=_FakeLLM(),
     )
     content = _make_content(title="Acme Q4 press release: big news")
     decision = svc._evaluate(content)
@@ -164,10 +163,15 @@ def test_heuristic_must_exclude_short_circuits() -> None:
 def test_heuristic_must_include_short_circuits_to_keep_high() -> None:
     cfg = _make_config(must_include=("retrieval-augmented generation",))
     svc = IngestionFilterService(
-        _FakeSession(), config=cfg, persona_id="p",
-        embedding_provider=_FakeEmbeddingProvider(), llm_client=_FakeLLM(),
+        _FakeSession(),
+        config=cfg,
+        persona_id="p",
+        embedding_provider=_FakeEmbeddingProvider(),
+        llm_client=_FakeLLM(),
     )
-    content = _make_content(markdown_content="Deep dive into retrieval-augmented generation at scale. " * 20)
+    content = _make_content(
+        markdown_content="Deep dive into retrieval-augmented generation at scale. " * 20
+    )
     decision = svc._evaluate(content)
     assert decision.decision == "keep"
     assert decision.priority_bucket == "high"
@@ -177,8 +181,11 @@ def test_heuristic_must_include_short_circuits_to_keep_high() -> None:
 def test_heuristic_min_word_count_skip() -> None:
     cfg = _make_config(min_word_count=50)
     svc = IngestionFilterService(
-        _FakeSession(), config=cfg, persona_id="p",
-        embedding_provider=_FakeEmbeddingProvider(), llm_client=_FakeLLM(),
+        _FakeSession(),
+        config=cfg,
+        persona_id="p",
+        embedding_provider=_FakeEmbeddingProvider(),
+        llm_client=_FakeLLM(),
     )
     content = _make_content(markdown_content="too short")
     decision = svc._evaluate(content)
@@ -197,8 +204,11 @@ def test_embedding_tier_keep_above_high_threshold() -> None:
     cfg = _make_config()
     provider = _FakeEmbeddingProvider(vector=[1.0, 0.0, 0.0])
     svc = IngestionFilterService(
-        _FakeSession(), config=cfg, persona_id="p",
-        embedding_provider=provider, llm_client=_FakeLLM(),
+        _FakeSession(),
+        config=cfg,
+        persona_id="p",
+        embedding_provider=provider,
+        llm_client=_FakeLLM(),
     )
     content = _make_content()
     decision = svc._evaluate(content)
@@ -211,8 +221,11 @@ def test_embedding_tier_skip_below_low_threshold() -> None:
     # Opposite vectors -> cosine=-1 -> normalized score=0.0.
     cfg = _make_config()
     svc = IngestionFilterService(
-        _FakeSession(), config=cfg, persona_id="p",
-        embedding_provider=_OpposedProvider(), llm_client=_FakeLLM(),
+        _FakeSession(),
+        config=cfg,
+        persona_id="p",
+        embedding_provider=_OpposedProvider(),
+        llm_client=_FakeLLM(),
     )
     content = _make_content()
     decision = svc._evaluate(content)
@@ -225,8 +238,11 @@ def test_embedding_borderline_triggers_llm_tier() -> None:
     cfg = _make_config()
     llm = _FakeLLM(responses=['{"decision": "keep", "score": 0.58, "reason": "edge"}'])
     svc = IngestionFilterService(
-        _FakeSession(), config=cfg, persona_id="p",
-        embedding_provider=_BorderlineProvider(), llm_client=llm,
+        _FakeSession(),
+        config=cfg,
+        persona_id="p",
+        embedding_provider=_BorderlineProvider(),
+        llm_client=llm,
     )
     content = _make_content()
     decision = svc._evaluate(content)
@@ -238,8 +254,11 @@ def test_embedding_borderline_triggers_llm_tier() -> None:
 def test_embedding_borderline_with_tier3_disabled_keeps_low() -> None:
     cfg = _make_config(llm_enabled=False)
     svc = IngestionFilterService(
-        _FakeSession(), config=cfg, persona_id="p",
-        embedding_provider=_BorderlineProvider(), llm_client=_FakeLLM(),
+        _FakeSession(),
+        config=cfg,
+        persona_id="p",
+        embedding_provider=_BorderlineProvider(),
+        llm_client=_FakeLLM(),
     )
     decision = svc._evaluate(_make_content())
     assert decision.tier is FilterTier.EMBEDDING
@@ -254,8 +273,11 @@ def test_embedding_borderline_with_tier3_disabled_keeps_low() -> None:
 def test_embedding_failure_falls_open_when_not_strict() -> None:
     cfg = _make_config()
     svc = IngestionFilterService(
-        _FakeSession(), config=cfg, persona_id="p",
-        embedding_provider=_RaisingProvider(), llm_client=_FakeLLM(),
+        _FakeSession(),
+        config=cfg,
+        persona_id="p",
+        embedding_provider=_RaisingProvider(),
+        llm_client=_FakeLLM(),
     )
     decision = svc._evaluate(_make_content())
     assert decision.decision == "keep"
@@ -265,8 +287,11 @@ def test_embedding_failure_falls_open_when_not_strict() -> None:
 def test_embedding_failure_raises_when_strict() -> None:
     cfg = _make_config(strict=True)
     svc = IngestionFilterService(
-        _FakeSession(), config=cfg, persona_id="p",
-        embedding_provider=_RaisingProvider(), llm_client=_FakeLLM(),
+        _FakeSession(),
+        config=cfg,
+        persona_id="p",
+        embedding_provider=_RaisingProvider(),
+        llm_client=_FakeLLM(),
     )
     with pytest.raises(RuntimeError):
         svc._evaluate(_make_content())

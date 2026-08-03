@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 import pytest
+from pydantic import ValidationError
 
 from src.agents.persona.models import (
     AnalysisPreferences,
@@ -147,7 +148,7 @@ class TestPersonaConfigDefaults:
         assert persona.output_defaults.default_format == "digest"
 
     def test_novelty_bias_bounds(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             AnalysisPreferences(novelty_bias=1.5)
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             AnalysisPreferences(novelty_bias=-0.1)

@@ -4,11 +4,11 @@ Covers Tasks 1.6, 1.8, 1.10: Individual strategy store/recall/forget.
 All strategies are tested against mocked backends.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.agents.memory.models import MemoryEntry, MemoryFilter, MemoryType
+from src.agents.memory.models import MemoryEntry, MemoryType
 from src.agents.memory.strategies.base import MemoryStrategy
 
 

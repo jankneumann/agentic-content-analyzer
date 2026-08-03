@@ -6,7 +6,7 @@ Tests cover:
 - Cost savings calculation
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from src.services.evaluation_service import EvaluationReport, EvaluationService
 

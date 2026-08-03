@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from src.sync.obsidian_manifest import ManifestEntry, SyncManifest
+from src.sync.obsidian_manifest import SyncManifest
 
 
 @pytest.fixture()

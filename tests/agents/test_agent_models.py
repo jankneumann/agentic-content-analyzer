@@ -7,16 +7,10 @@ Covers:
 - Relationship integrity (parent/child tasks, task→insights, task→approvals)
 """
 
-import uuid
-from datetime import datetime
-
-import pytest
-
 from src.models.agent_insight import AgentInsight, InsightType
 from src.models.agent_memory import AgentMemory, MemoryType
 from src.models.agent_task import AgentTask, AgentTaskSource, AgentTaskStatus
 from src.models.approval_request import ApprovalRequest, ApprovalStatus, RiskLevel
-
 
 # =============================================================================
 # Enum Tests (Task 1.0)
@@ -82,7 +76,7 @@ class TestRiskLevelEnum:
         levels = sorted(
             RiskLevel, key=lambda r: ["low", "medium", "high", "critical"].index(r.value)
         )
-        assert [l.value for l in levels] == ["low", "medium", "high", "critical"]
+        assert [level.value for level in levels] == ["low", "medium", "high", "critical"]
 
 
 class TestApprovalStatusEnum:

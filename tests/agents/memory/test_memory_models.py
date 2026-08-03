@@ -6,6 +6,7 @@ Covers Task 1.4: MemoryStrategy ABC and MemoryProvider composition models.
 from datetime import datetime
 
 import pytest
+from pydantic import ValidationError
 
 from src.agents.memory.models import MemoryEntry, MemoryFilter, MemoryType
 
@@ -37,11 +38,11 @@ class TestMemoryEntry:
         assert entry.confidence == 0.85
 
     def test_confidence_validation_min(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             MemoryEntry(content="test", memory_type=MemoryType.OBSERVATION, confidence=-0.1)
 
     def test_confidence_validation_max(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             MemoryEntry(content="test", memory_type=MemoryType.OBSERVATION, confidence=1.1)
 
     def test_confidence_boundary_values(self):
