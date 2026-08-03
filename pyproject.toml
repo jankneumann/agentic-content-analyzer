@@ -28,7 +28,7 @@ dependencies = [
     # default/docs routes. CI installs unpinned (`uv pip install -e .[dev]`),
     # so these upper bounds are what hold the resolution back from the break.
     # Remove once the app is verified against the newer Starlette.
-    "fastapi>=0.109.0,<0.141",
+    "fastapi>=0.109.0,<0.142",
     "starlette<1.4",
     "uvicorn[standard]>=0.27.0",
     "python-multipart>=0.0.6",  # Required for FastAPI file uploads
