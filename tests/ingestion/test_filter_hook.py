@@ -29,7 +29,7 @@ class _FakeQuery:
     def __init__(self, rows: list[Any]) -> None:
         self._rows = rows
 
-    def filter(self, *_args: Any, **_kwargs: Any) -> "_FakeQuery":
+    def filter(self, *_args: Any, **_kwargs: Any) -> _FakeQuery:
         return self
 
     def all(self) -> list[Any]:
@@ -64,14 +64,20 @@ def test_filter_stats_records_keep_and_skip() -> None:
     stats = FilterStats()
     stats.record(
         FilterDecision(
-            decision="keep", score=0.8, tier=FilterTier.EMBEDDING,
-            reason="r", priority_bucket="high",
+            decision="keep",
+            score=0.8,
+            tier=FilterTier.EMBEDDING,
+            reason="r",
+            priority_bucket="high",
         )
     )
     stats.record(
         FilterDecision(
-            decision="skip", score=0.1, tier=FilterTier.HEURISTIC,
-            reason="r", priority_bucket=None,
+            decision="skip",
+            score=0.1,
+            tier=FilterTier.HEURISTIC,
+            reason="r",
+            priority_bucket=None,
         )
     )
     out = stats.as_dict()
@@ -109,19 +115,18 @@ def test_run_iterates_candidates_and_commits(monkeypatch: pytest.MonkeyPatch) ->
 
     stub = _StubService(
         FilterDecision(
-            decision="keep", score=0.9, tier=FilterTier.EMBEDDING,
-            reason="ok", priority_bucket="high",
+            decision="keep",
+            score=0.9,
+            tier=FilterTier.EMBEDDING,
+            reason="ok",
+            priority_bucket="high",
         )
     )
-    monkeypatch.setattr(
-        filter_hook, "IngestionFilterService", lambda *_a, **_kw: stub
-    )
+    monkeypatch.setattr(filter_hook, "IngestionFilterService", lambda *_a, **_kw: stub)
 
     rows = [_FakeContent(id=1), _FakeContent(id=2), _FakeContent(id=3)]
     session = _FakeSession(rows=rows)
-    stats = apply_filter_to_recent(
-        since=datetime(2026, 4, 19), persona_id="default", db=session
-    )
+    stats = apply_filter_to_recent(since=datetime(2026, 4, 19), persona_id="default", db=session)
     assert stats.evaluated == 3
     assert stats.kept == 3
     assert session.committed == 1
@@ -138,13 +143,14 @@ def test_run_dry_run_does_not_commit(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     stub = _StubService(
         FilterDecision(
-            decision="skip", score=0.1, tier=FilterTier.HEURISTIC,
-            reason="noise", priority_bucket=None,
+            decision="skip",
+            score=0.1,
+            tier=FilterTier.HEURISTIC,
+            reason="noise",
+            priority_bucket=None,
         )
     )
-    monkeypatch.setattr(
-        filter_hook, "IngestionFilterService", lambda *_a, **_kw: stub
-    )
+    monkeypatch.setattr(filter_hook, "IngestionFilterService", lambda *_a, **_kw: stub)
     session = _FakeSession(rows=[_FakeContent(id=1)])
     apply_filter_to_recent(
         since=datetime(2026, 4, 19), persona_id="default", db=session, dry_run=True

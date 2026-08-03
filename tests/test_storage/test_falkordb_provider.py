@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -37,6 +37,7 @@ class TestConstruction:
         )
 
         import sys
+
         with patch.dict(sys.modules, {"falkordb": mock_falkordb_mod}):
             result = provider._ensure_connected()
 
@@ -63,9 +64,7 @@ class TestConstruction:
 
     def test_stores_mode_explicitly(self):
         """Mode should come from constructor, not heuristic."""
-        provider = FalkorDBGraphDBProvider(
-            host="remote.falkor.io", port=6379, mode="cloud"
-        )
+        provider = FalkorDBGraphDBProvider(host="remote.falkor.io", port=6379, mode="cloud")
         assert provider._mode == "cloud"
 
     def test_isinstance_protocol(self):
@@ -81,9 +80,7 @@ class TestCreateGraphitiDriver:
     def test_creates_falkor_driver(self, mock_driver_cls):
         mock_driver_cls.return_value = MagicMock()
 
-        with patch(
-            "graphiti_core.driver.falkordb_driver.FalkorDriver", mock_driver_cls
-        ):
+        with patch("graphiti_core.driver.falkordb_driver.FalkorDriver", mock_driver_cls):
             provider = FalkorDBGraphDBProvider(
                 host="h", port=6379, username="u", password="p", database="db"
             )
@@ -97,9 +94,7 @@ class TestCreateGraphitiDriver:
     @patch("src.storage.falkordb_provider.FalkorDriver", create=True)
     def test_none_credentials_become_empty_string(self, mock_driver_cls):
         """None username/password should be passed as empty string to FalkorDriver."""
-        with patch(
-            "graphiti_core.driver.falkordb_driver.FalkorDriver", mock_driver_cls
-        ):
+        with patch("graphiti_core.driver.falkordb_driver.FalkorDriver", mock_driver_cls):
             provider = FalkorDBGraphDBProvider(
                 host="h", port=6379, username=None, password=None, database="db"
             )
@@ -125,9 +120,7 @@ class TestExecuteQuery:
         provider._graph = mock_graph
         provider._client = MagicMock()
 
-        records = await provider.execute_query(
-            "MATCH (n) RETURN n.uuid AS uuid, n.name AS title"
-        )
+        records = await provider.execute_query("MATCH (n) RETURN n.uuid AS uuid, n.name AS title")
 
         assert records == [{"uuid": "uuid-1", "title": "Test Title"}]
         mock_graph.query.assert_called_once()

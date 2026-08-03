@@ -1,11 +1,11 @@
 """Tests for EvaluationService."""
 
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.services.evaluation_service import (
     DatasetInfo,
-    EvaluationReport,
     EvaluationService,
 )
 

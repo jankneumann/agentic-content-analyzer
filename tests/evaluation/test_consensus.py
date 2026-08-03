@@ -10,23 +10,21 @@ Tests cover:
 - All judges failure raises RuntimeError
 """
 
-import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from src.evaluation.consensus import (
     ConsensusEngine,
-    ConsensusResult,
     _compute_dimension_verdicts,
     _compute_majority_preference,
 )
 from src.evaluation.judge import DimensionCritique, JudgeResult, LLMJudge
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_result(preference: str, critiques: list[DimensionCritique] | None = None) -> JudgeResult:
     if critiques is None:
@@ -57,6 +55,7 @@ def _make_judge(preference: str = "tie", should_fail: bool = False) -> LLMJudge:
 # ---------------------------------------------------------------------------
 # _compute_majority_preference
 # ---------------------------------------------------------------------------
+
 
 class TestComputeMajorityPreference:
     def test_single_judge(self):
@@ -113,17 +112,24 @@ class TestComputeMajorityPreference:
 # _compute_dimension_verdicts
 # ---------------------------------------------------------------------------
 
+
 class TestComputeDimensionVerdicts:
     def test_tallies_pass_fail(self):
         results = [
-            _make_result("tie", [
-                DimensionCritique("accuracy", "pass", "ok"),
-                DimensionCritique("completeness", "fail", "missing"),
-            ]),
-            _make_result("tie", [
-                DimensionCritique("accuracy", "pass", "ok"),
-                DimensionCritique("completeness", "pass", "ok"),
-            ]),
+            _make_result(
+                "tie",
+                [
+                    DimensionCritique("accuracy", "pass", "ok"),
+                    DimensionCritique("completeness", "fail", "missing"),
+                ],
+            ),
+            _make_result(
+                "tie",
+                [
+                    DimensionCritique("accuracy", "pass", "ok"),
+                    DimensionCritique("completeness", "pass", "ok"),
+                ],
+            ),
         ]
         verdicts = _compute_dimension_verdicts(results)
         assert verdicts["accuracy"] == {"pass": 2, "fail": 0}
@@ -138,6 +144,7 @@ class TestComputeDimensionVerdicts:
 # ConsensusEngine
 # ---------------------------------------------------------------------------
 
+
 class TestConsensusEngine:
     def test_requires_at_least_one_judge(self):
         with pytest.raises(ValueError, match="At least one judge"):
@@ -151,9 +158,7 @@ class TestConsensusEngine:
     @pytest.mark.asyncio
     async def test_single_judge_consensus(self):
         engine = ConsensusEngine([_make_judge("strong_wins")])
-        result = await engine.evaluate_with_consensus(
-            "summarization", "prompt", "strong", "weak"
-        )
+        result = await engine.evaluate_with_consensus("summarization", "prompt", "strong", "weak")
         assert result.consensus_preference == "strong_wins"
         assert result.agreement_rate == 1.0
         assert result.successful_judges == 1
@@ -161,93 +166,97 @@ class TestConsensusEngine:
 
     @pytest.mark.asyncio
     async def test_two_judges_agree(self):
-        engine = ConsensusEngine([
-            _make_judge("weak_wins"),
-            _make_judge("weak_wins"),
-        ])
-        result = await engine.evaluate_with_consensus(
-            "summarization", "prompt", "strong", "weak"
+        engine = ConsensusEngine(
+            [
+                _make_judge("weak_wins"),
+                _make_judge("weak_wins"),
+            ]
         )
+        result = await engine.evaluate_with_consensus("summarization", "prompt", "strong", "weak")
         assert result.consensus_preference == "weak_wins"
         assert result.agreement_rate == 1.0
 
     @pytest.mark.asyncio
     async def test_two_judges_split(self):
-        engine = ConsensusEngine([
-            _make_judge("strong_wins"),
-            _make_judge("weak_wins"),
-        ])
-        result = await engine.evaluate_with_consensus(
-            "summarization", "prompt", "strong", "weak"
+        engine = ConsensusEngine(
+            [
+                _make_judge("strong_wins"),
+                _make_judge("weak_wins"),
+            ]
         )
+        result = await engine.evaluate_with_consensus("summarization", "prompt", "strong", "weak")
         assert result.consensus_preference == "tie"
 
     @pytest.mark.asyncio
     async def test_three_judges_majority(self):
-        engine = ConsensusEngine([
-            _make_judge("strong_wins"),
-            _make_judge("strong_wins"),
-            _make_judge("weak_wins"),
-        ])
-        result = await engine.evaluate_with_consensus(
-            "summarization", "prompt", "strong", "weak"
+        engine = ConsensusEngine(
+            [
+                _make_judge("strong_wins"),
+                _make_judge("strong_wins"),
+                _make_judge("weak_wins"),
+            ]
         )
+        result = await engine.evaluate_with_consensus("summarization", "prompt", "strong", "weak")
         assert result.consensus_preference == "strong_wins"
         assert result.agreement_rate == 0.67
 
     @pytest.mark.asyncio
     async def test_one_judge_failure_continues(self):
-        engine = ConsensusEngine([
-            _make_judge("strong_wins"),
-            _make_judge(should_fail=True),
-        ])
-        result = await engine.evaluate_with_consensus(
-            "summarization", "prompt", "strong", "weak"
+        engine = ConsensusEngine(
+            [
+                _make_judge("strong_wins"),
+                _make_judge(should_fail=True),
+            ]
         )
+        result = await engine.evaluate_with_consensus("summarization", "prompt", "strong", "weak")
         assert result.consensus_preference == "strong_wins"
         assert result.successful_judges == 1
         assert len(result.failed_judges) == 1
 
     @pytest.mark.asyncio
     async def test_all_judges_fail_raises(self):
-        engine = ConsensusEngine([
-            _make_judge(should_fail=True),
-            _make_judge(should_fail=True),
-        ])
+        engine = ConsensusEngine(
+            [
+                _make_judge(should_fail=True),
+                _make_judge(should_fail=True),
+            ]
+        )
         with pytest.raises(RuntimeError, match="All .* judges failed"):
-            await engine.evaluate_with_consensus(
-                "summarization", "prompt", "strong", "weak"
-            )
+            await engine.evaluate_with_consensus("summarization", "prompt", "strong", "weak")
 
     @pytest.mark.asyncio
     async def test_dimension_verdicts_aggregated(self):
         judge1 = _make_judge("tie")
-        judge1.evaluate_pair.return_value = _make_result("tie", [
-            DimensionCritique("accuracy", "pass", "ok"),
-            DimensionCritique("completeness", "fail", "missing"),
-        ])
+        judge1.evaluate_pair.return_value = _make_result(
+            "tie",
+            [
+                DimensionCritique("accuracy", "pass", "ok"),
+                DimensionCritique("completeness", "fail", "missing"),
+            ],
+        )
         judge2 = _make_judge("tie")
-        judge2.evaluate_pair.return_value = _make_result("tie", [
-            DimensionCritique("accuracy", "fail", "wrong"),
-            DimensionCritique("completeness", "pass", "ok"),
-        ])
+        judge2.evaluate_pair.return_value = _make_result(
+            "tie",
+            [
+                DimensionCritique("accuracy", "fail", "wrong"),
+                DimensionCritique("completeness", "pass", "ok"),
+            ],
+        )
 
         engine = ConsensusEngine([judge1, judge2])
-        result = await engine.evaluate_with_consensus(
-            "summarization", "prompt", "strong", "weak"
-        )
+        result = await engine.evaluate_with_consensus("summarization", "prompt", "strong", "weak")
         assert result.dimension_verdicts["accuracy"] == {"pass": 1, "fail": 1}
         assert result.dimension_verdicts["completeness"] == {"pass": 1, "fail": 1}
 
     @pytest.mark.asyncio
     async def test_total_and_successful_judges(self):
-        engine = ConsensusEngine([
-            _make_judge("tie"),
-            _make_judge(should_fail=True),
-            _make_judge("tie"),
-        ])
-        result = await engine.evaluate_with_consensus(
-            "summarization", "prompt", "strong", "weak"
+        engine = ConsensusEngine(
+            [
+                _make_judge("tie"),
+                _make_judge(should_fail=True),
+                _make_judge("tie"),
+            ]
         )
+        result = await engine.evaluate_with_consensus("summarization", "prompt", "strong", "weak")
         assert result.total_judges == 3
         assert result.successful_judges == 2

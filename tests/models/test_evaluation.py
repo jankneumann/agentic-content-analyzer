@@ -16,7 +16,6 @@ from src.models.evaluation import (
     RoutingMode,
 )
 
-
 # ---- StrEnum tests ----
 
 
@@ -134,7 +133,9 @@ class TestModelCreation:
         db_session.add(result)
         db_session.commit()
 
-        fetched = db_session.query(EvaluationResult).filter_by(judge_model="claude-sonnet-4-5").one()
+        fetched = (
+            db_session.query(EvaluationResult).filter_by(judge_model="claude-sonnet-4-5").one()
+        )
         assert fetched.preference == "strong_wins"
         assert fetched.weight == 1.0  # default
         assert fetched.critiques["accuracy"] == "strong is better"
@@ -352,7 +353,7 @@ class TestRelationships:
         return dataset, samples
 
     def test_dataset_samples_relationship(self, db_session):
-        dataset, samples = self._create_dataset_with_samples(db_session)
+        dataset, _samples = self._create_dataset_with_samples(db_session)
         db_session.commit()
 
         fetched = db_session.query(EvaluationDataset).filter_by(id=dataset.id).one()
@@ -360,14 +361,14 @@ class TestRelationships:
         assert fetched.samples[0].prompt_text.startswith("Prompt")
 
     def test_sample_dataset_back_populates(self, db_session):
-        dataset, samples = self._create_dataset_with_samples(db_session, num_samples=1)
+        _dataset, samples = self._create_dataset_with_samples(db_session, num_samples=1)
         db_session.commit()
 
         fetched_sample = db_session.query(EvaluationSample).filter_by(id=samples[0].id).one()
         assert fetched_sample.dataset.name == "Relationship Test"
 
     def test_sample_results_relationship(self, db_session):
-        dataset, samples = self._create_dataset_with_samples(db_session, num_samples=1)
+        _dataset, samples = self._create_dataset_with_samples(db_session, num_samples=1)
         sample = samples[0]
 
         result1 = EvaluationResult(
@@ -393,7 +394,7 @@ class TestRelationships:
         assert len(fetched.results) == 2
 
     def test_sample_consensus_relationship(self, db_session):
-        dataset, samples = self._create_dataset_with_samples(db_session, num_samples=1)
+        _dataset, samples = self._create_dataset_with_samples(db_session, num_samples=1)
         sample = samples[0]
 
         consensus = EvaluationConsensus(
@@ -409,7 +410,7 @@ class TestRelationships:
         assert fetched.consensus.agreement_rate == 0.9
 
     def test_consensus_sample_back_populates(self, db_session):
-        dataset, samples = self._create_dataset_with_samples(db_session, num_samples=1)
+        _dataset, samples = self._create_dataset_with_samples(db_session, num_samples=1)
         sample = samples[0]
 
         consensus = EvaluationConsensus(

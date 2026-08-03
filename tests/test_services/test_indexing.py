@@ -2,9 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
-from src.models.chunk import ChunkType, DocumentChunk
+from src.models.chunk import DocumentChunk
 from src.services.indexing import _insert_tree_chunks, build_tree_index
 
 

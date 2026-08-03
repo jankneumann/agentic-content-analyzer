@@ -4,11 +4,11 @@ Covers Task 1.12: Multi-strategy RRF fusion, configurable weights, graceful degr
 Spec scenarios: agentic-analysis.9 (hybrid recall), agentic-analysis.10 (configuration).
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
-from src.agents.memory.models import MemoryEntry, MemoryFilter, MemoryType
+from src.agents.memory.models import MemoryEntry, MemoryType
 
 
 class TestMemoryProviderComposition:
