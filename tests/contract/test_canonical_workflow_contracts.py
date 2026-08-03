@@ -42,6 +42,7 @@ SOURCE_KEYS = {
     "arxiv_paper",
     "huggingface_papers",
     "readwise",
+    "obsidian_vault",
 }
 
 OPERATION_TYPES = {
@@ -90,6 +91,144 @@ def test_ingest_command_discriminator_is_complete() -> None:
     mapping = schema["discriminator"]["mapping"]
     assert set(mapping) == SOURCE_KEYS
     assert len(schema["oneOf"]) == len(SOURCE_KEYS)
+
+
+def test_obsidian_vault_ingest_command_is_public_strict_and_bounded() -> None:
+    schemas = _openapi()["components"]["schemas"]
+    schema = schemas["ObsidianVaultIngestCommand"]
+
+    assert schema["additionalProperties"] is False
+    assert schema["required"] == ["kind", "source_key"]
+    assert schema["properties"]["kind"] == {"type": "string", "const": "obsidian_vault"}
+    assert schema["properties"]["source_key"] == {
+        "type": "string",
+        "pattern": "^src_[a-f0-9]{20}$",
+    }
+    assert schema["properties"]["max_items"] == {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10_000,
+    }
+    assert schema["properties"]["force_reprocess"] == {
+        "type": "boolean",
+        "default": False,
+    }
+    assert schema["properties"]["configured_source_version"] == {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$",
+        "readOnly": True,
+        "x-internal": True,
+    }
+    assert not {
+        "vault_id",
+        "vault_path",
+        "ingest_folder",
+        "path",
+        "note_path",
+        "note_name",
+    } & set(schema["properties"])
+
+
+def test_configured_source_contract_exposes_typed_readiness() -> None:
+    schema = _openapi()["components"]["schemas"]["ConfiguredSource"]
+
+    assert {"ready", "readiness_code"} <= set(schema["required"])
+    assert schema["properties"]["ready"] == {"type": "boolean", "default": True}
+    assert schema["properties"]["readiness_code"] == {
+        "type": ["string", "null"],
+        "default": None,
+    }
+
+
+def test_content_query_source_types_match_persisted_content_sources() -> None:
+    from src.models.content import ContentSource
+
+    source_type_schema = _openapi()["components"]["schemas"]["ContentQuery"]["properties"][
+        "source_types"
+    ]["items"]
+    expected = {source.value for source in ContentSource}
+
+    assert set(source_type_schema["enum"]) == expected
+
+    generated = _generated_models()
+    query = generated.ContentQuery(source_types=[ContentSource.OBSIDIAN.value])
+    assert query.source_types == ["obsidian"]
+
+    for path in (
+        CONTRACTS / "generated/types.ts",
+        ROOT / "web/src/generated/workflow-contracts.ts",
+    ):
+        content_query = (
+            path.read_text().split("export interface ContentQuery", 1)[1].split("}", 1)[0]
+        )
+        assert '"obsidian"' in content_query
+
+
+def test_generated_obsidian_vault_command_has_python_typescript_and_runtime_parity() -> None:
+    module = _generated_models()
+    runtime_contract = __import__(
+        "src.contracts.workflow_models", fromlist=["ObsidianVaultIngestCommand"]
+    )
+    runtime_commands = __import__("src.ingestion.commands", fromlist=["ObsidianVaultIngestCommand"])
+    payload = {
+        "kind": "obsidian_vault",
+        "source_key": "src_0123456789abcdef0123",
+        "max_items": 25,
+        "force_reprocess": True,
+    }
+
+    command = TypeAdapter(module.IngestCommand).validate_python(payload)
+    assert isinstance(command, module.ObsidianVaultIngestCommand)
+    assert command.model_dump(exclude_none=True) == payload
+    internal = module.ObsidianVaultIngestCommand.model_validate(
+        {**payload, "configured_source_version": "a" * 64}
+    )
+    assert internal.configured_source_version == "a" * 64
+    assert (
+        runtime_commands.ObsidianVaultIngestCommand is runtime_contract.ObsidianVaultIngestCommand
+    )
+    assert runtime_commands.ObsidianVaultIngestCommand in runtime_commands.COMMAND_MODELS
+
+    for invalid in (
+        {**payload, "source_key": "obsidian_vault:personal"},
+        {**payload, "max_items": 0},
+        {**payload, "max_items": 10_001},
+        {**payload, "configured_source_version": "a" * 63},
+        {**payload, "vault_path": "/private/vault"},
+        {**payload, "ingest_folder": "Inbox"},
+        {**payload, "note_path": "Inbox/private.md"},
+    ):
+        with pytest.raises(ValidationError):
+            TypeAdapter(module.IngestCommand).validate_python(invalid)
+
+    generated_typescript = (CONTRACTS / "generated/types.ts").read_text()
+    runtime_typescript = (ROOT / "web/src/generated/workflow-contracts.ts").read_text()
+    for source in (generated_typescript, runtime_typescript):
+        interface = source.split("export interface ObsidianVaultIngestCommand", 1)[1].split("}", 1)[
+            0
+        ]
+        assert 'kind: "obsidian_vault";' in interface
+        assert "source_key: string;" in interface
+        assert "max_items?: number;" in interface
+        assert "force_reprocess?: boolean;" in interface
+        assert "configured_sources" not in interface
+        assert "configured_source_version" not in interface
+        assert "vault_path" not in interface
+        assert "ingest_folder" not in interface
+        assert "ObsidianVaultIngestCommand" in source.split("export type IngestCommand =", 1)[1]
+
+
+def test_obsidian_ingestion_response_literals_are_registered() -> None:
+    from src.ingestion.result import IngestionResponse
+
+    response = IngestionResponse(
+        command="ingest.obsidian-vault",
+        source="obsidian",
+        status="ok",
+    )
+
+    assert response.command == "ingest.obsidian-vault"
+    assert response.source == "obsidian"
 
 
 def test_scheduled_date_commands_support_an_absolute_lower_bound() -> None:

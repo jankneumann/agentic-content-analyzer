@@ -191,6 +191,29 @@ class TestRemoveHttp:
         assert result.exit_code == 1
         assert "No source override found" in result.output
 
+    def test_remove_json_uses_projected_response_key_instead_of_caller_key(self):
+        client = MagicMock()
+        client.remove_source.return_value = {
+            "source_key": "src_0123456789abcdef0123",
+            "deleted": True,
+        }
+        with patch("src.cli.api_client.get_api_client", return_value=client):
+            result = runner.invoke(app, ["--json", "sources", "remove", "caller-alias"])
+
+        assert result.exit_code == 0
+        assert '"source_key": "src_0123456789abcdef0123"' in result.output
+        assert "caller-alias" not in result.output
+
+    def test_remove_rejects_natural_obsidian_key_before_http_submission(self):
+        client = MagicMock()
+        with patch("src.cli.api_client.get_api_client", return_value=client):
+            result = runner.invoke(app, ["sources", "remove", "obsidian_vault:personal"])
+
+        assert result.exit_code == 1
+        assert "opaque source key" in result.output
+        assert "personal" not in result.output
+        client.remove_source.assert_not_called()
+
 
 class TestEnableDisableHttp:
     def test_enable(self):
@@ -264,6 +287,46 @@ class TestDirectMode:
         assert result.exit_code == 0
         assert key in result.output
 
+    def test_list_direct_uses_settings_configured_file_and_projects_obsidian_safely(
+        self, tmp_path, monkeypatch
+    ):
+        import importlib
+
+        from src.config.settings import Settings
+
+        settings_module = importlib.import_module("src.config.settings")
+        private_path = tmp_path / "clients" / "board" / "private-vault"
+        source_file = tmp_path / "custom-sources.yaml"
+        source_file.write_text(
+            "version: 1\n"
+            "sources:\n"
+            "  - type: obsidian_vault\n"
+            "    vault_id: board\n"
+            f"    vault_path: {private_path}\n"
+            "    ingest_folder: Clients/Board\n"
+            "    name: Board research\n"
+        )
+        settings = Settings(
+            _env_file=None,
+            configured_source_key_secret="configured-source-key-secret-for-tests",
+            sources_config_dir=str(tmp_path / "missing-sources.d"),
+            sources_config_file=str(source_file),
+        )
+        monkeypatch.setattr(settings_module, "get_settings", lambda: settings)
+        monkeypatch.setattr(
+            "src.config.sources._apply_db_source_overrides",
+            lambda config: config,
+        )
+
+        with patch("src.cli.output.is_remote_backend", return_value=False):
+            result = runner.invoke(app, ["--direct", "--json", "sources", "list"])
+
+        assert result.exit_code == 0
+        payload = result.output
+        assert '"source_key": "src_' in payload
+        for private_value in (str(private_path), "Clients/Board", "board", "Board research"):
+            assert private_value not in payload
+
     def test_add_direct(self):
         row = MagicMock()
         row.source_key = "blog:https://x/"
@@ -279,6 +342,40 @@ class TestDirectMode:
         assert "blog:https://x/" in result.output
         mock_upsert.assert_called_once()
 
+    def test_add_direct_projects_obsidian_mutation_key(self):
+        row = MagicMock()
+        row.source_key = "obsidian_vault:personal"
+        row.source_type = "obsidian_vault"
+        row.config = {
+            "type": "obsidian_vault",
+            "vault_id": "personal",
+            "vault_path": "/srv/obsidian/private-vault",
+            "ingest_folder": "Clients/Private",
+        }
+        row.version = 1
+        row.enabled = True
+
+        with patch(
+            "src.services.source_override_service.SourceOverrideService.upsert", return_value=row
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "--direct",
+                    "--json",
+                    "sources",
+                    "add",
+                    "obsidian_vault",
+                    "--json",
+                    '{"vault_id":"personal","vault_path":"/srv/obsidian/private-vault","ingest_folder":"Clients/Private"}',
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert '"source_key": "src_' in result.output
+        assert "obsidian_vault:personal" not in result.output
+        assert "/srv/obsidian" not in result.output
+
     def test_add_direct_validation_error(self):
         from src.services.source_override_service import SourceOverrideError
 
@@ -292,7 +389,8 @@ class TestDirectMode:
 
     def test_remove_direct(self):
         with patch(
-            "src.services.source_override_service.SourceOverrideService.delete", return_value=True
+            "src.services.source_override_service.SourceOverrideService.delete",
+            return_value="blog:x",
         ):
             result = runner.invoke(app, ["--direct", "sources", "remove", "blog:x"])
         assert result.exit_code == 0
@@ -300,11 +398,34 @@ class TestDirectMode:
 
     def test_remove_direct_not_found(self):
         with patch(
-            "src.services.source_override_service.SourceOverrideService.delete", return_value=False
+            "src.services.source_override_service.SourceOverrideService.delete", return_value=None
         ):
             result = runner.invoke(app, ["--direct", "sources", "remove", "blog:missing"])
         assert result.exit_code == 1
         assert "No source override found" in result.output
+
+    def test_remove_direct_json_uses_service_projected_key(self):
+        with patch(
+            "src.services.source_override_service.SourceOverrideService.delete",
+            return_value="src_0123456789abcdef0123",
+        ):
+            result = runner.invoke(app, ["--direct", "--json", "sources", "remove", "caller-alias"])
+
+        assert result.exit_code == 0
+        assert '"source_key": "src_0123456789abcdef0123"' in result.output
+        assert "caller-alias" not in result.output
+
+    def test_disable_direct_rejects_natural_obsidian_key_before_lookup(self):
+        with patch("src.services.source_override_service.SourceOverrideService.get") as mock_get:
+            result = runner.invoke(
+                app,
+                ["--direct", "sources", "disable", "obsidian_vault:personal"],
+            )
+
+        assert result.exit_code == 1
+        assert "opaque source key" in result.output
+        assert "personal" not in result.output
+        mock_get.assert_not_called()
 
     def test_disable_direct_yaml_source_resolves_fallback(self):
         src, key = _fake_source()

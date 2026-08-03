@@ -16,9 +16,9 @@ contract and generated bindings atomically; those files will be recorded in Phas
 | obsidian-vault-ingest.6 | `specs/obsidian-vault-ingest/spec.md` | Canonical identity preserves note context | --- | D5, D8 | parser; `src/ingestion/obsidian_adapter.py`; `src/models/content.py`; content-source migrations; adapter integration tests | URL canonicalization; duplicate annotations; advisory-lock canonical race | 134-test P1-P4 PostgreSQL gate passed |
 | obsidian-vault-ingest.7 | `specs/obsidian-vault-ingest/spec.md` | Read-only ingress/export ownership boundary | --- | D10 | scanner/adapter; `tests/architecture/test_obsidian_ownership.py`; scanner/adapter tests | byte-for-byte mutation snapshots; generated-note loop guard; import boundary | 134-test P1-P4 PostgreSQL gate passed |
 | obsidian-vault-ingest.8 | `specs/obsidian-vault-ingest/spec.md` | Private diagnostics and path-free replay | --- | D3, D7, D9 | state migrations/model/repository; adapter/execution-claim code; redaction/retry tests | bounded parse/persistence/mount diagnostics; commit rollback; retry exhaustion | 134-test P1-P4 PostgreSQL gate passed |
-| source-capability-registry.1 | `specs/source-capability-registry/spec.md` | Registry-derived parity with private filesystem configuration | --- | D1, D3, D4, D9 | --- | generated contract, config, registry, CLI/HTTP/MCP/UI, fixture parity tests | --- |
-| real-ingestion-ci.1 | `specs/real-ingestion-ci/spec.md` | Every registry source maps to deterministic fixture/live policy | --- | D4 | --- | collection completeness and missing-mount policy tests | --- |
-| real-ingestion-ci.2 | `specs/real-ingestion-ci/spec.md` | Offline durable results match Content/state deltas | --- | D7, D8, D9 | --- | OperationService incremental/duplicate/failure DB-delta tests | --- |
+| source-capability-registry.1 | `specs/source-capability-registry/spec.md` | Registry-derived parity with private filesystem configuration | canonical OpenAPI v1 | D1, D3, D4, D9 | generated contracts; config/settings; registry/service; CLI/HTTP/MCP/capability/UI/source-management surfaces | contract, registry, worker, transport, capability, UI build/render, opaque management, custom config-location, and privacy tests | 555-test focused P5 suite, 55 web tests/build, contract drift, mypy/Ruff passed |
+| real-ingestion-ci.1 | `specs/real-ingestion-ci/spec.md` | Every registry source maps to deterministic fixture/live policy | --- | D4 | `tests/fixtures/sources/obsidian.py`; fixture registry; real-ingestion policy/harness/tier tests | exact fixture/policy equality, path-free missing-mount behavior, external-network prohibition | 17 registry/live-policy tests and 3 pure Obsidian fixture tests passed |
+| real-ingestion-ci.2 | `specs/real-ingestion-ci/spec.md` | Offline durable results match Content/state deltas | --- | D7, D8, D9 | real-ingestion harness and PR-tier incremental Obsidian test | independent before/after Content IDs; state/event status and attempt deltas; typed result counters | implementation and collection/compile/style evidence complete; PostgreSQL execution pending P6 environment-capable gate |
 
 ## Design Decision Trace
 
@@ -52,11 +52,18 @@ contract and generated bindings atomically; those files will be recorded in Phas
 | impl-p4.4 | wp-adapter | recovery | medium | fixed | Monotonic observation generation provides CAS protection against stale missing scans. |
 | impl-p4.5 | wp-adapter | evidence | medium | fixed | Real barriers/failpoints force claim, crash-gap, cancellation, and canonical races. |
 | impl-p4.6 | wp-adapter | migration | medium | fixed | Generation zero remains valid for pre-upgrade rows while negatives and booleans fail closed. |
+| impl-p5.1 | wp-source-vertical | configuration | high | fixed | HTTP, MCP, direct CLI, and worker reloads consistently use deployment-configured source locations. |
+| impl-p5.2 | wp-source-vertical | frontend | high | fixed | Persisted Obsidian content has exhaustive query/filter/badge mappings and a render regression. |
+| impl-p5.3 | wp-source-vertical | privacy | medium | fixed | Configured-source discovery returns no Obsidian server policy or private locator fields. |
+| impl-p5.4 | wp-source-vertical | privacy | medium | fixed | Source config models/loaders hide invalid private input values from errors and protocol surfaces. |
+| impl-p5.5 | wp-source-vertical | contract | medium | fixed | `ContentQuery.source_types` is generated from a contract enum that includes every persisted content source. |
+| impl-p5.6 | wp-source-vertical | management | medium | fixed | Obsidian source mutations require opaque public keys while internal natural-key merge/upsert remains private. |
+| impl-p5.7 | wp-source-vertical | evidence | medium | fixed | Real-ingestion evidence snapshots Content independently of result claims and tracks state/event status and attempts. |
 
 ## Coverage Summary
 
 - **Requirements traced**: 11/11
 - **Tests mapped**: 11 requirements have at least one planned test
-- **Evidence collected**: 8/11 requirements have P1-P4 pass/fail evidence
-- **Gaps identified**: P5 canonical source surfaces and P6 revision/evidence validation pending
+- **Evidence collected**: 10/11 requirements have P1-P5 pass/fail evidence
+- **Gaps identified**: P6 PostgreSQL durable-delta execution, reliability/security regressions, and documentation pending
 - **Deferred items**: watcher, device bridge, attachments, write/move behavior, custom templates

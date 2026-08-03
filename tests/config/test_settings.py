@@ -1,9 +1,48 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
 from src.config.settings import Settings
+
+
+def test_obsidian_worker_policy_defaults_fail_closed() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.get_obsidian_allowed_roots() == ()
+    assert settings.obsidian_compatible_worker is False
+
+
+def test_obsidian_allowed_roots_are_deployment_owned_absolute_paths(tmp_path: Path) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    settings = Settings(
+        _env_file=None,
+        obsidian_allowed_roots=f" {first} , {second} ",
+        obsidian_compatible_worker=True,
+    )
+
+    assert settings.get_obsidian_allowed_roots() == (first, second)
+    assert settings.obsidian_compatible_worker is True
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "relative/path",
+        "/",
+        "/approved,,/also-approved",
+        "/approved,/approved",
+        "/approved/../private",
+        "/approved\\private",
+        "/approved\x00/private",
+    ],
+)
+def test_obsidian_allowed_roots_reject_ambiguous_or_non_absolute_policy(value: str) -> None:
+    with pytest.raises(ValidationError, match="obsidian_allowed_roots"):
+        Settings(_env_file=None, obsidian_allowed_roots=value)
 
 
 def test_configured_source_key_secret_uses_dedicated_secret_without_repr_leak() -> None:

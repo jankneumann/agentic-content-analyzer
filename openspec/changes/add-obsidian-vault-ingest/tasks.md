@@ -137,38 +137,38 @@ Depends on: P1, P2, P3. Does not edit registry/OpenAPI/config union/MCP/fixture 
 Depends on: P4. This package exclusively owns all shared hot files and MUST land as one
 green commit.
 
-- [ ] 5.1 Add failing contract tests for `ObsidianVaultIngestCommand` discriminator,
+- [x] 5.1 Add failing contract tests for `ObsidianVaultIngestCommand` discriminator,
   public `source_key`/bounded scan options, forbidden path/note fields, and generated
   Python/TypeScript parity; update OpenAPI, regenerate bindings, and runtime re-exports.
 
   Scenarios: `Equivalent Obsidian submissions use one durable contract`, `Filesystem
   source capability is discovered`.
-- [ ] 5.2 Add failing source-config tests for repeatable `ObsidianVaultSource`, stable
+- [x] 5.2 Add failing source-config tests for repeatable `ObsidianVaultSource`, stable
   `vault_id` natural key, private path/ingest-folder fields, database override round
   trip, safe management projection, HMAC public key, and allowed-root non-escalation;
   then extend the discriminated config union.
   Scenario: `Database override is projected safely`.
-- [ ] 5.3 In the same package, add the `SOURCE_REGISTRY` descriptor, emitted
+- [x] 5.3 In the same package, add the `SOURCE_REGISTRY` descriptor, emitted
   `ContentSource.OBSIDIAN`, service/worker dispatch, configured-source snapshot
   enforcement, schedule metadata, and readiness resolver with completeness tests.
 
   Scenarios: `New source requires complete surface coverage`, `A configured vault scan
   completes durably`.
-- [ ] 5.4 Add the hand-written MCP function, `INGESTION_TOOL_BY_SOURCE` mapping, exact
+- [x] 5.4 Add the hand-written MCP function, `INGESTION_TOOL_BY_SOURCE` mapping, exact
   toolset manifest, and CLI/HTTP/MCP contract tests proving the canonical command and
   equivalent `OperationHandle`/protocol-error behavior.
   Scenario: `Equivalent Obsidian submissions use one durable contract`.
-- [ ] 5.5 Add capability-driven frontend tests for source discovery, generated fields,
+- [x] 5.5 Add capability-driven frontend tests for source discovery, generated fields,
   readiness/disabled display, submission, progress, terminal outcomes, and absence of
   private fields; change UI code only if registry projection is insufficient.
   Scenario: `Filesystem source capability is discovered`.
-- [ ] 5.6 Add the exact deterministic `SOURCE_FIXTURES` entry and
+- [x] 5.6 Add the exact deterministic `SOURCE_FIXTURES` entry and
   `LIVE_ADAPTER_POLICIES` entry in the same commit, including temporary-vault setup,
   network prohibition, missing-mount skip reason, and collection-time equality tests.
 
   Scenarios: `Obsidian fixture covers the canonical vertical`, `Obsidian registry
   entry is incomplete`, `Live Obsidian mount is unavailable`.
-- [ ] 5.7 Run source workflow matrix, generated-contract drift, capability parity,
+- [x] 5.7 Run source workflow matrix, generated-contract drift, capability parity,
   worker dispatch, MCP manifest, frontend, and registry/fixture collection gates before
   committing the atomic vertical.
 

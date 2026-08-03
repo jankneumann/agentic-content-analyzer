@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 import { ApiClientError, apiClient } from "../client"
 import {
   getAllCapabilities,
+  getAllConfiguredSources,
   getConfiguredSources,
   listBackgroundOperations,
   submitDigest,
@@ -51,6 +52,37 @@ describe("canonical workflow client", () => {
 
     expect(get).toHaveBeenCalledWith("/configured-sources", {
       params: { limit: 100 },
+    })
+  })
+
+  it("collects every configured-source cursor page", async () => {
+    const get = vi
+      .spyOn(apiClient, "get")
+      .mockResolvedValueOnce({
+        data: [{ key: "src_11111111111111111111", command_key: "rss" }],
+        next_cursor: "next",
+      })
+      .mockResolvedValueOnce({
+        data: [
+          {
+            key: "src_22222222222222222222",
+            command_key: "obsidian_vault",
+          },
+        ],
+        next_cursor: null,
+      })
+
+    const configured = await getAllConfiguredSources()
+
+    expect(configured.data.map((source) => source.key)).toEqual([
+      "src_11111111111111111111",
+      "src_22222222222222222222",
+    ])
+    expect(get).toHaveBeenNthCalledWith(1, "/configured-sources", {
+      params: { limit: 100 },
+    })
+    expect(get).toHaveBeenNthCalledWith(2, "/configured-sources", {
+      params: { cursor: "next", limit: 100 },
     })
   })
 

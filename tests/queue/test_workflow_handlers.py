@@ -241,6 +241,47 @@ async def test_ingestion_uses_descriptor_retry_policy_for_http_429() -> None:
 
 
 @pytest.mark.asyncio
+async def test_generic_ingestion_handler_preserves_obsidian_server_version_to_service() -> None:
+    from src.ingestion.registry import SOURCE_REGISTRY
+
+    operations = FakeOperations()
+    response = IngestionResponse(
+        command="ingest.obsidian-vault",
+        source="obsidian",
+        status="ok",
+        items_ingested=1,
+        details={
+            "command_key": "obsidian_vault",
+            "resolved_route": "obsidian_vault",
+            "emitted_sources": ["obsidian"],
+            "content_ids": [21],
+        },
+    )
+    ingestion = SimpleNamespace(execute=Mock(return_value=response))
+    registry = build_workflow_handler_registry(
+        operation_service=operations,
+        ingestion_service=ingestion,
+        source_registry=SOURCE_REGISTRY,
+    )
+    payload = {
+        "kind": "obsidian_vault",
+        "source_key": "src_0123456789abcdef0123",
+        "configured_source_version": "a" * 64,
+        "max_items": 5,
+        "force_reprocess": True,
+    }
+
+    await registry.dispatch(OperationType.INGESTION_EXECUTE, 13, payload)
+
+    command = ingestion.execute.call_args.args[0]
+    assert command.kind == "obsidian_vault"
+    assert command.source_key == payload["source_key"]
+    assert command.configured_source_version == payload["configured_source_version"]
+    assert command.max_items == 5
+    assert command.force_reprocess is True
+
+
+@pytest.mark.asyncio
 async def test_partial_ingestion_attaches_bounded_v2_result() -> None:
     operations = FakeOperations()
     command = SimpleNamespace(kind="rss")

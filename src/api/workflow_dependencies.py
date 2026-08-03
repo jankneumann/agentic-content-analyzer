@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 from src.config.settings import get_settings
-from src.config.sources import SourcesConfig, load_sources_config
+from src.config.sources import SourcesConfig
 from src.queue import setup as queue_setup
 from src.services.capability_service import CapabilityService
 from src.services.content_reconciliation_service import ContentReconciliationService
@@ -41,4 +41,4 @@ async def get_content_reconciliation_service() -> AsyncIterator[ContentReconcili
 
 
 def get_sources_config() -> SourcesConfig:
-    return load_sources_config()
+    return get_settings().get_sources_config()

@@ -296,7 +296,7 @@ packages:
           evidence: {artifacts: [], result_keys: [contract_valid, generated_clean]}
         - name: source-vertical-tests
           kind: command
-          command: .venv/bin/pytest tests/contract tests/services/test_capability_service.py tests/ingestion/test_registry.py tests/ingestion/test_real_ingest_policy.py tests/real_ingestion/test_registry_completeness.py tests/mcp_tools tests/cli tests/api --no-cov -q
+          command: .venv/bin/pytest tests/contract tests/services/test_capability_service.py tests/ingestion/test_source_registry.py tests/real_ingestion/test_live_policy.py tests/real_ingestion/test_registry_completeness.py tests/mcp tests/cli tests/api --no-cov -q
           expect_exit_code: 0
           evidence: {artifacts: [], result_keys: [test_count, pass_count, surface_count]}
     outputs: {result_keys: [files_modified, test_count, surface_count, generated_clean]}

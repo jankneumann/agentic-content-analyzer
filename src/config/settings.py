@@ -20,6 +20,7 @@ import os
 import warnings
 from functools import lru_cache
 from ipaddress import ip_address
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 from urllib.parse import urlparse
 
@@ -572,6 +573,11 @@ class Settings(BaseSettings):
     sources_config_dir: str = "sources.d"  # Directory with per-type YAML files
     sources_config_file: str = "sources.yaml"  # Single-file fallback
 
+    # Worker-local Obsidian mount policy. Source configuration can only
+    # narrow this deployment-owned allowlist.
+    obsidian_allowed_roots: str = Field(default="", max_length=16_384)
+    obsidian_compatible_worker: bool = False
+
     # Substack Configuration
     substack_session_cookie: str | None = None  # Value of the substack.sid cookie
 
@@ -932,6 +938,30 @@ class Settings(BaseSettings):
 
         hosts = {_normalize_workflow_alert_host(host) for host in value.split(",") if host.strip()}
         return ",".join(sorted(hosts))
+
+    @field_validator("obsidian_allowed_roots")
+    @classmethod
+    def validate_obsidian_allowed_roots(cls, value: str) -> str:
+        """Require unambiguous, scoped absolute roots for local vault access."""
+
+        if not value:
+            return value
+        raw_roots = [item.strip() for item in value.split(",")]
+        if any(not item for item in raw_roots):
+            raise ValueError("obsidian_allowed_roots contains an empty path")
+        if any(
+            "\x00" in item
+            or "\\" in item
+            or any(part in {"", ".", ".."} for part in item.split("/")[1:])
+            for item in raw_roots
+        ):
+            raise ValueError("obsidian_allowed_roots contains an unsafe path")
+        roots = [Path(item) for item in raw_roots]
+        if any(not root.is_absolute() or root == Path(root.anchor) for root in roots):
+            raise ValueError("obsidian_allowed_roots requires scoped absolute paths")
+        if len(set(roots)) != len(roots):
+            raise ValueError("obsidian_allowed_roots contains duplicate paths")
+        return ",".join(str(root) for root in roots)
 
     @model_validator(mode="after")
     def validate_workflow_alert_policy(self) -> Settings:
@@ -1328,6 +1358,13 @@ class Settings(BaseSettings):
         raise RuntimeError(
             "CONFIGURED_SOURCE_KEY_SECRET is required to derive configured-source identities"
         )
+
+    def get_obsidian_allowed_roots(self) -> tuple[Path, ...]:
+        """Return the deployment-owned Obsidian mount allowlist."""
+
+        if not self.obsidian_allowed_roots:
+            return ()
+        return tuple(Path(value) for value in self.obsidian_allowed_roots.split(","))
 
     def get_operation_cursor_signing_key(self) -> str:
         """Return dedicated or approved authentication-secret cursor material."""

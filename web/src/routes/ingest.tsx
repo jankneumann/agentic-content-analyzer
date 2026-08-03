@@ -22,12 +22,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { useBackgroundTasks } from "@/contexts/BackgroundTasksContext"
 import type {
   CapabilityField,
+  ConfiguredSource,
   IngestCommand,
   SourceCapability,
 } from "@/generated/workflow-contracts"
 import {
   getAllCapabilities,
-  getConfiguredSources,
+  getAllConfiguredSources,
   submitIngestion,
   submitPipeline,
   uploadFile,
@@ -40,10 +41,17 @@ export const IngestRoute = createRoute({
 })
 
 type FormValues = Record<string, string | boolean | number | Array<string>>
-const INTERNAL_FIELDS = new Set(["kind", "configured_sources"])
+const INTERNAL_FIELDS = new Set([
+  "kind",
+  "configured_sources",
+  "configured_source_version",
+])
 
-function initialValues(source: SourceCapability): FormValues {
-  return Object.fromEntries(
+function initialValues(
+  source: SourceCapability,
+  configuredSources: ConfiguredSource[]
+): FormValues {
+  const values = Object.fromEntries(
     source.fields
       .filter(
         (field) =>
@@ -51,6 +59,13 @@ function initialValues(source: SourceCapability): FormValues {
       )
       .map((field) => [field.name, field.default as FormValues[string]])
   )
+  if (source.fields.some((field) => field.name === "source_key")) {
+    const available = configuredSources.find(
+      (configured) => configured.enabled && configured.ready
+    )
+    if (available) values.source_key = available.key
+  }
+  return values
 }
 
 function InputField({
@@ -191,10 +206,16 @@ function InputField({
   )
 }
 
-function SourceForm({ source }: { source: SourceCapability }) {
+function SourceForm({
+  source,
+  configuredSources,
+}: {
+  source: SourceCapability
+  configuredSources: ConfiguredSource[]
+}) {
   const { addOperation } = useBackgroundTasks()
   const [values, setValues] = React.useState<FormValues>(() =>
-    initialValues(source)
+    initialValues(source, configuredSources)
   )
   const [files, setFiles] = React.useState<File[]>([])
   const mutation = useMutation({
@@ -225,6 +246,9 @@ function SourceForm({ source }: { source: SourceCapability }) {
   const visibleFields = source.fields.filter(
     (field) => !INTERNAL_FIELDS.has(field.name) && field.name !== "upload_ids"
   )
+  const selectedConfiguredSource = configuredSources.find(
+    (configured) => configured.key === values.source_key
+  )
   const invalid =
     visibleFields.some((field) => {
       const value = values[field.name]
@@ -243,7 +267,11 @@ function SourceForm({ source }: { source: SourceCapability }) {
         return true
       return false
     }) ||
-    (source.key === "files" && files.length === 0)
+    (source.key === "files" && files.length === 0) ||
+    (visibleFields.some((field) => field.name === "source_key") &&
+      (!selectedConfiguredSource ||
+        !selectedConfiguredSource.enabled ||
+        !selectedConfiguredSource.ready))
   return (
     <form
       className="border-b py-4 last:border-b-0"
@@ -295,21 +323,62 @@ function SourceForm({ source }: { source: SourceCapability }) {
       )}
       {visibleFields.length > 0 && (
         <div className="mt-4 grid min-h-24 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {visibleFields.map((field) => (
-            <InputField
-              key={field.name}
-              field={field}
-              value={values[field.name]}
-              onChange={(value) =>
-                setValues((current) => {
-                  const next = { ...current }
-                  if (value === undefined) delete next[field.name]
-                  else next[field.name] = value
-                  return next
-                })
-              }
-            />
-          ))}
+          {visibleFields.map((field) =>
+            field.name === "source_key" ? (
+              <div key={field.name} className="space-y-1.5">
+                <Label htmlFor="source-field-source_key">
+                  Configured source{field.required ? " *" : ""}
+                </Label>
+                <Select
+                  value={String(values.source_key ?? "")}
+                  onValueChange={(value) =>
+                    setValues((current) => ({ ...current, source_key: value }))
+                  }
+                >
+                  <SelectTrigger id="source-field-source_key" className="w-full">
+                    <SelectValue placeholder="Select a configured source" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {configuredSources.map((configured) => {
+                      const available = configured.enabled && configured.ready
+                      const reason = configured.enabled
+                        ? configured.readiness_code
+                        : "disabled"
+                      return (
+                        <SelectItem
+                          key={configured.key}
+                          value={configured.key}
+                          disabled={!available}
+                        >
+                          {configured.key}
+                          {!available && ` — ${reason ?? "source_unavailable"}`}
+                        </SelectItem>
+                      )
+                    })}
+                  </SelectContent>
+                </Select>
+                {configuredSources.length === 0 && (
+                  <p className="text-muted-foreground text-xs" role="status">
+                    No configured source is available.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <InputField
+                key={field.name}
+                field={field}
+                value={values[field.name]}
+                onChange={(value) =>
+                  setValues((current) => {
+                    const next = { ...current }
+                    if (value === undefined) delete next[field.name]
+                    else next[field.name] = value
+                    return next
+                  })
+                }
+              />
+            )
+          )}
         </div>
       )}
     </form>
@@ -396,7 +465,7 @@ function IngestPage() {
   })
   const configuredSources = useQuery({
     queryKey: ["workflow-configured-sources"],
-    queryFn: () => getConfiguredSources(),
+    queryFn: getAllConfiguredSources,
     staleTime: 5 * 60_000,
   })
   const [selectedSource, setSelectedSource] = React.useState<string>()
@@ -470,7 +539,13 @@ function IngestPage() {
             </div>
             <div className="mt-2 min-h-64">
               {activeSource && (
-                <SourceForm key={activeSource.key} source={activeSource} />
+                <SourceForm
+                  key={activeSource.key}
+                  source={activeSource}
+                  configuredSources={configuredSources.data.data.filter(
+                    (configured) => configured.command_key === activeSource.key
+                  )}
+                />
               )}
             </div>
           </section>

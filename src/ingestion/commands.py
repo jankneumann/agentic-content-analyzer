@@ -9,6 +9,7 @@ from src.contracts.workflow_models import (
     GmailIngestCommand,
     HuggingFacePapersIngestCommand,
     IngestCommand,
+    ObsidianVaultIngestCommand,
     PerplexitySearchIngestCommand,
     PodcastIngestCommand,
     ReadwiseIngestCommand,
@@ -45,6 +46,7 @@ COMMAND_MODELS = (
     ArxivPaperIngestCommand,
     HuggingFacePapersIngestCommand,
     ReadwiseIngestCommand,
+    ObsidianVaultIngestCommand,
 )
 
 __all__ = [
@@ -58,6 +60,7 @@ __all__ = [
     "HuggingFacePapersIngestCommand",
     "IngestCommand",
     "IngestCommandBase",
+    "ObsidianVaultIngestCommand",
     "PerplexitySearchIngestCommand",
     "PodcastIngestCommand",
     "ReadwiseIngestCommand",

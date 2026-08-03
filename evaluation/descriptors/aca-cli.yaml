@@ -136,6 +136,7 @@ services:
           - gmail
           - history
           - huggingface-papers
+          - obsidian-vault
           - perplexity-search
           - podcast
           - readwise

@@ -376,6 +376,47 @@ def test_ingestion_uses_underscore_discriminator_and_idempotency(
     assert result.stderr == ""
 
 
+def test_obsidian_ingestion_uses_opaque_source_key_and_public_bounds(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+    result = runner.invoke(
+        app,
+        [
+            "--json",
+            "ingest",
+            "obsidian-vault",
+            "--source-key",
+            "src_0123456789abcdef0123",
+            "--max-items",
+            "25",
+            "--force-reprocess",
+            "--idempotency-key",
+            "obsidian-scan-1",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert client.calls == [
+        (
+            "ingestion.execute",
+            {
+                "kind": "obsidian_vault",
+                "source_key": "src_0123456789abcdef0123",
+                "max_items": 25,
+                "force_reprocess": True,
+            },
+            "obsidian-scan-1",
+        )
+    ]
+    serialized = str(client.calls)
+    assert "vault_path" not in serialized
+    assert "ingest_folder" not in serialized
+    assert "configured_sources" not in serialized
+    assert "configured_source_version" not in serialized
+    assert result.stderr == ""
+
+
 def test_direct_flag_does_not_bypass_durable_submission(
     cli: tuple[CliRunner, FakeClient],
 ) -> None:

@@ -112,6 +112,156 @@ async def test_ingestion_http_mode_uses_shared_workflow_client(
 
 
 @pytest.mark.asyncio
+async def test_obsidian_http_tool_submits_only_public_bounded_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ACA_API_BASE_URL", "https://api.example.test")
+    monkeypatch.setenv("ACA_ADMIN_KEY", "secret")
+    client = MagicMock()
+    client.submit_ingestion.return_value = _handle()
+    monkeypatch.setattr(runtime, "create_workflow_client", lambda: client)
+
+    result = await ingestion.ingest_obsidian_vault(
+        "src_0123456789abcdef0123",
+        max_items=25,
+        force_reprocess=True,
+        idempotency_key="obsidian-scan-1",
+    )
+
+    client.submit_ingestion.assert_called_once_with(
+        {
+            "kind": "obsidian_vault",
+            "source_key": "src_0123456789abcdef0123",
+            "max_items": 25,
+            "force_reprocess": True,
+        },
+        idempotency_key="obsidian-scan-1",
+    )
+    serialized = str(client.submit_ingestion.call_args)
+    assert "vault_path" not in serialized
+    assert "ingest_folder" not in serialized
+    assert "note_path" not in serialized
+    assert result.operation_id == "42"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("source_key", "max_items"),
+    [
+        ("obsidian:private-vault", 25),
+        ("src_0123456789abcdef0123", 10_001),
+    ],
+)
+async def test_obsidian_tool_rejects_private_identity_and_unbounded_scans(
+    source_key: str,
+    max_items: int,
+) -> None:
+    with pytest.raises(McpError) as exc_info:
+        await ingestion.ingest_obsidian_vault(source_key, max_items=max_items)
+
+    assert exc_info.value.error.data["code"] == "validation_error"
+    assert exc_info.value.error.data["problem"]["status"] == 422
+
+
+@pytest.mark.asyncio
+async def test_obsidian_in_process_submission_uses_only_a_safe_config_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import importlib
+
+    settings_module = importlib.import_module("src.config.settings")
+    from src.config.sources import (
+        ObsidianVaultSource,
+        SourcesConfig,
+        configured_source_public_key,
+    )
+
+    secret = "configured-source-key-secret-for-tests"
+    selected = ObsidianVaultSource(
+        vault_id="selected",
+        vault_path="/approved/selected",
+        ingest_folder="Inbox",
+    )
+    other = ObsidianVaultSource(
+        vault_id="other",
+        vault_path="/approved/other",
+        ingest_folder="Clips",
+    )
+    source_key = configured_source_public_key(selected, secret=secret)
+    monkeypatch.setattr(
+        settings_module,
+        "get_settings",
+        lambda: SimpleNamespace(
+            get_configured_source_key_secret=lambda: secret,
+            get_sources_config=lambda: SourcesConfig(sources=[selected, other]),
+        ),
+    )
+    service = MagicMock()
+    service.submit = AsyncMock(return_value=_handle())
+    monkeypatch.setattr(ingestion, "OperationService", lambda: service)
+
+    result = await ingestion.ingest_obsidian_vault(source_key, max_items=25)
+
+    service.submit.assert_awaited_once()
+    submitted = service.submit.await_args.args[1]
+    assert submitted["source_key"] == source_key
+    assert len(submitted["configured_source_version"]) == 64
+    assert set(submitted["configured_source_version"]) <= set("0123456789abcdef")
+    assert "configured_sources" not in submitted
+    assert "vault_id" not in str(submitted)
+    assert "/approved/selected" not in str(submitted)
+    assert "/approved/other" not in str(submitted)
+    assert result.operation_id == "42"
+
+
+@pytest.mark.asyncio
+async def test_configured_source_discovery_uses_settings_configured_file(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import importlib
+
+    from src.config.settings import Settings
+
+    settings_module = importlib.import_module("src.config.settings")
+    private_path = tmp_path / "private-vault"
+    (private_path / "Inbox").mkdir(parents=True)
+    source_file = tmp_path / "custom-sources.yaml"
+    source_file.write_text(
+        "version: 1\n"
+        "sources:\n"
+        "  - type: obsidian_vault\n"
+        "    vault_id: custom\n"
+        f"    vault_path: {private_path}\n"
+        "    ingest_folder: Inbox\n"
+    )
+    settings = Settings(
+        _env_file=None,
+        configured_source_key_secret="configured-source-key-secret-for-tests",
+        sources_config_dir=str(tmp_path / "missing-sources.d"),
+        sources_config_file=str(source_file),
+        obsidian_allowed_roots=str(tmp_path),
+        obsidian_compatible_worker=True,
+    )
+    monkeypatch.setattr(settings_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(operations, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        "src.config.sources._apply_db_source_overrides",
+        lambda config: config,
+    )
+
+    page = await operations.list_configured_sources()
+
+    assert len(page.data) == 1
+    assert page.data[0].source_type == "obsidian_vault"
+    assert page.data[0].configuration == {}
+    assert page.data[0].ready is True
+    serialized = page.model_dump_json()
+    assert str(private_path) not in serialized
+    assert "Inbox" not in serialized
+    assert "custom" not in serialized
+
+
+@pytest.mark.asyncio
 async def test_workflow_result_is_native_not_json_encoded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -521,6 +671,10 @@ async def test_fastmcp_advertises_generated_contract_schemas() -> None:
     assert "minLength': 1" in str(
         tools["ingest_scholar_paper"].inputSchema["properties"]["identifier"]
     )
+    obsidian_properties = tools["ingest_obsidian_vault"].inputSchema["properties"]
+    assert set(obsidian_properties) >= {"source_key", "max_items", "force_reprocess"}
+    assert "vault_path" not in str(obsidian_properties)
+    assert "ingest_folder" not in str(obsidian_properties)
     assert "request_revision" not in str(
         tools["finalize_review"].inputSchema["properties"]["action"]
     )

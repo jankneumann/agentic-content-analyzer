@@ -8,6 +8,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from src.config.sources import (
     GmailSource,
+    ObsidianVaultSource,
     ReadwiseSource,
     RSSSource,
     SourcesConfig,
@@ -48,7 +49,9 @@ def test_capabilities_match_openapi_discriminator_and_fields() -> None:
             required.update(branch.get("required", []))
 
         properties.pop("configured_sources", None)
+        properties.pop("configured_source_version", None)
         required.discard("configured_sources")
+        required.discard("configured_source_version")
         assert [field.name for field in capability.fields] == list(properties)
         assert {field.name for field in capability.fields if field.required} == required
         for field in capability.fields:
@@ -154,6 +157,63 @@ def test_capability_and_configured_source_discovery_are_safe_cursor_pages() -> N
     readwise = next(source for source in page.data if source.source_type == "readwise")
     assert readwise.command_key == "readwise"
     assert "url" not in readwise.configuration
+
+
+def test_obsidian_configured_source_projects_bounded_readiness_without_private_paths(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from src.config.settings import get_settings
+
+    vault = tmp_path / "vault"
+    (vault / "Inbox").mkdir(parents=True)
+    source = ObsidianVaultSource(
+        vault_id="personal",
+        vault_path=str(vault),
+        ingest_folder="Inbox",
+        max_files=25,
+    )
+    monkeypatch.setenv("OBSIDIAN_ALLOWED_ROOTS", str(tmp_path))
+    monkeypatch.setenv("OBSIDIAN_COMPATIBLE_WORKER", "true")
+    get_settings.cache_clear()
+
+    page = CapabilityService(
+        SOURCE_REGISTRY,
+        configured_source_key_secret="configured-source-key-secret-for-tests",
+    ).list_configured_sources(SourcesConfig(sources=[source]))
+
+    projected = page.data[0]
+    assert projected.ready is True
+    assert projected.readiness_code is None
+    assert projected.configuration == {}
+    serialized = page.model_dump_json()
+    assert str(vault) not in serialized
+    assert "Inbox" not in serialized
+    assert "personal" not in serialized
+    get_settings.cache_clear()
+
+
+def test_obsidian_readiness_fails_closed_on_incompatible_worker_without_path(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from src.config.settings import get_settings
+
+    private_path = tmp_path / "private-vault"
+    source = ObsidianVaultSource(vault_id="personal", vault_path=str(private_path))
+    monkeypatch.setenv("OBSIDIAN_ALLOWED_ROOTS", str(tmp_path))
+    monkeypatch.setenv("OBSIDIAN_COMPATIBLE_WORKER", "false")
+    get_settings.cache_clear()
+
+    page = CapabilityService(
+        SOURCE_REGISTRY,
+        configured_source_key_secret="configured-source-key-secret-for-tests",
+    ).list_configured_sources(SourcesConfig(sources=[source]))
+
+    assert page.data[0].ready is False
+    assert page.data[0].readiness_code == "source_unavailable"
+    assert str(private_path) not in page.model_dump_json()
+    get_settings.cache_clear()
 
 
 def test_configured_source_discovery_uses_secret_derived_stable_identity() -> None:

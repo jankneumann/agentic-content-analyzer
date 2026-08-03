@@ -25,6 +25,7 @@ from src.api.workflow_dependencies import (
     get_upload_service,
 )
 from src.config.release_identity import release_identity
+from src.config.settings import get_settings
 from src.config.sources import SourcesConfig
 from src.contracts.workflow_models import (
     IngestCommand,
@@ -34,7 +35,7 @@ from src.contracts.workflow_models import (
     TerminalOperationStatus,
     UploadReference,
 )
-from src.ingestion.registry import SOURCE_REGISTRY
+from src.ingestion.registry import SOURCE_REGISTRY, configured_source_version
 from src.models.jobs import OperationType
 from src.services.operation_service import OperationService
 from src.services.upload_service import UploadService
@@ -190,18 +191,44 @@ async def submit_ingestion(
             status_code=422,
             detail="configured_sources is an internal scheduler snapshot and cannot be supplied",
         )
-    payload = command.model_dump(mode="json", exclude_none=True)
+    if getattr(command, "configured_source_version", None) is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="configured_source_version is server-owned and cannot be supplied",
+        )
+    payload = command.model_dump(
+        mode="json",
+        exclude_none=True,
+        exclude={"configured_sources", "configured_source_version"},
+    )
     descriptor = SOURCE_REGISTRY.get(command.kind)
     if descriptor.config_accessor is not None:
-        configured_sources = [
-            source.model_dump(mode="json") for source in descriptor.config_accessor(config)
-        ]
-        if not configured_sources:
+        requested_source_key = getattr(command, "source_key", None)
+        if requested_source_key is not None:
+            secret = get_settings().get_configured_source_key_secret()
+            try:
+                resolved = SOURCE_REGISTRY.resolve_configured_sources(
+                    command,
+                    config,
+                    secret=secret,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            payload["configured_source_version"] = configured_source_version(
+                resolved[0],
+                secret=secret,
+            )
+        else:
+            configured_sources = [
+                source.model_dump(mode="json") for source in descriptor.config_accessor(config)
+            ]
+            if configured_sources:
+                payload["configured_sources"] = configured_sources
+        if requested_source_key is None and not configured_sources:
             raise HTTPException(
                 status_code=422,
                 detail=f"No enabled configured sources are available for '{descriptor.key}'",
             )
-        payload["configured_sources"] = configured_sources
     handle = await service.submit(
         OperationType.INGESTION_EXECUTE,
         payload,

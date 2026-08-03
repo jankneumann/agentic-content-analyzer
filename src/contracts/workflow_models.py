@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
-CONTRACT_SHA256 = "13f4e790854394071189426bb8ac7818621879b46398fcc7effe58503b63d29d"
+CONTRACT_SHA256 = "cd4c44f87749fb86d08c79e37f268a4a098f6c67a463a805954832042d4ef5a2"
 
 OperationStatus = Literal["queued", "in_progress", "completed", "failed", "cancelled"]
 OperationType = Literal[
@@ -254,6 +254,15 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
             "force_reprocess": {"type": "boolean", "default": False},
         },
         "required": ["kind"],
+    },
+    "obsidian_vault": {
+        "properties": {
+            "kind": {"type": "string", "const": "obsidian_vault"},
+            "source_key": {"type": "string", "pattern": "^src_[a-f0-9]{20}$"},
+            "max_items": {"type": "integer", "minimum": 1, "maximum": 10000},
+            "force_reprocess": {"type": "boolean", "default": False},
+        },
+        "required": ["kind", "source_key"],
     },
 }
 
@@ -589,6 +598,8 @@ class ConfiguredSource(StrictModel):
     enabled: bool
     origin: Literal["yaml", "db"]
     configuration: dict[str, Any]
+    ready: bool
+    readiness_code: str | None
 
 
 class ConfiguredSourcePage(StrictModel):
@@ -615,6 +626,7 @@ class ContentQuery(StrictModel):
                 "arxiv",
                 "huggingface_papers",
                 "readwise",
+                "obsidian",
                 "other",
             ]
         ]
@@ -808,6 +820,14 @@ class ReadwiseIngestCommand(StrictModel):
     force_reprocess: bool = False
 
 
+class ObsidianVaultIngestCommand(StrictModel):
+    kind: Literal["obsidian_vault"] = "obsidian_vault"
+    source_key: Annotated[str, Field(pattern="^src_[a-f0-9]{20}$")]
+    configured_source_version: str | None = Field(None, pattern="^[a-f0-9]{64}$")
+    max_items: int | None = Field(None, ge=1, le=10000)
+    force_reprocess: bool = False
+
+
 class SummarizationRequest(StrictModel):
     content_ids: list[int] | None = Field(None, min_length=1)
     query: ContentQuery | None = None
@@ -878,6 +898,7 @@ IngestCommand = Annotated[
     | ArxivSearchIngestCommand
     | ArxivPaperIngestCommand
     | HuggingFacePapersIngestCommand
-    | ReadwiseIngestCommand,
+    | ReadwiseIngestCommand
+    | ObsidianVaultIngestCommand,
     Field(discriminator="kind"),
 ]

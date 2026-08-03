@@ -32,6 +32,7 @@ class LiveDecision(StrEnum):
 
     LIVE = "live"
     SKIP_MISSING_CREDENTIAL = "skip_missing_credential"
+    SKIP_SOURCE_UNAVAILABLE = "skip_source_unavailable"
     FIXTURE_ONLY_PAID = "fixture_only_paid"
     FIXTURE_ONLY_DISABLED = "fixture_only_disabled"
     FIXTURE_ONLY = "fixture_only"
@@ -47,6 +48,11 @@ class LiveAdapterPolicy:
     credential_env_vars: tuple[str, ...] = ()
     max_attempts: int = 2
     reason: str = ""
+    requires_worker_local_mount: bool = False
+
+
+class LivePolicyRegistryError(RuntimeError):
+    """Raised during collection when registry and live-policy keys drift."""
 
 
 @dataclass(frozen=True)
@@ -81,6 +87,33 @@ def _fixture_only(key: str, reason: str) -> LiveAdapterPolicy:
     return LiveAdapterPolicy(key=key, live_eligible=False, reason=reason)
 
 
+def _worker_local_mount(key: str) -> LiveAdapterPolicy:
+    return LiveAdapterPolicy(
+        key=key,
+        live_eligible=True,
+        requires_worker_local_mount=True,
+    )
+
+
+def assert_live_policy_registry_complete(
+    registry_keys: set[str] | frozenset[str],
+    policy_keys: set[str] | frozenset[str],
+) -> None:
+    """Fail collection with the exact missing or extra live-policy mappings."""
+
+    missing = sorted(set(registry_keys) - set(policy_keys))
+    extra = sorted(set(policy_keys) - set(registry_keys))
+    if missing or extra:
+        details = []
+        if missing:
+            details.append(f"missing={missing}")
+        if extra:
+            details.append(f"extra={extra}")
+        raise LivePolicyRegistryError(
+            "Live adapter policy does not match executable registry: " + ", ".join(details)
+        )
+
+
 # One entry per SOURCE_REGISTRY source. Kept exhaustive by
 # ``test_every_registry_source_has_a_policy``.
 LIVE_ADAPTER_POLICIES: dict[str, LiveAdapterPolicy] = {
@@ -110,6 +143,7 @@ LIVE_ADAPTER_POLICIES: dict[str, LiveAdapterPolicy] = {
         "podcast", "audio transcription incurs per-minute cost; fixture-only for now"
     ),
     "files": _fixture_only("files", "local upload source has no live upstream to exercise"),
+    "obsidian_vault": _worker_local_mount("obsidian_vault"),
 }
 
 
@@ -118,6 +152,7 @@ def evaluate_live_adapter(
     *,
     live_enabled: bool,
     env: Mapping[str, str],
+    worker_local_mount_ready: bool | None = None,
 ) -> LiveEvaluation:
     """Resolve one source's live decision for the given environment.
 
@@ -140,6 +175,13 @@ def evaluate_live_adapter(
         return LiveEvaluation(key, LiveDecision.FIXTURE_ONLY_PAID, policy.reason, policy)
     if not policy.live_eligible:
         return LiveEvaluation(key, LiveDecision.FIXTURE_ONLY, policy.reason, policy)
+    if policy.requires_worker_local_mount and worker_local_mount_ready is not True:
+        return LiveEvaluation(
+            key,
+            LiveDecision.SKIP_SOURCE_UNAVAILABLE,
+            "Skipped: compatible worker-local mount is unavailable",
+            policy,
+        )
     if policy.credential_env_vars and not any(env.get(var) for var in policy.credential_env_vars):
         names = " or ".join(policy.credential_env_vars)
         return LiveEvaluation(

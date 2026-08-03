@@ -15,17 +15,92 @@ import pytest
 from src.ingestion.real_ingest_policy import (
     LIVE_ADAPTER_POLICIES,
     LiveDecision,
+    LivePolicyRegistryError,
+    assert_live_policy_registry_complete,
     evaluate_live_adapter,
 )
 from src.ingestion.registry import SOURCE_REGISTRY
 
 pytestmark = pytest.mark.real_ingest
 
+# Collection-time guard: marker deselection must not hide a missing policy.
+assert_live_policy_registry_complete(set(SOURCE_REGISTRY.keys()), set(LIVE_ADAPTER_POLICIES))
+
 
 def test_every_registry_source_has_a_policy() -> None:
     """No executable source may be missing an explicit live decision."""
 
     assert set(LIVE_ADAPTER_POLICIES) == set(SOURCE_REGISTRY.keys())
+
+
+def test_missing_live_policy_names_the_uncovered_source() -> None:
+    with pytest.raises(LivePolicyRegistryError, match="obsidian_vault"):
+        assert_live_policy_registry_complete(
+            {"rss", "obsidian_vault"},
+            {"rss"},
+        )
+
+
+def test_obsidian_without_compatible_mount_has_stable_path_free_reason() -> None:
+    evaluation = evaluate_live_adapter(
+        "obsidian_vault",
+        live_enabled=True,
+        env={},
+        worker_local_mount_ready=False,
+    )
+
+    assert evaluation.decision is LiveDecision.SKIP_SOURCE_UNAVAILABLE
+    assert evaluation.reason == "Skipped: compatible worker-local mount is unavailable"
+    assert "/" not in evaluation.reason
+
+
+def test_obsidian_with_compatible_mount_is_live_eligible() -> None:
+    evaluation = evaluate_live_adapter(
+        "obsidian_vault",
+        live_enabled=True,
+        env={},
+        worker_local_mount_ready=True,
+    )
+
+    assert evaluation.decision is LiveDecision.LIVE
+
+
+def test_obsidian_live_mount_uses_settings_configured_source_file(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import importlib
+
+    from src.config.settings import Settings
+    from tests.real_ingestion.test_live_tier import _worker_local_mount_ready
+
+    settings_module = importlib.import_module("src.config.settings")
+    vault = tmp_path / "vault"
+    (vault / "Inbox").mkdir(parents=True)
+    source_file = tmp_path / "custom-sources.yaml"
+    source_file.write_text(
+        "version: 1\n"
+        "sources:\n"
+        "  - type: obsidian_vault\n"
+        "    vault_id: custom\n"
+        f"    vault_path: {vault}\n"
+        "    ingest_folder: Inbox\n"
+    )
+    settings = Settings(
+        _env_file=None,
+        configured_source_key_secret="configured-source-key-secret-for-tests",
+        sources_config_dir=str(tmp_path / "missing-sources.d"),
+        sources_config_file=str(source_file),
+        obsidian_allowed_roots=str(tmp_path),
+        obsidian_compatible_worker=True,
+    )
+    monkeypatch.setattr(settings_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        "src.config.sources._apply_db_source_overrides",
+        lambda config: config,
+    )
+
+    assert _worker_local_mount_ready("obsidian_vault") is True
 
 
 def test_credentialed_source_runs_live_when_secret_present() -> None:

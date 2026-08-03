@@ -1,5 +1,5 @@
 // Generated from contracts/openapi/v1.yaml; do not edit.
-export const CONTRACT_SHA256 = "13f4e790854394071189426bb8ac7818621879b46398fcc7effe58503b63d29d" as const;
+export const CONTRACT_SHA256 = "cd4c44f87749fb86d08c79e37f268a4a098f6c67a463a805954832042d4ef5a2" as const;
 
 export type OperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 export type OperationType = "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
@@ -334,6 +334,8 @@ export interface ConfiguredSource {
   enabled: boolean;
   origin: "yaml" | "db";
   configuration: Record<string, unknown>;
+  ready: boolean;
+  readiness_code: string | null;
 }
 
 export interface ConfiguredSourcePage {
@@ -342,7 +344,7 @@ export interface ConfiguredSourcePage {
 }
 
 export interface ContentQuery {
-  source_types?: Array<"gmail" | "rss" | "file_upload" | "youtube" | "podcast" | "substack" | "manual" | "webpage" | "xsearch" | "perplexity" | "blog" | "scholar" | "arxiv" | "huggingface_papers" | "readwise" | "other">;
+  source_types?: Array<"gmail" | "rss" | "file_upload" | "youtube" | "podcast" | "substack" | "manual" | "webpage" | "xsearch" | "perplexity" | "blog" | "scholar" | "arxiv" | "huggingface_papers" | "readwise" | "obsidian" | "other">;
   statuses?: Array<"pending" | "parsing" | "parsed" | "processing" | "completed" | "failed" | "filtered_out">;
   publications?: Array<string>;
   publication_search?: string;
@@ -508,6 +510,13 @@ export interface ReadwiseIngestCommand {
   force_reprocess?: boolean;
 }
 
+export interface ObsidianVaultIngestCommand {
+  kind: "obsidian_vault";
+  source_key: string;
+  max_items?: number;
+  force_reprocess?: boolean;
+}
+
 export interface SummarizationRequest {
   content_ids?: Array<number>;
   query?: ContentQuery;
@@ -559,4 +568,4 @@ export interface AudioDigestRequest {
 
 export type IngestionResult = IngestionResultV1 | IngestionResultV2;
 
-export type IngestCommand = GmailIngestCommand | RssIngestCommand | BlogIngestCommand | SubstackIngestCommand | YouTubePlaylistIngestCommand | YouTubeRssIngestCommand | PodcastIngestCommand | XSearchIngestCommand | PerplexitySearchIngestCommand | FilesIngestCommand | UrlIngestCommand | ScholarSearchIngestCommand | ScholarPaperIngestCommand | ScholarReferencesIngestCommand | ArxivSearchIngestCommand | ArxivPaperIngestCommand | HuggingFacePapersIngestCommand | ReadwiseIngestCommand;
+export type IngestCommand = GmailIngestCommand | RssIngestCommand | BlogIngestCommand | SubstackIngestCommand | YouTubePlaylistIngestCommand | YouTubeRssIngestCommand | PodcastIngestCommand | XSearchIngestCommand | PerplexitySearchIngestCommand | FilesIngestCommand | UrlIngestCommand | ScholarSearchIngestCommand | ScholarPaperIngestCommand | ScholarReferencesIngestCommand | ArxivSearchIngestCommand | ArxivPaperIngestCommand | HuggingFacePapersIngestCommand | ReadwiseIngestCommand | ObsidianVaultIngestCommand;

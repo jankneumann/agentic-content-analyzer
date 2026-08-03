@@ -35,6 +35,7 @@ CANONICAL_TOOL_NAMES = (
     "ingest_arxiv_paper",
     "ingest_huggingface_papers",
     "ingest_readwise",
+    "ingest_obsidian_vault",
     "search_content",
     "get_content",
     "get_digest",

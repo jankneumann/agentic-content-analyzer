@@ -105,6 +105,20 @@ def _coerce_scalar(value: str) -> Any:
         return value
 
 
+def _require_public_source_key(key: str) -> None:
+    """Fail closed when a private Obsidian natural key reaches the CLI boundary."""
+
+    from src.services.source_override_service import (
+        PublicSourceKeyError,
+        validate_public_source_key,
+    )
+
+    try:
+        validate_public_source_key(key)
+    except PublicSourceKeyError as exc:
+        _fail(str(exc))
+
+
 def _print_mutation(data: dict[str, Any]) -> None:
     """Render an add/enable/disable result (source_key + version + enabled)."""
     if is_json_mode():
@@ -124,22 +138,24 @@ def _print_mutation(data: dict[str, Any]) -> None:
 def _list_sources_direct(source_type: str | None) -> None:
     """List the merged YAML + DB-override view directly."""
     guard_remote_backend("sources list")
-    from src.config.sources import load_sources_config, source_key as derive_source_key
+    from src.config.settings import get_settings
+    from src.config.sources import source_key as derive_source_key
+    from src.services.source_override_service import public_source_key
 
-    config = load_sources_config()
+    config = get_settings().get_sources_config()
     rows: list[dict[str, Any]] = []
     for s in config.sources:
         if source_type and s.type != source_type:
             continue
         try:
-            skey = derive_source_key(s)
+            skey = public_source_key(s) if s.type == "obsidian_vault" else derive_source_key(s)
         except ValueError:
             skey = None
         rows.append(
             {
                 "type": s.type,
                 "source_key": skey,
-                "name": s.name,
+                "name": None if s.type == "obsidian_vault" else s.name,
                 "enabled": s.enabled,
                 "origin": getattr(s, "origin", "yaml"),
             }
@@ -151,14 +167,18 @@ def _list_sources_direct(source_type: str | None) -> None:
 def _add_source_direct(config: dict[str, Any], description: str | None) -> None:
     """Upsert a source override directly via the service."""
     guard_remote_backend("sources add")
-    from src.services.source_override_service import SourceOverrideError, SourceOverrideService
+    from src.services.source_override_service import (
+        SourceOverrideError,
+        SourceOverrideService,
+        public_source_key,
+    )
     from src.storage.database import get_db
 
     try:
         with get_db() as db:
             row = SourceOverrideService(db).upsert(config, description=description)
             data = {
-                "source_key": row.source_key,
+                "source_key": public_source_key(row),
                 "version": row.version,
                 "origin": "db",
                 "enabled": row.enabled,
@@ -172,29 +192,36 @@ def _add_source_direct(config: dict[str, Any], description: str | None) -> None:
 
 def _remove_source_direct(key: str) -> None:
     """Delete a source override directly via the service."""
+    _require_public_source_key(key)
     guard_remote_backend("sources remove")
     from src.services.source_override_service import SourceOverrideService
     from src.storage.database import get_db
 
     with get_db() as db:
-        deleted = SourceOverrideService(db).delete(key)
+        deleted_key = SourceOverrideService(db).delete(key)
 
-    if not deleted:
+    if deleted_key is None:
         _fail(f"No source override found for '{key}'")
         return
 
     if is_json_mode():
-        output_result({"source_key": key, "deleted": True})
+        output_result({"source_key": deleted_key, "deleted": True})
         return
-    typer.echo(f"  Removed source override {key}")
+    typer.echo(f"  Removed source override {deleted_key}")
 
 
 def _set_enabled_direct(key: str, enabled: bool) -> None:
     """Enable/disable a source directly via the service."""
+    _require_public_source_key(key)
     action = "sources enable" if enabled else "sources disable"
     guard_remote_backend(action)
-    from src.config.sources import load_sources_config, source_key as derive_source_key
-    from src.services.source_override_service import SourceOverrideError, SourceOverrideService
+    from src.config.settings import get_settings
+    from src.config.sources import source_key as derive_source_key
+    from src.services.source_override_service import (
+        SourceOverrideError,
+        SourceOverrideService,
+        public_source_key,
+    )
     from src.storage.database import get_db
 
     try:
@@ -202,10 +229,14 @@ def _set_enabled_direct(key: str, enabled: bool) -> None:
             service = SourceOverrideService(db)
             fallback = None
             if service.get(key) is None:
-                fallback = _resolve_fallback_config(key, load_sources_config(), derive_source_key)
+                fallback = _resolve_fallback_config(
+                    key,
+                    get_settings().get_sources_config(),
+                    derive_source_key,
+                )
             row = service.set_enabled(key, enabled, fallback_config=fallback)
             data = {
-                "source_key": row.source_key,
+                "source_key": public_source_key(row),
                 "version": row.version,
                 "origin": "db",
                 "enabled": row.enabled,
@@ -221,9 +252,14 @@ def _resolve_fallback_config(
     key: str, config: Any, derive_source_key: Any
 ) -> dict[str, Any] | None:
     """Find the YAML source matching ``key`` and return its config dict."""
+    from src.services.source_override_service import public_source_key
+
     for s in config.sources:
         try:
-            if derive_source_key(s) == key:
+            candidate_key = (
+                public_source_key(s) if s.type == "obsidian_vault" else derive_source_key(s)
+            )
+            if candidate_key == key:
                 data = s.model_dump()
                 data.pop("origin", None)
                 return data
@@ -405,9 +441,13 @@ def add_source(
 
 @app.command("remove")
 def remove_source(
-    key: Annotated[str, typer.Argument(help="Source natural key '<type>:<locator>'")],
+    key: Annotated[
+        str,
+        typer.Argument(help="Public source key (opaque src_* key for private sources)"),
+    ],
 ) -> None:
-    """Remove a source override by natural key."""
+    """Remove a source override by its public management key."""
+    _require_public_source_key(key)
     if is_direct_mode():
         return _remove_source_direct(key)
 
@@ -415,12 +455,12 @@ def remove_source(
         from src.cli.api_client import get_api_client
 
         client = get_api_client()
-        client.remove_source(key)
+        data = client.remove_source(key)
 
         if is_json_mode():
-            output_result({"source_key": key, "deleted": True})
+            output_result(data)
             return
-        typer.echo(f"  Removed source override {key}")
+        typer.echo(f"  Removed source override {data.get('source_key')}")
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 404:
             _fail(f"No source override found for '{key}'")
@@ -434,22 +474,29 @@ def remove_source(
 
 @app.command("enable")
 def enable_source(
-    key: Annotated[str, typer.Argument(help="Source natural key '<type>:<locator>'")],
+    key: Annotated[
+        str,
+        typer.Argument(help="Public source key (opaque src_* key for private sources)"),
+    ],
 ) -> None:
-    """Enable a source by natural key."""
+    """Enable a source by its public management key."""
     _toggle_source(key, enabled=True)
 
 
 @app.command("disable")
 def disable_source(
-    key: Annotated[str, typer.Argument(help="Source natural key '<type>:<locator>'")],
+    key: Annotated[
+        str,
+        typer.Argument(help="Public source key (opaque src_* key for private sources)"),
+    ],
 ) -> None:
-    """Disable a source by natural key."""
+    """Disable a source by its public management key."""
     _toggle_source(key, enabled=False)
 
 
 def _toggle_source(key: str, *, enabled: bool) -> None:
     """Shared enable/disable implementation."""
+    _require_public_source_key(key)
     if is_direct_mode():
         return _set_enabled_direct(key, enabled)
 

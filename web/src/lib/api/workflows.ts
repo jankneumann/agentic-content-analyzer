@@ -45,6 +45,17 @@ export const getConfiguredSources = (cursor?: string, limit = 100) =>
     params: cursor === undefined ? { limit } : { cursor, limit },
   })
 
+export async function getAllConfiguredSources(): Promise<ConfiguredSourcePage> {
+  let cursor: string | null | undefined
+  const data: ConfiguredSourcePage["data"] = []
+  do {
+    const page = await getConfiguredSources(cursor ?? undefined)
+    data.push(...page.data)
+    cursor = page.next_cursor
+  } while (cursor)
+  return { data, next_cursor: null }
+}
+
 export function uploadFile(file: File, metadata?: { title?: string; publication?: string }) {
   const body = new FormData()
   body.append("file", file)

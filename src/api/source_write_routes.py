@@ -12,7 +12,12 @@ from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, Field
 
 from src.api.dependencies import verify_admin_key
-from src.services.source_override_service import SourceOverrideError, SourceOverrideService
+from src.services.source_override_service import (
+    PublicSourceKeyError,
+    SourceOverrideError,
+    SourceOverrideService,
+    public_source_key,
+)
 from src.storage.database import get_db
 from src.utils.logging import get_logger
 
@@ -64,12 +69,18 @@ def _resolve_source_config(key: str) -> dict[str, Any] | None:
     that has no override row yet, so a self-describing shadow row can be created.
     """
     from src.config import settings
-    from src.config.sources import source_key as derive_source_key
+    from src.config.sources import configured_source_public_key, source_key as derive_source_key
 
     config = settings.get_sources_config()
     for source in config.sources:
         try:
-            if derive_source_key(source) == key:
+            candidate_key = derive_source_key(source)
+            if source.type == "obsidian_vault":
+                candidate_key = configured_source_public_key(
+                    source,
+                    secret=settings.get_configured_source_key_secret(),
+                )
+            if candidate_key == key:
                 data = source.model_dump()
                 data.pop("origin", None)
                 return data
@@ -96,7 +107,7 @@ async def upsert_source(request: SourceUpsertRequest) -> SourceMutationResult:
         except SourceOverrideError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         return SourceMutationResult(
-            source_key=row.source_key, version=row.version, enabled=row.enabled
+            source_key=public_source_key(row), version=row.version, enabled=row.enabled
         )
 
 
@@ -105,10 +116,13 @@ async def delete_source(key: SourceKey) -> dict:
     """Delete a source override (DB-origin) or remove a shadow (revert to YAML)."""
     with get_db() as db:
         service = SourceOverrideService(db)
-        deleted = service.delete(key)
-        if not deleted:
+        try:
+            deleted_key = service.delete(key)
+        except PublicSourceKeyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if deleted_key is None:
             raise HTTPException(status_code=404, detail=f"Source override not found: {key}")
-        return {"source_key": key, "deleted": True}
+        return {"source_key": deleted_key, "deleted": True}
 
 
 @router.patch(
@@ -123,11 +137,13 @@ async def set_source_enabled(key: SourceKey, request: SourceEnabledRequest) -> S
     """
     with get_db() as db:
         service = SourceOverrideService(db)
-        fallback = None if service.get(key) else _resolve_source_config(key)
         try:
+            fallback = None if service.get(key) else _resolve_source_config(key)
             row = service.set_enabled(key, request.enabled, fallback_config=fallback)
+        except PublicSourceKeyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         except SourceOverrideError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
         return SourceMutationResult(
-            source_key=row.source_key, version=row.version, enabled=row.enabled
+            source_key=public_source_key(row), version=row.version, enabled=row.enabled
         )

@@ -182,6 +182,16 @@ SOURCE_FIXTURES: dict[str, SourceFixture] = {
         response_command="ingest.readwise",
         response_source="readwise",
     ),
+    "obsidian_vault": SourceFixture(
+        command={
+            "kind": "obsidian_vault",
+            "source_key": "src_0123456789abcdef0123",
+            "force_reprocess": False,
+        },
+        title="Obsidian vault clip",
+        response_command="ingest.obsidian-vault",
+        response_source="obsidian",
+    ),
 }
 
 

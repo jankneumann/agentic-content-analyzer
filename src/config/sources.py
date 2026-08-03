@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -230,6 +230,62 @@ class ReadwiseSource(SourceBase):
     include_deleted: bool = False
 
 
+class ObsidianVaultSource(SourceBase):
+    """Private worker-local configuration for one repeatable Obsidian vault."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    type: Literal["obsidian_vault"] = "obsidian_vault"
+    vault_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    vault_path: str = Field(min_length=1, max_length=4_096, repr=False)
+    ingest_folder: str = Field(default="Inbox", min_length=1, max_length=1_024, repr=False)
+
+    # Per-scan limits mirror the scanner defaults and never exceed its hard ceilings.
+    max_files: int = Field(default=1_000, ge=1, le=10_000)
+    max_entries: int = Field(default=10_000, ge=1, le=100_000)
+    max_total_bytes: int = Field(default=64 * 1024 * 1024, ge=1, le=256 * 1024 * 1024)
+    max_depth: int = Field(default=8, ge=0, le=32)
+    max_duration_seconds: float = Field(default=300.0, gt=0, le=3_600.0)
+    max_note_bytes: int = Field(default=4 * 1024 * 1024, ge=1, le=16 * 1024 * 1024)
+    settle_seconds: float = Field(default=0.0, ge=0, le=60.0)
+    max_concurrency: int = Field(default=1, ge=1, le=8)
+
+    # Parser complexity limits are configurable only inside conservative hard bounds.
+    max_frontmatter_bytes: int = Field(default=16_384, ge=1, le=1024 * 1024)
+    max_yaml_nodes: int = Field(default=256, ge=1, le=4_096)
+    max_yaml_depth: int = Field(default=16, ge=1, le=64)
+    max_yaml_aliases: int = Field(default=8, ge=0, le=64)
+    max_yaml_string_chars: int = Field(default=4_096, ge=1, le=65_536)
+
+    @field_validator("vault_path")
+    @classmethod
+    def validate_vault_path(cls, value: str) -> str:
+        path = Path(value)
+        if "\x00" in value or "\\" in value or not path.is_absolute():
+            raise ValueError("vault_path must be an absolute Unix path")
+        if any(part in {".", ".."} for part in path.parts):
+            raise ValueError("vault_path cannot contain dot or traversal components")
+        return value
+
+    @field_validator("ingest_folder")
+    @classmethod
+    def validate_ingest_folder(cls, value: str) -> str:
+        if "\x00" in value or "\\" in value or value.startswith("/") or Path(value).is_absolute():
+            raise ValueError("ingest_folder must be a safe relative path")
+        parts = value.split("/")
+        if any(part in {"", ".", ".."} for part in parts):
+            raise ValueError("ingest_folder must be a safe relative path")
+        return value
+
+    @model_validator(mode="after")
+    def validate_nested_byte_limits(self) -> "ObsidianVaultSource":
+        if self.max_note_bytes > self.max_total_bytes:
+            raise ValueError("max_note_bytes cannot exceed max_total_bytes")
+        if self.max_frontmatter_bytes > self.max_note_bytes:
+            raise ValueError("max_frontmatter_bytes cannot exceed max_note_bytes")
+        return self
+
+
 # Discriminated union for all source types
 Source = Annotated[
     RSSSource
@@ -244,13 +300,16 @@ Source = Annotated[
     | ScholarSource
     | ArxivSource
     | HuggingFacePapersSource
-    | ReadwiseSource,
+    | ReadwiseSource
+    | ObsidianVaultSource,
     Field(discriminator="type"),
 ]
 
 
 class SourcesConfig(BaseModel):
     """Merged config after loading all files."""
+
+    model_config = ConfigDict(hide_input_in_errors=True)
 
     version: int = 1
     defaults: SourceDefaults = SourceDefaults()
@@ -312,6 +371,10 @@ class SourcesConfig(BaseModel):
         """Get all enabled Readwise sources."""
         return [s for s in self.sources if isinstance(s, ReadwiseSource) and s.enabled]
 
+    def get_obsidian_vault_sources(self) -> list[ObsidianVaultSource]:
+        """Get all enabled worker-local Obsidian vault sources."""
+        return [s for s in self.sources if isinstance(s, ObsidianVaultSource) and s.enabled]
+
 
 _ACTIVE_SOURCES_CONFIG: ContextVar[SourcesConfig | None] = ContextVar(
     "active_sources_config",
@@ -364,8 +427,13 @@ def _apply_defaults(
 
 def load_sources_from_file(file_path: Path) -> SourceFileConfig:
     """Load and parse a single YAML source config file."""
-    with open(file_path) as f:
-        raw = yaml.safe_load(f)
+    try:
+        with open(file_path) as f:
+            raw = yaml.safe_load(f)
+    except yaml.YAMLError as exc:
+        mark = getattr(exc, "problem_mark", None)
+        location = f" at line {mark.line + 1}, column {mark.column + 1}" if mark is not None else ""
+        raise ValueError(f"invalid source YAML{location}") from None
 
     if raw is None:
         return SourceFileConfig()
@@ -552,6 +620,7 @@ _LOCATOR_FIELDS: dict[str, str | None] = {
     "arxiv": "search_query",
     "websearch": "prompt",
     "readwise": None,  # singleton; unnamed instances use the stable default locator
+    "obsidian_vault": "vault_id",
 }
 
 

@@ -1530,6 +1530,123 @@ def ingest_files(
     )
 
 
+def obsidian_adapter_config(source: Any, *, max_items: int | None = None) -> Any:
+    """Resolve one private source against deployment-owned worker policy."""
+
+    from src.config.settings import get_settings
+    from src.ingestion.obsidian_adapter import ObsidianAdapterConfig
+    from src.ingestion.obsidian_parser import ClipParseLimits
+    from src.ingestion.obsidian_scanner import ScanLimits
+    from src.ingestion.registry import configured_source_digest
+
+    settings = get_settings()
+    secret = settings.get_configured_source_key_secret()
+    item_limit = max_items if max_items is not None else source.max_files
+    return ObsidianAdapterConfig(
+        configured_source_digest=configured_source_digest(source, secret=secret),
+        vault_path=source.vault_path,
+        ingest_folder=source.ingest_folder,
+        allowed_roots=tuple(settings.get_obsidian_allowed_roots()),
+        scan_limits=ScanLimits(
+            max_files=min(source.max_files, item_limit),
+            max_entries=source.max_entries,
+            max_total_bytes=source.max_total_bytes,
+            max_depth=source.max_depth,
+            max_duration_seconds=source.max_duration_seconds,
+            max_note_bytes=source.max_note_bytes,
+            settle_seconds=source.settle_seconds,
+            max_concurrency=source.max_concurrency,
+        ),
+        parse_limits=ClipParseLimits(
+            max_note_bytes=source.max_note_bytes,
+            max_frontmatter_bytes=source.max_frontmatter_bytes,
+            max_yaml_nodes=source.max_yaml_nodes,
+            max_yaml_depth=source.max_yaml_depth,
+            max_yaml_aliases=source.max_yaml_aliases,
+            max_yaml_string_chars=source.max_yaml_string_chars,
+            max_body_chars=source.max_note_bytes,
+            max_url_chars=2_000,
+        ),
+        compatible_worker=settings.obsidian_compatible_worker,
+    )
+
+
+@observe()
+def ingest_obsidian_vault(
+    *,
+    max_items: int | None = None,
+    force_reprocess: bool = False,
+) -> IngestionResponse:
+    """Execute one bounded worker-local scan and return the canonical envelope."""
+
+    from src.config.sources import load_sources_config
+    from src.ingestion.obsidian_adapter import ingest_obsidian_vault as run_adapter
+    from src.ingestion.result import (
+        ConfiguredSourceResult,
+        IngestionError,
+        IngestionResponse,
+        derive_status,
+        public_source_key_for,
+    )
+    from src.storage.database import get_db
+
+    sources = load_sources_config().get_obsidian_vault_sources()
+    if len(sources) != 1:
+        raise ValueError("Obsidian execution requires exactly one configured source")
+    source = sources[0]
+    config = obsidian_adapter_config(source, max_items=max_items)
+    with get_db() as db:
+        outcome = run_adapter(db, config, force_reprocess=force_reprocess)
+
+    failed_diagnostics = [
+        diagnostic for diagnostic in outcome.diagnostics if diagnostic.code != "generated_content"
+    ]
+    errors = [
+        IngestionError(
+            code=diagnostic.code,
+            message="A configured Obsidian item could not be ingested",
+        )
+        for diagnostic in failed_diagnostics[:20]
+    ]
+    status = derive_status(
+        items_ingested=outcome.persisted,
+        items_failed=outcome.failed,
+        errors=errors,
+    )
+    source_public_key = public_source_key_for(source)
+    if source_public_key is None:
+        from src.config.settings import get_settings
+        from src.config.sources import configured_source_public_key
+
+        source_public_key = configured_source_public_key(
+            source,
+            secret=get_settings().get_configured_source_key_secret(),
+        )
+    source_diagnostics = [{"code": error.code, "message": error.message} for error in errors]
+    return IngestionResponse(
+        command="ingest.obsidian-vault",
+        source="obsidian",
+        status=status,
+        items_ingested=outcome.persisted,
+        items_skipped=outcome.skipped,
+        items_failed=outcome.failed,
+        errors=errors,
+        source_outcomes=[
+            ConfiguredSourceResult(
+                source_key=source_public_key,
+                status=status,
+                items_ingested=outcome.persisted,
+                items_failed=outcome.failed,
+                errors=source_diagnostics,
+                errors_omitted=max(0, len(failed_diagnostics) - len(errors)),
+            )
+        ],
+        details={
+            "content_ids": list(outcome.content_ids),
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # Post-persist filter hook — wrap every ingest_* function in this module so
 # the filter runs automatically after each adapter, without touching

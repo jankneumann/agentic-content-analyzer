@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
 import pytest
+from fastapi import HTTPException, Response
 from fastapi.testclient import TestClient
 
 from src.api.app import app
@@ -16,12 +17,18 @@ from src.api.workflow_dependencies import (
     get_sources_config,
     get_upload_service,
 )
-from src.config.sources import GmailSource, SourcesConfig
+from src.config.sources import (
+    GmailSource,
+    ObsidianVaultSource,
+    SourcesConfig,
+    configured_source_public_key,
+)
 from src.contracts.workflow_models import (
     ContentReconciliationCounts,
     ContentReconciliationReport,
     IngestionHistoryItem,
     IngestionHistoryPage,
+    ObsidianVaultIngestCommand,
     OperationHandle,
     OperationPage,
     OperationSummary,
@@ -32,6 +39,38 @@ from src.services.content_reconciliation_service import (
     ContentReconciliationApplyDisabledError,
 )
 from src.services.operation_service import OperationConflictError, OperationNotFoundError
+
+
+def test_sources_dependency_uses_settings_configured_file(tmp_path, monkeypatch) -> None:
+    import src.api.workflow_dependencies as workflow_dependencies
+    from src.config.settings import Settings
+
+    private_path = tmp_path / "private-vault"
+    source_file = tmp_path / "custom-sources.yaml"
+    source_file.write_text(
+        "version: 1\n"
+        "sources:\n"
+        "  - type: obsidian_vault\n"
+        "    vault_id: custom\n"
+        f"    vault_path: {private_path}\n"
+        "    ingest_folder: Inbox\n"
+    )
+    settings = Settings(
+        _env_file=None,
+        sources_config_dir=str(tmp_path / "missing-sources.d"),
+        sources_config_file=str(source_file),
+    )
+    monkeypatch.setattr(workflow_dependencies, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        "src.config.sources._apply_db_source_overrides",
+        lambda config: config,
+    )
+
+    config = workflow_dependencies.get_sources_config()
+
+    assert len(config.sources) == 1
+    assert config.sources[0].type == "obsidian_vault"
+    assert config.sources[0].vault_path == str(private_path)
 
 
 def _handle(operation_type="ingestion.execute", status="queued") -> OperationHandle:
@@ -526,6 +565,72 @@ def test_config_backed_ingestion_snapshots_enabled_server_configuration(
         GmailSource(query="label:news", name="News").model_dump(mode="json")
     ]
     assert "label:news" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_opaque_source_submission_serializes_version_without_private_snapshot(
+    monkeypatch,
+) -> None:
+    from src.api.ingestion_routes import submit_ingestion
+
+    secret = "configured-source-key-secret-for-tests"
+    private_source = ObsidianVaultSource(
+        vault_id="personal",
+        vault_path="/srv/private/sensitive-vault",
+        ingest_folder="Clips/Inbox",
+    )
+    source_key = configured_source_public_key(private_source, secret=secret)
+    command = ObsidianVaultIngestCommand(
+        source_key=source_key,
+    )
+    service = AsyncMock()
+    service.submit.return_value = _handle()
+    monkeypatch.setattr(
+        "src.api.ingestion_routes.get_settings",
+        lambda: SimpleNamespace(get_configured_source_key_secret=lambda: secret),
+    )
+
+    await submit_ingestion(
+        command=command,
+        response=Response(),
+        service=service,
+        config=SourcesConfig(sources=[private_source]),
+    )
+
+    payload = service.submit.await_args.args[1]
+    assert payload["source_key"] == source_key
+    assert len(payload["configured_source_version"]) == 64
+    assert "configured_sources" not in payload
+    assert "sensitive-vault" not in str(payload)
+    assert "Clips/Inbox" not in str(payload)
+
+
+@pytest.mark.asyncio
+async def test_caller_supplied_configured_source_version_is_rejected() -> None:
+    from src.api.ingestion_routes import submit_ingestion
+
+    service = AsyncMock()
+    command = ObsidianVaultIngestCommand(
+        source_key="src_0123456789abcdef0123",
+        configured_source_version="0" * 64,
+    )
+
+    with pytest.raises(HTTPException, match="configured_source_version"):
+        await submit_ingestion(
+            command=command,
+            response=Response(),
+            service=service,
+            config=SourcesConfig(
+                sources=[
+                    ObsidianVaultSource(
+                        vault_id="personal",
+                        vault_path="/srv/private/vault",
+                    )
+                ]
+            ),
+        )
+
+    service.submit.assert_not_awaited()
 
 
 def test_config_backed_ingestion_without_enabled_sources_fails_synchronously(

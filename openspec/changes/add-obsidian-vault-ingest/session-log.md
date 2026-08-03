@@ -48,3 +48,54 @@ contracts established by RI-05, RI-06, and RI-09.
 Proposal, design, three delta specs, task packages, traceability, and review findings
 were rewritten. Strict OpenSpec and whitespace validation pass. Implementation may
 begin with P1/P2/P3 foundations after this plan commit is pushed.
+
+## 2026-08-02 — P5 canonical source vertical
+
+### Objective
+
+Land the Obsidian configured source as one canonical, privacy-preserving vertical
+across generated contracts, registry/worker dispatch, HTTP, MCP, CLI, source
+management, capability discovery, frontend rendering, and real-ingestion fixtures.
+
+### Decisions
+
+1. Public commands select one vault by a 20-hex opaque HMAC key; paths, folders, and
+   raw configured-source snapshots never enter durable operation payloads.
+2. A domain-separated full-config HMAC version detects stale queued configuration;
+   workers reload the deployment-configured source location and compare versions.
+3. Readiness is fail-closed and path-free, using deployment-owned allowed roots and
+   a compatible-worker flag.
+4. Obsidian server scan/parser policy is not projected through configured-source
+   discovery; the UI receives only the opaque key, readiness, and generated public
+   command fields.
+5. Public source mutations require opaque Obsidian keys while database storage keeps
+   the private natural identity for stable merge/upsert behavior.
+6. Canonical content queries and frontend badge/filter mappings include persisted
+   `obsidian` content.
+7. Fixture evidence snapshots Content rows independently of result claims and records
+   state/event status and attempt deltas.
+
+### Independent review corrections
+
+- Unified custom `SOURCES_CONFIG_DIR`/`SOURCES_CONFIG_FILE` loading across HTTP, MCP,
+  direct CLI, and worker execution.
+- Removed private Obsidian limits from discovery and hid invalid path input from
+  validation/log/protocol errors.
+- Added exhaustive frontend content-source rendering and canonical query enum parity.
+- Rejected natural Obsidian identities at management boundaries and stopped echoing
+  caller-provided deletion keys.
+- Replaced self-referential durable-result counting with independent database
+  snapshots and transition counters.
+
+### Evidence
+
+- 555 focused Python tests passed; 17 registry/live-policy tests, 5 pure source-matrix
+  contract cases, and the path-free source API projection passed separately.
+- 55 web unit tests, production build, scoped ESLint, contract generation/drift,
+  scoped mypy/Ruff, strict OpenSpec, package DAG validation, and whitespace checks
+  passed.
+- The corrected verification matrix collected 1,502 selected tests.
+- Repository-wide web lint remains red on 66 pre-existing unrelated findings.
+- PostgreSQL-backed source matrix/real-adapter execution and Playwright browser launch
+  were unavailable in this sandbox; P6 retains the environment-capable durable-delta
+  and end-to-end verification gate.

@@ -1430,7 +1430,7 @@ components:
     ConfiguredSource:
       type: object
       additionalProperties: false
-      required: [key, command_key, source_type, enabled, origin, configuration]
+      required: [key, command_key, source_type, enabled, origin, configuration, ready, readiness_code]
       properties:
         key: { type: string }
         command_key: { type: string }
@@ -1439,6 +1439,8 @@ components:
         enabled: { type: boolean }
         origin: { type: string, enum: [yaml, db] }
         configuration: { type: object, additionalProperties: true }
+        ready: { type: boolean, default: true }
+        readiness_code: { type: [string, "null"], default: null }
 
     ConfiguredSourcePage:
       type: object
@@ -1456,7 +1458,7 @@ components:
           type: array
           items:
             type: string
-            enum: [gmail, rss, file_upload, youtube, podcast, substack, manual, webpage, xsearch, perplexity, blog, scholar, arxiv, huggingface_papers, readwise, other]
+            enum: [gmail, rss, file_upload, youtube, podcast, substack, manual, webpage, xsearch, perplexity, blog, scholar, arxiv, huggingface_papers, readwise, obsidian, other]
         statuses:
           type: array
           items: { type: string, enum: [pending, parsing, parsed, processing, completed, failed, filtered_out] }
@@ -1753,6 +1755,21 @@ components:
         max_books: { type: integer, minimum: 1 }
         force_reprocess: { type: boolean, default: false }
 
+    ObsidianVaultIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, source_key]
+      properties:
+        kind: { type: string, const: obsidian_vault }
+        source_key: { type: string, pattern: "^src_[a-f0-9]{20}$" }
+        configured_source_version:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+          readOnly: true
+          x-internal: true
+        max_items: { type: integer, minimum: 1, maximum: 10000 }
+        force_reprocess: { type: boolean, default: false }
+
     IngestCommand:
       oneOf:
         - { $ref: "#/components/schemas/GmailIngestCommand" }
@@ -1773,6 +1790,7 @@ components:
         - { $ref: "#/components/schemas/ArxivPaperIngestCommand" }
         - { $ref: "#/components/schemas/HuggingFacePapersIngestCommand" }
         - { $ref: "#/components/schemas/ReadwiseIngestCommand" }
+        - { $ref: "#/components/schemas/ObsidianVaultIngestCommand" }
       discriminator:
         propertyName: kind
         mapping:
@@ -1794,6 +1812,7 @@ components:
           arxiv_paper: "#/components/schemas/ArxivPaperIngestCommand"
           huggingface_papers: "#/components/schemas/HuggingFacePapersIngestCommand"
           readwise: "#/components/schemas/ReadwiseIngestCommand"
+          obsidian_vault: "#/components/schemas/ObsidianVaultIngestCommand"
 
     SummarizationRequest:
       type: object

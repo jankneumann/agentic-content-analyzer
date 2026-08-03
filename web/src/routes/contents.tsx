@@ -13,12 +13,6 @@ import { createRoute, Link, useNavigate } from "@tanstack/react-router"
 import {
   FileText,
   RefreshCw,
-  Mail,
-  Rss,
-  Youtube,
-  Mic,
-  Upload,
-  Globe,
   CheckCircle,
   Clock,
   AlertCircle,
@@ -29,8 +23,6 @@ import {
   Plus,
   Code,
   BookOpen,
-  Search,
-  GraduationCap,
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import ReactMarkdown from "react-markdown"
@@ -78,6 +70,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Toggle } from "@/components/ui/toggle"
 import { useContents, useContent, useContentStats } from "@/hooks/use-contents"
+import { getContentSourceDisplay } from "@/lib/content-source-display"
 import type { ContentStatus, ContentSource, ContentFilters } from "@/types"
 
 /**
@@ -125,75 +118,6 @@ const statusConfig: Record<
     label: "Failed",
     variant: "destructive",
     icon: <AlertCircle className="h-3 w-3" />,
-  },
-}
-
-/**
- * Source badge configuration
- */
-const sourceConfig: Record<
-  ContentSource,
-  { label: string; icon: React.ReactNode }
-> = {
-  gmail: {
-    label: "Gmail",
-    icon: <Mail className="h-3 w-3" />,
-  },
-  rss: {
-    label: "RSS",
-    icon: <Rss className="h-3 w-3" />,
-  },
-  youtube: {
-    label: "YouTube",
-    icon: <Youtube className="h-3 w-3" />,
-  },
-  podcast: {
-    label: "Podcast",
-    icon: <Mic className="h-3 w-3" />,
-  },
-  substack: {
-    label: "Substack",
-    icon: <BookOpen className="h-3 w-3" />,
-  },
-  file_upload: {
-    label: "Upload",
-    icon: <Upload className="h-3 w-3" />,
-  },
-  manual: {
-    label: "Manual",
-    icon: <FileText className="h-3 w-3" />,
-  },
-  webpage: {
-    label: "Webpage",
-    icon: <Globe className="h-3 w-3" />,
-  },
-  xsearch: {
-    label: "X Search",
-    icon: <Search className="h-3 w-3" />,
-  },
-  perplexity: {
-    label: "Perplexity",
-    icon: <Globe className="h-3 w-3" />,
-  },
-  blog: {
-    label: "Blog",
-    icon: <BookOpen className="h-3 w-3" />,
-  },
-  scholar: {
-    label: "Scholar",
-    icon: <GraduationCap className="h-3 w-3" />,
-  },
-  arxiv: {
-    label: "arXiv",
-    icon: <FileText className="h-3 w-3" />,
-  },
-  huggingface_papers: {
-    label: "HF Papers",
-    icon: <FileText className="h-3 w-3" />,
-  },
-  other: {
-    label: "Other",
-    icon: <FileText className="h-3 w-3" />,
   },
 }
 
@@ -349,6 +273,8 @@ function ContentsPage() {
                 <SelectItem value="youtube">YouTube</SelectItem>
                 <SelectItem value="file_upload">File Upload</SelectItem>
                 <SelectItem value="manual">Manual</SelectItem>
+                <SelectItem value="readwise">Readwise</SelectItem>
+                <SelectItem value="obsidian">Obsidian</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -438,7 +364,7 @@ function ContentsPage() {
               <TableBody>
                 {data?.items.map((content) => {
                   const status = statusConfig[content.status]
-                  const source = sourceConfig[content.source_type]
+                  const source = getContentSourceDisplay(content.source_type)
                   return (
                     <TableRow key={content.id} className="hover:bg-muted/50">
                       <TableCell>
@@ -614,8 +540,8 @@ function ContentsPage() {
                 <div className="flex items-center gap-1.5">
                   <span className="text-muted-foreground">Source:</span>
                   <Badge variant="outline" className="gap-1">
-                    {sourceConfig[selectedContent.source_type].icon}
-                    {sourceConfig[selectedContent.source_type].label}
+                    {getContentSourceDisplay(selectedContent.source_type).icon}
+                    {getContentSourceDisplay(selectedContent.source_type).label}
                   </Badge>
                 </div>
                 <div className="flex items-center gap-1.5">

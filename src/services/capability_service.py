@@ -52,7 +52,7 @@ class CapabilityService:
             fields = [
                 _capability_field(name, schema, name in required)
                 for name, schema in field_schema["properties"].items()
-                if name != "configured_sources"
+                if name not in {"configured_sources", "configured_source_version"}
             ]
             source_commands.append(
                 SourceCapability(
@@ -97,7 +97,11 @@ class CapabilityService:
         configured: list[ConfiguredSource] = []
         for source in config.sources:
             descriptor = self.registry.descriptor_for_config(source)
-            data = _public_configuration(source.model_dump(mode="json"))
+            data = _public_configuration(
+                source.model_dump(mode="json"),
+                source_type=source.type,
+            )
+            readiness = descriptor.resolve_readiness(source)
             configured.append(
                 ConfiguredSource(
                     key=configured_source_public_key(source, secret=source_key_secret),
@@ -107,6 +111,8 @@ class CapabilityService:
                     enabled=source.enabled,
                     origin=source.origin,
                     configuration=data,
+                    ready=readiness.ready,
+                    readiness_code=readiness.code,
                 )
             )
         configured.sort(key=lambda source: (source.command_key, source.key))
@@ -189,6 +195,18 @@ _PUBLIC_CONFIG_FIELDS = frozenset(
         "extract_pdf",
         "include_deleted",
         "max_entries",
+        "max_files",
+        "max_total_bytes",
+        "max_depth",
+        "max_duration_seconds",
+        "max_note_bytes",
+        "max_frontmatter_bytes",
+        "max_yaml_nodes",
+        "max_yaml_depth",
+        "max_yaml_aliases",
+        "max_yaml_string_chars",
+        "settle_seconds",
+        "max_concurrency",
         "max_pdf_pages",
         "max_results",
         "max_threads",
@@ -207,8 +225,10 @@ _PUBLIC_CONFIG_FIELDS = frozenset(
 )
 
 
-def _public_configuration(value: dict) -> dict:
+def _public_configuration(value: dict, *, source_type: str | None = None) -> dict:
     """Project an explicit safe allowlist for agent-facing discovery."""
+    if source_type == "obsidian_vault":
+        return {}
     public = {key: value[key] for key in _PUBLIC_CONFIG_FIELDS if key in value}
     url = value.get("url")
     if isinstance(url, str):
