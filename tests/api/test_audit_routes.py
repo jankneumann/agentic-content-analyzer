@@ -108,8 +108,13 @@ def audit_table(test_db_engine):
             )
         )
     yield
+    # Clear rows rather than dropping: the CREATE above is IF NOT EXISTS, so
+    # against a migrated database it is a no-op and the table belongs to the
+    # migration chain. Dropping it removed it for every later test in the
+    # session — the audit middleware writes on each request, so the damage
+    # surfaced far from here.
     with test_db_engine.begin() as conn:
-        conn.execute(text("DROP TABLE IF EXISTS audit_log CASCADE"))
+        conn.execute(text("TRUNCATE audit_log"))
 
 
 @pytest.fixture

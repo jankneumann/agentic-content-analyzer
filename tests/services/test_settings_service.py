@@ -3,23 +3,25 @@
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
-from src.models.base import Base
 from src.models.settings_override import SettingsOverride
 from src.services.settings_service import SettingsService, is_database_override_allowed
-from tests.helpers.test_db import create_test_engine, get_test_database_url
-
-TEST_DATABASE_URL = get_test_database_url()
 
 
 @pytest.fixture(scope="module")
-def engine():
-    """Create test database engine for settings service tests."""
-    eng = create_test_engine(TEST_DATABASE_URL)
-    Base.metadata.drop_all(eng)
-    Base.metadata.create_all(eng)
-    yield eng
-    Base.metadata.drop_all(eng)
-    eng.dispose()
+def engine(test_engine):
+    """Reuse the session-scoped, migration-built schema.
+
+    This module previously built its own engine and called
+    ``Base.metadata.drop_all`` / ``create_all`` against the *shared* test
+    database, then dropped every mapped table again at teardown. That left the
+    schema empty for everything that ran afterwards in the same session — any
+    later test needing a table failed with a bare "relation does not exist",
+    hundreds of tests away from the cause. These tests only need
+    ``settings_overrides``, which the migrations already create, and ``db``
+    rolls back, so no schema management is warranted here.
+    """
+
+    return test_engine
 
 
 @pytest.fixture
