@@ -28,24 +28,26 @@ def _purge_module_rows(test_engine: Engine):
     # Child rows first. One test in this module downgrades the migration, so the
     # alert tables may legitimately be gone by teardown; skipping a missing table
     # is correct, while failing on it would turn cleanup into a phantom error.
-    # Child rows first. Each statement runs in its own transaction because one
-    # test downgrades the migration, and a table that is legitimately gone by
-    # teardown must not fail the rest of the cleanup.
+    # Child rows first. `content_reconciliation_actions` is append-only in
+    # production and enforces that with a trigger, so teardown suspends the
+    # trigger for its own statement — leaving the rows would pin the `contents`
+    # rows they reference, and those leftovers stay visible to every later test
+    # in the session, silently changing any assertion that counts or orders
+    # content in a period.
     #
-    # KNOWN GAP: `content_reconciliation_actions` is append-only and enforces it
-    # with a trigger, so the handful of `contents` rows it references survive.
-    # Those leftovers still perturb whole-suite runs of `tests/services/
-    # test_content_query.py` and `test_content_set_resolver.py`, which count and
-    # order every content row in a period. Closing it properly means giving this
-    # module its own database or scoping those assertions; both are outside the
-    # Obsidian change that found it.
+    # Each statement runs in its own transaction because one test in this module
+    # downgrades the migration: a table that is legitimately gone by teardown
+    # must not abort the rest of the cleanup.
     statements = (
         "DELETE FROM workflow_alert_deliveries",
         "DELETE FROM workflow_terminal_events",
-        "DELETE FROM contents WHERE source_id LIKE 'workflow-alert-%' "
-        "AND id NOT IN (SELECT content_id FROM content_reconciliation_actions)",
-        "DELETE FROM pgqueuer_jobs WHERE id NOT IN "
-        "(SELECT operation_id FROM content_reconciliation_actions)",
+        "ALTER TABLE content_reconciliation_actions "
+        "DISABLE TRIGGER content_reconciliation_actions_append_only",
+        "DELETE FROM content_reconciliation_actions",
+        "ALTER TABLE content_reconciliation_actions "
+        "ENABLE TRIGGER content_reconciliation_actions_append_only",
+        "DELETE FROM contents WHERE source_id LIKE 'workflow-alert-%'",
+        "DELETE FROM pgqueuer_jobs",
     )
     for statement in statements:
         try:

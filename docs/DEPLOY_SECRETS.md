@@ -17,6 +17,32 @@ When a secret drifts between the two, things break in confusing ways — e.g. an
 an obvious "wrong key" message. `sync-secrets` makes the drift visible (and
 fixable) from one command.
 
+## Required in every deployed environment
+
+`Settings` refuses to construct in `staging` or `production` without
+`CONFIGURED_SOURCE_KEY_SECRET`. A deployment missing it does not start — the
+failure is a Pydantic `ValidationError` during boot, not a degraded runtime.
+
+The requirement is deliberate rather than defensive. That secret derives the
+opaque `src_…` public key of every configured source, which is the identity CLI,
+HTTP, MCP, and the UI use to name a source. A silent default or a per-deployment
+fallback would change those identities, so it fails closed instead.
+
+Set it once per environment and do not rotate it casually — rotating changes
+every configured source's public key, so any queued command holding an older key
+is rejected on pickup with "Configured source changed; resubmit the command".
+
+```bash
+# Generate and set (a 32+ byte value is required)
+openssl rand -hex 32
+aca deploy sync-secrets --service api --env production \
+  --only CONFIGURED_SOURCE_KEY_SECRET --apply
+```
+
+Add it to the allowlist in `settings/deploy/railway_secrets.yaml` for each
+service that boots the app (`api`, and any worker inheriting from it) before
+syncing, or set it directly in Railway Variables.
+
 ## Safety model
 
 Mirrors `aca curate` / `substack-sync`:
