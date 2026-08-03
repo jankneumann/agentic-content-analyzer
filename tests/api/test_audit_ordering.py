@@ -90,6 +90,29 @@ def test_cors_wraps_audit_and_auth():
     )
 
 
+def test_nul_byte_guard_wraps_audit_but_sits_inside_cors():
+    """The NUL guard must reject before audit tries to persist the request.
+
+    A path/query holding ``\\x00`` can never be written to Postgres, so the
+    audit writer would fail on it. The guard therefore runs OUTSIDE audit
+    (smaller index). It must still sit INSIDE CORS so the 422 it returns
+    carries `Access-Control-Allow-Origin` for browser clients.
+    """
+    names = _get_middleware_class_names()
+    assert "NulByteGuardMiddleware" in names, f"NulByteGuardMiddleware not registered. Got: {names}"
+    guard_idx = names.index("NulByteGuardMiddleware")
+    audit_idx = names.index("AuditMiddleware")
+    cors_idx = names.index("CORSMiddleware")
+    assert guard_idx < audit_idx, (
+        f"NulByteGuardMiddleware must wrap AuditMiddleware so unstorable "
+        f"requests never reach the audit writer. Got: {names}"
+    )
+    assert cors_idx < guard_idx, (
+        f"CORSMiddleware must wrap NulByteGuardMiddleware so its 422 carries "
+        f"CORS headers. Got: {names}"
+    )
+
+
 @pytest.fixture
 def production_client(monkeypatch):
     """Force production mode so AuthMiddleware enforces X-Admin-Key."""

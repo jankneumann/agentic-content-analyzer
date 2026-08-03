@@ -36,6 +36,12 @@ _FUZZ_ONLY_EXCLUSIONS: list[str] = [
     r"/api/v1/audio-digests$",
     # Voice Cleanup (LLM)
     r"/api/v1/voice/cleanup",
+    # Pricing refresh: LLM-extracts from live provider pages AND, with
+    # dry_run=false, rewrites the tracked settings/models.yaml on disk
+    # (src/services/model_pricing_extractor.py:524). Fuzzing it mutates the
+    # working tree — observed rewriting model costs during a local run.
+    r"/api/v1/models/pricing/refresh$",
+    r"/api/v1/pricing/refresh$",
     # External URL/file fetching
     r"/api/v1/content/save-url$",
     r"/api/v1/content/save-page$",

@@ -24,7 +24,7 @@ from src.models.content import (
     ContentStatus,
 )
 from src.models.jobs import JobStatus
-from src.models.query import ContentQuery, ContentQueryPreview
+from src.models.query import ContentQuery, ContentQueryPreview, QueryText
 from src.services.content_service import ContentService
 from src.storage.database import get_db
 from src.utils.logging import get_logger
@@ -394,10 +394,14 @@ def _map_job_status_to_task_status(job_status: JobStatus) -> str:
 async def list_contents(
     source_type: ContentSource | None = Query(None, description="Filter by source type"),
     status: ContentStatus | None = Query(None, description="Filter by status"),
-    publication: str | None = Query(None, description="Filter by publication"),
+    # QueryText mirrors the ContentQuery field constraints these values are fed
+    # into below. Declaring them on the signature lets FastAPI answer 422 with
+    # field-level detail, instead of ContentQuery(...) raising a ValidationError
+    # inside the handler that degrades to a 500 on this legacy path.
+    publication: QueryText | None = Query(None, description="Filter by publication"),
     start_date: datetime | None = Query(None, description="Filter after this date"),
     end_date: datetime | None = Query(None, description="Filter before this date"),
-    search: str | None = Query(None, description="Search in title"),
+    search: QueryText | None = Query(None, description="Search in title"),
     filter_decision: Literal["keep", "skip"] | None = Query(
         None, description="Filter by ingestion filter decision (keep|skip)"
     ),
