@@ -176,24 +176,30 @@ green commit.
 
 Depends on: P5.
 
-- [ ] 6.1 Extend the offline real-ingestion tier with new/unchanged/changed/invalid/
+- [x] 6.1 Extend the offline real-ingestion tier with new/unchanged/changed/invalid/
   duplicate clips, database delta assertions, and no-network enforcement through
   `OperationService`.
   Scenarios: `Obsidian incremental ingestion matches durable evidence`, `Obsidian typed
   failure is retained`.
-- [ ] 6.2 Add full durable retry, cancellation, idempotency, overlapping-session,
+- [x] 6.2 Add full durable retry, cancellation, idempotency, overlapping-session,
   migration, renderer-safety, and telemetry integration tests using isolated
   PostgreSQL sessions and temporary approved roots.
-- [ ] 6.3 Add `sources.d/obsidian-vault.yaml.example` and setup/security/troubleshooting
+- [x] 6.3 Add `sources.d/obsidian-vault.yaml.example` and setup/security/troubleshooting
   docs for local/co-located mounts, allowed roots, database overrides, sync-provider
   eventual consistency, bounds, privacy, and unavailable Railway/device-path cases.
-- [ ] 6.4 Publish the strict Web Clipper template and compatibility matrix; explicitly
+- [x] 6.4 Publish the strict Web Clipper template and compatibility matrix; explicitly
   document read-only behavior, required timezone-aware `captured_at`, required HTTP(S)
   URL, inert embeds, deferred features, and separation from knowledge-base export.
-- [ ] 6.5 Run strict OpenSpec, workflow-contract drift, migration upgrade/downgrade,
+- [x] 6.5 Run strict OpenSpec, workflow-contract drift, migration upgrade/downgrade,
   scoped format/lint/type checks, source workflow/fixture suites, durable operation
   regression suites, and security/redaction tests; record evidence and update roadmap
   checkpoint.
+- [x] 6.6 Close the two production defects that only durable PostgreSQL execution
+  reaches: stop re-failing a retry-exhausted unchanged note (it now reports skipped
+  with a retained warning, so a permanently invalid note cannot fail every later scan
+  or re-alert on every poll), and allowlist the Obsidian diagnostic codes so external
+  alerts carry a stable code instead of an empty `codes` list.
+  Scenario: `Obsidian typed failure is retained`.
 
 ## Requirement Traceability
 
@@ -209,7 +215,7 @@ Depends on: P5.
 | Private diagnostics and replay | 2.5, 4.3–4.5, 5.2–5.6, 6.1–6.2 |
 | Registry-derived capability parity | 5.1–5.7 |
 | Every registry entry maps to fixture/exclusion | 5.6–5.7, 6.1 |
-| PR tier verifies durable database deltas | 6.1–6.2 |
+| PR tier verifies durable database deltas | 6.1–6.2, 6.6 |
 
 ## Dependency Graph
 

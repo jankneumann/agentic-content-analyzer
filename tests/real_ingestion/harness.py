@@ -118,6 +118,14 @@ class RealIngestOutcome:
     succeeded: bool
     #: Content IDs independently observed in the database for this submission.
     persisted_content_ids: tuple[int, ...] = ()
+    #: Distinct canonical *primary* identities behind ``persisted_content_ids``.
+    #: The durable result reports canonicalized identities, so for a source that
+    #: deliberately persists distinct rows sharing one canonical URL (Obsidian)
+    #: this is lower than ``content_row_delta``. ``None`` means "one row is one
+    #: identity", which holds for every other source.
+    primary_identity_delta: int | None = None
+    #: The canonical primaries the rows above resolve to.
+    persisted_primary_ids: tuple[int, ...] = ()
     #: The operation's failure diagnostic, if it terminated in failure.
     problem_detail: str | None = None
     #: Private Obsidian state rows added by this submission.
@@ -160,6 +168,7 @@ def _outcome(
     source_state_attempt_delta: int = 0,
     source_event_attempt_delta: int = 0,
     persisted_content_ids: tuple[int, ...] = (),
+    persisted_primary_ids: tuple[int, ...] | None = None,
 ) -> RealIngestOutcome:
     """Assemble a RealIngestOutcome from a terminal operation handle."""
 
@@ -180,6 +189,10 @@ def _outcome(
         source_event_status_delta=source_event_status_delta or {},
         source_state_attempt_delta=source_state_attempt_delta,
         source_event_attempt_delta=source_event_attempt_delta,
+        primary_identity_delta=(
+            None if persisted_primary_ids is None else len(set(persisted_primary_ids))
+        ),
+        persisted_primary_ids=persisted_primary_ids or (),
     )
 
 
@@ -327,6 +340,7 @@ class RealIngestionHarness:
             after_private.state_attempts - before_private.state_attempts,
             after_private.event_attempts - before_private.event_attempts,
             tuple(new_ids),
+            self._primary_identities(tuple(new_ids)),
         )
 
     def _obsidian_fixture_config(
@@ -372,6 +386,20 @@ class RealIngestionHarness:
             state_attempts=sum(int(attempts) for _, _, attempts in state_rows),
             event_attempts=sum(int(attempts) for _, _, attempts in event_rows),
         )
+
+    def _primary_identities(self, content_ids: tuple[int, ...]) -> tuple[int, ...]:
+        """Resolve committed rows to the canonical primaries the result claims."""
+
+        if not content_ids:
+            return ()
+        with self._sessionmaker() as session:
+            rows = session.execute(
+                text(
+                    "SELECT DISTINCT COALESCE(canonical_id, id) FROM contents WHERE id = ANY(:ids)"
+                ),
+                {"ids": list(content_ids)},
+            ).scalars()
+            return tuple(sorted(int(value) for value in rows))
 
     def _obsidian_content_ids(self, digest: str) -> set[int]:
         """Snapshot digest-scoped persisted rows independently of result claims."""
@@ -479,10 +507,19 @@ class RealIngestionHarness:
     def evidence(self, outcome: RealIngestOutcome) -> SourceEvidence:
         """Classify a real outcome from its durable operation/result record."""
 
+        # Compare like with like: the durable result claims canonical identities,
+        # so a source that persists several rows under one canonical URL is
+        # classified and recorded against its primary-identity delta, not its raw
+        # row count. For every other source the two numbers are equal.
+        identity_delta = (
+            outcome.content_row_delta
+            if outcome.primary_identity_delta is None
+            else outcome.primary_identity_delta
+        )
         failure_class = classify_source_outcome(
             status=outcome.status,
             claimed_content_ids=outcome.claimed_content_ids,
-            content_delta=outcome.content_row_delta,
+            content_delta=identity_delta,
             problem_detail=outcome.problem_detail,
         )
         return SourceEvidence(
@@ -490,7 +527,7 @@ class RealIngestionHarness:
             operation_id=outcome.operation_id,
             failure_class=failure_class,
             claimed=len(outcome.claimed_content_ids),
-            delta=outcome.content_row_delta,
+            delta=identity_delta,
             detail=outcome.problem_detail,
         )
 
@@ -629,14 +666,20 @@ class RealIngestionHarness:
     async def _claim(self, operation_id: int) -> dict[str, Any]:
         """Transition our queued job to in_progress, as the worker poller would."""
 
+        # Mirror ``worker._claim_jobs`` exactly: the poller sets the claim protocol
+        # version, and the ``pgqueuer_jobs_advance_claim_generation`` trigger bumps
+        # the generation on queued -> in_progress. Both must be returned because
+        # ``worker._process_job`` binds them as the execution claim that fences
+        # every downstream content commit and retry.
         row = await self._conn.fetchrow(
             """
             UPDATE pgqueuer_jobs
             SET status = 'in_progress',
                 started_at = COALESCE(started_at, NOW()),
-                heartbeat_at = NOW()
+                heartbeat_at = NOW(),
+                claim_protocol_version = 2
             WHERE id = $1 AND status = 'queued'
-            RETURNING id, entrypoint, payload
+            RETURNING id, entrypoint, payload, claim_generation, claim_protocol_version
             """,
             operation_id,
         )
@@ -723,11 +766,20 @@ def assert_result_matches_delta(outcome: RealIngestOutcome) -> None:
         f"status={outcome.status}"
     )
     # Primary persistence invariant: the count the durable result *claims* must
-    # equal the rows the database actually holds. A completed operation that
-    # claims more than it persisted is the persistence failure the spec targets.
-    assert len(outcome.claimed_content_ids) == outcome.content_row_delta, (
+    # equal the identities the database actually holds. A completed operation
+    # that claims more than it persisted is the persistence failure the spec
+    # targets. ``content_ids`` carries canonicalized identities, so a source
+    # that persists distinct rows under one canonical URL is compared against
+    # its primary-identity delta; for every other source the two are the same
+    # number because ``Content.canonical_id`` is NULL.
+    expected = (
+        outcome.content_row_delta
+        if outcome.primary_identity_delta is None
+        else outcome.primary_identity_delta
+    )
+    assert len(outcome.claimed_content_ids) == expected, (
         f"Operation for '{outcome.key}' claimed {len(outcome.claimed_content_ids)} "
-        f"content rows but the database delta was {outcome.content_row_delta}"
+        f"content identities but the database delta was {expected}"
     )
     # Secondary guard: a successful fixture ingestion must persist something,
     # catching the silent claims=0/delta=0 no-op that equality alone would pass.

@@ -1503,6 +1503,31 @@ aca ingest substack-sync
 aca ingest substack
 ```
 
+## Obsidian Vault Setup
+
+Ingests Obsidian Web Clipper notes from a worker-local vault folder. Read-only:
+nothing is ever written back into the vault.
+
+Set these on the worker that owns the mount — readiness fails closed without
+them, and no path ever appears in a payload, response, log, or alert:
+
+```bash
+OBSIDIAN_ALLOWED_ROOTS=/srv/obsidian          # comma-separated absolute roots
+OBSIDIAN_COMPATIBLE_WORKER=true               # this worker can see the mount
+CONFIGURED_SOURCE_KEY_SECRET=<32+ byte secret>  # derives opaque source keys
+```
+
+Then copy `sources.d/obsidian-vault.yaml.example` to
+`sources.d/obsidian-vault.yaml`, point `vault_path` inside an allowed root, and
+run `aca ingest obsidian-vault --wait`.
+
+The vault must be readable by the worker process itself. A vault on a laptop
+cannot be reached from a Railway deployment — run a worker where the vault lives.
+
+Full details, including the required clip frontmatter, the Web Clipper property
+template, sync-provider settling, and the troubleshooting table, are in
+[docs/OBSIDIAN_VAULT_INGEST.md](OBSIDIAN_VAULT_INGEST.md).
+
 ## Upgrading to PostgreSQL 17
 
 If upgrading from PG15/16 to PG17, PostgreSQL major versions are not binary-compatible. Existing data volumes must be recreated.

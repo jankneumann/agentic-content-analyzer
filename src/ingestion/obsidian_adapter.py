@@ -97,6 +97,11 @@ class ObsidianDiagnostic:
     code: str
     path_digest: str | None = None
     event_id: int | None = None
+    #: True when this restates a failure already recorded by an earlier
+    #: operation rather than one this operation produced. Retained diagnostics
+    #: keep the stable code visible without counting as a new failure, so a
+    #: permanently invalid note cannot fail every subsequent unchanged scan.
+    retained: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,12 +282,19 @@ def _process_note(
             note.content_sha256,
         )
         if disposition is not None and disposition.status == "failed":
+            # The retry budget for this exact file version is spent and the file
+            # has not changed, so this operation attempted nothing. Restate the
+            # retained code as a non-failing diagnostic: counting it as a new
+            # failure would drive every later unchanged scan of a vault holding
+            # one permanently invalid note to a failed durable operation, and
+            # would re-alert on a failure the ingest-event row already retains.
             return _NoteResult(
-                status="failed",
+                status="skipped",
                 diagnostic=ObsidianDiagnostic(
                     disposition.error_code or "persistence_error",
                     note.path_digest,
                     disposition.event_id,
+                    retained=True,
                 ),
             )
         return _NoteResult(status="skipped")

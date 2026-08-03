@@ -326,11 +326,20 @@ packages:
         - tests/contract/**
         - tests/fixtures/obsidian/**
         - sources.d/obsidian-vault.yaml.example
+        - CLAUDE.md
         - docs/SETUP.md
         - docs/DEVELOPMENT.md
         - docs/OBSIDIAN_VAULT_INGEST.md
         - openspec/changes/add-obsidian-vault-ingest/**
         - openspec/roadmaps/workflow-surface-reliability/**
+        # Widened for task 6.6: running the durable tier against PostgreSQL for
+        # the first time surfaced two production defects that only end-to-end
+        # execution can reach. Fixing them is inside this package's remit
+        # because shipping the source with either one defeats the acceptance
+        # outcomes this package verifies.
+        - src/ingestion/obsidian_adapter.py
+        - src/ingestion/orchestrator.py
+        - src/contracts/workflow_alert_models.py
       read_allow: [src/**, web/**, tests/**, sources.d/**, docs/**, openspec/**]
       deny: [src/sync/**]
     worktree: {name: wp-verification, mode: isolated}
@@ -338,7 +347,7 @@ packages:
     retry_budget: 1
     min_trust_level: 4
     metadata: {loc_estimate: 1200, alternatives_count: 2, complexity: high, package_kind: integration}
-    inputs: {tasks: ["6.1", "6.2", "6.3", "6.4", "6.5"]}
+    inputs: {tasks: ["6.1", "6.2", "6.3", "6.4", "6.5", "6.6"]}
     verification:
       tier_required: A
       steps:

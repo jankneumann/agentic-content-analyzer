@@ -1585,6 +1585,7 @@ def ingest_obsidian_vault(
         ConfiguredSourceResult,
         IngestionError,
         IngestionResponse,
+        IngestionWarning,
         derive_status,
         public_source_key_for,
     )
@@ -1598,15 +1599,28 @@ def ingest_obsidian_vault(
     with get_db() as db:
         outcome = run_adapter(db, config, force_reprocess=force_reprocess)
 
+    # Retained diagnostics restate a failure an earlier operation already
+    # recorded for an unchanged file version. They stay visible as warnings so
+    # this operation is not classified as failed for work it never attempted.
     failed_diagnostics = [
-        diagnostic for diagnostic in outcome.diagnostics if diagnostic.code != "generated_content"
+        diagnostic
+        for diagnostic in outcome.diagnostics
+        if diagnostic.code != "generated_content" and not diagnostic.retained
     ]
+    retained_diagnostics = [diagnostic for diagnostic in outcome.diagnostics if diagnostic.retained]
     errors = [
         IngestionError(
             code=diagnostic.code,
             message="A configured Obsidian item could not be ingested",
         )
         for diagnostic in failed_diagnostics[:20]
+    ]
+    warnings = [
+        IngestionWarning(
+            code=diagnostic.code,
+            message="A configured Obsidian item remains uningestable and was not retried",
+        )
+        for diagnostic in retained_diagnostics[:20]
     ]
     status = derive_status(
         items_ingested=outcome.persisted,
@@ -1623,6 +1637,7 @@ def ingest_obsidian_vault(
             secret=get_settings().get_configured_source_key_secret(),
         )
     source_diagnostics = [{"code": error.code, "message": error.message} for error in errors]
+    source_warnings = [{"code": warning.code, "message": warning.message} for warning in warnings]
     return IngestionResponse(
         command="ingest.obsidian-vault",
         source="obsidian",
@@ -1631,6 +1646,7 @@ def ingest_obsidian_vault(
         items_skipped=outcome.skipped,
         items_failed=outcome.failed,
         errors=errors,
+        warnings=warnings,
         source_outcomes=[
             ConfiguredSourceResult(
                 source_key=source_public_key,
@@ -1639,6 +1655,8 @@ def ingest_obsidian_vault(
                 items_failed=outcome.failed,
                 errors=source_diagnostics,
                 errors_omitted=max(0, len(failed_diagnostics) - len(errors)),
+                warnings=source_warnings,
+                warnings_omitted=max(0, len(retained_diagnostics) - len(warnings)),
             )
         ],
         details={

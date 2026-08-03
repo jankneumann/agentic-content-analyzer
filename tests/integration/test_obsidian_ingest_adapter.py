@@ -420,7 +420,16 @@ def test_missing_reconciliation_bounds_stored_state_enumeration(
     assert all(row.missing_since is None for row in db_session.query(ObsidianIngestState).all())
 
 
-def test_retry_exhaustion_is_failed_not_skipped(test_engine, tmp_path: Path) -> None:
+def test_retry_exhaustion_is_retained_not_re_failed(test_engine, tmp_path: Path) -> None:
+    """A spent retry budget stops producing new failures without going silent.
+
+    The scan attempts nothing for this note — the budget is gone and the file is
+    unchanged — so counting it as a fresh failure would drive every later scan of
+    the vault to a failed durable operation and re-alert on a failure the event
+    row already holds. It is reported as skipped, carrying a retained diagnostic
+    so the stable code stays visible.
+    """
+
     approved = tmp_path / "approved"
     inbox = approved / "vault" / "Inbox"
     inbox.mkdir(parents=True)
@@ -462,8 +471,9 @@ def test_retry_exhaustion_is_failed_not_skipped(test_engine, tmp_path: Path) -> 
         with sessions() as worker:
             with bind_execution_claim(ExecutionClaim(second_job, 1)):
                 outcome = ingest_obsidian_vault(worker, config)
-        assert (outcome.persisted, outcome.skipped, outcome.failed) == (0, 0, 1)
+        assert (outcome.persisted, outcome.skipped, outcome.failed) == (0, 1, 0)
         assert [item.code for item in outcome.diagnostics] == ["retry_exhausted"]
+        assert [item.retained for item in outcome.diagnostics] == [True]
     finally:
         with sessions.begin() as cleanup:
             cleanup.execute(

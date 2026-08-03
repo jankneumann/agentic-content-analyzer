@@ -1,5 +1,5 @@
 # Model Registry Configuration
-# Updated: December 2024 (Refactored: Family-based model IDs)
+# Updated: August 2026 (auto-extracted)
 #
 # This file contains:
 # 1. Model definitions (provider-agnostic capabilities, family-based IDs)
@@ -144,7 +144,7 @@ provider_model_configs:
   anthropic.claude-haiku-4-5:
     provider_model_id: "claude-haiku-4-5-20251001"  # Anthropic API identifier
     cost_per_mtok_input: 1.00  # $0.80 per million input tokens
-    cost_per_mtok_output: 3.00  # $4.00 per million output tokens
+    cost_per_mtok_output: 5.00  # $4.00 per million output tokens
     context_window: 200000
     max_output_tokens: 64000
     tier: standard
@@ -435,7 +435,7 @@ batch_execution:              # per-step execution mode; absent ⇒ sync
 # - OpenAI: Base pricing for direct API
 # - Google AI Studio: Free tier available, then standard pricing
 #
-# Pricing updated: December 2024
+# Pricing updated: August 2026
 # Sources:
 # - Anthropic pricing page
 # - AWS Bedrock pricing calculator

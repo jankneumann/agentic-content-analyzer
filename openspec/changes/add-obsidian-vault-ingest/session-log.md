@@ -99,3 +99,82 @@ management, capability discovery, frontend rendering, and real-ingestion fixture
 - PostgreSQL-backed source matrix/real-adapter execution and Playwright browser launch
   were unavailable in this sandbox; P6 retains the environment-capable durable-delta
   and end-to-end verification gate.
+
+## 2026-08-03 — P6 end-to-end reliability, documentation, and gates
+
+### Objective
+
+Finish RI-10 by committing the completed P5 vertical, running the durable tier
+against a real PostgreSQL instance for the first time, and closing what that
+execution surfaced.
+
+### Context
+
+P5 was complete but uncommitted when the previous session ended: `tasks.md` had
+5.1–5.7 ticked and the P5 session-log entry was written, but ~60 files were
+still in the worktree. That session recorded that "PostgreSQL-backed source
+matrix/real-adapter execution ... were unavailable in this sandbox". This
+session had PostgreSQL, so every `real_ingest` and `integration` assertion
+written blind was executed for the first time.
+
+### Defects found by first durable execution
+
+1. **The real-ingestion harness could not claim any job.** RI-08 added
+   `claim_generation` / `claim_protocol_version` to the worker's job contract
+   (`worker._claim_jobs` sets the protocol version; a database trigger bumps the
+   generation on queued -> in_progress). `harness._claim` still returned only
+   `id, entrypoint, payload`, so `worker._process_job` raised
+   `KeyError: 'claim_generation'` for **every** source, not just Obsidian. The
+   harness now mirrors the poller exactly.
+
+2. **A permanently invalid note failed every future scan.** Once a note's retry
+   budget was spent and the file had not changed, `_process_note` still returned
+   `status="failed"` with a fresh diagnostic. With `items_ingested == 0` the
+   canonical `IngestionResponse` invariant forces `status="error"`, so the
+   steady state of a polled vault holding one bad note was a failed durable
+   operation and a repeated RI-09 alert, forever. Exhausted-budget observations
+   are now `skipped` with a `retained=True` diagnostic projected as a warning.
+   Measured convergence over six scans: ingest, two real bounded retries, then
+   `completed`/`zero_items` with a `retry_exhausted` warning and no attempts.
+
+3. **Obsidian alerts carried no diagnostic code.** `WorkflowAlertDiagnosticCode`
+   is a closed allowlist and contained no Obsidian code, so every externally
+   routed Obsidian alert shipped `codes: []` with `codes_omitted: N`. All parser,
+   scanner, and adapter codes are fixed literals derived from no note content,
+   so they are now allowlisted.
+
+### Corrections to assertions written without execution
+
+- `content_ids` in a durable result carries canonicalized **identities**, while
+  `items_ingested` counts **rows**. Two notes clipping one page are two rows
+  under one primary, exactly as the spec requires ("SHALL NOT create duplicate
+  primary identity"). The PR-tier delta helper and the failure classifier now
+  compare claims against a primary-identity delta; for every other source the
+  two numbers are identical.
+- A changed note is a new immutable file version, so its claimed identity is
+  disjoint from the row it commits. Asserted explicitly rather than as equality.
+- Unchanged re-scans do consume one bounded retry attempt for the invalid note;
+  the attempt deltas are 1, not 0.
+
+### Decisions
+
+1. Retained failures stay visible as warnings rather than being silenced, so
+   "typed failure is retained" holds without permanent re-alerting.
+2. `retry_exhausted` is kept as the retained code even though it replaces the
+   original cause on the event row; the original code is carried by the earlier
+   operation's result, and the event row remains queryable.
+3. P6 scope was widened (task 6.6) rather than deferring the defects, since
+   shipping the source with either one defeats the acceptance outcomes P6 exists
+   to verify.
+
+### Evidence
+
+- Whole `real_ingest` tier green against PostgreSQL: 58 passed, 15 skipped.
+- Obsidian integration/migration/repository/architecture suites: 31 passed.
+- Alert redaction, terminal-event, and telemetry suites: 88 passed.
+- P5 pre-commit gates: 497 focused tests, 51 registry/policy/contract/fixture
+  tests, 55 web unit tests, workflow-contract drift, strict OpenSpec, scoped
+  ruff and mypy.
+- The stale pre-registry `sources.d/obsidian-ingest.yaml.example` (poller,
+  `move_processed_to`, `type: obsidian_ingest`) was removed; it described the
+  design this change explicitly rejected.
