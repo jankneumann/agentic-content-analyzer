@@ -63,7 +63,15 @@ def _job(
 
 
 class _MutationConnection:
-    def __init__(self, returned: JobRecord) -> None:
+    """Stand in for the durable connection across a two-statement mutation.
+
+    ``retry`` reads the current row ``FOR UPDATE`` and refuses to proceed unless
+    it is failed, then issues the requeueing UPDATE. Those two statements see
+    different states, so ``current`` supplies the pre-mutation row and
+    ``returned`` the post-mutation one.
+    """
+
+    def __init__(self, returned: JobRecord, current: JobRecord | None = None) -> None:
         class _Transaction:
             async def __aenter__(self):
                 return self
@@ -72,13 +80,17 @@ class _MutationConnection:
                 return None
 
         self.returned = returned
+        self.current = current if current is not None else returned
         self.fetchrow = AsyncMock(side_effect=self._fetchrow)
         self.fetchval = AsyncMock(return_value=returned.id)
+        # Only a pipeline retry fans out to child rows; these fixtures are
+        # single ingestion operations, so the child lookup is legitimately empty.
+        self.fetch = AsyncMock(return_value=[])
         self.execute = AsyncMock(return_value="SELECT 1")
         self.transaction = lambda: _Transaction()
 
     async def _fetchrow(self, query: str, *_args):
-        job = self.returned
+        job = self.current if "FOR UPDATE" in query else self.returned
         return {
             "id": job.id,
             "entrypoint": job.entrypoint,
@@ -89,6 +101,8 @@ class _MutationConnection:
             "retry_count": job.retry_count,
             "parent_job_id": job.parent_job_id,
             "heartbeat_at": job.heartbeat_at,
+            "claim_generation": 1,
+            "claim_protocol_version": 2,
             "created_at": job.created_at,
             "started_at": job.started_at,
             "completed_at": job.completed_at,
@@ -214,7 +228,7 @@ async def test_cancel_and_retry_preserve_normalized_input_and_reset_only_control
     assert cancel_handle.cancellable is False
 
     retried = _job(status=JobStatus.QUEUED, retry_count=2)
-    retry_connection = _MutationConnection(retried)
+    retry_connection = _MutationConnection(retried, current=_job(status=JobStatus.FAILED))
     retry_handle = await OperationService(connection=retry_connection).retry("9123")
     query, reset_json, operation_id, retry_ceiling = retry_connection.fetchrow.await_args.args
 

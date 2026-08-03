@@ -213,7 +213,7 @@ items:
     alert delivery.
 - item_id: ri-10
   title: Add Obsidian vault ingestion
-  status: in_progress
+  status: completed
   priority: 10
   effort: L
   depends_on:
@@ -263,4 +263,4 @@ items:
     evaluation suites.
   - No speculative implementation from the existing 42-task proposal begins without
     a concrete incompatible case.
-updated_at: '2026-08-02T05:50:00+00:00'
+updated_at: '2026-08-03T09:20:00+00:00'

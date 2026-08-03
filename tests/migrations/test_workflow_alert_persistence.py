@@ -14,6 +14,47 @@ from alembic.operations import Operations
 from sqlalchemy.engine import Engine
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _purge_module_rows(test_engine: Engine):
+    """Remove the rows this module commits.
+
+    These tests exercise real trigger and constraint behavior, so they must
+    commit rather than roll back. Without this, the committed `contents` rows
+    stay visible to every later test in the session and silently change the
+    result of any query-shaped assertion that counts or orders content.
+    """
+
+    yield
+    # Child rows first. One test in this module downgrades the migration, so the
+    # alert tables may legitimately be gone by teardown; skipping a missing table
+    # is correct, while failing on it would turn cleanup into a phantom error.
+    # Child rows first. Each statement runs in its own transaction because one
+    # test downgrades the migration, and a table that is legitimately gone by
+    # teardown must not fail the rest of the cleanup.
+    #
+    # KNOWN GAP: `content_reconciliation_actions` is append-only and enforces it
+    # with a trigger, so the handful of `contents` rows it references survive.
+    # Those leftovers still perturb whole-suite runs of `tests/services/
+    # test_content_query.py` and `test_content_set_resolver.py`, which count and
+    # order every content row in a period. Closing it properly means giving this
+    # module its own database or scoping those assertions; both are outside the
+    # Obsidian change that found it.
+    statements = (
+        "DELETE FROM workflow_alert_deliveries",
+        "DELETE FROM workflow_terminal_events",
+        "DELETE FROM contents WHERE source_id LIKE 'workflow-alert-%' "
+        "AND id NOT IN (SELECT content_id FROM content_reconciliation_actions)",
+        "DELETE FROM pgqueuer_jobs WHERE id NOT IN "
+        "(SELECT operation_id FROM content_reconciliation_actions)",
+    )
+    for statement in statements:
+        try:
+            with test_engine.begin() as connection:
+                connection.execute(sa.text(statement))
+        except (sa.exc.ProgrammingError, sa.exc.InternalError):
+            continue
+
+
 def _load_migration() -> ModuleType:
     repo_root = Path(__file__).resolve().parents[2]
     migrations = list(repo_root.glob("alembic/versions/*workflow_alert_persistence*.py"))
