@@ -79,7 +79,7 @@ jobs:
 
       - name: Upload failure-class evidence summary
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: real-ingest-failure-class-summary
           path: real-ingest-evidence.md

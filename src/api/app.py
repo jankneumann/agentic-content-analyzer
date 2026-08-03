@@ -28,6 +28,7 @@ from src.api.kb_routes import router as kb_router
 from src.api.middleware.audit import AuditMiddleware
 from src.api.middleware.auth import AuthMiddleware
 from src.api.middleware.error_handler import register_error_handlers
+from src.api.middleware.nul_byte_guard import NulByteGuardMiddleware
 from src.api.middleware.security_headers import SecurityHeadersMiddleware
 from src.api.middleware.telemetry import TraceIdMiddleware
 from src.api.model_registry_routes import router as model_registry_router
@@ -169,6 +170,13 @@ app.add_middleware(AuditMiddleware)
 
 # Security headers — adds X-Content-Type-Options, X-Frame-Options, CSP, etc.
 app.add_middleware(SecurityHeadersMiddleware, environment=settings.environment)
+
+# NUL-byte guard — rejects \x00 in the path/query with 422 before routing.
+# MUST be registered AFTER AuditMiddleware so it wraps audit (Starlette LIFO):
+# a request that Postgres can never store is rejected before the audit writer
+# tries to cast it into an inet/text column. Registered BEFORE CORSMiddleware
+# so CORS still wraps it and the 422 carries CORS headers.
+app.add_middleware(NulByteGuardMiddleware)
 
 # CORS configuration - configurable via ALLOWED_ORIGINS env var
 # Use "*" for iOS Shortcuts and other mobile clients
