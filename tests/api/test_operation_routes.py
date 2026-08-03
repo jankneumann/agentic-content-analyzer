@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from src.api.app import app
 from src.api.dependencies import verify_admin_key
+from src.api.operation_routes import router as operation_router
 from src.contracts.workflow_models import (
     WorkflowAlertVerificationContext,
     WorkflowTerminalDeliveryCounts,
@@ -43,9 +44,13 @@ def test_workflow_alert_verification_context_is_authenticated_positive_staging_p
         revision=REVISION,
         revision_source="railway_commit_sha",
     ).model_dump(mode="json")
+    # Introspect the router rather than `app.routes`: starlette >=1.0 no longer
+    # flattens included routers into `app.routes`, though the routes still
+    # resolve — which is why the request above succeeds. CI resolves the newest
+    # allowed starlette, so reading `app.routes` passes locally and fails there.
     route = next(
         route
-        for route in app.routes
+        for route in operation_router.routes
         if getattr(route, "path", None) == "/api/v1/workflow-alert-verification-context"
     )
     assert verify_admin_key in [dependency.call for dependency in route.dependant.dependencies]
@@ -153,9 +158,10 @@ def test_terminal_event_diagnostic_is_authenticated_and_allowlist_first(
     }
     get_diagnostic.assert_awaited_once_with(EVENT_ID)
 
+    # See above: read the router, not `app.routes`, so this holds on starlette >=1.0.
     route = next(
         route
-        for route in app.routes
+        for route in operation_router.routes
         if getattr(route, "path", None) == "/api/v1/workflow-terminal-events/{event_id}"
     )
     assert verify_admin_key in [dependency.call for dependency in route.dependant.dependencies]
