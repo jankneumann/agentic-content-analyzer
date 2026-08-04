@@ -1,5 +1,5 @@
 // Generated from contracts/openapi/v1.yaml; do not edit.
-export const CONTRACT_SHA256 = "cd4c44f87749fb86d08c79e37f268a4a098f6c67a463a805954832042d4ef5a2" as const;
+export const CONTRACT_SHA256 = "5dad552a43c043d1c11e1b587b9bc68724e7e23742ec74134164840db306197b" as const;
 
 export type OperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 export type OperationType = "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";

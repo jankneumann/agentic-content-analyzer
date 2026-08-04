@@ -244,9 +244,14 @@ def test_content_reconciliation_defaults_to_one_bounded_audited_preview(
     }
 
 
-def test_content_reconciliation_disabled_apply_is_503_problem(
+def test_content_reconciliation_disabled_apply_is_409_problem(
     canonical_client: TestClient,
 ) -> None:
+    """Disabled apply is a policy conflict, not a transient outage.
+
+    A 5xx here would promise the caller that retrying eventually works, and would
+    breach the fuzz contract that schema-valid input never yields a server error.
+    """
     service = AsyncMock()
     service.reconcile.side_effect = ContentReconciliationApplyDisabledError(
         "Content reconciliation apply is disabled"
@@ -258,7 +263,7 @@ def test_content_reconciliation_disabled_apply_is_503_problem(
         json={"apply": True, "limit": 10, "after_content_id": 84},
     )
 
-    assert response.status_code == 503
+    assert response.status_code == 409
     assert response.headers["content-type"].startswith("application/problem+json")
     assert response.json()["detail"] == "Content reconciliation apply is disabled"
 

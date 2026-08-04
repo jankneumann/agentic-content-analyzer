@@ -641,7 +641,7 @@ def operations_reconcile_content(
     limit: Annotated[int | None, typer.Option("--limit", min=1, max=100)] = None,
     after_content_id: Annotated[
         int | None,
-        typer.Option("--after-content-id", min=1),
+        typer.Option("--after-content-id", min=1, max=2147483647),
     ] = None,
 ) -> None:
     """Preview or apply one bounded reconciliation page remotely."""

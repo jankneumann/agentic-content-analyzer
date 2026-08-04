@@ -1,12 +1,15 @@
-# Read-only default preview. The max continuation makes the JSON assertion stable on
-# empty and populated targets while the attributed step exercises the true default.
+# Read-only default preview. The max in-range continuation makes the JSON assertion
+# stable on empty and populated targets while the attributed step exercises the true
+# default.
 
 id: validation-reconciliation-preview
 name: aca operations reconcile-content defaults to one safe dry-run page
 description: >
   Proves the default command previews rather than mutates, and that JSON stdout is one
-  bounded allowlisted report. The second step starts after the largest positive bigint,
-  guaranteeing an empty page without depending on target data.
+  bounded allowlisted report. The second step starts after the largest content id the
+  column can hold — contents.id is int4 — guaranteeing an empty page without depending
+  on target data. Anything above that is out of range for the cursor, not a high
+  cursor value.
 category: validation
 priority: 1
 interfaces:
@@ -33,7 +36,7 @@ steps:
       - operations
       - reconcile-content
       - "--after-content-id"
-      - "9223372036854775807"
+      - "2147483647"
       - "--limit"
       - "1"
     expect:

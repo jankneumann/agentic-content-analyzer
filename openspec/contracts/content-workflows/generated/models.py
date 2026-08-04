@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
-CONTRACT_SHA256 = "cd4c44f87749fb86d08c79e37f268a4a098f6c67a463a805954832042d4ef5a2"
+CONTRACT_SHA256 = "5dad552a43c043d1c11e1b587b9bc68724e7e23742ec74134164840db306197b"
 
 OperationStatus = Literal["queued", "in_progress", "completed", "failed", "cancelled"]
 OperationType = Literal[
@@ -487,7 +487,7 @@ class WorkflowTerminalEventDiagnostic(StrictModel):
 class ContentReconciliationRequest(StrictModel):
     apply: bool = False
     limit: int | None = Field(None, ge=1, le=100)
-    after_content_id: int | None = Field(None, ge=1, le=9223372036854775807)
+    after_content_id: int | None = Field(None, ge=1, le=2147483647)
 
 
 class ContentReconciliationCounts(StrictModel):
@@ -507,7 +507,7 @@ class ContentReconciliationCounts(StrictModel):
 
 
 class ContentReconciliationItem(StrictModel):
-    content_id: Annotated[int, Field(ge=1, le=9223372036854775807)]
+    content_id: Annotated[int, Field(ge=1, le=2147483647)]
     projection: ContentReconciliationProjection
     content_status_before: ContentReconciliationContentStatus
     content_status_after: ContentReconciliationContentStatus
@@ -531,7 +531,7 @@ class ContentReconciliationReport(StrictModel):
     mode: ContentReconciliationMode
     scanned: Annotated[int, Field(ge=0, le=100)]
     reported: Annotated[int, Field(ge=0, le=100)]
-    next_after_content_id: int | None = Field(None, ge=1, le=9223372036854775807)
+    next_after_content_id: int | None = Field(None, ge=1, le=2147483647)
     counts: ContentReconciliationCounts
     items: Annotated[list[ContentReconciliationItem], Field(max_length=100)]
 

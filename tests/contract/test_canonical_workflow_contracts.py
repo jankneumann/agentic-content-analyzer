@@ -520,10 +520,13 @@ def test_content_reconciliation_request_defaults_to_one_bounded_dry_run_page() -
     assert request["properties"] == {
         "apply": {"type": "boolean", "default": False},
         "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+        # int4 max, not int8: contents.id is an integer column, and asyncpg
+        # infers $1 from `c.id > $1`, so a wider declared bound is a promise the
+        # database refuses to keep.
         "after_content_id": {
             "type": ["integer", "null"],
             "minimum": 1,
-            "maximum": 9_223_372_036_854_775_807,
+            "maximum": 2_147_483_647,
         },
     }
 
@@ -661,8 +664,12 @@ def test_content_reconciliation_endpoint_has_exact_response_semantics() -> None:
     assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/ContentReconciliationReport"
     }
-    assert set(operation["responses"]) == {"200", "401", "403", "422", "503"}
-    assert operation["responses"]["503"]["content"]["application/problem+json"]["schema"] == {
+    # Disabled apply is 409, not 503: it is a standing policy decision, so the
+    # request conflicts with server state rather than hitting a transient outage
+    # a retry would clear. A 5xx here would also breach the fuzz contract that
+    # schema-valid input never produces a server error.
+    assert set(operation["responses"]) == {"200", "401", "403", "409", "422"}
+    assert operation["responses"]["409"]["content"]["application/problem+json"]["schema"] == {
         "$ref": "#/components/schemas/Problem"
     }
 

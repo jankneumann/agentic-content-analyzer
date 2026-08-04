@@ -9,7 +9,7 @@
       "properties": {
         "apply": {"type": "boolean", "default": false},
         "limit": {"type": "integer", "minimum": 1, "maximum": 100},
-        "after_content_id": {"type": ["integer", "null"], "minimum": 1, "maximum": 9223372036854775807}
+        "after_content_id": {"type": ["integer", "null"], "minimum": 1, "maximum": 2147483647}
       }
     },
     "counts": {
@@ -52,7 +52,7 @@
         "retry_count_before", "retry_count_after", "phase", "action", "reason", "applied"
       ],
       "properties": {
-        "content_id": {"type": "integer", "minimum": 1, "maximum": 9223372036854775807},
+        "content_id": {"type": "integer", "minimum": 1, "maximum": 2147483647},
         "projection": {"enum": ["proposed", "observed"]},
         "content_status_before": {"$ref": "#/$defs/content_status"},
         "content_status_after": {"$ref": "#/$defs/content_status"},
@@ -100,7 +100,7 @@
         "mode": {"enum": ["dry_run", "apply"]},
         "scanned": {"type": "integer", "minimum": 0, "maximum": 100},
         "reported": {"type": "integer", "minimum": 0, "maximum": 100},
-        "next_after_content_id": {"type": ["integer", "null"], "minimum": 1, "maximum": 9223372036854775807},
+        "next_after_content_id": {"type": ["integer", "null"], "minimum": 1, "maximum": 2147483647},
         "counts": {"$ref": "#/$defs/counts"},
         "items": {
           "type": "array",

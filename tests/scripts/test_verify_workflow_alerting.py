@@ -570,7 +570,7 @@ def test_verifier_requires_positive_staging_context_before_submission(tmp_path: 
         if request.url.path == "/health":
             return httpx.Response(200, json={"status": "healthy", "revision": REVISION})
         if request.url.path == "/api/v1/workflow-alert-verification-context":
-            return httpx.Response(503, json={"code": "unavailable"})
+            return httpx.Response(404, json={"code": "unavailable"})
         if request.method == "POST":
             submissions += 1
         return httpx.Response(500, json={"code": "unexpected"})

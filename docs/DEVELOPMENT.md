@@ -254,8 +254,11 @@ aca operations reconcile-content --apply --limit 50
 aca --json operations reconcile-content --limit 50
 ```
 
-Apply is disabled by default and returns an RFC 7807 `503` problem until
+Apply is disabled by default and returns an RFC 7807 `409` problem until
 `CONTENT_RECONCILIATION_APPLY_ENABLED=true` is configured on the API server.
+It is a conflict rather than a `503` because retrying never clears it — the
+refusal stands until an operator changes server configuration.
+
 The client is remote-only: it calls the authenticated operation endpoint and
 never opens a database connection. Review each page before manually continuing.
 For an apply page, a request/transport failure or any item whose reason is
@@ -263,6 +266,10 @@ For an apply page, a request/transport failure or any item whose reason is
 `execution_locked`, `retry_budget_exhausted`, `incompatible_worker`, and
 ownership/revalidation conflicts remain successful reports for operator
 decision-making.
+
+`--after-content-id` accepts up to `2147483647`. `contents.id` is an `int4`
+column, so that is the largest content id that can exist, and both the request
+bound and the `next_after_content_id` echoed back to you match it.
 
 The JSON report is the closed public projection: run ID, mode, bounded counts,
 safe lifecycle/ownership fields, actions, reasons, timestamps, and continuation

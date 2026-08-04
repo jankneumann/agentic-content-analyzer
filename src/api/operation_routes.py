@@ -92,9 +92,14 @@ async def get_workflow_alert_verification_context() -> WorkflowAlertVerification
         or revision_source != _TRUSTED_ALERT_VERIFICATION_REVISION_SOURCE
         or len(revision) != 40
     ):
+        # Not 503: this is a permanent property of the deployment, not a
+        # transient outage, so "retry later" would be a lie and the fuzz
+        # contract (no 5xx for schema-valid input) would be violated. The
+        # resource simply does not exist outside verified staging — the same
+        # answer disabled features give elsewhere (otel_proxy_routes).
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Workflow alert verification context not ready",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workflow alert verification context not available",
         )
     return WorkflowAlertVerificationContext(
         environment_class="staging",
@@ -124,7 +129,7 @@ async def get_workflow_terminal_event(
     "/operations/reconcile-content",
     response_model=ContentReconciliationReport,
     responses={
-        status.HTTP_503_SERVICE_UNAVAILABLE: {
+        status.HTTP_409_CONFLICT: {
             "description": "Reconciliation apply is disabled by server policy",
             "content": {"application/problem+json": {"schema": Problem.model_json_schema()}},
         }
@@ -141,8 +146,11 @@ async def reconcile_content(
     try:
         report = await service.reconcile(body)
     except ContentReconciliationApplyDisabledError as exc:
+        # Not 503: apply stays disabled until an operator changes server policy,
+        # so retrying never succeeds. The dry-run resource itself is healthy —
+        # only the requested apply mode conflicts with current server state.
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            status_code=status.HTTP_409_CONFLICT,
             detail="Content reconciliation apply is disabled",
         ) from exc
     except ValueError as exc:

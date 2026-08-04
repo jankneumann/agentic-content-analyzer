@@ -71,7 +71,9 @@ def test_workflow_alert_verification_context_fails_closed_outside_verified_stagi
 
     response = client.get("/api/v1/workflow-alert-verification-context")
 
-    assert response.status_code == 503
+    # 404, not 503: a non-staging deployment never grows this resource, so
+    # "retry later" would be wrong and a 5xx would breach the fuzz contract.
+    assert response.status_code == 404
     assert "production" not in response.text
 
 
@@ -90,7 +92,7 @@ def test_workflow_alert_verification_context_rejects_untrusted_revision_provenan
 
     response = client.get("/api/v1/workflow-alert-verification-context")
 
-    assert response.status_code == 503
+    assert response.status_code == 404
     assert "secret-revision-marker" not in response.text
 
 

@@ -230,7 +230,9 @@ the design.
 #### Scenario: Global apply gate is disabled
 
 - **WHEN** a caller requests apply while server apply is disabled
-- **THEN** the API SHALL return RFC 7807 status 503
+- **THEN** the API SHALL return RFC 7807 status 409
+- **AND** SHALL NOT return any 5xx status, because the refusal is a standing
+  policy decision that no retry clears
 - **AND** SHALL perform no reconciliation mutation
 
 #### Scenario: Old worker protocol owns the row

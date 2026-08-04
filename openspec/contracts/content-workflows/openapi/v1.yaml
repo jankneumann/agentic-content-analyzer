@@ -411,7 +411,9 @@ paths:
               schema: { $ref: "#/components/schemas/WorkflowAlertVerificationContext" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "503": { $ref: "#/components/responses/ProblemResponse" }
+        # Absent outside verified Railway staging. Permanent for a deployment,
+        # so it is a 404 rather than a "retry later" 503.
+        "404": { $ref: "#/components/responses/NotFoundProblem" }
 
   /api/v1/workflow-terminal-events/{event_id}:
     get:
@@ -454,7 +456,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationProblem" }
-        "503":
+        "409":
           description: Reconciliation apply is disabled by server policy
           content:
             application/problem+json:
@@ -1202,10 +1204,13 @@ components:
       properties:
         apply: { type: boolean, default: false }
         limit: { type: integer, minimum: 1, maximum: 100 }
+        # contents.id is int4, and asyncpg infers $1 from `c.id > $1`, so anything
+        # above int4 max is rejected by Postgres on the wire rather than by this
+        # schema. Declare the bound the column actually enforces.
         after_content_id:
           type: [integer, "null"]
           minimum: 1
-          maximum: 9223372036854775807
+          maximum: 2147483647
 
     ContentReconciliationCounts:
       type: object
@@ -1259,7 +1264,7 @@ components:
         - reason
         - applied
       properties:
-        content_id: { type: integer, minimum: 1, maximum: 9223372036854775807 }
+        content_id: { type: integer, minimum: 1, maximum: 2147483647 }
         projection: { $ref: "#/components/schemas/ContentReconciliationProjection" }
         content_status_before:
           { $ref: "#/components/schemas/ContentReconciliationContentStatus" }
@@ -1312,10 +1317,12 @@ components:
         mode: { $ref: "#/components/schemas/ContentReconciliationMode" }
         scanned: { type: integer, minimum: 0, maximum: 100 }
         reported: { type: integer, minimum: 0, maximum: 100 }
+        # Clients feed this straight back into after_content_id, so it must carry
+        # the identical bound.
         next_after_content_id:
           type: [integer, "null"]
           minimum: 1
-          maximum: 9223372036854775807
+          maximum: 2147483647
         counts: { $ref: "#/components/schemas/ContentReconciliationCounts" }
         items:
           type: array

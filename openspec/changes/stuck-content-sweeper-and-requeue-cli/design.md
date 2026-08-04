@@ -259,7 +259,8 @@ Server-side apply is disabled by default. When enabled, an item is mutable only
 if its owning claim has the current fenced `claim_protocol_version`; old workers
 write version 1/default and their rows report `incompatible_worker`. This per-claim
 check remains even after operators drain old workers. The endpoint returns RFC
-7807 `503` when apply is globally disabled.
+7807 `409` when apply is globally disabled — a conflict with standing server
+policy, not a transient outage a retry would clear, and never a 5xx.
 
 ## Reconciliation Matrix
 
