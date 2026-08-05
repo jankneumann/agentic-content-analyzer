@@ -347,6 +347,14 @@ All parsers implement `DocumentParser` interface from `src/parsers/base.py`:
 | `MarkItDownParser` | Office docs, HTML, audio | Lightweight, fast (~50ms) |
 | `DoclingParser` | PDF, complex layouts | OCR support, table extraction |
 | `YouTubeParser` | YouTube URLs | Transcript with timestamps |
+| `KreuzbergParser` (opt-in) | 56+ formats incl. office, email, images | Async-native extraction; enable via `ENABLE_KREUZBERG` + `kreuzberg` extra |
+| `AnydocParser` (opt-in) | Office, OpenDocument, RTF, EPUB, CSV; text-based PDF | Rust-core, millisecond conversions to GFM; no OCR; enable via `ENABLE_ANYDOC` + `anydoc` extra |
+
+Opt-in parsers are wired through settings: `*_PREFERRED_FORMATS` overrides the
+routing table per format (OCR routing to Docling always wins), and
+`*_SHADOW_FORMATS` runs the parser fire-and-forget alongside the canonical one,
+logging comparison telemetry (`src/parsers/shadow.py`) to inform promotion
+decisions without affecting stored content.
 
 ### HTML-to-Markdown Conversion
 `HtmlMarkdownConverter` in `src/parsers/html_markdown.py`:

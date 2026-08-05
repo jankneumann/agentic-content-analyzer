@@ -173,6 +173,115 @@ class TestParserRouter:
         mock_markitdown.parse.assert_called_once()
 
 
+class TestParserRouterAnydoc:
+    """Tests for optional Anydoc parser integration."""
+
+    @pytest.fixture
+    def mock_markitdown(self):
+        parser = MagicMock()
+        parser.name = "markitdown"
+        parser.parse = AsyncMock(
+            return_value=DocumentContent(
+                markdown_content="Markdown content",
+                source_path="test.docx",
+                source_format=DocumentFormat.DOCX,
+                parser_used="markitdown",
+            )
+        )
+        return parser
+
+    @pytest.fixture
+    def mock_anydoc(self):
+        parser = MagicMock()
+        parser.name = "anydoc"
+        parser.parse = AsyncMock(
+            return_value=DocumentContent(
+                markdown_content="Anydoc content",
+                source_path="test.docx",
+                source_format=DocumentFormat.DOCX,
+                parser_used="anydoc",
+            )
+        )
+        return parser
+
+    def test_has_anydoc_false_by_default(self, mock_markitdown):
+        router = ParserRouter(markitdown_parser=mock_markitdown)
+        assert router.has_anydoc is False
+        assert "anydoc" not in router.available_parsers
+
+    def test_has_anydoc_true_when_provided(self, mock_markitdown, mock_anydoc):
+        router = ParserRouter(markitdown_parser=mock_markitdown, anydoc_parser=mock_anydoc)
+        assert router.has_anydoc is True
+        assert "anydoc" in router.available_parsers
+
+    def test_preferred_format_routes_to_anydoc(self, mock_markitdown, mock_anydoc):
+        router = ParserRouter(
+            markitdown_parser=mock_markitdown,
+            anydoc_parser=mock_anydoc,
+            anydoc_preferred_formats={"docx", "pptx"},
+        )
+        assert router.route("document.docx").name == "anydoc"
+        assert router.route("deck.pptx").name == "anydoc"
+
+    def test_non_preferred_format_uses_routing_table(self, mock_markitdown, mock_anydoc):
+        router = ParserRouter(
+            markitdown_parser=mock_markitdown,
+            anydoc_parser=mock_anydoc,
+            anydoc_preferred_formats={"docx"},
+        )
+        assert router.route("sheet.xlsx").name == "markitdown"
+
+    def test_preference_ignored_when_anydoc_missing(self, mock_markitdown):
+        router = ParserRouter(
+            markitdown_parser=mock_markitdown,
+            anydoc_preferred_formats={"docx"},
+        )
+        assert router.route("document.docx").name == "markitdown"
+
+    def test_kreuzberg_preference_wins_over_anydoc(self, mock_markitdown, mock_anydoc):
+        kreuzberg = MagicMock()
+        kreuzberg.name = "kreuzberg"
+        router = ParserRouter(
+            markitdown_parser=mock_markitdown,
+            kreuzberg_parser=kreuzberg,
+            kreuzberg_preferred_formats={"docx"},
+            anydoc_parser=mock_anydoc,
+            anydoc_preferred_formats={"docx"},
+        )
+        assert router.route("document.docx").name == "kreuzberg"
+
+    def test_ocr_still_wins_over_anydoc_preference(self, mock_markitdown, mock_anydoc):
+        docling = MagicMock()
+        docling.name = "docling"
+        router = ParserRouter(
+            markitdown_parser=mock_markitdown,
+            docling_parser=docling,
+            anydoc_parser=mock_anydoc,
+            anydoc_preferred_formats={"pdf"},
+        )
+        assert router.route("scanned_report.pdf").name == "docling"
+
+    @pytest.mark.asyncio
+    async def test_shadow_parse_launched_for_shadow_format(
+        self, mock_markitdown, mock_anydoc, monkeypatch
+    ):
+        launched = []
+        monkeypatch.setattr(
+            "src.parsers.shadow.maybe_shadow_parse",
+            lambda **kwargs: launched.append(kwargs.get("shadow_parser").name) or None,
+        )
+        router = ParserRouter(
+            markitdown_parser=mock_markitdown,
+            anydoc_parser=mock_anydoc,
+            anydoc_shadow_formats={"docx"},
+        )
+
+        result = await router.parse("document.docx")
+
+        assert result.parser_used == "markitdown"
+        assert launched == ["anydoc"]
+
+
 class TestParserRouterRoutingTable:
     """Tests for routing table configuration."""
 

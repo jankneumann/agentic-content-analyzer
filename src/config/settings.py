@@ -666,6 +666,13 @@ class Settings(BaseSettings):
     kreuzberg_max_file_size_mb: int = 100  # Maximum file size for Kreuzberg processing
     kreuzberg_timeout_seconds: int = 120  # Processing timeout (lower than Docling)
 
+    # Anydoc Parser Configuration
+    enable_anydoc: bool = False  # Enable Anydoc parser (requires anydoc extra)
+    anydoc_preferred_formats: str = ""  # Comma-separated formats to route to Anydoc
+    anydoc_shadow_formats: str = ""  # Comma-separated formats for shadow comparison
+    anydoc_max_file_size_mb: int = 100  # Maximum file size for Anydoc processing
+    anydoc_timeout_seconds: int = 60  # Processing timeout (anydoc converts in milliseconds)
+
     # File Upload Configuration
     max_upload_size_mb: int = 50  # Maximum file upload size
 
