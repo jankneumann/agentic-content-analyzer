@@ -1,7 +1,7 @@
 schema_version: 1
 roadmap_id: roadmap-workflow-surface-reliability
 source_proposal: openspec/roadmaps/workflow-surface-reliability/proposal.md
-status: in_progress
+status: completed
 policy:
   default_action: wait_if_budget_exceeded
   max_switch_attempts_per_item: 2
@@ -240,7 +240,7 @@ items:
   - Vault ingress remains separate from knowledge-base export and sync behavior.
 - item_id: ri-11
   title: Decide the API versioning boundary
-  status: approved
+  status: completed
   priority: 11
   effort: S
   depends_on:
@@ -263,4 +263,4 @@ items:
     evaluation suites.
   - No speculative implementation from the existing 42-task proposal begins without
     a concrete incompatible case.
-updated_at: '2026-08-03T09:20:00+00:00'
+updated_at: '2026-08-07T12:05:00+00:00'

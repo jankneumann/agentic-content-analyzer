@@ -11,3 +11,4 @@
 | ri-08 | validation | Added exact claim/content fencing and bounded default-off reconciliation; independent review closed the stale identity-map race and all final gates passed |
 | ri-09 | validation | Added transactional terminal evidence and one signed, redacted webhook receipt proven on an exact isolated staging revision |
 | ri-10 | validation | First durable PostgreSQL execution closed a harness claim break, a permanent re-failure on unchanged scans, an empty alert code list, and the source matrix |
+| ri-11 | validation | Deferred a second URL major until a named incompatible contract needs overlap; archived 42 speculative tasks and recorded external-consumer triggers |

@@ -1,0 +1,73 @@
+{
+  "review_type": "plan",
+  "target": "add-api-versioning",
+  "reviewer_vendor": "codex-host",
+  "findings": [
+    {
+      "id": 1,
+      "type": "architecture",
+      "criticality": "high",
+      "description": "Critical: The plan creates global version registries, middleware, and a partial reorganized router tree without naming a v2 contract or a consumer that needs an overlap window; it covers only three route modules while the application now mounts 45 routers.",
+      "resolution": "Defer implementation, archive the speculative plan without syncing its delta spec, and require a named incompatible contract plus an independently migrating consumer before creating a second URL version.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-api-versioning/design.md",
+      "axis": "architecture",
+      "severity": "critical"
+    },
+    {
+      "id": 2,
+      "type": "security",
+      "criticality": "high",
+      "description": "Critical: The catch-all sunset handler and global response middleware do not specify preservation of authentication, authorization, audit logging, CORS ordering, cache behavior, or the endpoint-specific legacy error boundaries.",
+      "resolution": "Do not add global sunset behavior speculatively. Any future version proposal must preserve the existing middleware security invariants and test both authenticated and unauthenticated behavior across the overlap.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-api-versioning/design.md",
+      "axis": "security",
+      "severity": "critical"
+    },
+    {
+      "id": 3,
+      "type": "compatibility",
+      "criticality": "medium",
+      "description": "Nit: The plan conflates a URL major, the OpenAPI document version, and internal schema or protocol versions, even though the current workflow contract deliberately serves OpenAPI 2.0.0 under /api/v1.",
+      "resolution": "Document the version identities separately and reserve a URL-major change for an independently migrating HTTP compatibility boundary.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-api-versioning/proposal.md",
+      "axis": "readability",
+      "severity": "nit"
+    },
+    {
+      "id": 4,
+      "type": "compatibility",
+      "criticality": "low",
+      "description": "The existing /api/v1 namespace, generated workflow clients, release-smoke gate, retired-route baseline, and CLI gen-eval suite provide a sound foundation for deferring a second live version until evidence changes.",
+      "resolution": "Retain these executable controls and cite them in the durable decision record.",
+      "disposition": "accept",
+      "file_path": "docs/decisions/0002-defer-api-versioning-until-an-incompatible-boundary.md",
+      "axis": "correctness",
+      "severity": "none"
+    },
+    {
+      "id": 5,
+      "type": "compatibility",
+      "criticality": "high",
+      "description": "Critical: The first decision draft incorrectly treated all supported clients as coordinated, but manually installed iOS Shortcuts and the external agentic-assistant consumer have independent migration state.",
+      "resolution": "Inventory both consumers, assume they are non-lockstep until migration evidence proves otherwise, and make affected consumer deployment state part of the future v2 trigger.",
+      "disposition": "fix",
+      "file_path": "docs/decisions/0002-defer-api-versioning-until-an-incompatible-boundary.md",
+      "axis": "correctness",
+      "severity": "critical"
+    },
+    {
+      "id": 6,
+      "type": "compatibility",
+      "criticality": "high",
+      "description": "Critical: Optional response fields are not automatically backward-compatible because canonical Python response models forbid unknown properties and older clients can reject widened responses.",
+      "resolution": "Require executable oldest-client acceptance or a verified coordinated migration for every affected response change; do not classify response widening as additive by default.",
+      "disposition": "fix",
+      "file_path": "docs/decisions/0002-defer-api-versioning-until-an-incompatible-boundary.md",
+      "axis": "correctness",
+      "severity": "critical"
+    }
+  ]
+}
