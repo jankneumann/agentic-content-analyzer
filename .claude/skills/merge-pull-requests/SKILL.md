@@ -446,16 +446,28 @@ If a PR is missing this section, this skill flags it as `description-incomplete`
 
 #### Merge Strategy Selection
 
-The merge strategy is selected based on PR origin to balance history preservation with cleanliness:
+**Rebase is the default for every origin.** Commit history is documentation: the
+sequence of commits records what was tried, in what order, and why — and that is
+exactly what `git blame` and `git bisect` read later. Squashing discards it in
+exchange for a tidier one-line log, which is a bad trade for anything but noise.
 
 | Origin | Default Strategy | Rationale |
 |--------|-----------------|-----------|
-| `openspec`, `codex` | **rebase** | Agent PRs with structured commits — preserve granular history for `git blame`/`bisect` |
-| `sentinel`, `bolt`, `palette` | squash | Jules automation — typically single-purpose fixes |
-| `dependabot`, `renovate` | squash | Dependency bumps — one logical change |
-| `other` | squash | Manual PRs — unknown commit quality, safe default |
+| `openspec`, `codex` | **rebase** | Agent PRs with structured commits — interface → implementation → tests |
+| `sentinel`, `bolt`, `palette` | **rebase** | Jules automation — usually one commit, so rebase costs nothing and keeps any follow-ups |
+| `dependabot`, `renovate` | **rebase** | Dependency bumps — when a bump carries a lockfile or constraint follow-up, both survive |
+| `other`, unrecognized | **rebase** | Manual PRs — the author's commit boundaries are information, not clutter |
 
-The operator can override any default by passing `--strategy <squash|merge|rebase>`.
+Squash is now an explicit, per-PR decision rather than a default:
+`--strategy <squash|merge|rebase>`. Reach for it when a branch's history is
+genuinely noise — `wip:` save points, or a long conflict-resolution sequence with
+broken intermediate states. That second case matters: rebase-merge lands every
+commit on `main` individually, so a broken middle commit breaks `git bisect` for
+the next person. Clean the history with `git rebase -i` before merging, or squash.
+
+`ORIGIN_STRATEGY_MAP` in `scripts/merge_pr.py` is the opt-out hook for returning a
+specific origin to squash. It is deliberately empty; `scripts/tests/test_merge_strategy.py`
+pins that, so re-adding an entry is a visible decision.
 
 #### Merge a PR
 

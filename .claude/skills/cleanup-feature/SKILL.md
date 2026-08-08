@@ -309,7 +309,7 @@ python3 "<skill-base-dir>/../merge-pull-requests/scripts/merge_pr.py" merge <pr_
   --force
 ```
 
-**Strategy rationale**: OpenSpec PRs use rebase-merge by default because agent-authored commits follow conventional format and encode design intent (interface → implementation → tests). Preserving this history improves `git blame` and `git bisect` for future agents. Use squash only if the PR has noisy WIP commits.
+**Strategy rationale**: every PR uses rebase-merge by default — commit history is documentation. Agent-authored commits follow conventional format and encode design intent (interface → implementation → tests), and preserving that ordering is what makes `git blame` and `git bisect` useful to whoever comes next. Use squash only when a branch's history is genuinely noise: `wip:` save points, or conflict-resolution sequences with broken intermediate commits that would break `bisect` if landed individually.
 
 ### 3.5. Mark Merged in Registry [coordinated only]
 
