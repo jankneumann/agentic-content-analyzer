@@ -43,13 +43,12 @@ from _helpers import (
 # Use a longer timeout for merge operations which can be slow
 MERGE_TIMEOUT = 60
 
-# Origin-to-strategy mapping: agent-authored PRs use rebase to preserve
-# granular commit history; everything else uses squash.
-ORIGIN_STRATEGY_MAP: dict[str, str] = {
-    "openspec": "rebase",
-    "codex": "rebase",
-}
-FALLBACK_STRATEGY = "squash"
+# Rebase is the default for every origin: commit history is documentation, and
+# collapsing it discards the ordering and rationale that make `git blame` and
+# `git bisect` useful later. ORIGIN_STRATEGY_MAP is the opt-out — list an origin
+# here only when its commits are known to carry nothing worth keeping.
+ORIGIN_STRATEGY_MAP: dict[str, str] = {}
+FALLBACK_STRATEGY = "rebase"
 
 
 def get_default_strategy(origin: str) -> str:
@@ -64,7 +63,7 @@ def resolve_strategy(
 
     If the operator provided an explicit --strategy, use it (override).
     Otherwise, look up the default for the PR origin.
-    If no origin is provided, fall back to squash.
+    If no origin is provided, fall back to rebase.
     """
     if explicit_strategy is not None:
         return explicit_strategy
@@ -1024,8 +1023,8 @@ def main():
     merge_parser.add_argument(
         "--strategy", default=None, choices=["squash", "merge", "rebase"],
         help=(
-            "Merge strategy override. If omitted, strategy is selected by "
-            "origin: openspec/codex use rebase, all others use squash."
+            "Merge strategy override. If omitted, rebase is used for every "
+            "origin, to preserve commit history."
         ),
     )
     merge_parser.add_argument(
