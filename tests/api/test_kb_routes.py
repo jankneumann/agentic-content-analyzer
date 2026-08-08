@@ -11,8 +11,10 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy.exc import DataError
 
 from src.models.topic import KBIndex, Topic, TopicStatus
+from src.services.kb_qa import KBQAProviderError
 from src.services.knowledge_base import CompileSummary, KBCompileLockError
 
 # ---------------------------------------------------------------------- #
@@ -506,14 +508,72 @@ class TestQuery:
         assert data["topics"] == ["qa-topic"]
 
     def test_query_llm_failure_returns_502(self, client):
+        """A genuine provider failure is the one case that justifies 502."""
         fake_qa = MagicMock()
-        fake_qa.query = AsyncMock(side_effect=RuntimeError("llm down"))
+        fake_qa.query = AsyncMock(side_effect=KBQAProviderError("llm down"))
         with patch("src.api.kb_routes.KBQAService", return_value=fake_qa):
             resp = client.post(
                 "/api/v1/kb/query",
                 json={"question": "Any question"},
             )
         assert resp.status_code == 502
+
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            # psycopg2 refusing a NUL before issuing SQL — no LLM was contacted.
+            # This is the exact failure that produced the original 502.
+            ValueError("A string literal cannot contain NUL (0x00) characters."),
+            # A dropped connection / bad value at the database layer.
+            DataError("SELECT 1", {}, Exception("bad input")),
+        ],
+        ids=["driver-nul-rejection", "sqlalchemy-data-error"],
+    )
+    def test_query_non_provider_failure_is_not_reported_as_llm_failure(self, client, failure):
+        """Only ``KBQAProviderError`` may be answered with 502.
+
+        A blanket ``except Exception`` used to relabel every failure — bad input,
+        a dropped DB connection, a service bug — as an upstream LLM outage. That
+        points operators at the wrong subsystem and tells clients to retry
+        against a provider that was never involved.
+        """
+        fake_qa = MagicMock()
+        fake_qa.query = AsyncMock(side_effect=failure)
+        with patch("src.api.kb_routes.KBQAService", return_value=fake_qa):
+            resp = client.post(
+                "/api/v1/kb/query",
+                json={"question": "Any question"},
+            )
+
+        assert resp.status_code != 502, (
+            f"{type(failure).__name__} was reported as 502 'LLM call failed', but no "
+            "LLM call was established as the cause"
+        )
+        assert "LLM" not in resp.text, (
+            f"the response blames the LLM for a {type(failure).__name__}: {resp.text[:200]}"
+        )
+
+    @pytest.mark.parametrize(
+        "failure",
+        [RuntimeError("topic search blew up"), KeyError("missing prompt template")],
+        ids=["service-bug", "missing-template"],
+    )
+    def test_query_unmapped_failure_reaches_the_global_catch_all(self, client, failure):
+        """Failures with no specific handler must escape the route untouched.
+
+        In production the app's ``Exception`` handler turns these into 500. Under
+        ``TestClient`` they surface as the raised exception instead, because
+        Starlette's ``ServerErrorMiddleware`` re-raises whatever that handler
+        served (``raise_server_exceptions=True``). Either way the point holds:
+        the route no longer swallows them into a 502 that blames the provider.
+        """
+        fake_qa = MagicMock()
+        fake_qa.query = AsyncMock(side_effect=failure)
+        with (
+            patch("src.api.kb_routes.KBQAService", return_value=fake_qa),
+            pytest.raises(type(failure)),
+        ):
+            client.post("/api/v1/kb/query", json={"question": "Any question"})
 
     def test_query_empty_question_422(self, client):
         resp = client.post("/api/v1/kb/query", json={"question": ""})

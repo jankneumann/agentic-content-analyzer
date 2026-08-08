@@ -13,7 +13,7 @@ import pytest
 
 from src.models.topic import Topic, TopicNote, TopicStatus
 from src.services.kb_health import KBHealthService
-from src.services.kb_qa import KBQAService
+from src.services.kb_qa import KBQAProviderError, KBQAService
 
 # ---------------------------------------------------------------------- #
 # Fixtures
@@ -181,7 +181,7 @@ class TestKBQABasic:
 
     @pytest.mark.asyncio
     async def test_query_llm_failure_propagates(self, qa_service, db_session):
-        """kb.8: LLM failure raises — route layer maps to 502."""
+        """kb.8: LLM failure raises KBQAProviderError — route layer maps to 502."""
         _make_topic(
             db_session,
             slug="vector-db",
@@ -190,8 +190,78 @@ class TestKBQABasic:
             article_md="Pgvector, Qdrant, Milvus overview.",
         )
         qa_service.llm_router.generate = AsyncMock(side_effect=RuntimeError("LLM provider down"))
-        with pytest.raises(RuntimeError, match="LLM provider down"):
+        with pytest.raises(KBQAProviderError, match="LLM provider down"):
             await qa_service.query("vector")
+
+
+class TestKBQAFailureAttribution:
+    """Only the provider call may be reported as a provider failure.
+
+    ``POST /api/v1/kb/query`` answers 502 on :class:`KBQAProviderError`, and 502
+    is a claim that an upstream dependency failed. That claim is only honest if
+    the exception type is raised exclusively from the LLM call — so the boundary
+    is asserted here, at the service, rather than trusted.
+    """
+
+    @pytest.mark.asyncio
+    async def test_llm_timeout_is_attributed_to_the_provider(self, qa_service, db_session):
+        _make_topic(
+            db_session,
+            slug="agents",
+            name="Agents",
+            summary="Agentic patterns.",
+            article_md="Agent loops and tool use.",
+        )
+        qa_service.llm_router.generate = AsyncMock(side_effect=TimeoutError)
+
+        with pytest.raises(KBQAProviderError, match="timed out"):
+            await qa_service.query("agents")
+
+    @pytest.mark.asyncio
+    async def test_failure_before_the_llm_call_is_not_attributed_to_the_provider(
+        self, qa_service, db_session
+    ):
+        """A prompt-rendering failure happens before any provider contact.
+
+        Reported as a provider failure it would send triage to the LLM vendor
+        for a bug in this repo's own prompt registry.
+        """
+        _make_topic(
+            db_session,
+            slug="rag",
+            name="RAG",
+            summary="Retrieval augmented generation.",
+            article_md="RAG details.",
+        )
+        qa_service.prompt_service.render = MagicMock(
+            side_effect=KeyError("pipeline.kb_qa.user_template")
+        )
+
+        with pytest.raises(KeyError):
+            await qa_service.query("rag")
+        qa_service.llm_router.generate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_topic_search_failure_is_not_attributed_to_the_provider(
+        self, qa_service, monkeypatch
+    ):
+        """Driver rejection during topic search is what produced the original bug.
+
+        psycopg2 refuses a NUL byte before issuing SQL, raising a bare
+        ``ValueError``. It must reach the global handlers as itself, not be
+        relabelled an LLM outage.
+        """
+        monkeypatch.setattr(
+            qa_service,
+            "_search_topics",
+            MagicMock(
+                side_effect=ValueError("A string literal cannot contain NUL (0x00) characters.")
+            ),
+        )
+
+        with pytest.raises(ValueError, match="NUL"):
+            await qa_service.query("anything")
+        qa_service.llm_router.generate.assert_not_called()
 
 
 # ====================================================================== #

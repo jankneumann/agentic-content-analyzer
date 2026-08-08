@@ -7,8 +7,11 @@ Provides a lightweight Q&A loop over compiled topic articles (D5):
 4. Render a prompt and synthesize an answer via the configured LLM.
 5. Optionally file the answer as a TopicNote on each referenced topic.
 
-The service raises on LLM failure — callers (API, CLI) translate that
-into their preferred error response.
+Failures of the LLM call itself are raised as :class:`KBQAProviderError` so
+callers can distinguish them from everything else this method does — topic
+search hits the database, prompt rendering hits the prompt registry, and
+file-back writes notes. Callers (API, CLI) translate that into their preferred
+error response.
 """
 
 from __future__ import annotations
@@ -29,6 +32,17 @@ from src.services.llm_router import LLMRouter
 from src.services.prompt_service import PromptService
 
 logger = logging.getLogger(__name__)
+
+
+class KBQAProviderError(RuntimeError):
+    """The KB Q&A LLM call itself failed — timeout, transport, or provider error.
+
+    Raised only for failures originating inside ``llm_router.generate``. Nothing
+    else that :meth:`KBQAService.query` does (topic search, prompt rendering,
+    file-back) is reported through this type, so a caller answering 502 on it is
+    making a claim about the upstream provider that actually holds. Everything
+    else propagates unchanged for the global handlers to classify.
+    """
 
 
 class KBQAService:
@@ -134,7 +148,12 @@ class KBQAService:
                 timeout=qa_timeout,
             )
         except TimeoutError as exc:
-            raise RuntimeError(f"KB Q&A LLM call timed out after {qa_timeout}s") from exc
+            raise KBQAProviderError(f"KB Q&A LLM call timed out after {qa_timeout}s") from exc
+        except Exception as exc:
+            # Scoped deliberately tight: only the generate() call above is inside
+            # this try, so a KBQAProviderError always means the provider call is
+            # what failed. Everything else in this method propagates as itself.
+            raise KBQAProviderError(f"KB Q&A LLM call failed: {exc}") from exc
         elapsed = time.monotonic() - t0
 
         logger.info(

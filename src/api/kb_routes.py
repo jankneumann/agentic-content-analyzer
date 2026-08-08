@@ -18,7 +18,7 @@ from src.api.dependencies import verify_admin_key
 from src.api.middleware.audit import audited
 from src.models.theme import ThemeCategory
 from src.models.topic import KBIndex, Topic, TopicNote, TopicNoteType, TopicStatus
-from src.services.kb_qa import KBQAService
+from src.services.kb_qa import KBQAProviderError, KBQAService
 from src.services.knowledge_base import (
     KBCompileLockError,
     KnowledgeBaseService,
@@ -514,8 +514,16 @@ async def query_kb(body: KBQueryRequest) -> KBQueryResponse:
                 body.question,
                 file_back=body.file_back,
             )
-        except Exception as exc:
-            logger.warning("KB Q&A failed: %s", exc)
+        except KBQAProviderError as exc:
+            # 502 asserts that an upstream we depend on failed. Only this type
+            # establishes that: the service raises it exclusively from the LLM
+            # call. Anything else — bad input reaching the driver, a dropped DB
+            # connection, a bug in KBQAService — propagates to the global
+            # handlers, which map DataError to 422 and the rest to 500. A blanket
+            # `except Exception` here used to relabel all of those as an LLM
+            # outage, pointing triage at the wrong subsystem and telling clients
+            # to retry against a provider that was never involved.
+            logger.warning("KB Q&A LLM call failed: %s", exc)
             raise HTTPException(
                 status_code=502,
                 detail="KB Q&A LLM call failed.",
