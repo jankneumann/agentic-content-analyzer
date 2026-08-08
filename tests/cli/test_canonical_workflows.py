@@ -13,14 +13,23 @@ from pydantic import TypeAdapter
 from typer.testing import CliRunner
 
 from src.cli.app import app
-from src.clients.workflow_api_client import ProblemError
+from src.clients.workflow_api_client import (
+    IngestionHistoryTraversal,
+    OperationTraversal,
+    ProblemError,
+)
 from src.contracts.workflow_models import (
     COMMAND_FIELD_SCHEMAS,
     CapabilityDocument,
     ConfiguredSourcePage,
+    ContentReconciliationReport,
+    ContentReconciliationRequest,
     IngestCommand,
+    IngestionHistoryItem,
+    IngestionHistoryPage,
     OperationHandle,
     OperationPage,
+    OperationSummary,
     Problem,
     UploadReference,
 )
@@ -28,16 +37,106 @@ from src.contracts.workflow_models import (
 
 def _handle(operation_type: str = "ingestion.execute", status: str = "queued") -> OperationHandle:
     return OperationHandle(
-        operation_id="op-1",
+        operation_id="1",
         operation_type=operation_type,
         status=status,
         progress=0,
         message=status,
         cancellable=True,
         retry_count=0,
-        status_url="/api/v1/operations/op-1",
-        events_url="/api/v1/operations/op-1/events",
+        status_url="/api/v1/operations/1",
+        events_url="/api/v1/operations/1/events",
         created_at=datetime.now(UTC),
+    )
+
+
+def _pipeline_handle(outcome: str, *, status: str = "completed") -> OperationHandle:
+    handle = _handle("pipeline.run", status)
+    handle.result = {
+        "schema_version": 2,
+        "ingestion_summary": {
+            "outcome": outcome,
+            "sources": [],
+            "sources_omitted": 0,
+        },
+    }
+    return handle
+
+
+def _summary() -> OperationSummary:
+    return OperationSummary.model_validate(
+        _handle().model_dump(mode="json", exclude={"resource", "result", "problem"})
+    )
+
+
+def _history_item() -> IngestionHistoryItem:
+    return IngestionHistoryItem(
+        operation_id="17",
+        parent_operation_id="91",
+        command_key="rss",
+        operation_status="completed",
+        outcome="partial",
+        items_ingested=3,
+        items_skipped=1,
+        items_failed=2,
+        source_outcomes=[],
+        retry_count=0,
+        problem_code="source_partial",
+        status_url="/api/v1/operations/17",
+        created_at=datetime(2026, 7, 13, 10, tzinfo=UTC),
+        completed_at=datetime(2026, 7, 13, 10, 1, tzinfo=UTC),
+    )
+
+
+def _reconciliation_report(
+    *,
+    mode: str = "dry_run",
+    reason: str = "missing_operation",
+) -> ContentReconciliationReport:
+    return ContentReconciliationReport.model_validate(
+        {
+            "run_id": "00000000-0000-4000-8000-000000000061",
+            "mode": mode,
+            "scanned": 1,
+            "reported": 1,
+            "next_after_content_id": 84,
+            "counts": {
+                "applied": 0,
+                "retried": 0,
+                "projected": 0,
+                "restored": 0,
+                "active": 0,
+                "locked": int(reason == "execution_locked"),
+                "missing": int(reason == "missing_operation"),
+                "conflicted": 0,
+                "cancelled": 0,
+                "forced": 0,
+                "exhausted": int(reason == "retry_budget_exhausted"),
+                "incompatible": 0,
+                "failed": int(reason == "apply_failed"),
+            },
+            "items": [
+                {
+                    "content_id": 84,
+                    "projection": "proposed" if mode == "dry_run" else "observed",
+                    "content_status_before": "processing",
+                    "content_status_after": "processing",
+                    "operation_id": None,
+                    "claim_generation": None,
+                    "claim_protocol_version": None,
+                    "operation_status_before": None,
+                    "operation_status_after": None,
+                    "retry_count_before": None,
+                    "retry_count_after": None,
+                    "phase": "processing",
+                    "action": "none",
+                    "reason": reason,
+                    "operation_heartbeat_at": None,
+                    "operation_completed_at": None,
+                    "applied": False,
+                }
+            ],
+        }
     )
 
 
@@ -45,6 +144,13 @@ class FakeClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, Any, str | None]] = []
         self.uploads: list[Path] = []
+        self.wait_result: OperationHandle | None = None
+        self.operation_pages_requested: int | None = None
+        self.operation_statuses: list[str | None] = []
+        self.history_calls: list[dict[str, Any]] = []
+        self.history_pages_requested: int | None = None
+        self.reconciliation_requests: list[ContentReconciliationRequest] = []
+        self.reconciliation_result = _reconciliation_report()
 
     def __enter__(self) -> FakeClient:
         return self
@@ -90,6 +196,8 @@ class FakeClient:
         raise AttributeError(name)
 
     def wait_operation(self, operation_id: str, *, timeout_seconds: float = 300) -> OperationHandle:
+        if self.wait_result is not None:
+            return self.wait_result
         operation_type = self.calls[-1][0] if self.calls else "ingestion.execute"
         return _handle(operation_type, "completed")
 
@@ -104,11 +212,27 @@ class FakeClient:
     def list_configured_sources(self, **_: Any) -> ConfiguredSourcePage:
         return ConfiguredSourcePage(data=[], next_cursor="next")
 
-    def list_operations(self, **_: Any) -> OperationPage:
-        return OperationPage(data=[_handle()], next_cursor="next")
+    def list_operations(self, **kwargs: Any) -> OperationPage:
+        self.operation_statuses.append(kwargs.get("status"))
+        return OperationPage(data=[_summary()], next_cursor="next")
 
-    def iter_operations(self, **_: Any):
-        yield _handle()
+    def collect_operations(self, **kwargs: Any) -> OperationTraversal:
+        self.operation_pages_requested = kwargs["max_pages"]
+        self.operation_statuses.append(kwargs.get("status"))
+        return OperationTraversal(data=[_summary()], next_cursor="continue-here", truncated=True)
+
+    def list_ingestion_history(self, **kwargs: Any) -> IngestionHistoryPage:
+        self.history_calls.append(kwargs)
+        return IngestionHistoryPage(data=[_history_item()], next_cursor="history-next")
+
+    def collect_ingestion_history(self, **kwargs: Any) -> IngestionHistoryTraversal:
+        self.history_calls.append(kwargs)
+        self.history_pages_requested = kwargs["max_pages"]
+        return IngestionHistoryTraversal(
+            data=[_history_item()],
+            next_cursor="history-continue",
+            truncated=True,
+        )
 
     def get_operation(self, operation_id: str) -> OperationHandle:
         return _handle()
@@ -118,6 +242,13 @@ class FakeClient:
 
     def cancel_operation(self, operation_id: str) -> OperationHandle:
         return _handle(status="cancelled")
+
+    def reconcile_content(
+        self,
+        request: ContentReconciliationRequest,
+    ) -> ContentReconciliationReport:
+        self.reconciliation_requests.append(request)
+        return self.reconciliation_result
 
 
 @pytest.fixture
@@ -245,6 +376,47 @@ def test_ingestion_uses_underscore_discriminator_and_idempotency(
     assert result.stderr == ""
 
 
+def test_obsidian_ingestion_uses_opaque_source_key_and_public_bounds(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+    result = runner.invoke(
+        app,
+        [
+            "--json",
+            "ingest",
+            "obsidian-vault",
+            "--source-key",
+            "src_0123456789abcdef0123",
+            "--max-items",
+            "25",
+            "--force-reprocess",
+            "--idempotency-key",
+            "obsidian-scan-1",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert client.calls == [
+        (
+            "ingestion.execute",
+            {
+                "kind": "obsidian_vault",
+                "source_key": "src_0123456789abcdef0123",
+                "max_items": 25,
+                "force_reprocess": True,
+            },
+            "obsidian-scan-1",
+        )
+    ]
+    serialized = str(client.calls)
+    assert "vault_path" not in serialized
+    assert "ingest_folder" not in serialized
+    assert "configured_sources" not in serialized
+    assert "configured_source_version" not in serialized
+    assert result.stderr == ""
+
+
 def test_direct_flag_does_not_bypass_durable_submission(
     cli: tuple[CliRunner, FakeClient],
 ) -> None:
@@ -323,6 +495,85 @@ def test_wait_progress_is_stderr_and_json_stdout_is_exact(
     assert result.stderr == ""
 
 
+def test_tolerated_partial_pipeline_wait_warns_without_corrupting_json(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+    client.wait_result = _pipeline_handle("partial")
+
+    result = runner.invoke(
+        app,
+        [
+            "--json",
+            "pipeline",
+            "run",
+            "--period",
+            "daily",
+            "--period-start",
+            "2026-07-15T00:00:00Z",
+            "--period-end",
+            "2026-07-16T00:00:00Z",
+            "--wait",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["result"]["ingestion_summary"]["outcome"] == "partial"
+    assert result.stdout.count("\n") == 1
+    assert result.stderr == "Warning: pipeline ingestion completed with partial source results.\n"
+
+
+def test_zero_item_pipeline_wait_prints_informational_human_summary(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+    client.wait_result = _pipeline_handle("zero_items")
+
+    result = runner.invoke(
+        app,
+        [
+            "pipeline",
+            "run",
+            "--period",
+            "daily",
+            "--period-start",
+            "2026-07-15T00:00:00Z",
+            "--period-end",
+            "2026-07-16T00:00:00Z",
+            "--wait",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Pipeline ingestion completed with zero items." in result.stdout
+
+
+def test_fail_on_source_error_pipeline_wait_keeps_nonzero_exit(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+    client.wait_result = _pipeline_handle("failed", status="failed")
+
+    result = runner.invoke(
+        app,
+        [
+            "pipeline",
+            "run",
+            "--period",
+            "daily",
+            "--period-start",
+            "2026-07-15T00:00:00Z",
+            "--period-end",
+            "2026-07-16T00:00:00Z",
+            "--fail-on-source-error",
+            "--wait",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert client.calls[-1][1]["continue_on_source_error"] is False
+
+
 @pytest.mark.parametrize(
     "args",
     [
@@ -341,6 +592,229 @@ def test_operation_controls_emit_structured_json(
     result = runner.invoke(app, ["--json", *args])
     assert result.exit_code == 0
     assert json.loads(result.stdout)
+
+
+def test_reconcile_content_defaults_to_one_dry_run_page(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+
+    result = runner.invoke(app, ["operations", "reconcile-content"])
+
+    assert result.exit_code == 0, result.output
+    assert len(client.reconciliation_requests) == 1
+    assert client.reconciliation_requests[0] == ContentReconciliationRequest(apply=False)
+    assert "missing_operation" in result.stdout
+    assert "84" in result.stdout
+
+
+def test_reconcile_content_forwards_apply_limit_and_continuation_once(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+    client.reconciliation_result = _reconciliation_report(mode="apply")
+
+    result = runner.invoke(
+        app,
+        [
+            "operations",
+            "reconcile-content",
+            "--apply",
+            "--limit",
+            "7",
+            "--after-content-id",
+            "84",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert client.reconciliation_requests == [
+        ContentReconciliationRequest(apply=True, limit=7, after_content_id=84)
+    ]
+
+
+def test_reconcile_content_json_is_one_safe_bounded_document(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+
+    result = runner.invoke(app, ["--json", "operations", "reconcile-content"])
+
+    assert result.exit_code == 0, result.output
+    document = json.loads(result.stdout)
+    assert document == client.reconciliation_result.model_dump(mode="json", exclude_none=True)
+    assert result.stdout.count("\n") == 1
+    assert result.stderr == ""
+    assert {"payload", "error", "traceback", "worker_id"}.isdisjoint(document["items"][0])
+
+
+def test_reconcile_content_apply_failed_renders_report_and_exits_nonzero(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+    client.reconciliation_result = _reconciliation_report(
+        mode="apply",
+        reason="apply_failed",
+    )
+
+    result = runner.invoke(
+        app,
+        ["--json", "operations", "reconcile-content", "--apply"],
+    )
+
+    assert result.exit_code == 1
+    assert json.loads(result.stdout)["items"][0]["reason"] == "apply_failed"
+    assert result.stderr == ""
+
+
+@pytest.mark.parametrize("reason", ["execution_locked", "retry_budget_exhausted"])
+def test_reconcile_content_apply_fail_closed_noops_exit_zero(
+    cli: tuple[CliRunner, FakeClient],
+    reason: str,
+) -> None:
+    runner, client = cli
+    client.reconciliation_result = _reconciliation_report(mode="apply", reason=reason)
+
+    result = runner.invoke(app, ["operations", "reconcile-content", "--apply"])
+
+    assert result.exit_code == 0, result.output
+
+
+def test_operations_all_is_bounded_and_json_signals_truncation(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+
+    result = runner.invoke(app, ["--json", "operations", "list", "--all", "--max-pages", "3"])
+
+    assert result.exit_code == 0, result.output
+    document = json.loads(result.stdout)
+    assert document["next_cursor"] == "continue-here"
+    assert document["truncated"] is True
+    assert [item["operation_id"] for item in document["data"]] == ["1"]
+    assert {"result", "resource", "problem"}.isdisjoint(document["data"][0])
+    assert client.operation_pages_requested == 3
+    assert result.stderr == ""
+
+
+def test_operations_all_human_output_warns_with_continuation_cursor(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, _ = cli
+
+    result = runner.invoke(app, ["operations", "list", "--all", "--max-pages", "2"])
+
+    assert result.exit_code == 0, result.output
+    assert "continue-here" in result.stderr
+    assert "truncated" in result.stderr.lower()
+
+
+@pytest.mark.parametrize("all_args", [[], ["--all", "--max-pages", "2"]])
+def test_operations_list_forwards_status_filter(
+    cli: tuple[CliRunner, FakeClient], all_args: list[str]
+) -> None:
+    runner, client = cli
+
+    result = runner.invoke(
+        app, ["--json", "operations", "list", "--status", "in_progress", *all_args]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert client.operation_statuses == ["in_progress"]
+
+
+def test_ingest_history_forwards_every_backend_filter(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+
+    result = runner.invoke(
+        app,
+        [
+            "--json",
+            "ingest",
+            "history",
+            "--command-key",
+            "rss",
+            "--configured-source-key",
+            "src_0123456789abcdefabcd",
+            "--outcome",
+            "partial",
+            "--status",
+            "completed",
+            "--parent-operation-id",
+            "91",
+            "--created-after",
+            "2026-07-13T04:00:00Z",
+            "--created-before",
+            "2026-07-14T04:00:00+00:00",
+            "--limit",
+            "25",
+            "--cursor",
+            "opaque-cursor",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["data"][0]["operation_id"] == "17"
+    assert client.history_calls == [
+        {
+            "command_key": "rss",
+            "configured_source_key": "src_0123456789abcdefabcd",
+            "outcome": "partial",
+            "status": "completed",
+            "parent_operation_id": "91",
+            "created_after": datetime(2026, 7, 13, 4, tzinfo=UTC),
+            "created_before": datetime(2026, 7, 14, 4, tzinfo=UTC),
+            "limit": 25,
+            "cursor": "opaque-cursor",
+        }
+    ]
+
+
+def test_ingest_history_all_uses_default_budget_and_emits_one_json_document(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+
+    result = runner.invoke(
+        app,
+        [
+            "--json",
+            "ingest",
+            "history",
+            "--configured-source-key",
+            "src_0123456789abcdefabcd",
+            "--all",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    document = json.loads(result.stdout)
+    assert set(document) == {"data", "next_cursor", "truncated"}
+    assert document["data"][0]["operation_id"] == "17"
+    assert document["next_cursor"] == "history-continue"
+    assert document["truncated"] is True
+    assert client.history_pages_requested == 20
+    assert client.history_calls[0]["configured_source_key"] == "src_0123456789abcdefabcd"
+    assert result.stderr == ""
+
+
+def test_ingest_history_human_output_is_bounded_and_warns_with_continuation(
+    cli: tuple[CliRunner, FakeClient],
+) -> None:
+    runner, client = cli
+
+    result = runner.invoke(app, ["ingest", "history", "--all", "--max-pages", "2"])
+
+    assert result.exit_code == 0, result.output
+    assert "rss" in result.stdout
+    assert "completed" in result.stdout
+    assert "partial" in result.stdout
+    assert len(result.stdout) < 2_000
+    assert "history-continue" in result.stderr
+    assert "truncated" in result.stderr.lower()
+    assert client.history_pages_requested == 2
 
 
 def test_cli_problem_translation_preserves_full_contract(

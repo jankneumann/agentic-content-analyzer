@@ -1,0 +1,58 @@
+# Obsidian vault ingest source (template)
+#
+# Copy to `sources.d/obsidian-vault.yaml` and edit. Ingestion is read-only: the
+# worker never writes, moves, renames, or deletes anything inside the vault.
+#
+# Two things must line up before a scan can run, and readiness fails closed if
+# either is missing:
+#
+#   1. `vault_path` must resolve inside one of the deployment-owned allowed
+#      roots (`OBSIDIAN_ALLOWED_ROOTS`, a comma-separated list of absolute
+#      paths). The vault must be readable by the worker process itself.
+#   2. `OBSIDIAN_COMPATIBLE_WORKER=true` must be set on the worker that owns the
+#      mount, so a queued scan cannot be routed to a worker that cannot see it.
+#
+# See docs/OBSIDIAN_VAULT_INGEST.md for setup, the required clip format, the
+# security model, and troubleshooting.
+
+version: 1
+
+sources:
+  - type: obsidian_vault
+    # Stable opaque handle for this vault. It appears in logs and diagnostics,
+    # so do not encode a path or anything private in it.
+    vault_id: personal-clips
+    enabled: true
+
+    # Absolute Unix path to the vault, inside an allowed root. Never leaves the
+    # worker: it is not part of any command payload, API response, or alert.
+    vault_path: /srv/obsidian/personal
+
+    # Folder inside the vault that Web Clipper writes to. Relative, no `..`.
+    ingest_folder: Clips/Inbox
+
+    # --- Per-scan ceilings -------------------------------------------------
+    # A scan is one bounded durable operation, not a long-lived watcher. It
+    # stops at whichever ceiling it reaches first and reports a cursor, so the
+    # next scheduled scan resumes rather than running unbounded.
+    max_files: 1000            # notes visited per scan
+    max_entries: 10000         # directory entries enumerated per scan
+    max_total_bytes: 67108864  # 64 MiB read per scan
+    max_depth: 8               # directory depth below ingest_folder
+    max_duration_seconds: 300
+    max_note_bytes: 4194304    # 4 MiB per note
+    max_concurrency: 1
+
+    # Ignore notes modified within this many seconds. Raise it when the vault is
+    # backed by a sync provider (iCloud, Dropbox, Syncthing) so a scan does not
+    # read a file mid-write; 0 is fine for a local-only vault.
+    settle_seconds: 0.0
+
+    # --- Frontmatter parser ceilings ---------------------------------------
+    # Bounds on untrusted YAML. The defaults are conservative; raise only if a
+    # legitimate clip is rejected with a `yaml_*` code.
+    max_frontmatter_bytes: 16384
+    max_yaml_nodes: 256
+    max_yaml_depth: 16
+    max_yaml_aliases: 8
+    max_yaml_string_chars: 4096

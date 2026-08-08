@@ -1,0 +1,73 @@
+# Category: workflow-submission — MUTATING. Runs only through the separately guarded
+# staging/ephemeral dispatch; the default PR selection cannot include this category.
+#
+# Target prerequisite: the protected gen-eval target configures RSS with one successful
+# fixture feed and one intentionally failing fixture feed. Continuation stays enabled.
+
+id: workflow-submission-pipeline-partial-warning
+name: aca pipeline run warns for a tolerated partial source result
+description: >
+  Runs a guarded pipeline against the staging mixed-RSS fixture. With continuation
+  enabled, the operation may complete even though its ingestion summary is `partial`.
+  JSON stdout must remain one operation document while the warning appears on stderr.
+  This scenario deliberately lives outside every default PR category because it submits
+  durable work and requires the non-production mutation guard.
+category: workflow-submission
+priority: 1
+interfaces:
+  - "cli:pipeline"
+tags:
+  - mutating
+  - requires-target
+  - requires-seeded-partial-source
+steps:
+  - id: pipeline-partial-attributed
+    transport: cli
+    command: pipeline
+    args:
+      - run
+      - "--period"
+      - daily
+      - "--period-start"
+      - "2000-01-01T00:00:00Z"
+      - "--period-end"
+      - "2000-01-02T00:00:00Z"
+      - "--source"
+      - rss
+      - "--continue-on-source-error"
+      - "--wait"
+      - "--timeout"
+      - "300"
+      - "--idempotency-key"
+      - aca-gen-eval-pipeline-partial-human
+    expect:
+      exit_code: 0
+      error_contains: "partial source results"
+
+  - id: pipeline-partial-json
+    transport: cli
+    command: "--json"
+    args:
+      - pipeline
+      - run
+      - "--period"
+      - daily
+      - "--period-start"
+      - "2000-01-01T00:00:00Z"
+      - "--period-end"
+      - "2000-01-02T00:00:00Z"
+      - "--source"
+      - rss
+      - "--continue-on-source-error"
+      - "--wait"
+      - "--timeout"
+      - "300"
+      - "--idempotency-key"
+      - aca-gen-eval-pipeline-partial-json
+    expect:
+      exit_code: 0
+      body_contains:
+        result:
+          ingestion_summary:
+            outcome: partial
+      error_contains: "partial source results"

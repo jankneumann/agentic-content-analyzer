@@ -12,9 +12,15 @@ from unittest.mock import patch
 
 from sqlalchemy.orm import Session
 
+from src.config.sources import (
+    ObsidianVaultSource,
+    SourceBase,
+    SourcesConfig,
+    configured_source_public_key,
+)
 from src.ingestion.commands import IngestCommandBase
 from src.ingestion.content_references import ContentReferences, record_content_reference
-from src.ingestion.registry import SOURCE_REGISTRY, SourceRegistry
+from src.ingestion.registry import SOURCE_REGISTRY, SourceRegistry, configured_source_version
 from src.ingestion.result import IngestionResponse
 from src.ingestion.service import IngestionService
 from src.models.content import Content, ContentSource
@@ -30,6 +36,49 @@ from tests.factories.content import ContentFactory
 from tests.factories.digest import DigestFactory
 from tests.factories.summary import SummaryFactory
 from tests.fixtures.sources.library import SOURCE_FIXTURES, SourceFixture
+
+#: Deterministic secret for this harness only. It derives the opaque public key
+#: and the config-version fingerprint, so it must be stable within a run but has
+#: no relationship to any deployment secret.
+_CONFIGURED_SOURCE_SECRET = "source-matrix-fixture-secret-0123456789"
+
+#: A path-shaped vault the matrix never touches. The fixture orchestrator stands
+#: in for the real adapter, so no scan reaches the filesystem; only the source's
+#: field values matter, because they are what the key and version hash over.
+_MATRIX_OBSIDIAN_SOURCE = ObsidianVaultSource(
+    vault_id="source-matrix-fixture",
+    vault_path="/srv/source-matrix/vault",
+    ingest_folder="Clips/Inbox",
+)
+
+
+def _resolve_configured_source(
+    key: str, fixture: SourceFixture
+) -> tuple[dict[str, Any], SourceBase | None]:
+    """Bind a configured-source fixture command to deployment configuration.
+
+    Fixture commands store the canonical *shape* of a source's command. For a
+    source selected by opaque key, the real key and config version depend on the
+    deployment secret, so they cannot be checked in; they are bound here exactly
+    as the scheduled command planner binds them at submission time.
+    """
+
+    command = dict(fixture.command)
+    if "source_key" not in command:
+        return command, None
+
+    source = _MATRIX_OBSIDIAN_SOURCE if key == "obsidian_vault" else None
+    if source is None:
+        raise AssertionError(
+            f"Fixture '{key}' selects a configured source by key but the matrix "
+            "has no deployment source bound for it"
+        )
+    command["source_key"] = configured_source_public_key(source, secret=_CONFIGURED_SOURCE_SECRET)
+    command["configured_source_version"] = configured_source_version(
+        source, secret=_CONFIGURED_SOURCE_SECRET
+    )
+    return command, source
+
 
 PERIOD_START = datetime(2026, 7, 1, tzinfo=UTC)
 PERIOD_END = PERIOD_START + timedelta(days=1)
@@ -163,7 +212,8 @@ class VerticalWorkflowHarness:
         )
 
     def _ingest_fixture(self, key: str, fixture: SourceFixture, index: int) -> PersistedFixture:
-        command = self.registry.parse_command(fixture.command)
+        raw_command, deployment_source = _resolve_configured_source(key, fixture)
+        command = self.registry.parse_command(raw_command)
         descriptor = self.registry.get(command.kind)
         created: tuple[Content, Summary, ContentSource] | None = None
 
@@ -205,17 +255,32 @@ class VerticalWorkflowHarness:
 
         fixture_registry = SourceRegistry([replace(descriptor, orchestrator=fixture_orchestrator)])
         upload_service = _FixtureUploadService() if key == "files" else None
-        service = IngestionService(registry=fixture_registry, upload_service=upload_service)
+        service = IngestionService(
+            registry=fixture_registry,
+            upload_service=upload_service,
+            # A command naming a configured source by opaque key is resolved and
+            # version-checked against deployment configuration before dispatch,
+            # so the matrix must supply that configuration the same way a worker
+            # does. Sources that carry their parameters inline pass None.
+            configured_source_key_secret=(
+                _CONFIGURED_SOURCE_SECRET if deployment_source is not None else None
+            ),
+            source_config_loader=(
+                (lambda: SourcesConfig(sources=[deployment_source]))
+                if deployment_source is not None
+                else None
+            ),
+        )
         if key == "files":
             with patch(
                 "src.ingestion.orchestrator.ingest_files",
                 side_effect=lambda **_kwargs: fixture_orchestrator(command),
             ):
-                response = service.execute(fixture.command)
+                response = service.execute(raw_command)
             assert upload_service is not None
             assert upload_service.requested_ids == tuple(command.upload_ids)
         else:
-            response = service.execute(fixture.command)
+            response = service.execute(raw_command)
 
         if created is None:
             raise AssertionError(f"Fixture orchestrator '{key}' was not invoked")

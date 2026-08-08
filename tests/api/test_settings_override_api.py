@@ -15,6 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.api.app import app
+from src.models.settings_override import SettingsOverride
 
 
 class TestSettingsOverrideAuth:
@@ -208,6 +209,38 @@ class TestSettingsOverridePut:
         )
         assert resp.status_code == 422  # Pydantic min_length validation
 
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "alerting.workflow_alert_sink",
+            "alerting.workflow_alert_webhook_endpoint",
+            "alerting.workflow_alert_webhook_secret",
+            "alerting.workflow_alert_diagnostic_origin",
+            "alerting.workflow_alert_allowed_hosts",
+            "alerting.workflow_alert_timeout_seconds",
+            "alerting.workflow_alert_lease_seconds",
+            "alerting.workflow_alert_max_attempts",
+            "alerting.workflow_alert_base_backoff_seconds",
+            "alerting.workflow_alert_max_backoff_seconds",
+            "alerting.workflow_alert_max_retry_after_seconds",
+            "alerting.workflow_alert_delivery_max_age_seconds",
+            "alerting.workflow_alert_retention_days",
+            "alerting.workflow_alert_exhausted_retention_days",
+            "alerting.workflow_alert_batch_size",
+            "work.flow_al_ert.web_hook.se_cret",
+        ],
+    )
+    def test_put_rejects_alert_transport_policy_keys(self, client, key):
+        response = client.put(
+            f"/api/v1/settings/overrides/{key}",
+            json={"value": "hostile-runtime-value"},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == (
+            "Workflow alert transport policy cannot be database-backed"
+        )
+
 
 class TestSettingsOverrideDelete:
     """Test deleting overrides."""
@@ -232,3 +265,19 @@ class TestSettingsOverrideDelete:
     def test_delete_invalid_key_format(self, client):
         resp = client.delete("/api/v1/settings/overrides/INVALID")
         assert resp.status_code == 400
+
+    def test_delete_purges_forbidden_legacy_alert_policy_row(self, client, db_session):
+        key = "alerting.workflow_alert_webhook_secret"
+        db_session.add(
+            SettingsOverride(
+                key=key,
+                value="legacy-plaintext-secret",
+                version=1,
+            )
+        )
+        db_session.commit()
+
+        response = client.delete(f"/api/v1/settings/overrides/{key}")
+
+        assert response.status_code == 200
+        assert response.json() == {"key": key, "deleted": True}

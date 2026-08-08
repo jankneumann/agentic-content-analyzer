@@ -1,0 +1,62 @@
+# Read-only default preview. The max in-range continuation makes the JSON assertion
+# stable on empty and populated targets while the attributed step exercises the true
+# default.
+
+id: validation-reconciliation-preview
+name: aca operations reconcile-content defaults to one safe dry-run page
+description: >
+  Proves the default command previews rather than mutates, and that JSON stdout is one
+  bounded allowlisted report. The second step starts after the largest content id the
+  column can hold — contents.id is int4 — guaranteeing an empty page without depending
+  on target data. Anything above that is out of range for the cursor, not a high
+  cursor value.
+category: validation
+priority: 1
+interfaces:
+  - "cli:operations"
+tags:
+  - read-only
+  - requires-target
+steps:
+  - id: reconciliation-preview-attributed
+    transport: cli
+    command: operations
+    args:
+      - reconcile-content
+      - "--limit"
+      - "1"
+    expect:
+      exit_code: 0
+      not_empty: true
+
+  - id: reconciliation-preview-json
+    transport: cli
+    command: "--json"
+    args:
+      - operations
+      - reconcile-content
+      - "--after-content-id"
+      - "2147483647"
+      - "--limit"
+      - "1"
+    expect:
+      exit_code: 0
+      body_contains:
+        mode: dry_run
+        scanned: 0
+        reported: 0
+        counts:
+          applied: 0
+          retried: 0
+          projected: 0
+          restored: 0
+          active: 0
+          locked: 0
+          missing: 0
+          conflicted: 0
+          cancelled: 0
+          forced: 0
+          exhausted: 0
+          incompatible: 0
+          failed: 0
+        items: []

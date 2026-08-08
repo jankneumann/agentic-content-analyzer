@@ -6,12 +6,12 @@
     "time_minutes": 0.0
   },
   "coverage_pct": 100.0,
-  "duration_seconds": 6.494295874959789,
+  "duration_seconds": 7.494295874959789,
   "errors": 0,
   "failed": 0,
   "iterations_completed": 1,
   "pass_rate": 1.0,
-  "passed": 16,
+  "passed": 18,
   "per_category": {
     "discovery": {
       "error": 0,
@@ -28,8 +28,8 @@
     "validation": {
       "error": 0,
       "fail": 0,
-      "pass": 4,
-      "total": 4
+      "pass": 6,
+      "total": 6
     }
   },
   "per_interface": {
@@ -106,7 +106,7 @@
     "cli:ingest": {
       "error": 0,
       "fail": 0,
-      "pass": 1
+      "pass": 2
     },
     "cli:kb": {
       "error": 0,
@@ -131,7 +131,7 @@
     "cli:operations": {
       "error": 0,
       "fail": 0,
-      "pass": 5
+      "pass": 6
     },
     "cli:pipeline": {
       "error": 0,
@@ -196,7 +196,7 @@
   },
   "per_visibility": {},
   "skipped": 0,
-  "total_scenarios": 16,
+  "total_scenarios": 18,
   "unevaluated_interfaces": [],
   "verdicts": [
     {
@@ -2387,6 +2387,67 @@
       "backend_used": "template",
       "category": "validation",
       "cleanup_warnings": [],
+      "duration_seconds": 1.0,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:ingest"
+      ],
+      "scenario_id": "validation-ingestion-history-filtered",
+      "scenario_name": "aca ingest history accepts canonical filters and emits one compact JSON page",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Ingestion history: no matching terminal operations"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 400.0,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "ingest-history-attributed",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "data": []
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 600.0,
+          "error_message": null,
+          "expected": {
+            "body_contains": {
+              "data": []
+            },
+            "exit_code": 0
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "ingest-history-filtered-json",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "validation",
+      "cleanup_warnings": [],
       "duration_seconds": 0.6900702089769766,
       "failure_summary": null,
       "interfaces_tested": [
@@ -3386,6 +3447,103 @@
           "side_effect_verdicts": null,
           "status": "pass",
           "step_id": "help-worker",
+          "transport": "cli"
+        }
+      ]
+    },
+    {
+      "backend_used": "template",
+      "category": "validation",
+      "cleanup_warnings": [],
+      "duration_seconds": 0.8,
+      "failure_summary": null,
+      "interfaces_tested": [
+        "cli:operations"
+      ],
+      "scenario_id": "validation-reconciliation-preview",
+      "scenario_name": "aca operations reconcile-content defaults to one safe dry-run page",
+      "status": "pass",
+      "steps": [
+        {
+          "actual": {
+            "body": {
+              "raw": "Content reconciliation: dry_run, one bounded page"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 300.0,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "reconciliation-preview-attributed",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "mode": "dry_run",
+              "scanned": 0,
+              "reported": 0,
+              "counts": {
+                "applied": 0,
+                "retried": 0,
+                "projected": 0,
+                "restored": 0,
+                "active": 0,
+                "locked": 0,
+                "missing": 0,
+                "conflicted": 0,
+                "cancelled": 0,
+                "forced": 0,
+                "exhausted": 0,
+                "incompatible": 0,
+                "failed": 0
+              },
+              "items": []
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 500.0,
+          "error_message": null,
+          "expected": {
+            "body_contains": {
+              "mode": "dry_run",
+              "scanned": 0,
+              "reported": 0,
+              "counts": {
+                "applied": 0,
+                "retried": 0,
+                "projected": 0,
+                "restored": 0,
+                "active": 0,
+                "locked": 0,
+                "missing": 0,
+                "conflicted": 0,
+                "cancelled": 0,
+                "forced": 0,
+                "exhausted": 0,
+                "incompatible": 0,
+                "failed": 0
+              },
+              "items": []
+            },
+            "exit_code": 0
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "reconciliation-preview-json",
           "transport": "cli"
         }
       ]

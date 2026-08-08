@@ -278,6 +278,34 @@ class TestSummaryNavigation:
         assert "prev_content_id" in data
         assert "next_content_id" in data
 
+    @pytest.mark.parametrize(
+        "sort_by",
+        [
+            "__dict__",  # a mappingproxy — the value schemathesis actually found
+            "metadata",  # SQLAlchemy MetaData, present on every declarative model
+            "content",  # a relationship, not a sortable column
+            "not_a_field_at_all",
+        ],
+    )
+    def test_navigation_rejects_non_column_sort_without_500(
+        self, client, sample_content_with_summary, sort_by
+    ):
+        """An unlisted sort field falls back to created_at instead of crashing.
+
+        `getattr(Summary, sort_by, Summary.created_at)` only defaults for names
+        Summary lacks entirely. Real-but-unsortable class attributes sailed
+        through to `order_by(...)` and raised AttributeError, turning an
+        arbitrary query string into a 500.
+        """
+        _content, summary = sample_content_with_summary
+
+        response = client.get(
+            f"/api/v1/summaries/{summary.id}/navigation", params={"sort_by": sort_by}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["total"] == 1
+
     def test_navigation_first_item_no_prev(self, client, sample_content_with_summary):
         """Test first item has no previous."""
         _content, summary = sample_content_with_summary

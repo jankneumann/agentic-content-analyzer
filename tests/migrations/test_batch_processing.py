@@ -45,10 +45,16 @@ def test_batch_migration_is_based_on_current_workflow_provenance_head():
 
 
 def test_migration_graph_has_one_head():
+    """The graph must stay linear; which revision is the tip is not the point.
+
+    Pinning the literal tip made this fail for every later migration, which is
+    noise rather than signal — a second head is the actual defect worth catching.
+    """
+
     config = Config(str(Path(__file__).parents[2] / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["1e6a460b6722"]
+    assert len(scripts.get_heads()) == 1
 
 
 def test_upgrade_matches_revised_typed_lifecycle_contract(monkeypatch):

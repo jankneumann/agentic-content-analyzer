@@ -7,21 +7,77 @@ import httpx
 import pytest
 
 from src.clients.workflow_api_client import ProblemError, WorkflowApiClient
+from src.contracts.workflow_models import ContentReconciliationRequest
 
 
 def _handle(operation_type: str = "ingestion.execute", status: str = "queued") -> dict[str, object]:
     return {
         "schema_version": 2,
-        "operation_id": "op-1",
+        "operation_id": "1",
         "operation_type": operation_type,
         "status": status,
         "progress": 0 if status == "queued" else 100,
         "message": status,
         "cancellable": status == "queued",
         "retry_count": 0,
-        "status_url": "/api/v1/operations/op-1",
-        "events_url": "/api/v1/operations/op-1/events",
+        "status_url": "/api/v1/operations/1",
+        "events_url": "/api/v1/operations/1/events",
         "created_at": datetime.now(UTC).isoformat(),
+    }
+
+
+def _history_item(operation_id: str = "17") -> dict[str, object]:
+    return {
+        "operation_id": operation_id,
+        "parent_operation_id": "91",
+        "command_key": "rss",
+        "operation_status": "completed",
+        "outcome": "partial",
+        "items_ingested": 3,
+        "items_skipped": 1,
+        "items_failed": 2,
+        "source_outcomes": [
+            {
+                "source_key": "src_0123456789abcdefabcd",
+                "status": "partial",
+                "outcome": "partial",
+                "items_ingested": 3,
+                "items_failed": 2,
+                "error_codes": ["fetch_error"],
+                "warning_codes": None,
+            }
+        ],
+        "retry_count": 0,
+        "problem_code": "source_partial",
+        "status_url": f"/api/v1/operations/{operation_id}",
+        "created_at": "2026-07-13T10:00:00Z",
+        "completed_at": "2026-07-13T10:01:00Z",
+    }
+
+
+def _reconciliation_report(*, mode: str = "dry_run") -> dict[str, object]:
+    return {
+        "run_id": "00000000-0000-4000-8000-000000000061",
+        "mode": mode,
+        "scanned": 0,
+        "reported": 0,
+        "next_after_content_id": 84,
+        "counts": {
+            "applied": 0,
+            "retried": 0,
+            "projected": 0,
+            "restored": 0,
+            "active": 0,
+            "locked": 0,
+            "missing": 0,
+            "conflicted": 0,
+            "cancelled": 0,
+            "forced": 0,
+            "exhausted": 0,
+            "incompatible": 0,
+            "failed": 0,
+        },
+        "items": [],
     }
 
 
@@ -173,6 +229,53 @@ def test_request_json_exposes_authenticated_transport_without_client_internals()
     assert result == {"data": [{"id": 1}]}
 
 
+def test_reconcile_content_posts_one_page_and_omits_absent_controls() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=_reconciliation_report(), request=request)
+
+    client = WorkflowApiClient("https://aca.test", transport=httpx.MockTransport(handler))
+    report = client.reconcile_content(ContentReconciliationRequest())
+
+    assert report.mode == "dry_run"
+    assert report.next_after_content_id == 84
+    assert len(seen) == 1
+    assert seen[0].method == "POST"
+    assert seen[0].url.path == "/api/v1/operations/reconcile-content"
+    assert seen[0].content == b'{"apply":false}'
+
+
+def test_reconcile_content_forwards_apply_limit_and_continuation() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.content == b'{"apply":true,"limit":7,"after_content_id":84}'
+        return httpx.Response(200, json=_reconciliation_report(mode="apply"), request=request)
+
+    client = WorkflowApiClient("https://aca.test", transport=httpx.MockTransport(handler))
+    report = client.reconcile_content({"apply": True, "limit": 7, "after_content_id": 84})
+
+    assert report.mode == "apply"
+
+
+def test_reconcile_content_preserves_apply_disabled_problem() -> None:
+    problem = {
+        "type": "https://aca.rotkohl.ai/problems/service-unavailable",
+        "title": "Service Unavailable",
+        "status": 503,
+        "detail": "Content reconciliation apply is disabled",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json=problem, request=request)
+
+    client = WorkflowApiClient("https://aca.test", transport=httpx.MockTransport(handler))
+    with pytest.raises(ProblemError) as exc_info:
+        client.reconcile_content({"apply": True})
+
+    assert exc_info.value.problem.model_dump(mode="json", exclude_none=True) == problem
+
+
 @pytest.mark.parametrize(
     ("method_name", "path", "response_json"),
     [
@@ -263,7 +366,7 @@ def test_cursor_iteration_continues_without_duplication() -> None:
         cursors.append(cursor)
         data = [_handle(status="completed")]
         if cursor:
-            data[0]["operation_id"] = "op-2"
+            data[0]["operation_id"] = "2"
         return httpx.Response(
             200,
             json={"data": data, "next_cursor": "next" if not cursor else None},
@@ -271,8 +374,131 @@ def test_cursor_iteration_continues_without_duplication() -> None:
         )
 
     client = WorkflowApiClient("https://aca.test", transport=httpx.MockTransport(handler))
-    assert [item.operation_id for item in client.iter_operations()] == ["op-1", "op-2"]
+    traversal = client.collect_operations(max_pages=2)
+    assert [item.operation_id for item in traversal.data] == ["1", "2"]
+    assert traversal.truncated is False
+    assert traversal.next_cursor is None
     assert cursors == [None, "next"]
+
+
+def test_operation_traversal_stops_at_page_budget_and_signals_continuation() -> None:
+    cursors: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        cursor = request.url.params.get("cursor") or None
+        cursors.append(cursor)
+        operation = _handle(status="completed")
+        operation["operation_id"] = str(len(cursors))
+        return httpx.Response(
+            200,
+            json={"data": [operation], "next_cursor": f"cursor-{len(cursors)}"},
+            request=request,
+        )
+
+    client = WorkflowApiClient("https://aca.test", transport=httpx.MockTransport(handler))
+    traversal = client.collect_operations(limit=25, max_pages=2, status="queued")
+
+    assert [item.operation_id for item in traversal.data] == ["1", "2"]
+    assert traversal.next_cursor == "cursor-2"
+    assert traversal.truncated is True
+    assert cursors == [None, "cursor-1"]
+
+
+def test_operation_list_serializes_status_and_omits_it_when_absent() -> None:
+    queries: list[httpx.QueryParams] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        queries.append(request.url.params)
+        return httpx.Response(200, json={"data": [], "next_cursor": None}, request=request)
+
+    client = WorkflowApiClient("https://aca.test", transport=httpx.MockTransport(handler))
+    client.list_operations()
+    client.list_operations(status="in_progress")
+
+    assert "status" not in queries[0]
+    assert queries[1]["status"] == "in_progress"
+
+
+def test_ingestion_history_omits_absent_filters_and_serializes_fixed_filters() -> None:
+    queries: list[httpx.QueryParams] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        queries.append(request.url.params)
+        return httpx.Response(
+            200,
+            json={"data": [_history_item()], "next_cursor": None},
+            request=request,
+        )
+
+    client = WorkflowApiClient("https://aca.test", transport=httpx.MockTransport(handler))
+    client.list_ingestion_history()
+    page = client.list_ingestion_history(
+        command_key="rss",
+        configured_source_key="src_0123456789abcdefabcd",
+        outcome="partial",
+        status="completed",
+        parent_operation_id="91",
+        created_after=datetime(2026, 7, 13, 4, tzinfo=UTC),
+        created_before=datetime(2026, 7, 14, 4, tzinfo=UTC),
+        limit=25,
+        cursor="opaque-cursor",
+    )
+
+    assert page.data[0].operation_id == "17"
+    assert dict(queries[0]) == {"limit": "50"}
+    assert dict(queries[1]) == {
+        "command_key": "rss",
+        "configured_source_key": "src_0123456789abcdefabcd",
+        "outcome": "partial",
+        "status": "completed",
+        "parent_operation_id": "91",
+        "created_after": "2026-07-13T04:00:00+00:00",
+        "created_before": "2026-07-14T04:00:00+00:00",
+        "limit": "25",
+        "cursor": "opaque-cursor",
+    }
+
+
+def test_ingestion_history_traversal_forwards_filters_and_stops_at_budget() -> None:
+    queries: list[httpx.QueryParams] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        queries.append(request.url.params)
+        operation_id = str(17 - len(queries))
+        return httpx.Response(
+            200,
+            json={
+                "data": [_history_item(operation_id)],
+                "next_cursor": f"cursor-{len(queries)}",
+            },
+            request=request,
+        )
+
+    client = WorkflowApiClient("https://aca.test", transport=httpx.MockTransport(handler))
+    traversal = client.collect_ingestion_history(
+        configured_source_key="src_0123456789abcdefabcd",
+        outcome="partial",
+        limit=25,
+        max_pages=2,
+    )
+
+    assert [item.operation_id for item in traversal.data] == ["16", "15"]
+    assert traversal.next_cursor == "cursor-2"
+    assert traversal.truncated is True
+    assert [query.get("cursor") for query in queries] == [None, "cursor-1"]
+    assert all(query["configured_source_key"] == "src_0123456789abcdefabcd" for query in queries)
+    assert all(query["outcome"] == "partial" for query in queries)
+
+
+@pytest.mark.parametrize("max_pages", [0, 101])
+def test_ingestion_history_traversal_rejects_invalid_page_budget(max_pages: int) -> None:
+    client = WorkflowApiClient(
+        "https://aca.test",
+        transport=httpx.MockTransport(lambda _: httpx.Response(500)),
+    )
+
+    with pytest.raises(ValueError, match="max_pages"):
+        client.collect_ingestion_history(max_pages=max_pages)
 
 
 def test_bounded_wait_returns_latest_nonterminal_handle(monkeypatch: pytest.MonkeyPatch) -> None:

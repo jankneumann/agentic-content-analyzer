@@ -371,6 +371,12 @@ jobs:
           ANTHROPIC_API_KEY: test-key-for-ci
           APP_SECRET_KEY: test-secret-key-for-ci
           ENVIRONMENT: production
+          # Deployed environments must supply the opaque configured-source
+          # signing secret or Settings refuses to construct — the key derived
+          # from it is the public identity of every configured source, so a
+          # silent default would change those identities per deployment.
+          # Cold-start never derives a key; this is a fixed stand-in.
+          CONFIGURED_SOURCE_KEY_SECRET: cold-start-configured-source-secret-stub
         run: |
           echo "Running alembic upgrade head on empty database..."
           alembic upgrade head
@@ -394,6 +400,8 @@ jobs:
           # injects the real internal hostname here.
           FALKORDB_HOST: localhost
           FALKORDB_PASSWORD: unused-cold-start-stub
+          # See the migration step above: required in staging and production.
+          CONFIGURED_SOURCE_KEY_SECRET: cold-start-configured-source-secret-stub
         run: |
           echo "Starting app with PROFILE=railway-falkordb..."
           # Run uvicorn as a subprocess so we can capture its stderr if it

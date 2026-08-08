@@ -24,6 +24,7 @@ from src.ingestion.result import (
     IngestionResponse,
     SourceFetchResult,
     build_response_from_source_results,
+    public_source_key_for,
 )
 from src.models.content import Content, ContentSource, ContentStatus
 from src.parsers.html_markdown import convert_html_to_markdown
@@ -488,6 +489,19 @@ class RSSContentIngestionService:
         """
         logger.info("Starting RSS content ingestion (unified Content model)...")
         source_results: list[SourceFetchResult] = []
+        source_results_by_feed: dict[str, SourceFetchResult] = {}
+
+        def source_result_for(content_data: ContentData) -> SourceFetchResult | None:
+            metadata = content_data.metadata_json
+            if not isinstance(metadata, dict):
+                return None
+            feed_url = metadata.get("feed_url")
+            return source_results_by_feed.get(feed_url) if isinstance(feed_url, str) else None
+
+        def record_persisted(content_data: ContentData) -> None:
+            source_result = source_result_for(content_data)
+            if source_result is not None:
+                source_result.items_fetched += 1
 
         # Resolve sources with fallback chain
         if sources is None and feed_urls is None:
@@ -539,6 +553,9 @@ class RSSContentIngestionService:
                 source_tags=source.tags if source.tags else None,
             )
             contents.extend(fetched)
+            fetch_result.public_source_key = public_source_key_for(source)
+            fetch_result.items_fetched = 0
+            source_results_by_feed[source.url] = fetch_result
             source_results.append(fetch_result)
 
         if not contents:
@@ -555,6 +572,7 @@ class RSSContentIngestionService:
         persistence_errors: list[IngestionError] = []
         with get_db() as db:
             for content_data in contents:
+                savepoint = db.begin_nested()
                 try:
                     # Check if already exists by source_type + source_id
                     existing = (
@@ -595,10 +613,13 @@ class RSSContentIngestionService:
                             existing.content_hash = content_data.content_hash
                             existing.status = ContentStatus.PARSED
                             existing.error_message = None
+                            savepoint.commit()
                             count += 1
+                            record_persisted(content_data)
                             logger.info(f"Updated for reprocessing: {content_data.title}")
                             continue
                         else:
+                            savepoint.rollback()
                             logger.debug(
                                 f"Content already exists (use --force to reprocess): "
                                 f"{content_data.source_id}"
@@ -631,7 +652,9 @@ class RSSContentIngestionService:
                         )
                         db.add(content)
                         db.flush()
+                        savepoint.commit()
                         count += 1
+                        record_persisted(content_data)
                         logger.info(
                             f"Linked Substack duplicate to canonical ID {substack_duplicate.id}"
                         )
@@ -663,7 +686,9 @@ class RSSContentIngestionService:
                         )
                         db.add(content)
                         db.flush()
+                        savepoint.commit()
                         count += 1
+                        record_persisted(content_data)
                         logger.info(f"Linked duplicate to canonical ID {content_duplicate.id}")
                         continue
 
@@ -694,19 +719,26 @@ class RSSContentIngestionService:
 
                     index_content(content, db)
 
+                    savepoint.commit()
                     count += 1
+                    record_persisted(content_data)
                     logger.info(f"Ingested: {content_data.title}")
 
                 except Exception as e:
                     logger.error(f"Error storing content: {e}")
-                    db.rollback()
-                    persistence_errors.append(
-                        IngestionError(
-                            code="persistence_error",
-                            message=str(e),
-                            url=content_data.source_url,
-                        )
+                    if savepoint.is_active:
+                        savepoint.rollback()
+                    error = IngestionError(
+                        code="persistence_error",
+                        message=str(e),
+                        url=content_data.source_url,
                     )
+                    source_result = source_result_for(content_data)
+                    if source_result is None:
+                        persistence_errors.append(error)
+                    else:
+                        source_result.items_failed += 1
+                        source_result.item_errors.append(error)
                     continue
 
         logger.info(f"Successfully ingested {count} content items")

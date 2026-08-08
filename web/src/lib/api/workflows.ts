@@ -6,6 +6,8 @@ import type {
   IngestCommand,
   OperationHandle,
   OperationPage,
+  OperationStatus,
+  OperationSummary,
   PipelineRequest,
   PodcastAudioRequest,
   PodcastScriptRequest,
@@ -43,6 +45,17 @@ export const getConfiguredSources = (cursor?: string, limit = 100) =>
     params: cursor === undefined ? { limit } : { cursor, limit },
   })
 
+export async function getAllConfiguredSources(): Promise<ConfiguredSourcePage> {
+  let cursor: string | null | undefined
+  const data: ConfiguredSourcePage["data"] = []
+  do {
+    const page = await getConfiguredSources(cursor ?? undefined)
+    data.push(...page.data)
+    cursor = page.next_cursor
+  } while (cursor)
+  return { data, next_cursor: null }
+}
+
 export function uploadFile(file: File, metadata?: { title?: string; publication?: string }) {
   const body = new FormData()
   body.append("file", file)
@@ -70,17 +83,32 @@ export const submitAudioDigest = (request: AudioDigestRequest, options?: Submiss
 
 export const getOperation = (operationId: string, waitSeconds = 0) =>
   apiClient.get<OperationHandle>(`/operations/${operationId}`, { params: { wait_seconds: waitSeconds } })
-export const listOperations = (cursor?: string, limit = 100) =>
-  apiClient.get<OperationPage>("/operations", { params: { cursor, limit } })
-export async function listAllOperations(): Promise<OperationHandle[]> {
-  const operations: OperationHandle[] = []
-  let cursor: string | null | undefined
-  do {
-    const page = await listOperations(cursor ?? undefined, 100)
-    operations.push(...page.data)
-    cursor = page.next_cursor
-  } while (cursor)
-  return operations
+export const listOperations = (options: {
+  cursor?: string
+  limit?: number
+  status?: OperationStatus
+} = {}) => {
+  const params: { cursor?: string; limit: number; status?: OperationStatus } = {
+    limit: options.limit ?? 100,
+  }
+  if (options.cursor !== undefined) params.cursor = options.cursor
+  if (options.status !== undefined) params.status = options.status
+  return apiClient.get<OperationPage>("/operations", { params })
+}
+export async function listBackgroundOperations(): Promise<OperationSummary[]> {
+  const [recent, queued, inProgress] = await Promise.all([
+    listOperations(),
+    listOperations({ status: "queued" }),
+    listOperations({ status: "in_progress" }),
+  ])
+  const operations = new Map<string, OperationSummary>()
+  for (const operation of recent.data) {
+    operations.set(operation.operation_id, operation)
+  }
+  for (const operation of [...queued.data, ...inProgress.data]) {
+    operations.set(operation.operation_id, operation)
+  }
+  return [...operations.values()]
 }
 export const retryOperation = (operationId: string) =>
   apiClient.post<OperationHandle>(`/operations/${operationId}/retry`)

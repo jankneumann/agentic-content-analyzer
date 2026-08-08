@@ -229,14 +229,15 @@ direct requirement, but not the gate or CI design.
 |---|---|---|---|---|
 | `plumbing` | 9 | no | no | yes |
 | `discovery` | 3 | yes | no | yes |
-| `validation` | 4 | 2 of 4 | no | yes |
-| `workflow-submission` | 8 | yes | **yes** | no — explicit dispatch only |
+| `validation` | 5 | 3 of 5 | no | yes |
+| `workflow-submission` | 10 | yes | **yes** | no — explicit dispatch only |
 | `operation-control` | 2 | yes | **yes** | no — explicit dispatch only |
 
 The read-only categories and the mutating ones are two dispatches, not one run with a
-wider selection. They fit the runner's tier budget separately (16 and 10 scenarios) and
-overflow it together by one, which the gate refuses up front rather than discovering
-afterwards — see "Known limits". `tests/cli_gen_eval/test_selection.py` pins all three
+wider selection. They fit the runner's tier budget separately (17 and 12 scenarios) and
+overflow the pinned runner's critical tier together by four, which the gate refuses up
+front rather than discovering afterwards — see "Known limits".
+`tests/cli_gen_eval/test_selection.py` pins all three
 numbers, so if `UPSTREAM.md` UP-6 lands and the combined run starts fitting, a test says
 so.
 
@@ -399,13 +400,22 @@ uploaded for diagnosis while the original gate outcome remains failed. Raw step 
 captures, diffs, and free-form failure text are removed first; only the minimized JSON
 report and its expectation are retained, for 14 days.
 
+The JSON documents under `tests/fixtures/gen_eval/` are deterministic validator
+test inputs, not retained execution evidence. When the checked-in suite changes
+before a fresh backend capture is available, those paired fixtures may include
+a schema-valid synthetic passing verdict solely to keep completeness arithmetic
+and negative validator tests aligned. Synthetic fixture verdicts MUST NOT be
+published or cited as proof that a runner, target, or scenario executed; only
+artifacts produced by the guarded gate under `evaluation/reports/` are execution
+evidence.
+
 ## Status
 
 Phases 1–6 are complete: the contract layer, runner acquisition, read-only and
 mutating suites, report validation, mutation guard, and CI wiring.
 `make gen-eval` validates the contract,
-resolves a runner and a target, evaluates 16 scenarios covering all 31 declared command
+resolves a runner and a target, evaluates 17 scenarios covering all 31 declared command
 interfaces, and refuses to report success over a run it cannot show was complete.
-`make gen-eval-mutating` evaluates 10 more against a declared non-production target,
+`make gen-eval-mutating` evaluates 12 more against a declared non-production target,
 covering all eight canonical operation types and the implemented operation-control
 surface.

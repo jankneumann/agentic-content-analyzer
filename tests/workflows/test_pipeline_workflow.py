@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from src.config.sources import RSSSource, SourcesConfig, WebSearchSource
-from src.contracts.workflow_models import IngestionResult, PipelineRequest
+from src.contracts.workflow_models import IngestionResultV1, IngestionResultV2, PipelineRequest
 from src.ingestion.registry import SOURCE_REGISTRY
 from src.models.content import ContentSource
 from src.models.jobs import (
@@ -25,20 +25,157 @@ from src.models.query import (
     compute_selection_fingerprint,
 )
 from src.services.operation_service import OperationService
-from src.workflows.pipeline import PipelineWorkflow
+from src.workflows.pipeline import (
+    PipelineWorkflow,
+    aggregate_pipeline_ingestion_outcome,
+    build_pipeline_ingestion_summary,
+)
 
 START = datetime(2026, 7, 13, tzinfo=UTC)
 END = datetime(2026, 7, 14, tzinfo=UTC)
 
 
 def _ingestion_result(*content_ids: int) -> dict:
-    return IngestionResult(
+    return IngestionResultV1(
         command_key="rss",
         resolved_route="rss",
         emitted_sources=["rss"],
         items_ingested=len(content_ids),
         content_ids=list(content_ids),
     ).model_dump(mode="json")
+
+
+def _typed_ingestion_result(
+    outcome: str,
+    *,
+    items_ingested: int = 0,
+    items_skipped: int = 0,
+    items_failed: int = 0,
+) -> dict:
+    status = "error" if outcome == "failed" else "partial" if outcome == "partial" else "ok"
+    return IngestionResultV2(
+        command_key="rss",
+        resolved_route="rss",
+        emitted_sources=["rss"],
+        status=status,
+        outcome=outcome,
+        items_ingested=items_ingested,
+        items_skipped=items_skipped,
+        items_failed=items_failed,
+        content_ids=list(range(1, items_ingested + 1)),
+        errors=[],
+        warnings=[],
+        errors_omitted=0,
+        warnings_omitted=0,
+        source_outcomes=[],
+        source_outcomes_omitted=0,
+        details={},
+        details_omitted=0,
+    ).model_dump(mode="json")
+
+
+@pytest.mark.parametrize(
+    ("pipeline_status", "child_outcomes", "expected"),
+    [
+        ("cancelled", ["success"], "cancelled"),
+        ("failed", ["success"], "failed"),
+        ("completed", ["partial"], "partial"),
+        ("completed", ["failed"], "partial"),
+        ("completed", ["cancelled"], "partial"),
+        ("completed", ["success", "unknown"], "unknown"),
+        ("completed", [], "zero_items"),
+        ("completed", ["zero_items", "zero_items"], "zero_items"),
+        ("completed", ["success", "zero_items"], "success"),
+    ],
+)
+def test_pipeline_aggregate_outcome_follows_d2_precedence(
+    pipeline_status: str,
+    child_outcomes: list[str],
+    expected: str,
+) -> None:
+    assert aggregate_pipeline_ingestion_outcome(pipeline_status, child_outcomes) == expected
+
+
+@pytest.mark.parametrize(
+    ("status", "result", "expected_outcome", "expected_counts"),
+    [
+        (
+            OperationStatus.COMPLETED,
+            _typed_ingestion_result("success", items_ingested=2),
+            "success",
+            (2, 0, 0),
+        ),
+        (
+            OperationStatus.COMPLETED,
+            _typed_ingestion_result("zero_items"),
+            "zero_items",
+            (0, 0, 0),
+        ),
+        (
+            OperationStatus.COMPLETED,
+            _typed_ingestion_result("partial", items_ingested=1, items_failed=1),
+            "partial",
+            (1, 0, 1),
+        ),
+        (
+            OperationStatus.FAILED,
+            _typed_ingestion_result("failed", items_failed=1),
+            "failed",
+            (0, 0, 1),
+        ),
+        (OperationStatus.CANCELLED, None, "cancelled", (None, None, None)),
+        (OperationStatus.COMPLETED, _ingestion_result(1), "unknown", (None, None, None)),
+    ],
+)
+def test_pipeline_source_summary_uses_lifecycle_and_typed_result(
+    status: OperationStatus,
+    result: dict | None,
+    expected_outcome: str,
+    expected_counts: tuple[int | None, int | None, int | None],
+) -> None:
+    summary = build_pipeline_ingestion_summary(
+        [{"kind": "rss"}],
+        [_handle(20, OperationType.INGESTION_EXECUTE, status, result=result)],
+        pipeline_status="completed",
+    )
+
+    assert summary.sources[0].outcome == expected_outcome
+    assert (
+        summary.sources[0].items_ingested,
+        summary.sources[0].items_skipped,
+        summary.sources[0].items_failed,
+    ) == expected_counts
+
+
+def test_pipeline_aggregate_includes_outcomes_omitted_from_bounded_source_details() -> None:
+    commands = [{"kind": "rss"} for _ in range(101)]
+    handles = [
+        _handle(
+            operation_id,
+            OperationType.INGESTION_EXECUTE,
+            OperationStatus.COMPLETED,
+            result=_typed_ingestion_result("success", items_ingested=1),
+        )
+        for operation_id in range(1, 101)
+    ]
+    handles.append(
+        _handle(
+            101,
+            OperationType.INGESTION_EXECUTE,
+            OperationStatus.COMPLETED,
+            result=_typed_ingestion_result("partial", items_ingested=1, items_failed=1),
+        )
+    )
+
+    summary = build_pipeline_ingestion_summary(
+        commands,
+        handles,
+        pipeline_status="completed",
+    )
+
+    assert summary.outcome == "partial"
+    assert len(summary.sources) == 100
+    assert summary.sources_omitted == 1
 
 
 def _handle(
@@ -204,6 +341,11 @@ async def test_pipeline_defers_and_resumes_without_duplicate_children_or_stages(
         "force_reprocess": False,
     }
     assert {result["status"] for result in second["source_results"]} == {"completed", "failed"}
+    assert second["ingestion_summary"]["outcome"] == "partial"
+    assert [source["outcome"] for source in second["ingestion_summary"]["sources"]] == [
+        "unknown",
+        "failed",
+    ]
 
     summary_id = second["summary_operation_id"]
     operations.handles[summary_id] = _handle(
@@ -468,6 +610,38 @@ async def test_pipeline_stops_after_preserving_partial_failure_when_policy_disal
 
 
 @pytest.mark.asyncio
+async def test_pipeline_fails_completed_partial_source_when_continuation_is_disabled() -> None:
+    operations = FakeOperations()
+    workflow = PipelineWorkflow(
+        operation_service=operations,
+        registry=SOURCE_REGISTRY,
+        source_config_loader=lambda: SourcesConfig(
+            sources=[RSSSource(url="https://example.com/feed")]
+        ),
+        resolver=Mock(),
+        digest_loader=Mock(),
+    )
+    request = _request(sources=["rss"], continue_on_error=False)
+    first = await workflow.execute("10", request)
+    child_id = first["source_operation_ids"][0]
+    operations.handles[child_id] = _handle(
+        child_id,
+        OperationType.INGESTION_EXECUTE,
+        OperationStatus.COMPLETED,
+        result=_typed_ingestion_result("partial", items_ingested=1, items_failed=1),
+    )
+
+    with pytest.raises(RuntimeError, match="continuation is disabled"):
+        await workflow.execute("10", request)
+
+    failed_checkpoint = operations.attach_result.await_args.args[1]
+    assert failed_checkpoint["ingestion_summary"]["outcome"] == "failed"
+    assert failed_checkpoint["ingestion_summary"]["sources"][0]["outcome"] == "partial"
+    assert failed_checkpoint["retry_child_operation_ids"] == []
+    assert all(s[0] is not OperationType.SUMMARIZATION_RUN for s in operations.submissions)
+
+
+@pytest.mark.asyncio
 async def test_pipeline_stops_when_all_sources_fail_even_if_continuation_is_enabled() -> None:
     operations = FakeOperations()
     workflow = PipelineWorkflow(
@@ -521,6 +695,7 @@ async def test_pipeline_refreshes_source_results_after_failed_child_retry() -> N
         await workflow.execute("10", request)
 
     failed_checkpoint = operations.attach_result.await_args.args[1]
+    assert failed_checkpoint["ingestion_summary"]["outcome"] == "failed"
     operations.handles[10] = _handle(
         10,
         OperationType.PIPELINE_RUN,
@@ -551,6 +726,7 @@ async def test_pipeline_refreshes_source_results_after_failed_child_retry() -> N
 
     assert resumed["stage"] == "summarization"
     assert resumed["source_results"][0]["status"] == "completed"
+    assert resumed["ingestion_summary"]["outcome"] == "unknown"
     assert operations.submissions[-1][0] is OperationType.SUMMARIZATION_RUN
     assert operations.submissions[-1][1]["content_ids"] == [31]
 

@@ -72,7 +72,264 @@ REQUIRED_QUEUE_COLUMNS: set[str] = {
     "idempotency_key",
     "error",
     "retry_count",
+    "claim_generation",
+    "claim_protocol_version",
 }
+REQUIRED_QUEUE_TABLES: set[str] = {
+    "pgqueuer_jobs",
+    "content_reconciliation_actions",
+    "workflow_terminal_events",
+    "workflow_alert_deliveries",
+}
+REQUIRED_QUEUE_TRIGGERS: set[tuple[str, str]] = {
+    ("pgqueuer_jobs", "pgqueuer_jobs_capture_terminal_event"),
+    (
+        "content_reconciliation_actions",
+        "content_reconciliation_actions_capture_terminal_event",
+    ),
+}
+
+_WORKFLOW_ALERT_BOOTSTRAP_DDL = """
+CREATE TABLE IF NOT EXISTS workflow_terminal_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_key VARCHAR(160) NOT NULL UNIQUE,
+    source_kind VARCHAR(40) NOT NULL,
+    operation_id BIGINT,
+    claim_generation BIGINT,
+    terminal_status VARCHAR(20),
+    reconciliation_action_id BIGINT,
+    reconciliation_run_id UUID,
+    reconciliation_content_id BIGINT,
+    classification_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    envelope JSONB,
+    telemetry_emitted_at TIMESTAMPTZ,
+    occurred_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT ck_workflow_terminal_events_source_kind CHECK (
+        source_kind IN ('operation','reconciliation_action','reconciliation_failure')
+    ),
+    CONSTRAINT ck_workflow_terminal_events_event_identity CHECK (
+        (source_kind = 'operation' AND event_key =
+          'operation:' || operation_id::text || ':claim:' ||
+          claim_generation::text || ':status:' || terminal_status)
+        OR
+        (source_kind = 'reconciliation_action' AND event_key =
+          'reconciliation-action:' || reconciliation_action_id::text)
+        OR
+        (source_kind = 'reconciliation_failure' AND event_key =
+          'reconciliation-failure:' || reconciliation_run_id::text || ':content:' ||
+          reconciliation_content_id::text || ':reason:apply_failed'
+         AND event_key ~
+          '^reconciliation-failure:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}:content:[1-9][0-9]*:reason:apply_failed$')
+    ),
+    CONSTRAINT ck_workflow_terminal_events_terminal_status CHECK (
+        terminal_status IS NULL OR terminal_status IN ('completed','failed','cancelled')
+    ),
+    CONSTRAINT ck_workflow_terminal_events_classification_status CHECK (
+        classification_status IN ('pending','ready','telemetry_only','rejected')
+    ),
+    CONSTRAINT ck_workflow_terminal_events_operation_id CHECK (
+        operation_id IS NULL OR operation_id > 0
+    ),
+    CONSTRAINT ck_workflow_terminal_events_claim_generation CHECK (
+        claim_generation IS NULL OR claim_generation >= 0
+    ),
+    CONSTRAINT ck_workflow_terminal_events_reconciliation_action_id CHECK (
+        reconciliation_action_id IS NULL OR reconciliation_action_id > 0
+    ),
+    CONSTRAINT ck_workflow_terminal_events_reconciliation_content_id CHECK (
+        reconciliation_content_id IS NULL OR reconciliation_content_id > 0
+    ),
+    CONSTRAINT ck_workflow_terminal_events_envelope_object CHECK (
+        envelope IS NULL OR jsonb_typeof(envelope) = 'object'
+    ),
+    CONSTRAINT ck_workflow_terminal_events_source_shape CHECK (
+        (source_kind = 'operation' AND operation_id IS NOT NULL
+         AND claim_generation IS NOT NULL AND terminal_status IS NOT NULL
+         AND reconciliation_action_id IS NULL AND reconciliation_run_id IS NULL
+         AND reconciliation_content_id IS NULL)
+        OR
+        (source_kind = 'reconciliation_action' AND operation_id IS NULL
+         AND claim_generation IS NULL AND terminal_status IS NULL
+         AND reconciliation_action_id IS NOT NULL AND reconciliation_run_id IS NOT NULL
+         AND reconciliation_content_id IS NOT NULL)
+        OR
+        (source_kind = 'reconciliation_failure' AND operation_id IS NULL
+         AND claim_generation IS NULL AND terminal_status IS NULL
+         AND reconciliation_action_id IS NULL AND reconciliation_run_id IS NOT NULL
+         AND reconciliation_content_id IS NOT NULL)
+    )
+);
+
+CREATE TABLE IF NOT EXISTS workflow_alert_deliveries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id UUID NOT NULL,
+    sink_name VARCHAR(64) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    lease_expires_at TIMESTAMPTZ,
+    delivered_at TIMESTAMPTZ,
+    last_error_code VARCHAR(80),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_workflow_alert_deliveries_event
+        FOREIGN KEY (event_id) REFERENCES workflow_terminal_events(id) ON DELETE RESTRICT,
+    CONSTRAINT uq_workflow_alert_deliveries_event_sink UNIQUE (event_id, sink_name),
+    CONSTRAINT ck_workflow_alert_deliveries_sink_name CHECK (
+        sink_name ~ '^[a-z][a-z0-9_-]{0,63}$'
+    ),
+    CONSTRAINT ck_workflow_alert_deliveries_status CHECK (
+        status IN ('pending','leased','delivered','permanent_failure','exhausted')
+    ),
+    CONSTRAINT ck_workflow_alert_deliveries_attempt_count CHECK (attempt_count >= 0),
+    CONSTRAINT ck_workflow_alert_deliveries_last_error_code CHECK (
+        last_error_code IS NULL OR last_error_code ~ '^[a-z][a-z0-9_.-]{0,79}$'
+    ),
+    CONSTRAINT ck_workflow_alert_deliveries_state CHECK (
+        (status = 'pending'
+         AND lease_expires_at IS NULL AND delivered_at IS NULL)
+        OR
+        (status = 'leased' AND attempt_count >= 1
+         AND lease_expires_at IS NOT NULL AND delivered_at IS NULL)
+        OR
+        (status = 'delivered' AND attempt_count >= 1
+         AND lease_expires_at IS NULL AND delivered_at IS NOT NULL
+         AND last_error_code IS NULL)
+        OR
+        (status IN ('permanent_failure','exhausted') AND attempt_count >= 1
+         AND lease_expires_at IS NULL AND delivered_at IS NULL
+         AND last_error_code IS NOT NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS ix_workflow_terminal_events_classification_due
+    ON workflow_terminal_events (created_at, id)
+    WHERE classification_status = 'pending';
+CREATE INDEX IF NOT EXISTS ix_workflow_terminal_events_retention
+    ON workflow_terminal_events (created_at, id)
+    WHERE classification_status IN ('ready','telemetry_only','rejected');
+CREATE INDEX IF NOT EXISTS ix_workflow_alert_deliveries_pending_due
+    ON workflow_alert_deliveries (next_attempt_at, id)
+    WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS ix_workflow_alert_deliveries_lease_expiry
+    ON workflow_alert_deliveries (lease_expires_at, id)
+    WHERE status = 'leased';
+CREATE INDEX IF NOT EXISTS ix_workflow_alert_deliveries_retention
+    ON workflow_alert_deliveries (updated_at, id)
+    WHERE status IN ('delivered','permanent_failure','exhausted');
+
+CREATE OR REPLACE FUNCTION capture_pgqueuer_terminal_event()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    terminal_event_key TEXT;
+    captured_event_id UUID;
+BEGIN
+    terminal_event_key := format(
+        'operation:%s:claim:%s:status:%s',
+        NEW.id,
+        NEW.claim_generation,
+        NEW.status
+    );
+    INSERT INTO workflow_terminal_events (
+        event_key, source_kind, operation_id, claim_generation,
+        terminal_status, occurred_at
+    ) VALUES (
+        terminal_event_key, 'operation', NEW.id, NEW.claim_generation,
+        NEW.status, COALESCE(NEW.completed_at, NOW())
+    ) ON CONFLICT (event_key) DO UPDATE
+    SET event_key = EXCLUDED.event_key
+    WHERE workflow_terminal_events.source_kind = EXCLUDED.source_kind
+      AND workflow_terminal_events.operation_id = EXCLUDED.operation_id
+      AND workflow_terminal_events.claim_generation = EXCLUDED.claim_generation
+      AND workflow_terminal_events.terminal_status = EXCLUDED.terminal_status
+    RETURNING id INTO captured_event_id;
+    IF captured_event_id IS NULL THEN
+        RAISE EXCEPTION 'workflow terminal event identity collision'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS pgqueuer_jobs_capture_terminal_event ON pgqueuer_jobs;
+CREATE TRIGGER pgqueuer_jobs_capture_terminal_event
+AFTER UPDATE OF status ON pgqueuer_jobs
+FOR EACH ROW
+WHEN (
+    OLD.status IS DISTINCT FROM NEW.status
+    AND NEW.status IN ('completed','failed','cancelled')
+)
+EXECUTE FUNCTION capture_pgqueuer_terminal_event();
+
+CREATE OR REPLACE FUNCTION capture_content_reconciliation_terminal_event()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    captured_event_id UUID;
+BEGIN
+    INSERT INTO workflow_terminal_events (
+        event_key, source_kind, reconciliation_action_id,
+        reconciliation_run_id, reconciliation_content_id, occurred_at
+    ) VALUES (
+        format('reconciliation-action:%s', NEW.id), 'reconciliation_action',
+        NEW.id, NEW.run_id, NEW.content_id, NEW.created_at
+    ) ON CONFLICT (event_key) DO UPDATE
+    SET event_key = EXCLUDED.event_key
+    WHERE workflow_terminal_events.source_kind = EXCLUDED.source_kind
+      AND workflow_terminal_events.reconciliation_action_id =
+          EXCLUDED.reconciliation_action_id
+      AND workflow_terminal_events.reconciliation_run_id =
+          EXCLUDED.reconciliation_run_id
+      AND workflow_terminal_events.reconciliation_content_id =
+          EXCLUDED.reconciliation_content_id
+    RETURNING id INTO captured_event_id;
+    IF captured_event_id IS NULL THEN
+        RAISE EXCEPTION 'workflow terminal event identity collision'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+DO $$
+BEGIN
+    IF to_regclass('public.content_reconciliation_actions') IS NULL THEN
+        RAISE EXCEPTION
+            'workflow alert bootstrap requires content_reconciliation_actions; run migrations';
+    END IF;
+    EXECUTE 'DROP TRIGGER IF EXISTS content_reconciliation_actions_capture_terminal_event '
+            'ON content_reconciliation_actions';
+    EXECUTE 'CREATE TRIGGER content_reconciliation_actions_capture_terminal_event '
+            'AFTER INSERT ON content_reconciliation_actions FOR EACH ROW '
+            'EXECUTE FUNCTION capture_content_reconciliation_terminal_event()';
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION deny_workflow_terminal_event_identity_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF ROW(
+        NEW.id, NEW.event_key, NEW.source_kind, NEW.operation_id,
+        NEW.claim_generation, NEW.terminal_status, NEW.reconciliation_action_id,
+        NEW.reconciliation_run_id, NEW.reconciliation_content_id,
+        NEW.occurred_at, NEW.created_at
+    ) IS DISTINCT FROM ROW(
+        OLD.id, OLD.event_key, OLD.source_kind, OLD.operation_id,
+        OLD.claim_generation, OLD.terminal_status, OLD.reconciliation_action_id,
+        OLD.reconciliation_run_id, OLD.reconciliation_content_id,
+        OLD.occurred_at, OLD.created_at
+    ) THEN
+        RAISE EXCEPTION 'workflow_terminal_events source identity is immutable'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS workflow_terminal_events_source_identity_immutable
+    ON workflow_terminal_events;
+CREATE TRIGGER workflow_terminal_events_source_identity_immutable
+BEFORE UPDATE ON workflow_terminal_events
+FOR EACH ROW EXECUTE FUNCTION deny_workflow_terminal_event_identity_mutation();
+"""
 
 
 def _sqlalchemy_url_to_asyncpg(url: str) -> str:
@@ -222,25 +479,65 @@ async def close_queue() -> None:
 async def ensure_queue_schema_compatible() -> None:
     """Fail fast if required queue schema migrations are missing."""
     async with _queue_connection() as conn:
+        table_rows = await conn.fetch(
+            """
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = current_schema()
+              AND table_name = ANY($1::text[])
+            """,
+            sorted(REQUIRED_QUEUE_TABLES),
+        )
+        actual_tables = {str(row["table_name"]) for row in table_rows}
+        missing_tables = sorted(REQUIRED_QUEUE_TABLES - actual_tables)
+        if missing_tables:
+            raise RuntimeError(
+                "Queue schema is outdated. Missing required tables: "
+                f"{', '.join(missing_tables)}. Run migrations first."
+            )
+
         rows = await conn.fetch(
             """
             SELECT column_name
             FROM information_schema.columns
-            WHERE table_name = 'pgqueuer_jobs'
+            WHERE table_schema = current_schema()
+              AND table_name = 'pgqueuer_jobs'
             """
         )
-    if not rows:
-        raise RuntimeError(
-            "Queue schema missing: table 'pgqueuer_jobs' not found. Run database migrations first."
+        actual = {str(row["column_name"]) for row in rows}
+        missing = sorted(REQUIRED_QUEUE_COLUMNS - actual)
+        if missing:
+            missing_csv = ", ".join(missing)
+            raise RuntimeError(
+                "Queue schema is outdated. Missing columns in 'pgqueuer_jobs': "
+                f"{missing_csv}. Run migrations first."
+            )
+
+        trigger_rows = await conn.fetch(
+            """
+            SELECT relation.relname AS table_name, trigger.tgname AS trigger_name
+            FROM pg_trigger AS trigger
+            JOIN pg_class AS relation ON relation.oid = trigger.tgrelid
+            JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+            WHERE NOT trigger.tgisinternal
+              AND namespace.nspname = current_schema()
+              AND (relation.relname, trigger.tgname) IN (
+                ('pgqueuer_jobs', 'pgqueuer_jobs_capture_terminal_event'),
+                ('content_reconciliation_actions',
+                 'content_reconciliation_actions_capture_terminal_event')
+              )
+            """
         )
-    actual = {str(row["column_name"]) for row in rows}
-    missing = sorted(REQUIRED_QUEUE_COLUMNS - actual)
-    if missing:
-        missing_csv = ", ".join(missing)
-        raise RuntimeError(
-            "Queue schema is outdated. Missing columns in 'pgqueuer_jobs': "
-            f"{missing_csv}. Run migrations first."
-        )
+        actual_triggers = {
+            (str(row["table_name"]), str(row["trigger_name"])) for row in trigger_rows
+        }
+        missing_triggers = sorted(REQUIRED_QUEUE_TRIGGERS - actual_triggers)
+        if missing_triggers:
+            missing_csv = ", ".join(trigger_name for _table, trigger_name in missing_triggers)
+            raise RuntimeError(
+                "Queue schema is outdated. Missing required terminal triggers: "
+                f"{missing_csv}. Run migrations first."
+            )
 
 
 async def init_queue_schema() -> None:
@@ -270,8 +567,41 @@ async def init_queue_schema() -> None:
                 parent_job_id BIGINT REFERENCES pgqueuer_jobs(id) ON DELETE SET NULL,
                 idempotency_key TEXT,
                 error TEXT,
-                retry_count INTEGER DEFAULT 0
+                retry_count INTEGER DEFAULT 0,
+                claim_generation BIGINT NOT NULL DEFAULT 0,
+                claim_protocol_version SMALLINT NOT NULL DEFAULT 1,
+                CONSTRAINT ck_pgqueuer_jobs_claim_generation_nonnegative
+                    CHECK (claim_generation >= 0),
+                CONSTRAINT ck_pgqueuer_jobs_claim_protocol_positive
+                    CHECK (claim_protocol_version >= 1)
             );
+
+            ALTER TABLE pgqueuer_jobs
+                ADD COLUMN IF NOT EXISTS claim_generation BIGINT NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS claim_protocol_version SMALLINT NOT NULL DEFAULT 1;
+
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'ck_pgqueuer_jobs_claim_generation_nonnegative'
+                      AND conrelid = 'pgqueuer_jobs'::regclass
+                ) THEN
+                    ALTER TABLE pgqueuer_jobs
+                        ADD CONSTRAINT ck_pgqueuer_jobs_claim_generation_nonnegative
+                        CHECK (claim_generation >= 0);
+                END IF;
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'ck_pgqueuer_jobs_claim_protocol_positive'
+                      AND conrelid = 'pgqueuer_jobs'::regclass
+                ) THEN
+                    ALTER TABLE pgqueuer_jobs
+                        ADD CONSTRAINT ck_pgqueuer_jobs_claim_protocol_positive
+                        CHECK (claim_protocol_version >= 1);
+                END IF;
+            END;
+            $$;
 
             CREATE INDEX IF NOT EXISTS idx_pgqueuer_jobs_status
                 ON pgqueuer_jobs(status, execute_after, priority DESC);
@@ -288,7 +618,39 @@ async def init_queue_schema() -> None:
             CREATE UNIQUE INDEX IF NOT EXISTS uq_pgqueuer_jobs_active_dedupe
                 ON pgqueuer_jobs(entrypoint, idempotency_key)
                 WHERE status IN ('queued', 'in_progress') AND idempotency_key IS NOT NULL;
+
+            CREATE OR REPLACE FUNCTION advance_pgqueuer_claim_generation()
+            RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN
+                NEW.claim_generation := OLD.claim_generation + 1;
+                RETURN NEW;
+            END;
+            $$;
+
+            DROP TRIGGER IF EXISTS pgqueuer_jobs_advance_claim_generation ON pgqueuer_jobs;
+            CREATE TRIGGER pgqueuer_jobs_advance_claim_generation
+            BEFORE UPDATE OF status ON pgqueuer_jobs
+            FOR EACH ROW
+            WHEN (OLD.status = 'queued' AND NEW.status = 'in_progress')
+            EXECUTE FUNCTION advance_pgqueuer_claim_generation();
+
+            CREATE OR REPLACE FUNCTION reset_pgqueuer_claim_protocol()
+            RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN
+                NEW.claim_protocol_version := 1;
+                RETURN NEW;
+            END;
+            $$;
+
+            DROP TRIGGER IF EXISTS pgqueuer_jobs_reset_claim_protocol ON pgqueuer_jobs;
+            CREATE TRIGGER pgqueuer_jobs_reset_claim_protocol
+            BEFORE UPDATE OF status ON pgqueuer_jobs
+            FOR EACH ROW
+            WHEN (OLD.status IS DISTINCT FROM 'queued' AND NEW.status = 'queued')
+            EXECUTE FUNCTION reset_pgqueuer_claim_protocol();
         """)
+
+        await conn.execute(_WORKFLOW_ALERT_BOOTSTRAP_DDL)
 
         # Create helper function for pg_cron to enqueue jobs
         await conn.execute("""
@@ -334,6 +696,8 @@ async def _fetch_job_row(conn: asyncpg.Connection, job_id: int) -> asyncpg.Recor
             priority,
             error,
             retry_count,
+            claim_generation,
+            claim_protocol_version,
             parent_job_id,
             heartbeat_at,
             created_at,
@@ -381,6 +745,8 @@ async def get_job_status(
             payload = json.loads(payload)
         parent_job_id = row.get("parent_job_id", None)
         heartbeat_at = row.get("heartbeat_at", None)
+        claim_generation = row.get("claim_generation", 0)
+        claim_protocol_version = row.get("claim_protocol_version", 1)
 
         return JobRecord(
             id=row["id"],
@@ -392,6 +758,8 @@ async def get_job_status(
             retry_count=row["retry_count"],
             parent_job_id=parent_job_id,
             heartbeat_at=heartbeat_at,
+            claim_generation=claim_generation,
+            claim_protocol_version=claim_protocol_version,
             created_at=row["created_at"],
             started_at=row["started_at"],
             completed_at=row["completed_at"],
@@ -404,7 +772,8 @@ async def update_job_progress(
     message: str,
     *,
     conn: asyncpg.Connection | None = None,
-) -> None:
+    claim_generation: int | None = None,
+) -> bool:
     """Update job progress in the payload.
 
     Merges progress and message into the existing payload JSON,
@@ -415,36 +784,62 @@ async def update_job_progress(
         progress: Completion percentage (0-100)
         message: Current status message
     """
+    if claim_generation is None:
+        from src.queue.execution_claim import claim_generation_for
+
+        claim_generation = claim_generation_for(job_id)
+    if claim_generation is None:
+        return False
+
     async with _queue_connection(conn) as query_conn:
         # Merge progress into existing payload
         progress_data = json.dumps({"progress": progress, "message": message})
-        await query_conn.execute(
+        updated_id = await query_conn.fetchval(
             """
             UPDATE pgqueuer_jobs
             SET payload = COALESCE(payload, '{}'::jsonb) || $1::jsonb
               , heartbeat_at = NOW()
             WHERE id = $2
+              AND status = 'in_progress'
+              AND claim_generation = $3
+            RETURNING id
             """,
             progress_data,
             job_id,
+            claim_generation,
         )
-        logger.debug(f"Updated job {job_id} progress: {progress}% - {message}")
+        if updated_id is not None:
+            logger.debug(f"Updated job {job_id} progress: {progress}% - {message}")
+        return updated_id is not None
 
 
 async def touch_job_heartbeat(
     job_id: int,
     *,
     conn: asyncpg.Connection | None = None,
-) -> None:
+    claim_generation: int | None = None,
+) -> bool:
+    if claim_generation is None:
+        from src.queue.execution_claim import claim_generation_for
+
+        claim_generation = claim_generation_for(job_id)
+    if claim_generation is None:
+        return False
+
     async with _queue_connection(conn) as query_conn:
-        await query_conn.execute(
+        updated_id = await query_conn.fetchval(
             """
             UPDATE pgqueuer_jobs
             SET heartbeat_at = NOW()
             WHERE id = $1
+              AND status = 'in_progress'
+              AND claim_generation = $2
+            RETURNING id
             """,
             job_id,
+            claim_generation,
         )
+        return updated_id is not None
 
 
 async def list_jobs(
@@ -581,34 +976,222 @@ async def retry_failed_job(job_id: int) -> JobRecord | None:
         return await get_job_status(job_id, conn=conn)
 
 
-async def cleanup_old_jobs(older_than_days: int = 30) -> int:
-    """Delete old terminal jobs that no longer need operational retention.
+_OPERATION_GRAPH_LOCK_SQL = (
+    "SELECT pg_advisory_xact_lock("
+    "hashtextextended('aca:operation-graph:' || ($1::bigint)::text, 0))"
+)
 
-    Deletes completed and cancelled jobs. Never deletes queued, in_progress,
-    or failed jobs so active and retryable work remains observable.
 
-    Args:
-        older_than_days: Delete completed jobs older than this many days
+async def _resolve_operation_graph_root(
+    conn: asyncpg.Connection,
+    job_id: int,
+) -> int | None:
+    """Resolve a live job's root while rejecting broken or cyclic lineage."""
 
-    Returns:
-        Number of jobs deleted
+    root_id = await conn.fetchval(
+        """
+        WITH RECURSIVE lineage AS (
+            SELECT job.id, job.parent_job_id, ARRAY[job.id] AS visited
+            FROM pgqueuer_jobs AS job
+            WHERE job.id = $1
+            UNION ALL
+            SELECT parent.id,
+                   parent.parent_job_id,
+                   lineage.visited || parent.id
+            FROM pgqueuer_jobs AS parent
+            JOIN lineage ON parent.id = lineage.parent_job_id
+            WHERE NOT parent.id = ANY(lineage.visited)
+        )
+        SELECT id
+        FROM lineage
+        WHERE parent_job_id IS NULL
+        LIMIT 1
+        """,
+        job_id,
+    )
+    return int(root_id) if root_id is not None else None
+
+
+async def _acquire_operation_graph_lock(
+    conn: asyncpg.Connection,
+    root_id: int,
+) -> None:
+    """Serialize graph membership changes and retention for one root."""
+
+    await conn.fetchval(_OPERATION_GRAPH_LOCK_SQL, root_id)
+
+
+async def cleanup_old_jobs(
+    older_than_days: int = 30,
+    *,
+    failed_older_than_days: int = 90,
+    batch_size: int = 100,
+    conn: asyncpg.Connection | None = None,
+) -> int:
+    """Delete a bounded batch of fully terminal operation graphs.
+
+    Candidate roots are selected by the graph's newest completion timestamp.
+    The selected graphs are locked and re-read in the same transaction before
+    descendants are removed ahead of roots, so active or newly retried work is
+    never detached by ``ON DELETE SET NULL``.
     """
-    async with _queue_connection() as conn:
-        cutoff = datetime.now(UTC) - timedelta(days=older_than_days)
 
-        result = await conn.execute(
+    if not 1 <= older_than_days <= 3650:
+        raise ValueError("older_than_days must be between 1 and 3650")
+    if not older_than_days <= failed_older_than_days <= 3650:
+        raise ValueError("failed_older_than_days must be between older_than_days and 3650")
+    if not 1 <= batch_size <= 1000:
+        raise ValueError("batch_size must be between 1 and 1000")
+
+    candidate_sql = """
+        WITH RECURSIVE graph AS (
+            SELECT root.id, root.id AS root_id, root.status, root.completed_at
+            FROM pgqueuer_jobs AS root
+            WHERE root.parent_job_id IS NULL
+            UNION ALL
+            SELECT child.id, graph.root_id, child.status, child.completed_at
+            FROM pgqueuer_jobs AS child
+            JOIN graph ON child.parent_job_id = graph.id
+        ),
+        rollup AS (
+            SELECT root_id,
+                   MAX(completed_at) AS newest_completion,
+                   BOOL_OR(status = 'failed') AS has_failed,
+                   COUNT(*) FILTER (
+                       WHERE status NOT IN ('completed', 'failed', 'cancelled')
+                   ) AS active_count,
+                   COUNT(*) FILTER (WHERE completed_at IS NULL) AS null_completion_count
+            FROM graph
+            GROUP BY root_id
+        )
+        SELECT root_id
+        FROM rollup
+        WHERE active_count = 0
+          AND null_completion_count = 0
+          AND CASE
+              WHEN has_failed
+                  THEN newest_completion < CURRENT_TIMESTAMP
+                       - ($2::int * INTERVAL '1 day')
+              ELSE newest_completion < CURRENT_TIMESTAMP
+                       - ($1::int * INTERVAL '1 day')
+          END
+        ORDER BY newest_completion, root_id
+        LIMIT $3
+    """
+    graph_lock_sql = """
+        WITH RECURSIVE graph_ids AS (
+            SELECT root.id
+            FROM pgqueuer_jobs AS root
+            WHERE root.id = ANY($1::bigint[])
+            UNION ALL
+            SELECT child.id
+            FROM pgqueuer_jobs AS child
+            JOIN graph_ids ON child.parent_job_id = graph_ids.id
+        )
+        SELECT jobs.id
+        FROM pgqueuer_jobs AS jobs
+        JOIN graph_ids ON graph_ids.id = jobs.id
+        ORDER BY jobs.id
+        FOR UPDATE OF jobs
+    """
+    recheck_sql = """
+        WITH RECURSIVE graph AS (
+            SELECT root.id, root.id AS root_id, root.status, root.completed_at
+            FROM pgqueuer_jobs AS root
+            WHERE root.id = ANY($1::bigint[])
+              AND root.parent_job_id IS NULL
+            UNION ALL
+            SELECT child.id, graph.root_id, child.status, child.completed_at
+            FROM pgqueuer_jobs AS child
+            JOIN graph ON child.parent_job_id = graph.id
+        )
+        SELECT root_id
+        FROM graph
+        GROUP BY root_id
+        HAVING COUNT(*) FILTER (
+                   WHERE status NOT IN ('completed', 'failed', 'cancelled')
+               ) = 0
+           AND COUNT(*) FILTER (WHERE completed_at IS NULL) = 0
+           AND CASE
+               WHEN BOOL_OR(status = 'failed')
+                   THEN MAX(completed_at) < CURRENT_TIMESTAMP
+                        - ($3::int * INTERVAL '1 day')
+               ELSE MAX(completed_at) < CURRENT_TIMESTAMP
+                        - ($2::int * INTERVAL '1 day')
+           END
+        ORDER BY root_id
+    """
+    delete_descendants_sql = """
+        WITH RECURSIVE graph_ids AS (
+            SELECT root.id, root.id AS root_id
+            FROM pgqueuer_jobs AS root
+            WHERE root.id = ANY($1::bigint[])
+            UNION ALL
+            SELECT child.id, graph_ids.root_id
+            FROM pgqueuer_jobs AS child
+            JOIN graph_ids ON child.parent_job_id = graph_ids.id
+        )
+        DELETE FROM pgqueuer_jobs AS jobs
+        USING graph_ids
+        WHERE jobs.id = graph_ids.id
+          AND jobs.id <> graph_ids.root_id
+        RETURNING jobs.id
+    """
+
+    async with _queue_connection(conn) as query_conn, query_conn.transaction():
+        await query_conn.execute("SET LOCAL lock_timeout = '5s'")
+        await query_conn.execute("SET LOCAL statement_timeout = '30s'")
+        candidates = await query_conn.fetch(
+            candidate_sql,
+            older_than_days,
+            failed_older_than_days,
+            batch_size,
+        )
+        root_ids = sorted(int(row["root_id"]) for row in candidates)
+        if not root_ids:
+            return 0
+
+        # Child insertion takes the same root-scoped transaction lock. Once
+        # these locks are held, graph membership is stable through recheck and
+        # deletion. Sorted acquisition prevents cleanup workers deadlocking.
+        for root_id in root_ids:
+            await _acquire_operation_graph_lock(query_conn, root_id)
+
+        # Retain one row-lock pass so lifecycle mutations cannot race the
+        # terminal-state recheck. Membership no longer relies on repeated
+        # recursive snapshots because the advisory lock owns that invariant.
+        await query_conn.fetch(graph_lock_sql, root_ids)
+        rechecked = await query_conn.fetch(
+            recheck_sql,
+            root_ids,
+            older_than_days,
+            failed_older_than_days,
+        )
+        eligible_root_ids = [int(row["root_id"]) for row in rechecked]
+        if not eligible_root_ids:
+            return 0
+
+        descendants = await query_conn.fetch(
+            delete_descendants_sql,
+            eligible_root_ids,
+        )
+        roots = await query_conn.fetch(
             """
-            DELETE FROM pgqueuer_jobs
-            WHERE status IN ('completed', 'cancelled')
-              AND completed_at < $1
-            """,
-            cutoff,
+                DELETE FROM pgqueuer_jobs
+                WHERE id = ANY($1::bigint[])
+                  AND parent_job_id IS NULL
+                RETURNING id
+                """,
+            eligible_root_ids,
         )
 
-        # Parse "DELETE N" result
-        count = int(result.split()[-1]) if result else 0
-        logger.info(f"Cleaned up {count} old terminal jobs (older than {older_than_days} days)")
-        return count
+    deleted_count = len(descendants) + len(roots)
+    logger.info(
+        "operation retention deleted %s jobs across %s root graphs",
+        deleted_count,
+        len(roots),
+    )
+    return deleted_count
 
 
 async def mark_stale_jobs_failed(
@@ -670,7 +1253,16 @@ async def enqueue_queue_job(
     payload = _normalize_job_payload(payload)
     effective_idempotency_key = idempotency_key or _build_idempotency_key(entrypoint, payload)
 
-    async with _queue_connection(conn) as query_conn:
+    async with _queue_connection(conn) as query_conn, query_conn.transaction():
+        if parent_job_id is not None:
+            root_id = await _resolve_operation_graph_root(query_conn, parent_job_id)
+            if root_id is None:
+                raise RuntimeError("Parent job does not belong to a live operation graph")
+            await _acquire_operation_graph_lock(query_conn, root_id)
+            confirmed_root_id = await _resolve_operation_graph_root(query_conn, parent_job_id)
+            if confirmed_root_id != root_id:
+                raise RuntimeError("Parent job does not belong to a live operation graph")
+
         row = await query_conn.fetchrow(
             """
             INSERT INTO pgqueuer_jobs (
@@ -903,7 +1495,12 @@ async def _reconcile_batch_parent_status(
             COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
             COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
             COUNT(*) FILTER (WHERE status = 'cancelled')::int AS cancelled,
-            COUNT(*)::int AS total
+            COUNT(*)::int AS total,
+            (
+                SELECT parent.claim_generation
+                FROM pgqueuer_jobs AS parent
+                WHERE parent.id = $1 AND parent.status = 'in_progress'
+            ) AS parent_claim_generation
         FROM pgqueuer_jobs
         WHERE parent_job_id = $1
           AND entrypoint = 'summarize_content'
@@ -911,6 +1508,9 @@ async def _reconcile_batch_parent_status(
         parent_job_id,
     )
     if row is None:
+        return
+    parent_claim_generation = row.get("parent_claim_generation")
+    if parent_claim_generation is None:
         return
 
     completed = int(row["completed"] or 0)
@@ -967,7 +1567,9 @@ async def _reconcile_batch_parent_status(
                 ELSE completed_at
             END,
             heartbeat_at = NOW()
-        WHERE id = $1 AND status = 'in_progress'
+        WHERE id = $1
+          AND status = 'in_progress'
+          AND claim_generation = $4
         """,
         parent_job_id,
         json.dumps(
@@ -982,6 +1584,7 @@ async def _reconcile_batch_parent_status(
             }
         ),
         is_terminal,
+        int(parent_claim_generation),
     )
     if is_terminal:
         logger.info(

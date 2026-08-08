@@ -11,6 +11,13 @@ import httpx
 from sqlalchemy.orm.attributes import flag_modified
 
 from src.models.content import Content, ContentSource, ContentStatus
+from src.queue.execution_claim import (
+    ClaimRejected,
+    ContentExecutionPhase,
+    acquire_content_execution,
+    current_execution_claim,
+    guard_content_execution,
+)
 from src.utils.content_hash import generate_markdown_hash
 from src.utils.logging import get_logger
 from src.utils.security import validate_url
@@ -51,7 +58,7 @@ class URLExtractor:
         """
         self.db = db
 
-    async def extract_content(self, content_id: int) -> Content:
+    async def extract_content(self, content_id: int, *, resume_owned: bool = False) -> Content:
         """Extract and parse content from a URL.
 
         Fetches the URL, parses HTML to markdown, and updates
@@ -75,8 +82,16 @@ class URLExtractor:
         if not content.source_url:
             raise ValueError(f"Content has no source URL: {content_id}")
 
-        # Update status to parsing
-        content.status = ContentStatus.PARSING
+        claim = current_execution_claim()
+        if claim is not None:
+            content = acquire_content_execution(
+                self.db,
+                content_id,
+                ContentExecutionPhase.PARSING,
+                allow_interrupted=resume_owned,
+            )
+        else:
+            content.status = ContentStatus.PARSING
         self.db.commit()
 
         try:
@@ -86,12 +101,25 @@ class URLExtractor:
             # Parse HTML to markdown
             markdown_content, metadata = await self._parse_html(html_content, final_url)
 
-            # Update content record
+            if claim is not None:
+                content = guard_content_execution(
+                    self.db,
+                    content_id,
+                    ContentExecutionPhase.PARSING,
+                )
+
+            # Mutate only after the final claim and Content fence is locked.
             content.markdown_content = markdown_content
             content.content_hash = generate_markdown_hash(markdown_content)
             content.status = ContentStatus.PARSED
+            content.error_message = None
             content.parsed_at = datetime.now(UTC)
             content.parser_used = "URLExtractor"
+            if claim is not None:
+                content.status_operation_id = None
+                content.status_claim_generation = None
+                content.status_operation_phase = None
+                content.status_owner_version = None
 
             # Update title if still set to URL placeholder
             if metadata.get("title") and content.title == content.source_url:
@@ -108,8 +136,22 @@ class URLExtractor:
 
             return content
 
+        except ClaimRejected:
+            self.db.rollback()
+            raise
         except Exception:
-            # Mark as failed
+            self.db.rollback()
+            if claim is not None:
+                content = guard_content_execution(
+                    self.db,
+                    content_id,
+                    ContentExecutionPhase.PARSING,
+                )
+                content.status_owner_version = (content.status_owner_version or 0) + 1
+            else:
+                content = self.db.query(Content).filter(Content.id == content_id).first()
+                if content is None:
+                    raise
             content.status = ContentStatus.FAILED
             # Secure error message to prevent information leakage
             content.error_message = "Content extraction failed. Please try again later."

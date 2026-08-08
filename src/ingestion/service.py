@@ -2,15 +2,27 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import hmac
+from collections.abc import Callable, Mapping
 from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
 
-from src.config.sources import SourcesConfig, use_sources_config
+from src.config.sources import (
+    SourcesConfig,
+    configured_source_public_key,
+    source_key,
+    use_sources_config,
+    validate_configured_source_key_secret,
+)
 from src.ingestion.commands import FilesIngestCommand, IngestCommandBase
 from src.ingestion.content_references import ContentReferences, collect_content_references
-from src.ingestion.registry import SOURCE_REGISTRY, SourceDescriptor, SourceRegistry
-from src.ingestion.result import IngestionResponse, derive_status
+from src.ingestion.registry import (
+    SOURCE_REGISTRY,
+    SourceDescriptor,
+    SourceRegistry,
+    configured_source_version,
+)
+from src.ingestion.result import IngestionResponse, derive_status, use_public_source_keys
 
 if TYPE_CHECKING:
     from src.services.upload_service import UploadService
@@ -23,16 +35,47 @@ class IngestionService:
         self,
         registry: SourceRegistry = SOURCE_REGISTRY,
         upload_service: UploadService | None = None,
+        configured_source_key_secret: str | None = None,
+        source_config_loader: Callable[[], SourcesConfig] | None = None,
     ) -> None:
+        if configured_source_key_secret is not None:
+            validate_configured_source_key_secret(configured_source_key_secret)
         self.registry = registry
         self._upload_service = upload_service
+        self._configured_source_key_secret = configured_source_key_secret
+        self._source_config_loader = source_config_loader
 
     def execute(self, command: IngestCommandBase | Mapping[str, Any]) -> IngestionResponse:
         typed_command = self.registry.parse_command(command)
         descriptor = self.registry.get(typed_command.kind)
         configured_sources = getattr(typed_command, "configured_sources", None)
         source_config = None
-        if configured_sources is not None:
+        source_key_secret = None
+        requested_source_key = getattr(typed_command, "source_key", None)
+        if requested_source_key is not None:
+            expected_version = getattr(typed_command, "configured_source_version", None)
+            if expected_version is None:
+                raise ValueError("Configured source version is required")
+            source_key_secret = self._resolve_source_key_secret()
+            if self._source_config_loader is None:
+                from src.config.settings import get_settings
+
+                source_config = get_settings().get_sources_config()
+            else:
+                source_config = self._source_config_loader()
+            resolved_sources = self.registry.resolve_configured_sources(
+                typed_command,
+                source_config,
+                secret=source_key_secret,
+            )
+            current_version = configured_source_version(
+                resolved_sources[0],
+                secret=source_key_secret,
+            )
+            if not hmac.compare_digest(expected_version, current_version):
+                raise ValueError("Configured source changed; resubmit the command")
+            source_config = SourcesConfig(sources=list(resolved_sources))
+        elif configured_sources is not None:
             if not configured_sources:
                 raise ValueError("Configured source snapshot cannot be empty")
             source_config = SourcesConfig.model_validate({"sources": configured_sources})
@@ -43,11 +86,35 @@ class IngestionService:
                         f"Configured source type '{source.type}' does not match "
                         f"command '{descriptor.key}'"
                     )
+            source_key_secret = self._resolve_source_key_secret()
+            resolved_sources = self.registry.resolve_configured_sources(
+                typed_command,
+                source_config,
+                secret=source_key_secret,
+            )
+            source_config = SourcesConfig(sources=list(resolved_sources))
 
         config_context = (
             use_sources_config(source_config) if source_config is not None else nullcontext()
         )
-        with config_context, collect_content_references() as committed_content_ids:
+        if source_config is not None:
+            assert source_key_secret is not None
+            public_source_keys = {
+                source_key(source): configured_source_public_key(
+                    source,
+                    secret=source_key_secret,
+                )
+                for source in source_config.sources
+            }
+            identity_context = use_public_source_keys(public_source_keys)
+        else:
+            identity_context = nullcontext()
+
+        with (
+            config_context,
+            identity_context,
+            collect_content_references() as committed_content_ids,
+        ):
             if isinstance(typed_command, FilesIngestCommand):
                 response = self._execute_files(descriptor, typed_command)
             else:
@@ -65,12 +132,34 @@ class IngestionService:
                     f"Source '{descriptor.key}' returned {type(response).__name__}, "
                     "expected IngestionResponse"
                 )
+            if source_config is not None:
+                represented = {
+                    outcome.source_key
+                    for outcome in response.source_outcomes
+                    if outcome.source_key in public_source_keys.values()
+                }
+                unmatched = len(set(public_source_keys.values()).difference(represented))
+                response = response.model_copy(
+                    update={
+                        "source_outcomes_omitted": max(
+                            response.source_outcomes_omitted,
+                            unmatched,
+                        )
+                    }
+                )
             return self._normalize(
                 response,
                 descriptor,
                 typed_command,
                 committed_content_ids,
             )
+
+    def _resolve_source_key_secret(self) -> str:
+        if self._configured_source_key_secret is not None:
+            return self._configured_source_key_secret
+        from src.config.settings import get_settings
+
+        return get_settings().get_configured_source_key_secret()
 
     def _execute_files(
         self,

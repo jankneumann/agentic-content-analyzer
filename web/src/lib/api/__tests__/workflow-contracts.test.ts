@@ -3,8 +3,9 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 import { ApiClientError, apiClient } from "../client"
 import {
   getAllCapabilities,
+  getAllConfiguredSources,
   getConfiguredSources,
-  listAllOperations,
+  listBackgroundOperations,
   submitDigest,
   submitIngestion,
 } from "../workflows"
@@ -51,6 +52,37 @@ describe("canonical workflow client", () => {
 
     expect(get).toHaveBeenCalledWith("/configured-sources", {
       params: { limit: 100 },
+    })
+  })
+
+  it("collects every configured-source cursor page", async () => {
+    const get = vi
+      .spyOn(apiClient, "get")
+      .mockResolvedValueOnce({
+        data: [{ key: "src_11111111111111111111", command_key: "rss" }],
+        next_cursor: "next",
+      })
+      .mockResolvedValueOnce({
+        data: [
+          {
+            key: "src_22222222222222222222",
+            command_key: "obsidian_vault",
+          },
+        ],
+        next_cursor: null,
+      })
+
+    const configured = await getAllConfiguredSources()
+
+    expect(configured.data.map((source) => source.key)).toEqual([
+      "src_11111111111111111111",
+      "src_22222222222222222222",
+    ])
+    expect(get).toHaveBeenNthCalledWith(1, "/configured-sources", {
+      params: { limit: 100 },
+    })
+    expect(get).toHaveBeenNthCalledWith(2, "/configured-sources", {
+      params: { cursor: "next", limit: 100 },
     })
   })
 
@@ -128,20 +160,26 @@ describe("canonical workflow client", () => {
     })
   })
 
-  it("hydrates operations across cursor pages", async () => {
-    vi.spyOn(apiClient, "get")
-      .mockResolvedValueOnce({
-        data: [{ operation_id: "op-1" }],
-        next_cursor: "next",
-      })
-      .mockResolvedValueOnce({
-        data: [{ operation_id: "op-2" }],
-        next_cursor: null,
-      })
+  it("hydrates background operations with three bounded summary queries", async () => {
+    const get = vi
+      .spyOn(apiClient, "get")
+      .mockResolvedValueOnce({ data: [{ operation_id: "recent" }], next_cursor: "ignored" })
+      .mockResolvedValueOnce({ data: [{ operation_id: "queued" }], next_cursor: "ignored" })
+      .mockResolvedValueOnce({ data: [{ operation_id: "running" }], next_cursor: "ignored" })
 
     expect(
-      (await listAllOperations()).map((operation) => operation.operation_id)
-    ).toEqual(["op-1", "op-2"])
+      (await listBackgroundOperations()).map((operation) => operation.operation_id)
+    ).toEqual(["recent", "queued", "running"])
+    expect(get).toHaveBeenCalledTimes(3)
+    expect(get).toHaveBeenNthCalledWith(1, "/operations", {
+      params: { limit: 100 },
+    })
+    expect(get).toHaveBeenNthCalledWith(2, "/operations", {
+      params: { limit: 100, status: "queued" },
+    })
+    expect(get).toHaveBeenNthCalledWith(3, "/operations", {
+      params: { limit: 100, status: "in_progress" },
+    })
   })
 
   it("retains the complete RFC 7807 problem", () => {

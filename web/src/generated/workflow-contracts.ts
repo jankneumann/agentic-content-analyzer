@@ -1,8 +1,18 @@
 // Generated from contracts/openapi/v1.yaml; do not edit.
-export const CONTRACT_SHA256 = "f4d7230b27032fcf937a5c1221a69d779484f1dc8a95d1dccd0543f5789e8413" as const;
+export const CONTRACT_SHA256 = "5dad552a43c043d1c11e1b587b9bc68724e7e23742ec74134164840db306197b" as const;
 
 export type OperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 export type OperationType = "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
+export type IngestionOutcome = "success" | "zero_items" | "partial" | "failed" | "cancelled" | "unknown";
+export type IngestionStatus = "ok" | "partial" | "error";
+export type TerminalOperationStatus = "completed" | "failed" | "cancelled";
+export type ContentReconciliationMode = "dry_run" | "apply";
+export type ContentReconciliationProjection = "proposed" | "observed";
+export type ContentReconciliationContentStatus = "pending" | "parsing" | "parsed" | "processing" | "completed" | "failed" | "filtered_out";
+export type ContentReconciliationOperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
+export type ContentReconciliationPhase = "parsing" | "processing";
+export type ContentReconciliationAction = "none" | "retry_operation" | "project_completed" | "project_parsed" | "restore_parsed" | "restore_pending" | "cancel_restore_parsed" | "cancel_restore_pending";
+export type ContentReconciliationReason = "summary_exists" | "extraction_completed" | "completed_output_missing" | "output_owner_mismatch" | "active_operation" | "cancellation_pending" | "execution_locked" | "cancellation_requested" | "stale_operation" | "failed_operation" | "retry_budget_exhausted" | "forced_reprocessing" | "summarization_cancelled" | "extraction_cancelled" | "missing_operation" | "ownership_conflict" | "incompatible_worker" | "revalidation_conflict" | "apply_failed";
 
 export interface Problem {
   type: string;
@@ -20,7 +30,25 @@ export interface ResourceReference {
   url: string;
 }
 
-export interface IngestionResult {
+export interface BoundedDiagnostic {
+  code: string;
+  message: string;
+  redirected_source_key?: string | null;
+}
+
+export interface ConfiguredSourceOutcome {
+  source_key: string;
+  status: IngestionStatus;
+  items_ingested: number;
+  items_failed: number;
+  errors: Array<BoundedDiagnostic>;
+  warnings: Array<BoundedDiagnostic>;
+  errors_omitted: number;
+  warnings_omitted: number;
+}
+
+export interface IngestionResultV1 {
+  schema_version?: 1;
   command_key: string;
   resolved_route: string;
   emitted_sources: Array<string>;
@@ -30,11 +58,118 @@ export interface IngestionResult {
   details?: Record<string, unknown>;
 }
 
+export interface IngestionResultV2 {
+  schema_version: 2;
+  command_key: string;
+  resolved_route: string;
+  emitted_sources: Array<string>;
+  status: IngestionStatus;
+  outcome: IngestionOutcome;
+  items_ingested: number;
+  items_skipped: number;
+  items_failed: number;
+  content_ids: Array<number>;
+  errors: Array<BoundedDiagnostic>;
+  warnings: Array<BoundedDiagnostic>;
+  errors_omitted: number;
+  warnings_omitted: number;
+  source_outcomes: Array<ConfiguredSourceOutcome>;
+  source_outcomes_omitted: number;
+  details: SafeIngestionDetails;
+  details_omitted: number;
+}
+
+export interface SafeIngestionDetails {
+  dry_run?: boolean;
+  duplicate?: boolean;
+  version_updated?: boolean;
+  papers_ingested?: number;
+  refs_ingested?: number;
+  content_scanned?: number;
+  references_found?: number;
+  references_resolved?: number;
+  references_unresolved?: number;
+  queries_made?: number;
+  citations_found?: number;
+  tool_calls_made?: number;
+  threads_found?: number;
+}
+
+export interface PipelineSourceIngestionSummary {
+  operation_id: string;
+  command_key: string;
+  operation_status: TerminalOperationStatus;
+  outcome: IngestionOutcome;
+  items_ingested: number | null;
+  items_skipped: number | null;
+  items_failed: number | null;
+}
+
+export interface PipelineIngestionSummary {
+  outcome: IngestionOutcome;
+  sources: Array<PipelineSourceIngestionSummary>;
+  sources_omitted: number;
+}
+
+export interface PipelineResultV2 {
+  [key: string]: unknown;
+  schema_version: 2;
+  ingestion_summary: PipelineIngestionSummary;
+}
+
+export interface ConfiguredSourceHistoryOutcome {
+  source_key: string;
+  status: IngestionStatus;
+  outcome: IngestionOutcome;
+  items_ingested: number | null;
+  items_failed: number | null;
+  error_codes?: Array<string>;
+  warning_codes?: Array<string>;
+}
+
+export interface IngestionHistoryItem {
+  operation_id: string;
+  parent_operation_id?: string | null;
+  command_key: string;
+  operation_status: TerminalOperationStatus;
+  outcome: IngestionOutcome;
+  items_ingested: number | null;
+  items_skipped: number | null;
+  items_failed: number | null;
+  source_outcomes: Array<ConfiguredSourceHistoryOutcome>;
+  retry_count: number;
+  problem_code?: string | null;
+  status_url: string;
+  created_at: string;
+  completed_at?: string | null;
+}
+
+export interface IngestionHistoryPage {
+  data: Array<IngestionHistoryItem>;
+  next_cursor?: string | null;
+}
+
+export interface OperationSummary {
+  schema_version: 2;
+  operation_id: string;
+  operation_type: "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
+  status: OperationStatus;
+  progress: number;
+  message: string;
+  cancellable: boolean;
+  retry_count: number;
+  status_url: string;
+  events_url: string;
+  created_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
 export interface OperationHandle {
   schema_version: 2;
   operation_id: string;
   operation_type: "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
-  status: "queued" | "in_progress" | "completed" | "failed" | "cancelled";
+  status: OperationStatus;
   progress: number;
   message: string;
   cancellable: boolean;
@@ -50,8 +185,91 @@ export interface OperationHandle {
 }
 
 export interface OperationPage {
-  data: Array<OperationHandle>;
+  data: Array<OperationSummary>;
   next_cursor?: string | null;
+}
+
+export interface WorkflowAlertVerificationContext {
+  schema_version: 1;
+  environment_class: "staging";
+  revision: string;
+  revision_source: "railway_commit_sha";
+}
+
+export interface WorkflowTerminalDeliveryCounts {
+  pending: number;
+  leased: number;
+  delivered: number;
+  permanent_failure: number;
+  exhausted: number;
+}
+
+export interface WorkflowTerminalEventDiagnostic {
+  schema_version: 1;
+  event_id: string;
+  event_key: string;
+  source_kind: "operation" | "reconciliation_action" | "reconciliation_failure";
+  operation_id: string | null;
+  claim_generation: number | null;
+  terminal_status: "completed" | "failed" | "cancelled" | null;
+  classification_status: "pending" | "ready" | "telemetry_only" | "rejected";
+  release_revision: string | null;
+  release_revision_source: "railway_commit_sha" | "local_development" | "unavailable" | null;
+  occurred_at: string;
+  telemetry_emitted_at: string | null;
+  delivery_counts: WorkflowTerminalDeliveryCounts;
+}
+
+export interface ContentReconciliationRequest {
+  apply?: boolean;
+  limit?: number;
+  after_content_id?: number | null;
+}
+
+export interface ContentReconciliationCounts {
+  applied: number;
+  retried: number;
+  projected: number;
+  restored: number;
+  active: number;
+  locked: number;
+  missing: number;
+  conflicted: number;
+  cancelled: number;
+  forced: number;
+  exhausted: number;
+  incompatible: number;
+  failed: number;
+}
+
+export interface ContentReconciliationItem {
+  content_id: number;
+  projection: ContentReconciliationProjection;
+  content_status_before: ContentReconciliationContentStatus;
+  content_status_after: ContentReconciliationContentStatus;
+  operation_id: string | null;
+  claim_generation: number | null;
+  claim_protocol_version: number | null;
+  operation_status_before: ContentReconciliationOperationStatus | null;
+  operation_status_after: ContentReconciliationOperationStatus | null;
+  retry_count_before: number | null;
+  retry_count_after: number | null;
+  phase: ContentReconciliationPhase | null;
+  action: ContentReconciliationAction;
+  reason: ContentReconciliationReason;
+  operation_heartbeat_at?: string | null;
+  operation_completed_at?: string | null;
+  applied: boolean;
+}
+
+export interface ContentReconciliationReport {
+  run_id: string;
+  mode: ContentReconciliationMode;
+  scanned: number;
+  reported: number;
+  next_after_content_id?: number | null;
+  counts: ContentReconciliationCounts;
+  items: Array<ContentReconciliationItem>;
 }
 
 export interface OperationEvent {
@@ -59,7 +277,7 @@ export interface OperationEvent {
   event_id: string;
   operation_id: string;
   operation_type: "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
-  status: "queued" | "in_progress" | "completed" | "failed" | "cancelled";
+  status: OperationStatus;
   progress: number;
   message: string;
   resource?: ResourceReference | null;
@@ -116,6 +334,8 @@ export interface ConfiguredSource {
   enabled: boolean;
   origin: "yaml" | "db";
   configuration: Record<string, unknown>;
+  ready: boolean;
+  readiness_code: string | null;
 }
 
 export interface ConfiguredSourcePage {
@@ -124,7 +344,7 @@ export interface ConfiguredSourcePage {
 }
 
 export interface ContentQuery {
-  source_types?: Array<"gmail" | "rss" | "file_upload" | "youtube" | "podcast" | "substack" | "manual" | "webpage" | "xsearch" | "perplexity" | "blog" | "scholar" | "arxiv" | "huggingface_papers" | "readwise" | "other">;
+  source_types?: Array<"gmail" | "rss" | "file_upload" | "youtube" | "podcast" | "substack" | "manual" | "webpage" | "xsearch" | "perplexity" | "blog" | "scholar" | "arxiv" | "huggingface_papers" | "readwise" | "obsidian" | "other">;
   statuses?: Array<"pending" | "parsing" | "parsed" | "processing" | "completed" | "failed" | "filtered_out">;
   publications?: Array<string>;
   publication_search?: string;
@@ -290,6 +510,13 @@ export interface ReadwiseIngestCommand {
   force_reprocess?: boolean;
 }
 
+export interface ObsidianVaultIngestCommand {
+  kind: "obsidian_vault";
+  source_key: string;
+  max_items?: number;
+  force_reprocess?: boolean;
+}
+
 export interface SummarizationRequest {
   content_ids?: Array<number>;
   query?: ContentQuery;
@@ -339,4 +566,6 @@ export interface AudioDigestRequest {
   speed?: number;
 }
 
-export type IngestCommand = GmailIngestCommand | RssIngestCommand | BlogIngestCommand | SubstackIngestCommand | YouTubePlaylistIngestCommand | YouTubeRssIngestCommand | PodcastIngestCommand | XSearchIngestCommand | PerplexitySearchIngestCommand | FilesIngestCommand | UrlIngestCommand | ScholarSearchIngestCommand | ScholarPaperIngestCommand | ScholarReferencesIngestCommand | ArxivSearchIngestCommand | ArxivPaperIngestCommand | HuggingFacePapersIngestCommand | ReadwiseIngestCommand;
+export type IngestionResult = IngestionResultV1 | IngestionResultV2;
+
+export type IngestCommand = GmailIngestCommand | RssIngestCommand | BlogIngestCommand | SubstackIngestCommand | YouTubePlaylistIngestCommand | YouTubeRssIngestCommand | PodcastIngestCommand | XSearchIngestCommand | PerplexitySearchIngestCommand | FilesIngestCommand | UrlIngestCommand | ScholarSearchIngestCommand | ScholarPaperIngestCommand | ScholarReferencesIngestCommand | ArxivSearchIngestCommand | ArxivPaperIngestCommand | HuggingFacePapersIngestCommand | ReadwiseIngestCommand | ObsidianVaultIngestCommand;

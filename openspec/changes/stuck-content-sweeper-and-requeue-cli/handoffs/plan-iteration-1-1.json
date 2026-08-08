@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-08-01T21:39:50.805332+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Independent review exposed attempt-ownership, mixed-worker, URL-resume, and package-ordering gaps. Revision 3 resolves every critical, high, and medium finding and passes strict OpenSpec plus package validation.",
+    "completed_work": [
+      "Defined strict URL resume evidence plus deterministic exact-owner fallback.",
+      "Added positive compatible ownership constraints, owner-version clearing, and queued protocol reset triggers.",
+      "Specified stale transitional-to-failed recovery, typed cancellation outcomes, and same-operation generation renewal.",
+      "Reconciled the superseded ingestion-reliability roadmap entry.",
+      "Validated JSON Schema, strict OpenSpec, package DAG, locks, and scope."
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Resume failed URL extraction by exact owned Content",
+        "rationale": "Retry must bypass route drift and duplicate detection, including a crash before checkpoint attachment.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Renew ownership only for the same operation and phase",
+        "rationale": "A narrow failed-state CAS safely rolls claim generation N to N+1.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Enforce legacy safety at the database boundary",
+        "rationale": "Protocol reset and unchanged-owner clearing must cover old or unsupported writers.",
+        "capability": null,
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Commit and push the plan checkpoint, seed coordinator tasks, then begin wp-contracts."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/stuck-content-sweeper-and-requeue-cli/plan-findings.md",
+        "description": "three review iterations and resolutions"
+      },
+      {
+        "path": "openspec/changes/stuck-content-sweeper-and-requeue-cli/contracts/db/schema.sql",
+        "description": "exact additive PostgreSQL contract"
+      },
+      {
+        "path": "openspec/changes/stuck-content-sweeper-and-requeue-cli/tasks.md",
+        "description": "test-first implementation tasks"
+      }
+    ]
+  }
+}

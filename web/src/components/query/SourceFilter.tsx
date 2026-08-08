@@ -18,6 +18,8 @@ const SOURCE_OPTIONS: { value: ContentSource; label: string }[] = [
   { value: "file_upload", label: "File Upload" },
   { value: "webpage", label: "Webpage" },
   { value: "manual", label: "Manual" },
+  { value: "readwise", label: "Readwise" },
+  { value: "obsidian", label: "Obsidian" },
   { value: "other", label: "Other" },
 ]
 

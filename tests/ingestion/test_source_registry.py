@@ -6,17 +6,25 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from src.config.settings import get_settings
 from src.config.sources import (
     GmailSource,
+    ObsidianVaultSource,
     ReadwiseSource,
     RSSSource,
     SourcesConfig,
     WebSearchSource,
     YouTubeChannelSource,
+    configured_source_public_key,
     load_sources_config,
 )
 from src.ingestion.commands import UrlIngestCommand
-from src.ingestion.registry import SOURCE_REGISTRY, SourceRegistry
+from src.ingestion.registry import (
+    SOURCE_REGISTRY,
+    SourceRegistry,
+    configured_source_digest,
+    configured_source_version,
+)
 from src.ingestion.url_router import RouteKind
 from src.models.content import ContentSource
 
@@ -39,7 +47,77 @@ EXPECTED_SOURCE_KEYS = {
     "arxiv_paper",
     "huggingface_papers",
     "readwise",
+    "obsidian_vault",
 }
+
+
+def test_registry_resolves_one_opaque_key_to_one_private_snapshot() -> None:
+    secret = "configured-source-key-secret-for-tests"
+    first = RSSSource(url="https://private.example/one")
+    selected = RSSSource(url="https://private.example/two")
+    config = SourcesConfig(sources=[first, selected])
+    command = MagicMock(
+        kind="rss",
+        source_key=configured_source_public_key(selected, secret=secret),
+    )
+
+    resolved = SOURCE_REGISTRY.resolve_configured_sources(command, config, secret=secret)
+
+    assert resolved == (selected,)
+
+
+def test_registry_rejects_unknown_opaque_source_without_private_locator_leak() -> None:
+    private_url = "https://private.example/sensitive-path"
+    config = SourcesConfig(sources=[RSSSource(url=private_url)])
+    command = MagicMock(kind="rss", source_key="src_0123456789abcdef0123")
+
+    with pytest.raises(ValueError, match="Configured source is unavailable") as exc_info:
+        SOURCE_REGISTRY.resolve_configured_sources(
+            command,
+            config,
+            secret="configured-source-key-secret-for-tests",
+        )
+
+    assert private_url not in str(exc_info.value)
+
+
+def test_registry_resolver_retains_bulk_behavior_without_source_key() -> None:
+    sources = [
+        RSSSource(url="https://example.com/one"),
+        RSSSource(url="https://example.com/two"),
+    ]
+
+    resolved = SOURCE_REGISTRY.resolve_configured_sources(
+        MagicMock(kind="rss", spec=["kind"]),
+        SourcesConfig(sources=sources),
+        secret="configured-source-key-secret-for-tests",
+    )
+
+    assert resolved == tuple(sources)
+
+
+def test_configured_source_digest_is_stable_full_hmac_for_public_identity() -> None:
+    source = RSSSource(url="https://private.example/feed")
+    secret = "configured-source-key-secret-for-tests"
+
+    first = configured_source_digest(source, secret=secret)
+    second = configured_source_digest(source, secret=secret)
+
+    assert first == second
+    assert len(first) == 64
+    assert configured_source_public_key(source, secret=secret) == f"src_{first[:20]}"
+
+
+def test_configured_source_version_is_distinct_and_covers_full_private_config() -> None:
+    secret = "configured-source-key-secret-for-tests"
+    original = RSSSource(url="https://private.example/feed", max_entries=10)
+    changed = RSSSource(url="https://private.example/feed", max_entries=11)
+
+    version = configured_source_version(original, secret=secret)
+
+    assert len(version) == 64
+    assert version != configured_source_digest(original, secret=secret)
+    assert version != configured_source_version(changed, secret=secret)
 
 
 def test_default_registry_contains_complete_canonical_descriptor_set() -> None:
@@ -225,6 +303,33 @@ def test_registry_plans_each_configured_gmail_query() -> None:
     assert [command.query for command in commands] == ["label:first", "label:second"]
     assert [command.max_items for command in commands] == [5, 7]
     assert [len(command.configured_sources or []) for command in commands] == [1, 1]
+
+
+def test_registry_plans_each_obsidian_vault_without_private_snapshot(monkeypatch) -> None:
+    secret = "configured-source-key-secret-for-tests"
+    sources = [
+        ObsidianVaultSource(vault_id="first", vault_path="/srv/private/first"),
+        ObsidianVaultSource(vault_id="second", vault_path="/srv/private/second"),
+    ]
+    monkeypatch.setenv("CONFIGURED_SOURCE_KEY_SECRET", secret)
+    get_settings.cache_clear()
+
+    commands = SOURCE_REGISTRY.plan_scheduled_commands(
+        SourcesConfig(sources=sources),
+        sources=["obsidian_vault"],
+        period_start=datetime(2026, 7, 1, tzinfo=UTC),
+        period_end=datetime(2026, 7, 2, tzinfo=UTC),
+    )
+
+    assert [command.source_key for command in commands] == [
+        configured_source_public_key(source, secret=secret) for source in sources
+    ]
+    assert [command.configured_source_version for command in commands] == [
+        configured_source_version(source, secret=secret) for source in sources
+    ]
+    assert [command.max_items for command in commands] == [1_000, 1_000]
+    assert "vault_path" not in str([command.model_dump(mode="json") for command in commands])
+    get_settings.cache_clear()
 
 
 def test_registry_rejects_disabled_unknown_and_unscheduled_pipeline_sources() -> None:

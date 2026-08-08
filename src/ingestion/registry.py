@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -12,6 +15,7 @@ from src.config.sources import (
     BlogSource,
     GmailSource,
     HuggingFacePapersSource,
+    ObsidianVaultSource,
     PodcastSource,
     ReadwiseSource,
     RSSSource,
@@ -23,6 +27,9 @@ from src.config.sources import (
     YouTubeChannelSource,
     YouTubePlaylistSource,
     YouTubeRSSSource,
+    configured_source_public_key,
+    source_key,
+    validate_configured_source_key_secret,
 )
 from src.ingestion.commands import (
     ArxivPaperIngestCommand,
@@ -32,6 +39,7 @@ from src.ingestion.commands import (
     GmailIngestCommand,
     HuggingFacePapersIngestCommand,
     IngestCommandBase,
+    ObsidianVaultIngestCommand,
     PerplexitySearchIngestCommand,
     PodcastIngestCommand,
     ReadwiseIngestCommand,
@@ -58,6 +66,37 @@ type SourceResolver = Callable[[IngestCommandBase], frozenset[ContentSource]]
 type ScheduledCommandPlanner = Callable[
     [tuple[SourceBase, ...], datetime, datetime], tuple[IngestCommandBase, ...]
 ]
+type ReadinessResolver = Callable[[SourceBase], "ConfiguredSourceReadiness"]
+
+_CONFIGURED_SOURCE_KEY_DOMAIN = b"aca:configured-source-key:v1\x00"
+_CONFIGURED_SOURCE_VERSION_DOMAIN = b"aca:configured-source-version:v1\x00"
+
+
+def configured_source_digest(source: SourceBase, *, secret: str) -> str:
+    """Return the full stable HMAC identity used by private adapter state."""
+
+    validate_configured_source_key_secret(secret)
+    return hmac.new(
+        secret.encode("utf-8"),
+        _CONFIGURED_SOURCE_KEY_DOMAIN + source_key(source).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def configured_source_version(source: SourceBase, *, secret: str) -> str:
+    """HMAC the complete canonical private configuration for queue freshness."""
+
+    validate_configured_source_key_secret(secret)
+    serialized = json.dumps(
+        source.model_dump(mode="json"),
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hmac.new(
+        secret.encode("utf-8"),
+        _CONFIGURED_SOURCE_VERSION_DOMAIN + serialized,
+        hashlib.sha256,
+    ).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -77,6 +116,12 @@ class SourceRetryPolicy:
 
 
 @dataclass(frozen=True)
+class ConfiguredSourceReadiness:
+    ready: bool
+    code: str | None = None
+
+
+@dataclass(frozen=True)
 class SourceDescriptor:
     key: str
     display_name: str
@@ -91,6 +136,7 @@ class SourceDescriptor:
     config_accessor: ConfigAccessor | None = None
     route_resolver: RouteResolver | None = None
     source_resolver: SourceResolver | None = None
+    readiness_resolver: ReadinessResolver | None = None
     options: SourceOptions = field(default_factory=SourceOptions)
     retry_policy: SourceRetryPolicy = field(default_factory=SourceRetryPolicy)
     transports: frozenset[Transport] = field(
@@ -109,6 +155,11 @@ class SourceDescriptor:
         if not resolved or not resolved.issubset(self.emitted_sources):
             raise ValueError(f"Descriptor '{self.key}' resolved undeclared emitted sources")
         return resolved
+
+    def resolve_readiness(self, source: SourceBase) -> ConfiguredSourceReadiness:
+        if self.readiness_resolver is None:
+            return ConfiguredSourceReadiness(ready=True)
+        return self.readiness_resolver(source)
 
     def plan_scheduled_commands(
         self,
@@ -244,6 +295,40 @@ class SourceRegistry:
 
     def configured_sources(self, config: SourcesConfig) -> list[ConfiguredSource]:
         return self.scheduled_sources(config)
+
+    def resolve_configured_sources(
+        self,
+        command: IngestCommandBase,
+        config: SourcesConfig,
+        *,
+        secret: str,
+    ) -> tuple[SourceBase, ...]:
+        """Resolve a command to its authoritative private source snapshot.
+
+        Commands carrying an opaque ``source_key`` select exactly one source.
+        Existing config-backed commands without that field retain their bulk
+        snapshot behavior.
+        """
+
+        descriptor = self.get(command.kind)
+        if descriptor.config_accessor is None:
+            return ()
+        configured = tuple(descriptor.config_accessor(config))
+        if not configured:
+            raise ValueError(f"No enabled configured sources are available for '{descriptor.key}'")
+        requested_key = getattr(command, "source_key", None)
+        if requested_key is None:
+            return configured
+        if not isinstance(requested_key, str):
+            raise ValueError("Configured source key must be an opaque source key")
+        matches = tuple(
+            source
+            for source in configured
+            if configured_source_public_key(source, secret=secret) == requested_key
+        )
+        if len(matches) != 1:
+            raise ValueError("Configured source is unavailable")
+        return matches
 
     def plan_scheduled_commands(
         self,
@@ -427,6 +512,34 @@ def _each_plan(
 def _max_entries(sources: tuple[SourceBase, ...]) -> int | None:
     values = [source.max_entries for source in sources if source.max_entries is not None]
     return max(values) if values else None
+
+
+def _obsidian_plan(
+    sources: tuple[SourceBase, ...],
+    _period_start: datetime,
+    _period_end: datetime,
+) -> tuple[IngestCommandBase, ...]:
+    from src.config.settings import get_settings
+
+    secret = get_settings().get_configured_source_key_secret()
+    return tuple(
+        ObsidianVaultIngestCommand(
+            source_key=configured_source_public_key(source, secret=secret),
+            configured_source_version=configured_source_version(source, secret=secret),
+            max_items=getattr(source, "max_files", None),
+        )
+        for source in sources
+    )
+
+
+def _obsidian_readiness(source: SourceBase) -> ConfiguredSourceReadiness:
+    try:
+        from src.ingestion.orchestrator import obsidian_adapter_config
+
+        readiness = obsidian_adapter_config(source).scanner().readiness()
+    except Exception:
+        return ConfiguredSourceReadiness(ready=False, code="source_unavailable")
+    return ConfiguredSourceReadiness(ready=readiness.ready, code=readiness.code)
 
 
 def _default_descriptors() -> tuple[SourceDescriptor, ...]:
@@ -860,6 +973,25 @@ def _default_descriptors() -> tuple[SourceDescriptor, ...]:
             config_matcher=_is(ReadwiseSource),
             config_accessor=_get("get_readwise_sources"),
             options=force_date,
+        ),
+        SourceDescriptor(
+            "obsidian_vault",
+            "Obsidian vault",
+            ObsidianVaultIngestCommand,
+            _dispatch(
+                "ingest_obsidian_vault",
+                lambda c: {
+                    "max_items": c.max_items,
+                    "force_reprocess": c.force_reprocess,
+                },
+            ),
+            frozenset({ContentSource.OBSIDIAN}),
+            True,
+            scheduled_command_planner=_obsidian_plan,
+            config_matcher=_is(ObsidianVaultSource),
+            config_accessor=_get("get_obsidian_vault_sources"),
+            readiness_resolver=_obsidian_readiness,
+            options=SourceOptions(supports_force=True),
         ),
     )
 

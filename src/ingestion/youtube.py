@@ -31,6 +31,7 @@ from src.ingestion.result import (
     IngestionResponse,
     SourceFetchResult,
     build_response_from_source_results,
+    public_source_key_for,
 )
 from src.models.content import Content, ContentSource, ContentStatus
 from src.models.youtube import TranscriptSegment, YouTubeTranscript
@@ -1497,6 +1498,7 @@ class YouTubeContentIngestionService:
                         success=False,
                         error="OAuth not available for private playlist",
                         error_type="oauth_unavailable",
+                        public_source_key=public_source_key_for(source),
                     )
                 )
                 continue
@@ -1506,6 +1508,7 @@ class YouTubeContentIngestionService:
         semaphore = asyncio.Semaphore(settings.youtube_max_concurrent_playlists)
 
         async def ingest_one(source: YouTubePlaylistSource) -> SourceFetchResult:
+            public_source_key = public_source_key_for(source)
             async with semaphore:
                 try:
                     max_videos = source.max_entries or max_videos_per_playlist
@@ -1530,6 +1533,7 @@ class YouTubeContentIngestionService:
                     # Inner method built fetch_result with the playlist URL but
                     # doesn't know the configured display name — set it here.
                     fetch_result.name = source.name
+                    fetch_result.public_source_key = public_source_key
                     return fetch_result
                 except Exception as e:
                     logger.error(f"Error ingesting playlist {source.name or source.id}: {e}")
@@ -1539,13 +1543,14 @@ class YouTubeContentIngestionService:
                         success=False,
                         error=str(e),
                         error_type="playlist_ingest_error",
+                        public_source_key=public_source_key,
                     )
 
         tasks = [ingest_one(s) for s in eligible_sources]
         gathered = await asyncio.gather(*tasks, return_exceptions=True)
 
         total = 0
-        for r in gathered:
+        for configured_source, r in zip(eligible_sources, gathered, strict=True):
             if isinstance(r, SourceFetchResult):
                 source_results.append(r)
                 if r.success:
@@ -1558,6 +1563,7 @@ class YouTubeContentIngestionService:
                         success=False,
                         error=str(r),
                         error_type="unexpected_error",
+                        public_source_key=public_source_key_for(configured_source),
                     )
                 )
 
@@ -1634,6 +1640,7 @@ class YouTubeContentIngestionService:
                         success=False,
                         error="OAuth not available for private channel",
                         error_type="oauth_unavailable",
+                        public_source_key=public_source_key_for(source),
                     )
                 )
                 continue
@@ -1644,6 +1651,7 @@ class YouTubeContentIngestionService:
 
         async def ingest_one(source: YouTubeChannelSource) -> SourceFetchResult:
             channel_url = f"https://www.youtube.com/channel/{source.channel_id}"
+            public_source_key = public_source_key_for(source)
             async with semaphore:
                 # Resolve channel to uploads playlist (sync API call)
                 playlist_id = await asyncio.to_thread(
@@ -1660,6 +1668,7 @@ class YouTubeContentIngestionService:
                         success=False,
                         error="Could not resolve channel to uploads playlist",
                         error_type="channel_unresolvable",
+                        public_source_key=public_source_key,
                     )
 
                 try:
@@ -1688,6 +1697,7 @@ class YouTubeContentIngestionService:
                     # Per-video item_errors retain their original watch?v= URLs.
                     fetch_result.url = channel_url
                     fetch_result.name = source.name
+                    fetch_result.public_source_key = public_source_key
                     return fetch_result
                 except Exception as e:
                     logger.error(f"Error ingesting channel {source.name or source.channel_id}: {e}")
@@ -1697,13 +1707,14 @@ class YouTubeContentIngestionService:
                         success=False,
                         error=str(e),
                         error_type="channel_ingest_error",
+                        public_source_key=public_source_key,
                     )
 
         tasks = [ingest_one(s) for s in eligible_sources]
         gathered = await asyncio.gather(*tasks, return_exceptions=True)
 
         total = 0
-        for r in gathered:
+        for configured_source, r in zip(eligible_sources, gathered, strict=True):
             if isinstance(r, SourceFetchResult):
                 source_results.append(r)
                 if r.success:
@@ -1716,6 +1727,7 @@ class YouTubeContentIngestionService:
                         success=False,
                         error=str(r),
                         error_type="unexpected_error",
+                        public_source_key=public_source_key_for(configured_source),
                     )
                 )
 
@@ -2194,12 +2206,13 @@ class YouTubeRSSIngestionService:
         semaphore = asyncio.Semaphore(settings.youtube_max_concurrent_playlists)
 
         async def ingest_one(source: YouTubeRSSSource) -> SourceFetchResult:
+            public_source_key = public_source_key_for(source)
             async with semaphore:
                 feed_label = source.name or source.url
                 logger.debug(f"Fetching RSS feed: {feed_label}")
                 try:
                     max_entries = source.max_entries or max_entries_per_feed
-                    return await self.ingest_feed(
+                    fetch_result = await self.ingest_feed(
                         feed_url=source.url,
                         max_entries=max_entries,
                         after_date=after_date,
@@ -2217,6 +2230,8 @@ class YouTubeRSSIngestionService:
                         max_duration_seconds=source.max_duration_seconds,
                         content_filter=_content_filter_from_source(source),
                     )
+                    fetch_result.public_source_key = public_source_key
+                    return fetch_result
                 except Exception as e:
                     logger.error(f"Error ingesting YouTube RSS feed {feed_label}: {e}")
                     return SourceFetchResult(
@@ -2225,13 +2240,14 @@ class YouTubeRSSIngestionService:
                         success=False,
                         error=str(e),
                         error_type="feed_ingest_error",
+                        public_source_key=public_source_key,
                     )
 
         tasks = [ingest_one(s) for s in resolved_sources]
         gathered = await asyncio.gather(*tasks, return_exceptions=True)
 
         total = 0
-        for r in gathered:
+        for configured_source, r in zip(resolved_sources, gathered, strict=True):
             if isinstance(r, SourceFetchResult):
                 source_results.append(r)
                 if r.success:
@@ -2244,6 +2260,7 @@ class YouTubeRSSIngestionService:
                         success=False,
                         error=str(r),
                         error_type="unexpected_error",
+                        public_source_key=public_source_key_for(configured_source),
                     )
                 )
 

@@ -10,6 +10,8 @@
  * @see Backend model: src/models/content.py
  */
 
+import type { ContentQuery } from "@/generated/workflow-contracts"
+
 /**
  * Source of the content
  * - gmail: Fetched from Gmail inbox
@@ -21,22 +23,7 @@
  * - webpage: Scraped web page (future)
  * - other: Other sources
  */
-export type ContentSource =
-  | "gmail"
-  | "rss"
-  | "file_upload"
-  | "youtube"
-  | "podcast"
-  | "substack"
-  | "manual"
-  | "webpage"
-  | "xsearch"
-  | "perplexity"
-  | "blog"
-  | "scholar"
-  | "arxiv"
-  | "huggingface_papers"
-  | "other"
+export type ContentSource = NonNullable<ContentQuery["source_types"]>[number]
 
 /**
  * Processing status of content

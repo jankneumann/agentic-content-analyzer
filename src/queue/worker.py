@@ -13,7 +13,8 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Callable, Coroutine
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from time import monotonic
 from typing import Any
 
 import asyncpg
@@ -30,6 +31,59 @@ _handlers: dict[str, Callable[..., Coroutine[Any, Any, None]]] = {}
 # operations remain the only user-submittable workflow mutations.
 _BATCH_MAINTENANCE_ADVISORY_LOCK = 2_104_711_915
 _BATCH_MAINTENANCE_INTERVAL_SECONDS = 60.0
+_RETENTION_MAINTENANCE_ADVISORY_LOCK = 2_104_711_916
+_WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK = 2_104_711_917
+_WORKFLOW_ALERT_MAINTENANCE_INTERVAL_SECONDS = 5.0
+_WORKFLOW_ALERT_MAX_CONCURRENT_DELIVERIES = 8
+
+_WORKFLOW_ALERT_PENDING_EVENT_QUERY = """
+    WITH root_cohort AS (
+        SELECT event.id, event.created_at, 0 AS cohort
+        FROM workflow_terminal_events AS event
+        LEFT JOIN pgqueuer_jobs AS job ON job.id = event.operation_id
+        WHERE event.classification_status = 'pending'
+          AND (
+              event.source_kind <> 'operation'
+              OR job.id IS NULL
+              OR job.parent_job_id IS NULL
+          )
+        ORDER BY event.created_at, event.id
+        LIMIT $1
+    ), child_cohort AS (
+        SELECT event.id, event.created_at, 1 AS cohort
+        FROM workflow_terminal_events AS event
+        JOIN pgqueuer_jobs AS job ON job.id = event.operation_id
+        WHERE event.classification_status = 'pending'
+          AND event.source_kind = 'operation'
+          AND job.parent_job_id IS NOT NULL
+        ORDER BY event.created_at, event.id
+        LIMIT $2
+    )
+    SELECT id
+    FROM (
+        SELECT * FROM root_cohort
+        UNION ALL
+        SELECT * FROM child_cohort
+    ) AS fair_cohorts
+    ORDER BY cohort, created_at, id
+"""
+
+_WORKFLOW_ALERT_ORPHAN_EVENT_CLEANUP_QUERY = """
+    WITH candidates AS (
+        SELECT event.id
+        FROM workflow_terminal_events AS event
+        WHERE event.classification_status IN ('telemetry_only', 'rejected')
+          AND event.created_at < NOW() - make_interval(days => $1)
+          AND NOT EXISTS (
+              SELECT 1 FROM workflow_alert_deliveries AS delivery
+              WHERE delivery.event_id = event.id
+          )
+        ORDER BY event.created_at, event.id
+        LIMIT $2
+    )
+    DELETE FROM workflow_terminal_events
+    WHERE id IN (SELECT id FROM candidates)
+"""
 
 
 def _sqlalchemy_url_to_asyncpg(url: str) -> str:
@@ -59,7 +113,8 @@ async def _claim_jobs(
         UPDATE pgqueuer_jobs
         SET status = 'in_progress',
             started_at = COALESCE(started_at, NOW()),
-            heartbeat_at = NOW()
+            heartbeat_at = NOW(),
+            claim_protocol_version = 2
         WHERE id IN (
             SELECT id FROM pgqueuer_jobs
             WHERE status = 'queued'
@@ -68,14 +123,18 @@ async def _claim_jobs(
             LIMIT $1
             FOR UPDATE SKIP LOCKED
         )
-        RETURNING id, entrypoint, payload
+        RETURNING id, entrypoint, payload, claim_generation, claim_protocol_version
         """,
         batch_size,
     )
     return [dict(row) for row in rows]
 
 
-async def _complete_job(conn: asyncpg.Connection, job_id: int) -> bool:
+async def _complete_job(
+    conn: asyncpg.Connection,
+    job_id: int,
+    claim_generation: int,
+) -> bool:
     """Mark uncancelled active work completed without overwriting terminal state."""
     completed_id = await conn.fetchval(
         """
@@ -83,15 +142,21 @@ async def _complete_job(conn: asyncpg.Connection, job_id: int) -> bool:
         SET status = 'completed', completed_at = NOW(), heartbeat_at = NOW()
         WHERE id = $1
           AND status = 'in_progress'
+          AND claim_generation = $2
           AND NOT COALESCE((payload->>'cancel_requested')::boolean, FALSE)
         RETURNING id
         """,
         job_id,
+        claim_generation,
     )
     return completed_id is not None
 
 
-async def _checkpoint_job_cancellation(conn: asyncpg.Connection, job_id: int) -> bool:
+async def _checkpoint_job_cancellation(
+    conn: asyncpg.Connection,
+    job_id: int,
+    claim_generation: int,
+) -> bool:
     """Resolve a cancellation that raced the handler's final safe checkpoint."""
 
     row = await conn.fetchrow(
@@ -103,25 +168,38 @@ async def _checkpoint_job_cancellation(conn: asyncpg.Connection, job_id: int) ->
             heartbeat_at = NOW()
         WHERE id = $1
           AND status = 'in_progress'
+          AND claim_generation = $2
           AND COALESCE((payload->>'cancel_requested')::boolean, FALSE)
         RETURNING id
         """,
         job_id,
+        claim_generation,
     )
     return row is not None
 
 
-async def _fail_job(conn: asyncpg.Connection, job_id: int, error: str) -> None:
+async def _fail_job(
+    conn: asyncpg.Connection,
+    job_id: int,
+    claim_generation: int,
+    error: str,
+) -> bool:
     """Mark an active job failed without overwriting a terminal state."""
-    await conn.execute(
+    failed_id = await conn.fetchval(
         """
         UPDATE pgqueuer_jobs
-        SET status = 'failed', error = $2, completed_at = NOW(), heartbeat_at = NOW()
-        WHERE id = $1 AND status = 'in_progress'
+        SET status = 'failed', error = $3, completed_at = NOW(), heartbeat_at = NOW()
+        WHERE id = $1
+          AND status = 'in_progress'
+          AND claim_generation = $2
+          AND NOT COALESCE((payload->>'cancel_requested')::boolean, FALSE)
+        RETURNING id
         """,
         job_id,
+        claim_generation,
         error[:1000],  # Truncate long error messages
     )
+    return failed_id is not None
 
 
 async def _emit_job_notification(
@@ -215,48 +293,114 @@ async def _process_job(
     """Process a single job by dispatching to its registered handler."""
     job_id = job["id"]
     entrypoint = job["entrypoint"]
+    claim_generation = int(job["claim_generation"])
+    claim_protocol_version = int(job["claim_protocol_version"])
     payload = job["payload"] or {}
     if isinstance(payload, str):
         payload = json.loads(payload)
 
-    handler = _handlers.get(entrypoint)
-    if handler is None:
-        logger.warning(f"No handler for entrypoint '{entrypoint}', failing job {job_id}")
-        await _fail_job(conn, job_id, f"Unknown entrypoint: {entrypoint}")
-        return
+    from src.queue.execution_claim import ExecutionClaim, bind_execution_claim
+    from src.queue.setup import touch_job_heartbeat
 
-    async def _heartbeat_loop() -> None:
-        from src.queue.setup import touch_job_heartbeat
+    claim = ExecutionClaim(
+        job_id=job_id,
+        claim_generation=claim_generation,
+        claim_protocol_version=claim_protocol_version,
+    )
 
-        while True:
-            await asyncio.sleep(15)
-            await touch_job_heartbeat(job_id)
+    with bind_execution_claim(claim):
+        if await _checkpoint_job_cancellation(conn, job_id, claim_generation):
+            logger.info(f"Job {job_id} ({entrypoint}) cancelled before handler invocation")
+            return
+        if not await touch_job_heartbeat(
+            job_id,
+            conn=conn,
+            claim_generation=claim_generation,
+        ):
+            logger.info(f"Job {job_id} ({entrypoint}) lost its execution claim")
+            return
 
-    heartbeat_task = asyncio.create_task(_heartbeat_loop())
+        handler = _handlers.get(entrypoint)
+        if handler is None:
+            logger.warning(f"No handler for entrypoint '{entrypoint}', failing job {job_id}")
+            if await _fail_job(
+                conn,
+                job_id,
+                claim_generation,
+                f"Unknown entrypoint: {entrypoint}",
+            ):
+                await _emit_job_notification(
+                    job_id,
+                    entrypoint,
+                    payload,
+                    error=f"Unknown entrypoint: {entrypoint}",
+                )
+            return
+
+        async def _heartbeat_loop() -> None:
+            while True:
+                await asyncio.sleep(15)
+                if not await touch_job_heartbeat(
+                    job_id,
+                    claim_generation=claim_generation,
+                ):
+                    return
+
+        heartbeat_task = asyncio.create_task(_heartbeat_loop())
+        try:
+            await handler(job_id, payload)
+            if await _complete_job(conn, job_id, claim_generation):
+                logger.info(f"Job {job_id} ({entrypoint}) completed")
+                await _emit_job_notification(job_id, entrypoint, payload)
+            elif await _checkpoint_job_cancellation(conn, job_id, claim_generation):
+                logger.info(f"Job {job_id} ({entrypoint}) cancelled before completion")
+            else:
+                logger.info(f"Job {job_id} ({entrypoint}) reached a terminal state in its handler")
+        except Exception as e:
+            from src.queue.execution_claim import ClaimCancelled, ClaimSuperseded
+
+            if isinstance(e, ClaimCancelled):
+                if await _checkpoint_job_cancellation(conn, job_id, claim_generation):
+                    logger.info(f"Job {job_id} ({entrypoint}) cancelled at domain commit")
+                else:
+                    logger.info(f"Job {job_id} ({entrypoint}) lost cancellation claim")
+                return
+            if isinstance(e, ClaimSuperseded):
+                logger.info(f"Job {job_id} ({entrypoint}) dropped superseded domain result")
+                return
+            logger.error(f"Job {job_id} ({entrypoint}) failed: {e}", exc_info=True)
+            from src.queue.workflow_handlers import WorkflowHandlerError
+
+            persisted_error = (
+                str(e)
+                if isinstance(e, WorkflowHandlerError)
+                else "Job failed due to an internal error"
+            )
+            if await _fail_job(conn, job_id, claim_generation, persisted_error):
+                await _emit_job_notification(
+                    job_id,
+                    entrypoint,
+                    payload,
+                    error=persisted_error,
+                )
+            elif await _checkpoint_job_cancellation(conn, job_id, claim_generation):
+                logger.info(f"Job {job_id} ({entrypoint}) cancelled after handler failure")
+        finally:
+            heartbeat_task.cancel()
+            await asyncio.gather(heartbeat_task, return_exceptions=True)
+
+
+async def _process_claimed_job(
+    asyncpg_url: str,
+    job: dict[str, Any],
+) -> None:
+    """Process one claim on a connection not shared with polling or sibling jobs."""
+
+    conn = await asyncpg.connect(asyncpg_url)
     try:
-        from src.queue.setup import touch_job_heartbeat
-
-        await touch_job_heartbeat(job_id)
-        await handler(job_id, payload)
-        if await _complete_job(conn, job_id):
-            logger.info(f"Job {job_id} ({entrypoint}) completed")
-            await _emit_job_notification(job_id, entrypoint, payload)
-        elif await _checkpoint_job_cancellation(conn, job_id):
-            logger.info(f"Job {job_id} ({entrypoint}) cancelled before completion")
-        else:
-            logger.info(f"Job {job_id} ({entrypoint}) reached a terminal state in its handler")
-    except Exception as e:
-        logger.error(f"Job {job_id} ({entrypoint}) failed: {e}", exc_info=True)
-        from src.queue.workflow_handlers import WorkflowHandlerError
-
-        persisted_error = (
-            str(e) if isinstance(e, WorkflowHandlerError) else "Job failed due to an internal error"
-        )
-        await _fail_job(conn, job_id, persisted_error)
-        await _emit_job_notification(job_id, entrypoint, payload, error=persisted_error)
+        await _process_job(conn, job)
     finally:
-        heartbeat_task.cancel()
-        await asyncio.gather(heartbeat_task, return_exceptions=True)
+        await conn.close()
 
 
 async def _run_batch_maintenance_tick(conn: asyncpg.Connection) -> bool:
@@ -297,6 +441,364 @@ async def _run_batch_maintenance_tick(conn: asyncpg.Connection) -> bool:
         )
 
 
+def _retention_tick_due(
+    *,
+    now: float,
+    last_run_at: float | None,
+    interval_seconds: float,
+) -> bool:
+    """Return whether startup or the configured process-local interval is due."""
+
+    return last_run_at is None or now - last_run_at >= interval_seconds
+
+
+def _record_retention_metrics(*, deleted_count: int, duration_seconds: float) -> None:
+    """Emit bounded structured maintenance metrics without requiring telemetry."""
+
+    logger.info(
+        "operation retention maintenance completed",
+        extra={
+            "retention_deleted_count": deleted_count,
+            "retention_duration_seconds": duration_seconds,
+        },
+    )
+
+
+async def _run_retention_maintenance_tick(
+    conn: asyncpg.Connection,
+    *,
+    retention_settings: Any,
+) -> bool:
+    """Run one graph-retention cycle when this worker wins leader election."""
+
+    acquired = await conn.fetchval(
+        "SELECT pg_try_advisory_lock($1::bigint)",
+        _RETENTION_MAINTENANCE_ADVISORY_LOCK,
+    )
+    if not acquired:
+        logger.debug("operation retention tick skipped; advisory lock held")
+        return False
+
+    started_at = monotonic()
+    try:
+        from src.queue.setup import cleanup_old_jobs
+
+        deleted_count = await cleanup_old_jobs(
+            older_than_days=retention_settings.job_retention_days,
+            failed_older_than_days=retention_settings.failed_job_retention_days,
+            batch_size=retention_settings.job_retention_batch_size,
+            conn=conn,
+        )
+        _record_retention_metrics(
+            deleted_count=deleted_count,
+            duration_seconds=max(monotonic() - started_at, 0.0),
+        )
+        return True
+    finally:
+        await conn.execute(
+            "SELECT pg_advisory_unlock($1::bigint)",
+            _RETENTION_MAINTENANCE_ADVISORY_LOCK,
+        )
+
+
+def _build_workflow_alert_sink(alert_settings: Any) -> Any:
+    """Construct the configured safe sink from validated process settings."""
+
+    from src.services.alert_sinks import NoopAlertSink, WebhookAlertSink
+
+    if alert_settings.workflow_alert_sink == "noop":
+        return NoopAlertSink()
+    secret = alert_settings.workflow_alert_webhook_secret
+    return WebhookAlertSink(
+        endpoint=alert_settings.workflow_alert_webhook_endpoint,
+        allowed_hosts=alert_settings.get_workflow_alert_allowed_hosts(),
+        secret=secret.get_secret_value() if secret is not None else None,
+        timeout_seconds=alert_settings.workflow_alert_timeout_seconds,
+        max_retry_after_seconds=alert_settings.workflow_alert_max_retry_after_seconds,
+        allow_private_addresses=alert_settings.is_development,
+    )
+
+
+def _workflow_alert_cohort_sizes(batch_size: int) -> tuple[int, int]:
+    """Reserve bounded root and child progress in every classification tick."""
+
+    bounded_size = max(1, min(int(batch_size), 500))
+    child_limit = max(1, bounded_size // 4)
+    root_limit = max(1, bounded_size - child_limit)
+    return root_limit, child_limit
+
+
+def _workflow_alert_retry_policy(alert_settings: Any) -> Any:
+    from src.services.workflow_alert_delivery import DeliveryRetryPolicy
+
+    return DeliveryRetryPolicy(
+        max_attempts=alert_settings.workflow_alert_max_attempts,
+        base_backoff_seconds=alert_settings.workflow_alert_base_backoff_seconds,
+        max_backoff_seconds=alert_settings.workflow_alert_max_backoff_seconds,
+        max_retry_after_seconds=alert_settings.workflow_alert_max_retry_after_seconds,
+        max_age_seconds=alert_settings.workflow_alert_delivery_max_age_seconds,
+    )
+
+
+async def _deliver_workflow_alert_claim(
+    sink: Any,
+    claim: Any,
+    *,
+    timeout_seconds: int,
+) -> tuple[Any, Any]:
+    """Run the complete sink coroutine inside the lease-backed wall-clock bound."""
+
+    from src.services.alert_sinks import SinkDeliveryResult
+    from src.services.workflow_alert_delivery import delivery_idempotency_key
+
+    try:
+        async with asyncio.timeout(timeout_seconds):
+            result = await sink.deliver(
+                claim.envelope,
+                idempotency_key=delivery_idempotency_key(claim),
+            )
+    except TimeoutError:
+        result = SinkDeliveryResult(disposition="retry", error_code="timeout")
+    except Exception:
+        logger.warning(
+            "workflow alert sink failed delivery_id=%s event_id=%s",
+            claim.delivery_id,
+            claim.event_id,
+        )
+        result = SinkDeliveryResult(disposition="retry", error_code="sink_failure")
+    return claim, result
+
+
+async def _drain_workflow_alert_deliveries(*, alert_settings: Any) -> int:
+    """Claim one tight window and persist each result as soon as it completes."""
+
+    from src.services.workflow_alert_delivery import (
+        claim_due_deliveries,
+        mark_delivery_succeeded,
+        record_delivery_failure,
+    )
+    from src.storage.database import get_db
+
+    policy = _workflow_alert_retry_policy(alert_settings)
+    window_size = min(
+        int(alert_settings.workflow_alert_batch_size),
+        _WORKFLOW_ALERT_MAX_CONCURRENT_DELIVERIES,
+    )
+    with get_db() as db:
+        claims = claim_due_deliveries(
+            db,
+            now=datetime.now(UTC),
+            lease_seconds=alert_settings.workflow_alert_lease_seconds,
+            batch_size=window_size,
+            policy=policy,
+        )
+    if not claims:
+        return 0
+
+    sink = _build_workflow_alert_sink(alert_settings)
+    tasks = [
+        asyncio.create_task(
+            _deliver_workflow_alert_claim(
+                sink,
+                claim,
+                timeout_seconds=alert_settings.workflow_alert_timeout_seconds,
+            )
+        )
+        for claim in claims
+    ]
+    persisted = 0
+    try:
+        for completed in asyncio.as_completed(tasks):
+            claim, result = await completed
+            completed_at = datetime.now(UTC)
+            with get_db() as db:
+                if result.disposition == "success":
+                    matched = mark_delivery_succeeded(db, claim=claim, now=completed_at)
+                    if not matched:
+                        logger.warning(
+                            "workflow alert result missed lease delivery_id=%s event_id=%s",
+                            claim.delivery_id,
+                            claim.event_id,
+                        )
+                    else:
+                        persisted += 1
+                    continue
+                failure_status = record_delivery_failure(
+                    db,
+                    claim=claim,
+                    now=completed_at,
+                    error_code=result.error_code or "sink_failure",
+                    retryable=result.disposition == "retry",
+                    retry_after_seconds=result.retry_after_seconds,
+                    policy=policy,
+                )
+                if failure_status is not None:
+                    persisted += 1
+                if failure_status == "exhausted":
+                    logger.error(
+                        "workflow alert delivery exhausted delivery_id=%s event_id=%s",
+                        claim.delivery_id,
+                        claim.event_id,
+                    )
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+    return persisted
+
+
+def _cleanup_terminal_workflow_alert_records(
+    db: Any,
+    *,
+    now: datetime,
+    retention_days: int,
+    exhausted_retention_days: int,
+    batch_size: int,
+) -> int:
+    """Atomically remove retained terminal deliveries with their ready intent."""
+
+    from sqlalchemy import and_, delete, exists, not_, or_, select
+
+    from src.models.workflow_alert import WorkflowAlertDelivery, WorkflowTerminalEvent
+
+    regular_cutoff = now - timedelta(days=retention_days)
+    exhausted_cutoff = now - timedelta(days=exhausted_retention_days)
+    terminal_retained = or_(
+        and_(
+            WorkflowAlertDelivery.status.in_(("delivered", "permanent_failure")),
+            WorkflowAlertDelivery.updated_at < regular_cutoff,
+        ),
+        and_(
+            WorkflowAlertDelivery.status == "exhausted",
+            WorkflowAlertDelivery.updated_at < exhausted_cutoff,
+        ),
+    )
+    has_delivery = exists(
+        select(WorkflowAlertDelivery.id).where(
+            WorkflowAlertDelivery.event_id == WorkflowTerminalEvent.id
+        )
+    )
+    has_unretained_delivery = exists(
+        select(WorkflowAlertDelivery.id).where(
+            WorkflowAlertDelivery.event_id == WorkflowTerminalEvent.id,
+            not_(terminal_retained),
+        )
+    )
+    candidate_ids = list(
+        db.scalars(
+            select(WorkflowTerminalEvent.id)
+            .where(
+                WorkflowTerminalEvent.classification_status == "ready",
+                has_delivery,
+                not_(has_unretained_delivery),
+            )
+            .order_by(WorkflowTerminalEvent.created_at, WorkflowTerminalEvent.id)
+            .limit(max(1, min(int(batch_size), 500)))
+            .with_for_update(skip_locked=True)
+        )
+    )
+    if not candidate_ids:
+        return 0
+    try:
+        db.execute(
+            delete(WorkflowAlertDelivery).where(WorkflowAlertDelivery.event_id.in_(candidate_ids))
+        )
+        db.flush()
+        db.execute(delete(WorkflowTerminalEvent).where(WorkflowTerminalEvent.id.in_(candidate_ids)))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return len(candidate_ids)
+
+
+async def _run_workflow_alert_maintenance_tick(
+    conn: asyncpg.Connection,
+    *,
+    alert_settings: Any,
+) -> bool:
+    """Classify, claim, deliver, and retain one bounded alert batch."""
+
+    acquired = False
+    async with conn.transaction():
+        acquired = await conn.fetchval(
+            "SELECT pg_try_advisory_xact_lock($1::bigint)",
+            _WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK,
+        )
+        if not acquired:
+            logger.debug("workflow alert maintenance tick skipped; advisory lock held")
+        else:
+            from src.services.workflow_alert_delivery import ensure_delivery
+            from src.services.workflow_terminal_event_service import (
+                WorkflowTerminalEventService,
+            )
+            from src.storage.database import get_db
+
+            batch_size = alert_settings.workflow_alert_batch_size
+            root_limit, child_limit = _workflow_alert_cohort_sizes(batch_size)
+            event_rows = await conn.fetch(
+                _WORKFLOW_ALERT_PENDING_EVENT_QUERY,
+                root_limit,
+                child_limit,
+            )
+            processor = WorkflowTerminalEventService(
+                conn,
+                diagnostic_origin=alert_settings.workflow_alert_diagnostic_origin,
+                external_delivery_enabled=alert_settings.workflow_alert_sink == "webhook",
+            )
+            for row in event_rows:
+                await processor.process_pending_event(row["id"])
+
+    # Classification commits with the transaction-scoped leader lock before
+    # synchronous sessions create delivery intents. The unique event/sink key
+    # and delivery leases keep these post-election operations idempotent.
+    if acquired and alert_settings.workflow_alert_sink == "webhook":
+        ready_rows = await conn.fetch(
+            """
+            SELECT event.id
+            FROM workflow_terminal_events AS event
+            WHERE event.classification_status = 'ready'
+              AND event.envelope IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM workflow_alert_deliveries AS delivery
+                  WHERE delivery.event_id = event.id AND delivery.sink_name = 'webhook'
+              )
+            ORDER BY event.created_at, event.id
+            LIMIT $1
+            """,
+            batch_size,
+        )
+        for row in ready_rows:
+            with get_db() as db:
+                ensure_delivery(
+                    db,
+                    event_id=row["id"],
+                    sink_name="webhook",
+                    now=datetime.now(UTC),
+                )
+
+    if acquired:
+        with get_db() as db:
+            _cleanup_terminal_workflow_alert_records(
+                db,
+                now=datetime.now(UTC),
+                retention_days=alert_settings.workflow_alert_retention_days,
+                exhausted_retention_days=(alert_settings.workflow_alert_exhausted_retention_days),
+                batch_size=batch_size,
+            )
+        await conn.execute(
+            _WORKFLOW_ALERT_ORPHAN_EVENT_CLEANUP_QUERY,
+            alert_settings.workflow_alert_retention_days,
+            batch_size,
+        )
+
+    delivered = 0
+    if alert_settings.workflow_alert_sink == "webhook":
+        delivered = await _drain_workflow_alert_deliveries(alert_settings=alert_settings)
+    return bool(acquired or delivered)
+
+
 async def run_worker(
     *,
     concurrency: int = 5,
@@ -323,6 +825,11 @@ async def run_worker(
 
     conn = await asyncpg.connect(asyncpg_url)
     maintenance_conn = await asyncpg.connect(asyncpg_url)
+    retention_conn = await asyncpg.connect(asyncpg_url)
+    alert_conn = await asyncpg.connect(asyncpg_url)
+    from src.config.settings import get_settings
+
+    retention_settings = get_settings()
 
     # Set up LISTEN for immediate job notification
     notify_event = asyncio.Event()
@@ -339,7 +846,11 @@ async def run_worker(
 
     active_tasks: set[asyncio.Task] = set()
     maintenance_task: asyncio.Task[bool] | None = None
+    retention_task: asyncio.Task[bool] | None = None
+    alert_task: asyncio.Task[bool] | None = None
     last_maintenance_at = float("-inf")
+    last_retention_at: float | None = None
+    last_alert_at = float("-inf")
     loop = asyncio.get_running_loop()
     logger.info(f"Embedded worker started (concurrency={concurrency})")
 
@@ -352,6 +863,20 @@ async def run_worker(
                     logger.exception("batch maintenance tick failed")
                 maintenance_task = None
 
+            if retention_task is not None and retention_task.done():
+                try:
+                    retention_task.result()
+                except Exception:
+                    logger.exception("operation retention maintenance tick failed")
+                retention_task = None
+
+            if alert_task is not None and alert_task.done():
+                try:
+                    alert_task.result()
+                except Exception:
+                    logger.exception("workflow alert maintenance tick failed")
+                alert_task = None
+
             if (
                 maintenance_task is None
                 and loop.time() - last_maintenance_at >= _BATCH_MAINTENANCE_INTERVAL_SECONDS
@@ -360,6 +885,31 @@ async def run_worker(
                     _run_batch_maintenance_tick(maintenance_conn)
                 )
                 last_maintenance_at = loop.time()
+
+            if retention_task is None and _retention_tick_due(
+                now=loop.time(),
+                last_run_at=last_retention_at,
+                interval_seconds=retention_settings.job_retention_interval_seconds,
+            ):
+                retention_task = asyncio.create_task(
+                    _run_retention_maintenance_tick(
+                        retention_conn,
+                        retention_settings=retention_settings,
+                    )
+                )
+                last_retention_at = loop.time()
+
+            if (
+                alert_task is None
+                and loop.time() - last_alert_at >= _WORKFLOW_ALERT_MAINTENANCE_INTERVAL_SECONDS
+            ):
+                alert_task = asyncio.create_task(
+                    _run_workflow_alert_maintenance_tick(
+                        alert_conn,
+                        alert_settings=retention_settings,
+                    )
+                )
+                last_alert_at = loop.time()
 
             # Clean up completed tasks
             done = {t for t in active_tasks if t.done()}
@@ -376,7 +926,7 @@ async def run_worker(
             if available > 0:
                 jobs = await _claim_jobs(conn, batch_size=available)
                 for job in jobs:
-                    task = asyncio.create_task(_process_job(conn, job))
+                    task = asyncio.create_task(_process_claimed_job(asyncpg_url, job))
                     active_tasks.add(task)
 
                 if jobs:
@@ -401,9 +951,17 @@ async def run_worker(
         if maintenance_task is not None:
             maintenance_task.cancel()
             await asyncio.gather(maintenance_task, return_exceptions=True)
+        if retention_task is not None:
+            retention_task.cancel()
+            await asyncio.gather(retention_task, return_exceptions=True)
+        if alert_task is not None:
+            alert_task.cancel()
+            await asyncio.gather(alert_task, return_exceptions=True)
         await conn.remove_listener("pgqueuer", _on_notify)
         await conn.close()
         await maintenance_conn.close()
+        await retention_conn.close()
+        await alert_conn.close()
 
 
 def _prepare_forced_summary(content_id: int) -> None:

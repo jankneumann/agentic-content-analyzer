@@ -7,11 +7,79 @@ to verify correct wiring: lazy import, instantiation, call, and return type.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.ingestion.result import IngestionResponse
+
+
+def test_obsidian_orchestrator_maps_one_private_adapter_outcome_to_canonical_response(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import importlib
+
+    from src.config.sources import ObsidianVaultSource, SourcesConfig, use_sources_config
+    from src.ingestion.obsidian_adapter import ObsidianAdapterOutcome, ObsidianDiagnostic
+    from src.ingestion.orchestrator import ingest_obsidian_vault
+    from src.ingestion.registry import configured_source_digest
+
+    secret = "configured-source-key-secret-for-tests"
+    source = ObsidianVaultSource(
+        vault_id="personal",
+        vault_path=str(tmp_path / "vault"),
+        ingest_folder="Inbox",
+        max_files=20,
+    )
+    settings_module = importlib.import_module("src.config.settings")
+    monkeypatch.setattr(
+        settings_module,
+        "get_settings",
+        lambda: SimpleNamespace(
+            get_configured_source_key_secret=lambda: secret,
+            get_obsidian_allowed_roots=lambda: (tmp_path,),
+            obsidian_compatible_worker=True,
+        ),
+    )
+    database_module = importlib.import_module("src.storage.database")
+    session = MagicMock()
+    database_context = MagicMock()
+    database_context.__enter__.return_value = session
+    database_context.__exit__.return_value = False
+    monkeypatch.setattr(database_module, "get_db", lambda: database_context)
+    outcome = ObsidianAdapterOutcome(
+        configured_source_digest="a" * 64,
+        source_outcome="partial",
+        persisted=2,
+        skipped=1,
+        failed=1,
+        content_ids=(11, 12),
+        diagnostics=(ObsidianDiagnostic(code="invalid_frontmatter", path_digest="b" * 64),),
+    )
+    adapter_module = importlib.import_module("src.ingestion.obsidian_adapter")
+    adapter = MagicMock(return_value=outcome)
+    monkeypatch.setattr(adapter_module, "ingest_obsidian_vault", adapter)
+
+    with use_sources_config(SourcesConfig(sources=[source])):
+        response = ingest_obsidian_vault(max_items=5, force_reprocess=True)
+
+    config = adapter.call_args.args[1]
+    assert config.configured_source_digest == configured_source_digest(source, secret=secret)
+    assert config.allowed_roots == (tmp_path,)
+    assert config.compatible_worker is True
+    assert config.scan_limits.max_files == 5
+    assert config.scan_limits.max_entries == 10_000
+    assert response.command == "ingest.obsidian-vault"
+    assert response.source == "obsidian"
+    assert response.status == "partial"
+    assert response.items_ingested == 2
+    assert response.items_skipped == 1
+    assert response.items_failed == 1
+    assert response.details["content_ids"] == [11, 12]
+    assert response.errors[0].code == "invalid_frontmatter"
 
 
 def _rss_response(n: int) -> IngestionResponse:
@@ -135,6 +203,59 @@ def _yt_response(command: str, source: str, n: int) -> IngestionResponse:
         status="ok",
         items_ingested=n,
     )
+
+
+def test_merge_youtube_envelopes_preserves_source_outcomes_and_omissions() -> None:
+    from src.ingestion.orchestrator import _merge_youtube_envelopes
+
+    first = _yt_response("ingest.youtube-playlist", "youtube-playlist", 2)
+    first = first.model_copy(
+        update={
+            "source_outcomes": [
+                {
+                    "source_key": "src_0123456789abcdefabcd",
+                    "status": "ok",
+                    "items_ingested": 2,
+                    "items_failed": 0,
+                    "errors": [],
+                    "warnings": [],
+                    "errors_omitted": 0,
+                    "warnings_omitted": 0,
+                }
+            ],
+            "source_outcomes_omitted": 1,
+        }
+    )
+    second = _yt_response("ingest.youtube-rss", "youtube-rss", 1)
+    second = second.model_copy(
+        update={
+            "source_outcomes": [
+                {
+                    "source_key": "src_abcdef0123456789abcd",
+                    "status": "ok",
+                    "items_ingested": 1,
+                    "items_failed": 0,
+                    "errors": [],
+                    "warnings": [],
+                    "errors_omitted": 0,
+                    "warnings_omitted": 0,
+                }
+            ],
+            "source_outcomes_omitted": 2,
+        }
+    )
+
+    merged = _merge_youtube_envelopes(
+        command="ingest.youtube",
+        source="youtube",
+        parts=[first, second],
+    )
+
+    assert [outcome.source_key for outcome in merged.source_outcomes] == [
+        "src_0123456789abcdefabcd",
+        "src_abcdef0123456789abcd",
+    ]
+    assert merged.source_outcomes_omitted == 3
 
 
 class TestIngestYoutube:

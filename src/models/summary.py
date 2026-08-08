@@ -3,7 +3,19 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
-from sqlalchemy import JSON, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import relationship
 
 from src.models.base import Base
@@ -22,6 +34,8 @@ class Summary(Base):
     content_id = Column(
         Integer, ForeignKey("contents.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    operation_id = Column(BigInteger, nullable=True)
+    operation_claim_generation = Column(BigInteger, nullable=True)
 
     # Summary content
     executive_summary = Column(Text, nullable=False)
@@ -57,6 +71,18 @@ class Summary(Base):
 
     # Relationships
     content = relationship("Content", back_populates="summaries")
+
+    __table_args__ = (
+        CheckConstraint(
+            """
+            (operation_id IS NULL AND operation_claim_generation IS NULL)
+            OR (operation_id IS NOT NULL AND operation_id > 0
+                AND operation_claim_generation IS NOT NULL
+                AND operation_claim_generation > 0)
+            """,
+            name="ck_summaries_operation_owner_complete",
+        ),
+    )
 
 
 # Backwards compatibility alias (deprecated)

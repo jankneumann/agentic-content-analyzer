@@ -39,6 +39,8 @@ _PROBLEM_PATH_PREFIXES = (
     "/api/v1/digests",
     "/api/v1/audio-digests",
     "/api/v1/operations",
+    "/api/v1/workflow-alert-verification-context",
+    "/api/v1/workflow-terminal-events/",
     "/api/v1/kb/search",
     "/api/v1/kb/lint",  # covers /lint and /lint/fix
     "/api/v1/graph/query",

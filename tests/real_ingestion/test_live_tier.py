@@ -48,6 +48,17 @@ LIVE_ELIGIBLE_KEYS = tuple(
 )
 
 
+def _worker_local_mount_ready(key: str) -> bool | None:
+    if key != "obsidian_vault":
+        return None
+    from src.config.settings import get_settings
+    from src.ingestion.registry import SOURCE_REGISTRY
+
+    descriptor = SOURCE_REGISTRY.get(key)
+    sources = get_settings().get_sources_config().get_obsidian_vault_sources()
+    return len(sources) == 1 and descriptor.resolve_readiness(sources[0]).ready
+
+
 async def test_live_drive_classifies_real_adapter_failure(real_ingestion_harness) -> None:
     """The real gmail adapter fails without credentials; the operation still terminates."""
 
@@ -68,7 +79,12 @@ async def test_live_drive_classifies_real_adapter_failure(real_ingestion_harness
 async def test_live_source_reaches_terminal_state(real_ingestion_harness, key: str) -> None:
     """Each policy-permitted source submits live and reaches a classified terminal state."""
 
-    decision = evaluate_live_adapter(key, live_enabled=True, env=os.environ)
+    decision = evaluate_live_adapter(
+        key,
+        live_enabled=True,
+        env=os.environ,
+        worker_local_mount_ready=_worker_local_mount_ready(key),
+    )
     if decision.decision is not LiveDecision.LIVE:
         pytest.skip(decision.reason)
 

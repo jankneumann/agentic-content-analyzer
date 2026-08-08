@@ -17,6 +17,7 @@ Content Sources:
 - ARXIV: arXiv preprints with full PDF text extraction
 - HUGGINGFACE_PAPERS: Daily papers from HuggingFace Papers
 - READWISE: Books/articles imported via Readwise (Kindle, Instapaper, Pocket, Apple Books, Airr, Reader)
+- OBSIDIAN: Private Web Clipper notes from an approved local vault mount
 - MANUAL: Manually created content via API
 """
 
@@ -27,7 +28,9 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     Enum as SQLEnum,
@@ -37,6 +40,8 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    event,
+    inspect,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, relationship
@@ -72,6 +77,7 @@ class ContentSource(StrEnum):
     ARXIV = "arxiv"  # arXiv preprints with full PDF text
     HUGGINGFACE_PAPERS = "huggingface_papers"  # Daily papers from HuggingFace
     READWISE = "readwise"  # Books/articles imported via Readwise (Kindle, Instapaper, Pocket, etc.)
+    OBSIDIAN = "obsidian"  # Private Web Clipper notes from an approved local vault mount
     OTHER = "other"
 
 
@@ -158,6 +164,10 @@ class Content(Base):  # type: ignore[valid-type, misc]
         index=True,
     )
     error_message = Column(Text, nullable=True)
+    status_operation_id = Column(BigInteger, nullable=True)
+    status_claim_generation = Column(BigInteger, nullable=True)
+    status_operation_phase = Column(String(16), nullable=True)
+    status_owner_version = Column(BigInteger, nullable=True)
 
     # Sharing
     is_public = Column(Boolean, nullable=False, default=False, server_default="false")
@@ -232,10 +242,43 @@ class Content(Base):  # type: ignore[valid-type, misc]
     __table_args__ = (
         Index("idx_contents_source", "source_type", "source_id", unique=True),
         Index("idx_contents_publication_date", "publication", "published_date"),
+        CheckConstraint(
+            """
+            (status_operation_id IS NULL
+             AND status_claim_generation IS NULL
+             AND status_operation_phase IS NULL
+             AND status_owner_version IS NULL)
+            OR
+            (status_operation_id IS NOT NULL AND status_operation_id > 0
+             AND status_claim_generation IS NOT NULL AND status_claim_generation > 0
+             AND status_operation_phase IS NOT NULL
+             AND status_owner_version IS NOT NULL AND status_owner_version > 0
+             AND ((status_operation_phase = 'parsing'
+                   AND status IN ('parsing', 'failed'))
+                  OR (status_operation_phase = 'processing'
+                      AND status IN ('processing', 'failed'))))
+            """,
+            name="ck_contents_status_owner_complete",
+        ),
     )
 
     def __repr__(self) -> str:
         return f"<Content(id={self.id}, source={self.source_type.value}, title='{self.title[:50]}...')>"
+
+
+@event.listens_for(Content, "before_update")
+def _clear_unchanged_status_owner(_mapper, _connection, content: Content) -> None:
+    """Mirror the PostgreSQL owner-clearing trigger in ORM-backed test stores."""
+
+    state = inspect(content)
+    if not state.attrs.status.history.has_changes():
+        return
+    if state.attrs.status_owner_version.history.has_changes():
+        return
+    content.status_operation_id = None
+    content.status_claim_generation = None
+    content.status_operation_phase = None
+    content.status_owner_version = None
 
 
 # --- Pydantic Schemas ---

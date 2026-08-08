@@ -33,6 +33,22 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["audio-digests"])
 
+# Allowed fields for sorting. Mirrors the allowlists the other list endpoints
+# already carry (SUMMARY_SORT_FIELDS, DIGEST_SORT_FIELDS, ...): getattr's default
+# only catches names the model lacks entirely, so without this an unlisted-but-real
+# class attribute reaches order_by and turns a query string into a 500.
+AUDIO_DIGEST_SORT_FIELDS = {
+    "id",
+    "digest_id",
+    "status",
+    "voice",
+    "provider",
+    "created_at",
+    "completed_at",
+    "duration_seconds",
+    "file_size_bytes",
+}
+
 
 async def _generate_audio_digest_task(
     audio_digest_id: int,
@@ -280,6 +296,8 @@ async def list_audio_digests(
 
         # Apply sorting
         if sort_by:
+            if sort_by not in AUDIO_DIGEST_SORT_FIELDS:
+                sort_by = "created_at"
             sort_column = getattr(AudioDigest, sort_by, AudioDigest.created_at)
             if sort_order.lower() == "asc":
                 query = query.order_by(sort_column.asc())

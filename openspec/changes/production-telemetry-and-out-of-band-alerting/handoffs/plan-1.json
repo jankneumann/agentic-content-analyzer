@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-08-02T00:44:50.316654+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Expanded the RI-09 scaffold into a coordinated, test-first plan for transactional terminal-event evidence, bounded telemetry, and idempotent HTTPS webhook delivery. Direct code and spec inspection replaced the incomplete cross-layer architecture graph.",
+    "completed_work": [
+      "Reviewed canonical terminal, typed result, notification, telemetry, settings, and reconciliation paths.",
+      "Created detailed proposal, design, five spec deltas, closed JSON/DB contracts, tasks, and a six-package DAG.",
+      "Validated the OpenSpec change and package graph strictly."
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Use a dedicated transactional terminal-event outbox",
+        "rationale": "Existing generic notifications commit separately, accept unsafe open payloads, and provide only process-local SSE delivery.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Implement HTTPS webhook as the v1 sink",
+        "rationale": "A receiver can honor stable idempotency keys and the transport is deterministic to test without inventing incomplete email identity/configuration.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Capture operation intent with database triggers",
+        "rationale": "Canonical terminal transitions have worker, cancellation, handler, and maintenance paths; a trigger closes post-commit crash and bypass windows.",
+        "capability": null,
+        "supersedes": null
+      }
+    ],
+    "next_steps": [],
+    "relevant_files": []
+  }
+}

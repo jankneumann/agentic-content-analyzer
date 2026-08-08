@@ -9,9 +9,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import AnyUrl, Field, TypeAdapter
 
-from src.config.sources import load_sources_config
 from src.contracts.workflow_models import IngestCommand, OperationHandle, UploadReference
-from src.ingestion.registry import SOURCE_REGISTRY
+from src.ingestion.registry import SOURCE_REGISTRY, configured_source_version
 from src.mcp_tools import runtime
 from src.models.jobs import OperationType
 from src.services.operation_service import OperationService
@@ -20,9 +19,11 @@ from src.services.upload_service import UploadService
 _INGEST_COMMAND: TypeAdapter[IngestCommand] = TypeAdapter(IngestCommand)
 PositiveInt = Annotated[int, Field(ge=1)]
 OptionalPositiveInt = Annotated[int | None, Field(ge=1)]
+OptionalObsidianMaxItems = Annotated[int | None, Field(ge=1, le=10_000)]
 OptionalNonNegativeInt = Annotated[int | None, Field(ge=0)]
 NonEmptyString = Annotated[str, Field(min_length=1)]
 NonEmptyStringList = Annotated[list[str], Field(min_length=1)]
+OpaqueSourceKey = Annotated[str, Field(pattern=r"^src_[a-f0-9]{20}$")]
 
 
 def _payload(kind: str, **values: Any) -> dict[str, Any]:
@@ -41,12 +42,24 @@ async def _submit(command: dict[str, Any], idempotency_key: str | None = None) -
 
     descriptor = SOURCE_REGISTRY.get(validated.kind)
     if descriptor.config_accessor is not None:
-        configured = descriptor.config_accessor(load_sources_config())
-        if not configured:
-            raise ValueError(f"No enabled configured sources are available for '{validated.kind}'")
-        public_payload["configured_sources"] = [
-            source.model_dump(mode="json") for source in configured
-        ]
+        from src.config.settings import get_settings
+
+        settings = get_settings()
+        secret = settings.get_configured_source_key_secret()
+        configured = SOURCE_REGISTRY.resolve_configured_sources(
+            validated,
+            settings.get_sources_config(),
+            secret=secret,
+        )
+        if validated.kind == "obsidian_vault":
+            public_payload["configured_source_version"] = configured_source_version(
+                configured[0],
+                secret=secret,
+            )
+        else:
+            public_payload["configured_sources"] = [
+                source.model_dump(mode="json") for source in configured
+            ]
     handle = await OperationService().submit(
         OperationType.INGESTION_EXECUTE,
         public_payload,
@@ -421,6 +434,26 @@ async def ingest_readwise(
     )
 
 
+@runtime.tool_boundary
+async def ingest_obsidian_vault(
+    source_key: OpaqueSourceKey,
+    max_items: OptionalObsidianMaxItems = None,
+    force_reprocess: bool = False,
+    idempotency_key: str | None = None,
+) -> OperationHandle:
+    """Queue one bounded scan for an opaque configured Obsidian vault source."""
+
+    return await _submit(
+        _payload(
+            "obsidian_vault",
+            source_key=source_key,
+            max_items=max_items,
+            force_reprocess=force_reprocess,
+        ),
+        idempotency_key,
+    )
+
+
 INGESTION_TOOL_BY_SOURCE = {
     "gmail": ingest_gmail,
     "rss": ingest_rss,
@@ -440,6 +473,7 @@ INGESTION_TOOL_BY_SOURCE = {
     "arxiv_paper": ingest_arxiv_paper,
     "huggingface_papers": ingest_huggingface_papers,
     "readwise": ingest_readwise,
+    "obsidian_vault": ingest_obsidian_vault,
 }
 
 TOOLS = (upload_content, *INGESTION_TOOL_BY_SOURCE.values())

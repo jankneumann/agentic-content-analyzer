@@ -1,7 +1,7 @@
 schema_version: 1
 roadmap_id: roadmap-workflow-surface-reliability
 source_proposal: openspec/roadmaps/workflow-surface-reliability/proposal.md
-status: approved
+status: completed
 policy:
   default_action: wait_if_budget_exceeded
   max_switch_attempts_per_item: 2
@@ -139,7 +139,7 @@ items:
     production by default.
 - item_id: ri-07
   title: Reconcile persisted ingestion results
-  status: approved
+  status: completed
   priority: 7
   effort: L
   depends_on:
@@ -164,7 +164,7 @@ items:
     unmet query or retention requirement.
 - item_id: ri-08
   title: Reconcile stuck content states
-  status: approved
+  status: completed
   priority: 8
   effort: L
   depends_on:
@@ -187,7 +187,7 @@ items:
     or exceed retry budgets.
 - item_id: ri-09
   title: Add terminal-state telemetry and alerts
-  status: approved
+  status: completed
   priority: 9
   effort: L
   depends_on:
@@ -213,7 +213,7 @@ items:
     alert delivery.
 - item_id: ri-10
   title: Add Obsidian vault ingestion
-  status: approved
+  status: completed
   priority: 10
   effort: L
   depends_on:
@@ -240,7 +240,7 @@ items:
   - Vault ingress remains separate from knowledge-base export and sync behavior.
 - item_id: ri-11
   title: Decide the API versioning boundary
-  status: approved
+  status: completed
   priority: 11
   effort: S
   depends_on:
@@ -263,4 +263,4 @@ items:
     evaluation suites.
   - No speculative implementation from the existing 42-task proposal begins without
     a concrete incompatible case.
-updated_at: '2026-07-27T20:05:01.226529+00:00'
+updated_at: '2026-08-07T12:05:00+00:00'

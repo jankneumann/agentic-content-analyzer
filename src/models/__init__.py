@@ -20,6 +20,7 @@ from src.models.batch import BatchJob, BatchJobState, BatchRequest, BatchRequest
 from src.models.chat import ArtifactType, ChatMessage, Conversation, MessageRole
 from src.models.chunk import ChunkType, DocumentChunk
 from src.models.content import Content, ContentSource, ContentStatus
+from src.models.content_reconciliation import ContentReconciliationAction
 from src.models.content_reference import (
     ContentReference,
     ExternalIdType,
@@ -46,6 +47,12 @@ from src.models.filter_feedback_event import FilterFeedbackEvent
 from src.models.highlight import Highlight, HighlightResponse, HighlightSource, HighlightTargetKind
 from src.models.image import Image, ImageSource
 from src.models.notification import DeviceRegistration, NotificationEvent, NotificationEventType
+from src.models.obsidian_ingest import (
+    OBSIDIAN_ERROR_CODES,
+    ObsidianIngestEvent,
+    ObsidianIngestState,
+    ObsidianIngestStatus,
+)
 from src.models.persona_filter_profile import PersonaFilterProfile
 from src.models.podcast import Podcast, PodcastLength, PodcastScriptRecord, PodcastStatus
 from src.models.revision import RevisionContext, RevisionResult, RevisionTurn
@@ -65,6 +72,13 @@ from src.models.source_override import SourceOverride
 from src.models.summary import NewsletterSummary, Summary, SummaryData
 from src.models.theme import ThemeAnalysis
 from src.models.topic import KBIndex, Topic, TopicNote, TopicNoteType, TopicStatus
+from src.models.workflow_alert import (
+    WorkflowAlertDelivery,
+    WorkflowAlertDeliveryStatus,
+    WorkflowTerminalClassificationStatus,
+    WorkflowTerminalEvent,
+    WorkflowTerminalSourceKind,
+)
 from src.models.youtube import (
     TimestampedQuote,
     TranscriptSegment,
@@ -102,6 +116,7 @@ __all__ = [
     "Content",
     "ContentSource",
     "ContentStatus",
+    "ContentReconciliationAction",
     # Content Reference
     "ContentReference",
     "ReferenceType",
@@ -185,6 +200,17 @@ __all__ = [
     # Ingestion filter
     "PersonaFilterProfile",
     "FilterFeedbackEvent",
+    # Private Obsidian ingest state
+    "ObsidianIngestState",
+    "ObsidianIngestEvent",
+    "ObsidianIngestStatus",
+    "OBSIDIAN_ERROR_CODES",
+    # Workflow terminal alerting
+    "WorkflowTerminalEvent",
+    "WorkflowTerminalSourceKind",
+    "WorkflowTerminalClassificationStatus",
+    "WorkflowAlertDelivery",
+    "WorkflowAlertDeliveryStatus",
     # YouTube
     "YouTubeTranscript",
     "TranscriptSegment",

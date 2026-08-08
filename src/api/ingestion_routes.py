@@ -2,19 +2,40 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 
 from src.api.workflow_dependencies import (
     get_operation_service,
     get_sources_config,
     get_upload_service,
 )
+from src.config.release_identity import release_identity
+from src.config.settings import get_settings
 from src.config.sources import SourcesConfig
-from src.contracts.workflow_models import IngestCommand, OperationHandle, UploadReference
-from src.ingestion.registry import SOURCE_REGISTRY
+from src.contracts.workflow_models import (
+    IngestCommand,
+    IngestionHistoryPage,
+    IngestionOutcome,
+    OperationHandle,
+    TerminalOperationStatus,
+    UploadReference,
+)
+from src.ingestion.registry import SOURCE_REGISTRY, configured_source_version
 from src.models.jobs import OperationType
 from src.services.operation_service import OperationService
 from src.services.upload_service import UploadService
@@ -86,6 +107,39 @@ _UPLOAD_EXTENSION_MEDIA: dict[str, frozenset[str]] = {
 }
 
 
+@router.get("/ingestions", response_model=IngestionHistoryPage)
+async def list_ingestion_history(
+    command_key: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
+    configured_source_key: Annotated[str | None, Query(pattern=r"^src_[a-f0-9]{20}$")] = None,
+    outcome: IngestionOutcome | None = None,
+    status_filter: Annotated[
+        TerminalOperationStatus | None,
+        Query(alias="status"),
+    ] = None,
+    parent_operation_id: Annotated[
+        str | None,
+        Query(pattern=r"^[1-9][0-9]*$", max_length=19),
+    ] = None,
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    cursor: Annotated[str | None, Query(min_length=1, max_length=2048)] = None,
+    service: OperationService = Depends(get_operation_service),
+) -> IngestionHistoryPage:
+    page = await service.list_ingestion_history(
+        command_key=command_key,
+        configured_source_key=configured_source_key,
+        outcome=outcome,
+        status=status_filter,
+        parent_operation_id=parent_operation_id,
+        created_after=created_after,
+        created_before=created_before,
+        limit=limit,
+        cursor=cursor,
+    )
+    return IngestionHistoryPage.model_validate(page.model_dump(mode="json"))
+
+
 @router.post("/uploads", response_model=UploadReference, status_code=status.HTTP_201_CREATED)
 async def create_upload(
     file: Annotated[UploadFile, File()],
@@ -125,6 +179,7 @@ async def create_upload(
 )
 async def submit_ingestion(
     command: IngestCommand,
+    response: Response,
     idempotency_key: Annotated[
         str | None, Header(alias="Idempotency-Key", min_length=8, max_length=200)
     ] = None,
@@ -136,21 +191,50 @@ async def submit_ingestion(
             status_code=422,
             detail="configured_sources is an internal scheduler snapshot and cannot be supplied",
         )
-    payload = command.model_dump(mode="json", exclude_none=True)
+    if getattr(command, "configured_source_version", None) is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="configured_source_version is server-owned and cannot be supplied",
+        )
+    payload = command.model_dump(
+        mode="json",
+        exclude_none=True,
+        exclude={"configured_sources", "configured_source_version"},
+    )
     descriptor = SOURCE_REGISTRY.get(command.kind)
     if descriptor.config_accessor is not None:
-        configured_sources = [
-            source.model_dump(mode="json") for source in descriptor.config_accessor(config)
-        ]
-        if not configured_sources:
+        requested_source_key = getattr(command, "source_key", None)
+        if requested_source_key is not None:
+            secret = get_settings().get_configured_source_key_secret()
+            try:
+                resolved = SOURCE_REGISTRY.resolve_configured_sources(
+                    command,
+                    config,
+                    secret=secret,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            payload["configured_source_version"] = configured_source_version(
+                resolved[0],
+                secret=secret,
+            )
+        else:
+            configured_sources = [
+                source.model_dump(mode="json") for source in descriptor.config_accessor(config)
+            ]
+            if configured_sources:
+                payload["configured_sources"] = configured_sources
+        if requested_source_key is None and not configured_sources:
             raise HTTPException(
                 status_code=422,
                 detail=f"No enabled configured sources are available for '{descriptor.key}'",
             )
-        payload["configured_sources"] = configured_sources
     handle = await service.submit(
         OperationType.INGESTION_EXECUTE,
         payload,
         idempotency_key=idempotency_key,
     )
+    revision, revision_source = release_identity()
+    response.headers["X-Release-Revision"] = revision
+    response.headers["X-Release-Revision-Source"] = revision_source
     return OperationHandle.model_validate(handle.model_dump(mode="json"))

@@ -1,0 +1,595 @@
+schema_version: 1
+
+feature:
+  id: persisted-ingestion-run-results
+  title: Reconcile persisted ingestion results
+  plan_revision: 3
+  created_by: codex
+  created_at: "2026-07-28T00:30:00Z"
+
+contracts:
+  revision: 1
+  openapi:
+    primary: openspec/changes/persisted-ingestion-run-results/contracts/openapi/v1.yaml
+    files:
+      - openspec/changes/persisted-ingestion-run-results/contracts/openapi/v1.yaml
+  generated:
+    pydantic_dir: src/contracts
+    typescript_dir: web/src/generated
+
+defaults:
+  priority: 5
+  lock_ttl_minutes: 180
+  timeout_minutes: 180
+  retry_budget: 1
+  verification_tier_required: B
+  min_trust_level: 2
+
+packages:
+  - package_id: wp-contracts
+    title: Typed bounded-result contracts
+    task_type: implement
+    description: >-
+      Merge the approved versioned result, pipeline summary, operation summary,
+      and ingestion-history schemas into the durable registry, extend both
+      generators, and record the reconciliation matrix.
+    role: contract-engineer
+    priority: 1
+    depends_on: []
+    locks:
+      files:
+        - openspec/contracts/content-workflows/openapi/v1.yaml
+        - openspec/contracts/content-workflows/generated/models.py
+        - openspec/contracts/content-workflows/generated/types.ts
+        - src/contracts/workflow_models.py
+        - web/src/generated/workflow-contracts.ts
+      keys:
+        - contract:content-workflows:ingestion-history
+      ttl_minutes: 180
+      reason: Canonical cross-surface schema and generated-model ownership.
+    scope:
+      write_allow:
+        - openspec/contracts/content-workflows/**
+        - src/contracts/**
+        - web/src/generated/**
+        - scripts/generate_workflow_contracts.py
+        - tests/contract/test_canonical_workflow_contracts.py
+        - openspec/changes/persisted-ingestion-run-results/reconciliation.md
+      read_allow:
+        - src/**
+        - web/**
+        - tests/**
+        - openspec/**
+    worktree: { name: wp-contracts, mode: isolated }
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 420
+      alternatives_count: 3
+      complexity: high
+      package_kind: data_model
+    inputs:
+      tasks: ["1.1", "1.2", "1.3"]
+    verification:
+      tier_required: B
+      steps:
+        - name: workflow-contract-drift
+          kind: command
+          command: make workflow-contracts-check
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [contract_valid, generated_models_current]
+        - name: contract-tests
+          kind: command
+          command: .venv/bin/pytest tests/contract/test_canonical_workflow_contracts.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, contract_valid, generated_models_current]
+
+  - package_id: wp-results
+    title: Durable ingestion outcome projection
+    task_type: implement
+    description: >-
+      Preserve typed source outcomes and exact provenance, centralize
+      secret-derived source identity, and enforce a closed redacted metadata
+      projection across ingestion producers.
+    role: backend-engineer
+    priority: 2
+    depends_on: [wp-contracts]
+    locks:
+      files:
+        - src/ingestion/result.py
+        - src/queue/workflow_handlers.py
+        - src/config/sources.py
+        - src/services/capability_service.py
+      keys:
+        - feature:persisted-ingestion-run-results:result
+        - env:configured_source_key_secret
+      ttl_minutes: 240
+      reason: Ingestion result, configured identity, and redaction boundary.
+    scope:
+      write_allow:
+        - src/ingestion/**
+        - src/queue/workflow_handlers.py
+        - src/config/sources.py
+        - src/config/settings.py
+        - src/services/capability_service.py
+        - tests/ingestion/**
+        - tests/queue/test_workflow_handlers.py
+        - tests/services/test_capability_service.py
+        - tests/config/test_settings.py
+      read_allow:
+        - src/**
+        - tests/**
+        - openspec/**
+    worktree: { name: wp-results, mode: isolated }
+    timeout_minutes: 240
+    retry_budget: 1
+    min_trust_level: 3
+    metadata:
+      loc_estimate: 520
+      alternatives_count: 3
+      complexity: high
+      package_kind: data_model
+    inputs:
+      tasks: ["2.1", "2.2", "2.3", "2.4"]
+    verification:
+      tier_required: B
+      steps:
+        - name: ingestion-result-tests
+          kind: command
+          command: .venv/bin/pytest tests/ingestion tests/queue/test_workflow_handlers.py tests/services/test_capability_service.py tests/config/test_settings.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count, redaction_assertions]
+    outputs:
+      result_keys: [files_modified, test_count, redaction_assertions]
+
+  - package_id: wp-pipeline
+    title: Shared pipeline outcome classification
+    task_type: implement
+    description: >-
+      Add the shared classifier, stable pipeline ingestion summary, strict
+      partial failure, and human/JSON CLI behavior without changing retry or
+      checkpoint authority.
+    role: workflow-engineer
+    priority: 3
+    depends_on: [wp-results]
+    locks:
+      files:
+        - src/workflows/pipeline.py
+        - src/services/operation_service.py
+        - src/cli/workflow_commands.py
+      keys:
+        - feature:persisted-ingestion-run-results:classifier
+      ttl_minutes: 180
+      reason: Pipeline outcome and waiting CLI boundary.
+    scope:
+      write_allow:
+        - src/workflows/pipeline.py
+        - src/services/operation_service.py
+        - src/cli/workflow_commands.py
+        - tests/workflows/test_pipeline_workflow.py
+        - tests/cli/test_canonical_workflows.py
+        - tests/queue/test_operation_service.py
+      read_allow:
+        - src/**
+        - tests/**
+        - openspec/**
+    worktree: { name: wp-pipeline, mode: isolated }
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 3
+    metadata:
+      loc_estimate: 380
+      alternatives_count: 3
+      complexity: high
+      package_kind: integration
+    inputs:
+      tasks: ["3.1", "3.2", "3.3", "3.4"]
+    verification:
+      tier_required: B
+      steps:
+        - name: pipeline-classifier-tests
+          kind: command
+          command: .venv/bin/pytest tests/workflows/test_pipeline_workflow.py tests/queue/test_operation_service.py tests/cli/test_canonical_workflows.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count, checkpoint_compatibility]
+    outputs:
+      result_keys: [files_modified, test_count, checkpoint_compatibility]
+
+  - package_id: wp-operation-summaries
+    title: Summary-only generic operation lists
+    task_type: implement
+    description: >-
+      Replace full handles on generic list pages with bounded summaries and
+      migrate first-party API, CLI, and web list consumers while keeping exact
+      operation reads unchanged.
+    role: api-engineer
+    priority: 3
+    depends_on: [wp-pipeline]
+    locks:
+      files:
+        - src/services/operation_service.py
+        - src/clients/workflow_api_client.py
+        - src/cli/workflow_commands.py
+        - web/src/lib/api/workflows.ts
+        - web/src/contexts/BackgroundTasksContext.tsx
+      keys:
+        - api:GET /api/v1/operations
+      ttl_minutes: 180
+      reason: Generic operation list privacy boundary.
+    scope:
+      write_allow:
+        - src/services/operation_service.py
+        - src/api/operation_routes.py
+        - src/clients/workflow_api_client.py
+        - src/cli/workflow_commands.py
+        - web/src/lib/api/workflows.ts
+        - web/src/contexts/BackgroundTasksContext.tsx
+        - web/src/components/layout/BackgroundTasksIndicator.tsx
+        - tests/queue/test_operation_service.py
+        - tests/api/test_canonical_workflow_api.py
+        - tests/clients/test_workflow_api_client.py
+        - tests/cli/test_canonical_workflows.py
+        - web/src/**/*.test.*
+      read_allow:
+        - src/**
+        - web/**
+        - tests/**
+        - openspec/**
+    worktree: { name: wp-operation-summaries, mode: isolated }
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 3
+    metadata:
+      loc_estimate: 330
+      alternatives_count: 3
+      complexity: high
+      package_kind: crud
+    inputs:
+      tasks: ["4.1", "4.2"]
+    verification:
+      tier_required: B
+      steps:
+        - name: operation-summary-tests
+          kind: command
+          command: .venv/bin/pytest tests/queue/test_operation_service.py tests/api/test_canonical_workflow_api.py tests/clients/test_workflow_api_client.py tests/cli/test_canonical_workflows.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count, exposure_assertions]
+        - name: frontend-summary-tests
+          kind: command
+          command: cd web && npm test -- --run && npm run typecheck
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [frontend_test_count, frontend_typecheck]
+    outputs:
+      result_keys: [files_modified, test_count, exposure_assertions, frontend_typecheck]
+
+  - package_id: wp-history-backend
+    title: Compact ingestion history backend
+    task_type: implement
+    description: >-
+      Implement terminal operation-derived ingestion history with signed
+      filter-bound cursors, legacy precedence, nullable unknown counts,
+      authorization, and bounded projections.
+    role: api-engineer
+    priority: 4
+    depends_on: [wp-operation-summaries]
+    locks:
+      files:
+        - src/services/operation_service.py
+        - src/api/ingestion_routes.py
+      keys:
+        - api:GET /api/v1/ingestions
+      ttl_minutes: 180
+      reason: Canonical ingestion history query boundary.
+    scope:
+      write_allow:
+        - src/services/operation_service.py
+        - src/api/ingestion_routes.py
+        - src/api/workflow_dependencies.py
+        - src/config/settings.py
+        - src/ingestion/result_sanitizer.py
+        - tests/queue/test_operation_service.py
+        - tests/api/test_canonical_workflow_api.py
+        - tests/config/test_settings.py
+        - tests/ingestion/test_result_sanitizer.py
+      read_allow:
+        - src/**
+        - tests/**
+        - openspec/**
+    worktree: { name: wp-history-backend, mode: isolated }
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 3
+    metadata:
+      loc_estimate: 430
+      alternatives_count: 3
+      complexity: high
+      package_kind: crud
+    inputs:
+      tasks: ["4.3", "4.4"]
+    verification:
+      tier_required: B
+      steps:
+        - name: history-backend-tests
+          kind: command
+          command: .venv/bin/pytest tests/queue/test_operation_service.py tests/api/test_canonical_workflow_api.py tests/config/test_settings.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count, cursor_cases, authorization_cases]
+    outputs:
+      result_keys: [files_modified, test_count, cursor_cases, authorization_cases]
+
+  - package_id: wp-history-cli
+    title: Canonical ingestion history surfaces
+    task_type: implement
+    description: >-
+      Add bounded client pagination and `aca ingest history` with API-equivalent
+      filters, omitted absent values, JSON purity, and request budgets.
+    role: cli-engineer
+    priority: 5
+    depends_on: [wp-history-backend]
+    locks:
+      files:
+        - src/clients/workflow_api_client.py
+        - src/cli/workflow_commands.py
+      keys:
+        - feature:persisted-ingestion-run-results:history
+      ttl_minutes: 180
+      reason: Canonical client and CLI history surface.
+    scope:
+      write_allow:
+        - src/clients/workflow_api_client.py
+        - src/cli/workflow_commands.py
+        - tests/clients/test_workflow_api_client.py
+        - tests/cli/test_canonical_workflows.py
+      read_allow:
+        - src/**
+        - tests/**
+        - openspec/**
+    worktree: { name: wp-history-cli, mode: isolated }
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 3
+    metadata:
+      loc_estimate: 260
+      alternatives_count: 3
+      complexity: medium
+      package_kind: integration
+    inputs:
+      tasks: ["4.5", "4.6"]
+    verification:
+      tier_required: B
+      steps:
+        - name: history-cli-tests
+          kind: command
+          command: .venv/bin/pytest tests/clients/test_workflow_api_client.py tests/cli/test_canonical_workflows.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count, json_purity_cases]
+    outputs:
+      result_keys: [files_modified, test_count, json_purity_cases]
+
+  - package_id: wp-history-indexes
+    title: Measured ingestion history indexes
+    task_type: implement
+    description: >-
+      Exercise representative PostgreSQL history queries over at least 10,000
+      rows and add only indexes justified by measured plans.
+    role: database-engineer
+    priority: 5
+    depends_on: [wp-history-backend]
+    locks:
+      files:
+        - alembic/versions
+        - src/services/operation_service.py
+        - tests/migrations/test_batch_processing.py
+      keys:
+        - db:schema:pgqueuer_jobs
+      ttl_minutes: 180
+      reason: Measured history query-plan and migration boundary.
+    scope:
+      write_allow:
+        - alembic/versions/**
+        - src/services/operation_service.py
+        - tests/integration/test_ingestion_history_query_plan.py
+        - tests/migrations/test_batch_processing.py
+      read_allow:
+        - src/**
+        - alembic/**
+        - tests/**
+        - openspec/**
+    worktree: { name: wp-history-indexes, mode: isolated }
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 3
+    metadata:
+      loc_estimate: 220
+      alternatives_count: 3
+      complexity: medium
+      package_kind: migration
+    inputs:
+      tasks: ["4.7", "4.8"]
+    verification:
+      tier_required: A
+      steps:
+        - name: postgres-query-plan-tests
+          kind: command
+          command: .venv/bin/pytest tests/integration/test_ingestion_history_query_plan.py -m integration --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count, query_plan]
+        - name: migration-tests
+          kind: command
+          command: .venv/bin/pytest tests/migrations/test_batch_processing.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, test_count, query_plan]
+
+  - package_id: wp-retention
+    title: Graph-aware operation retention
+    task_type: implement
+    description: >-
+      Replace row-local cleanup with bounded, finite-horizon, advisory-locked
+      graph cleanup scheduled independently of optional batch maintenance.
+    role: database-engineer
+    priority: 4
+    depends_on: [wp-history-backend, wp-history-indexes]
+    locks:
+      files:
+        - src/queue/setup.py
+        - src/queue/worker.py
+        - src/config/settings.py
+        - src/services/operation_service.py
+        - tests/test_queue/test_setup.py
+      keys:
+        - env:operation-retention-policy
+      ttl_minutes: 240
+      reason: Queue graph retention and worker maintenance boundary.
+    scope:
+      write_allow:
+        - src/queue/setup.py
+        - src/queue/worker.py
+        - src/config/settings.py
+        - src/services/operation_service.py
+        - tests/queue/test_operation_controls.py
+        - tests/queue/test_operation_service.py
+        - tests/queue/test_worker_extended.py
+        - tests/config/test_settings.py
+        - tests/test_queue/test_setup.py
+        - tests/integration/test_operation_retention.py
+      read_allow:
+        - src/**
+        - alembic/**
+        - tests/**
+        - openspec/**
+    worktree: { name: wp-retention, mode: isolated }
+    timeout_minutes: 240
+    retry_budget: 1
+    min_trust_level: 3
+    metadata:
+      loc_estimate: 450
+      alternatives_count: 3
+      complexity: high
+      package_kind: migration
+    inputs:
+      tasks: ["5.1", "5.2", "5.3"]
+    verification:
+      tier_required: A
+      steps:
+        - name: postgres-retention-tests
+          kind: command
+          command: .venv/bin/pytest tests/integration/test_operation_retention.py -m integration --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count, advisory_lock_cases]
+        - name: worker-retention-tests
+          kind: command
+          command: .venv/bin/pytest tests/queue/test_operation_controls.py tests/queue/test_operation_service.py tests/queue/test_worker_extended.py tests/config/test_settings.py tests/test_queue/test_setup.py --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, test_count, advisory_lock_cases]
+
+  - package_id: wp-integration
+    title: Documentation integration validation
+    task_type: integration
+    description: >-
+      Reconcile canonical and legacy specs, add gen-eval coverage, integrate all
+      packages, and run strict validation plus security review.
+    role: integration-engineer
+    priority: 6
+    depends_on:
+      - wp-operation-summaries
+      - wp-history-cli
+      - wp-history-indexes
+      - wp-retention
+    locks:
+      files:
+        - docs/DEVELOPMENT.md
+        - docs/TESTING.md
+        - evaluation/README.md
+        - evaluation/descriptors/aca-cli.yaml
+        - tests/fixtures/gen_eval/expectation-full-pass.json
+        - tests/fixtures/gen_eval/report-full-pass.json
+        - tests/conftest.py
+        - tests/regression/test_canonical_workflow_edge_cases.py
+        - openspec/specs/agentic-operations/spec.md
+        - openspec/specs/pipeline/spec.md
+        - openspec/specs/cli-interface/spec.md
+        - openspec/specs/job-management/spec.md
+      keys:
+        - feature:persisted-ingestion-run-results:integration
+      ttl_minutes: 180
+      reason: Final documentation, canonical-spec, and validation ownership.
+    scope:
+      write_allow:
+        - docs/DEVELOPMENT.md
+        - docs/TESTING.md
+        - evaluation/README.md
+        - evaluation/descriptors/aca-cli.yaml
+        - evaluation/scenarios/**
+        - tests/cli_gen_eval/**
+        - tests/fixtures/gen_eval/expectation-full-pass.json
+        - tests/fixtures/gen_eval/report-full-pass.json
+        - tests/conftest.py
+        - tests/regression/test_canonical_workflow_edge_cases.py
+        - openspec/specs/agentic-operations/spec.md
+        - openspec/specs/pipeline/spec.md
+        - openspec/specs/cli-interface/spec.md
+        - openspec/specs/job-management/spec.md
+        - openspec/changes/persisted-ingestion-run-results/**
+      read_allow:
+        - "**"
+    worktree: { name: wp-integration, mode: isolated }
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 3
+    metadata:
+      loc_estimate: 300
+      alternatives_count: 3
+      complexity: medium
+      package_kind: integration
+    inputs:
+      tasks: ["6.1", "6.2", "6.3"]
+    verification:
+      tier_required: A
+      steps:
+        - name: openspec-strict
+          kind: command
+          command: openspec validate persisted-ingestion-run-results --strict
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [openspec_valid]
+        - name: full-quality-gate
+          kind: command
+          command: .venv/bin/pytest tests/ --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: []
+            result_keys: [test_count, pass_count, baseline_failures]
+    outputs:
+      result_keys: [files_modified, openspec_valid, test_count, review_findings]

@@ -58,6 +58,12 @@ def client(db_session, monkeypatch):
 
 
 BLOG = {"type": "blog", "url": "https://www.normaltech.ai/", "name": "Normal Tech"}
+OBSIDIAN = {
+    "type": "obsidian_vault",
+    "vault_id": "personal",
+    "vault_path": "/srv/obsidian/private-vault",
+    "ingest_folder": "Clients/Private",
+}
 
 
 class TestUpsert:
@@ -79,6 +85,34 @@ class TestUpsert:
         resp = client.post("/api/v1/sources", json={"config": {"type": "blog"}})
         assert resp.status_code == 400
 
+    def test_obsidian_mutation_response_uses_only_opaque_source_key(self, client):
+        response = client.post("/api/v1/sources", json={"config": OBSIDIAN})
+
+        assert response.status_code == 200
+        assert response.json()["source_key"].startswith("src_")
+        assert "/srv/obsidian" not in response.text
+        assert "Clients/Private" not in response.text
+        assert "personal" not in response.text
+        assert "configured_source_version" not in response.text
+        assert "configured_sources" not in response.text
+
+    def test_invalid_obsidian_error_does_not_echo_private_fields(self, client):
+        private_path = "/srv/obsidian/clients/acquisition/private-vault"
+        response = client.post(
+            "/api/v1/sources",
+            json={
+                "config": {
+                    **OBSIDIAN,
+                    "vault_id": "invalid vault id",
+                    "vault_path": private_path,
+                }
+            },
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "invalid obsidian_vault source config"
+        assert private_path not in response.text
+
 
 class TestDelete:
     def test_delete_existing(self, client):
@@ -95,6 +129,24 @@ class TestDelete:
         resp = client.delete("/api/v1/sources/bad%00key")
         assert resp.status_code == 422
 
+    def test_delete_accepts_opaque_obsidian_key(self, client):
+        created = client.post("/api/v1/sources", json={"config": OBSIDIAN}).json()
+
+        response = client.delete(f"/api/v1/sources/{created['source_key']}")
+
+        assert response.status_code == 200
+        assert response.json() == {"source_key": created["source_key"], "deleted": True}
+        assert "personal" not in response.text
+
+    def test_delete_rejects_natural_obsidian_key_without_echoing_it(self, client):
+        client.post("/api/v1/sources", json={"config": OBSIDIAN})
+
+        response = client.delete("/api/v1/sources/obsidian_vault:personal")
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Obsidian source mutations require an opaque source key"
+        assert "personal" not in response.text
+
 
 class TestEnableDisable:
     def test_disable_existing_source(self, client):
@@ -110,6 +162,27 @@ class TestEnableDisable:
         with patch("src.api.source_write_routes._resolve_source_config", return_value=None):
             resp = client.patch("/api/v1/sources/blog:ghost", json={"enabled": False})
         assert resp.status_code == 404
+
+    def test_disable_obsidian_by_opaque_key_keeps_response_opaque(self, client):
+        created = client.post("/api/v1/sources", json={"config": OBSIDIAN}).json()
+
+        response = client.patch(f"/api/v1/sources/{created['source_key']}", json={"enabled": False})
+
+        assert response.status_code == 200
+        assert response.json()["source_key"] == created["source_key"]
+        assert response.json()["enabled"] is False
+
+    def test_disable_rejects_natural_obsidian_key_without_echoing_it(self, client):
+        client.post("/api/v1/sources", json={"config": OBSIDIAN})
+
+        response = client.patch(
+            "/api/v1/sources/obsidian_vault:personal",
+            json={"enabled": False},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Obsidian source mutations require an opaque source key"
+        assert "personal" not in response.text
 
 
 class TestAuth:

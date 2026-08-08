@@ -3,18 +3,20 @@ import * as React from "react"
 import type {
   OperationEvent,
   OperationHandle,
+  OperationSummary,
   OperationType,
 } from "@/generated/workflow-contracts"
 import {
   cancelOperation,
   getOperation,
-  listAllOperations,
+  listBackgroundOperations,
   operationEventsUrl,
   retryOperation,
 } from "@/lib/api/workflows"
 
 export type TaskType = OperationType
-export type BackgroundTask = OperationHandle
+export type BackgroundTask = OperationSummary &
+  Partial<Pick<OperationHandle, "resource" | "result" | "problem">>
 
 const TERMINAL = new Set(["completed", "failed", "cancelled"])
 
@@ -30,9 +32,9 @@ export const taskTypeLabels: Record<OperationType, string> = {
 }
 
 interface BackgroundTasksContextValue {
-  tasks: OperationHandle[]
-  activeTasks: OperationHandle[]
-  completedTasks: OperationHandle[]
+  tasks: BackgroundTask[]
+  activeTasks: BackgroundTask[]
+  completedTasks: BackgroundTask[]
   addOperation: (operation: OperationHandle) => void
   removeTask: (operationId: string) => void
   clearCompleted: () => void
@@ -45,8 +47,8 @@ const BackgroundTasksContext =
   React.createContext<BackgroundTasksContextValue | null>(null)
 
 function mergeOperation(
-  previous: OperationHandle[],
-  operation: OperationHandle
+  previous: BackgroundTask[],
+  operation: BackgroundTask
 ) {
   return [
     operation,
@@ -55,9 +57,9 @@ function mergeOperation(
 }
 
 function eventToOperation(
-  current: OperationHandle,
+  current: BackgroundTask,
   event: OperationEvent
-): OperationHandle {
+): BackgroundTask {
   return {
     ...current,
     status: event.status,
@@ -76,7 +78,7 @@ export function BackgroundTasksProvider({
 }: {
   children: React.ReactNode
 }) {
-  const [tasks, setTasks] = React.useState<OperationHandle[]>([])
+  const [tasks, setTasks] = React.useState<BackgroundTask[]>([])
   const streams = React.useRef(new Map<string, EventSource>())
 
   const reconcile = React.useCallback(async (operationId: string) => {
@@ -93,7 +95,7 @@ export function BackgroundTasksProvider({
   }, [])
 
   const subscribe = React.useCallback(
-    (operation: OperationHandle) => {
+    (operation: BackgroundTask) => {
       if (
         TERMINAL.has(operation.status) ||
         streams.current.has(operation.operation_id)
@@ -144,7 +146,7 @@ export function BackgroundTasksProvider({
   React.useEffect(() => {
     let cancelled = false
     const activeStreams = streams.current
-    void listAllOperations()
+    void listBackgroundOperations()
       .then((operations) => {
         if (cancelled) return
         setTasks(operations)

@@ -117,6 +117,55 @@ class TestListSources:
         assert readwise_source["url"] == "default"
         assert readwise_source["source_key"] == "readwise:default"
 
+    def test_obsidian_source_projection_is_opaque_and_path_free(self):
+        from src.api.source_routes import project_source_info
+
+        private_path = "/Users/alice/Library/Mobile Documents/private-vault"
+        private_folder = "Clients/Acquisition"
+        secret_label = "Board research vault"
+
+        class ObsidianSource:
+            type = "obsidian_vault"
+            vault_id = "board-research"
+            vault_path = private_path
+            ingest_folder = private_folder
+            name = secret_label
+            tags = ("private-client",)
+            enabled = True
+            origin = "db"
+
+            def model_dump(self):
+                return {
+                    "type": self.type,
+                    "vault_id": self.vault_id,
+                    "vault_path": self.vault_path,
+                    "ingest_folder": self.ingest_folder,
+                    "name": self.name,
+                    "tags": self.tags,
+                    "enabled": self.enabled,
+                    "origin": self.origin,
+                }
+
+        with patch("src.api.source_routes.settings") as mock_settings:
+            mock_settings.get_configured_source_key_secret.return_value = (
+                "configured-source-key-secret-for-tests"
+            )
+            source = project_source_info(ObsidianSource()).model_dump(mode="json")
+
+        assert source["source_key"].startswith("src_")
+        assert source["url"] == source["source_key"]
+        assert source["name"] is None
+        assert source["tags"] == []
+        serialized = str(source)
+        for private_value in (
+            private_path,
+            private_folder,
+            secret_label,
+            "board-research",
+            "private-client",
+        ):
+            assert private_value not in serialized
+
     def test_includes_content_counts(self, client, sample_contents):
         """Content counts from database are included in response."""
         config = SourcesConfig(sources=[])

@@ -220,10 +220,33 @@ def reset_test_schema(engine: Engine) -> None:
                 text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
             ).fetchall()
         }
-    required = {"topics", "digests", "contents"}
-    missing = required - tables
+    # Every ORM-mapped table must exist. Checking a hand-picked trio of
+    # early-chain tables passed even when the chain stopped part-way, which
+    # surfaced much later as a cryptic "relation <late table> does not exist"
+    # inside an unrelated test. Deriving the set from the mapped metadata needs
+    # no maintenance as migrations land.
+    from src.models.base import Base
+
+    missing = set(Base.metadata.tables) - tables
     if missing:
         raise RuntimeError(
-            f"reset_test_schema: alembic upgrade head left {missing} missing "
+            f"reset_test_schema: alembic upgrade head left {sorted(missing)} missing "
             f"in {db_name}. Found {len(tables)} tables: {sorted(tables)}"
+        )
+
+    # The table check above only covers early-chain tables, so a chain that
+    # stopped part-way still passed it — surfacing much later as a cryptic
+    # "relation <late table> does not exist" inside an unrelated test. Compare
+    # the recorded revision against the script head instead: that stays correct
+    # as migrations land, with no table list to maintain.
+    from alembic.script import ScriptDirectory
+
+    expected_head = ScriptDirectory.from_config(alembic_cfg).get_current_head()
+    with engine.connect() as conn:
+        applied = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+    if expected_head is not None and applied != expected_head:
+        raise RuntimeError(
+            f"reset_test_schema: {db_name} is at revision {applied!r} but the "
+            f"migration head is {expected_head!r} — the chain did not run to "
+            f"completion. Found {len(tables)} tables."
         )

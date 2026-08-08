@@ -25,6 +25,12 @@ jobs:
       APP_SECRET_KEY: test-app-secret-key-for-gen-eval
       ENVIRONMENT: test
       WORKER_ENABLED: "false"
+      # Derives the opaque public key of every configured source. There is no
+      # authentication-secret fallback by design (persisted-ingestion-run-results
+      # D3), so without this `GET /api/v1/configured-sources` — and therefore
+      # `aca configured-sources` — raises. Non-deployed environments inject a
+      # fixed test-only value; tests/conftest.py does the same for pytest.
+      CONFIGURED_SOURCE_KEY_SECRET: gen-eval-configured-source-secret-stub
     services:
       postgres:
         image: paradedb/paradedb:0.22.2-pg17

@@ -20,11 +20,13 @@ explicitly in :meth:`cleanup`.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import socket
+from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
@@ -33,6 +35,11 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
 
+from src.config.sources import (
+    ObsidianVaultSource,
+    SourcesConfig,
+    configured_source_public_key,
+)
 from src.ingestion.commands import IngestCommandBase
 from src.ingestion.content_references import record_content_reference
 from src.ingestion.real_ingest_evidence import (
@@ -40,8 +47,15 @@ from src.ingestion.real_ingest_evidence import (
     classify_source_outcome,
 )
 from src.ingestion.real_ingest_policy import LIVE_ADAPTER_POLICIES
-from src.ingestion.registry import SOURCE_REGISTRY, SourceDescriptor, SourceRegistry
+from src.ingestion.registry import (
+    SOURCE_REGISTRY,
+    SourceDescriptor,
+    SourceRegistry,
+    configured_source_digest,
+    configured_source_version,
+)
 from src.ingestion.result import IngestionResponse
+from src.ingestion.service import IngestionService
 from src.models.content import Content, ContentSource
 from src.models.jobs import OperationType
 from src.queue import worker
@@ -51,9 +65,28 @@ from src.services.upload_service import MaterializedUpload
 from tests.factories.content import ContentFactory
 from tests.factories.summary import SummaryFactory
 from tests.fixtures.sources.library import SOURCE_FIXTURES, SourceFixture
+from tests.fixtures.sources.obsidian import (
+    TemporaryObsidianVault,
+    create_temporary_obsidian_vault,
+)
 
 # Deterministic instant so ordering/timestamps never depend on wall clock.
 PERIOD_START = datetime(2026, 7, 1, tzinfo=UTC)
+
+
+def reject_external_fixture_network(
+    connect: Callable[[socket.socket, Any], Any],
+    sock: socket.socket,
+    address: Any,
+) -> Any:
+    """Permit local database sockets while prohibiting fixture egress."""
+
+    if isinstance(address, tuple):
+        host = str(address[0]).lower()
+        if host not in {"localhost", "127.0.0.1", "::1"}:
+            raise AssertionError("Obsidian fixture attempted external network access")
+    return connect(sock, address)
+
 
 # The curated pull-request tier: representative typed sources spanning email,
 # feeds, direct URLs, video, academic search, and blogs. Keys index
@@ -65,6 +98,7 @@ PR_TIER_KEYS: tuple[str, ...] = (
     "youtube_playlist",
     "arxiv_search",
     "blog",
+    "obsidian_vault",
 )
 
 
@@ -82,8 +116,42 @@ class RealIngestOutcome:
     content_row_delta: int
     #: Whether the durable job reached a successful terminal state.
     succeeded: bool
+    #: Content IDs independently observed in the database for this submission.
+    persisted_content_ids: tuple[int, ...] = ()
+    #: Distinct canonical *primary* identities behind ``persisted_content_ids``.
+    #: The durable result reports canonicalized identities, so for a source that
+    #: deliberately persists distinct rows sharing one canonical URL (Obsidian)
+    #: this is lower than ``content_row_delta``. ``None`` means "one row is one
+    #: identity", which holds for every other source.
+    primary_identity_delta: int | None = None
+    #: The canonical primaries the rows above resolve to.
+    persisted_primary_ids: tuple[int, ...] = ()
     #: The operation's failure diagnostic, if it terminated in failure.
     problem_detail: str | None = None
+    #: Private Obsidian state rows added by this submission.
+    source_state_row_delta: int = 0
+    #: Immutable Obsidian file-version events added by this submission.
+    source_event_row_delta: int = 0
+    source_state_status_delta: dict[str, int] = field(default_factory=dict)
+    source_event_status_delta: dict[str, int] = field(default_factory=dict)
+    source_state_attempt_delta: int = 0
+    source_event_attempt_delta: int = 0
+
+
+@dataclass(frozen=True)
+class _ObsidianPrivateSnapshot:
+    state_statuses: dict[str, int]
+    event_statuses: dict[str, int]
+    state_attempts: int
+    event_attempts: int
+
+
+def _counter_delta(before: dict[str, int], after: dict[str, int]) -> dict[str, int]:
+    return {
+        key: after.get(key, 0) - before.get(key, 0)
+        for key in before.keys() | after.keys()
+        if after.get(key, 0) != before.get(key, 0)
+    }
 
 
 def _outcome(
@@ -93,6 +161,14 @@ def _outcome(
     result: dict[str, Any] | None,
     claimed_content_ids: tuple[int, ...],
     content_delta: int,
+    source_state_delta: int = 0,
+    source_event_delta: int = 0,
+    source_state_status_delta: dict[str, int] | None = None,
+    source_event_status_delta: dict[str, int] | None = None,
+    source_state_attempt_delta: int = 0,
+    source_event_attempt_delta: int = 0,
+    persisted_content_ids: tuple[int, ...] = (),
+    persisted_primary_ids: tuple[int, ...] | None = None,
 ) -> RealIngestOutcome:
     """Assemble a RealIngestOutcome from a terminal operation handle."""
 
@@ -105,7 +181,18 @@ def _outcome(
         claimed_content_ids=claimed_content_ids,
         content_row_delta=content_delta,
         succeeded=terminal.status.value == "completed",
+        persisted_content_ids=persisted_content_ids,
         problem_detail=problem_detail,
+        source_state_row_delta=source_state_delta,
+        source_event_row_delta=source_event_delta,
+        source_state_status_delta=source_state_status_delta or {},
+        source_event_status_delta=source_event_status_delta or {},
+        source_state_attempt_delta=source_state_attempt_delta,
+        source_event_attempt_delta=source_event_attempt_delta,
+        primary_identity_delta=(
+            None if persisted_primary_ids is None else len(set(persisted_primary_ids))
+        ),
+        persisted_primary_ids=persisted_primary_ids or (),
     )
 
 
@@ -133,13 +220,22 @@ def _asyncpg_dsn(engine: Engine) -> str:
 class RealIngestionHarness:
     """Submit fixture commands through the canonical workflow against a real DB."""
 
-    def __init__(self, engine: Engine, conn: asyncpg.Connection, token: str) -> None:
+    def __init__(
+        self,
+        engine: Engine,
+        conn: asyncpg.Connection,
+        token: str,
+        workspace: Path,
+    ) -> None:
         self._engine = engine
         self._conn = conn
         self._token = token
+        self._workspace = workspace
         self._sessionmaker = sessionmaker(bind=engine)
         self._created_content_ids: list[int] = []
         self._job_ids: list[int] = []
+        self._obsidian_vault: TemporaryObsidianVault | None = None
+        self._obsidian_source_digest: str | None = None
 
     async def submit_fixture(self, key: str) -> RealIngestOutcome:
         """Submit one fixture command and drive its durable operation to terminal.
@@ -149,6 +245,8 @@ class RealIngestionHarness:
         """
 
         fixture = SOURCE_FIXTURES[key]
+        if key == "obsidian_vault":
+            return await self._submit_obsidian_fixture(fixture)
         source_registry = self._fixture_registry(key, fixture)
         operations = OperationService(connection=self._conn)
 
@@ -177,6 +275,145 @@ class RealIngestionHarness:
             claimed = tuple(self._created_content_ids[before:])
         return _outcome(key, operation_id, terminal, result, claimed, delta)
 
+    async def _submit_obsidian_fixture(self, fixture: SourceFixture) -> RealIngestOutcome:
+        """Drive the real filesystem adapter against a bounded temporary vault."""
+
+        vault, source, secret = self._obsidian_fixture_config()
+        digest = configured_source_digest(source, secret=secret)
+        source_key = configured_source_public_key(source, secret=secret)
+        command = {
+            **fixture.command,
+            "source_key": source_key,
+            "configured_source_version": configured_source_version(source, secret=secret),
+        }
+        descriptor = SOURCE_REGISTRY.get("obsidian_vault")
+        source_registry = SourceRegistry([descriptor])
+        ingestion_service = IngestionService(
+            registry=source_registry,
+            configured_source_key_secret=secret,
+            source_config_loader=lambda: SourcesConfig(sources=[source]),
+        )
+        operations = OperationService(connection=self._conn)
+        before_private = self._obsidian_private_snapshot(digest)
+        before_content_ids = self._obsidian_content_ids(digest)
+
+        handle = await operations.submit(OperationType.INGESTION_EXECUTE, command)
+        operation_id = int(handle.operation_id)
+        self._job_ids.append(operation_id)
+        await self._drive_job(
+            operations,
+            operation_id,
+            source_registry,
+            ingestion_service=ingestion_service,
+            obsidian_settings=SimpleNamespace(
+                get_configured_source_key_secret=lambda: secret,
+                get_obsidian_allowed_roots=lambda: (vault.approved_root,),
+                obsidian_compatible_worker=True,
+            ),
+        )
+
+        terminal = await operations.get(operation_id)
+        result = terminal.result if isinstance(terminal.result, dict) else None
+        claimed = tuple(result.get("content_ids", [])) if result else ()
+        new_ids = sorted(self._obsidian_content_ids(digest) - before_content_ids)
+        self._created_content_ids.extend(new_ids)
+        after_private = self._obsidian_private_snapshot(digest)
+        state_status_delta = _counter_delta(
+            before_private.state_statuses,
+            after_private.state_statuses,
+        )
+        event_status_delta = _counter_delta(
+            before_private.event_statuses,
+            after_private.event_statuses,
+        )
+        return _outcome(
+            "obsidian_vault",
+            operation_id,
+            terminal,
+            result,
+            claimed,
+            len(new_ids),
+            sum(state_status_delta.values()),
+            sum(event_status_delta.values()),
+            state_status_delta,
+            event_status_delta,
+            after_private.state_attempts - before_private.state_attempts,
+            after_private.event_attempts - before_private.event_attempts,
+            tuple(new_ids),
+            self._primary_identities(tuple(new_ids)),
+        )
+
+    def _obsidian_fixture_config(
+        self,
+    ) -> tuple[TemporaryObsidianVault, ObsidianVaultSource, str]:
+        if self._obsidian_vault is None:
+            self._obsidian_vault = create_temporary_obsidian_vault(self._workspace)
+        config = self._obsidian_vault.source_config()
+        config["vault_id"] = f"fixture-{self._token}"
+        source = ObsidianVaultSource.model_validate(config)
+        secret = "real-ingestion-obsidian-fixture-secret"
+        self._obsidian_source_digest = configured_source_digest(source, secret=secret)
+        return self._obsidian_vault, source, secret
+
+    def change_obsidian_fixture(self) -> None:
+        """Advance the mutable fixture note to its second file version."""
+
+        if self._obsidian_vault is None:
+            raise AssertionError("Obsidian fixture must be submitted before it can change")
+        self._obsidian_vault.write_changed_version()
+
+    def _obsidian_private_snapshot(self, digest: str) -> _ObsidianPrivateSnapshot:
+        with self._sessionmaker() as session:
+            state_rows = session.execute(
+                text(
+                    "SELECT status, count(*), coalesce(sum(attempt_count), 0) "
+                    "FROM obsidian_ingest_state WHERE configured_source_digest = :digest "
+                    "GROUP BY status"
+                ),
+                {"digest": digest},
+            ).all()
+            event_rows = session.execute(
+                text(
+                    "SELECT status, count(*), coalesce(sum(attempt_count), 0) "
+                    "FROM obsidian_ingest_events WHERE configured_source_digest = :digest "
+                    "GROUP BY status"
+                ),
+                {"digest": digest},
+            ).all()
+        return _ObsidianPrivateSnapshot(
+            state_statuses={str(status): int(count) for status, count, _ in state_rows},
+            event_statuses={str(status): int(count) for status, count, _ in event_rows},
+            state_attempts=sum(int(attempts) for _, _, attempts in state_rows),
+            event_attempts=sum(int(attempts) for _, _, attempts in event_rows),
+        )
+
+    def _primary_identities(self, content_ids: tuple[int, ...]) -> tuple[int, ...]:
+        """Resolve committed rows to the canonical primaries the result claims."""
+
+        if not content_ids:
+            return ()
+        with self._sessionmaker() as session:
+            rows = session.execute(
+                text(
+                    "SELECT DISTINCT COALESCE(canonical_id, id) FROM contents WHERE id = ANY(:ids)"
+                ),
+                {"ids": list(content_ids)},
+            ).scalars()
+            return tuple(sorted(int(value) for value in rows))
+
+    def _obsidian_content_ids(self, digest: str) -> set[int]:
+        """Snapshot digest-scoped persisted rows independently of result claims."""
+
+        with self._sessionmaker() as session:
+            rows = session.execute(
+                text(
+                    "SELECT DISTINCT content_id FROM obsidian_ingest_events "
+                    "WHERE configured_source_digest = :digest AND content_id IS NOT NULL"
+                ),
+                {"digest": digest},
+            ).scalars()
+            return {int(content_id) for content_id in rows}
+
     async def submit_live(self, key: str) -> RealIngestOutcome:
         """Submit a source's real command through the *real* registry (live network).
 
@@ -191,7 +428,27 @@ class RealIngestionHarness:
         fixture = SOURCE_FIXTURES[key]
         operations = OperationService(connection=self._conn)
 
-        handle = await operations.submit(OperationType.INGESTION_EXECUTE, dict(fixture.command))
+        command = dict(fixture.command)
+        if key == "obsidian_vault":
+            from src.config.settings import get_settings
+
+            settings = get_settings()
+            sources = settings.get_sources_config().get_obsidian_vault_sources()
+            ready_sources = [
+                source
+                for source in sources
+                if SOURCE_REGISTRY.get(key).resolve_readiness(source).ready
+            ]
+            if len(ready_sources) != 1:
+                raise AssertionError("Live Obsidian fixture requires exactly one ready source")
+            source = ready_sources[0]
+            secret = settings.get_configured_source_key_secret()
+            command.update(
+                source_key=configured_source_public_key(source, secret=secret),
+                configured_source_version=configured_source_version(source, secret=secret),
+            )
+
+        handle = await operations.submit(OperationType.INGESTION_EXECUTE, command)
         operation_id = int(handle.operation_id)
         self._job_ids.append(operation_id)
 
@@ -212,11 +469,14 @@ class RealIngestionHarness:
         source_registry: SourceRegistry,
         *,
         files_key: str | None = None,
+        ingestion_service: IngestionService | None = None,
+        obsidian_settings: Any | None = None,
     ) -> None:
         """Claim and process one durable job to a terminal state, as the worker does."""
 
         registry = build_workflow_handler_registry(
             operation_service=operations,
+            ingestion_service=ingestion_service,
             source_registry=source_registry,
         )
         entrypoint = OperationType.INGESTION_EXECUTE.value
@@ -234,6 +494,8 @@ class RealIngestionHarness:
                 # to commit deterministically without a real uploaded artifact.
                 if files_key is not None:
                     self._enter_files_patches(stack, files_key, SOURCE_FIXTURES[files_key])
+                if obsidian_settings is not None:
+                    self._enter_obsidian_patches(stack, obsidian_settings)
                 job = await self._claim(operation_id)
                 await worker._process_job(self._conn, job)
         finally:
@@ -245,10 +507,19 @@ class RealIngestionHarness:
     def evidence(self, outcome: RealIngestOutcome) -> SourceEvidence:
         """Classify a real outcome from its durable operation/result record."""
 
+        # Compare like with like: the durable result claims canonical identities,
+        # so a source that persists several rows under one canonical URL is
+        # classified and recorded against its primary-identity delta, not its raw
+        # row count. For every other source the two numbers are equal.
+        identity_delta = (
+            outcome.content_row_delta
+            if outcome.primary_identity_delta is None
+            else outcome.primary_identity_delta
+        )
         failure_class = classify_source_outcome(
             status=outcome.status,
             claimed_content_ids=outcome.claimed_content_ids,
-            content_delta=outcome.content_row_delta,
+            content_delta=identity_delta,
             problem_detail=outcome.problem_detail,
         )
         return SourceEvidence(
@@ -256,7 +527,7 @@ class RealIngestionHarness:
             operation_id=outcome.operation_id,
             failure_class=failure_class,
             claimed=len(outcome.claimed_content_ids),
-            delta=outcome.content_row_delta,
+            delta=identity_delta,
             detail=outcome.problem_detail,
         )
 
@@ -364,6 +635,28 @@ class RealIngestionHarness:
         )
         stack.enter_context(patch("src.ingestion.orchestrator.ingest_files", _ingest_files))
 
+    def _enter_obsidian_patches(self, stack: ExitStack, fixture_settings: Any) -> None:
+        """Bind the real adapter to this DB and reject any non-loopback network."""
+
+        @contextmanager
+        def _fixture_db() -> Iterator[Any]:
+            session = self._sessionmaker()
+            try:
+                yield session
+            finally:
+                session.close()
+
+        original_connect = socket.socket.connect
+
+        def _loopback_only(sock: socket.socket, address: Any) -> Any:
+            return reject_external_fixture_network(original_connect, sock, address)
+
+        stack.enter_context(
+            patch("src.config.settings.get_settings", return_value=fixture_settings)
+        )
+        stack.enter_context(patch("src.storage.database.get_db", _fixture_db))
+        stack.enter_context(patch.object(socket.socket, "connect", _loopback_only))
+
     async def recount(self, outcome: RealIngestOutcome) -> RealIngestOutcome:
         """Re-read the DB delta for an outcome (its claim is unchanged)."""
 
@@ -373,14 +666,20 @@ class RealIngestionHarness:
     async def _claim(self, operation_id: int) -> dict[str, Any]:
         """Transition our queued job to in_progress, as the worker poller would."""
 
+        # Mirror ``worker._claim_jobs`` exactly: the poller sets the claim protocol
+        # version, and the ``pgqueuer_jobs_advance_claim_generation`` trigger bumps
+        # the generation on queued -> in_progress. Both must be returned because
+        # ``worker._process_job`` binds them as the execution claim that fences
+        # every downstream content commit and retry.
         row = await self._conn.fetchrow(
             """
             UPDATE pgqueuer_jobs
             SET status = 'in_progress',
                 started_at = COALESCE(started_at, NOW()),
-                heartbeat_at = NOW()
+                heartbeat_at = NOW(),
+                claim_protocol_version = 2
             WHERE id = $1 AND status = 'queued'
-            RETURNING id, entrypoint, payload
+            RETURNING id, entrypoint, payload, claim_generation, claim_protocol_version
             """,
             operation_id,
         )
@@ -415,6 +714,22 @@ class RealIngestionHarness:
     async def cleanup(self) -> None:
         """Delete every committed row and durable job this harness created."""
 
+        if self._obsidian_source_digest is not None:
+            with self._sessionmaker() as session:
+                session.execute(
+                    text(
+                        "DELETE FROM obsidian_ingest_events "
+                        "WHERE configured_source_digest = :digest"
+                    ),
+                    {"digest": self._obsidian_source_digest},
+                )
+                session.execute(
+                    text(
+                        "DELETE FROM obsidian_ingest_state WHERE configured_source_digest = :digest"
+                    ),
+                    {"digest": self._obsidian_source_digest},
+                )
+                session.commit()
         if self._created_content_ids:
             ids = self._created_content_ids
             with self._sessionmaker() as session:
@@ -451,11 +766,20 @@ def assert_result_matches_delta(outcome: RealIngestOutcome) -> None:
         f"status={outcome.status}"
     )
     # Primary persistence invariant: the count the durable result *claims* must
-    # equal the rows the database actually holds. A completed operation that
-    # claims more than it persisted is the persistence failure the spec targets.
-    assert len(outcome.claimed_content_ids) == outcome.content_row_delta, (
+    # equal the identities the database actually holds. A completed operation
+    # that claims more than it persisted is the persistence failure the spec
+    # targets. ``content_ids`` carries canonicalized identities, so a source
+    # that persists distinct rows under one canonical URL is compared against
+    # its primary-identity delta; for every other source the two are the same
+    # number because ``Content.canonical_id`` is NULL.
+    expected = (
+        outcome.content_row_delta
+        if outcome.primary_identity_delta is None
+        else outcome.primary_identity_delta
+    )
+    assert len(outcome.claimed_content_ids) == expected, (
         f"Operation for '{outcome.key}' claimed {len(outcome.claimed_content_ids)} "
-        f"content rows but the database delta was {outcome.content_row_delta}"
+        f"content identities but the database delta was {expected}"
     )
     # Secondary guard: a successful fixture ingestion must persist something,
     # catching the silent claims=0/delta=0 no-op that equality alone would pass.

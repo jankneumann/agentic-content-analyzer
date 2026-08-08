@@ -153,8 +153,11 @@ def audit_table(test_db_engine):
             )
         )
     yield
+    # See tests/api/test_audit_routes.py: the CREATE above is IF NOT EXISTS, so
+    # on a migrated database this table is migration-owned. Clear its rows
+    # instead of dropping a table later tests still need.
     with test_db_engine.begin() as conn:
-        conn.execute(text("DROP TABLE IF EXISTS audit_log CASCADE"))
+        conn.execute(text("TRUNCATE audit_log"))
 
 
 def test_retention_delete_removes_old_rows(test_db_engine, audit_table):

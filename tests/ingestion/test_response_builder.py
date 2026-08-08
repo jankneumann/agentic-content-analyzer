@@ -9,6 +9,7 @@ valid failure signal even when ``errors`` is empty.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 
 from src.ingestion.result import (
@@ -26,6 +27,8 @@ class _StubSourceResult:
     error: str | None = None
     error_type: str | None = None
     redirected_to: str | None = None
+    public_source_key: str | None = None
+    items_fetched: int = 0
     items_failed: int = 0
     item_errors: list[IngestionError] = field(default_factory=list)
 
@@ -154,3 +157,77 @@ def test_source_level_error_combined_with_per_item_failures():
     assert resp.items_failed == 1
     codes = {e.code for e in resp.errors}
     assert codes == {"ConnectError", "parse_error"}
+
+
+def test_explicit_public_source_keys_flow_into_bounded_source_outcomes() -> None:
+    secret = "DO-NOT-PERSIST"
+    successful = _StubSourceResult(
+        url=f"https://user:{secret}@private.example/feed",
+        public_source_key="src_0123456789abcdefabcd",
+        items_fetched=3,
+    )
+    failed = _StubSourceResult(
+        url=f"https://private.example/feed?token={secret}",
+        public_source_key="src_abcdef0123456789abcd",
+        success=False,
+        error=f"credential={secret}\nforged log entry",
+        error_type="fetch_error",
+    )
+
+    response = build_response_from_source_results(
+        command="ingest.rss",
+        source="rss",
+        items_ingested=3,
+        source_results=[failed, successful],
+    )
+
+    outcomes = [outcome.model_dump(mode="json") for outcome in response.source_outcomes]
+    assert outcomes == [
+        {
+            "source_key": "src_0123456789abcdefabcd",
+            "status": "ok",
+            "items_ingested": 3,
+            "items_failed": 0,
+            "errors": [],
+            "warnings": [],
+            "errors_omitted": 0,
+            "warnings_omitted": 0,
+        },
+        {
+            "source_key": "src_abcdef0123456789abcd",
+            "status": "error",
+            "items_ingested": 0,
+            "items_failed": 0,
+            "errors": [
+                {
+                    "code": "fetch_error",
+                    "message": "A configured source could not be fetched",
+                    "redirected_source_key": None,
+                }
+            ],
+            "warnings": [],
+            "errors_omitted": 0,
+            "warnings_omitted": 0,
+        },
+    ]
+    assert response.source_outcomes_omitted == 0
+    assert secret not in json.dumps(outcomes, sort_keys=True)
+
+
+def test_source_outcomes_never_derive_identity_from_url() -> None:
+    response = build_response_from_source_results(
+        command="ingest.rss",
+        source="rss",
+        items_ingested=0,
+        source_results=[
+            _StubSourceResult(
+                url="https://private.example/feed",
+                success=False,
+                error="private failure",
+                error_type="fetch_error",
+            )
+        ],
+    )
+
+    assert response.source_outcomes == []
+    assert response.source_outcomes_omitted == 0

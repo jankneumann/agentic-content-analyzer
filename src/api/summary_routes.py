@@ -389,7 +389,13 @@ async def get_summary_navigation(
         if end_date:
             query = query.filter(Summary.created_at <= end_date)
 
-        # Determine sort column and order
+        # Determine sort column and order. The allowlist is load-bearing, not
+        # cosmetic: getattr's default only covers names Summary lacks entirely,
+        # so an unlisted-but-real class attribute (`__dict__`, `metadata`, a
+        # relationship) reaches order_by and raises — a 500 from a query string.
+        if sort_by not in SUMMARY_SORT_FIELDS:
+            sort_by = "created_at"
+
         sort_column = getattr(Summary, sort_by, Summary.created_at)
         if sort_order.lower() == "asc":
             ordered_query = query.order_by(sort_column.asc())

@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from src.models.content import Content, ContentStatus
+from src.models.content import Content, ContentSource, ContentStatus
 from src.services.url_extractor import (
     DEFAULT_TIMEOUT,
     USER_AGENT,
@@ -355,7 +355,72 @@ class TestBasicHTMLExtraction:
 
 
 class TestExtractContent:
-    """Tests for the main extract_content method."""
+    """Tests for extraction and exact owned URL resume."""
+
+    def _owned(self, content_id: int = 17) -> Content:
+        return Content(
+            id=content_id,
+            source_type=ContentSource.WEBPAGE,
+            source_id=f"resume-{content_id}",
+            source_url="https://example.com/resume",
+            title="Resume",
+            markdown_content="",
+            content_hash="resume",
+            status=ContentStatus.FAILED,
+            status_operation_id=91,
+            status_claim_generation=1,
+            status_operation_phase="parsing",
+            status_owner_version=2,
+        )
+
+    def test_valid_checkpoint_selects_exact_owned_content(self):
+        from src.ingestion.orchestrator import resolve_owned_url_resume_content
+
+        content = self._owned()
+        db = MagicMock()
+        db.get.return_value = content
+        checkpoint = {
+            "schema_version": 2,
+            "command_key": "url",
+            "resolved_route": "webpage",
+            "emitted_sources": ["url"],
+            "status": "partial",
+            "outcome": "partial",
+            "items_ingested": 1,
+            "items_skipped": 0,
+            "items_failed": 0,
+            "content_ids": [17],
+            "errors": [{"code": "extraction_failed", "message": "Content extraction failed"}],
+            "warnings": [],
+            "errors_omitted": 0,
+            "warnings_omitted": 0,
+            "source_outcomes": [],
+            "source_outcomes_omitted": 0,
+            "details": {},
+            "details_omitted": 0,
+        }
+
+        assert resolve_owned_url_resume_content(db, 91, checkpoint) is content
+        db.query.assert_not_called()
+
+    def test_missing_checkpoint_uses_one_exact_owned_row(self):
+        from src.ingestion.orchestrator import resolve_owned_url_resume_content
+
+        content = self._owned()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.limit.return_value.all.return_value = [content]
+
+        assert resolve_owned_url_resume_content(db, 91, None) is content
+
+    @pytest.mark.parametrize("matches", [[], [_owned(None, 17), _owned(None, 18)]])
+    def test_invalid_checkpoint_with_zero_or_many_fallback_rows_fails_closed(self, matches):
+        from src.ingestion.orchestrator import URLResumeError, resolve_owned_url_resume_content
+
+        db = MagicMock()
+        db.query.return_value.filter.return_value.limit.return_value.all.return_value = matches
+
+        with pytest.raises(URLResumeError, match="exactly one"):
+            resolve_owned_url_resume_content(db, 91, {"schema_version": 1})
 
     @pytest.mark.asyncio
     async def test_extract_content_success(self):

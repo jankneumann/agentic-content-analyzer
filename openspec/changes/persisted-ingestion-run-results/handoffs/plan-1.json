@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-07-28T14:56:27.072081+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Reconciled RI-07 against canonical durable operations. Strict OpenSpec, work-package schema/DAG, parallel-zone, OpenAPI reference, legacy-row compatibility, and security review gates pass.",
+    "completed_work": [
+      "Expanded proposal, design, delta spec, tasks, contract, reconciliation findings, and work-package DAG.",
+      "Resolved two review iterations covering security, V1/V2 evolution, pipeline aggregation, pagination, retention, and frontend verification.",
+      "Passed strict structural and semantic plan gates."
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Keep pgqueuer_jobs authoritative",
+        "rationale": "Typed results and read projections close the observed gaps without a second workflow state machine.",
+        "capability": "agentic-operations",
+        "supersedes": null
+      },
+      {
+        "title": "Bound list and history exposure",
+        "rationale": "Generic operation lists emit wire-compatible summaries; exact reads retain bounded full results.",
+        "capability": "agentic-operations",
+        "supersedes": null
+      },
+      {
+        "title": "Use finite graph-aware retention",
+        "rationale": "Whole terminal graphs retain active and retryable work while completed and failed horizons remain finite.",
+        "capability": "job-management",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Implement wp-contracts with contract-first failing tests.",
+      "Execute remaining packages in dependency order and validate RI-07 acceptance outcomes."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/persisted-ingestion-run-results/design.md",
+        "description": "selected operation-native design"
+      },
+      {
+        "path": "openspec/changes/persisted-ingestion-run-results/tasks.md",
+        "description": "TDD task plan"
+      },
+      {
+        "path": "openspec/changes/persisted-ingestion-run-results/work-packages.yaml",
+        "description": "validated package DAG"
+      }
+    ]
+  }
+}

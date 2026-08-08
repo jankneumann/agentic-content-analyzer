@@ -60,7 +60,7 @@ def _load(name: str) -> Any:
 
 @pytest.fixture
 def report() -> dict[str, Any]:
-    """The full 16-scenario passing run. Mutate freely — each test gets a fresh copy."""
+    """The full 18-scenario passing run. Mutate freely — each test gets a fresh copy."""
     return _load("report-full-pass.json")
 
 
@@ -164,7 +164,7 @@ def test_the_offline_run_covers_less_and_is_still_complete() -> None:
     """`--offline` is a smaller *request*, not a smaller answer to the same request.
 
     This is the property that makes a scoped expectation the right denominator: the
-    offline run evaluates 11 of 16 scenarios and is entirely credible, because 11 is
+    offline run evaluates 11 of 18 scenarios and is entirely credible, because 11 is
     what it was asked for.
     """
     offline = Expectation.from_dict(_load("expectation-offline-pass.json"))
@@ -433,7 +433,7 @@ def test_a_below_threshold_run_fails_but_stays_credible(
     not a harness one, and the verdict has to be able to say which."""
     for verdict_document in report["verdicts"][:4]:
         verdict_document["status"] = "fail"
-    report.update(passed=12, failed=4, pass_rate=12 / 16)
+    report.update(passed=14, failed=4, pass_rate=14 / 18)
 
     verdict = validate(report, expectation, fail_threshold=0.95)
     assert verdict.credible
@@ -442,8 +442,8 @@ def test_a_below_threshold_run_fails_but_stays_credible(
 
 
 def test_the_threshold_is_honoured_exactly(report: dict[str, Any]) -> None:
-    report.update(passed=15, failed=1, pass_rate=15 / 16)
-    assert validate(report, None, fail_threshold=15 / 16).ok
+    report.update(passed=17, failed=1, pass_rate=17 / 18)
+    assert validate(report, None, fail_threshold=17 / 18).ok
     assert not validate(report, None, fail_threshold=0.95).ok
 
 
@@ -525,7 +525,7 @@ def test_the_script_says_what_it_gave_up(tmp_path: Path) -> None:
 
 def test_the_script_separates_its_two_failures(tmp_path: Path) -> None:
     report = _load("report-full-pass.json")
-    report.update(passed=0, failed=16, pass_rate=0.0)
+    report.update(passed=0, failed=18, pass_rate=0.0)
     for verdict_document in report["verdicts"]:
         verdict_document["status"] = "fail"
     below = tmp_path / "below.json"

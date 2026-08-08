@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Annotated, Any, Literal
+from uuid import UUID
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
-CONTRACT_SHA256 = "f4d7230b27032fcf937a5c1221a69d779484f1dc8a95d1dccd0543f5789e8413"
+CONTRACT_SHA256 = "5dad552a43c043d1c11e1b587b9bc68724e7e23742ec74134164840db306197b"
 
 OperationStatus = Literal["queued", "in_progress", "completed", "failed", "cancelled"]
 OperationType = Literal[
@@ -20,10 +21,57 @@ OperationType = Literal[
     "podcast_audio.create",
     "audio_digest.create",
 ]
+IngestionOutcome = Literal["success", "zero_items", "partial", "failed", "cancelled", "unknown"]
+IngestionStatus = Literal["ok", "partial", "error"]
+TerminalOperationStatus = Literal["completed", "failed", "cancelled"]
+ContentReconciliationMode = Literal["dry_run", "apply"]
+ContentReconciliationProjection = Literal["proposed", "observed"]
+ContentReconciliationContentStatus = Literal[
+    "pending", "parsing", "parsed", "processing", "completed", "failed", "filtered_out"
+]
+ContentReconciliationOperationStatus = Literal[
+    "queued", "in_progress", "completed", "failed", "cancelled"
+]
+ContentReconciliationPhase = Literal["parsing", "processing"]
+ContentReconciliationAction = Literal[
+    "none",
+    "retry_operation",
+    "project_completed",
+    "project_parsed",
+    "restore_parsed",
+    "restore_pending",
+    "cancel_restore_parsed",
+    "cancel_restore_pending",
+]
+ContentReconciliationReason = Literal[
+    "summary_exists",
+    "extraction_completed",
+    "completed_output_missing",
+    "output_owner_mismatch",
+    "active_operation",
+    "cancellation_pending",
+    "execution_locked",
+    "cancellation_requested",
+    "stale_operation",
+    "failed_operation",
+    "retry_budget_exhausted",
+    "forced_reprocessing",
+    "summarization_cancelled",
+    "extraction_cancelled",
+    "missing_operation",
+    "ownership_conflict",
+    "incompatible_worker",
+    "revalidation_conflict",
+    "apply_failed",
+]
 
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class ExtensibleModel(BaseModel):
+    model_config = ConfigDict(extra="allow")
 
 
 COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
@@ -207,6 +255,15 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
         },
         "required": ["kind"],
     },
+    "obsidian_vault": {
+        "properties": {
+            "kind": {"type": "string", "const": "obsidian_vault"},
+            "source_key": {"type": "string", "pattern": "^src_[a-f0-9]{20}$"},
+            "max_items": {"type": "integer", "minimum": 1, "maximum": 10000},
+            "force_reprocess": {"type": "boolean", "default": False},
+        },
+        "required": ["kind", "source_key"],
+    },
 }
 
 
@@ -236,7 +293,25 @@ class ResourceReference(StrictModel):
     url: str
 
 
-class IngestionResult(StrictModel):
+class BoundedDiagnostic(StrictModel):
+    code: Annotated[str, Field(min_length=1, max_length=100)]
+    message: Annotated[str, Field(min_length=1, max_length=500)]
+    redirected_source_key: str | None = Field(None, pattern="^src_[a-f0-9]{20}$")
+
+
+class ConfiguredSourceOutcome(StrictModel):
+    source_key: Annotated[str, Field(pattern="^src_[a-f0-9]{20}$")]
+    status: IngestionStatus
+    items_ingested: Annotated[int, Field(ge=0)]
+    items_failed: Annotated[int, Field(ge=0)]
+    errors: Annotated[list[BoundedDiagnostic], Field(max_length=20)]
+    warnings: Annotated[list[BoundedDiagnostic], Field(max_length=20)]
+    errors_omitted: Annotated[int, Field(ge=0)]
+    warnings_omitted: Annotated[int, Field(ge=0)]
+
+
+class IngestionResultV1(StrictModel):
+    schema_version: Literal[1] = 1
     command_key: str
     resolved_route: str
     emitted_sources: Annotated[list[str], Field(min_length=1)]
@@ -244,6 +319,112 @@ class IngestionResult(StrictModel):
     content_ids: list[int]
     warnings: list[str] | None = None
     details: dict[str, Any] | None = None
+
+
+class IngestionResultV2(StrictModel):
+    schema_version: Literal[2] = 2
+    command_key: Annotated[str, Field(min_length=1, max_length=100)]
+    resolved_route: Annotated[str, Field(min_length=1, max_length=100)]
+    emitted_sources: Annotated[list[str], Field(min_length=1)]
+    status: IngestionStatus
+    outcome: IngestionOutcome
+    items_ingested: Annotated[int, Field(ge=0)]
+    items_skipped: Annotated[int, Field(ge=0)]
+    items_failed: Annotated[int, Field(ge=0)]
+    content_ids: list[int]
+    errors: Annotated[list[BoundedDiagnostic], Field(max_length=20)]
+    warnings: Annotated[list[BoundedDiagnostic], Field(max_length=20)]
+    errors_omitted: Annotated[int, Field(ge=0)]
+    warnings_omitted: Annotated[int, Field(ge=0)]
+    source_outcomes: Annotated[list[ConfiguredSourceOutcome], Field(max_length=100)]
+    source_outcomes_omitted: Annotated[int, Field(ge=0)]
+    details: SafeIngestionDetails
+    details_omitted: Annotated[int, Field(ge=0)]
+
+
+class SafeIngestionDetails(StrictModel):
+    dry_run: bool | None = None
+    duplicate: bool | None = None
+    version_updated: bool | None = None
+    papers_ingested: int | None = Field(None, ge=0)
+    refs_ingested: int | None = Field(None, ge=0)
+    content_scanned: int | None = Field(None, ge=0)
+    references_found: int | None = Field(None, ge=0)
+    references_resolved: int | None = Field(None, ge=0)
+    references_unresolved: int | None = Field(None, ge=0)
+    queries_made: int | None = Field(None, ge=0)
+    citations_found: int | None = Field(None, ge=0)
+    tool_calls_made: int | None = Field(None, ge=0)
+    threads_found: int | None = Field(None, ge=0)
+
+
+class PipelineSourceIngestionSummary(StrictModel):
+    operation_id: Annotated[str, Field(max_length=19, pattern="^[1-9][0-9]*$")]
+    command_key: Annotated[str, Field(min_length=1, max_length=100)]
+    operation_status: TerminalOperationStatus
+    outcome: IngestionOutcome
+    items_ingested: Annotated[int | None, Field(ge=0)]
+    items_skipped: Annotated[int | None, Field(ge=0)]
+    items_failed: Annotated[int | None, Field(ge=0)]
+
+
+class PipelineIngestionSummary(StrictModel):
+    outcome: IngestionOutcome
+    sources: Annotated[list[PipelineSourceIngestionSummary], Field(max_length=100)]
+    sources_omitted: Annotated[int, Field(ge=0)]
+
+
+class PipelineResultV2(ExtensibleModel):
+    schema_version: Literal[2] = 2
+    ingestion_summary: PipelineIngestionSummary
+
+
+class ConfiguredSourceHistoryOutcome(StrictModel):
+    source_key: Annotated[str, Field(pattern="^src_[a-f0-9]{20}$")]
+    status: IngestionStatus
+    outcome: IngestionOutcome
+    items_ingested: Annotated[int | None, Field(ge=0)]
+    items_failed: Annotated[int | None, Field(ge=0)]
+    error_codes: list[str] | None = Field(None, max_length=20)
+    warning_codes: list[str] | None = Field(None, max_length=20)
+
+
+class IngestionHistoryItem(StrictModel):
+    operation_id: Annotated[str, Field(max_length=19, pattern="^[1-9][0-9]*$")]
+    parent_operation_id: str | None = Field(None, max_length=19, pattern="^[1-9][0-9]*$")
+    command_key: Annotated[str, Field(min_length=1, max_length=100)]
+    operation_status: TerminalOperationStatus
+    outcome: IngestionOutcome
+    items_ingested: Annotated[int | None, Field(ge=0)]
+    items_skipped: Annotated[int | None, Field(ge=0)]
+    items_failed: Annotated[int | None, Field(ge=0)]
+    source_outcomes: Annotated[list[ConfiguredSourceHistoryOutcome], Field(max_length=100)]
+    retry_count: Annotated[int, Field(ge=0)]
+    problem_code: str | None = Field(None, max_length=100)
+    status_url: Annotated[str, Field(pattern="^/api/v1/operations/[1-9][0-9]*$")]
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
+class IngestionHistoryPage(StrictModel):
+    data: Annotated[list[IngestionHistoryItem], Field(max_length=100)]
+    next_cursor: str | None = Field(None, max_length=2048)
+
+
+class OperationSummary(StrictModel):
+    schema_version: Literal[2] = 2
+    operation_id: Annotated[str, Field(max_length=19, pattern="^[1-9][0-9]*$")]
+    operation_type: OperationType
+    status: OperationStatus
+    progress: Annotated[int, Field(ge=0, le=100)]
+    message: Annotated[str, Field(max_length=500)]
+    cancellable: bool
+    retry_count: Annotated[int, Field(ge=0)]
+    status_url: Annotated[str, Field(pattern="^/api/v1/operations/[1-9][0-9]*$")]
+    events_url: Annotated[str, Field(pattern="^/api/v1/operations/[1-9][0-9]*/events$")]
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
 
 class OperationHandle(StrictModel):
@@ -266,8 +447,93 @@ class OperationHandle(StrictModel):
 
 
 class OperationPage(StrictModel):
-    data: list[OperationHandle]
-    next_cursor: str | None = None
+    data: Annotated[list[OperationSummary], Field(max_length=100)]
+    next_cursor: str | None = Field(None, max_length=2048)
+
+
+class WorkflowAlertVerificationContext(StrictModel):
+    schema_version: Literal[1] = 1
+    environment_class: Literal["staging"] = "staging"
+    revision: Annotated[str, Field(min_length=40, max_length=40, pattern="^[a-f0-9]{40}$")]
+    revision_source: Literal["railway_commit_sha"] = "railway_commit_sha"
+
+
+class WorkflowTerminalDeliveryCounts(StrictModel):
+    pending: Annotated[int, Field(ge=0, le=9223372036854775807)]
+    leased: Annotated[int, Field(ge=0, le=9223372036854775807)]
+    delivered: Annotated[int, Field(ge=0, le=9223372036854775807)]
+    permanent_failure: Annotated[int, Field(ge=0, le=9223372036854775807)]
+    exhausted: Annotated[int, Field(ge=0, le=9223372036854775807)]
+
+
+class WorkflowTerminalEventDiagnostic(StrictModel):
+    schema_version: Literal[1] = 1
+    event_id: UUID
+    event_key: Annotated[str, Field(min_length=1, max_length=160, pattern="^[a-z0-9:_-]+$")]
+    source_kind: Literal["operation", "reconciliation_action", "reconciliation_failure"]
+    operation_id: Annotated[str | None, Field(max_length=19, pattern="^[1-9][0-9]*$")]
+    claim_generation: Annotated[int | None, Field(ge=0, le=2147483647)]
+    terminal_status: Literal["completed", "failed", "cancelled", None]
+    classification_status: Literal["pending", "ready", "telemetry_only", "rejected"]
+    release_revision: Annotated[
+        str | None, Field(max_length=40, pattern="^(?:[a-f0-9]{40}|development|unavailable)$")
+    ]
+    release_revision_source: Literal["railway_commit_sha", "local_development", "unavailable", None]
+    occurred_at: datetime
+    telemetry_emitted_at: datetime | None
+    delivery_counts: WorkflowTerminalDeliveryCounts
+
+
+class ContentReconciliationRequest(StrictModel):
+    apply: bool = False
+    limit: int | None = Field(None, ge=1, le=100)
+    after_content_id: int | None = Field(None, ge=1, le=2147483647)
+
+
+class ContentReconciliationCounts(StrictModel):
+    applied: Annotated[int, Field(ge=0, le=100)]
+    retried: Annotated[int, Field(ge=0, le=100)]
+    projected: Annotated[int, Field(ge=0, le=100)]
+    restored: Annotated[int, Field(ge=0, le=100)]
+    active: Annotated[int, Field(ge=0, le=100)]
+    locked: Annotated[int, Field(ge=0, le=100)]
+    missing: Annotated[int, Field(ge=0, le=100)]
+    conflicted: Annotated[int, Field(ge=0, le=100)]
+    cancelled: Annotated[int, Field(ge=0, le=100)]
+    forced: Annotated[int, Field(ge=0, le=100)]
+    exhausted: Annotated[int, Field(ge=0, le=100)]
+    incompatible: Annotated[int, Field(ge=0, le=100)]
+    failed: Annotated[int, Field(ge=0, le=100)]
+
+
+class ContentReconciliationItem(StrictModel):
+    content_id: Annotated[int, Field(ge=1, le=2147483647)]
+    projection: ContentReconciliationProjection
+    content_status_before: ContentReconciliationContentStatus
+    content_status_after: ContentReconciliationContentStatus
+    operation_id: Annotated[str | None, Field(max_length=19, pattern="^[1-9][0-9]{0,18}$")]
+    claim_generation: Annotated[int | None, Field(ge=1, le=9223372036854775807)]
+    claim_protocol_version: Annotated[int | None, Field(ge=1, le=32767)]
+    operation_status_before: ContentReconciliationOperationStatus | None
+    operation_status_after: ContentReconciliationOperationStatus | None
+    retry_count_before: Annotated[int | None, Field(ge=0, le=2147483647)]
+    retry_count_after: Annotated[int | None, Field(ge=0, le=2147483647)]
+    phase: ContentReconciliationPhase | None
+    action: ContentReconciliationAction
+    reason: ContentReconciliationReason
+    operation_heartbeat_at: datetime | None = None
+    operation_completed_at: datetime | None = None
+    applied: bool
+
+
+class ContentReconciliationReport(StrictModel):
+    run_id: UUID
+    mode: ContentReconciliationMode
+    scanned: Annotated[int, Field(ge=0, le=100)]
+    reported: Annotated[int, Field(ge=0, le=100)]
+    next_after_content_id: int | None = Field(None, ge=1, le=2147483647)
+    counts: ContentReconciliationCounts
+    items: Annotated[list[ContentReconciliationItem], Field(max_length=100)]
 
 
 class OperationEvent(StrictModel):
@@ -332,6 +598,8 @@ class ConfiguredSource(StrictModel):
     enabled: bool
     origin: Literal["yaml", "db"]
     configuration: dict[str, Any]
+    ready: bool
+    readiness_code: str | None
 
 
 class ConfiguredSourcePage(StrictModel):
@@ -358,6 +626,7 @@ class ContentQuery(StrictModel):
                 "arxiv",
                 "huggingface_papers",
                 "readwise",
+                "obsidian",
                 "other",
             ]
         ]
@@ -551,6 +820,14 @@ class ReadwiseIngestCommand(StrictModel):
     force_reprocess: bool = False
 
 
+class ObsidianVaultIngestCommand(StrictModel):
+    kind: Literal["obsidian_vault"] = "obsidian_vault"
+    source_key: Annotated[str, Field(pattern="^src_[a-f0-9]{20}$")]
+    configured_source_version: str | None = Field(None, pattern="^[a-f0-9]{64}$")
+    max_items: int | None = Field(None, ge=1, le=10000)
+    force_reprocess: bool = False
+
+
 class SummarizationRequest(StrictModel):
     content_ids: list[int] | None = Field(None, min_length=1)
     query: ContentQuery | None = None
@@ -600,6 +877,9 @@ class AudioDigestRequest(StrictModel):
     speed: float = Field(1.0, ge=0.5, le=2.0)
 
 
+IngestionResult = IngestionResultV1 | IngestionResultV2
+
+
 IngestCommand = Annotated[
     GmailIngestCommand
     | RssIngestCommand
@@ -618,6 +898,7 @@ IngestCommand = Annotated[
     | ArxivSearchIngestCommand
     | ArxivPaperIngestCommand
     | HuggingFacePapersIngestCommand
-    | ReadwiseIngestCommand,
+    | ReadwiseIngestCommand
+    | ObsidianVaultIngestCommand,
     Field(discriminator="kind"),
 ]

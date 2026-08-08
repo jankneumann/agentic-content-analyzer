@@ -197,61 +197,89 @@ class _CanonicalHandlers:
     async def ingestion(self, operation_id: int, payload: dict[str, Any]) -> WorkflowHandlerOutcome:
         from pydantic import ValidationError
 
-        from src.contracts.workflow_models import IngestionResult
+        from src.contracts.workflow_models import IngestionResultV2
+        from src.ingestion.result_sanitizer import sanitize_ingestion_metadata
 
         command = self.sources.parse_command(payload)
         descriptor = self.sources.get(command.kind)
         policy = descriptor.retry_policy
         response = None
-        for attempt in range(1, policy.max_attempts + 1):
+        from src.queue.execution_claim import ClaimRejected, current_execution_claim
+
+        claim = current_execution_claim()
+        if descriptor.key == "url" and claim is not None and claim.claim_generation > 1:
+            from src.ingestion.orchestrator import URLResumeError, resume_owned_url_extraction
+
+            handle = await self.operations.get(operation_id)
             try:
-                response = await asyncio.to_thread(self._ingestion().execute, command)
-                break
-            except Exception as exc:
-                status_code = _status_code(exc)
-                retryable = status_code in policy.retryable_status_codes
-                if not retryable:
-                    raise WorkflowExecutionError(
-                        _ingestion_diagnostic(descriptor.key, exc, attempt)
-                    ) from exc
-                if attempt >= policy.max_attempts:
-                    raise WorkflowExecutionError(
-                        _ingestion_diagnostic(descriptor.key, exc, attempt)
-                    ) from exc
-                delay = min(
-                    policy.base_delay_seconds * (2 ** (attempt - 1)),
-                    policy.max_delay_seconds,
-                )
-                await self.operations.update_progress(
+                response = await asyncio.to_thread(
+                    resume_owned_url_extraction,
                     operation_id,
-                    10,
-                    f"Source {descriptor.key} rate limited; retrying attempt {attempt + 1}",
+                    handle.result,
                 )
-                await self.sleep(delay)
+            except URLResumeError as exc:
+                raise WorkflowExecutionError(str(exc)) from exc
+        else:
+            for attempt in range(1, policy.max_attempts + 1):
+                try:
+                    response = await asyncio.to_thread(self._ingestion().execute, command)
+                    break
+                except ClaimRejected:
+                    raise
+                except Exception as exc:
+                    status_code = _status_code(exc)
+                    retryable = status_code in policy.retryable_status_codes
+                    if not retryable:
+                        raise WorkflowExecutionError(
+                            _ingestion_diagnostic(descriptor.key, exc, attempt)
+                        ) from exc
+                    if attempt >= policy.max_attempts:
+                        raise WorkflowExecutionError(
+                            _ingestion_diagnostic(descriptor.key, exc, attempt)
+                        ) from exc
+                    delay = min(
+                        policy.base_delay_seconds * (2 ** (attempt - 1)),
+                        policy.max_delay_seconds,
+                    )
+                    await self.operations.update_progress(
+                        operation_id,
+                        10,
+                        f"Source {descriptor.key} rate limited; retrying attempt {attempt + 1}",
+                    )
+                    await self.sleep(delay)
 
         if response is None:
             raise WorkflowExecutionError(f"Ingestion '{descriptor.key}' produced no response")
-        if response.status == "error":
-            raise WorkflowExecutionError(
-                f"Ingestion '{descriptor.key}' failed: "
-                f"{response.model_dump(mode='json').get('errors', [])}"
-            )
         details = dict(response.details)
         try:
-            result = IngestionResult(
+            metadata = sanitize_ingestion_metadata(
+                errors=response.errors,
+                warnings=response.warnings,
+                source_outcomes=getattr(response, "source_outcomes", ()),
+                source_outcomes_omitted=getattr(response, "source_outcomes_omitted", 0),
+                details=details,
+            )
+            result = IngestionResultV2(
                 command_key=details["command_key"],
                 resolved_route=details["resolved_route"],
                 emitted_sources=details["emitted_sources"],
+                status=response.status,
+                outcome=_ingestion_outcome(response.status, response.items_ingested),
                 items_ingested=response.items_ingested,
+                items_skipped=response.items_skipped,
+                items_failed=response.items_failed,
                 content_ids=details["content_ids"],
-                warnings=[warning.message for warning in response.warnings] or None,
-                details=details,
-            ).model_dump(mode="json")
-        except (KeyError, ValidationError) as exc:
+                **metadata,
+            ).model_dump(mode="json", exclude_none=True)
+        except (KeyError, TypeError, ValueError, ValidationError) as exc:
             raise WorkflowExecutionError(
                 f"Ingestion '{descriptor.key}' returned an invalid canonical result"
             ) from exc
         await self.operations.attach_result(operation_id, result)
+        if _is_url_extraction_checkpoint(result):
+            raise WorkflowExecutionError("URL extraction failed and is resumable")
+        if response.status == "error":
+            raise WorkflowExecutionError(f"Ingestion '{descriptor.key}' failed")
         await self.operations.update_progress(operation_id, 100, "Ingestion complete")
         return WorkflowHandlerOutcome()
 
@@ -432,11 +460,40 @@ def _status_code(exc: Exception) -> int | None:
     return response_status if isinstance(response_status, int) else None
 
 
+def _ingestion_outcome(status: str, items_ingested: int) -> str:
+    if status == "ok":
+        return "success" if items_ingested > 0 else "zero_items"
+    if status == "partial":
+        return "partial"
+    return "failed"
+
+
+def _is_url_extraction_checkpoint(result: Mapping[str, Any]) -> bool:
+    errors = result.get("errors")
+    content_ids = result.get("content_ids")
+    return bool(
+        result.get("command_key") == "url"
+        and result.get("resolved_route") == "webpage"
+        and result.get("status") == "partial"
+        and result.get("outcome") == "partial"
+        and isinstance(content_ids, list)
+        and len(content_ids) == 1
+        and isinstance(content_ids[0], int)
+        and not isinstance(content_ids[0], bool)
+        and content_ids[0] > 0
+        and isinstance(errors, list)
+        and any(
+            isinstance(diagnostic, Mapping) and diagnostic.get("code") == "extraction_failed"
+            for diagnostic in errors
+        )
+    )
+
+
 def _ingestion_diagnostic(source: str, exc: Exception, attempts: int) -> str:
     status_code = _status_code(exc)
     status = f"HTTP {status_code}" if status_code is not None else type(exc).__name__
     suffix = "attempt" if attempts == 1 else "attempts"
-    return f"Ingestion '{source}' failed after {attempts} {suffix} ({status}): {exc}"
+    return f"Ingestion '{source}' failed after {attempts} {suffix} ({status})"
 
 
 def _required_result_id(result: Mapping[str, Any], key: str) -> str:

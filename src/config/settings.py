@@ -19,13 +19,15 @@ import logging
 import os
 import warnings
 from functools import lru_cache
+from ipaddress import ip_address
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from src.config.sources import SourcesConfig
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -76,6 +78,7 @@ def _flatten_profile_to_settings(profile_data: dict[str, Any]) -> dict[str, Any]
         "digest",
         "search",
         "api",
+        "alerting",
     ]
 
     for section in section_mappings:
@@ -193,6 +196,40 @@ GraphDBModeType = Literal["local", "cloud", "embedded"]
 
 # Type alias for observability provider
 ObservabilityProviderType = Literal["noop", "opik", "braintrust", "otel", "langfuse"]
+WorkflowAlertSinkType = Literal["noop", "webhook"]
+
+
+def _normalize_workflow_alert_host(value: str) -> str:
+    """Return one exact ASCII host entry or fail closed."""
+
+    host = value.strip().lower().rstrip(".")
+    if not host or len(host) > 253:
+        raise ValueError("workflow_alert_allowed_hosts contains an empty or oversized host")
+    if any(character in host for character in "*/\\@?#") or any(
+        character.isspace() for character in host
+    ):
+        raise ValueError("workflow_alert_allowed_hosts requires exact hosts without wildcards")
+    try:
+        parsed_ip = ip_address(host)
+    except ValueError:
+        try:
+            host = host.encode("idna").decode("ascii")
+        except UnicodeError as exc:
+            raise ValueError("workflow_alert_allowed_hosts contains an invalid host") from exc
+        labels = host.split(".")
+        if any(
+            not label
+            or len(label) > 63
+            or label.startswith("-")
+            or label.endswith("-")
+            or not all(character.isalnum() or character == "-" for character in label)
+            for label in labels
+        ):
+            raise ValueError("workflow_alert_allowed_hosts contains an invalid host")
+    else:
+        host = parsed_ip.compressed
+    return host
+
 
 # Audio digest voice presets (maps friendly names to provider-specific voice IDs)
 AUDIO_DIGEST_VOICE_PRESETS: dict[str, dict[str, str]] = {
@@ -245,6 +282,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",  # Ignore unknown env vars (common in shared .env files)
+        hide_input_in_errors=True,
     )
 
     @classmethod
@@ -339,6 +377,50 @@ class Settings(BaseSettings):
     # Worker Configuration
     worker_enabled: bool = True  # Enable embedded queue worker in API process
     worker_concurrency: int = 5  # Max concurrent tasks (1-20)
+    job_retention_days: int = Field(default=30, ge=1, le=3650)
+    failed_job_retention_days: int = Field(default=90, ge=1, le=3650)
+    job_retention_interval_seconds: int = Field(default=3600, ge=60, le=86_400)
+    job_retention_batch_size: int = Field(default=100, ge=1, le=1000)
+    content_reconciliation_stale_seconds: int = Field(default=3600, ge=60, le=604_800)
+    content_reconciliation_max_retries: int = Field(default=3, ge=0, le=20)
+    content_reconciliation_batch_size: int = Field(default=50, ge=1, le=100)
+    content_reconciliation_lock_timeout_ms: int = Field(default=250, ge=1, le=5000)
+    content_reconciliation_statement_timeout_ms: int = Field(
+        default=5000,
+        ge=100,
+        le=30_000,
+    )
+    content_reconciliation_apply_enabled: bool = False
+
+    # Durable terminal telemetry and external alerting. Delivery is default-off.
+    workflow_alert_sink: WorkflowAlertSinkType = "noop"
+    workflow_alert_webhook_endpoint: str | None = Field(default=None, max_length=2048)
+    workflow_alert_webhook_secret: SecretStr | None = Field(default=None, min_length=32)
+    workflow_alert_diagnostic_origin: str | None = Field(default=None, max_length=2048)
+    workflow_alert_allowed_hosts: str = Field(default="", max_length=4096)
+    workflow_alert_timeout_seconds: int = Field(default=10, ge=1, le=30)
+    workflow_alert_lease_seconds: int = Field(default=60, ge=10, le=900)
+    workflow_alert_max_attempts: int = Field(default=5, ge=1, le=20)
+    workflow_alert_base_backoff_seconds: int = Field(default=30, ge=1, le=3600)
+    workflow_alert_max_backoff_seconds: int = Field(default=3600, ge=1, le=86_400)
+    workflow_alert_max_retry_after_seconds: int = Field(default=3600, ge=1, le=86_400)
+    workflow_alert_delivery_max_age_seconds: int = Field(default=604_800, ge=60, le=604_800)
+    workflow_alert_retention_days: int = Field(default=30, ge=1, le=3650)
+    workflow_alert_exhausted_retention_days: int = Field(default=90, ge=1, le=3650)
+    workflow_alert_batch_size: int = Field(default=50, ge=1, le=500)
+
+    def get_workflow_alert_allowed_hosts(self) -> tuple[str, ...]:
+        """Return the normalized exact-host outbound policy."""
+
+        return tuple(
+            sorted(
+                {
+                    _normalize_workflow_alert_host(host)
+                    for host in self.workflow_alert_allowed_hosts.split(",")
+                    if host.strip()
+                }
+            )
+        )
 
     # Database Provider Configuration
     # Explicit provider selection - no auto-detection magic
@@ -474,6 +556,8 @@ class Settings(BaseSettings):
     # Owner Authentication (Phase 1)
     app_secret_key: str | None = None  # Login password for browser/mobile access
     auth_cookie_cross_origin: bool = False  # SameSite=None for cross-origin deployments
+    configured_source_key_secret: SecretStr | None = Field(default=None, min_length=32)
+    operation_cursor_signing_key: SecretStr | None = Field(default=None, min_length=32)
 
     # Gmail Configuration
     gmail_credentials_file: str = "credentials.json"
@@ -488,6 +572,11 @@ class Settings(BaseSettings):
     # Unified Source Configuration
     sources_config_dir: str = "sources.d"  # Directory with per-type YAML files
     sources_config_file: str = "sources.yaml"  # Single-file fallback
+
+    # Worker-local Obsidian mount policy. Source configuration can only
+    # narrow this deployment-owned allowlist.
+    obsidian_allowed_roots: str = Field(default="", max_length=16_384)
+    obsidian_compatible_worker: bool = False
 
     # Substack Configuration
     substack_session_cookie: str | None = None  # Value of the substack.sid cookie
@@ -832,6 +921,148 @@ class Settings(BaseSettings):
 
         return self
 
+    @model_validator(mode="after")
+    def validate_operation_retention(self) -> Settings:
+        """Keep retryable failed operations at least as long as other terminal work."""
+
+        if self.failed_job_retention_days < self.job_retention_days:
+            raise ValueError(
+                "failed_job_retention_days must be greater than or equal to job_retention_days"
+            )
+        return self
+
+    @field_validator("workflow_alert_allowed_hosts")
+    @classmethod
+    def validate_workflow_alert_allowed_hosts(cls, value: str) -> str:
+        """Normalize a bounded comma-separated set of exact destination hosts."""
+
+        hosts = {_normalize_workflow_alert_host(host) for host in value.split(",") if host.strip()}
+        return ",".join(sorted(hosts))
+
+    @field_validator("obsidian_allowed_roots")
+    @classmethod
+    def validate_obsidian_allowed_roots(cls, value: str) -> str:
+        """Require unambiguous, scoped absolute roots for local vault access."""
+
+        if not value:
+            return value
+        raw_roots = [item.strip() for item in value.split(",")]
+        if any(not item for item in raw_roots):
+            raise ValueError("obsidian_allowed_roots contains an empty path")
+        if any(
+            "\x00" in item
+            or "\\" in item
+            or any(part in {"", ".", ".."} for part in item.split("/")[1:])
+            for item in raw_roots
+        ):
+            raise ValueError("obsidian_allowed_roots contains an unsafe path")
+        roots = [Path(item) for item in raw_roots]
+        if any(not root.is_absolute() or root == Path(root.anchor) for root in roots):
+            raise ValueError("obsidian_allowed_roots requires scoped absolute paths")
+        if len(set(roots)) != len(roots):
+            raise ValueError("obsidian_allowed_roots contains duplicate paths")
+        return ",".join(str(root) for root in roots)
+
+    @model_validator(mode="after")
+    def validate_workflow_alert_policy(self) -> Settings:
+        """Validate retry, retention, origin, and sink safety as one policy.
+
+        A lease includes a fixed five-second margin beyond the complete HTTP
+        timeout so another worker cannot reclaim a request still in flight.
+        """
+
+        lease_safety_margin_seconds = 5
+        if self.workflow_alert_lease_seconds < (
+            self.workflow_alert_timeout_seconds + lease_safety_margin_seconds
+        ):
+            raise ValueError(
+                "workflow_alert_lease_seconds must include a five-second transport safety "
+                "margin beyond workflow_alert_timeout_seconds"
+            )
+        if self.workflow_alert_max_backoff_seconds < self.workflow_alert_base_backoff_seconds:
+            raise ValueError(
+                "workflow_alert_max_backoff_seconds must be greater than or equal to "
+                "workflow_alert_base_backoff_seconds"
+            )
+        if self.workflow_alert_exhausted_retention_days < self.workflow_alert_retention_days:
+            raise ValueError(
+                "workflow_alert_exhausted_retention_days must be greater than or equal to "
+                "workflow_alert_retention_days"
+            )
+        if self.workflow_alert_sink == "noop":
+            return self
+
+        endpoint = self.workflow_alert_webhook_endpoint
+        if not endpoint:
+            raise ValueError(
+                "WORKFLOW_ALERT_WEBHOOK_ENDPOINT is required when WORKFLOW_ALERT_SINK=webhook"
+            )
+        origin = self.workflow_alert_diagnostic_origin
+        if not origin:
+            raise ValueError(
+                "WORKFLOW_ALERT_DIAGNOSTIC_ORIGIN is required when WORKFLOW_ALERT_SINK=webhook"
+            )
+        allowed_hosts = self.get_workflow_alert_allowed_hosts()
+        if not allowed_hosts:
+            raise ValueError(
+                "WORKFLOW_ALERT_ALLOWED_HOSTS is required when WORKFLOW_ALERT_SINK=webhook"
+            )
+
+        endpoint_parts = urlparse(endpoint)
+        origin_parts = urlparse(origin)
+        try:
+            _ = (endpoint_parts.port, origin_parts.port)
+        except ValueError as exc:
+            raise ValueError("workflow alert URLs must contain a valid port") from exc
+        deployed = self.environment in {"staging", "production"}
+        allowed_schemes = {"https"} if deployed else {"http", "https"}
+        if endpoint_parts.scheme not in allowed_schemes:
+            raise ValueError(
+                "workflow alert webhook endpoint must use HTTPS in deployed environments"
+            )
+        if not endpoint_parts.hostname:
+            raise ValueError("workflow alert webhook endpoint must include a host")
+        if endpoint_parts.username is not None or endpoint_parts.password is not None:
+            raise ValueError("workflow alert webhook endpoint must not contain credentials")
+        if endpoint_parts.query or endpoint_parts.fragment:
+            raise ValueError("workflow alert webhook endpoint must not contain a query or fragment")
+
+        endpoint_host = _normalize_workflow_alert_host(endpoint_parts.hostname)
+        if endpoint_host not in allowed_hosts:
+            raise ValueError(
+                "workflow alert webhook endpoint host is not in the exact host allowlist"
+            )
+        try:
+            endpoint_ip = ip_address(endpoint_host)
+        except ValueError:
+            endpoint_ip = None
+        if deployed and endpoint_ip is not None and not endpoint_ip.is_global:
+            raise ValueError("workflow alert webhook endpoint must resolve to a public address")
+
+        if origin_parts.scheme != "https":
+            raise ValueError("workflow alert diagnostic origin must use HTTPS")
+        if not origin_parts.hostname:
+            raise ValueError("workflow alert diagnostic origin must include a host")
+        if origin_parts.username is not None or origin_parts.password is not None:
+            raise ValueError("workflow alert diagnostic origin must not contain credentials")
+        if origin_parts.path not in {"", "/"} or origin_parts.query or origin_parts.fragment:
+            raise ValueError("workflow alert diagnostic origin must be an origin without a path")
+        return self
+
+    @model_validator(mode="after")
+    def validate_content_reconciliation_timeouts(self) -> Settings:
+        """Keep the per-item statement ceiling at least as long as lock acquisition."""
+
+        if (
+            self.content_reconciliation_statement_timeout_ms
+            < self.content_reconciliation_lock_timeout_ms
+        ):
+            raise ValueError(
+                "content_reconciliation_statement_timeout_ms must be greater than or equal "
+                "to content_reconciliation_lock_timeout_ms"
+            )
+        return self
+
     @field_validator("langfuse_sample_rate")
     @classmethod
     def validate_langfuse_sample_rate(cls, v: float) -> float:
@@ -1036,6 +1267,17 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def validate_configured_source_key_secret(self) -> Settings:
+        """Require durable configured-source identity in deployed environments."""
+
+        if (
+            self.environment in {"staging", "production"}
+            and self.configured_source_key_secret is None
+        ):
+            raise ValueError("CONFIGURED_SOURCE_KEY_SECRET is required in staging and production")
+        return self
+
+    @model_validator(mode="after")
     def validate_production_security(self) -> Settings:
         """Warn about insecure configuration when running in production.
 
@@ -1107,6 +1349,34 @@ class Settings(BaseSettings):
             )
 
         return self
+
+    def get_configured_source_key_secret(self) -> str:
+        """Return dedicated signing material for public configured-source identities."""
+
+        if self.configured_source_key_secret is not None:
+            return self.configured_source_key_secret.get_secret_value()
+        raise RuntimeError(
+            "CONFIGURED_SOURCE_KEY_SECRET is required to derive configured-source identities"
+        )
+
+    def get_obsidian_allowed_roots(self) -> tuple[Path, ...]:
+        """Return the deployment-owned Obsidian mount allowlist."""
+
+        if not self.obsidian_allowed_roots:
+            return ()
+        return tuple(Path(value) for value in self.obsidian_allowed_roots.split(","))
+
+    def get_operation_cursor_signing_key(self) -> str:
+        """Return dedicated or approved authentication-secret cursor material."""
+
+        if self.operation_cursor_signing_key is not None:
+            return self.operation_cursor_signing_key.get_secret_value()
+        for fallback in (self.app_secret_key, self.admin_api_key):
+            if fallback is not None and len(fallback.encode("utf-8")) >= 32:
+                return fallback
+        raise RuntimeError(
+            "OPERATION_CURSOR_SIGNING_KEY or a strong APP_SECRET_KEY/ADMIN_API_KEY is required"
+        )
 
     def _mask_url(self, url: str) -> str:
         """Mask password in database URL for safe logging/errors.

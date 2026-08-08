@@ -3,23 +3,25 @@
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
-from src.models.base import Base
 from src.models.settings_override import SettingsOverride
-from src.services.settings_service import SettingsService
-from tests.helpers.test_db import create_test_engine, get_test_database_url
-
-TEST_DATABASE_URL = get_test_database_url()
+from src.services.settings_service import SettingsService, is_database_override_allowed
 
 
 @pytest.fixture(scope="module")
-def engine():
-    """Create test database engine for settings service tests."""
-    eng = create_test_engine(TEST_DATABASE_URL)
-    Base.metadata.drop_all(eng)
-    Base.metadata.create_all(eng)
-    yield eng
-    Base.metadata.drop_all(eng)
-    eng.dispose()
+def engine(test_engine):
+    """Reuse the session-scoped, migration-built schema.
+
+    This module previously built its own engine and called
+    ``Base.metadata.drop_all`` / ``create_all`` against the *shared* test
+    database, then dropped every mapped table again at teardown. That left the
+    schema empty for everything that ran afterwards in the same session — any
+    later test needing a table failed with a bare "relation does not exist",
+    hundreds of tests away from the cause. These tests only need
+    ``settings_overrides``, which the migrations already create, and ``db``
+    rolls back, so no schema management is warranted here.
+    """
+
+    return test_engine
 
 
 @pytest.fixture
@@ -106,6 +108,34 @@ class TestSettingsServiceSet:
         with pytest.raises(ValueError, match="Database session required"):
             service.set("model.summarization", "claude-haiku-4-5")
 
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "alerting.workflow_alert_sink",
+            "alerting.workflow_alert_webhook_endpoint",
+            "alerting.workflow_alert_webhook_secret",
+            "alerting.workflow_alert_diagnostic_origin",
+            "alerting.workflow_alert_allowed_hosts",
+            "alerting.workflow_alert_timeout_seconds",
+            "alerting.workflow_alert_lease_seconds",
+            "alerting.workflow_alert_max_attempts",
+            "alerting.workflow_alert_base_backoff_seconds",
+            "alerting.workflow_alert_max_backoff_seconds",
+            "alerting.workflow_alert_max_retry_after_seconds",
+            "alerting.workflow_alert_delivery_max_age_seconds",
+            "alerting.workflow_alert_retention_days",
+            "alerting.workflow_alert_exhausted_retention_days",
+            "alerting.workflow_alert_batch_size",
+            "work.flow-al_ert.web-hook.se_cret",
+            "CONFIG.WORKFLOW ALERT.TIMEOUT SECONDS",
+        ],
+    )
+    def test_set_rejects_alert_transport_policy_keys(self, db, key):
+        service = SettingsService(db)
+
+        with pytest.raises(ValueError, match="cannot be database-backed"):
+            service.set(key, "hostile-runtime-value")
+
 
 class TestSettingsServiceDelete:
     """Tests for SettingsService.delete()."""
@@ -124,6 +154,16 @@ class TestSettingsServiceDelete:
         service = SettingsService()
         with pytest.raises(ValueError, match="Database session required"):
             service.delete("model.summarization")
+
+    def test_delete_purges_hidden_legacy_alert_policy_row(self, db):
+        key = "alerting.workflow_alert_webhook_secret"
+        db.add(SettingsOverride(key=key, value="legacy-plaintext-secret", version=1))
+        db.commit()
+
+        service = SettingsService(db)
+        assert service.get(key) is None
+        assert service.delete(key) is True
+        assert db.query(SettingsOverride).filter_by(key=key).first() is None
 
 
 class TestSettingsServiceListByPrefix:
@@ -170,6 +210,18 @@ class TestSettingsServiceListByPrefix:
         keys = [r["key"] for r in results]
         assert keys == sorted(keys)
 
+    def test_list_never_returns_legacy_alert_transport_policy_rows(self, db):
+        db.add(
+            SettingsOverride(
+                key="alerting.webhook_secret",
+                value="legacy-plaintext-secret",
+                version=1,
+            )
+        )
+        db.commit()
+
+        assert SettingsService(db).list_by_prefix("alerting") == []
+
 
 class TestSettingsServiceGetOverride:
     """Tests for SettingsService.get_override()."""
@@ -189,3 +241,16 @@ class TestSettingsServiceGetOverride:
     def test_get_override_without_db_returns_none(self):
         service = SettingsService()
         assert service.get_override("model.summarization") is None
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "notifications.alert_sound",
+        "workflow.retry_timeout_seconds",
+        "model.alert_summary",
+        "content.workflow_notes",
+    ],
+)
+def test_unrelated_settings_keys_remain_database_override_eligible(key):
+    assert is_database_override_allowed(key)

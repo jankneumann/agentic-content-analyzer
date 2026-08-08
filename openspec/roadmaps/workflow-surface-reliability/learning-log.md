@@ -7,3 +7,8 @@
 | ri-03 | validation | Exact inventory reconciled to 12 actionable changes, 10 dated archives, and 4 focused successors |
 | ri-04 | validation | Merged RI-01→RI-04 stack (PR #472, merge ee13ac8a); fixed 3 environment-coupling defects and moved release-smoke contract to durable openspec/contracts |
 | ri-06 | implementation | Repo-owned evaluation contract plus a locked pinned runner; read-only suite enforced on every PR, mutating suite gated by a target-policy guard, a protected environment, and its own exit code |
+| ri-07 | validation | Reused pgqueuer_jobs typed results, checkpoints, retries, and parent-child ident |
+| ri-08 | validation | Added exact claim/content fencing and bounded default-off reconciliation; independent review closed the stale identity-map race and all final gates passed |
+| ri-09 | validation | Added transactional terminal evidence and one signed, redacted webhook receipt proven on an exact isolated staging revision |
+| ri-10 | validation | First durable PostgreSQL execution closed a harness claim break, a permanent re-failure on unchanged scans, an empty alert code list, and the source matrix |
+| ri-11 | validation | Deferred a second URL major until a named incompatible contract needs overlap; archived 42 speculative tasks and recorded external-consumer triggers |

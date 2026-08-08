@@ -13,13 +13,16 @@ and every INSERT raises psycopg2.errors.InternalError_: No key field defined.
 
 The original migration's CREATE INDEX is wrapped in DO ... EXCEPTION WHEN
 OTHERS, which silently swallowed the underlying issue, so this bug shipped
-unnoticed. This migration drops the broken index and recreates it correctly;
-it intentionally does NOT swallow exceptions so future schema drift is loud.
+unnoticed. This migration drops the broken index and recreates it correctly.
+Provider denial of the optional extension is handled as an unavailable
+capability, while index syntax errors remain loud once pg_search is installed.
 """
 
 from typing import Sequence, Union
 
+import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.engine import Connection
 
 
 revision: str = "e7f8a9b0c1d2"
@@ -28,45 +31,52 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _ensure_pg_search_installed(conn: Connection) -> bool:
+    """Install optional pg_search when permitted without aborting the migration."""
+
+    installed = conn.execute(
+        sa.text("SELECT 1 FROM pg_extension WHERE extname = 'pg_search'")
+    ).scalar()
+    if installed:
+        return True
+    try:
+        with conn.begin_nested():
+            conn.execute(sa.text("CREATE EXTENSION pg_search"))
+    except sa.exc.DBAPIError:
+        return False
+    return True
+
+
 def upgrade() -> None:
     """Drop broken BM25 index and recreate with id in column list."""
+    conn = op.get_bind()
     # Drop the index unconditionally — IF EXISTS is safe whether it was
     # created (in production, malformed) or never existed (fresh deploys
     # where pg_search wasn't available).
     op.execute("DROP INDEX IF EXISTS ix_document_chunks_bm25")
 
-    # Recreate with the fixed column list. Same availability guard as the
-    # original migration, but errors are RAISEd not swallowed so any future
-    # syntax drift surfaces immediately.
-    op.execute("""
-        DO $$
-        BEGIN
-            IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pg_search') THEN
-                CREATE EXTENSION IF NOT EXISTS pg_search;
-                CREATE INDEX ix_document_chunks_bm25
-                ON document_chunks
-                USING bm25 (id, chunk_text)
-                WITH (key_field='id');
-                RAISE NOTICE 'BM25 index recreated with id as key_field';
-            ELSE
-                RAISE NOTICE 'pg_search extension not available — BM25 index skipped';
-            END IF;
-        END $$
-    """)
+    # Provider catalogs may advertise deprecated extensions that users cannot
+    # install. Probe installation in a savepoint, but keep index syntax errors
+    # loud once pg_search is genuinely available.
+    if _ensure_pg_search_installed(conn):
+        op.execute(
+            """
+            CREATE INDEX ix_document_chunks_bm25
+            ON document_chunks
+            USING bm25 (id, chunk_text)
+            WITH (key_field='id')
+            """
+        )
 
 
 def downgrade() -> None:
     """Restore the original (broken) index for parity with prior revision."""
+    conn = op.get_bind()
     op.execute("DROP INDEX IF EXISTS ix_document_chunks_bm25")
-    op.execute("""
-        DO $$
-        BEGIN
-            IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pg_search') THEN
-                CREATE EXTENSION IF NOT EXISTS pg_search;
-                CREATE INDEX ix_document_chunks_bm25
-                ON document_chunks USING bm25 (chunk_text) WITH (key_field='id');
-            END IF;
-        EXCEPTION WHEN OTHERS THEN
-            RAISE NOTICE 'BM25 index creation skipped: %', SQLERRM;
-        END $$
-    """)
+    if _ensure_pg_search_installed(conn):
+        op.execute(
+            """
+            CREATE INDEX ix_document_chunks_bm25
+            ON document_chunks USING bm25 (chunk_text) WITH (key_field='id')
+            """
+        )

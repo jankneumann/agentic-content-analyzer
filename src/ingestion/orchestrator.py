@@ -64,6 +64,7 @@ if TYPE_CHECKING:
     from src.ingestion.arxiv import ArxivPaperResult
     from src.ingestion.result import IngestionResponse
     from src.ingestion.scholar import ScholarPaperResult
+    from src.models.content import Content
 
 logger = get_logger(__name__)
 
@@ -227,6 +228,12 @@ def _merge_youtube_envelopes(
     items_failed = sum(p.items_failed for p in parts)
     errors: list[IngestionError] = [e for p in parts for e in p.errors]
     warnings = [w for p in parts for w in p.warnings]
+    from src.ingestion.result_sanitizer import sanitize_ingestion_metadata
+
+    source_projection = sanitize_ingestion_metadata(
+        source_outcomes=[outcome for part in parts for outcome in part.source_outcomes],
+        source_outcomes_omitted=sum(part.source_outcomes_omitted for part in parts),
+    )
 
     return _Response(
         command=command,  # type: ignore[arg-type]
@@ -239,6 +246,8 @@ def _merge_youtube_envelopes(
         items_failed=items_failed,
         errors=errors,
         warnings=warnings,
+        source_outcomes=source_projection["source_outcomes"],
+        source_outcomes_omitted=source_projection["source_outcomes_omitted"],
     )
 
 
@@ -1296,6 +1305,10 @@ def _ingest_webpage(
         try:
             asyncio.run(extractor.extract_content(content_id))
         except Exception as exc:
+            from src.queue.execution_claim import ClaimRejected
+
+            if isinstance(exc, ClaimRejected):
+                raise
             logger.warning(
                 f"URL extraction failed for content_id={content_id}, url={url}: {exc}",
                 exc_info=True,
@@ -1322,6 +1335,99 @@ def _ingest_webpage(
             "status": "queued",
             "duplicate": False,
             "url": url,
+        },
+    )
+
+
+class URLResumeError(RuntimeError):
+    """A retried URL operation cannot prove one exact owned Content row."""
+
+
+def resolve_owned_url_resume_content(db, operation_id: int, checkpoint: object) -> Content:
+    """Resolve strict checkpoint evidence or one exact persisted parsing owner."""
+
+    from pydantic import ValidationError
+
+    from src.contracts.workflow_models import IngestionResultV2
+    from src.models.content import Content, ContentSource, ContentStatus
+
+    content_id: int | None = None
+    try:
+        result = IngestionResultV2.model_validate(checkpoint)
+        error_codes = {diagnostic.code for diagnostic in result.errors}
+        if (
+            result.command_key == "url"
+            and result.resolved_route == "webpage"
+            and result.status == "partial"
+            and result.outcome == "partial"
+            and len(result.content_ids) == 1
+            and result.content_ids[0] > 0
+            and "extraction_failed" in error_codes
+        ):
+            content_id = result.content_ids[0]
+    except (TypeError, ValueError, ValidationError):
+        content_id = None
+
+    if content_id is not None:
+        content = db.get(Content, content_id)
+        if _is_exact_url_resume_owner(content, operation_id):
+            return content
+
+    matches = (
+        db.query(Content)
+        .filter(
+            Content.status_operation_id == operation_id,
+            Content.status_operation_phase == "parsing",
+            Content.status.in_([ContentStatus.PARSING, ContentStatus.FAILED]),
+            Content.source_type == ContentSource.WEBPAGE,
+        )
+        .limit(2)
+        .all()
+    )
+    if len(matches) != 1:
+        raise URLResumeError(
+            f"URL operation {operation_id} requires exactly one owned Content resume row"
+        )
+    return matches[0]
+
+
+def _is_exact_url_resume_owner(content: Content | None, operation_id: int) -> bool:
+    from src.models.content import ContentSource, ContentStatus
+
+    return bool(
+        content is not None
+        and content.status_operation_id == operation_id
+        and content.status_operation_phase == "parsing"
+        and content.status in {ContentStatus.PARSING, ContentStatus.FAILED}
+        and content.source_type is ContentSource.WEBPAGE
+    )
+
+
+def resume_owned_url_extraction(operation_id: int, checkpoint: object) -> IngestionResponse:
+    """Resume exact URL Content directly, bypassing classification and deduplication."""
+
+    from src.ingestion.result import IngestionResponse
+    from src.services.url_extractor import URLExtractor
+    from src.storage.database import get_db
+
+    with get_db() as db:
+        content = resolve_owned_url_resume_content(db, operation_id, checkpoint)
+        content_id = int(content.id)
+        import asyncio
+
+        asyncio.run(URLExtractor(db).extract_content(content_id, resume_owned=True))
+
+    return IngestionResponse(
+        command="ingest.url",
+        source="url",
+        status="ok",
+        items_ingested=1,
+        details={
+            "command_key": "url",
+            "resolved_route": "webpage",
+            "emitted_sources": ["url"],
+            "content_ids": [content_id],
+            "content_id": content_id,
         },
     )
 
@@ -1421,6 +1527,141 @@ def ingest_files(
         items_failed=items_failed,
         errors=errors,
         details={"results": results},
+    )
+
+
+def obsidian_adapter_config(source: Any, *, max_items: int | None = None) -> Any:
+    """Resolve one private source against deployment-owned worker policy."""
+
+    from src.config.settings import get_settings
+    from src.ingestion.obsidian_adapter import ObsidianAdapterConfig
+    from src.ingestion.obsidian_parser import ClipParseLimits
+    from src.ingestion.obsidian_scanner import ScanLimits
+    from src.ingestion.registry import configured_source_digest
+
+    settings = get_settings()
+    secret = settings.get_configured_source_key_secret()
+    item_limit = max_items if max_items is not None else source.max_files
+    return ObsidianAdapterConfig(
+        configured_source_digest=configured_source_digest(source, secret=secret),
+        vault_path=source.vault_path,
+        ingest_folder=source.ingest_folder,
+        allowed_roots=tuple(settings.get_obsidian_allowed_roots()),
+        scan_limits=ScanLimits(
+            max_files=min(source.max_files, item_limit),
+            max_entries=source.max_entries,
+            max_total_bytes=source.max_total_bytes,
+            max_depth=source.max_depth,
+            max_duration_seconds=source.max_duration_seconds,
+            max_note_bytes=source.max_note_bytes,
+            settle_seconds=source.settle_seconds,
+            max_concurrency=source.max_concurrency,
+        ),
+        parse_limits=ClipParseLimits(
+            max_note_bytes=source.max_note_bytes,
+            max_frontmatter_bytes=source.max_frontmatter_bytes,
+            max_yaml_nodes=source.max_yaml_nodes,
+            max_yaml_depth=source.max_yaml_depth,
+            max_yaml_aliases=source.max_yaml_aliases,
+            max_yaml_string_chars=source.max_yaml_string_chars,
+            max_body_chars=source.max_note_bytes,
+            max_url_chars=2_000,
+        ),
+        compatible_worker=settings.obsidian_compatible_worker,
+    )
+
+
+@observe()
+def ingest_obsidian_vault(
+    *,
+    max_items: int | None = None,
+    force_reprocess: bool = False,
+) -> IngestionResponse:
+    """Execute one bounded worker-local scan and return the canonical envelope."""
+
+    from src.config.sources import load_sources_config
+    from src.ingestion.obsidian_adapter import ingest_obsidian_vault as run_adapter
+    from src.ingestion.result import (
+        ConfiguredSourceResult,
+        IngestionError,
+        IngestionResponse,
+        IngestionWarning,
+        derive_status,
+        public_source_key_for,
+    )
+    from src.storage.database import get_db
+
+    sources = load_sources_config().get_obsidian_vault_sources()
+    if len(sources) != 1:
+        raise ValueError("Obsidian execution requires exactly one configured source")
+    source = sources[0]
+    config = obsidian_adapter_config(source, max_items=max_items)
+    with get_db() as db:
+        outcome = run_adapter(db, config, force_reprocess=force_reprocess)
+
+    # Retained diagnostics restate a failure an earlier operation already
+    # recorded for an unchanged file version. They stay visible as warnings so
+    # this operation is not classified as failed for work it never attempted.
+    failed_diagnostics = [
+        diagnostic
+        for diagnostic in outcome.diagnostics
+        if diagnostic.code != "generated_content" and not diagnostic.retained
+    ]
+    retained_diagnostics = [diagnostic for diagnostic in outcome.diagnostics if diagnostic.retained]
+    errors = [
+        IngestionError(
+            code=diagnostic.code,
+            message="A configured Obsidian item could not be ingested",
+        )
+        for diagnostic in failed_diagnostics[:20]
+    ]
+    warnings = [
+        IngestionWarning(
+            code=diagnostic.code,
+            message="A configured Obsidian item remains uningestable and was not retried",
+        )
+        for diagnostic in retained_diagnostics[:20]
+    ]
+    status = derive_status(
+        items_ingested=outcome.persisted,
+        items_failed=outcome.failed,
+        errors=errors,
+    )
+    source_public_key = public_source_key_for(source)
+    if source_public_key is None:
+        from src.config.settings import get_settings
+        from src.config.sources import configured_source_public_key
+
+        source_public_key = configured_source_public_key(
+            source,
+            secret=get_settings().get_configured_source_key_secret(),
+        )
+    source_diagnostics = [{"code": error.code, "message": error.message} for error in errors]
+    source_warnings = [{"code": warning.code, "message": warning.message} for warning in warnings]
+    return IngestionResponse(
+        command="ingest.obsidian-vault",
+        source="obsidian",
+        status=status,
+        items_ingested=outcome.persisted,
+        items_skipped=outcome.skipped,
+        items_failed=outcome.failed,
+        errors=errors,
+        warnings=warnings,
+        source_outcomes=[
+            ConfiguredSourceResult(
+                source_key=source_public_key,
+                status=status,
+                items_ingested=outcome.persisted,
+                items_failed=outcome.failed,
+                errors=source_diagnostics,
+                errors_omitted=max(0, len(failed_diagnostics) - len(errors)),
+                warnings=source_warnings,
+                warnings_omitted=max(0, len(retained_diagnostics) - len(warnings)),
+            )
+        ],
+        details={
+            "content_ids": list(outcome.content_ids),
+        },
     )
 
 

@@ -13,12 +13,13 @@ Usage:
     service.upsert({"type": "blog", "url": "https://www.normaltech.ai/"})
 """
 
+import hmac
 from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.orm import Session
 
-from src.config.sources import Source, source_key
+from src.config.sources import Source, configured_source_public_key, source_key
 from src.models.source_override import SourceOverride
 
 # Validates a raw source dict against the discriminated Source union — the same
@@ -28,6 +29,34 @@ _SOURCE_ADAPTER: TypeAdapter[Any] = TypeAdapter(Source)
 
 class SourceOverrideError(ValueError):
     """Raised when a source override config fails validation."""
+
+
+class PublicSourceKeyError(SourceOverrideError):
+    """Raised when a private natural key crosses a public mutation boundary."""
+
+
+def validate_public_source_key(key: str) -> str:
+    """Reject private Obsidian natural identities at public management boundaries."""
+
+    if key.startswith("obsidian_vault:"):
+        raise PublicSourceKeyError("Obsidian source mutations require an opaque source key")
+    return key
+
+
+def public_source_key(config_or_row: Any) -> str:
+    """Project an override identity without exposing Obsidian's natural key."""
+
+    config = getattr(config_or_row, "config", config_or_row)
+    source_type = config.get("type") if isinstance(config, dict) else getattr(config, "type", None)
+    if source_type == "obsidian_vault":
+        from src.config.settings import get_settings
+
+        return configured_source_public_key(
+            config,
+            secret=get_settings().get_configured_source_key_secret(),
+        )
+    row_key = getattr(config_or_row, "source_key", None)
+    return row_key if isinstance(row_key, str) else source_key(config)
 
 
 class SourceOverrideService:
@@ -54,6 +83,8 @@ class SourceOverrideService:
         try:
             model = _SOURCE_ADAPTER.validate_python(config)
         except ValidationError as e:
+            if config.get("type") == "obsidian_vault":
+                raise SourceOverrideError("invalid obsidian_vault source config") from e
             raise SourceOverrideError(f"invalid source config: {e}") from e
         data = model.model_dump()
         data.pop("origin", None)
@@ -62,7 +93,21 @@ class SourceOverrideService:
     # --- Reads ------------------------------------------------------------
 
     def get(self, key: str) -> SourceOverride | None:
-        """Return the override row for a natural key, or None."""
+        """Return an override by its public management key."""
+
+        validate_public_source_key(key)
+        exact = self._get_by_natural_key(key)
+        if exact is not None or not key.startswith("src_"):
+            return exact
+        candidates = self.db.query(SourceOverride).filter_by(source_type="obsidian_vault").all()
+        for candidate in candidates:
+            if hmac.compare_digest(public_source_key(candidate), key):
+                return candidate
+        return None
+
+    def _get_by_natural_key(self, key: str) -> SourceOverride | None:
+        """Resolve the private storage identity used only by upsert and merge internals."""
+
         return self.db.query(SourceOverride).filter_by(source_key=key).first()
 
     def list_overrides(self, source_type: str | None = None) -> list[dict[str, Any]]:
@@ -125,7 +170,7 @@ class SourceOverrideService:
             ) from e
         stype = validated["type"]
 
-        existing = self.get(key)
+        existing = self._get_by_natural_key(key)
         if existing:
             existing.config = validated
             existing.source_type = stype
@@ -181,8 +226,13 @@ class SourceOverrideService:
             )
         return self.upsert(fallback_config, enabled=enabled)
 
-    def delete(self, key: str) -> bool:
-        """Delete an override row by key. Returns True if a row was removed."""
-        count = self.db.query(SourceOverride).filter_by(source_key=key).delete()
+    def delete(self, key: str) -> str | None:
+        """Delete by public key and return the authoritative public projection."""
+
+        row = self.get(key)
+        if row is None:
+            return None
+        projected_key = public_source_key(row)
+        self.db.delete(row)
         self.db.commit()
-        return count > 0
+        return projected_key

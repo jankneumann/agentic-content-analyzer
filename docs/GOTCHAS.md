@@ -17,6 +17,7 @@ Things that will bite you if ignored. Organized by area.
 | Cloud DB has no tables | Supabase/Neon start empty; run `alembic upgrade head` against production |
 | `autoflush=False` + dedup loop | `db.add()` without `db.flush()` leaves rows invisible to subsequent SELECTs; cross-feed duplicates pass dedup then collide on unique constraint at commit |
 | pgvector not mapped in ORM | `DocumentChunk.embedding` and `search_vector` are NOT SQLAlchemy columns — access via raw SQL only. `embedding_provider`/`embedding_model` ARE mapped |
+| asyncpg infers `$n` type from the column, not your Pydantic bound | Most `id` columns are `int4` (`contents`, `summaries`, `digests`, …); only `pgqueuer_jobs`, `audit_log`, `content_reconciliation_actions`, `obsidian_ingest_*`, `filter_feedback_events` are `bigint`. In `WHERE c.id > $1`, Postgres types `$1` as `int4`, so a contract declaring `maximum: 9223372036854775807` gets an `asyncpg.DataError` on the wire — laundered into an opaque 422 "Invalid parameter value" — instead of a field-level validation error. Declare `2147483647` for any `int4`-backed id or cursor. Check the column with `\d <table>` before picking a bound |
 
 ## Database Providers
 
@@ -96,6 +97,7 @@ Things that will bite you if ignored. Organized by area.
 |-------|----------|
 | FastAPI route ordering: `/{id}` shadows static paths | Define static routes (`/pricing/status`) BEFORE dynamic routes (`/{model_id}`) — FastAPI matches in definition order and `{model_id}` captures any string including "pricing" |
 | String-level YAML editing offset drift | When applying multiple replacements to file content, collect `(start, end, new_text)` tuples and apply in **reverse offset order** — forward-order replacements shift subsequent offsets |
+| `503` for a disabled feature fails the fuzz contract | `tests/contract/test_fuzz.py` asserts schema-valid input never yields `>= 500`. A feature switched off by server config, or a resource that only exists in one deployment class, is not a transient outage. Use `409` when only the requested *mode* conflicts with server policy (`reconcile-content` with `apply=true`), and `404` when the resource does not exist in this deployment at all (`workflow-alert-verification-context` outside verified staging, `otel_proxy_routes` with OTel off) |
 
 ## Testing
 

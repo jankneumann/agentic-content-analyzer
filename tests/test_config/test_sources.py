@@ -2,7 +2,9 @@
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
+import src.config.sources as source_config
 from src.config.sources import (
     GmailSource,
     PodcastSource,
@@ -109,6 +111,109 @@ class TestSourceModels:
         s = GmailSource(query="label:tech", max_results=100)
         assert s.query == "label:tech"
         assert s.max_results == 100
+
+    def test_obsidian_vault_source_is_repeatable_private_and_bounded(self):
+        model = source_config.ObsidianVaultSource
+        first = model(
+            vault_id="personal",
+            vault_path="/srv/obsidian/personal",
+            ingest_folder="Clips/Inbox",
+        )
+        second = model(
+            vault_id="research",
+            vault_path="/srv/obsidian/research",
+            ingest_folder="Inbox",
+            max_files=25,
+        )
+        config = SourcesConfig(sources=[first, second])
+
+        assert config.get_obsidian_vault_sources() == [first, second]
+        assert first.type == "obsidian_vault"
+        assert first.max_files == 1_000
+        assert first.max_entries == 10_000
+        assert first.max_total_bytes == 64 * 1024 * 1024
+        assert first.max_depth == 8
+        assert first.max_duration_seconds == 300.0
+        assert first.max_note_bytes == 4 * 1024 * 1024
+        assert first.max_frontmatter_bytes == 16_384
+        assert first.max_yaml_nodes == 256
+        assert first.max_yaml_depth == 16
+        assert first.max_yaml_aliases == 8
+        assert first.max_yaml_string_chars == 4_096
+        assert first.settle_seconds == 0.0
+        assert first.max_concurrency == 1
+        assert "/srv/obsidian/personal" not in repr(first)
+        assert "Clips/Inbox" not in repr(first)
+        assert first.model_dump()["vault_path"] == "/srv/obsidian/personal"
+        assert first.model_dump()["ingest_folder"] == "Clips/Inbox"
+        assert "allowed_roots" not in model.model_fields
+        assert "narrowed_roots" not in model.model_fields
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("max_files", 0),
+            ("max_files", 10_001),
+            ("max_entries", 100_001),
+            ("max_total_bytes", 256 * 1024 * 1024 + 1),
+            ("max_depth", 33),
+            ("max_duration_seconds", 3_600.1),
+            ("max_note_bytes", 16 * 1024 * 1024 + 1),
+            ("max_frontmatter_bytes", 0),
+            ("max_yaml_nodes", 0),
+            ("max_yaml_depth", 0),
+            ("max_yaml_aliases", -1),
+            ("max_yaml_string_chars", 0),
+            ("settle_seconds", 60.1),
+            ("max_concurrency", 9),
+        ],
+    )
+    def test_obsidian_vault_source_rejects_unbounded_limits(self, field, value):
+        with pytest.raises(ValidationError):
+            source_config.ObsidianVaultSource(
+                vault_id="personal",
+                vault_path="/srv/obsidian/personal",
+                ingest_folder="Inbox",
+                **{field: value},
+            )
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("vault_path", "relative/vault"),
+            ("vault_path", "/srv/../private"),
+            ("ingest_folder", "/absolute"),
+            ("ingest_folder", "../escape"),
+            ("ingest_folder", "Inbox/./nested"),
+        ],
+    )
+    def test_obsidian_vault_source_rejects_unsafe_private_paths(self, field, value):
+        data = {
+            "vault_id": "personal",
+            "vault_path": "/srv/obsidian/personal",
+            "ingest_folder": "Inbox",
+        }
+        data[field] = value
+
+        with pytest.raises(ValidationError):
+            source_config.ObsidianVaultSource(**data)
+
+    def test_obsidian_vault_validation_error_hides_private_path_input(self):
+        private_path = "private/acme/customer-vault"
+
+        with pytest.raises(ValidationError) as exc_info:
+            SourcesConfig(
+                sources=[
+                    {
+                        "type": "obsidian_vault",
+                        "vault_id": "customer",
+                        "vault_path": private_path,
+                        "ingest_folder": "Inbox",
+                    }
+                ]
+            )
+
+        assert private_path not in str(exc_info.value)
 
 
 class TestSourceDefaults:
@@ -271,6 +376,50 @@ class TestLoadSourcesYaml:
         )
         with pytest.raises(ValueError, match="validation failed"):
             load_sources_yaml(yaml_file)
+
+    def test_invalid_obsidian_yaml_error_omits_private_path(self, tmp_path):
+        private_path = "private/acme/customer-vault"
+        yaml_file = tmp_path / "sources.yaml"
+        yaml_file.write_text(
+            yaml.dump(
+                {
+                    "sources": [
+                        {
+                            "type": "obsidian_vault",
+                            "vault_id": "customer",
+                            "vault_path": private_path,
+                            "ingest_folder": "Inbox",
+                        }
+                    ]
+                }
+            )
+        )
+
+        with pytest.raises(ValueError, match="validation failed") as exc_info:
+            load_sources_yaml(yaml_file)
+
+        assert private_path not in str(exc_info.value)
+
+    def test_malformed_yaml_error_omits_private_path_and_parser_context(self, tmp_path):
+        private_path = "/srv/private/acme/customer-vault"
+        yaml_file = tmp_path / "sources.yaml"
+        yaml_file.write_text(
+            "sources:\n"
+            "  - type: obsidian_vault\n"
+            "    vault_id: customer\n"
+            f'    vault_path: "{private_path}\n'
+        )
+
+        with pytest.raises(ValueError, match="invalid source YAML") as exc_info:
+            load_sources_yaml(yaml_file)
+
+        diagnostic = str(exc_info.value)
+        assert private_path not in diagnostic
+        assert "vault_path" not in diagnostic
+        cause = exc_info.value.__cause__
+        assert cause is not None
+        assert private_path not in str(cause)
+        assert cause.__cause__ is None
 
 
 # --- Directory Loading Tests ---

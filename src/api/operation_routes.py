@@ -6,26 +6,46 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
+from src.api.dependencies import verify_admin_key
+from src.api.middleware.audit import audited
 from src.api.workflow_dependencies import (
     get_capability_service,
+    get_content_reconciliation_service,
     get_operation_service,
     get_sources_config,
 )
+from src.config.release_identity import release_identity
+from src.config.settings import get_settings
 from src.config.sources import SourcesConfig
 from src.contracts.workflow_models import (
     CapabilityDocument,
     ConfiguredSourcePage,
+    ContentReconciliationReport,
+    ContentReconciliationRequest,
     OperationHandle,
     OperationPage,
+    Problem,
+    WorkflowAlertVerificationContext,
+    WorkflowTerminalEventDiagnostic,
 )
+from src.models.jobs import OperationStatus
+from src.queue import setup as queue_setup
 from src.services.capability_service import CapabilityService
+from src.services.content_reconciliation_service import (
+    ContentReconciliationApplyDisabledError,
+    ContentReconciliationService,
+)
 from src.services.operation_service import OperationService
+from src.services.workflow_terminal_event_service import WorkflowTerminalEventService
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
+
+_TRUSTED_ALERT_VERIFICATION_REVISION_SOURCE = "railway_commit_sha"
 
 
 @router.get("/capabilities", response_model=CapabilityDocument)
@@ -51,10 +71,102 @@ async def list_configured_sources(
 async def list_operations(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     cursor: str | None = None,
+    status: OperationStatus | None = None,
     service: OperationService = Depends(get_operation_service),
 ) -> OperationPage:
-    page = await service.list(limit=limit, cursor=cursor)
+    page = await service.list(limit=limit, cursor=cursor, status=status)
     return OperationPage.model_validate(page.model_dump(mode="json"))
+
+
+@router.get(
+    "/workflow-alert-verification-context",
+    response_model=WorkflowAlertVerificationContext,
+    dependencies=[Depends(verify_admin_key)],
+)
+async def get_workflow_alert_verification_context() -> WorkflowAlertVerificationContext:
+    """Return positive deployment identity only for verified Railway staging."""
+
+    revision, revision_source = release_identity()
+    if (
+        get_settings().environment != "staging"
+        or revision_source != _TRUSTED_ALERT_VERIFICATION_REVISION_SOURCE
+        or len(revision) != 40
+    ):
+        # Not 503: this is a permanent property of the deployment, not a
+        # transient outage, so "retry later" would be a lie and the fuzz
+        # contract (no 5xx for schema-valid input) would be violated. The
+        # resource simply does not exist outside verified staging — the same
+        # answer disabled features give elsewhere (otel_proxy_routes).
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workflow alert verification context not available",
+        )
+    return WorkflowAlertVerificationContext(
+        environment_class="staging",
+        revision=revision,
+        revision_source=_TRUSTED_ALERT_VERIFICATION_REVISION_SOURCE,
+    )
+
+
+@router.get(
+    "/workflow-terminal-events/{event_id}",
+    response_model=WorkflowTerminalEventDiagnostic,
+    dependencies=[Depends(verify_admin_key)],
+)
+async def get_workflow_terminal_event(
+    event_id: UUID,
+) -> WorkflowTerminalEventDiagnostic:
+    """Read one bounded, allowlist-first terminal-event diagnostic."""
+
+    async with queue_setup._queue_connection() as connection:
+        diagnostic = await WorkflowTerminalEventService(connection).get_diagnostic(event_id)
+    if diagnostic is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return diagnostic
+
+
+@router.post(
+    "/operations/reconcile-content",
+    response_model=ContentReconciliationReport,
+    responses={
+        status.HTTP_409_CONFLICT: {
+            "description": "Reconciliation apply is disabled by server policy",
+            "content": {"application/problem+json": {"schema": Problem.model_json_schema()}},
+        }
+    },
+)
+@audited(operation="operations.reconcile_content")
+async def reconcile_content(
+    body: ContentReconciliationRequest,
+    request: Request,
+    service: ContentReconciliationService = Depends(get_content_reconciliation_service),
+) -> ContentReconciliationReport:
+    """Preview or apply exactly one bounded reconciliation page."""
+    request.state.audit_notes = {"mode": "apply" if body.apply else "dry_run"}
+    try:
+        report = await service.reconcile(body)
+    except ContentReconciliationApplyDisabledError as exc:
+        # Not 503: apply stays disabled until an operator changes server policy,
+        # so retrying never succeeds. The dry-run resource itself is healthy —
+        # only the requested apply mode conflicts with current server state.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Content reconciliation apply is disabled",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid reconciliation request",
+        ) from exc
+    request.state.audit_notes.update(
+        {
+            "run_id": str(report.run_id),
+            "scanned": report.scanned,
+            "reported": report.reported,
+            "counts": report.counts.model_dump(mode="json"),
+        }
+    )
+    return report
 
 
 @router.get("/operations/{operation_id}", response_model=OperationHandle)

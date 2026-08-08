@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import base64
 import binascii
-import hashlib
 import json
 from typing import get_args
 from urllib.parse import urlsplit
 
-from src.config.sources import SourcesConfig, source_key
+from src.config.sources import (
+    SourcesConfig,
+    configured_source_public_key,
+    validate_configured_source_key_secret,
+)
 from src.contracts.workflow_models import (
     COMMAND_FIELD_SCHEMAS,
     CapabilityDocument,
@@ -27,8 +30,16 @@ TRANSPORT_ORDER = ("cli", "http", "mcp", "frontend")
 
 
 class CapabilityService:
-    def __init__(self, registry: SourceRegistry = SOURCE_REGISTRY) -> None:
+    def __init__(
+        self,
+        registry: SourceRegistry = SOURCE_REGISTRY,
+        *,
+        configured_source_key_secret: str | None = None,
+    ) -> None:
+        if configured_source_key_secret is not None:
+            validate_configured_source_key_secret(configured_source_key_secret)
         self.registry = registry
+        self._configured_source_key_secret = configured_source_key_secret
 
     def get_capabilities(self, *, limit: int = 50, cursor: str | None = None) -> CapabilityDocument:
         start = _decode_cursor(cursor)
@@ -41,7 +52,7 @@ class CapabilityService:
             fields = [
                 _capability_field(name, schema, name in required)
                 for name, schema in field_schema["properties"].items()
-                if name != "configured_sources"
+                if name not in {"configured_sources", "configured_source_version"}
             ]
             source_commands.append(
                 SourceCapability(
@@ -78,20 +89,30 @@ class CapabilityService:
         cursor: str | None = None,
     ) -> ConfiguredSourcePage:
         start = _decode_cursor(cursor)
+        source_key_secret = self._configured_source_key_secret
+        if source_key_secret is None:
+            from src.config.settings import get_settings
+
+            source_key_secret = get_settings().get_configured_source_key_secret()
         configured: list[ConfiguredSource] = []
         for source in config.sources:
             descriptor = self.registry.descriptor_for_config(source)
-            raw_key = source_key(source)
-            data = _public_configuration(source.model_dump(mode="json"))
+            data = _public_configuration(
+                source.model_dump(mode="json"),
+                source_type=source.type,
+            )
+            readiness = descriptor.resolve_readiness(source)
             configured.append(
                 ConfiguredSource(
-                    key=f"src_{hashlib.sha256(raw_key.encode()).hexdigest()[:20]}",
+                    key=configured_source_public_key(source, secret=source_key_secret),
                     command_key=descriptor.key,
                     source_type=source.type,
                     name=None,
                     enabled=source.enabled,
                     origin=source.origin,
                     configuration=data,
+                    ready=readiness.ready,
+                    readiness_code=readiness.code,
                 )
             )
         configured.sort(key=lambda source: (source.command_key, source.key))
@@ -174,6 +195,18 @@ _PUBLIC_CONFIG_FIELDS = frozenset(
         "extract_pdf",
         "include_deleted",
         "max_entries",
+        "max_files",
+        "max_total_bytes",
+        "max_depth",
+        "max_duration_seconds",
+        "max_note_bytes",
+        "max_frontmatter_bytes",
+        "max_yaml_nodes",
+        "max_yaml_depth",
+        "max_yaml_aliases",
+        "max_yaml_string_chars",
+        "settle_seconds",
+        "max_concurrency",
         "max_pdf_pages",
         "max_results",
         "max_threads",
@@ -192,8 +225,10 @@ _PUBLIC_CONFIG_FIELDS = frozenset(
 )
 
 
-def _public_configuration(value: dict) -> dict:
+def _public_configuration(value: dict, *, source_type: str | None = None) -> dict:
     """Project an explicit safe allowlist for agent-facing discovery."""
+    if source_type == "obsidian_vault":
+        return {}
     public = {key: value[key] for key in _PUBLIC_CONFIG_FIELDS if key in value}
     url = value.get("url")
     if isinstance(url, str):

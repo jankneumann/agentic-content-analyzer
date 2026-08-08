@@ -6,7 +6,15 @@ import pytest
 import yaml
 from pydantic import TypeAdapter, ValidationError
 
-from src.config.sources import GmailSource, ReadwiseSource, RSSSource, SourcesConfig
+from src.config.sources import (
+    GmailSource,
+    ObsidianVaultSource,
+    ReadwiseSource,
+    RSSSource,
+    SourcesConfig,
+    YouTubePlaylistSource,
+    configured_source_public_key,
+)
 from src.contracts.workflow_models import (
     IngestCommand,
     UrlIngestCommand as GeneratedUrlIngestCommand,
@@ -41,7 +49,9 @@ def test_capabilities_match_openapi_discriminator_and_fields() -> None:
             required.update(branch.get("required", []))
 
         properties.pop("configured_sources", None)
+        properties.pop("configured_source_version", None)
         required.discard("configured_sources")
+        required.discard("configured_source_version")
         assert [field.name for field in capability.fields] == list(properties)
         assert {field.name for field in capability.fields if field.required} == required
         for field in capability.fields:
@@ -107,7 +117,11 @@ def test_runtime_commands_reexport_generated_contract_models() -> None:
 
 
 def test_capability_and_configured_source_discovery_are_safe_cursor_pages() -> None:
-    service = CapabilityService(SOURCE_REGISTRY)
+    source_key_secret = "configured-source-key-secret-for-tests"
+    service = CapabilityService(
+        SOURCE_REGISTRY,
+        configured_source_key_secret=source_key_secret,
+    )
     first = service.get_capabilities(limit=1)
     second = service.get_capabilities(limit=1, cursor=first.next_cursor)
     assert first.next_cursor
@@ -143,3 +157,112 @@ def test_capability_and_configured_source_discovery_are_safe_cursor_pages() -> N
     readwise = next(source for source in page.data if source.source_type == "readwise")
     assert readwise.command_key == "readwise"
     assert "url" not in readwise.configuration
+
+
+def test_obsidian_configured_source_projects_bounded_readiness_without_private_paths(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from src.config.settings import get_settings
+
+    vault = tmp_path / "vault"
+    (vault / "Inbox").mkdir(parents=True)
+    source = ObsidianVaultSource(
+        vault_id="personal",
+        vault_path=str(vault),
+        ingest_folder="Inbox",
+        max_files=25,
+    )
+    monkeypatch.setenv("OBSIDIAN_ALLOWED_ROOTS", str(tmp_path))
+    monkeypatch.setenv("OBSIDIAN_COMPATIBLE_WORKER", "true")
+    get_settings.cache_clear()
+
+    page = CapabilityService(
+        SOURCE_REGISTRY,
+        configured_source_key_secret="configured-source-key-secret-for-tests",
+    ).list_configured_sources(SourcesConfig(sources=[source]))
+
+    projected = page.data[0]
+    assert projected.ready is True
+    assert projected.readiness_code is None
+    assert projected.configuration == {}
+    serialized = page.model_dump_json()
+    assert str(vault) not in serialized
+    assert "Inbox" not in serialized
+    assert "personal" not in serialized
+    get_settings.cache_clear()
+
+
+def test_obsidian_readiness_fails_closed_on_incompatible_worker_without_path(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from src.config.settings import get_settings
+
+    private_path = tmp_path / "private-vault"
+    source = ObsidianVaultSource(vault_id="personal", vault_path=str(private_path))
+    monkeypatch.setenv("OBSIDIAN_ALLOWED_ROOTS", str(tmp_path))
+    monkeypatch.setenv("OBSIDIAN_COMPATIBLE_WORKER", "false")
+    get_settings.cache_clear()
+
+    page = CapabilityService(
+        SOURCE_REGISTRY,
+        configured_source_key_secret="configured-source-key-secret-for-tests",
+    ).list_configured_sources(SourcesConfig(sources=[source]))
+
+    assert page.data[0].ready is False
+    assert page.data[0].readiness_code == "source_unavailable"
+    assert str(private_path) not in page.model_dump_json()
+    get_settings.cache_clear()
+
+
+def test_configured_source_discovery_uses_secret_derived_stable_identity() -> None:
+    secret = "configured-source-key-secret-for-tests"
+    sources = [
+        RSSSource(url="https://user:pass@private.example/feed?token=hidden"),
+        YouTubePlaylistSource(id="PL-private-low-entropy"),
+        GmailSource(query="subject:private-project"),
+        ReadwiseSource(),
+    ]
+    config = SourcesConfig(sources=sources)
+
+    first = CapabilityService(
+        SOURCE_REGISTRY,
+        configured_source_key_secret=secret,
+    ).list_configured_sources(config, limit=100)
+    second = CapabilityService(
+        SOURCE_REGISTRY,
+        configured_source_key_secret=secret,
+    ).list_configured_sources(config, limit=100)
+    rotated = CapabilityService(
+        SOURCE_REGISTRY,
+        configured_source_key_secret="rotated-configured-source-secret",
+    ).list_configured_sources(config, limit=100)
+
+    expected = sorted(configured_source_public_key(source, secret=secret) for source in sources)
+    assert sorted(item.key for item in first.data) == expected
+    assert [item.key for item in first.data] == [item.key for item in second.data]
+    assert {item.key for item in first.data}.isdisjoint(item.key for item in rotated.data)
+    serialized = first.model_dump_json()
+    assert "user:pass" not in serialized
+    assert "/feed" not in serialized
+    assert "hidden" not in serialized
+    assert "PL-private-low-entropy" not in serialized
+    assert "subject:private-project" not in serialized
+
+
+@pytest.mark.parametrize("secret", ["", "too-short"])
+def test_configured_source_public_key_rejects_short_secret(secret: str) -> None:
+    with pytest.raises(ValueError, match="secret"):
+        configured_source_public_key(
+            RSSSource(url="https://example.com/private"),
+            secret=secret,
+        )
+
+
+def test_capability_service_rejects_short_injected_source_key_secret() -> None:
+    with pytest.raises(ValueError, match="32 bytes"):
+        CapabilityService(
+            SOURCE_REGISTRY,
+            configured_source_key_secret="too-short",
+        )

@@ -1,0 +1,54 @@
+# Category: validation — read-only, REQUIRES a reachable backend.
+#
+# The fixed future window makes this deterministic on both empty and populated targets:
+# no operation can have been created after the end of year 9999. The scenario therefore
+# exercises all canonical history filters without depending on seeded history rows.
+
+id: validation-ingestion-history-filtered
+name: aca ingest history accepts canonical filters and emits one compact JSON page
+description: >
+  Exercises the canonical operation-derived ingestion history rather than the legacy
+  `/jobs/history` compatibility view. The attributed human-readable step proves the
+  `ingest history` command is registered. The JSON step combines command, outcome,
+  lifecycle, and creation-window filters; a future lower bound guarantees an empty page,
+  so the assertion is stable while still proving that the filters are accepted and
+  stdout remains one parseable document.
+category: validation
+priority: 1
+interfaces:
+  - "cli:ingest"
+tags:
+  - read-only
+  - requires-target
+steps:
+  - id: ingest-history-attributed
+    transport: cli
+    command: ingest
+    args:
+      - history
+      - "--limit"
+      - "1"
+    expect:
+      exit_code: 0
+      not_empty: true
+
+  - id: ingest-history-filtered-json
+    transport: cli
+    command: "--json"
+    args:
+      - ingest
+      - history
+      - "--command-key"
+      - rss
+      - "--outcome"
+      - partial
+      - "--status"
+      - completed
+      - "--created-after"
+      - "9999-12-31T23:59:59Z"
+      - "--limit"
+      - "1"
+    expect:
+      exit_code: 0
+      body_contains:
+        data: []

@@ -31,11 +31,16 @@ def _write_failure_class_summary() -> Iterator[None]:
 
 
 @pytest_asyncio.fixture
-async def real_ingestion_harness(test_engine) -> AsyncIterator[RealIngestionHarness]:
+async def real_ingestion_harness(test_engine, tmp_path) -> AsyncIterator[RealIngestionHarness]:
     """Provide a harness bound to the shared test database and clean up after."""
 
     conn = await asyncpg.connect(_asyncpg_dsn(test_engine))
-    harness = RealIngestionHarness(test_engine, conn, token=uuid.uuid4().hex[:12])
+    harness = RealIngestionHarness(
+        test_engine,
+        conn,
+        token=uuid.uuid4().hex[:12],
+        workspace=tmp_path,
+    )
     try:
         yield harness
     finally:

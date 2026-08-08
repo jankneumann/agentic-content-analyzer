@@ -1274,6 +1274,76 @@ When enabled, the frontend:
 - `GET /health` — Liveness probe (always 200 if process alive)
 - `GET /ready` — Readiness probe (200 if database OK, 503 otherwise)
 
+### Durable Workflow Alerting (Optional)
+
+Terminal workflow telemetry is always derived from durable terminal-event
+evidence. External delivery is separately default-off:
+
+```bash
+WORKFLOW_ALERT_SINK=noop
+```
+
+Use `webhook` only after the additive alert migrations are applied and an
+idempotent HTTPS receiver is ready. Endpoint, origin, and host values are
+deployment configuration; the signing secret belongs only in an environment,
+profile secret, OpenBao, or the deployment platform's secret store.
+
+```bash
+WORKFLOW_ALERT_SINK=webhook
+WORKFLOW_ALERT_WEBHOOK_ENDPOINT=https://alerts.staging.example/webhook
+WORKFLOW_ALERT_WEBHOOK_SECRET=<at-least-32-random-characters>
+WORKFLOW_ALERT_DIAGNOSTIC_ORIGIN=https://api.staging.example
+WORKFLOW_ALERT_ALLOWED_HOSTS=alerts.staging.example
+
+WORKFLOW_ALERT_TIMEOUT_SECONDS=10
+WORKFLOW_ALERT_LEASE_SECONDS=60
+WORKFLOW_ALERT_MAX_ATTEMPTS=5
+WORKFLOW_ALERT_BASE_BACKOFF_SECONDS=30
+WORKFLOW_ALERT_MAX_BACKOFF_SECONDS=3600
+WORKFLOW_ALERT_MAX_RETRY_AFTER_SECONDS=3600
+WORKFLOW_ALERT_DELIVERY_MAX_AGE_SECONDS=604800
+WORKFLOW_ALERT_RETENTION_DAYS=30
+WORKFLOW_ALERT_EXHAUSTED_RETENTION_DAYS=90
+WORKFLOW_ALERT_BATCH_SIZE=50
+```
+
+`WORKFLOW_ALERT_ALLOWED_HOSTS` is a comma-separated exact-host allowlist. Do
+not use wildcards, URLs, paths, or CIDR values. Delivery resolves and validates
+the configured hostname both before sending and at the socket connection
+boundary. Production rejects redirects, credentials in URLs, non-HTTPS
+destinations, and loopback, private, link-local, multicast, unspecified, or
+metadata addresses. The diagnostic origin must be a bare HTTPS origin with no
+userinfo, path, query, or fragment.
+
+The lease must exceed the transport timeout by at least five seconds. Backoff,
+attempt, delivery-age, batch, and retention values are validated at startup.
+Delivered and permanent-failure evidence uses the normal retention horizon;
+exhausted evidence uses the longer exhausted horizon. Pending or actively
+leased evidence is never deleted by retention.
+
+For profile-based deployments, keep public policy in the environment/profile
+and resolve secrets from `.secrets.yaml` (local only), OpenBao, or Railway's
+protected variables. For example, a gitignored local secret file may contain:
+
+```yaml
+WORKFLOW_ALERT_WEBHOOK_SECRET: replace-with-a-random-secret
+```
+
+Never add the webhook secret, receiver administration token, endpoint, or
+diagnostic origin through the generic database-backed settings API. Alert
+transport keys are explicitly denied by that API so plaintext values cannot be
+stored or returned there.
+
+The staging proof receiver is stricter than the general sink contract: it will
+not report ready or accept a request unless both its administration token and a
+signing secret of at least 32 characters are configured. The verifier also
+requires the API deployment to use `ENVIRONMENT=staging` and expose a trusted
+Railway commit SHA; a caller-provided staging label or revision is not accepted
+as deployment proof. The API submission response and the worker-persisted alert
+envelope carry closed release revision/provenance fields so the verifier can
+reject a mixed-revision rollout instead of relying only on transient health
+checks.
+
 ### Graph Database (Neo4j or FalkorDB)
 
 The knowledge graph supports pluggable backends via the `GRAPHDB_PROVIDER` setting:
@@ -1432,6 +1502,31 @@ aca ingest substack-sync
 # Disable any unwanted sources in sources.d/substack.yaml, then ingest
 aca ingest substack
 ```
+
+## Obsidian Vault Setup
+
+Ingests Obsidian Web Clipper notes from a worker-local vault folder. Read-only:
+nothing is ever written back into the vault.
+
+Set these on the worker that owns the mount — readiness fails closed without
+them, and no path ever appears in a payload, response, log, or alert:
+
+```bash
+OBSIDIAN_ALLOWED_ROOTS=/srv/obsidian          # comma-separated absolute roots
+OBSIDIAN_COMPATIBLE_WORKER=true               # this worker can see the mount
+CONFIGURED_SOURCE_KEY_SECRET=<32+ byte secret>  # derives opaque source keys
+```
+
+Then copy `sources.d/obsidian-vault.yaml.example` to
+`sources.d/obsidian-vault.yaml`, point `vault_path` inside an allowed root, and
+run `aca ingest obsidian-vault --wait`.
+
+The vault must be readable by the worker process itself. A vault on a laptop
+cannot be reached from a Railway deployment — run a worker where the vault lives.
+
+Full details, including the required clip frontmatter, the Web Clipper property
+template, sync-provider settling, and the troubleshooting table, are in
+[docs/OBSIDIAN_VAULT_INGEST.md](OBSIDIAN_VAULT_INGEST.md).
 
 ## Upgrading to PostgreSQL 17
 

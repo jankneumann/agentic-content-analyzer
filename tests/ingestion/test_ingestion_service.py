@@ -3,16 +3,25 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
 
-from src.config.sources import load_sources_config
+from src.config.sources import (
+    ObsidianVaultSource,
+    RSSSource,
+    SourcesConfig,
+    configured_source_public_key,
+    load_sources_config,
+)
+from src.contracts.workflow_models import StrictModel
 from src.ingestion.commands import (
     ArxivPaperIngestCommand,
     ArxivSearchIngestCommand,
     FilesIngestCommand,
+    ObsidianVaultIngestCommand,
     PerplexitySearchIngestCommand,
     PodcastIngestCommand,
     ReadwiseIngestCommand,
@@ -27,7 +36,17 @@ from src.ingestion.content_references import (
     _record_loaded_content_reference,
     _stage_session_content_references,
 )
-from src.ingestion.result import IngestionResponse, SourceFetchResult
+from src.ingestion.registry import (
+    SourceDescriptor,
+    SourceRegistry,
+    configured_source_version,
+)
+from src.ingestion.result import (
+    IngestionResponse,
+    SourceFetchResult,
+    build_response_from_source_results,
+    public_source_key_for,
+)
 from src.ingestion.scholar import ScholarPaperResult
 from src.ingestion.service import IngestionService
 from src.models.content import Content, ContentSource, ContentStatus
@@ -131,7 +150,9 @@ def test_absolute_after_date_is_preserved_when_execution_is_delayed() -> None:
 
 
 def test_queued_source_snapshot_is_used_instead_of_current_configuration() -> None:
-    service = IngestionService()
+    service = IngestionService(
+        configured_source_key_secret="configured-source-key-secret-for-tests"
+    )
     observed_urls: list[str] = []
 
     def execute_from_snapshot(**_kwargs):
@@ -150,6 +171,236 @@ def test_queued_source_snapshot_is_used_instead_of_current_configuration() -> No
         )
 
     assert observed_urls == ["https://queued.example/feed"]
+
+
+class _SingleSourceCommand(StrictModel):
+    kind: Literal["single"] = "single"
+    source_key: str
+    configured_source_version: str | None = None
+
+
+def test_worker_enforces_exact_opaque_source_selection_from_settings_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import importlib
+
+    secret = "configured-source-key-secret-for-tests"
+    first = RSSSource(url="https://private.example/one")
+    selected = RSSSource(url="https://private.example/two")
+    observed_urls: list[str] = []
+
+    def orchestrate(_command):
+        observed_urls.extend(source.url for source in load_sources_config().get_rss_sources())
+        return _response("ingest.rss", "rss")
+
+    registry = SourceRegistry(
+        [
+            SourceDescriptor(
+                key="single",
+                display_name="Single",
+                command_model=_SingleSourceCommand,
+                orchestrator=orchestrate,
+                emitted_sources=frozenset({ContentSource.RSS}),
+                scheduled=False,
+                config_matcher=lambda source: isinstance(source, RSSSource),
+                config_accessor=lambda config: config.get_rss_sources(),
+            )
+        ]
+    )
+    settings = SimpleNamespace(
+        get_configured_source_key_secret=lambda: secret,
+        get_sources_config=lambda: SourcesConfig(sources=[first, selected]),
+    )
+    settings_module = importlib.import_module("src.config.settings")
+    monkeypatch.setattr(settings_module, "get_settings", lambda: settings)
+    service = IngestionService(registry)
+
+    service.execute(
+        {
+            "kind": "single",
+            "source_key": configured_source_public_key(selected, secret=secret),
+            "configured_source_version": configured_source_version(selected, secret=secret),
+        }
+    )
+
+    assert observed_urls == ["https://private.example/two"]
+
+
+def test_worker_rejects_opaque_key_not_present_in_private_snapshot() -> None:
+    source = RSSSource(url="https://private.example/one")
+    orchestrator = MagicMock(return_value=_response("ingest.rss", "rss"))
+    registry = SourceRegistry(
+        [
+            SourceDescriptor(
+                key="single",
+                display_name="Single",
+                command_model=_SingleSourceCommand,
+                orchestrator=orchestrator,
+                emitted_sources=frozenset({ContentSource.RSS}),
+                scheduled=False,
+                config_matcher=lambda value: isinstance(value, RSSSource),
+                config_accessor=lambda config: config.get_rss_sources(),
+            )
+        ]
+    )
+
+    with pytest.raises(ValueError, match="Configured source is unavailable"):
+        IngestionService(
+            registry,
+            configured_source_key_secret="configured-source-key-secret-for-tests",
+            source_config_loader=lambda: SourcesConfig(sources=[source]),
+        ).execute(
+            {
+                "kind": "single",
+                "source_key": "src_0123456789abcdef0123",
+                "configured_source_version": configured_source_version(
+                    source,
+                    secret="configured-source-key-secret-for-tests",
+                ),
+            }
+        )
+
+    orchestrator.assert_not_called()
+
+
+def test_worker_rejects_stale_configured_source_version() -> None:
+    secret = "configured-source-key-secret-for-tests"
+    current = RSSSource(url="https://private.example/feed", max_entries=11)
+    previous = RSSSource(url="https://private.example/feed", max_entries=10)
+    orchestrator = MagicMock(return_value=_response("ingest.rss", "rss"))
+    registry = SourceRegistry(
+        [
+            SourceDescriptor(
+                key="single",
+                display_name="Single",
+                command_model=_SingleSourceCommand,
+                orchestrator=orchestrator,
+                emitted_sources=frozenset({ContentSource.RSS}),
+                scheduled=False,
+                config_matcher=lambda value: isinstance(value, RSSSource),
+                config_accessor=lambda config: config.get_rss_sources(),
+            )
+        ]
+    )
+
+    with pytest.raises(ValueError, match="Configured source changed"):
+        IngestionService(
+            registry,
+            configured_source_key_secret=secret,
+            source_config_loader=lambda: SourcesConfig(sources=[current]),
+        ).execute(
+            {
+                "kind": "single",
+                "source_key": configured_source_public_key(current, secret=secret),
+                "configured_source_version": configured_source_version(previous, secret=secret),
+            }
+        )
+
+    orchestrator.assert_not_called()
+
+
+def test_obsidian_command_dispatches_with_reloaded_one_source_configuration() -> None:
+    secret = "configured-source-key-secret-for-tests"
+    source = ObsidianVaultSource(vault_id="personal", vault_path="/srv/private/vault")
+    command = ObsidianVaultIngestCommand(
+        source_key=configured_source_public_key(source, secret=secret),
+        configured_source_version=configured_source_version(source, secret=secret),
+        max_items=7,
+        force_reprocess=True,
+    )
+    response = IngestionResponse(
+        command="ingest.obsidian-vault",
+        source="obsidian",
+        status="ok",
+        items_ingested=1,
+    )
+
+    with patch(
+        "src.ingestion.orchestrator.ingest_obsidian_vault",
+        return_value=response,
+    ) as orchestrator:
+        result = IngestionService(
+            configured_source_key_secret=secret,
+            source_config_loader=lambda: SourcesConfig(sources=[source]),
+        ).execute(command)
+
+    orchestrator.assert_called_once_with(max_items=7, force_reprocess=True)
+    assert result.details["command_key"] == "obsidian_vault"
+    assert result.details["emitted_sources"] == ["obsidian"]
+
+
+def test_ingestion_service_rejects_short_injected_source_key_secret() -> None:
+    with pytest.raises(ValueError, match="32 bytes"):
+        IngestionService(configured_source_key_secret="too-short")
+
+
+def test_queued_source_snapshot_carries_ordered_public_identity_into_results() -> None:
+    secret = "configured-source-key-secret-for-tests"
+    source = RSSSource(url="https://user:pass@private.example/feed?token=hidden")
+    service = IngestionService(configured_source_key_secret=secret)
+
+    def execute_from_snapshot(**_kwargs):
+        public_source_key = public_source_key_for(source)
+        assert public_source_key is not None
+        return build_response_from_source_results(
+            command="ingest.rss",
+            source="rss",
+            items_ingested=2,
+            source_results=[
+                SourceFetchResult(
+                    url=source.url,
+                    items_fetched=2,
+                    public_source_key=public_source_key,
+                )
+            ],
+        )
+
+    with patch(
+        "src.ingestion.orchestrator.ingest_rss",
+        side_effect=execute_from_snapshot,
+    ):
+        response = service.execute(
+            {
+                "kind": "rss",
+                "configured_sources": [source.model_dump(mode="json")],
+            }
+        )
+
+    assert [outcome.source_key for outcome in response.source_outcomes] == [
+        configured_source_public_key(source, secret=secret)
+    ]
+    assert response.source_outcomes[0].items_ingested == 2
+
+
+def test_queued_source_identity_count_mismatch_omits_unsafe_attribution() -> None:
+    service = IngestionService(
+        configured_source_key_secret="configured-source-key-secret-for-tests"
+    )
+
+    def execute_from_snapshot(**_kwargs):
+        return build_response_from_source_results(
+            command="ingest.rss",
+            source="rss",
+            items_ingested=1,
+            source_results=[SourceFetchResult(url="https://one.example/feed", items_fetched=1)],
+        )
+
+    with patch(
+        "src.ingestion.orchestrator.ingest_rss",
+        side_effect=execute_from_snapshot,
+    ):
+        response = service.execute(
+            {
+                "kind": "rss",
+                "configured_sources": [
+                    {"type": "rss", "url": "https://one.example/feed"},
+                    {"type": "rss", "url": "https://two.example/feed"},
+                ],
+            }
+        )
+
+    assert response.source_outcomes == []
+    assert response.source_outcomes_omitted == 2
 
 
 def test_invalid_queued_source_snapshot_fails_before_dispatch() -> None:

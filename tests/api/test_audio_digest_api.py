@@ -186,6 +186,20 @@ class TestListAllAudioDigests:
         data = response.json()
         assert len(data) == 3
 
+    @pytest.mark.parametrize("sort_by", ["__dict__", "metadata", "not_a_field_at_all"])
+    def test_list_all_audio_digests_unlisted_sort_field_is_not_a_500(
+        self, client, sample_audio_digests, sort_by
+    ):
+        """An unlisted sort field falls back to created_at instead of crashing.
+
+        getattr's default only covers names AudioDigest lacks entirely, so a
+        real-but-unsortable class attribute used to reach order_by and raise.
+        """
+        response = client.get("/api/v1/audio-digests/", params={"sort_by": sort_by})
+
+        assert response.status_code == 200
+        assert len(response.json()) == 3
+
 
 class TestAudioDigestStatistics:
     """Tests for GET /api/v1/audio-digests/statistics endpoint."""

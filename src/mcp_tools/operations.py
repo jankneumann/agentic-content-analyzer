@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
-from src.config.sources import load_sources_config
+from src.config.settings import get_settings
 from src.contracts.workflow_models import (
     CapabilityDocument,
     ConfiguredSourcePage,
@@ -69,7 +69,7 @@ async def list_configured_sources(
         finally:
             client.close()
     return CapabilityService().list_configured_sources(
-        load_sources_config(), limit=limit, cursor=cursor
+        get_settings().get_sources_config(), limit=limit, cursor=cursor
     )
 
 

@@ -13,6 +13,7 @@ from src.config.sources import (
     GmailSource,
     YouTubeChannelSource,
     YouTubePlaylistSource,
+    configured_source_public_key,
     source_key,
 )
 from src.models.content import Content
@@ -85,6 +86,39 @@ def _get_source_url(source) -> str:
     return source_key(source).partition(":")[2]
 
 
+def project_source_info(source) -> SourceInfo:
+    """Return a management projection without exposing private filesystem locators."""
+
+    if getattr(source, "type", None) == "obsidian_vault":
+        public_key = configured_source_public_key(
+            source,
+            secret=settings.get_configured_source_key_secret(),
+        )
+        return SourceInfo(
+            type="obsidian_vault",
+            name=None,
+            url=public_key,
+            enabled=source.enabled,
+            tags=[],
+            origin=getattr(source, "origin", "yaml"),
+            source_key=public_key,
+        )
+
+    try:
+        natural_key = source_key(source)
+    except ValueError:
+        natural_key = None
+    return SourceInfo(
+        type=source.type,
+        name=source.name,
+        url=_get_source_url(source),
+        enabled=source.enabled,
+        tags=source.tags,
+        origin=getattr(source, "origin", "yaml"),
+        source_key=natural_key,
+    )
+
+
 # ============================================================================
 # Endpoints
 # ============================================================================
@@ -103,25 +137,7 @@ async def list_sources() -> SourcesOverview:
     config = settings.get_sources_config()
 
     # Build source info list from all configured sources
-    from src.config.sources import source_key as derive_source_key
-
-    source_infos: list[SourceInfo] = []
-    for source in config.sources:
-        try:
-            skey = derive_source_key(source)
-        except ValueError:
-            skey = None
-        source_infos.append(
-            SourceInfo(
-                type=source.type,
-                name=source.name,
-                url=_get_source_url(source),
-                enabled=source.enabled,
-                tags=source.tags,
-                origin=getattr(source, "origin", "yaml"),
-                source_key=skey,
-            )
-        )
+    source_infos = [project_source_info(source) for source in config.sources]
 
     # Get content counts from database grouped by source_type
     with get_db() as db:

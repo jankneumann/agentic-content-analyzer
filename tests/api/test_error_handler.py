@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from fastapi import FastAPI
+import pytest
+from fastapi import FastAPI, HTTPException
 from starlette.testclient import TestClient
 
 from src.api.middleware.error_handler import register_error_handlers
@@ -86,3 +87,46 @@ class TestStructuredErrorHandler:
         data = response.json()
         assert data["error"] == "Internal Server Error"
         # trace_id should be absent (OTel not configured in test)
+
+    @pytest.mark.parametrize(
+        ("status_code", "title"),
+        ((401, "Unauthorized"), (403, "Forbidden"), (404, "Not Found")),
+    )
+    def test_workflow_terminal_diagnostic_errors_are_problem_json(
+        self,
+        status_code: int,
+        title: str,
+    ) -> None:
+        app = FastAPI()
+        register_error_handlers(app)
+
+        @app.get("/api/v1/workflow-terminal-events/{event_id}")
+        async def diagnostic_failure(event_id: str):
+            del event_id
+            raise HTTPException(status_code=status_code, detail=title)
+
+        response = TestClient(app).get(
+            "/api/v1/workflow-terminal-events/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        )
+
+        assert response.status_code == status_code
+        assert response.headers["content-type"].startswith("application/problem+json")
+        assert response.json() == {
+            "type": f"https://aca.rotkohl.ai/problems/{title.lower().replace(' ', '-')}",
+            "title": title,
+            "status": status_code,
+            "detail": title,
+        }
+
+    def test_workflow_alert_verification_context_errors_are_problem_json(self) -> None:
+        app = FastAPI()
+        register_error_handlers(app)
+
+        @app.get("/api/v1/workflow-alert-verification-context")
+        async def context_failure():
+            raise HTTPException(status_code=503, detail="Not ready")
+
+        response = TestClient(app).get("/api/v1/workflow-alert-verification-context")
+
+        assert response.status_code == 503
+        assert response.headers["content-type"].startswith("application/problem+json")

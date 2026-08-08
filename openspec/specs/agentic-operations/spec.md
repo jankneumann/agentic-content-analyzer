@@ -51,6 +51,36 @@ Operation submission SHALL use the existing queue idempotency key. The system SH
 - **THEN** the latest nonterminal operation handle is returned
 - **AND** execution continues in the queue
 
+### Requirement: Internal retry supports an optional atomic ceiling
+
+The canonical operation service SHALL expose one connection-scoped retry
+primitive that can enforce an optional retry-count ceiling in the lifecycle
+UPDATE while preserving graph lock order, normalized input, parent linkage,
+idempotency, and checkpoints.
+
+#### Scenario: Reconciliation supplies a ceiling
+- **WHEN** locked reconciliation retries a failed leaf below its ceiling
+- **THEN** the same operation row becomes queued and increments once
+- **AND** notification remains transactional with the caller
+
+#### Scenario: Public manual retry omits a ceiling
+- **WHEN** the existing operation retry API is called outside reconciliation
+- **THEN** compatibility behavior remains unchanged through the same locked primitive
+
+#### Scenario: Retry preserves a resumable operation result
+- **WHEN** a failed canonical URL operation carries a strict single-Content webpage extraction checkpoint
+- **THEN** retry preserves it until the newer claim consumes and replaces it
+- **AND** the handler does not restart aggregate URL routing
+
+#### Scenario: Retry validates or clears result evidence
+- **WHEN** a non-pipeline result is considered for preservation
+- **THEN** only the closed strict-v2 URL resume profile with matching ownership is retained
+- **AND** malformed, mismatched, zero-ID, multi-ID, or ordinary stale results are cleared
+
+#### Scenario: Locked caller uses the wrong connection order
+- **WHEN** the graph/root locks were not acquired on the supplied connection
+- **THEN** the locked retry primitive rejects the caller
+
 ### Requirement: Agent-usable structured interfaces
 
 CLI JSON output, HTTP responses, MCP structured results, and frontend client models SHALL conform to the same operation and resource schemas. Expected failures MUST be represented as RFC 7807 problems over HTTP and as protocol-level MCP errors rather than successful payloads containing an `error` key.
@@ -64,3 +94,46 @@ CLI JSON output, HTTP responses, MCP structured results, and frontend client mod
 - **WHEN** an agent lists operations or capabilities beyond one response page
 - **THEN** the response contains an opaque next cursor
 - **AND** passing that cursor continues without duplicate records
+
+### Requirement: Durable ingestion outcomes remain operation-native
+
+Every terminal ingestion operation with a canonical ingestion response SHALL
+retain a versioned typed result on its authoritative `pgqueuer_jobs` record.
+The result SHALL distinguish operation lifecycle from the domain outcomes
+`success`, `zero_items`, `partial`, `failed`, `cancelled`, and legacy
+`unknown`; preserve exact content provenance; and retain bounded diagnostics
+and configured-source outcomes without introducing a second run state machine.
+
+#### Scenario: Completed ingestion is partial
+- **WHEN** an ingestion adapter returns a partial response after persisting some items
+- **THEN** the operation lifecycle MAY be `completed`
+- **AND** its typed result outcome is `partial`
+- **AND** bounded failed/skipped counts and diagnostic codes remain queryable
+
+#### Scenario: Legacy evidence is incomplete
+- **WHEN** a pre-change completed operation lacks retained domain-outcome fields
+- **THEN** its projected outcome is `unknown`
+- **AND** success and zero counts are not inferred from lifecycle state
+
+#### Scenario: Configured-source identity is public
+- **WHEN** a configured-source outcome is persisted or returned
+- **THEN** it uses a stable opaque key derived with the dedicated configured-source secret
+- **AND** natural locators, mailbox queries, prompts, credentials, and private URLs are absent
+
+### Requirement: Operation list projections are bounded summaries
+
+Generic operation lists and compact ingestion history SHALL return bounded
+summary contracts. Full input, result, checkpoint, resource metadata, content
+IDs, diagnostic messages, and problem detail SHALL be available only from the
+exact-operation read where applicable.
+
+#### Scenario: Generic operations are listed
+- **WHEN** a caller requests `GET /api/v1/operations`
+- **THEN** each row conforms to the bounded operation-summary contract
+- **AND** lifecycle messages are sanitized and bounded
+- **AND** `GET /api/v1/operations/{id}` remains the full-result read
+
+#### Scenario: Compact history contains a large operation
+- **WHEN** a terminal ingestion with large result or checkpoint data appears in history
+- **THEN** the history row omits raw input, result detail, checkpoints, and content-ID arrays
+- **AND** source outcomes and diagnostics use deterministic count and string bounds

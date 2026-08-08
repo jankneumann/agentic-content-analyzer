@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.api.dependencies import verify_admin_key
-from src.services.settings_service import SettingsService
+from src.services.settings_service import SettingsService, is_database_override_allowed
 from src.storage.database import get_db
 
 router = APIRouter(prefix="/api/v1/settings/overrides", tags=["settings"])
@@ -134,7 +134,7 @@ async def set_override(
 )
 async def delete_override(key: str) -> dict:
     """Delete a settings override, reverting to default behavior."""
-    _validate_key(key)
+    _validate_key(key, allow_forbidden_policy=True)
 
     with get_db() as db:
         service = SettingsService(db)
@@ -144,11 +144,16 @@ async def delete_override(key: str) -> dict:
         return {"key": key, "deleted": True}
 
 
-def _validate_key(key: str) -> None:
+def _validate_key(key: str, *, allow_forbidden_policy: bool = False) -> None:
     """Validate settings key format (must be namespace.name pattern)."""
     if not KEY_PATTERN.match(key):
         raise HTTPException(
             status_code=400,
             detail=f"Invalid settings key format: {key}. "
             "Must match pattern: namespace.name (e.g., 'model.summarization')",
+        )
+    if not allow_forbidden_policy and not is_database_override_allowed(key):
+        raise HTTPException(
+            status_code=400,
+            detail="Workflow alert transport policy cannot be database-backed",
         )
