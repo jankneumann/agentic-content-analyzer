@@ -1,9 +1,9 @@
 # Bug Scrub Report
 
-**Timestamp**: 2026-02-22T20:02:07.599610+00:00
+**Timestamp**: 2026-08-02T00:42:43.700448+00:00
 **Sources**: pytest, ruff, mypy, openspec, architecture, security, deferred, markers
 **Severity filter**: low
-**Total findings**: 4224
+**Total findings**: 7351
 
 ## Summary
 
@@ -11,845 +11,67 @@
 
 | Severity | Count |
 |----------|-------|
-| high | 119 |
-| medium | 3688 |
-| low | 417 |
+| high | 2 |
+| medium | 6158 |
+| low | 1191 |
 
 ### By Source
 
 | Source | Count |
 |--------|-------|
-| deferred:open-tasks | 951 |
-| markers | 58 |
-| mypy | 3041 |
-| openspec | 2 |
-| pytest | 87 |
-| ruff | 85 |
+| deferred:open-tasks | 696 |
+| markers | 882 |
+| mypy | 5705 |
+| ruff | 68 |
 
 ## Critical / High Findings
 
-### [HIGH] Test failure: test_upload_valid_auth_accepted
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/api/test_upload_auth.py:103
-- **Detail**: asser...
-
-### [HIGH] Test failure: TestParallelIngestionPartialFailure::test_pipeline_succeeds_when_two_sources_fail
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/cli/test_pipeline_integration.py:302
-- **Detail**: Failed: DID NOT RAISE <class 'RuntimeError'>
-
-### [HIGH] Test failure: TestParallelIngestionPartialFailure::test_pipeline_succeeds_when_three_sources_fail
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/cli/test_pipeline_integration.py:302
-- **Detail**: Failed: DID NOT RAISE <class 'RuntimeError'>
-
-### [HIGH] Test failure: TestParallelIngestionAllFail::test_pipeline_reports_all_source_errors
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/cli/test_pipeline_integration.py:302
-- **Detail**: Failed: DID NOT RAISE <class 'RuntimeError'>
-
-### [HIGH] Test failure: TestParallelExecution::test_ingestion_uses_asyncio_gather
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/cli/test_pipeline_integration.py:302
-- **Detail**: Failed: DID NOT RAISE <class 'RuntimeError'>
-
-### [HIGH] Test failure: TestParallelExecution::test_partial_failure_returns_successful_sources_only
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/cli/test_pipeline_integration.py:302
-- **Detail**: Failed: DID NOT RAISE <class 'RuntimeError'>
-
-### [HIGH] Test failure: TestParallelExecution::test_all_fail_raises_runtime_error
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/cli/test_pipeline_integration.py:302
-- **Detail**: Failed: DID NOT RAISE <class 'RuntimeError'>
-
-### [HIGH] Test failure: TestWorkerInitialization::test_run_worker_initializes_queue
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/cli/test_worker_commands.py
-
-### [HIGH] Test failure: TestWorkerInitialization::test_run_worker_registers_signal_handlers
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/cli/test_worker_commands.py
-
-### [HIGH] Test failure: TestWorkerInitialization::test_run_worker_passes_concurrency_to_pgq_run
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/cli/test_worker_commands.py
-
-### [HIGH] Test failure: TestWorkerInitialization::test_run_worker_cleans_up_on_cancelled_error
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/cli/test_worker_commands.py
-
-### [HIGH] Test failure: TestNeonBranchManagerIntegration::test_list_branches
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/integration/test_neon_integration.py:224
-- **Detail**: AssertionError: assert None == 404
-
-### [HIGH] Test failure: TestNeonBranchManagerIntegration::test_create_and_delete_branch
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/integration/test_neon_integration.py:224
-- **Detail**: AssertionError: assert None == 404
-
-### [HIGH] Test failure: TestNeonBranchManagerIntegration::test_get_connection_string
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/integration/test_neon_integration.py:224
-- **Detail**: AssertionError: assert None == 404
-
-### [HIGH] Test failure: TestNeonBranchManagerIntegration::test_branch_context_creates_and_cleans_up
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/integration/test_neon_integration.py:224
-- **Detail**: AssertionError: assert None == 404
-
-### [HIGH] Test failure: TestNeonBranchManagerIntegration::test_delete_nonexistent_branch_raises_error
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/integration/test_neon_integration.py:224
-- **Detail**: AssertionError: assert None == 404
-
-### [HIGH] Test failure: TestSupabaseConnection::test_pooled_connection_works
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/integration/test_supabase_provider.py:60
-- **Detail**: assert False is True
-
-### [HIGH] Test failure: TestSupabaseConnection::test_ssl_connection_required
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/integration/test_supabase_provider.py:60
-- **Detail**: assert False is True
-
-### [HIGH] Test failure: TestSupabaseConnection::test_database_version
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/integration/test_supabase_provider.py:60
-- **Detail**: assert False is True
-
-### [HIGH] Test failure: TestSupabaseConnection::test_health_check_passes
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/integration/test_supabase_provider.py:60
-- **Detail**: assert False is True
-
-### [HIGH] Test failure: TestSupabaseConnection::test_connection_timeout_is_set
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/integration/test_supabase_provider.py:60
-- **Detail**: assert False is True
-
-### [HIGH] Test failure: TestSupabaseDirectConnection::test_direct_connection_works
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/integration/test_supabase_provider.py:60
-- **Detail**: assert False is True
-
-### [HIGH] Test failure: TestSupabaseDirectConnection::test_direct_connection_ssl
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/integration/test_supabase_provider.py:60
-- **Detail**: assert False is True
-
-### [HIGH] Test failure: TestSupabaseDirectConnection::test_can_check_alembic_version_table
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/integration/test_supabase_provider.py:60
-- **Detail**: assert False is True
-
-### [HIGH] Test failure: TestSupabaseDirectConnection::test_can_execute_ddl_operations
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/integration/test_supabase_provider.py:60
-- **Detail**: assert False is True
-
-### [HIGH] Test failure: TestSupabaseConnectionPooling::test_multiple_sequential_connections
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/integration/test_supabase_provider.py:60
-- **Detail**: assert False is True
-
-### [HIGH] Test failure: TestSupabaseConnectionPooling::test_concurrent_connections
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/integration/test_supabase_provider.py:60
-- **Detail**: assert False is True
-
-### [HIGH] Test failure: TestSupabaseConnectionPooling::test_connection_pool_exhaustion_recovery
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/integration/test_supabase_provider.py:60
-- **Detail**: assert False is True
-
-### [HIGH] Test failure: TestSupabaseConnectionPooling::test_transaction_mode_isolation
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/integration/test_supabase_provider.py:60
-- **Detail**: assert False is True
-
-### [HIGH] Test failure: test_digest_routes_protected_in_production
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/security/test_digest_auth.py
-
-### [HIGH] Test failure: test_content_routes_protected_in_production
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/security/test_digest_auth.py
-
-### [HIGH] Test failure: test_search_routes_protected_in_production
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/security/test_search_auth.py
-
-### [HIGH] Test failure: test_update_prompt_auth
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/security/test_settings_auth.py
-- **Detail**: sqlalc...
-
-### [HIGH] Test failure: test_reset_prompt_auth
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/security/test_settings_auth.py
-- **Detail**: sqlalch...
-
-### [HIGH] Test failure: TestHealthEndpoints::test_health_returns_200
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestHealthEndpoints::test_ready_returns_200
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestHealthEndpoints::test_system_config_returns_200
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestUploadMagicBytes::test_pdf_with_png_header_returns_415
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestUploadMagicBytes::test_png_with_jpeg_header_returns_415
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestUploadMagicBytes::test_exe_disguised_as_pdf_returns_415
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestUploadMagicBytes::test_valid_pdf_magic_bytes_passes_signature_check
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestUploadMagicBytes::test_unknown_extension_skips_signature_check
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestUploadMimeValidation::test_pdf_with_image_mime_returns_415
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestUploadMimeValidation::test_html_with_pdf_mime_returns_415
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestUploadMimeValidation::test_octet_stream_bypasses_mime_check
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestUploadMimeValidation::test_matching_mime_and_extension_passes
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestUploadSizeEnforcement::test_small_file_accepted
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestCORSHeaders::test_preflight_returns_cors_headers
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestCORSHeaders::test_cors_allows_configured_origin
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestAdminAuth::test_prompts_without_auth_in_dev_mode
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestAdminAuth::test_prompts_with_wrong_key_returns_403
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestEndpointExistence::test_upload_endpoint_exists
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestEndpointExistence::test_formats_endpoint_exists
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/smoke/test_api_security_smoke.py
-
-### [HIGH] Test failure: TestAudioDigestGeneratorInitialization::test_default_initialization
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_processors/test_audio_digest_generator.py:29
-- **Detail**: AssertionError: assert <MagicMock name='settings.get_effective_voice()' id='4767335104'> == 'nova'
-
-### [HIGH] Test failure: test_create_digest_success
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_processors/test_digest_creator.py
-
-### [HIGH] Test failure: test_create_digest_without_historical_context
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_processors/test_digest_creator.py
-
-### [HIGH] Test failure: TestCountTokens::test_counts_tokens
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_services/test_chunking.py
-
-### [HIGH] Test failure: TestCountTokens::test_empty_string
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_services/test_chunking.py
-
-### [HIGH] Test failure: TestMarkdownChunkingStrategy::test_basic_chunking
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_services/test_chunking.py
-
-### [HIGH] Test failure: TestMarkdownChunkingStrategy::test_code_block_preserved
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_services/test_chunking.py
-
-### [HIGH] Test failure: TestMarkdownChunkingStrategy::test_chunk_indexes_sequential
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_services/test_chunking.py
-
-### [HIGH] Test failure: TestMarkdownChunkingStrategy::test_section_path_tracking
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_services/test_chunking.py
-
-### [HIGH] Test failure: TestYouTubeTranscriptStrategy::test_timestamp_parsing
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_services/test_chunking.py
-
-### [HIGH] Test failure: TestYouTubeTranscriptStrategy::test_chunk_type_is_transcript
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_services/test_chunking.py
-
-### [HIGH] Test failure: TestGeminiSummaryStrategy::test_splits_on_topic_sections
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_services/test_chunking.py
-
-### [HIGH] Test failure: TestGeminiSummaryStrategy::test_no_timestamp_metadata
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_services/test_chunking.py
-
-### [HIGH] Test failure: TestChunkingService::test_resolves_defaults
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_services/test_chunking.py
-
-### [HIGH] Test failure: TestChunkingService::test_source_config_override
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_services/test_chunking.py
-
-### [HIGH] Test failure: TestFetchURL::test_fetch_url_success
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_services/test_url_extractor.py:209
-- **Detail**: AssertionError: Regex pattern did not match.
-
-### [HIGH] Test failure: TestFetchURL::test_fetch_url_follows_redirects
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_services/test_url_extractor.py:209
-- **Detail**: AssertionError: Regex pattern did not match.
-
-### [HIGH] Test failure: TestFetchURL::test_fetch_url_raises_on_http_error
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_services/test_url_extractor.py:209
-- **Detail**: AssertionError: Regex pattern did not match.
-
-### [HIGH] Test failure: TestFetchURL::test_fetch_url_rejects_oversized_content_header
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_services/test_url_extractor.py:209
-- **Detail**: AssertionError: Regex pattern did not match.
-
-### [HIGH] Test failure: TestFetchURL::test_fetch_url_rejects_oversized_content_body
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_services/test_url_extractor.py:209
-- **Detail**: AssertionError: Regex pattern did not match.
-
-### [HIGH] Test failure: TestFetchURL::test_fetch_url_rejects_non_html_content
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_services/test_url_extractor.py:209
-- **Detail**: AssertionError: Regex pattern did not match.
-
-### [HIGH] Test failure: TestTokenCounter::test_initialization
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_utils/test_token_counter.py
-
-### [HIGH] Test failure: TestTokenCounter::test_estimate_text_tokens_simple
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_utils/test_token_counter.py
-
-### [HIGH] Test failure: TestTokenCounter::test_estimate_text_tokens_empty
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_utils/test_token_counter.py
-
-### [HIGH] Test failure: TestTokenCounter::test_estimate_text_tokens_long
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_utils/test_token_counter.py
-
-### [HIGH] Test failure: TestTokenCounter::test_estimate_newsletter_batch_tokens
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_utils/test_token_counter.py
-
-### [HIGH] Test failure: TestTokenCounter::test_estimate_newsletter_batch_tokens_empty
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_utils/test_token_counter.py
-
-### [HIGH] Test failure: TestTokenCounter::test_calculate_token_budget_claude
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_utils/test_token_counter.py
-
-### [HIGH] Test failure: TestTokenCounter::test_calculate_token_budget_custom_percentage
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_utils/test_token_counter.py
-
-### [HIGH] Test failure: TestTokenCounter::test_calculate_newsletters_that_fit
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_utils/test_token_counter.py
-
-### [HIGH] Test failure: TestTokenCounter::test_calculate_newsletters_that_fit_zero_budget
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_utils/test_token_counter.py
-
-### [HIGH] Test failure: TestTokenCounter::test_token_estimation_consistency
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_utils/test_token_counter.py
-
-### [HIGH] Test failure: TestTokenCounter::test_estimate_with_summaries
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_utils/test_token_counter.py
-
-### [HIGH] Test failure: TestTokenCounter::test_model_id_defaults_correctly
-
-- **Source**: pytest
-- **Category**: test-failure
-- **Location**: tests/test_utils/test_token_counter.py
-
 ### [HIGH] E741: Ambiguous variable name: `l`
 
 - **Source**: ruff
 - **Category**: lint
-- **Location**: .claude/skills/merge-pull-requests/scripts/discover_prs.py:133
+- **Location**: tests/agents/test_agent_models.py:85
 - **Detail**: Ambiguous variable name: `l`
 
-### [HIGH] E741: Ambiguous variable name: `l`
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: .codex/skills/merge-pull-requests/scripts/discover_prs.py:133
-- **Detail**: Ambiguous variable name: `l`
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/analyze_themes.py:53
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/analyze_themes.py:55
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/analyze_themes.py:62
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/analyze_themes.py:145
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/analyze_themes.py:147
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/generate_daily_digest.py:50
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/generate_daily_digest.py:52
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/generate_daily_digest.py:57
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/generate_daily_digest.py:138
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/generate_daily_digest.py:140
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/generate_weekly_digest.py:58
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/generate_weekly_digest.py:60
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/generate_weekly_digest.py:65
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/generate_weekly_digest.py:143
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/generate_weekly_digest.py:145
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/query_knowledge_graph.py:32
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/query_knowledge_graph.py:34
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/query_knowledge_graph.py:69
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/query_knowledge_graph.py:72
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/summarize_newsletters.py:49
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/summarize_newsletters.py:51
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/summarize_newsletters.py:55
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/summarize_newsletters.py:88
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/summarize_newsletters.py:90
-- **Detail**: Missing whitespace around arithmetic operator
-
-### [HIGH] E226: Missing whitespace around arithmetic operator
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: scripts/summarize_newsletters.py:94
-- **Detail**: Missing whitespace around arithmetic operator
-
 ### [HIGH] E302: Expected 2 blank lines, found 1
 
 - **Source**: ruff
 - **Category**: lint
-- **Location**: tests/api/test_upload_security_regression.py:9
-- **Detail**: Expected 2 blank lines, found 1
-
-### [HIGH] E302: Expected 2 blank lines, found 1
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: tests/api/test_upload_security_regression.py:17
-- **Detail**: Expected 2 blank lines, found 1
-
-### [HIGH] E302: Expected 2 blank lines, found 1
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: tests/security/test_digest_auth.py:10
-- **Detail**: Expected 2 blank lines, found 1
-
-### [HIGH] E302: Expected 2 blank lines, found 1
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: tests/security/test_digest_auth.py:28
-- **Detail**: Expected 2 blank lines, found 1
-
-### [HIGH] E302: Expected 2 blank lines, found 1
-
-- **Source**: ruff
-- **Category**: lint
-- **Location**: tests/security/test_search_xss.py:3
+- **Location**: tests/security/test_agent_error_leakage.py:12
 - **Detail**: Expected 2 blank lines, found 1
 
 ## Medium Findings
 
 | Source | Location | Title |
 |--------|----------|-------|
-| ruff | .claude/skills/bug-scrub/scripts/collect_deferred.py:271 | SIM113: Use `enumerate()` for index variable `idx` in `for` loop |
-| ruff | .claude/skills/bug-scrub/scripts/collect_markers.py:48 | S607: Starting a process with a partial executable path |
-| ruff | .claude/skills/bug-scrub/scripts/collect_markers.py:63 | S607: Starting a process with a partial executable path |
-| ruff | .claude/skills/bug-scrub/scripts/collect_mypy.py:60 | S607: Starting a process with a partial executable path |
-| ruff | .claude/skills/bug-scrub/scripts/collect_openspec.py:110 | S607: Starting a process with a partial executable path |
-| ruff | .claude/skills/bug-scrub/scripts/collect_ruff.py:57 | S607: Starting a process with a partial executable path |
-| ruff | .claude/skills/bug-scrub/scripts/collect_ruff.py:75 | S607: Starting a process with a partial executable path |
-| ruff | .claude/skills/fix-scrub/scripts/execute_auto.py:47 | S607: Starting a process with a partial executable path |
-| ruff | .claude/skills/fix-scrub/scripts/execute_auto.py:59 | S607: Starting a process with a partial executable path |
-| ruff | .claude/skills/merge-pull-requests/scripts/check_staleness.py:94 | S607: Starting a process with a partial executable path |
-| ruff | .claude/skills/merge-pull-requests/scripts/check_staleness.py:196 | S607: Starting a process with a partial executable path |
-| ruff | .claude/skills/merge-pull-requests/scripts/shared.py:26 | S607: Starting a process with a partial executable path |
-| ruff | .claude/skills/merge-pull-requests/scripts/shared.py:40 | S607: Starting a process with a partial executable path |
-| ruff | .claude/skills/merge-pull-requests/scripts/shared.py:57 | RUF005: Consider `["gh", *args]` instead of concatenation |
-| ruff | .claude/skills/merge-pull-requests/scripts/shared.py:65 | RUF005: Consider `['gh', *args]` instead of concatenation |
-| ruff | .claude/skills/merge-pull-requests/scripts/shared.py:77 | RUF005: Consider `["gh", *args]` instead of concatenation |
-| ruff | .claude/skills/merge-pull-requests/scripts/shared.py:175 | S607: Starting a process with a partial executable path |
-| ruff | .claude/skills/security-review/scripts/detect_profile.py:94 | RUF005: Consider `[*detected, "mixed"]` instead of concatenation |
-| ruff | .claude/skills/security-review/scripts/main.py:66 | S607: Starting a process with a partial executable path |
-| ruff | .codex/skills/bug-scrub/scripts/collect_deferred.py:271 | SIM113: Use `enumerate()` for index variable `idx` in `for` loop |
-| ruff | .codex/skills/bug-scrub/scripts/collect_markers.py:48 | S607: Starting a process with a partial executable path |
-| ruff | .codex/skills/bug-scrub/scripts/collect_markers.py:63 | S607: Starting a process with a partial executable path |
-| ruff | .codex/skills/bug-scrub/scripts/collect_mypy.py:60 | S607: Starting a process with a partial executable path |
-| ruff | .codex/skills/bug-scrub/scripts/collect_openspec.py:110 | S607: Starting a process with a partial executable path |
-| ruff | .codex/skills/bug-scrub/scripts/collect_ruff.py:57 | S607: Starting a process with a partial executable path |
-| ruff | .codex/skills/bug-scrub/scripts/collect_ruff.py:75 | S607: Starting a process with a partial executable path |
-| ruff | .codex/skills/fix-scrub/scripts/execute_auto.py:47 | S607: Starting a process with a partial executable path |
-| ruff | .codex/skills/fix-scrub/scripts/execute_auto.py:59 | S607: Starting a process with a partial executable path |
-| ruff | .codex/skills/merge-pull-requests/scripts/check_staleness.py:94 | S607: Starting a process with a partial executable path |
-| ruff | .codex/skills/merge-pull-requests/scripts/check_staleness.py:196 | S607: Starting a process with a partial executable path |
-| ruff | .codex/skills/merge-pull-requests/scripts/shared.py:26 | S607: Starting a process with a partial executable path |
-| ruff | .codex/skills/merge-pull-requests/scripts/shared.py:40 | S607: Starting a process with a partial executable path |
-| ruff | .codex/skills/merge-pull-requests/scripts/shared.py:57 | RUF005: Consider `["gh", *args]` instead of concatenation |
-| ruff | .codex/skills/merge-pull-requests/scripts/shared.py:65 | RUF005: Consider `['gh', *args]` instead of concatenation |
-| ruff | .codex/skills/merge-pull-requests/scripts/shared.py:77 | RUF005: Consider `["gh", *args]` instead of concatenation |
-| ruff | .codex/skills/merge-pull-requests/scripts/shared.py:175 | S607: Starting a process with a partial executable path |
-| ruff | .codex/skills/security-review/scripts/detect_profile.py:94 | RUF005: Consider `[*detected, "mixed"]` instead of concatenation |
-| ruff | .codex/skills/security-review/scripts/main.py:66 | S607: Starting a process with a partial executable path |
+| markers | .codex/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .codex/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .codex/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .codex/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .codex/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .codex/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .claude/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .claude/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .claude/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .claude/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .claude/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .claude/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .gemini/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .gemini/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .gemini/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .gemini/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .gemini/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .gemini/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .claude/skills/refresh-architecture/scripts/tests/test_enrich_with_treesitter.py:92 | FIXME: broken") |
+| markers | .claude/skills/refresh-architecture/scripts/tests/test_comment_linker.py:39 | FIXME: broken", "language": "python", |
+| markers | .agents/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .agents/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .agents/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .agents/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .agents/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .agents/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .agents/skills/refresh-architecture/scripts/tests/test_enrich_with_treesitter.py:92 | FIXME: broken") |
+| markers | .agents/skills/refresh-architecture/scripts/tests/test_comment_linker.py:39 | FIXME: broken", "language": "python", |
 | ruff | scripts/generate_podcast.py:127 | ASYNC250: Blocking call to input() in async context |
 | ruff | scripts/generate_podcast.py:145 | ASYNC250: Blocking call to input() in async context |
 | ruff | scripts/generate_podcast.py:154 | ASYNC250: Blocking call to input() in async context |
@@ -858,28 +80,81 @@
 | ruff | scripts/review_digest.py:226 | ASYNC250: Blocking call to input() in async context |
 | ruff | scripts/review_digest.py:294 | ASYNC250: Blocking call to input() in async context |
 | ruff | scripts/review_digest.py:299 | ASYNC250: Blocking call to input() in async context |
-| ruff | tests/api/test_upload_security.py:202 | RUF059: Unpacked variable `args` is never used |
-| ruff | tests/api/test_upload_security_regression.py:1 | I001: Import block is un-sorted or un-formatted |
-| ruff | tests/security/test_digest_auth.py:2 | I001: Import block is un-sorted or un-formatted |
-| ruff | tests/security/test_digest_auth.py:2 | F401: `pytest` imported but unused |
-| ruff | tests/security/test_search_xss.py:1 | I001: Import block is un-sorted or un-formatted |
-| ruff | tests/test_models/test_summary_performance.py:3 | I001: Import block is un-sorted or un-formatted |
-| ruff | tests/test_models/test_summary_performance.py:5 | F401: `src.models.summary.Summary` imported but unused |
-| mypy | tests/api/test_system.py:7 | Function is missing a type annotation |
-| mypy | tests/api/test_system.py:20 | Function is missing a type annotation |
-| mypy | tests/api/test_system.py:29 | Function is missing a type annotation |
-| mypy | tests/api/test_prompt_test_api.py:11 | Function is missing a type annotation |
-| mypy | tests/api/test_prompt_test_api.py:28 | Function is missing a type annotation |
-| mypy | tests/api/test_prompt_test_api.py:43 | Function is missing a type annotation |
-| mypy | tests/api/test_prompt_test_api.py:60 | Function is missing a type annotation |
-| mypy | tests/api/test_prompt_test_api.py:76 | Function is missing a type annotation |
-| mypy | tests/api/test_prompt_test_api.py:85 | Function is missing a type annotation |
-| mypy | tests/api/test_prompt_test_api.py:94 | Function is missing a type annotation |
-| mypy | tests/api/test_prompt_test_api.py:107 | Function is missing a type annotation |
-| mypy | tests/api/test_prompt_test_api.py:131 | Function is missing a type annotation |
-| mypy | tests/api/test_prompt_test_api.py:146 | Function is missing a type annotation |
-| mypy | tests/api/test_prompt_test_api.py:162 | Function is missing a type annotation |
-| mypy | tests/api/test_prompt_test_api.py:180 | Function is missing a type annotation |
+| ruff | tests/agents/memory/test_memory_models.py:40 | B017: Do not assert blind exception: `Exception` |
+| ruff | tests/agents/memory/test_memory_models.py:44 | B017: Do not assert blind exception: `Exception` |
+| ruff | tests/agents/memory/test_provider.py:7 | F401: `unittest.mock.MagicMock` imported but unused |
+| ruff | tests/agents/memory/test_provider.py:11 | F401: `src.agents.memory.models.MemoryFilter` imported but unused |
+| ruff | tests/agents/memory/test_strategies.py:7 | F401: `unittest.mock.patch` imported but unused |
+| ruff | tests/agents/memory/test_strategies.py:11 | F401: `src.agents.memory.models.MemoryFilter` imported but unused |
+| ruff | tests/agents/persona/test_loader.py:3 | I001: Import block is un-sorted or un-formatted |
+| ruff | tests/agents/persona/test_models.py:150 | B017: Do not assert blind exception: `Exception` |
+| ruff | tests/agents/persona/test_models.py:152 | B017: Do not assert blind exception: `Exception` |
+| ruff | tests/agents/specialists/test_registry.py:3 | I001: Import block is un-sorted or un-formatted |
+| ruff | tests/agents/specialists/test_registry.py:6 | F401: `pytest` imported but unused |
+| ruff | tests/agents/test_agent_models.py:10 | I001: Import block is un-sorted or un-formatted |
+| ruff | tests/agents/test_agent_models.py:10 | F401: `uuid` imported but unused |
+| ruff | tests/agents/test_agent_models.py:11 | F401: `datetime.datetime` imported but unused |
+| ruff | tests/agents/test_agent_models.py:13 | F401: `pytest` imported but unused |
+| ruff | tests/agents/test_conductor.py:6 | I001: Import block is un-sorted or un-formatted |
+| ruff | tests/agents/test_conductor.py:7 | F401: `unittest.mock.patch` imported but unused |
+| ruff | tests/config/test_huggingface_papers_sources.py:86 | F821: Undefined name `pytest` |
+| ruff | tests/config/test_routing_config.py:11 | F401: `os` imported but unused |
+| ruff | tests/config/test_routing_config.py:13 | F401: `pytest` imported but unused |
+| ruff | tests/evaluation/test_consensus.py:13 | I001: Import block is un-sorted or un-formatted |
+| ruff | tests/evaluation/test_consensus.py:13 | F401: `json` imported but unused |
+| ruff | tests/evaluation/test_consensus.py:20 | F401: `src.evaluation.consensus.ConsensusResult` imported but unused |
+| ruff | tests/evaluation/test_criteria.py:3 | I001: Import block is un-sorted or un-formatted |
+| ruff | tests/evaluation/test_criteria.py:5 | F401: `pathlib.Path` imported but unused |
+| ruff | tests/evaluation/test_criteria.py:8 | F401: `src.evaluation.criteria.JudgeConfig` imported but unused |
+| ruff | tests/evaluation/test_judge.py:11 | I001: Import block is un-sorted or un-formatted |
+| ruff | tests/evaluation/test_judge.py:12 | F401: `unittest.mock.patch` imported but unused |
+| ruff | tests/evaluation/test_judge.py:22 | F401: `src.evaluation.judge.DimensionCritique` imported but unused |
+| ruff | tests/ingestion/test_filter_hook.py:32 | UP037: Remove quotes from type annotation |
+| ruff | tests/integration/conftest.py:389 | I001: Import block is un-sorted or un-formatted |
+| ruff | tests/models/test_evaluation.py:3 | I001: Import block is un-sorted or un-formatted |
+| ruff | tests/models/test_evaluation.py:355 | RUF059: Unpacked variable `samples` is never used |
+| ruff | tests/models/test_evaluation.py:363 | RUF059: Unpacked variable `dataset` is never used |
+| ruff | tests/models/test_evaluation.py:370 | RUF059: Unpacked variable `dataset` is never used |
+| ruff | tests/models/test_evaluation.py:396 | RUF059: Unpacked variable `dataset` is never used |
+| ruff | tests/models/test_evaluation.py:412 | RUF059: Unpacked variable `dataset` is never used |
+| ruff | tests/security/test_agent_error_leakage.py:7 | I001: Import block is un-sorted or un-formatted |
+| ruff | tests/services/test_evaluation_report.py:9 | F401: `unittest.mock.patch` imported but unused |
+| ruff | tests/services/test_evaluation_service.py:3 | I001: Import block is un-sorted or un-formatted |
+| ruff | tests/services/test_evaluation_service.py:4 | F401: `unittest.mock.AsyncMock` imported but unused |
+| ruff | tests/services/test_evaluation_service.py:4 | F401: `unittest.mock.patch` imported but unused |
+| ruff | tests/services/test_evaluation_service.py:8 | F401: `src.services.evaluation_service.EvaluationReport` imported but unused |
+| ruff | tests/services/test_ingestion_filter.py:8 | I001: Import block is un-sorted or un-formatted |
+| ruff | tests/services/test_ingestion_filter.py:10 | F401: `asyncio` imported but unused |
+| ruff | tests/test_services/test_chunking.py:3 | I001: Import block is un-sorted or un-formatted |
+| ruff | tests/test_services/test_chunking.py:197 | C408: Unnecessary `dict()` call (rewrite as a literal) |
+| ruff | tests/test_services/test_content_filter.py:7 | I001: Import block is un-sorted or un-formatted |
+| ruff | tests/test_services/test_content_filter.py:15 | F401: `src.services.content_filter.FilterResult` imported but unused |
+| ruff | tests/test_services/test_indexing.py:5 | F401: `pytest` imported but unused |
+| ruff | tests/test_services/test_indexing.py:7 | F401: `src.models.chunk.ChunkType` imported but unused |
+| ruff | tests/test_services/test_model_pricing_extractor.py:7 | I001: Import block is un-sorted or un-formatted |
+| ruff | tests/test_storage/test_falkordb_provider.py:5 | F401: `unittest.mock.AsyncMock` imported but unused |
+| ruff | tests/test_sync/test_obsidian_frontmatter.py:9 | F401: `pytest` imported but unused |
+| ruff | tests/test_sync/test_obsidian_frontmatter.py:57 | UP017: Use `datetime.UTC` alias |
+| ruff | tests/test_sync/test_obsidian_frontmatter.py:100 | UP017: Use `datetime.UTC` alias |
+| ruff | tests/test_sync/test_obsidian_frontmatter.py:121 | UP017: Use `datetime.UTC` alias |
+| ruff | tests/test_sync/test_obsidian_manifest.py:12 | F401: `src.sync.obsidian_manifest.ManifestEntry` imported but unused |
+| mypy | tests/helpers/api_mocks.py:35 | Returning Any from function declared to return "dict[Any, Any]" |
+| mypy | tests/api/test_shortcut_page.py:7 | Function is missing a type annotation |
+| mypy | tests/api/test_shortcut_page.py:13 | Function is missing a type annotation |
+| mypy | tests/api/test_shortcut_page.py:19 | Function is missing a type annotation |
+| mypy | tests/api/test_shortcut_page.py:26 | Function is missing a type annotation |
+| mypy | tests/api/test_query_api.py:13 | Function is missing a type annotation |
+| mypy | tests/api/test_query_api.py:24 | Function is missing a type annotation |
+| mypy | tests/api/test_query_api.py:35 | Function is missing a type annotation |
+| mypy | tests/api/test_query_api.py:47 | Function is missing a type annotation |
+| mypy | tests/api/test_query_api.py:58 | Function is missing a type annotation |
+| mypy | tests/api/test_query_api.py:72 | Function is missing a type annotation |
+| mypy | tests/api/test_query_api.py:85 | Function is missing a type annotation |
+| mypy | tests/api/test_query_api.py:92 | Function is missing a type annotation |
+| mypy | tests/api/test_query_api.py:100 | Function is missing a type annotation |
+| mypy | tests/api/test_query_api.py:108 | Function is missing a type annotation |
+| mypy | tests/api/test_query_api.py:119 | Function is missing a type annotation |
+| mypy | tests/api/test_query_api.py:127 | Function is missing a type annotation |
 | mypy | tests/api/test_digest_api.py:7 | Function is missing a type annotation |
 | mypy | tests/api/test_digest_api.py:15 | Function is missing a type annotation |
 | mypy | tests/api/test_digest_api.py:23 | Function is missing a type annotation |
@@ -891,53 +166,64 @@
 | mypy | tests/api/test_digest_api.py:87 | Function is missing a type annotation |
 | mypy | tests/api/test_digest_api.py:97 | Function is missing a type annotation |
 | mypy | tests/api/test_digest_api.py:112 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:124 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:136 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:150 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:167 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:182 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:197 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:209 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:225 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:238 | Function is missing a type annotation |
+| mypy | tests/api/test_digest_api.py:129 | Function is missing a type annotation |
+| mypy | tests/api/test_digest_api.py:144 | Function is missing a type annotation |
+| mypy | tests/api/test_digest_api.py:159 | Function is missing a type annotation |
+| mypy | tests/api/test_digest_api.py:171 | Function is missing a type annotation |
+| mypy | tests/api/test_digest_api.py:187 | Function is missing a type annotation |
+| mypy | tests/api/test_digest_api.py:200 | Function is missing a type annotation |
+| mypy | tests/api/test_digest_api.py:211 | Function is missing a type annotation |
+| mypy | tests/api/test_digest_api.py:224 | Function is missing a type annotation |
+| mypy | tests/api/test_digest_api.py:236 | Function is missing a type annotation |
 | mypy | tests/api/test_digest_api.py:249 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:262 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:274 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:287 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:298 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:306 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:314 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:321 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:331 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:345 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:354 | Function is missing a type annotation |
-| mypy | tests/api/test_digest_api.py:363 | Function is missing a type annotation |
-| mypy | tests/helpers/api_mocks.py:35 | Returning Any from function declared to return "dict[Any, Any]" |
+| mypy | tests/api/test_digest_api.py:260 | Function is missing a type annotation |
+| mypy | tests/api/test_digest_api.py:268 | Function is missing a type annotation |
+| mypy | tests/api/test_digest_api.py:276 | Function is missing a type annotation |
+| mypy | tests/api/test_digest_api.py:283 | Function is missing a type annotation |
+| mypy | tests/api/test_digest_api.py:293 | Function is missing a type annotation |
+| mypy | tests/api/test_digest_api.py:307 | Function is missing a type annotation |
+| mypy | tests/api/test_digest_api.py:316 | Function is missing a type annotation |
+| mypy | tests/api/test_digest_api.py:325 | Function is missing a type annotation |
 | mypy | tests/api/test_voice_settings_api.py:10 | Function is missing a type annotation |
-| mypy | tests/api/test_voice_settings_api.py:21 | Function is missing a type annotation |
-| mypy | tests/api/test_voice_settings_api.py:37 | Function is missing a type annotation |
-| mypy | tests/api/test_voice_settings_api.py:45 | Function is missing a type annotation |
-| mypy | tests/api/test_voice_settings_api.py:53 | Function is missing a type annotation |
-| mypy | tests/api/test_voice_settings_api.py:60 | Function is missing a type annotation |
-| mypy | tests/api/test_voice_settings_api.py:68 | Function is missing a type annotation |
-| mypy | tests/api/test_voice_settings_api.py:75 | Function is missing a type annotation |
-| mypy | tests/api/test_voice_settings_api.py:82 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:26 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:42 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:58 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:66 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:74 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:81 | Function is missing a type annotation |
 | mypy | tests/api/test_voice_settings_api.py:89 | Function is missing a type annotation |
 | mypy | tests/api/test_voice_settings_api.py:96 | Function is missing a type annotation |
-| mypy | tests/api/test_voice_settings_api.py:109 | Function is missing a type annotation |
-| mypy | tests/api/test_voice_settings_api.py:120 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:103 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:110 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:118 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:126 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:133 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:141 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:148 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:155 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:163 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:171 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:179 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:187 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:195 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:203 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:210 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:223 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_settings_api.py:234 | Function is missing a type annotation |
 | mypy | tests/api/test_model_settings_api.py:10 | Function is missing a type annotation |
-| mypy | tests/api/test_model_settings_api.py:19 | Function is missing a type annotation |
-| mypy | tests/api/test_model_settings_api.py:29 | Function is missing a type annotation |
-| mypy | tests/api/test_model_settings_api.py:37 | Function is missing a type annotation |
-| mypy | tests/api/test_model_settings_api.py:47 | Function is missing a type annotation |
+| mypy | tests/api/test_model_settings_api.py:21 | Function is missing a type annotation |
+| mypy | tests/api/test_model_settings_api.py:31 | Function is missing a type annotation |
+| mypy | tests/api/test_model_settings_api.py:39 | Function is missing a type annotation |
+| mypy | tests/api/test_model_settings_api.py:49 | Function is missing a type annotation |
+| mypy | tests/api/test_model_settings_api.py:57 | Function is missing a type annotation |
 | mypy | tests/api/test_model_settings_api.py:64 | Function is missing a type annotation |
-| mypy | tests/api/test_model_settings_api.py:72 | Function is missing a type annotation |
-| mypy | tests/api/test_model_settings_api.py:80 | Function is missing a type annotation |
-| mypy | tests/api/test_model_settings_api.py:88 | Function is missing a type annotation |
-| mypy | tests/api/test_model_settings_api.py:101 | Function is missing a type annotation |
-| mypy | tests/api/test_model_settings_api.py:112 | Function is missing a type annotation |
-| mypy | scripts/setup_test_db.py:145 | Function is missing a return type annotation |
+| mypy | tests/api/test_model_settings_api.py:73 | Function is missing a type annotation |
+| mypy | tests/api/test_model_settings_api.py:90 | Function is missing a type annotation |
+| mypy | tests/api/test_model_settings_api.py:98 | Function is missing a type annotation |
+| mypy | tests/api/test_model_settings_api.py:106 | Function is missing a type annotation |
+| mypy | tests/api/test_model_settings_api.py:114 | Function is missing a type annotation |
+| mypy | tests/api/test_model_settings_api.py:127 | Function is missing a type annotation |
+| mypy | tests/api/test_model_settings_api.py:138 | Function is missing a type annotation |
 | mypy | tests/test_utils/test_markdown.py:18 | Function is missing a return type annotation |
 | mypy | tests/test_utils/test_markdown.py:23 | Function is missing a return type annotation |
 | mypy | tests/test_utils/test_markdown.py:31 | Function is missing a return type annotation |
@@ -1023,19 +309,20 @@
 | mypy | tests/test_utils/test_content_hash.py:188 | Function is missing a return type annotation |
 | mypy | tests/test_utils/test_content_hash.py:194 | Function is missing a return type annotation |
 | mypy | tests/test_utils/test_content_hash.py:201 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_summary_performance.py:6 | Function is missing a return type annotation |
 | mypy | tests/test_models/test_chat.py:9 | Function is missing a return type annotation |
 | mypy | tests/test_models/test_chat.py:16 | Function is missing a return type annotation |
-| mypy | src/config/sources.py:14 | Library stubs not installed for "yaml" |
-| mypy | src/config/profiles.py:19 | Library stubs not installed for "yaml" |
-| mypy | src/config/secrets.py:16 | Library stubs not installed for "yaml" |
+| mypy | tests/api/test_save_rate_limiter.py:13 | Function is missing a return type annotation |
+| mypy | tests/api/test_save_rate_limiter.py:25 | Function is missing a return type annotation |
+| mypy | tests/api/test_save_rate_limiter.py:31 | Function is missing a return type annotation |
+| mypy | tests/api/test_save_rate_limiter.py:39 | Function is missing a return type annotation |
+| mypy | tests/api/test_save_rate_limiter.py:48 | Function is missing a return type annotation |
+| mypy | tests/api/test_save_rate_limiter.py:58 | Function is missing a return type annotation |
 | mypy | alembic/versions/f9a8b7c6d5e5_add_index_to_canonical_id.py:25 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
 | mypy | alembic/versions/f9a8b7c6d5e5_add_index_to_canonical_id.py:41 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
 | mypy | alembic/versions/f9a8b7c6d5e4_merge_heads_and_cleanup.py:17 | Incompatible types in assignment (expression has type "tuple[str, str]", variable has type "str | None") |
 | mypy | alembic/versions/f9a8b7c6d5e4_merge_heads_and_cleanup.py:29 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
 | mypy | alembic/versions/b8affd253096_merge_add_document_search_with_main.py:16 | Incompatible types in assignment (expression has type "tuple[str, str]", variable has type "str | None") |
-| mypy | alembic/versions/b2c3d4e5f6a7_add_document_chunks_table.py:33 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
-| mypy | alembic/versions/b2c3d4e5f6a7_add_document_chunks_table.py:83 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
-| mypy | alembic/versions/b2c3d4e5f6a7_add_document_chunks_table.py:155 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
 | mypy | alembic/versions/b017a1a2b3c4_bolt_performance_chat_indexes.py:23 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
 | mypy | alembic/versions/b017a1a2b3c4_bolt_performance_chat_indexes.py:26 | Function is missing a type annotation |
 | mypy | alembic/versions/b017a1a2b3c4_bolt_performance_chat_indexes.py:60 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
@@ -1044,6 +331,307 @@
 | mypy | alembic/versions/718414e9009f_merge_main_and_pgqueuer_reliability_.py:16 | Incompatible types in assignment (expression has type "tuple[str, str]", variable has type "str | None") |
 | mypy | alembic/versions/58aa2c7e188c_add_summary_created_at_index.py:24 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
 | mypy | alembic/versions/58aa2c7e188c_add_summary_created_at_index.py:40 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
+| mypy | tests/smoke/test_api_security_smoke.py:31 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:38 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:43 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:61 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:69 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:77 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:84 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:95 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:116 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:124 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:131 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:140 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:159 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:175 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:189 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:209 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:215 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:222 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:240 | Function is missing a type annotation |
+| mypy | tests/smoke/test_api_security_smoke.py:245 | Function is missing a type annotation |
+| mypy | tests/smoke/conftest.py:40 | The return type of a generator function should be "Generator" or one of its supertypes |
+| mypy | tests/smoke/conftest.py:47 | The return type of a generator function should be "Generator" or one of its supertypes |
+| mypy | tests/integration/test_hoverfly_rss.py:29 | Function is missing a type annotation |
+| mypy | tests/integration/test_hoverfly_rss.py:42 | Function is missing a type annotation |
+| mypy | tests/integration/test_hoverfly_rss.py:52 | Function is missing a type annotation |
+| mypy | tests/integration/test_hoverfly_rss.py:61 | Function is missing a type annotation |
+| mypy | tests/integration/test_hoverfly_rss.py:69 | Function is missing a type annotation |
+| mypy | tests/integration/test_hoverfly_rss.py:85 | Function is missing a type annotation |
+| mypy | tests/integration/test_hoverfly_rss.py:89 | Function is missing a type annotation |
+| mypy | tests/integration/test_hoverfly_rss.py:97 | Function is missing a type annotation |
+| mypy | tests/integration/test_hoverfly_rss.py:105 | Function is missing a type annotation |
+| mypy | tests/integration/test_hoverfly_rss.py:114 | Function is missing a type annotation |
+| mypy | tests/integration/test_hoverfly_rss.py:119 | Function is missing a type annotation |
+| mypy | tests/integration/test_hoverfly_rss.py:130 | Function is missing a type annotation |
+| mypy | tests/helpers/test_hoverfly.py:16 | Function is missing a return type annotation |
+| mypy | tests/helpers/test_hoverfly.py:25 | Function is missing a type annotation |
+| mypy | tests/helpers/test_hoverfly.py:34 | Function is missing a type annotation |
+| mypy | tests/helpers/test_hoverfly.py:42 | Function is missing a type annotation |
+| mypy | tests/helpers/test_hoverfly.py:49 | Function is missing a type annotation |
+| mypy | tests/helpers/test_hoverfly.py:58 | Function is missing a type annotation |
+| mypy | tests/helpers/test_hoverfly.py:66 | Function is missing a type annotation |
+| mypy | tests/helpers/test_hoverfly.py:79 | Function is missing a type annotation |
+| mypy | tests/helpers/test_hoverfly.py:96 | Function is missing a type annotation |
+| mypy | tests/helpers/test_hoverfly.py:100 | Function is missing a type annotation |
+| mypy | tests/helpers/test_hoverfly.py:118 | Function is missing a type annotation |
+| mypy | tests/helpers/test_hoverfly.py:129 | Function is missing a type annotation |
+| mypy | tests/helpers/test_hoverfly.py:138 | Function is missing a type annotation |
+| mypy | tests/helpers/test_hoverfly.py:149 | Function is missing a type annotation |
+| mypy | tests/helpers/test_hoverfly.py:157 | Function is missing a type annotation |
+| mypy | tests/helpers/test_hoverfly.py:162 | Function is missing a type annotation |
+| mypy | tests/migrations/test_batch_processing.py:41 | Function is missing a return type annotation |
+| mypy | tests/migrations/test_batch_processing.py:47 | Function is missing a return type annotation |
+| mypy | tests/migrations/test_batch_processing.py:54 | Function is missing a type annotation |
+| mypy | alembic/versions/f00ddf1d2b47_add_agent_tables.py:31 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
+| mypy | alembic/versions/c5f6a7b8d9e0_add_topic_tables.py:35 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
+| mypy | alembic/versions/c5f6a7b8d9e0_add_topic_tables.py:159 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
+| mypy | alembic/versions/c5f6a7b8d9e0_add_topic_tables.py:183 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
+| mypy | alembic/versions/c5f6a7b8d9e0_add_topic_tables.py:228 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
+| mypy | alembic/versions/c5f6a7b8d9e0_add_topic_tables.py:267 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
+| mypy | alembic/versions/bc56c4b2e94d_add_evaluation_tables.py:30 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
+| mypy | alembic/versions/ba489b85c5a3_merge_perplexity_and_notification_heads.py:16 | Incompatible types in assignment (expression has type "tuple[str, str]", variable has type "str | None") |
+| mypy | alembic/versions/b7a1c9d5e2f0_add_audit_log_table.py:42 | Function is missing a type annotation for one or more arguments |
+| mypy | alembic/versions/b2c3d4e5f6a7_add_document_chunks_table.py:33 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
+| mypy | alembic/versions/b2c3d4e5f6a7_add_document_chunks_table.py:83 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
+| mypy | alembic/versions/b2c3d4e5f6a7_add_document_chunks_table.py:166 | Argument 1 to "from_engine" of "Inspector" has incompatible type "Connection"; expected "Engine" |
+| mypy | alembic/versions/02cfa5c75b82_merge_heads.py:16 | Incompatible types in assignment (expression has type "tuple[str, str]", variable has type "str | None") |
+| mypy | tests/test_utils/test_summary_markdown.py:14 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:50 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:56 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:63 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:70 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:77 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:83 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:89 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:95 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:102 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:107 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:119 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:135 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:142 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:149 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:154 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:159 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:170 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:176 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:182 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:188 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:197 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:210 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:217 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:224 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:231 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:238 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:250 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_summary_markdown.py:258 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_promotion.py:17 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_promotion.py:20 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_promotion.py:26 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_promotion.py:32 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_promotion.py:36 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_promotion.py:40 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_promotion.py:44 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_promotion.py:49 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_promotion.py:57 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_promotion.py:66 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_promotion.py:75 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_promotion.py:84 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_promotion.py:94 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_routing.py:35 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_routing.py:40 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_routing.py:43 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_routing.py:46 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_routing.py:49 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_routing.py:53 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_routing.py:58 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_routing.py:61 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_routing.py:66 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_routing.py:69 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_routing.py:72 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_routing.py:85 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_routing.py:90 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_routing.py:94 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_routing.py:104 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_routing.py:109 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_routing.py:112 | Function is missing a return type annotation |
+| mypy | tests/services/test_complexity_router.py:18 | Function is missing a return type annotation |
+| mypy | tests/services/test_complexity_router.py:31 | Function is missing a return type annotation |
+| mypy | tests/services/test_complexity_router.py:47 | Function is missing a return type annotation |
+| mypy | tests/services/test_complexity_router.py:50 | Function is missing a type annotation |
+| mypy | tests/services/test_complexity_router.py:67 | Function is missing a return type annotation |
+| mypy | tests/services/test_complexity_router.py:84 | Function is missing a return type annotation |
+| mypy | tests/services/test_complexity_router.py:101 | Function is missing a return type annotation |
+| mypy | tests/services/test_complexity_router.py:117 | Function is missing a return type annotation |
+| mypy | tests/services/test_complexity_router.py:135 | Function is missing a return type annotation |
+| mypy | tests/services/test_complexity_router.py:151 | Function is missing a type annotation |
+| mypy | tests/services/test_complexity_router.py:175 | Function is missing a type annotation |
+| mypy | tests/services/test_complexity_router.py:180 | Function is missing a type annotation |
+| mypy | tests/regression/conftest.py:32 | Function is missing a type annotation |
+| mypy | tests/real_ingestion/test_failure_evidence.py:144 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/models/test_topic.py:14 | Function is missing a return type annotation |
+| mypy | tests/models/test_topic.py:21 | Function is missing a return type annotation |
+| mypy | tests/models/test_topic.py:32 | Function is missing a type annotation |
+| mypy | tests/models/test_topic.py:51 | Function is missing a type annotation |
+| mypy | tests/models/test_topic.py:84 | Function is missing a type annotation |
+| mypy | tests/models/test_topic.py:97 | Function is missing a type annotation |
+| mypy | tests/models/test_topic.py:118 | Function is missing a type annotation |
+| mypy | tests/models/test_topic.py:141 | Function is missing a type annotation |
+| mypy | tests/models/test_topic.py:161 | Function is missing a type annotation |
+| mypy | tests/models/test_topic.py:183 | Function is missing a type annotation |
+| mypy | tests/models/test_topic.py:196 | Function is missing a type annotation |
+| mypy | tests/api/test_rate_limiters.py:18 | Function is missing a return type annotation |
+| mypy | tests/api/test_rate_limiters.py:21 | Function is missing a type annotation |
+| mypy | tests/api/test_rate_limiters.py:33 | Function is missing a type annotation |
+| mypy | tests/api/test_rate_limiters.py:42 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_rate_limiters.py:50 | Returning Any from function declared to return "bool" |
+| mypy | tests/api/test_rate_limiters.py:52 | Function is missing a return type annotation |
+| mypy | tests/api/test_rate_limiters.py:52 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_rate_limiters.py:62 | Function is missing a type annotation |
+| mypy | tests/api/test_rate_limiters.py:66 | Function is missing a type annotation |
+| mypy | tests/api/test_rate_limiters.py:87 | Function is missing a type annotation |
+| mypy | tests/api/test_rate_limiters.py:96 | Function is missing a type annotation |
+| mypy | tests/api/test_rate_limiters.py:113 | Function is missing a type annotation |
+| mypy | tests/api/test_rate_limiters.py:129 | Function is missing a type annotation |
+| mypy | tests/api/test_rate_limiters.py:133 | Function is missing a return type annotation |
+| mypy | tests/api/test_nul_byte_query_params.py:45 | Function is missing a type annotation |
+| mypy | tests/api/test_nul_byte_query_params.py:66 | Function is missing a type annotation |
+| mypy | tests/api/test_nul_byte_query_params.py:76 | Function is missing a type annotation |
+| mypy | tests/api/test_nul_byte_query_params.py:85 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_retention.py:48 | Function is missing a return type annotation |
+| mypy | tests/api/test_audit_retention.py:88 | Function is missing a return type annotation |
+| mypy | tests/api/test_audit_retention.py:98 | Function is missing a return type annotation |
+| mypy | tests/api/test_audit_retention.py:109 | Function is missing a return type annotation |
+| mypy | tests/api/test_audit_retention.py:117 | Function is missing a return type annotation |
+| mypy | tests/api/test_audit_retention.py:133 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_retention.py:160 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:28 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:38 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:79 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:121 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:155 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:161 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:190 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:205 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:211 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:254 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:276 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:283 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:298 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:342 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:359 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:380 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:388 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:424 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:454 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:460 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:484 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_api.py:491 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:24 | Function is missing a return type annotation |
+| mypy | tests/models/test_evaluation.py:28 | Function is missing a return type annotation |
+| mypy | tests/models/test_evaluation.py:33 | Function is missing a return type annotation |
+| mypy | tests/models/test_evaluation.py:37 | Function is missing a return type annotation |
+| mypy | tests/models/test_evaluation.py:47 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:65 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:81 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:107 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:142 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:173 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:198 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:208 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:221 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:256 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:262 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:272 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:281 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:310 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:329 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:354 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:362 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:369 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:395 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:411 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:431 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:457 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:493 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:527 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:573 | Function is missing a type annotation |
+| mypy | tests/models/test_evaluation.py:583 | Function is missing a type annotation |
+| mypy | tests/agents/test_agent_models.py:29 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:43 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:48 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:54 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:61 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:68 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:75 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:80 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:89 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:103 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:106 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:115 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:121 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:138 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:147 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:150 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:155 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:165 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:172 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:175 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:180 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:185 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:189 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:196 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:199 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:204 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:218 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:221 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:224 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:227 | Function is missing a return type annotation |
+| mypy | tests/agents/test_agent_models.py:230 | Function is missing a return type annotation |
+| mypy | scripts/setup_test_db.py:145 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:30 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:37 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:44 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:52 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:59 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:64 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:74 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:90 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:95 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:103 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:111 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:119 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:127 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:140 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:154 | Function is missing a type annotation |
+| mypy | tests/test_helpers/test_test_db.py:159 | Function is missing a type annotation |
+| mypy | tests/test_helpers/test_test_db.py:170 | Function is missing a type annotation |
+| mypy | tests/test_helpers/test_test_db.py:189 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:212 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:230 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:249 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:261 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:287 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:311 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:316 | Function is missing a return type annotation |
+| mypy | tests/test_helpers/test_test_db.py:321 | Function is missing a return type annotation |
+| mypy | scripts/bao_seed_newsletter.py:99 | Function is missing a type annotation for one or more arguments |
+| mypy | scripts/bao_seed_newsletter.py:142 | Function is missing a type annotation for one or more arguments |
+| mypy | scripts/bao_seed_newsletter.py:202 | Function is missing a type annotation for one or more arguments |
+| mypy | scripts/bao_seed_newsletter.py:250 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli_gen_eval/test_report.py:64 | Returning Any from function declared to return "dict[str, Any]" |
+| mypy | tests/cli_gen_eval/test_report.py:74 | Returning Any from function declared to return "dict[str, Any]" |
+| mypy | tests/config/test_deploy_secrets.py:14 | Function is missing a return type annotation |
+| mypy | tests/config/test_deploy_secrets.py:14 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/config/test_deploy_secrets.py:20 | Function is missing a type annotation |
+| mypy | tests/config/test_deploy_secrets.py:40 | Function is missing a type annotation |
+| mypy | tests/config/test_deploy_secrets.py:59 | Function is missing a type annotation |
+| mypy | tests/config/test_deploy_secrets.py:64 | Function is missing a type annotation |
+| mypy | tests/config/test_deploy_secrets.py:70 | Function is missing a type annotation |
+| mypy | tests/config/test_deploy_secrets.py:84 | Function is missing a type annotation |
+| mypy | tests/config/test_deploy_secrets.py:101 | Function is missing a type annotation |
+| mypy | tests/config/test_deploy_secrets.py:115 | Function is missing a type annotation |
 | mypy | tests/test_parsers/test_youtube_models.py:17 | Function is missing a return type annotation |
 | mypy | tests/test_parsers/test_youtube_models.py:21 | Function is missing a return type annotation |
 | mypy | tests/test_parsers/test_youtube_models.py:26 | Function is missing a return type annotation |
@@ -1068,32 +656,192 @@
 | mypy | tests/test_parsers/test_youtube_models.py:244 | Function is missing a return type annotation |
 | mypy | tests/test_parsers/test_youtube_models.py:255 | Function is missing a return type annotation |
 | mypy | tests/test_parsers/test_youtube_models.py:266 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_summary_performance.py:8 | Function is missing a return type annotation |
-| mypy | tests/api/test_podcast_api.py:7 | Function is missing a type annotation |
-| mypy | tests/api/test_podcast_api.py:15 | Function is missing a type annotation |
-| mypy | tests/api/test_podcast_api.py:24 | Function is missing a type annotation |
-| mypy | tests/api/test_podcast_api.py:37 | Function is missing a type annotation |
-| mypy | tests/api/test_podcast_api.py:50 | Function is missing a type annotation |
-| mypy | tests/api/test_podcast_api.py:61 | Function is missing a type annotation |
-| mypy | tests/api/test_podcast_api.py:72 | Function is missing a type annotation |
-| mypy | tests/api/test_podcast_api.py:87 | Function is missing a type annotation |
-| mypy | tests/api/test_podcast_api.py:95 | Function is missing a type annotation |
-| mypy | tests/api/test_podcast_api.py:110 | Function is missing a type annotation |
-| mypy | tests/api/test_podcast_api.py:134 | Function is missing a type annotation |
-| mypy | tests/api/test_podcast_api.py:149 | Function is missing a type annotation |
-| mypy | tests/api/test_podcast_api.py:170 | Function is missing a type annotation |
-| mypy | tests/api/test_podcast_api.py:194 | Function is missing a type annotation |
-| mypy | tests/api/test_podcast_api.py:200 | Function is missing a type annotation |
-| mypy | tests/api/test_podcast_api.py:223 | Function is missing a type annotation |
-| mypy | tests/api/test_podcast_api.py:238 | Function is missing a type annotation |
-| mypy | tests/api/test_source_api.py:15 | Function is missing a type annotation |
-| mypy | tests/api/test_source_api.py:30 | Function is missing a type annotation |
-| mypy | tests/api/test_source_api.py:65 | Function is missing a type annotation |
-| mypy | tests/api/test_source_api.py:83 | Function is missing a type annotation |
-| mypy | tests/api/test_source_api.py:101 | Function is missing a type annotation |
-| mypy | src/config/migrate_sources.py:17 | Library stubs not installed for "yaml" |
-| mypy | src/config/migrate_sources.py:281 | Returning Any from function declared to return "str" |
-| mypy | tests/api/test_upload_exception.py:6 | Function is missing a return type annotation |
+| mypy | tests/services/test_persona_profile_cache.py:35 | Argument 1 to "PersonaProfileCache" has incompatible type "_FakeSession"; expected "Session" |
+| mypy | tests/services/test_persona_profile_cache.py:41 | Argument 1 to "PersonaProfileCache" has incompatible type "_FakeSession"; expected "Session" |
+| mypy | tests/services/test_persona_profile_cache.py:54 | Argument 1 to "PersonaProfileCache" has incompatible type "_FakeSession"; expected "Session" |
+| mypy | tests/services/test_persona_profile_cache.py:67 | Argument 1 to "PersonaProfileCache" has incompatible type "_FakeSession"; expected "Session" |
+| mypy | tests/evaluation/test_calibrator.py:9 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_calibrator.py:18 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_calibrator.py:27 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_calibrator.py:39 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_calibrator.py:49 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_calibrator.py:61 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_calibrator.py:71 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_calibrator.py:76 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_calibrator.py:87 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_calibrator.py:97 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_criteria.py:17 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_criteria.py:29 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_criteria.py:39 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_criteria.py:45 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_criteria.py:53 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_criteria.py:59 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_criteria.py:89 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_criteria.py:100 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_criteria.py:108 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_criteria.py:116 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_criteria.py:123 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_criteria.py:129 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_criteria.py:134 | Function is missing a return type annotation |
+| mypy | tests/api/test_podcast_api.py:9 | Function is missing a type annotation |
+| mypy | tests/api/test_podcast_api.py:17 | Function is missing a type annotation |
+| mypy | tests/api/test_podcast_api.py:26 | Function is missing a type annotation |
+| mypy | tests/api/test_podcast_api.py:39 | Function is missing a type annotation |
+| mypy | tests/api/test_podcast_api.py:52 | Function is missing a type annotation |
+| mypy | tests/api/test_podcast_api.py:63 | Function is missing a type annotation |
+| mypy | tests/api/test_podcast_api.py:74 | Function is missing a type annotation |
+| mypy | tests/api/test_podcast_api.py:89 | Function is missing a type annotation |
+| mypy | tests/api/test_podcast_api.py:97 | Function is missing a type annotation |
+| mypy | tests/api/test_podcast_api.py:112 | Function is missing a type annotation |
+| mypy | tests/api/test_podcast_api.py:118 | Function is missing a type annotation |
+| mypy | tests/api/test_podcast_api.py:139 | Function is missing a type annotation |
+| mypy | tests/api/test_podcast_api.py:154 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:18 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:30 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:40 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:50 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:65 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:70 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:79 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:89 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:102 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:117 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:129 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:144 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:162 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:176 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:185 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:193 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:207 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:222 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:235 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:250 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:269 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:281 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:291 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:331 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:373 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:424 | Function is missing a return type annotation |
+| mypy | tests/api/test_sharing_api.py:432 | Function is missing a return type annotation |
+| mypy | tests/api/test_sharing_api.py:442 | Function is missing a return type annotation |
+| mypy | tests/api/test_sharing_api.py:453 | Function is missing a return type annotation |
+| mypy | tests/api/test_sharing_api.py:465 | Function is missing a return type annotation |
+| mypy | tests/api/test_sharing_api.py:481 | Function is missing a type annotation |
+| mypy | tests/api/test_sharing_api.py:490 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:14 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_audio_digest_api.py:19 | Argument "speed" to "AudioDigest" has incompatible type "float"; expected "_N | None" |
+| mypy | tests/api/test_audio_digest_api.py:23 | Argument "duration_seconds" to "AudioDigest" has incompatible type "float"; expected "_N | None" |
+| mypy | tests/api/test_audio_digest_api.py:36 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_audio_digest_api.py:42 | Argument "speed" to "AudioDigest" has incompatible type "float"; expected "_N | None" |
+| mypy | tests/api/test_audio_digest_api.py:46 | Argument "duration_seconds" to "AudioDigest" has incompatible type "float"; expected "_N | None" |
+| mypy | tests/api/test_audio_digest_api.py:52 | Argument "speed" to "AudioDigest" has incompatible type "float"; expected "_N | None" |
+| mypy | tests/api/test_audio_digest_api.py:59 | Argument "speed" to "AudioDigest" has incompatible type "float"; expected "_N | None" |
+| mypy | tests/api/test_audio_digest_api.py:80 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:88 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:97 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:107 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:136 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:144 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:152 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:161 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:170 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:178 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:193 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:207 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:225 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:245 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:252 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:269 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:275 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:285 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:305 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:313 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:353 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:372 | Function is missing a type annotation |
+| mypy | tests/api/test_audio_digest_api.py:378 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_response_builder.py:33 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_response_builder.py:55 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_response_builder.py:73 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_response_builder.py:88 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_response_builder.py:100 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_response_builder.py:112 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_response_builder.py:133 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_profiles.py:557 | Item "None" of "dict[str, Any] | None" has no attribute "get" |
+| mypy | tests/test_config/test_profiles.py:575 | Item "None" of "dict[str, Any] | None" has no attribute "get" |
+| mypy | tests/test_config/test_langfuse_profile_defaults.py:75 | "ObservabilitySettings" has no attribute "langfuse_base_url" |
+| mypy | tests/test_config/test_langfuse_profile_defaults.py:102 | "APIKeySettings" has no attribute "langfuse_public_key" |
+| mypy | tests/test_config/test_langfuse_profile_defaults.py:105 | "APIKeySettings" has no attribute "langfuse_secret_key" |
+| mypy | tests/test_config/test_bao_settings_integration.py:19 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_bao_settings_integration.py:26 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:24 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:29 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:33 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:37 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:44 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:51 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:58 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:67 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:73 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:79 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:86 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:91 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:96 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:110 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:119 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:178 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:186 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:191 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:201 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:217 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:227 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:243 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:255 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:263 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:279 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:302 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:311 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_scheduler.py:324 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_refresh_models_schedule.py:15 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/agents/scheduler/test_refresh_models_schedule.py:21 | Function is missing a return type annotation |
+| mypy | tests/agents/scheduler/test_refresh_models_schedule.py:32 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_memory_models.py:14 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_memory_models.py:23 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_memory_models.py:39 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_memory_models.py:43 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_memory_models.py:47 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_memory_models.py:55 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_memory_models.py:63 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_memory_models.py:67 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_memory_models.py:80 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_judge.py:35 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_judge.py:46 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:61 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_judge.py:68 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:81 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:85 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:92 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:97 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:105 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:119 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:136 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:148 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:163 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:167 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:176 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:194 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_judge.py:198 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_judge.py:201 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_judge.py:204 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_judge.py:207 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_judge.py:217 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:243 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:268 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:282 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:310 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:329 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_judge.py:351 | Function is missing a type annotation |
+| mypy | tests/release_smoke/test_browser_smoke.py:98 | Function is missing a type annotation |
+| mypy | tests/release_smoke/test_browser_smoke.py:209 | Function is missing a type annotation for one or more arguments |
 | mypy | tests/test_parsers/test_youtube_links.py:19 | Function is missing a return type annotation |
 | mypy | tests/test_parsers/test_youtube_links.py:24 | Function is missing a return type annotation |
 | mypy | tests/test_parsers/test_youtube_links.py:29 | Function is missing a return type annotation |
@@ -1125,31 +873,27 @@
 | mypy | tests/test_parsers/test_youtube_links.py:200 | Function is missing a return type annotation |
 | mypy | tests/test_parsers/test_youtube_links.py:209 | Function is missing a return type annotation |
 | mypy | tests/test_parsers/test_youtube_links.py:221 | Function is missing a return type annotation |
-| mypy | tests/api/test_script_api.py:9 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:17 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:26 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:35 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:48 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:59 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:69 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:77 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:91 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:103 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:117 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:126 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:163 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:172 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:178 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:188 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:197 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:207 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:227 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:242 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:257 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:282 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:312 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:325 | Function is missing a type annotation |
-| mypy | tests/api/test_script_api.py:338 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:13 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:17 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:21 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:30 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:34 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:40 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:44 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:49 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:54 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:60 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:66 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:71 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:81 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:91 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:101 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:111 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:120 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:134 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:147 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:160 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_markitdown_parser.py:172 | Function is missing a type annotation |
 | mypy | tests/test_parsers/test_document_models.py:14 | Function is missing a return type annotation |
 | mypy | tests/test_parsers/test_document_models.py:30 | Function is missing a return type annotation |
 | mypy | tests/test_parsers/test_document_models.py:40 | Function is missing a return type annotation |
@@ -1190,492 +934,274 @@
 | mypy | tests/test_models/test_image.py:434 | Function is missing a return type annotation |
 | mypy | tests/test_models/test_image.py:452 | Function is missing a return type annotation |
 | mypy | tests/test_models/test_image.py:468 | Function is missing a return type annotation |
-| mypy | tests/api/test_save_api.py:19 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:50 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:80 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:105 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:119 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:128 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:141 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:166 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:190 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:213 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:224 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:231 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:238 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:251 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:264 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:275 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:282 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:290 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:302 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:319 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:335 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:353 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:387 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:398 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:409 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:442 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:471 | Function is missing a type annotation |
-| mypy | tests/api/test_save_api.py:486 | Function is missing a type annotation |
+| mypy | tests/test_models/test_content_reference.py:31 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:37 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:42 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:54 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:60 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:69 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:75 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:84 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:104 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:117 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:137 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:150 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:154 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:176 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:187 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:197 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:209 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:220 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:231 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:242 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:256 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:260 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:264 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:268 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:272 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:276 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:280 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:293 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:301 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:309 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:329 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:352 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:374 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content_reference.py:402 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:32 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:56 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:66 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:75 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:89 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:98 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:107 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:126 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:167 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:186 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:194 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:222 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:253 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:265 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:274 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:288 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:302 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:335 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:356 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:374 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:393 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:424 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:438 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:469 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:484 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:489 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:493 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:497 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_content.py:528 | Function is missing a return type annotation |
+| mypy | tests/api/test_script_api.py:9 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:17 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:26 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:35 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:48 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:59 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:69 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:77 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:91 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:103 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:117 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:126 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:163 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:172 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:178 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:188 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:197 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:207 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:222 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:237 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:262 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:292 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:305 | Function is missing a type annotation |
+| mypy | tests/api/test_script_api.py:318 | Function is missing a type annotation |
 | mypy | tests/api/test_markdown_api.py:18 | Function is missing a type annotation |
 | mypy | tests/api/test_markdown_api.py:31 | Function is missing a type annotation |
 | mypy | tests/api/test_markdown_api.py:43 | Function is missing a type annotation |
 | mypy | tests/api/test_markdown_api.py:58 | Function is missing a type annotation |
 | mypy | tests/api/test_markdown_api.py:92 | Function is missing a type annotation |
 | mypy | tests/api/test_markdown_api.py:123 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:20 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:28 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:38 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:46 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:56 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:64 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:72 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:90 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:98 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:110 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:120 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:126 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:140 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:158 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:171 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:184 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:194 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:210 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:220 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:229 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:237 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:260 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:283 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:288 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:297 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:306 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:320 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:334 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:354 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:372 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:385 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:400 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:419 | Function is missing a type annotation |
-| mypy | tests/api/test_content_api.py:428 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_security.py:14 | Function is missing a return type annotation |
-| mypy | src/config/models.py:53 | Library stubs not installed for "yaml" |
-| mypy | tests/test_telemetry/test_log_correlation.py:14 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_log_correlation.py:35 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_log_correlation.py:56 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_log_correlation.py:77 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_log_correlation.py:98 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_log_correlation.py:122 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_log_correlation.py:142 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_log_correlation.py:161 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_log_correlation.py:185 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_log_correlation.py:205 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_log_correlation.py:224 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_log_correlation.py:247 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_log_correlation.py:290 | Function is missing a return type annotation |
-| mypy | tests/security/test_production_validation.py:15 | Function is missing a type annotation for one or more arguments |
-| mypy | tests/security/test_production_validation.py:25 | Argument 2 to "Settings" has incompatible type "**dict[str, str]"; expected "bool | None" |
-| mypy | tests/security/test_production_validation.py:25 | Argument 2 to "Settings" has incompatible type "**dict[str, str]"; expected "int | None" |
-| mypy | tests/security/test_production_validation.py:25 | Argument 2 to "Settings" has incompatible type "**dict[str, str]"; expected "bool | list[str] | tuple[str, ...] | None" |
-| mypy | tests/security/test_production_validation.py:25 | Argument 2 to "Settings" has incompatible type "**dict[str, str]"; expected "CliSettingsSource[Any] | None" |
-| mypy | tests/security/test_production_validation.py:25 | Argument 2 to "Settings" has incompatible type "**dict[str, str]"; expected "Literal['all', 'no_enums'] | bool | None" |
-| mypy | tests/security/test_production_validation.py:25 | Argument 2 to "Settings" has incompatible type "**dict[str, str]"; expected "Mapping[str, str | list[str]] | None" |
-| mypy | tests/security/test_production_validation.py:31 | Function is missing a type annotation |
-| mypy | tests/security/test_production_validation.py:38 | Function is missing a type annotation |
-| mypy | tests/security/test_production_validation.py:49 | Function is missing a type annotation |
-| mypy | tests/security/test_production_validation.py:62 | Function is missing a type annotation |
-| mypy | tests/security/test_production_validation.py:75 | Function is missing a type annotation |
-| mypy | tests/security/test_production_validation.py:89 | Function is missing a return type annotation |
-| mypy | tests/security/test_production_validation.py:98 | Function is missing a return type annotation |
-| mypy | tests/security/test_production_validation.py:107 | Function is missing a return type annotation |
-| mypy | tests/security/test_production_validation.py:116 | Function is missing a return type annotation |
-| mypy | tests/security/test_production_validation.py:124 | Function is missing a return type annotation |
-| mypy | tests/security/test_production_validation.py:132 | Function is missing a return type annotation |
-| mypy | tests/security/test_production_validation.py:141 | Function is missing a return type annotation |
-| mypy | tests/security/test_production_validation.py:150 | Function is missing a return type annotation |
-| mypy | tests/security/test_production_validation.py:159 | Function is missing a return type annotation |
-| mypy | tests/api/test_summary_api.py:16 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_api.py:26 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_api.py:38 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_api.py:50 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_api.py:62 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_api.py:74 | Function is missing a type annotation for one or more arguments |
-| mypy | tests/api/test_summary_api.py:110 | Argument "processing_time_seconds" to "Summary" has incompatible type "float"; expected "_N | None" |
-| mypy | tests/api/test_summary_api.py:122 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_api.py:138 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_api.py:149 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_api.py:160 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_api.py:171 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_api.py:189 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_api.py:200 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_api.py:210 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_api.py:225 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_api.py:236 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_api.py:247 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_api.py:263 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_api.py:280 | Function is missing a type annotation |
-| mypy | tests/api/test_summary_api.py:292 | Function is missing a type annotation |
-| mypy | src/utils/html_parser.py:74 | Value of type variable "AnyStr" of "urljoin" cannot be "Sequence[str]" |
-| mypy | src/utils/html_parser.py:88 | Incompatible return value type (got "list[str | AttributeValueList]", expected "list[str]") |
-| mypy | src/cli/profile_commands.py:129 | Library stubs not installed for "yaml" |
-| mypy | src/cli/neon_commands.py:23 | Function is missing a return type annotation |
-| mypy | src/cli/neon_commands.py:51 | Function is missing a return type annotation |
-| mypy | src/cli/neon_commands.py:96 | Function is missing a return type annotation |
-| mypy | src/cli/neon_commands.py:138 | Function is missing a return type annotation |
-| mypy | src/cli/neon_commands.py:161 | Function is missing a return type annotation |
-| mypy | src/cli/neon_commands.py:191 | Function is missing a return type annotation |
-| mypy | scripts/performance_test.py:309 | Library stubs not installed for "requests" |
-| mypy | src/services/chat_service.py:227 | No overload variant of "create" of "AsyncCompletions" matches argument types "str", "list[dict[str, Any]]", "bool", "dict[str, bool]" |
-| mypy | tests/test_utils/test_token_counter.py:10 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_token_counter.py:16 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_token_counter.py:26 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_token_counter.py:32 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_token_counter.py:42 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_token_counter.py:56 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_token_counter.py:62 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_token_counter.py:81 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_token_counter.py:98 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_token_counter.py:118 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_token_counter.py:129 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_token_counter.py:139 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_token_counter.py:149 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_token_counter.py:169 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_html_parser.py:11 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_html_parser.py:31 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_html_parser.py:51 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_html_parser.py:65 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_html_parser.py:86 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_html_parser.py:96 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_html_parser.py:103 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_html_parser.py:109 | Function is missing a return type annotation |
-| mypy | tests/unit/test_prompt_service_unit.py:7 | Function is missing a return type annotation |
-| mypy | tests/unit/test_prompt_service_unit.py:11 | Function is missing a return type annotation |
-| mypy | tests/unit/test_prompt_service_unit.py:29 | Function is missing a return type annotation |
-| mypy | tests/unit/test_prompt_service_unit.py:41 | Function is missing a return type annotation |
-| mypy | tests/api/test_settings_api.py:16 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:27 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:43 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:59 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:81 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:97 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:110 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:121 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:128 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:138 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:154 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:170 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:192 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:216 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:237 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:246 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:259 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:276 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:295 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:304 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:314 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:327 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:344 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:356 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:371 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:402 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:428 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_api.py:439 | Function is missing a type annotation |
-| mypy | tests/api/test_connection_status_api.py:11 | Function is missing a type annotation |
-| mypy | tests/api/test_connection_status_api.py:45 | Function is missing a type annotation |
-| mypy | tests/api/test_connection_status_api.py:61 | Function is missing a type annotation |
-| mypy | tests/api/test_connection_status_api.py:79 | Function is missing a type annotation |
-| mypy | tests/api/test_connection_status_api.py:96 | Function is missing a type annotation |
-| mypy | tests/test_services/test_chunking.py:23 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:28 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:33 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:39 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:43 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:52 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:59 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:67 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:71 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:75 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:79 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:83 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:95 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:98 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:105 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:109 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:113 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:121 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:127 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:139 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:142 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:150 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:161 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:164 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:171 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_chunking.py:184 | Function is missing a type annotation |
-| mypy | tests/test_services/test_chunking.py:199 | Function is missing a type annotation |
-| mypy | tests/test_services/test_chunking.py:214 | Function is missing a type annotation |
-| mypy | tests/test_services/test_chunking.py:229 | Function is missing a type annotation |
-| mypy | tests/api/test_error_handler.py:22 | Function is missing a return type annotation |
-| mypy | tests/api/test_error_handler.py:26 | Function is missing a return type annotation |
-| mypy | tests/api/test_error_handler.py:31 | Function is missing a return type annotation |
-| mypy | tests/api/test_error_handler.py:43 | Function is missing a return type annotation |
-| mypy | tests/api/test_error_handler.py:52 | Function is missing a return type annotation |
-| mypy | tests/api/test_error_handler.py:78 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:14 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:50 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:56 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:63 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:70 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:77 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:83 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:89 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:95 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:102 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:107 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:119 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:135 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:142 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:149 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:154 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:159 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:170 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:176 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:182 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:188 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:197 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:210 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:217 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:224 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:231 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:238 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:250 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_summary_markdown.py:258 | Function is missing a type annotation |
-| mypy | tests/test_helpers/test_test_db.py:30 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:37 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:44 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:52 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:59 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:64 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:74 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:90 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:95 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:103 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:111 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:119 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:127 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:140 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:154 | Function is missing a type annotation |
-| mypy | tests/test_helpers/test_test_db.py:159 | Function is missing a type annotation |
-| mypy | tests/test_helpers/test_test_db.py:170 | Function is missing a type annotation |
-| mypy | tests/test_helpers/test_test_db.py:189 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:212 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:230 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:249 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:261 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:287 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:311 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:316 | Function is missing a return type annotation |
-| mypy | tests/test_helpers/test_test_db.py:321 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_secrets.py:10 | Library stubs not installed for "yaml" |
-| mypy | tests/test_config/test_profiles.py:11 | Library stubs not installed for "yaml" |
-| mypy | tests/test_config/test_profiles.py:557 | Item "None" of "dict[str, Any] | None" has no attribute "get" |
-| mypy | tests/test_config/test_profiles.py:575 | Item "None" of "dict[str, Any] | None" has no attribute "get" |
-| mypy | tests/test_config/test_profile_validation.py:8 | Library stubs not installed for "yaml" |
-| mypy | tests/test_config/test_migrate_sources.py:10 | Library stubs not installed for "yaml" |
-| mypy | tests/test_config/test_migrate_sources.py:95 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:105 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:111 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:122 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:128 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:137 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:147 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:162 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:171 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:181 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:208 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:217 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:223 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:229 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:235 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:245 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:252 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:258 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:264 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:270 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:287 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:297 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:305 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:316 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:326 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:336 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:339 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:344 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:363 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:380 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:400 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:419 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:447 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:463 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:480 | Argument 1 to "write_sources_directory" has incompatible type "dict[str, object]"; expected "list[dict[str, Any]] | dict[str, list[dict[str, Any]]]" |
-| mypy | tests/test_config/test_migrate_sources.py:490 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:505 | Argument 1 has incompatible type "dict[str, object]"; expected "list[dict[str, Any]] | dict[str, list[dict[str, Any]]]" |
-| mypy | tests/test_config/test_migrate_sources.py:513 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:521 | Argument 1 has incompatible type "dict[str, object]"; expected "list[dict[str, Any]] | dict[str, list[dict[str, Any]]]" |
-| mypy | tests/test_config/test_migrate_sources.py:530 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:531 | Need type annotation for "sources" |
-| mypy | tests/test_config/test_migrate_sources.py:552 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:575 | Argument 1 to "write_sources_directory" has incompatible type "dict[str, object]"; expected "list[dict[str, Any]] | dict[str, list[dict[str, Any]]]" |
-| mypy | tests/test_config/test_migrate_sources.py:593 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:609 | Argument 1 has incompatible type "dict[str, object]"; expected "list[dict[str, Any]] | dict[str, list[dict[str, Any]]]" |
-| mypy | tests/test_config/test_migrate_sources.py:625 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:648 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:660 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:687 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:706 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_migrate_sources.py:720 | Function is missing a return type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:31 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:38 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:43 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:61 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:69 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:77 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:84 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:95 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:116 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:124 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:131 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:140 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:159 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:175 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:189 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:209 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:215 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:222 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:240 | Function is missing a type annotation |
-| mypy | tests/smoke/test_api_security_smoke.py:245 | Function is missing a type annotation |
-| mypy | tests/smoke/conftest.py:40 | The return type of a generator function should be "Generator" or one of its supertypes |
-| mypy | tests/smoke/conftest.py:47 | The return type of a generator function should be "Generator" or one of its supertypes |
-| mypy | tests/integration/test_hoverfly_rss.py:29 | Function is missing a type annotation |
-| mypy | tests/integration/test_hoverfly_rss.py:42 | Function is missing a type annotation |
-| mypy | tests/integration/test_hoverfly_rss.py:52 | Function is missing a type annotation |
-| mypy | tests/integration/test_hoverfly_rss.py:61 | Function is missing a type annotation |
-| mypy | tests/integration/test_hoverfly_rss.py:69 | Function is missing a type annotation |
-| mypy | tests/integration/test_hoverfly_rss.py:85 | Function is missing a type annotation |
-| mypy | tests/integration/test_hoverfly_rss.py:89 | Function is missing a type annotation |
-| mypy | tests/integration/test_hoverfly_rss.py:97 | Function is missing a type annotation |
-| mypy | tests/integration/test_hoverfly_rss.py:105 | Function is missing a type annotation |
-| mypy | tests/integration/test_hoverfly_rss.py:114 | Function is missing a type annotation |
-| mypy | tests/integration/test_hoverfly_rss.py:119 | Function is missing a type annotation |
-| mypy | tests/integration/test_hoverfly_rss.py:130 | Function is missing a type annotation |
-| mypy | tests/api/test_theme_api.py:11 | Function is missing a type annotation |
-| mypy | tests/api/test_theme_api.py:24 | Function is missing a type annotation |
-| mypy | tests/api/test_theme_api.py:41 | Function is missing a type annotation |
-| mypy | tests/api/test_theme_api.py:54 | Function is missing a type annotation |
-| mypy | tests/api/test_theme_api.py:70 | Function is missing a type annotation |
-| mypy | tests/api/test_theme_api.py:90 | Function is missing a type annotation |
-| mypy | tests/api/test_theme_api.py:97 | Function is missing a type annotation |
-| mypy | tests/api/test_theme_api.py:117 | Function is missing a type annotation |
-| mypy | tests/api/test_theme_api.py:131 | Function is missing a type annotation |
-| mypy | tests/api/test_theme_api.py:139 | Function is missing a type annotation |
-| mypy | tests/api/test_theme_api.py:148 | Function is missing a type annotation |
-| mypy | tests/api/test_theme_api.py:170 | Function is missing a type annotation |
-| mypy | tests/api/test_rate_limiter.py:27 | Function is missing a return type annotation |
-| mypy | tests/api/test_rate_limiter.py:33 | Function is missing a return type annotation |
-| mypy | tests/api/test_rate_limiter.py:46 | Function is missing a type annotation |
-| mypy | tests/api/test_rate_limiter.py:50 | Function is missing a type annotation |
-| mypy | tests/api/test_rate_limiter.py:56 | Function is missing a type annotation |
-| mypy | tests/api/test_rate_limiter.py:62 | Function is missing a type annotation |
-| mypy | tests/api/test_rate_limiter.py:77 | Function is missing a type annotation |
-| mypy | tests/api/test_rate_limiter.py:85 | Function is missing a type annotation |
-| mypy | tests/api/test_rate_limiter.py:104 | Function is missing a type annotation |
-| mypy | tests/api/test_rate_limiter.py:116 | Function is missing a type annotation |
-| mypy | tests/api/test_rate_limiter.py:128 | Function is missing a type annotation |
-| mypy | tests/api/test_rate_limiter.py:152 | Function is missing a type annotation |
-| mypy | tests/api/test_rate_limiter.py:165 | Function is missing a type annotation |
-| mypy | tests/api/test_rate_limiter.py:190 | Function is missing a type annotation |
-| mypy | tests/api/test_rate_limiter.py:194 | Function is missing a type annotation |
-| mypy | tests/api/test_rate_limiter.py:199 | Function is missing a type annotation |
-| mypy | tests/api/test_rate_limiter.py:209 | Function is missing a type annotation |
-| mypy | tests/api/test_rate_limiter.py:218 | Function is missing a type annotation |
-| mypy | tests/api/test_rate_limiter.py:240 | Function is missing a return type annotation |
-| mypy | tests/api/test_rate_limiter.py:245 | Function is missing a return type annotation |
-| mypy | tests/api/test_rate_limiter.py:259 | Function is missing a return type annotation |
-| mypy | tests/api/test_rate_limiter.py:270 | Function is missing a return type annotation |
-| mypy | tests/api/test_rate_limiter.py:292 | Function is missing a return type annotation |
-| mypy | tests/api/test_rate_limiter.py:299 | Function is missing a return type annotation |
-| mypy | tests/api/test_rate_limiter.py:307 | Function is missing a return type annotation |
-| mypy | tests/api/test_rate_limiter.py:313 | Function is missing a return type annotation |
-| mypy | tests/api/test_audio_digest_api.py:14 | Function is missing a type annotation for one or more arguments |
-| mypy | tests/api/test_audio_digest_api.py:19 | Argument "speed" to "AudioDigest" has incompatible type "float"; expected "_N | None" |
-| mypy | tests/api/test_audio_digest_api.py:23 | Argument "duration_seconds" to "AudioDigest" has incompatible type "float"; expected "_N | None" |
-| mypy | tests/api/test_audio_digest_api.py:36 | Function is missing a type annotation for one or more arguments |
-| mypy | tests/api/test_audio_digest_api.py:42 | Argument "speed" to "AudioDigest" has incompatible type "float"; expected "_N | None" |
-| mypy | tests/api/test_audio_digest_api.py:46 | Argument "duration_seconds" to "AudioDigest" has incompatible type "float"; expected "_N | None" |
-| mypy | tests/api/test_audio_digest_api.py:52 | Argument "speed" to "AudioDigest" has incompatible type "float"; expected "_N | None" |
-| mypy | tests/api/test_audio_digest_api.py:59 | Argument "speed" to "AudioDigest" has incompatible type "float"; expected "_N | None" |
-| mypy | tests/api/test_audio_digest_api.py:80 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:102 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:115 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:131 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:141 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:157 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:165 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:174 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:184 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:213 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:221 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:229 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:238 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:247 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:255 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:270 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:284 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:302 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:322 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:329 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:346 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:352 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:362 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:382 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:390 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:430 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:449 | Function is missing a type annotation |
-| mypy | tests/api/test_audio_digest_api.py:455 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:15 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:83 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:88 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:94 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:101 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:108 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:114 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:122 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:129 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:135 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:140 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:145 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:150 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:165 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:171 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:177 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:182 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:189 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:198 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:203 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:208 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:222 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:227 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:236 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:242 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:248 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:254 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:260 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:273 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:280 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:287 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:294 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:300 | Function is missing a type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:311 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:331 | Function is missing a return type annotation |
-| mypy | tests/test_utils/test_digest_markdown.py:345 | Function is missing a return type annotation |
+| mypy | tests/api/test_graph_routes.py:30 | Function is missing a type annotation |
+| mypy | tests/api/test_graph_routes.py:34 | Function is missing a return type annotation |
+| mypy | tests/api/test_graph_routes.py:41 | Function is missing a type annotation |
+| mypy | tests/api/test_graph_routes.py:50 | Function is missing a type annotation |
+| mypy | tests/api/test_graph_routes.py:64 | Function is missing a type annotation |
+| mypy | tests/api/test_graph_routes.py:95 | Function is missing a type annotation |
+| mypy | tests/api/test_graph_routes.py:102 | Function is missing a type annotation |
+| mypy | tests/api/test_graph_routes.py:106 | Function is missing a type annotation |
+| mypy | tests/api/test_graph_routes.py:110 | Function is missing a type annotation |
+| mypy | tests/api/test_graph_routes.py:111 | Function is missing a type annotation |
+| mypy | tests/api/test_graph_routes.py:131 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_graph_routes.py:159 | Incompatible return value type (got "int | None", expected "int") |
+| mypy | tests/api/test_graph_routes.py:163 | Function is missing a type annotation |
+| mypy | tests/api/test_graph_routes.py:179 | Function is missing a type annotation |
+| mypy | tests/api/test_graph_routes.py:186 | Function is missing a type annotation |
+| mypy | tests/api/test_graph_routes.py:194 | Function is missing a type annotation |
+| mypy | tests/api/test_graph_routes.py:209 | Function is missing a type annotation |
+| mypy | tests/api/test_graph_routes.py:213 | Function is missing a type annotation |
+| mypy | tests/api/test_graph_routes.py:234 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:19 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:27 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:37 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:45 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:55 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:63 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:71 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:76 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:94 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:102 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:114 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:124 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:130 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:144 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:162 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:175 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:188 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:198 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:206 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:222 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:232 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:241 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:249 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:272 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:295 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:300 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:309 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:318 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:332 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:346 | Function is missing a type annotation |
+| mypy | tests/api/test_content_api.py:355 | Function is missing a type annotation |
+| mypy | tests/real_ingestion/test_live_tier.py:51 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/real_ingestion/test_live_tier.py:68 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/agents/persona/test_loader.py:140 | "object" has no attribute "return_value" |
+| mypy | tests/evaluation/test_consensus.py:62 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_consensus.py:68 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_consensus.py:74 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_consensus.py:80 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_consensus.py:90 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_consensus.py:100 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_consensus.py:106 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_consensus.py:117 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_consensus.py:132 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_consensus.py:142 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_consensus.py:146 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_consensus.py:152 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_consensus.py:163 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_consensus.py:175 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_consensus.py:186 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_consensus.py:199 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_consensus.py:212 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_consensus.py:223 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_consensus.py:243 | Function is missing a return type annotation |
+| mypy | tests/security/test_youtube_input_validation.py:7 | Function is missing a return type annotation |
+| mypy | tests/security/test_youtube_input_validation.py:13 | Function is missing a return type annotation |
+| mypy | tests/security/test_youtube_input_validation.py:29 | Function is missing a return type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:21 | Function is missing a return type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:63 | Function is missing a return type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:84 | Function is missing a return type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:90 | Function is missing a return type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:101 | Function is missing a return type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:107 | Function is missing a return type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:115 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:126 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:138 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:148 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:157 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:179 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:197 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:211 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:224 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:240 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:250 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:255 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:265 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:281 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:289 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:293 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:297 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:302 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:308 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:312 | Function is missing a type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:334 | Function is missing a return type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:338 | Function is missing a return type annotation |
+| mypy | tests/parsers/test_kreuzberg_parser.py:342 | Function is missing a return type annotation |
+| mypy | tests/api/test_search_api.py:25 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:122 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:252 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:256 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:263 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:267 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:271 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:287 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:302 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:307 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:312 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:321 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:331 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:346 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:352 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:363 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:374 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:389 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:401 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:419 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:432 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:446 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:463 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:471 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:481 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:489 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:499 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:526 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:536 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:550 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:554 | Function is missing a type annotation |
+| mypy | tests/api/test_search_api.py:558 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:17 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:29 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:40 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:59 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:82 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:92 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:100 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:118 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:133 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:165 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:177 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:185 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:199 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:219 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:257 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:279 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:283 | Function is missing a return type annotation |
+| mypy | tests/api/test_reference_routes.py:290 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_reference_routes.py:308 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:335 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:363 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:382 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:392 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:399 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:403 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:410 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:411 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:429 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:440 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:463 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:481 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:499 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:506 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:513 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:520 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:534 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:535 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:549 | Function is missing a type annotation |
+| mypy | tests/api/test_reference_routes.py:557 | Function is missing a type annotation |
 | mypy | tests/test_utils/test_digest_formatter.py:98 | Function is missing a type annotation |
 | mypy | tests/test_utils/test_digest_formatter.py:146 | Function is missing a type annotation |
 | mypy | tests/test_utils/test_digest_formatter.py:191 | Function is missing a return type annotation |
@@ -1686,96 +1212,6 @@
 | mypy | tests/test_utils/test_digest_formatter.py:379 | Function is missing a return type annotation |
 | mypy | tests/test_utils/test_digest_formatter.py:412 | Function is missing a return type annotation |
 | mypy | tests/test_utils/test_digest_formatter.py:440 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_router.py:15 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_router.py:30 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_router.py:45 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:50 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:57 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:62 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:67 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:71 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:75 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:82 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:88 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:94 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:99 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:104 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:109 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:114 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:119 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:124 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:129 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:134 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:140 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:146 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:154 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:162 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_router.py:179 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_router.py:199 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_revision.py:15 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_revision.py:60 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_revision.py:80 | Function is missing a type annotation |
-| mypy | tests/test_models/test_revision.py:135 | Function is missing a type annotation |
-| mypy | tests/test_models/test_revision.py:149 | Function is missing a type annotation |
-| mypy | tests/test_models/test_revision.py:159 | Function is missing a type annotation |
-| mypy | tests/test_models/test_revision.py:187 | Function is missing a type annotation |
-| mypy | tests/test_models/test_revision.py:202 | Function is missing a type annotation |
-| mypy | tests/test_models/test_revision.py:239 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_revision.py:255 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_revision.py:265 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_revision.py:275 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_revision.py:292 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_revision.py:313 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_revision.py:326 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_revision.py:350 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:32 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:48 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:58 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:67 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:80 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:89 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:98 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:117 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:158 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:177 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:185 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:213 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:244 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:256 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:265 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:279 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:293 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:326 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:347 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:365 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:384 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:415 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:429 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:460 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:475 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:480 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:484 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:488 | Function is missing a return type annotation |
-| mypy | tests/test_models/test_content.py:519 | Function is missing a return type annotation |
-| mypy | tests/security/test_youtube_input_validation.py:7 | Function is missing a return type annotation |
-| mypy | tests/security/test_youtube_input_validation.py:13 | Function is missing a return type annotation |
-| mypy | tests/security/test_youtube_input_validation.py:29 | Function is missing a return type annotation |
-| mypy | tests/helpers/test_hoverfly.py:16 | Function is missing a return type annotation |
-| mypy | tests/helpers/test_hoverfly.py:25 | Function is missing a type annotation |
-| mypy | tests/helpers/test_hoverfly.py:34 | Function is missing a type annotation |
-| mypy | tests/helpers/test_hoverfly.py:42 | Function is missing a type annotation |
-| mypy | tests/helpers/test_hoverfly.py:49 | Function is missing a type annotation |
-| mypy | tests/helpers/test_hoverfly.py:58 | Function is missing a type annotation |
-| mypy | tests/helpers/test_hoverfly.py:66 | Function is missing a type annotation |
-| mypy | tests/helpers/test_hoverfly.py:79 | Function is missing a type annotation |
-| mypy | tests/helpers/test_hoverfly.py:96 | Function is missing a type annotation |
-| mypy | tests/helpers/test_hoverfly.py:100 | Function is missing a type annotation |
-| mypy | tests/helpers/test_hoverfly.py:118 | Function is missing a type annotation |
-| mypy | tests/helpers/test_hoverfly.py:129 | Function is missing a type annotation |
-| mypy | tests/helpers/test_hoverfly.py:138 | Function is missing a type annotation |
-| mypy | tests/helpers/test_hoverfly.py:149 | Function is missing a type annotation |
-| mypy | tests/helpers/test_hoverfly.py:157 | Function is missing a type annotation |
-| mypy | tests/helpers/test_hoverfly.py:162 | Function is missing a type annotation |
 | mypy | tests/test_services/test_content_service.py:19 | Function is missing a return type annotation |
 | mypy | tests/test_services/test_content_service.py:25 | Function is missing a type annotation |
 | mypy | tests/test_services/test_content_service.py:31 | Function is missing a return type annotation |
@@ -1803,38 +1239,429 @@
 | mypy | tests/test_services/test_content_service.py:296 | Function is missing a type annotation |
 | mypy | tests/test_services/test_content_service.py:304 | Function is missing a type annotation |
 | mypy | tests/test_services/test_content_service.py:313 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:25 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:100 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:230 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:234 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:241 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:245 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:249 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:265 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:280 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:285 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:290 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:299 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:309 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:324 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:330 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:341 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:352 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:367 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:379 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:397 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:410 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:424 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:441 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:449 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:459 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:467 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:477 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:504 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:514 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:528 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:532 | Function is missing a type annotation |
-| mypy | tests/api/test_search_api.py:536 | Function is missing a type annotation |
+| mypy | tests/migrations/test_workflow_provenance.py:102 | Module has no attribute "op" |
+| mypy | tests/api/test_theme_api.py:17 | Function is missing a type annotation |
+| mypy | tests/api/test_theme_api.py:29 | Function is missing a type annotation |
+| mypy | tests/api/test_theme_api.py:38 | Function is missing a type annotation |
+| mypy | tests/api/test_theme_api.py:47 | Function is missing a type annotation |
+| mypy | tests/api/test_theme_api.py:82 | Function is missing a type annotation |
+| mypy | tests/api/test_theme_api.py:120 | Function is missing a type annotation |
+| mypy | tests/test_models/test_revision.py:15 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_revision.py:60 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_revision.py:80 | Function is missing a type annotation |
+| mypy | tests/test_models/test_revision.py:135 | Function is missing a type annotation |
+| mypy | tests/test_models/test_revision.py:149 | Function is missing a type annotation |
+| mypy | tests/test_models/test_revision.py:159 | Function is missing a type annotation |
+| mypy | tests/test_models/test_revision.py:187 | Function is missing a type annotation |
+| mypy | tests/test_models/test_revision.py:202 | Function is missing a type annotation |
+| mypy | tests/test_models/test_revision.py:239 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_revision.py:255 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_revision.py:265 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_revision.py:275 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_revision.py:292 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_revision.py:313 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_revision.py:326 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_revision.py:350 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:13 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:19 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:30 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:41 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:52 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:63 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:69 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:75 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:83 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:89 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:100 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:111 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:122 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:134 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:148 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:158 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:165 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:176 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:186 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:197 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:208 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:217 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:223 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:234 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:246 | Function is missing a return type annotation |
+| mypy | tests/cli/test_query_options.py:264 | Function is missing a return type annotation |
+| mypy | tests/release_smoke/test_evidence.py:290 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/release_smoke/test_evidence.py:344 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/release_smoke/test_evidence.py:399 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/release_smoke/test_evidence.py:415 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/agents/memory/test_provider.py:18 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_provider.py:32 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_provider.py:47 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_provider.py:61 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_provider.py:75 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_provider.py:87 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_provider.py:96 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_provider.py:103 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_provider.py:109 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_provider.py:114 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_provider.py:126 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_provider.py:137 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_provider.py:151 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_provider.py:165 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_provider.py:173 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_provider.py:187 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_provider.py:203 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_provider.py:224 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_provider.py:241 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_strategies.py:18 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_strategies.py:22 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_strategies.py:24 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:30 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_strategies.py:32 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:35 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:38 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:41 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_strategies.py:52 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_strategies.py:57 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_strategies.py:64 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:73 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:82 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:89 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:100 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:110 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_strategies.py:117 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:126 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:132 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:138 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:146 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:156 | Function is missing a return type annotation |
+| mypy | tests/agents/memory/test_strategies.py:164 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:170 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:176 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:181 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:186 | Function is missing a type annotation |
+| mypy | tests/agents/memory/test_strategies.py:191 | Function is missing a type annotation |
+| mypy | tests/services/test_evaluation_report.py:15 | Function is missing a return type annotation |
+| mypy | tests/services/test_evaluation_report.py:20 | Function is missing a return type annotation |
+| mypy | tests/services/test_evaluation_report.py:29 | Function is missing a return type annotation |
+| mypy | tests/services/test_evaluation_report.py:45 | Function is missing a return type annotation |
+| mypy | tests/services/test_evaluation_service.py:14 | Function is missing a return type annotation |
+| mypy | tests/services/test_evaluation_service.py:28 | Function is missing a return type annotation |
+| mypy | tests/services/test_evaluation_service.py:35 | Function is missing a return type annotation |
+| mypy | tests/services/test_evaluation_service.py:48 | Function is missing a return type annotation |
+| mypy | tests/services/test_evaluation_service.py:55 | Function is missing a return type annotation |
+| mypy | tests/services/test_evaluation_service.py:61 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_router.py:15 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_router.py:30 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_router.py:45 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:50 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:57 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:62 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:67 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:71 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:75 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:82 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:88 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:94 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:99 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:104 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:109 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:114 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:119 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:124 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:129 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:134 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:140 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:146 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:154 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:162 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_router.py:179 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_router.py:199 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_youtube_parser.py:15 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_youtube_parser.py:19 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_youtube_parser.py:23 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_youtube_parser.py:27 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_youtube_parser.py:31 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_youtube_parser.py:36 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_youtube_parser.py:40 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_youtube_parser.py:45 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_youtube_parser.py:49 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_youtube_parser.py:55 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_youtube_parser.py:84 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_youtube_parser.py:89 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_youtube_parser.py:102 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_youtube_parser.py:122 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_youtube_parser.py:137 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_youtube_parser.py:149 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_youtube_parser.py:162 | Function is missing a return type annotation |
+| mypy | tests/api/test_sorting.py:31 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:66 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:75 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:84 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:94 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:104 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:114 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:127 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:137 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:166 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:190 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:215 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:225 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:234 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:243 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:261 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:298 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:308 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:317 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:331 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:341 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:359 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:397 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:420 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:430 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:439 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:448 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:466 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:520 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:537 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:546 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:555 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:564 | Function is missing a type annotation |
+| mypy | tests/api/test_sorting.py:573 | Function is missing a type annotation |
+| mypy | tests/test_sync/test_obsidian_topic_export.py:18 | Function is missing a return type annotation |
+| mypy | tests/test_sync/test_obsidian_topic_export.py:22 | Function is missing a return type annotation |
+| mypy | tests/test_sync/test_obsidian_topic_export.py:25 | Function is missing a return type annotation |
+| mypy | tests/test_sync/test_obsidian_topic_export.py:42 | Function is missing a return type annotation |
+| mypy | tests/test_sync/test_obsidian_topic_export.py:55 | Function is missing a return type annotation |
+| mypy | tests/test_sync/test_obsidian_topic_export.py:62 | Function is missing a return type annotation |
+| mypy | tests/test_sync/test_obsidian_topic_export.py:70 | Function is missing a return type annotation |
+| mypy | tests/test_sync/test_obsidian_topic_export.py:99 | Function is missing a return type annotation |
+| mypy | tests/test_sync/test_obsidian_topic_export.py:112 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_batch.py:11 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_batch.py:28 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_batch.py:39 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_batch.py:44 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_batch.py:50 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_batch.py:70 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_batch.py:86 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_batch.py:89 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_batch.py:93 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_batch.py:104 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_batch.py:114 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_batch.py:124 | Function is missing a return type annotation |
+| mypy | tests/test_models/test_batch.py:141 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:24 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:34 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:42 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:52 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:60 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:69 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:77 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:85 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:93 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:106 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:117 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:126 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:133 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:139 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:149 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:160 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:169 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:176 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:182 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:191 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:198 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:206 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:218 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:230 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:239 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:247 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:255 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:265 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:274 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:283 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:296 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:303 | Function is missing a return type annotation |
+| mypy | tests/unit/test_factories.py:320 | Function is missing a type annotation |
+| mypy | tests/unit/test_factories.py:332 | Function is missing a type annotation |
+| mypy | tests/unit/test_factories.py:341 | Function is missing a type annotation |
+| mypy | tests/unit/test_factories.py:349 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:15 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:25 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:29 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:40 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:44 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:51 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:55 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:62 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:69 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:74 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:80 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:85 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:92 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:102 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:112 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:123 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:128 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:132 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:138 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:144 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:149 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:159 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:178 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:190 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:197 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:213 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:227 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:249 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_docling_parser.py:262 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_html_parser.py:11 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_html_parser.py:31 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_html_parser.py:51 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_html_parser.py:65 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_html_parser.py:86 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_html_parser.py:96 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_html_parser.py:103 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_html_parser.py:109 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_neon_branch.py:24 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_neon_branch.py:36 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_neon_branch.py:62 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_neon_branch.py:71 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_neon_branch.py:88 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_neon_branch.py:104 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_neon_branch.py:116 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_neon_branch.py:143 | Unpacking a string is disallowed |
+| mypy | tests/test_storage/test_neon_branch.py:144 | Cannot determine type of "resp_method" |
+| mypy | tests/test_storage/test_neon_branch.py:144 | Cannot determine type of "url_pattern" |
+| mypy | tests/test_storage/test_neon_branch.py:145 | Cannot determine type of "resp_method" |
+| mypy | tests/test_storage/test_neon_branch.py:145 | Cannot determine type of "url_pattern" |
+| mypy | tests/test_storage/test_neon_branch.py:174 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_neon_branch.py:182 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_neon_branch.py:236 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_neon_branch.py:299 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_neon_branch.py:347 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_neon_branch.py:388 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_neon_branch.py:415 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_neon_branch.py:467 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_neon_branch.py:528 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_neon_branch.py:536 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_neon_branch.py:640 | Function is missing a type annotation |
+| mypy | tests/security/test_ssrf_protection.py:11 | Function is missing a return type annotation |
+| mypy | tests/security/test_ssrf_protection.py:24 | Function is missing a return type annotation |
+| mypy | tests/security/test_ssrf_protection.py:36 | Function is missing a return type annotation |
+| mypy | tests/security/test_ssrf_protection.py:48 | Function is missing a return type annotation |
+| mypy | tests/security/test_ssrf_protection.py:60 | Function is missing a return type annotation |
+| mypy | tests/security/test_ssrf_protection.py:68 | Function is missing a return type annotation |
+| mypy | tests/security/test_path_traversal.py:16 | Function is missing a return type annotation |
+| mypy | tests/security/test_path_traversal.py:25 | Function is missing a type annotation |
+| mypy | tests/security/test_path_traversal.py:36 | Function is missing a type annotation |
+| mypy | tests/security/test_path_traversal.py:44 | Function is missing a type annotation |
+| mypy | tests/security/test_path_traversal.py:52 | Function is missing a type annotation |
+| mypy | tests/test_prompt_service.py:13 | Function is missing a return type annotation |
+| mypy | tests/test_prompt_service.py:17 | Function is missing a return type annotation |
+| mypy | tests/test_prompt_service.py:21 | Function is missing a return type annotation |
+| mypy | tests/test_prompt_service.py:26 | Function is missing a return type annotation |
+| mypy | tests/test_prompt_service.py:31 | Function is missing a return type annotation |
+| mypy | tests/test_prompt_service.py:41 | Function is missing a return type annotation |
+| mypy | tests/test_prompt_service.py:47 | Function is missing a type annotation |
+| mypy | tests/test_prompt_service.py:64 | Function is missing a type annotation |
+| mypy | tests/test_prompt_service.py:73 | Function is missing a type annotation |
+| mypy | tests/test_prompt_service.py:80 | Function is missing a type annotation |
+| mypy | tests/test_prompt_service.py:87 | Function is missing a type annotation |
+| mypy | tests/test_prompt_service.py:100 | Function is missing a return type annotation |
+| mypy | tests/test_prompt_service.py:118 | Function is missing a return type annotation |
+| mypy | tests/test_prompt_service.py:136 | Function is missing a return type annotation |
+| mypy | tests/test_prompt_service.py:150 | Function is missing a return type annotation |
+| mypy | tests/test_prompt_service.py:156 | Function is missing a type annotation |
+| mypy | tests/test_prompt_service.py:177 | Function is missing a type annotation |
+| mypy | tests/test_prompt_service.py:199 | Function is missing a return type annotation |
+| mypy | tests/test_prompt_service.py:205 | Function is missing a type annotation |
+| mypy | tests/test_prompt_service.py:211 | Function is missing a type annotation |
+| mypy | tests/conftest.py:42 | Cannot assign to a type |
+| mypy | tests/conftest.py:42 | Incompatible types in assignment (expression has type "type[JSON]", variable has type "type[JSONB]") |
+| mypy | tests/conftest.py:56 | Function is missing a return type annotation |
+| mypy | tests/conftest.py:84 | Function is missing a return type annotation |
+| mypy | tests/conftest.py:125 | Function is missing a return type annotation |
+| mypy | tests/conftest.py:150 | Function is missing a type annotation |
+| mypy | tests/conftest.py:186 | Function is missing a type annotation |
+| mypy | tests/conftest.py:195 | Function is missing a type annotation |
+| mypy | tests/conftest.py:204 | Function is missing a type annotation |
+| mypy | tests/conftest.py:217 | Function is missing a type annotation |
+| mypy | tests/unit/test_prompt_service_unit.py:7 | Function is missing a return type annotation |
+| mypy | tests/unit/test_prompt_service_unit.py:11 | Function is missing a return type annotation |
+| mypy | tests/unit/test_prompt_service_unit.py:29 | Function is missing a return type annotation |
+| mypy | tests/unit/test_prompt_service_unit.py:41 | Function is missing a return type annotation |
+| mypy | tests/unit/test_model_audio_capability.py:9 | Function is missing a return type annotation |
+| mypy | tests/unit/test_model_audio_capability.py:18 | Function is missing a return type annotation |
+| mypy | tests/unit/test_model_audio_capability.py:25 | Function is missing a return type annotation |
+| mypy | tests/unit/test_model_audio_capability.py:32 | Function is missing a return type annotation |
+| mypy | tests/unit/test_model_audio_capability.py:40 | Function is missing a return type annotation |
+| mypy | tests/unit/test_model_audio_capability.py:47 | Function is missing a return type annotation |
+| mypy | tests/unit/test_model_audio_capability.py:58 | Function is missing a return type annotation |
+| mypy | tests/unit/test_model_audio_capability.py:63 | Function is missing a return type annotation |
+| mypy | tests/unit/test_model_audio_capability.py:72 | Function is missing a return type annotation |
+| mypy | tests/unit/test_model_audio_capability.py:77 | Function is missing a return type annotation |
+| mypy | tests/unit/test_model_audio_capability.py:91 | Function is missing a return type annotation |
+| mypy | tests/unit/test_model_audio_capability.py:95 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_otel_smoke.py:34 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_otel_smoke.py:46 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_otel_smoke.py:66 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_otel_smoke.py:114 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_otel_smoke.py:142 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_otel_smoke.py:166 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_otel_smoke.py:200 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_otel_smoke.py:235 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_otel_smoke.py:265 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_log_setup.py:12 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_log_setup.py:30 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_log_setup.py:41 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_log_setup.py:56 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_log_setup.py:66 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_log_setup.py:75 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_log_setup.py:85 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_log_setup.py:97 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_log_setup.py:109 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_log_setup.py:142 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_log_setup.py:161 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_log_setup.py:179 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_log_setup.py:193 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_log_setup.py:207 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_log_setup.py:216 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_log_correlation.py:16 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_log_correlation.py:37 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_log_correlation.py:58 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_log_correlation.py:79 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_log_correlation.py:100 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_log_correlation.py:124 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_log_correlation.py:144 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_log_correlation.py:163 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_log_correlation.py:187 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_log_correlation.py:207 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_log_correlation.py:226 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_log_correlation.py:262 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_log_correlation.py:324 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_llm_integration.py:13 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_llm_integration.py:51 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_llm_integration.py:79 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_llm_integration.py:105 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_llm_integration.py:135 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_factory.py:15 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_factory.py:25 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_factory.py:44 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_factory.py:60 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_factory.py:76 | Function is missing a type annotation |
+| mypy | tests/test_telemetry/test_factory.py:88 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_factory.py:95 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_factory.py:103 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_factory.py:111 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_factory.py:123 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_factory.py:128 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_factory.py:142 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_factory.py:148 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_factory.py:154 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_factory.py:159 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_factory.py:168 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_factory.py:185 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_factory.py:199 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_factory.py:217 | Function is missing a return type annotation |
 | mypy | tests/test_telemetry/test_config.py:13 | Function is missing a return type annotation |
 | mypy | tests/test_telemetry/test_config.py:20 | Function is missing a return type annotation |
 | mypy | tests/test_telemetry/test_config.py:27 | Function is missing a return type annotation |
@@ -1896,109 +1723,856 @@
 | mypy | tests/test_storage/test_providers.py:363 | Function is missing a return type annotation |
 | mypy | tests/test_storage/test_providers.py:369 | Function is missing a return type annotation |
 | mypy | tests/test_storage/test_providers.py:375 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:389 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:402 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:413 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:419 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:431 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:438 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:445 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:452 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:467 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:473 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:482 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:492 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:500 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:508 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:521 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:530 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:538 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:548 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:557 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:570 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:574 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:581 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:587 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_providers.py:592 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_providers.py:599 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_providers.py:606 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_providers.py:613 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_neon_branch.py:24 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_neon_branch.py:36 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_neon_branch.py:62 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_neon_branch.py:71 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_neon_branch.py:88 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_neon_branch.py:104 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_neon_branch.py:116 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_neon_branch.py:143 | Unpacking a string is disallowed |
-| mypy | tests/test_storage/test_neon_branch.py:144 | Cannot determine type of "resp_method" |
-| mypy | tests/test_storage/test_neon_branch.py:144 | Cannot determine type of "url_pattern" |
-| mypy | tests/test_storage/test_neon_branch.py:145 | Cannot determine type of "resp_method" |
-| mypy | tests/test_storage/test_neon_branch.py:145 | Cannot determine type of "url_pattern" |
-| mypy | tests/test_storage/test_neon_branch.py:174 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_neon_branch.py:182 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_neon_branch.py:236 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_neon_branch.py:299 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_neon_branch.py:347 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_neon_branch.py:388 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_neon_branch.py:415 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_neon_branch.py:467 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_neon_branch.py:528 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_neon_branch.py:536 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_neon_branch.py:640 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:4 | Library stubs not installed for "yaml" |
-| mypy | tests/test_config/test_sources.py:25 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:33 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:44 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:52 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:65 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:71 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:75 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:82 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:86 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:93 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:97 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:103 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:112 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:119 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:123 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:136 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:391 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:404 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:415 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:421 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:433 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:440 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:447 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:454 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:469 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:475 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:484 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:494 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:502 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:510 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:523 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:532 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:540 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:550 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:559 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:572 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:576 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:583 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:589 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_providers.py:594 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_providers.py:601 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_providers.py:608 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_providers.py:615 | Function is missing a type annotation |
+| mypy | tests/test_services/test_url_extractor.py:27 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:35 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:46 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:71 | Function is missing a type annotation |
+| mypy | tests/test_services/test_url_extractor.py:88 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:108 | Function is missing a type annotation |
+| mypy | tests/test_services/test_url_extractor.py:126 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:148 | Function is missing a type annotation |
+| mypy | tests/test_services/test_url_extractor.py:164 | Function is missing a type annotation |
+| mypy | tests/test_services/test_url_extractor.py:177 | Function is missing a type annotation |
+| mypy | tests/test_services/test_url_extractor.py:189 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:200 | Function is missing a type annotation |
+| mypy | tests/test_services/test_url_extractor.py:217 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:253 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:269 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:289 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:307 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:325 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:337 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:347 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:361 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:398 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:429 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:440 | Function is missing a type annotation |
+| mypy | tests/test_services/test_url_extractor.py:469 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:480 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:495 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:522 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:553 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:560 | Function is missing a type annotation |
+| mypy | tests/test_services/test_url_extractor.py:583 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:599 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_url_extractor.py:607 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:31 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:35 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:39 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:43 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:47 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:51 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:55 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:59 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:63 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:70 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:74 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:86 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:89 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:92 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:95 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:98 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:102 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:112 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:120 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:125 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:131 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:138 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:141 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:151 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:160 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:168 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:175 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:190 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:197 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:205 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:212 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:219 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:228 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:238 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:241 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:244 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:248 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:258 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:261 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:265 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:269 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:274 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:282 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:284 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:291 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:301 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:304 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:310 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:314 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:318 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:322 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:325 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:337 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:340 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:348 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:355 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:361 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:378 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:394 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:407 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:433 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:436 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:452 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:467 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:490 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:504 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:517 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:533 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:543 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:563 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_extractor.py:572 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_llm_router_video.py:14 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_llm_router_video.py:24 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_video.py:35 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_video.py:70 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_video.py:105 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_video.py:138 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_video.py:164 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_llm_router_video.py:172 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_video.py:200 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_video.py:223 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_video.py:232 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:39 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:57 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:67 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:72 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:82 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:108 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:124 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:141 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:156 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:171 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:186 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:208 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:221 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:238 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:253 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:267 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:280 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:287 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:303 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:318 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:347 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router_batch.py:350 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_llm_router.py:19 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_llm_router.py:28 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router.py:53 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router.py:86 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router.py:106 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router.py:153 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router.py:173 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router.py:198 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router.py:205 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router.py:208 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router.py:225 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router.py:249 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router.py:275 | Function is missing a type annotation |
+| mypy | tests/test_services/test_llm_router.py:289 | Function is missing a type annotation |
+| mypy | tests/test_services/test_indexing.py:12 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_indexing.py:17 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_indexing.py:48 | Function is missing a type annotation |
+| mypy | tests/test_services/test_indexing.py:65 | Function is missing a type annotation |
+| mypy | tests/test_services/test_indexing.py:100 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:31 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:36 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:41 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:51 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:54 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:58 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:62 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:73 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:79 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:87 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:95 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:103 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:107 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:112 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:120 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:124 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:137 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:144 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:144 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/test_services/test_content_filter.py:172 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:181 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:188 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:195 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:208 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:217 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:251 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:257 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:270 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:281 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:287 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:298 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:301 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:304 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:308 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:312 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:315 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:318 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:328 | Function is missing a type annotation |
+| mypy | tests/test_services/test_content_filter.py:338 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:345 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:356 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:362 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_content_filter.py:373 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:27 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:32 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:37 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:43 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:47 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:56 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:64 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:72 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:76 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:80 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:84 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:88 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:100 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:108 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:111 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:118 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:122 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:126 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:134 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:140 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:152 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:155 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:163 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:174 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:177 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:184 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:195 | Function is missing a type annotation |
+| mypy | tests/test_services/test_chunking.py:211 | Function is missing a type annotation |
+| mypy | tests/test_services/test_chunking.py:223 | Function is missing a type annotation |
+| mypy | tests/test_services/test_chunking.py:235 | Function is missing a type annotation |
+| mypy | tests/test_services/test_chunking.py:247 | Function is missing a type annotation |
+| mypy | tests/test_services/test_chunking.py:278 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:287 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:297 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:302 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:308 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:315 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:327 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:336 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:345 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:359 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:363 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:367 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:371 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:380 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:384 | Function is missing a type annotation |
+| mypy | tests/test_services/test_chunking.py:396 | Function is missing a type annotation |
+| mypy | tests/test_services/test_chunking.py:412 | Function is missing a type annotation |
+| mypy | tests/test_services/test_chunking.py:422 | Function is missing a type annotation |
+| mypy | tests/test_services/test_chunking.py:433 | Function is missing a type annotation |
+| mypy | tests/test_services/test_chunking.py:442 | Function is missing a type annotation |
+| mypy | tests/test_services/test_chunking.py:448 | Function is missing a type annotation |
+| mypy | tests/test_services/test_chunking.py:455 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_chunking.py:464 | Function is missing a type annotation |
+| mypy | tests/test_services/test_chunking.py:499 | Function is missing a type annotation |
+| mypy | tests/test_services/test_chunking.py:522 | Function is missing a type annotation |
+| mypy | tests/test_services/test_chunking.py:550 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_disabled_regression.py:19 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_batch_disabled_regression.py:26 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_batch_disabled_regression.py:41 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:24 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:36 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:45 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:61 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:80 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:88 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:99 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:105 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:127 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:139 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:155 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:185 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:207 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:226 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:245 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:272 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:289 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:310 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:325 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:351 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown_crawl4ai.py:376 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:15 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:38 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:48 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:55 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:64 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:79 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:100 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:105 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:128 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:139 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:150 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:159 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:169 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:183 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:200 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:217 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:223 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:238 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:325 | Function is missing a return type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:330 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:344 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:363 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:380 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:400 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:420 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:440 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:460 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:477 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:501 | Function is missing a type annotation |
+| mypy | tests/test_parsers/test_html_markdown.py:554 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:31 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:39 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:48 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:68 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:81 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:98 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:111 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:122 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:148 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:173 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:198 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:223 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:263 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:289 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:313 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:342 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:367 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:406 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:436 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:464 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:482 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:493 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:512 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:544 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:572 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:598 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:625 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:649 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_sources.py:673 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_segments.py:11 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_segments.py:15 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_segments.py:36 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:22 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:30 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:38 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:42 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:45 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:51 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:63 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:82 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:103 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:121 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:137 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:160 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:183 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:223 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:271 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:301 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:337 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:399 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:433 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_rss.py:465 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_captions.py:28 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_captions.py:31 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_captions.py:35 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_captions.py:40 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_captions.py:45 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_captions.py:50 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_captions.py:55 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_captions.py:59 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_captions.py:68 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_captions.py:80 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_captions.py:86 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_captions.py:120 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_captions.py:160 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_captions.py:182 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_captions.py:188 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_backoff.py:12 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_backoff.py:33 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_backoff.py:48 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_backoff.py:57 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_backoff.py:73 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_backoff.py:92 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_backoff.py:110 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_backoff.py:119 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube_backoff.py:139 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube_backoff.py:148 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_youtube.py:327 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube.py:341 | Cannot assign to a method |
+| mypy | tests/test_ingestion/test_youtube.py:341 | Incompatible types in assignment (expression has type "def mock_ingest_playlist(**kwargs: Any) -> Any", variable has type "def ingest_playlist(self, playlist_id: str, max_videos: int = ..., after_date: datetime | None = ..., force_reprocess: bool = ..., languages: list[str] | None = ..., *, gemini_summary: bool = ..., gemini_resolution: str = ..., proofread: bool = ..., hint_terms: list[str] | None = ..., video_fps: float | None = ..., long_video_threshold_seconds: int = ..., long_video_strategy: str = ..., segment_overlap_seconds: int = ..., unknown_duration_strategy: str = ..., min_duration_seconds: int | None = ..., max_duration_seconds: int | None = ..., content_filter: Any = ...) -> Coroutine[Any, Any, SourceFetchResult]") |
+| mypy | tests/test_ingestion/test_youtube.py:373 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube.py:378 | Cannot assign to a method |
+| mypy | tests/test_ingestion/test_youtube.py:378 | Incompatible types in assignment (expression has type "def mock_process(video: Any, playlist_id: Any, **kwargs: Any) -> Any", variable has type "def _process_video(self, video: dict[str, Any], playlist_id: str, force_reprocess: bool = ..., languages: list[str] | None = ..., *, gemini_summary: bool = ..., gemini_resolution: str = ..., proofread: bool = ..., hint_terms: list[str] | None = ..., video_fps: float | None = ..., long_video_threshold_seconds: int = ..., long_video_strategy: str = ..., segment_overlap_seconds: int = ..., unknown_duration_strategy: str = ..., min_duration_seconds: int | None = ..., max_duration_seconds: int | None = ..., content_filter: Any = ...) -> Coroutine[Any, Any, bool]") |
+| mypy | tests/test_ingestion/test_youtube.py:441 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_youtube.py:454 | Cannot assign to a method |
+| mypy | tests/test_ingestion/test_youtube.py:454 | Incompatible types in assignment (expression has type "def mock_ingest_feed(**kwargs: Any) -> Any", variable has type "def ingest_feed(self, feed_url: str, max_entries: int = ..., after_date: datetime | None = ..., force_reprocess: bool = ..., source_name: str | None = ..., source_tags: list[str] | None = ..., *, gemini_summary: bool = ..., gemini_resolution: str = ..., video_fps: float | None = ..., long_video_threshold_seconds: int = ..., long_video_strategy: str = ..., segment_overlap_seconds: int = ..., unknown_duration_strategy: str = ..., min_duration_seconds: int | None = ..., max_duration_seconds: int | None = ..., content_filter: Any = ...) -> Coroutine[Any, Any, SourceFetchResult]") |
+| mypy | tests/test_ingestion/test_xsearch.py:106 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:112 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:118 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:135 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:145 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:156 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:161 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:172 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:180 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:187 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:197 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:201 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:219 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:225 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:230 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:234 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:250 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:259 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:277 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:282 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:288 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:318 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:338 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:357 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:376 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:405 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:438 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:474 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:508 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:531 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_xsearch.py:550 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_url_routing_dispatch.py:75 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_url_routing_dispatch.py:77 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_url_routing_dispatch.py:117 | Cannot assign to a method |
+| mypy | tests/test_ingestion/test_url_routing_dispatch.py:155 | Cannot assign to a method |
+| mypy | tests/test_ingestion/test_scholar.py:67 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/test_ingestion/test_scholar.py:88 | Argument 1 to "FakeS2Paper" has incompatible type "**dict[str, object]"; expected "str" |
+| mypy | tests/test_ingestion/test_scholar.py:88 | Argument 1 to "FakeS2Paper" has incompatible type "**dict[str, object]"; expected "str | None" |
+| mypy | tests/test_ingestion/test_scholar.py:88 | Argument 1 to "FakeS2Paper" has incompatible type "**dict[str, object]"; expected "int | None" |
+| mypy | tests/test_ingestion/test_scholar.py:88 | Argument 1 to "FakeS2Paper" has incompatible type "**dict[str, object]"; expected "int" |
+| mypy | tests/test_ingestion/test_scholar.py:88 | Argument 1 to "FakeS2Paper" has incompatible type "**dict[str, object]"; expected "list[str]" |
+| mypy | tests/test_ingestion/test_scholar.py:88 | Argument 1 to "FakeS2Paper" has incompatible type "**dict[str, object]"; expected "list[FakeS2Author]" |
+| mypy | tests/test_ingestion/test_scholar.py:88 | Argument 1 to "FakeS2Paper" has incompatible type "**dict[str, object]"; expected "dict[str, str]" |
+| mypy | tests/test_ingestion/test_scholar.py:88 | Argument 1 to "FakeS2Paper" has incompatible type "**dict[str, object]"; expected "dict[str, str] | None" |
+| mypy | tests/test_ingestion/test_scholar.py:91 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/test_ingestion/test_scholar.py:112 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:124 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:137 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:146 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:163 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:166 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:184 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:201 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:218 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:221 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:235 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:255 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:258 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:272 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:277 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:282 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:287 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:292 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:297 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:302 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:317 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:320 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:325 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:334 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:343 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:352 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:382 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:393 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:396 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:403 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:410 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:417 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:423 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:434 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:451 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:455 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:468 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:481 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:500 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:506 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:530 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:555 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:566 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:577 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:602 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:608 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:626 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:642 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:651 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:660 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:685 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:691 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:709 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:727 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:748 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:757 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:772 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:787 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:801 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_scholar.py:808 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_rss_sources.py:21 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_rss_sources.py:24 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss_sources.py:36 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_rss_sources.py:39 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss_sources.py:66 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss_sources.py:92 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss_sources.py:127 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss_sources.py:149 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss_sources.py:164 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss_sources.py:185 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss_sources.py:204 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss_sources.py:227 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss_sources.py:245 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss_sources.py:264 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss_sources.py:280 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss.py:13 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_rss.py:19 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_rss.py:37 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_rss.py:69 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss.py:94 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss.py:129 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss.py:149 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss.py:155 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss.py:168 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss.py:182 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss.py:190 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss.py:195 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_rss.py:207 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss.py:216 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_rss.py:230 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:10 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:13 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:17 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:21 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:25 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:29 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:33 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:39 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:42 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:46 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:50 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:55 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:60 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:63 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:68 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:73 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:76 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:86 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:93 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:96 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:98 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:111 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:115 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:117 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:129 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_reference_extractor.py:138 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:37 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:40 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:45 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:58 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:72 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:84 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:91 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:97 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:101 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:107 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:112 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:117 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:121 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:126 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:130 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:135 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:145 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:154 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:158 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:172 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:179 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:186 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:192 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:201 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:211 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:221 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:246 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:262 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:273 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:286 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:300 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:322 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/test_ingestion/test_readwise.py:341 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/test_ingestion/test_readwise.py:357 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:364 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:374 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:395 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:406 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:421 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:445 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:461 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:485 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:514 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:549 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:586 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_readwise.py:610 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:22 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:40 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:46 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:56 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:118 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:145 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:164 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:186 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:196 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:207 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:220 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:247 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:266 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:276 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:317 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:358 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:396 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:439 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:495 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:514 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:530 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:573 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:579 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:604 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:608 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:629 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:633 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:668 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_podcast.py:680 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:39 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:47 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:67 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:71 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:77 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:82 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:88 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:95 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:100 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:106 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:110 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:116 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:144 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:153 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:162 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:169 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:178 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:212 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:242 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:273 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:284 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:317 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:339 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:355 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:361 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:397 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:427 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:447 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:468 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:496 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_perplexity_search.py:534 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:20 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:31 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:48 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:60 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:75 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:85 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:97 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:104 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:111 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:117 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:124 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:138 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:147 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:156 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:165 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:174 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:190 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:204 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:213 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:227 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:236 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:258 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:269 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:280 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:296 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:308 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:319 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:329 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:341 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:350 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:368 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:410 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:430 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:452 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:461 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:481 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:526 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:548 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:560 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_huggingface_papers.py:583 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_gmail.py:13 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_gmail.py:22 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_gmail.py:31 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_gmail.py:38 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_gmail.py:54 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_gmail.py:72 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_gmail.py:101 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_gmail.py:133 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_gmail.py:154 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_gmail.py:171 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_gmail.py:204 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_gmail.py:230 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:19 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:30 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:50 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:64 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:76 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:94 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:115 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:122 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:140 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:155 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:174 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:190 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:216 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:225 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:233 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:240 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:254 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:260 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:273 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:293 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:302 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:311 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:327 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:336 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:351 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:367 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:370 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:373 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:376 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:388 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:416 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:431 | Function is missing a return type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:452 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:499 | Function is missing a type annotation |
+| mypy | tests/test_ingestion/test_blog_scraper.py:521 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_youtube_routing_config.py:14 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_youtube_routing_config.py:24 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_youtube_routing_config.py:34 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_youtube_routing_config.py:49 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_youtube_routing_config.py:56 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_youtube_routing_config.py:61 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_websearch_sources.py:31 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_websearch_sources.py:43 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_websearch_sources.py:52 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_websearch_sources.py:66 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_websearch_sources.py:74 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_websearch_sources.py:78 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_websearch_sources.py:93 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_websearch_sources.py:105 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_websearch_sources.py:121 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_websearch_sources.py:125 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_websearch_sources.py:140 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_websearch_sources.py:165 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_websearch_sources.py:198 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_websearch_sources.py:228 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:27 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:35 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:46 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:54 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:57 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:70 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:76 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:80 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:87 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:91 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:98 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:102 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:108 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:117 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:124 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:128 | Function is missing a return type annotation |
 | mypy | tests/test_config/test_sources.py:141 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:155 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:146 | Function is missing a return type annotation |
 | mypy | tests/test_config/test_sources.py:160 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:167 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:179 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:193 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:212 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:231 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:252 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:258 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:277 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:281 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:298 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:324 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:350 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:369 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:387 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:407 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:427 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:440 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:456 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:470 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:487 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:500 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:514 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:528 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:547 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:560 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:574 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:592 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:599 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:606 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:614 | Function is missing a type annotation |
-| mypy | tests/test_config/test_sources.py:638 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:647 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_sources.py:663 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:165 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:172 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:184 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:198 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:217 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:236 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:257 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:263 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:282 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:286 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:303 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:329 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:355 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:374 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:392 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:412 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:432 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:445 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:461 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:475 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:492 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:505 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:519 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:533 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:552 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:565 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:579 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:597 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:604 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:611 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:619 | Function is missing a type annotation |
+| mypy | tests/test_config/test_sources.py:643 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:652 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_sources.py:668 | Function is missing a type annotation |
 | mypy | tests/test_config/test_settings.py:14 | Function is missing a return type annotation |
 | mypy | tests/test_config/test_settings.py:52 | Function is missing a return type annotation |
 | mypy | tests/test_config/test_settings.py:63 | Function is missing a return type annotation |
@@ -2008,51 +2582,66 @@
 | mypy | tests/test_config/test_settings.py:112 | Function is missing a return type annotation |
 | mypy | tests/test_config/test_settings.py:123 | Function is missing a return type annotation |
 | mypy | tests/test_config/test_settings.py:136 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:156 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:179 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:191 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:203 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:223 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:238 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:259 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:281 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:297 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:309 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:329 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:361 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:162 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:188 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:204 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:215 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:232 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:255 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:267 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:279 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:299 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:314 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:335 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:357 | Function is missing a return type annotation |
 | mypy | tests/test_config/test_settings.py:373 | Function is missing a return type annotation |
 | mypy | tests/test_config/test_settings.py:385 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:397 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:413 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:426 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:438 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:453 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:471 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:485 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:496 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:519 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:531 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:405 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:437 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:449 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:461 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:473 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:489 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:502 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:514 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:529 | Function is missing a return type annotation |
 | mypy | tests/test_config/test_settings.py:547 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:556 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:565 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:586 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:608 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:619 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:635 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:652 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:671 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:679 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:690 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:700 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:712 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:724 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:736 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:748 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:561 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:572 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:595 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:607 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:623 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:632 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:641 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:662 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:684 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:695 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:711 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:728 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:747 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:755 | Function is missing a return type annotation |
 | mypy | tests/test_config/test_settings.py:766 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:779 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:795 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_settings.py:805 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_profile_integration.py:12 | Library stubs not installed for "yaml" |
+| mypy | tests/test_config/test_settings.py:776 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:788 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:800 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:812 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:824 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:842 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:855 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:871 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_settings.py:881 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_reference_settings.py:14 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_reference_settings.py:39 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_reference_settings.py:43 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_reference_settings.py:47 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_reference_settings.py:51 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_reference_settings.py:55 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_reference_settings.py:64 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_reference_settings.py:89 | Function is missing a type annotation |
+| mypy | tests/test_config/test_reference_settings.py:94 | Function is missing a type annotation |
+| mypy | tests/test_config/test_reference_settings.py:99 | Function is missing a type annotation |
+| mypy | tests/test_config/test_reference_settings.py:104 | Function is missing a type annotation |
+| mypy | tests/test_config/test_reference_settings.py:109 | Function is missing a type annotation |
 | mypy | tests/test_config/test_profile_integration.py:17 | Function is missing a return type annotation |
 | mypy | tests/test_config/test_models.py:29 | Function is missing a return type annotation |
 | mypy | tests/test_config/test_models.py:38 | Function is missing a return type annotation |
@@ -2061,34 +2650,93 @@
 | mypy | tests/test_config/test_models.py:101 | Function is missing a return type annotation |
 | mypy | tests/test_config/test_models.py:112 | Function is missing a return type annotation |
 | mypy | tests/test_config/test_models.py:121 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:137 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:142 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:153 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:166 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:186 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:199 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:210 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:220 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:242 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:263 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:303 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:319 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:348 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:358 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:375 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:393 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:414 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:427 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:462 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:485 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:490 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:497 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:529 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:543 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:556 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:572 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:585 | Function is missing a return type annotation |
-| mypy | tests/test_config/test_models.py:603 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:138 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:143 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:154 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:167 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:187 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:200 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:211 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:221 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:243 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:264 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:304 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:320 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:349 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:359 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:376 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:394 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:415 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:428 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:463 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:486 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:491 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:498 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:530 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:544 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:557 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:573 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:586 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_models.py:604 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_bao_secrets.py:31 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_bao_secrets.py:333 | Function is missing a type annotation |
+| mypy | tests/test_config/test_bao_secrets.py:346 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:21 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:24 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:27 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:31 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:35 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:41 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:46 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:59 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:72 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:92 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:105 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:134 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:149 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:155 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:173 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:190 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:210 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:242 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:267 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:292 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:306 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:341 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:362 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:376 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:382 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:388 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:392 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:404 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:421 | Function is missing a type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:439 | Function is missing a type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:459 | Function is missing a type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:483 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:493 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:501 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:511 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:521 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:540 | Function is missing a return type annotation |
+| mypy | tests/telemetry/test_langfuse_provider.py:546 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_override_service.py:17 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_override_service.py:26 | The return type of a generator function should be "Generator" or one of its supertypes |
+| mypy | tests/services/test_source_override_service.py:26 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/services/test_source_override_service.py:40 | Function is missing a type annotation |
+| mypy | tests/services/test_source_override_service.py:44 | Function is missing a type annotation |
+| mypy | tests/services/test_source_override_service.py:48 | Function is missing a type annotation |
+| mypy | tests/services/test_source_override_service.py:52 | Function is missing a type annotation |
+| mypy | tests/services/test_source_override_service.py:58 | Function is missing a type annotation |
+| mypy | tests/services/test_source_override_service.py:67 | Function is missing a type annotation |
+| mypy | tests/services/test_source_override_service.py:76 | Function is missing a type annotation |
+| mypy | tests/services/test_source_override_service.py:80 | Function is missing a type annotation |
+| mypy | tests/services/test_source_override_service.py:87 | Function is missing a type annotation |
+| mypy | tests/services/test_source_override_service.py:94 | Function is missing a type annotation |
+| mypy | tests/services/test_source_override_service.py:100 | Function is missing a type annotation |
+| mypy | tests/services/test_source_override_service.py:110 | Function is missing a type annotation |
+| mypy | tests/services/test_source_override_service.py:117 | Function is missing a type annotation |
+| mypy | tests/services/test_source_override_service.py:128 | Function is missing a type annotation |
+| mypy | tests/services/test_source_override_service.py:132 | Function is missing a type annotation |
 | mypy | tests/services/test_settings_service.py:15 | Function is missing a return type annotation |
 | mypy | tests/services/test_settings_service.py:26 | The return type of a generator function should be "Generator" or one of its supertypes |
 | mypy | tests/services/test_settings_service.py:26 | Function is missing a type annotation for one or more arguments |
@@ -2114,6 +2762,67 @@
 | mypy | tests/services/test_settings_service.py:177 | Function is missing a type annotation |
 | mypy | tests/services/test_settings_service.py:185 | Function is missing a type annotation |
 | mypy | tests/services/test_settings_service.py:189 | Function is missing a return type annotation |
+| mypy | tests/services/test_llm_router_routing.py:19 | Function is missing a return type annotation |
+| mypy | tests/services/test_llm_router_routing.py:24 | Function is missing a return type annotation |
+| mypy | tests/services/test_llm_router_routing.py:42 | Function is missing a type annotation |
+| mypy | tests/services/test_llm_router_routing.py:61 | Function is missing a type annotation |
+| mypy | tests/services/test_llm_router_routing.py:84 | Function is missing a type annotation |
+| mypy | tests/services/test_llm_router_routing.py:116 | Function is missing a type annotation |
+| mypy | tests/services/test_llm_router_routing.py:134 | Function is missing a type annotation |
+| mypy | tests/services/test_llm_router_routing.py:166 | Function is missing a type annotation |
+| mypy | tests/services/test_ingestion_filter.py:115 | Argument 1 to "FilterConfig" has incompatible type "**dict[str, object]"; expected "bool" |
+| mypy | tests/services/test_ingestion_filter.py:115 | Argument 1 to "FilterConfig" has incompatible type "**dict[str, object]"; expected "int" |
+| mypy | tests/services/test_ingestion_filter.py:115 | Argument 1 to "FilterConfig" has incompatible type "**dict[str, object]"; expected "tuple[str, ...]" |
+| mypy | tests/services/test_ingestion_filter.py:115 | Argument 1 to "FilterConfig" has incompatible type "**dict[str, object]"; expected "str | None" |
+| mypy | tests/services/test_ingestion_filter.py:115 | Argument 1 to "FilterConfig" has incompatible type "**dict[str, object]"; expected "BorderlineBand" |
+| mypy | tests/services/test_ingestion_filter.py:115 | Argument 1 to "FilterConfig" has incompatible type "**dict[str, object]"; expected "float" |
+| mypy | tests/services/test_ingestion_filter.py:154 | Argument 1 to "IngestionFilterService" has incompatible type "_FakeSession"; expected "Session" |
+| mypy | tests/services/test_ingestion_filter.py:167 | Argument 1 to "IngestionFilterService" has incompatible type "_FakeSession"; expected "Session" |
+| mypy | tests/services/test_ingestion_filter.py:180 | Argument 1 to "IngestionFilterService" has incompatible type "_FakeSession"; expected "Session" |
+| mypy | tests/services/test_ingestion_filter.py:200 | Argument 1 to "IngestionFilterService" has incompatible type "_FakeSession"; expected "Session" |
+| mypy | tests/services/test_ingestion_filter.py:214 | Argument 1 to "IngestionFilterService" has incompatible type "_FakeSession"; expected "Session" |
+| mypy | tests/services/test_ingestion_filter.py:228 | Argument 1 to "IngestionFilterService" has incompatible type "_FakeSession"; expected "Session" |
+| mypy | tests/services/test_ingestion_filter.py:241 | Argument 1 to "IngestionFilterService" has incompatible type "_FakeSession"; expected "Session" |
+| mypy | tests/services/test_ingestion_filter.py:257 | Argument 1 to "IngestionFilterService" has incompatible type "_FakeSession"; expected "Session" |
+| mypy | tests/services/test_ingestion_filter.py:268 | Argument 1 to "IngestionFilterService" has incompatible type "_FakeSession"; expected "Session" |
+| mypy | tests/services/test_image_generation_prompts.py:17 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generation_prompts.py:22 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generation_prompts.py:27 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generation_prompts.py:34 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generation_prompts.py:39 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generation_prompts.py:47 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generation_prompts.py:63 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generation_prompts.py:75 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generation_prompts.py:85 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:15 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/security/test_production_validation.py:25 | Argument 2 to "Settings" has incompatible type "**dict[str, str]"; expected "bool | None" |
+| mypy | tests/security/test_production_validation.py:25 | Argument 2 to "Settings" has incompatible type "**dict[str, str]"; expected "int | None" |
+| mypy | tests/security/test_production_validation.py:25 | Argument 2 to "Settings" has incompatible type "**dict[str, str]"; expected "bool | list[str] | tuple[str, ...] | None" |
+| mypy | tests/security/test_production_validation.py:25 | Argument 2 to "Settings" has incompatible type "**dict[str, str]"; expected "CliSettingsSource[Any] | None" |
+| mypy | tests/security/test_production_validation.py:25 | Argument 2 to "Settings" has incompatible type "**dict[str, str]"; expected "Literal['all', 'no_enums'] | bool | None" |
+| mypy | tests/security/test_production_validation.py:25 | Argument 2 to "Settings" has incompatible type "**dict[str, str]"; expected "Mapping[str, str | list[str]] | None" |
+| mypy | tests/security/test_production_validation.py:28 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/security/test_production_validation.py:44 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:51 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:62 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:76 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:90 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:103 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:112 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:121 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:130 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:139 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:147 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:156 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:165 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:174 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:187 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:193 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:199 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:206 | Function is missing a return type annotation |
+| mypy | tests/security/test_production_validation.py:215 | Function is missing a return type annotation |
+| mypy | tests/real_ingestion/test_scheduled_tier.py:31 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/real_ingestion/test_scheduled_tier.py:52 | Function is missing a type annotation for one or more arguments |
 | mypy | tests/integration/test_markdown_outputs.py:21 | Function is missing a type annotation for one or more arguments |
 | mypy | tests/integration/test_markdown_outputs.py:71 | Function is missing a type annotation for one or more arguments |
 | mypy | tests/integration/test_markdown_outputs.py:209 | Function is missing a type annotation |
@@ -2125,100 +2834,674 @@
 | mypy | tests/integration/test_markdown_outputs.py:419 | Function is missing a type annotation |
 | mypy | tests/integration/test_markdown_outputs.py:477 | Function is missing a return type annotation |
 | mypy | tests/integration/test_markdown_outputs.py:496 | Function is missing a return type annotation |
-| mypy | tests/api/test_sorting.py:31 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:66 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:75 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:84 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:94 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:104 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:114 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:127 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:137 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:166 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:190 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:215 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:225 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:234 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:243 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:261 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:298 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:308 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:317 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:331 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:341 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:359 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:397 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:420 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:430 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:439 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:448 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:466 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:520 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:537 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:546 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:555 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:564 | Function is missing a type annotation |
-| mypy | tests/api/test_sorting.py:573 | Function is missing a type annotation |
-| mypy | tests/api/test_content_summarization_logic.py:14 | Function is missing a return type annotation |
-| mypy | tests/api/test_content_summarization_logic.py:22 | Function is missing a type annotation |
-| mypy | tests/api/test_content_summarization_logic.py:107 | Function is missing a type annotation |
-| mypy | tests/api/test_content_summarization_logic.py:127 | Function is missing a type annotation |
-| mypy | tests/test_prompt_service.py:13 | Function is missing a return type annotation |
-| mypy | tests/test_prompt_service.py:17 | Function is missing a return type annotation |
-| mypy | tests/test_prompt_service.py:21 | Function is missing a return type annotation |
-| mypy | tests/test_prompt_service.py:26 | Function is missing a return type annotation |
-| mypy | tests/test_prompt_service.py:31 | Function is missing a return type annotation |
-| mypy | tests/test_prompt_service.py:41 | Function is missing a return type annotation |
-| mypy | tests/test_prompt_service.py:47 | Function is missing a type annotation |
-| mypy | tests/test_prompt_service.py:64 | Function is missing a type annotation |
-| mypy | tests/test_prompt_service.py:73 | Function is missing a type annotation |
-| mypy | tests/test_prompt_service.py:80 | Function is missing a type annotation |
-| mypy | tests/test_prompt_service.py:87 | Function is missing a type annotation |
-| mypy | tests/test_prompt_service.py:100 | Function is missing a return type annotation |
-| mypy | tests/test_prompt_service.py:118 | Function is missing a return type annotation |
-| mypy | tests/test_prompt_service.py:136 | Function is missing a return type annotation |
-| mypy | tests/test_prompt_service.py:150 | Function is missing a return type annotation |
-| mypy | tests/test_prompt_service.py:156 | Function is missing a type annotation |
-| mypy | tests/test_prompt_service.py:177 | Function is missing a type annotation |
-| mypy | tests/test_prompt_service.py:199 | Function is missing a return type annotation |
-| mypy | tests/test_prompt_service.py:205 | Function is missing a type annotation |
-| mypy | tests/test_prompt_service.py:211 | Function is missing a type annotation |
-| mypy | tests/unit/test_factories.py:24 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:34 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:42 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:52 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:60 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:69 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:77 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:85 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:93 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:106 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:117 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:126 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:133 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:139 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:149 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:160 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:169 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:176 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:182 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:191 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:198 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:206 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:218 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:230 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:239 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:247 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:255 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:265 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:274 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:283 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:296 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:303 | Function is missing a return type annotation |
-| mypy | tests/unit/test_factories.py:320 | Function is missing a type annotation |
-| mypy | tests/unit/test_factories.py:332 | Function is missing a type annotation |
-| mypy | tests/unit/test_factories.py:341 | Function is missing a type annotation |
-| mypy | tests/unit/test_factories.py:349 | Function is missing a type annotation |
+| mypy | tests/integration/test_content_ingestion.py:21 | Function is missing a return type annotation |
+| mypy | tests/integration/test_content_ingestion.py:82 | Function is missing a return type annotation |
+| mypy | tests/integration/test_content_ingestion.py:86 | Function is missing a type annotation |
+| mypy | tests/integration/test_content_ingestion.py:95 | Function is missing a type annotation |
+| mypy | tests/integration/test_content_ingestion.py:124 | Function is missing a return type annotation |
+| mypy | tests/integration/test_content_ingestion.py:180 | Function is missing a type annotation |
+| mypy | tests/integration/test_content_ingestion.py:212 | Function is missing a type annotation |
+| mypy | tests/integration/test_content_ingestion.py:226 | Function is missing a type annotation |
+| mypy | tests/integration/test_content_ingestion.py:250 | Function is missing a type annotation |
+| mypy | tests/integration/test_content_ingestion.py:295 | Function is missing a type annotation |
+| mypy | tests/integration/test_content_ingestion.py:307 | Function is missing a type annotation |
+| mypy | tests/integration/test_content_ingestion.py:317 | Function is missing a type annotation |
+| mypy | tests/integration/test_content_ingestion.py:345 | Function is missing a type annotation |
+| mypy | tests/integration/test_content_ingestion.py:379 | Function is missing a type annotation |
+| mypy | tests/integration/test_content_ingestion.py:391 | Function is missing a type annotation |
+| mypy | tests/integration/test_content_ingestion.py:418 | Function is missing a type annotation |
+| mypy | tests/integration/test_content_ingestion.py:448 | Function is missing a type annotation |
+| mypy | tests/integration/test_content_ingestion.py:501 | Function is missing a type annotation |
+| mypy | tests/integration/test_arxiv_live.py:29 | Function is missing a type annotation |
+| mypy | tests/integration/test_arxiv_live.py:33 | Function is missing a type annotation |
+| mypy | tests/integration/test_arxiv_live.py:47 | Function is missing a return type annotation |
+| mypy | tests/integration/test_arxiv_live.py:58 | Function is missing a return type annotation |
+| mypy | tests/integration/test_arxiv_live.py:72 | Function is missing a return type annotation |
+| mypy | tests/integration/test_arxiv_live.py:82 | Function is missing a return type annotation |
+| mypy | tests/integration/test_arxiv_live.py:103 | Function is missing a return type annotation |
+| mypy | tests/integration/test_arxiv_live.py:103 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/integration/test_arxiv_live.py:138 | Function is missing a return type annotation |
+| mypy | tests/integration/test_supabase_provider.py:37 | Function is missing a return type annotation |
+| mypy | tests/integration/test_supabase_provider.py:43 | Function is missing a return type annotation |
+| mypy | tests/integration/test_supabase_provider.py:50 | Function is missing a return type annotation |
+| mypy | tests/integration/test_supabase_provider.py:55 | Unsupported right operand type for in ("Any | None") |
+| mypy | tests/integration/test_supabase_provider.py:56 | Value of type "Any | None" is not indexable |
+| mypy | tests/integration/test_supabase_provider.py:58 | Function is missing a return type annotation |
+| mypy | tests/integration/test_supabase_provider.py:58 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/integration/test_supabase_provider.py:62 | Function is missing a return type annotation |
+| mypy | tests/integration/test_supabase_provider.py:79 | Function is missing a return type annotation |
+| mypy | tests/integration/test_supabase_provider.py:85 | Function is missing a return type annotation |
+| mypy | tests/integration/test_supabase_provider.py:92 | Function is missing a return type annotation |
+| mypy | tests/integration/test_supabase_provider.py:114 | Function is missing a return type annotation |
+| mypy | tests/integration/test_supabase_provider.py:148 | Function is missing a return type annotation |
+| mypy | tests/integration/test_supabase_provider.py:158 | Function is missing a return type annotation |
+| mypy | tests/integration/test_supabase_provider.py:170 | Incompatible return value type (got "tuple[Any | None, float]", expected "tuple[int, float]") |
+| mypy | tests/integration/test_supabase_provider.py:188 | Function is missing a return type annotation |
+| mypy | tests/integration/test_supabase_provider.py:195 | Incompatible return value type (got "Any | None", expected "int") |
+| mypy | tests/integration/test_supabase_provider.py:208 | Function is missing a return type annotation |
+| mypy | tests/integration/test_supabase_provider.py:254 | Function is missing a type annotation |
+| mypy | tests/integration/test_supabase_provider.py:258 | Function is missing a type annotation |
+| mypy | tests/integration/test_supabase_provider.py:265 | Function is missing a type annotation |
+| mypy | tests/integration/test_supabase_provider.py:273 | Function is missing a type annotation |
+| mypy | tests/integration/test_neon_integration.py:73 | Function is missing a return type annotation |
+| mypy | tests/integration/test_neon_integration.py:78 | Function is missing a return type annotation |
+| mypy | tests/integration/test_neon_integration.py:86 | Function is missing a return type annotation |
+| mypy | tests/integration/test_neon_integration.py:95 | Function is missing a return type annotation |
+| mypy | tests/integration/test_neon_integration.py:103 | Function is missing a return type annotation |
+| mypy | tests/integration/test_neon_integration.py:127 | Function is missing a return type annotation |
+| mypy | tests/integration/test_neon_integration.py:139 | Function is missing a return type annotation |
+| mypy | tests/integration/test_neon_integration.py:168 | Function is missing a return type annotation |
+| mypy | tests/integration/test_neon_integration.py:193 | Function is missing a return type annotation |
+| mypy | tests/integration/test_neon_integration.py:217 | Function is missing a return type annotation |
+| mypy | tests/integration/test_neon_integration.py:237 | Function is missing a return type annotation |
+| mypy | tests/integration/test_neon_integration.py:255 | Function is missing a return type annotation |
+| mypy | tests/integration/test_neon_integration.py:301 | Function is missing a return type annotation |
+| mypy | tests/integration/test_neon_integration.py:339 | Function is missing a return type annotation |
+| mypy | tests/integration/test_neon_integration.py:444 | Function is missing a return type annotation |
+| mypy | tests/integration/test_neon_integration.py:500 | Function is missing a return type annotation |
+| mypy | tests/integration/test_neon_integration.py:514 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_source_registry.py:87 | Argument 2 to "replace" of "SourceDescriptor" has incompatible type "**dict[str, str | frozenset[str]]"; expected "str" |
+| mypy | tests/ingestion/test_source_registry.py:87 | Argument 2 to "replace" of "SourceDescriptor" has incompatible type "**dict[str, str | frozenset[str]]"; expected "type[StrictModel]" |
+| mypy | tests/ingestion/test_source_registry.py:87 | Argument 2 to "replace" of "SourceDescriptor" has incompatible type "**dict[str, str | frozenset[str]]"; expected "Callable[[StrictModel], IngestionResponse | int]" |
+| mypy | tests/ingestion/test_source_registry.py:87 | Argument 2 to "replace" of "SourceDescriptor" has incompatible type "**dict[str, str | frozenset[str]]"; expected "frozenset[ContentSource]" |
+| mypy | tests/ingestion/test_source_registry.py:87 | Argument 2 to "replace" of "SourceDescriptor" has incompatible type "**dict[str, str | frozenset[str]]"; expected "bool" |
+| mypy | tests/ingestion/test_source_registry.py:87 | Argument 2 to "replace" of "SourceDescriptor" has incompatible type "**dict[str, str | frozenset[str]]"; expected "Callable[[tuple[SourceBase, ...], datetime, datetime], tuple[StrictModel, ...]] | None" |
+| mypy | tests/ingestion/test_source_registry.py:87 | Argument 2 to "replace" of "SourceDescriptor" has incompatible type "**dict[str, str | frozenset[str]]"; expected "frozenset[str]" |
+| mypy | tests/ingestion/test_source_registry.py:87 | Argument 2 to "replace" of "SourceDescriptor" has incompatible type "**dict[str, str | frozenset[str]]"; expected "Mapping[str, str]" |
+| mypy | tests/ingestion/test_source_registry.py:87 | Argument 2 to "replace" of "SourceDescriptor" has incompatible type "**dict[str, str | frozenset[str]]"; expected "Callable[[SourceBase], bool] | None" |
+| mypy | tests/ingestion/test_source_registry.py:87 | Argument 2 to "replace" of "SourceDescriptor" has incompatible type "**dict[str, str | frozenset[str]]"; expected "Callable[[SourcesConfig], list[SourceBase]] | None" |
+| mypy | tests/ingestion/test_source_registry.py:87 | Argument 2 to "replace" of "SourceDescriptor" has incompatible type "**dict[str, str | frozenset[str]]"; expected "Callable[[StrictModel], str | RouteKind] | None" |
+| mypy | tests/ingestion/test_source_registry.py:87 | Argument 2 to "replace" of "SourceDescriptor" has incompatible type "**dict[str, str | frozenset[str]]"; expected "Callable[[StrictModel], frozenset[ContentSource]] | None" |
+| mypy | tests/ingestion/test_source_registry.py:87 | Argument 2 to "replace" of "SourceDescriptor" has incompatible type "**dict[str, str | frozenset[str]]"; expected "SourceOptions" |
+| mypy | tests/ingestion/test_source_registry.py:87 | Argument 2 to "replace" of "SourceDescriptor" has incompatible type "**dict[str, str | frozenset[str]]"; expected "SourceRetryPolicy" |
+| mypy | tests/ingestion/test_source_registry.py:177 | "StrictModel" has no attribute "kind" |
+| mypy | tests/ingestion/test_source_registry.py:188 | "StrictModel" has no attribute "prompt" |
+| mypy | tests/ingestion/test_source_registry.py:207 | "StrictModel" has no attribute "after_date" |
+| mypy | tests/ingestion/test_source_registry.py:225 | "StrictModel" has no attribute "query" |
+| mypy | tests/ingestion/test_source_registry.py:226 | "StrictModel" has no attribute "max_items" |
+| mypy | tests/ingestion/test_source_registry.py:227 | "StrictModel" has no attribute "configured_sources" |
+| mypy | tests/ingestion/test_source_registry.py:239 | Argument 2 to "plan_scheduled_commands" of "SourceRegistry" has incompatible type "**dict[str, object]"; expected "SourcesConfig" |
+| mypy | tests/ingestion/test_source_registry.py:239 | Argument 2 to "plan_scheduled_commands" of "SourceRegistry" has incompatible type "**dict[str, object]"; expected "datetime" |
+| mypy | tests/ingestion/test_source_registry.py:241 | Argument 2 to "plan_scheduled_commands" of "SourceRegistry" has incompatible type "**dict[str, object]"; expected "SourcesConfig" |
+| mypy | tests/ingestion/test_source_registry.py:241 | Argument 2 to "plan_scheduled_commands" of "SourceRegistry" has incompatible type "**dict[str, object]"; expected "datetime" |
+| mypy | tests/ingestion/test_source_registry.py:243 | Argument 2 to "plan_scheduled_commands" of "SourceRegistry" has incompatible type "**dict[str, object]"; expected "SourcesConfig" |
+| mypy | tests/ingestion/test_source_registry.py:243 | Argument 2 to "plan_scheduled_commands" of "SourceRegistry" has incompatible type "**dict[str, object]"; expected "datetime" |
+| mypy | tests/ingestion/test_source_registry.py:246 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/ingestion/test_orchestrator.py:32 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:44 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:66 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:81 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:93 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:105 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:114 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:152 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:182 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:202 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:221 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:260 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:315 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:327 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:355 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:365 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:377 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:390 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:400 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:425 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:449 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:482 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:503 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:514 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:536 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:558 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:575 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:599 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:640 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:667 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:694 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:717 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:734 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:756 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:775 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:796 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:812 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:818 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:823 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:849 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:867 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:902 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:902 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/ingestion/test_orchestrator.py:914 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:943 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:958 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_orchestrator.py:979 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_filter_hook.py:95 | Argument "db" to "apply_filter_to_recent" has incompatible type "_FakeSession"; expected "Session | None" |
+| mypy | tests/ingestion/test_filter_hook.py:123 | Argument "db" to "apply_filter_to_recent" has incompatible type "_FakeSession"; expected "Session | None" |
+| mypy | tests/ingestion/test_filter_hook.py:150 | Argument "db" to "apply_filter_to_recent" has incompatible type "_FakeSession"; expected "Session | None" |
+| mypy | tests/ingestion/test_file_identity.py:31 | Value of type "Any | None" is not indexable |
+| mypy | tests/ingestion/test_file_identity.py:35 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/ingestion/test_file_identity.py:61 | Value of type "Any | None" is not indexable |
+| mypy | tests/ingestion/test_arxiv_client.py:14 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_arxiv_client.py:17 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_arxiv_client.py:20 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_arxiv_client.py:23 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_arxiv_client.py:26 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_arxiv_client.py:29 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_arxiv_client.py:32 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_arxiv_client.py:35 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_arxiv_client.py:38 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_arxiv_client.py:41 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_arxiv_client.py:44 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_arxiv_client.py:48 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_arxiv_client.py:52 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_arxiv_client.py:57 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_arxiv_client.py:60 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_arxiv_client.py:63 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_arxiv_client.py:66 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_arxiv_client.py:73 | Function is missing a return type annotation |
+| mypy | tests/ingestion/test_arxiv_client.py:117 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_evaluation_e2e.py:21 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_evaluation_e2e.py:42 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_evaluation_e2e.py:78 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_evaluation_e2e.py:106 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_evaluation_e2e.py:123 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_evaluation_e2e.py:141 | Function is missing a return type annotation |
+| mypy | tests/config/test_source_overrides_merge.py:34 | Function is missing a type annotation |
+| mypy | tests/config/test_source_overrides_merge.py:37 | Function is missing a return type annotation |
+| mypy | tests/config/test_source_overrides_merge.py:40 | Function is missing a return type annotation |
+| mypy | tests/config/test_source_overrides_merge.py:44 | Function is missing a return type annotation |
+| mypy | tests/config/test_source_overrides_merge.py:56 | Function is missing a return type annotation |
+| mypy | tests/config/test_source_overrides_merge.py:62 | Function is missing a return type annotation |
+| mypy | tests/config/test_source_overrides_merge.py:77 | Function is missing a return type annotation |
+| mypy | tests/config/test_source_overrides_merge.py:91 | Function is missing a return type annotation |
+| mypy | tests/config/test_source_overrides_e2e.py:22 | Function is missing a return type annotation |
+| mypy | tests/config/test_source_overrides_e2e.py:36 | Function is missing a type annotation |
+| mypy | tests/config/test_source_overrides_e2e.py:38 | Function is missing a return type annotation |
+| mypy | tests/config/test_source_overrides_e2e.py:48 | Function is missing a type annotation |
+| mypy | tests/config/test_source_overrides_e2e.py:63 | Function is missing a type annotation |
+| mypy | tests/config/test_source_overrides_e2e.py:78 | Function is missing a type annotation |
+| mypy | tests/config/test_routing_config.py:24 | Function is missing a return type annotation |
+| mypy | tests/config/test_routing_config.py:27 | Function is missing a return type annotation |
+| mypy | tests/config/test_routing_config.py:32 | Function is missing a return type annotation |
+| mypy | tests/config/test_routing_config.py:40 | Function is missing a return type annotation |
+| mypy | tests/config/test_routing_config.py:57 | Function is missing a return type annotation |
+| mypy | tests/config/test_routing_config.py:68 | Function is missing a return type annotation |
+| mypy | tests/config/test_routing_config.py:77 | Function is missing a return type annotation |
+| mypy | tests/config/test_routing_config.py:81 | Function is missing a type annotation |
+| mypy | tests/config/test_routing_config.py:88 | Function is missing a type annotation |
+| mypy | tests/config/test_routing_config.py:95 | Function is missing a type annotation |
+| mypy | tests/config/test_routing_config.py:102 | Function is missing a return type annotation |
+| mypy | tests/config/test_production_validation.py:13 | Function is missing a type annotation |
+| mypy | tests/config/test_production_validation.py:26 | Function is missing a type annotation |
+| mypy | tests/config/test_production_validation.py:39 | Function is missing a type annotation |
+| mypy | tests/config/test_production_validation.py:56 | Function is missing a type annotation |
+| mypy | tests/config/test_production_validation.py:73 | Function is missing a type annotation |
+| mypy | tests/config/test_production_validation.py:91 | Function is missing a type annotation |
+| mypy | tests/config/test_huggingface_papers_sources.py:9 | Function is missing a return type annotation |
+| mypy | tests/config/test_huggingface_papers_sources.py:15 | Function is missing a return type annotation |
+| mypy | tests/config/test_huggingface_papers_sources.py:30 | Function is missing a return type annotation |
+| mypy | tests/config/test_huggingface_papers_sources.py:51 | Function is missing a return type annotation |
+| mypy | tests/config/test_huggingface_papers_sources.py:64 | Function is missing a return type annotation |
+| mypy | tests/config/test_huggingface_papers_sources.py:78 | Function is missing a return type annotation |
+| mypy | tests/config/test_batch_settings.py:6 | Function is missing a type annotation |
+| mypy | tests/config/test_batch_settings.py:14 | Function is missing a type annotation |
+| mypy | tests/config/test_batch_config.py:18 | Function is missing a return type annotation |
+| mypy | tests/config/test_batch_config.py:29 | Function is missing a return type annotation |
+| mypy | tests/config/test_batch_config.py:35 | Function is missing a return type annotation |
+| mypy | tests/config/test_batch_config.py:42 | Function is missing a return type annotation |
+| mypy | tests/config/test_batch_config.py:49 | Function is missing a return type annotation |
+| mypy | tests/config/test_batch_config.py:55 | Function is missing a return type annotation |
+| mypy | tests/config/test_batch_config.py:60 | Function is missing a return type annotation |
+| mypy | tests/config/test_batch_config.py:67 | Function is missing a return type annotation |
+| mypy | tests/config/test_batch_config.py:75 | Function is missing a return type annotation |
+| mypy | tests/config/test_batch_config.py:81 | Function is missing a return type annotation |
+| mypy | tests/config/test_arxiv_sources.py:9 | Function is missing a return type annotation |
+| mypy | tests/config/test_arxiv_sources.py:18 | Function is missing a return type annotation |
+| mypy | tests/config/test_arxiv_sources.py:37 | Function is missing a return type annotation |
+| mypy | tests/config/test_arxiv_sources.py:49 | Function is missing a return type annotation |
+| mypy | tests/api/test_voice_cleanup_api.py:9 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_cleanup_api.py:27 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_cleanup_api.py:34 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_cleanup_api.py:41 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_cleanup_api.py:65 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_cleanup_api.py:78 | Function is missing a type annotation |
+| mypy | tests/api/test_voice_cleanup_api.py:94 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:18 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:28 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:40 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:52 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:64 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:83 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:88 | Function is missing a return type annotation |
+| mypy | tests/api/test_summary_api.py:97 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_summary_api.py:133 | Argument "processing_time_seconds" to "Summary" has incompatible type "float"; expected "_N | None" |
+| mypy | tests/api/test_summary_api.py:145 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:161 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:172 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:183 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:194 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:212 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:223 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:233 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:248 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:264 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:281 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:293 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:306 | Function is missing a type annotation |
+| mypy | tests/api/test_summary_api.py:311 | Function is missing a return type annotation |
+| mypy | tests/api/test_source_api.py:21 | Function is missing a type annotation |
+| mypy | tests/api/test_source_api.py:36 | Function is missing a type annotation |
+| mypy | tests/api/test_source_api.py:71 | Function is missing a type annotation |
+| mypy | tests/api/test_source_api.py:89 | Function is missing a type annotation |
+| mypy | tests/api/test_source_api.py:107 | Function is missing a type annotation |
+| mypy | tests/api/test_source_api.py:120 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_rendering.py:6 | Function is missing a return type annotation |
+| mypy | tests/api/test_settings_rendering.py:21 | Function is missing a return type annotation |
+| mypy | tests/api/test_settings_rendering.py:31 | Function is missing a return type annotation |
+| mypy | tests/api/test_settings_rendering.py:38 | Function is missing a return type annotation |
+| mypy | tests/api/test_settings_api.py:16 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:27 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:43 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:59 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:81 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:97 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:110 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:121 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:128 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:138 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:154 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:170 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:192 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:216 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:237 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:246 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:259 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:276 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:295 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:304 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:314 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:327 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:344 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:356 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:371 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:402 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:428 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_api.py:439 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_preferences_api.py:24 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_preferences_api.py:44 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_preferences_api.py:68 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_preferences_api.py:82 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_preferences_api.py:96 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_preferences_api.py:121 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_preferences_api.py:134 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_preferences_api.py:154 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_preferences_api.py:163 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_preferences_api.py:176 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_preferences_api.py:191 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_preferences_api.py:204 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_preferences_api.py:221 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_preferences_api.py:237 | Function is missing a type annotation |
+| mypy | tests/api/test_notification_preferences_api.py:243 | Function is missing a type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:21 | Function is missing a return type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:30 | Function is missing a type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:35 | Function is missing a return type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:46 | Function is missing a return type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:51 | Function is missing a return type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:68 | Function is missing a type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:90 | Function is missing a return type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:108 | Function is missing a type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:134 | Function is missing a type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:157 | Function is missing a type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:186 | Function is missing a type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:225 | Function is missing a type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:254 | Function is missing a return type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:259 | Function is missing a return type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:263 | Function is missing a return type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:275 | Function is missing a type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:310 | Function is missing a type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:313 | Function is missing a type annotation |
+| mypy | tests/agents/test_llm_router_extensions.py:335 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_metrics.py:17 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_metrics.py:20 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_metrics.py:33 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_metrics.py:43 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_metrics.py:46 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_metrics.py:91 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_metrics.py:109 | Function is missing a return type annotation |
+| mypy | tests/security/test_storage_traversal.py:18 | Function is missing a type annotation |
+| mypy | tests/security/test_storage_traversal.py:32 | Function is missing a type annotation |
+| mypy | tests/security/test_storage_traversal.py:40 | Function is missing a type annotation |
+| mypy | tests/security/test_storage_traversal.py:48 | Function is missing a type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:16 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:22 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:27 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:33 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:38 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:44 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:54 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:61 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:74 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:84 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:99 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:114 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:132 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:148 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:161 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:178 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:193 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:213 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:220 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:230 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:240 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:250 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:263 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:273 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:278 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:283 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:288 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:293 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:310 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:318 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:335 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:359 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:372 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:396 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:408 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:420 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:432 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:447 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:460 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:478 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:494 | Function is missing a return type annotation |
+| mypy | tests/test_delivery/test_text_chunker.py:501 | Function is missing a return type annotation |
+| mypy | tests/integration/test_opik_integration.py:42 | Function is missing a type annotation |
+| mypy | tests/integration/test_opik_integration.py:78 | Function is missing a type annotation |
+| mypy | tests/integration/test_opik_integration.py:102 | Function is missing a type annotation |
+| mypy | tests/integration/test_opik_integration.py:123 | Function is missing a type annotation |
+| mypy | tests/integration/test_opik_integration.py:151 | Function is missing a return type annotation |
+| mypy | tests/integration/test_opik_integration.py:168 | Function is missing a type annotation |
+| mypy | tests/integration/test_opik_integration.py:183 | Function is missing a return type annotation |
+| mypy | tests/integration/test_opik_integration.py:195 | Function is missing a type annotation |
+| mypy | tests/integration/test_opik_integration.py:215 | Function is missing a type annotation |
+| mypy | tests/integration/test_langfuse_integration.py:41 | Function is missing a type annotation |
+| mypy | tests/integration/test_langfuse_integration.py:60 | Function is missing a type annotation |
+| mypy | tests/integration/test_langfuse_integration.py:79 | Function is missing a type annotation |
+| mypy | tests/integration/test_langfuse_integration.py:91 | Function is missing a type annotation |
+| mypy | tests/integration/test_langfuse_integration.py:115 | Function is missing a return type annotation |
+| mypy | tests/integration/test_langfuse_integration.py:129 | Function is missing a return type annotation |
+| mypy | tests/integration/test_langfuse_integration.py:148 | Function is missing a return type annotation |
+| mypy | tests/integration/test_langfuse_integration.py:160 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_token_counter.py:10 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_token_counter.py:16 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_token_counter.py:26 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_token_counter.py:32 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_token_counter.py:42 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_token_counter.py:56 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_token_counter.py:62 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_token_counter.py:81 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_token_counter.py:98 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_token_counter.py:118 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_token_counter.py:129 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_token_counter.py:139 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_token_counter.py:149 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_token_counter.py:169 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:29 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:32 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:35 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:48 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:57 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:61 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:69 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:72 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:75 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:111 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:133 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:147 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:165 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:195 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:198 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:201 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:208 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:213 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:218 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:223 | Function is missing a return type annotation |
+| mypy | tests/test_telemetry/test_agent_metrics.py:233 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:39 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:46 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:54 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:61 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:70 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:79 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:87 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:97 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:108 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:133 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:149 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:167 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:193 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:210 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:229 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:246 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:257 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:273 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:297 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:322 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_auto_ingest.py:334 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_cleanup.py:18 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_cleanup.py:27 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_cleanup.py:37 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_cleanup.py:46 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_cleanup.py:55 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_cleanup.py:65 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_pricing_extractor.py:81 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_pricing_extractor.py:103 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_pricing_extractor.py:132 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_pricing_extractor.py:151 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_pricing_extractor.py:169 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_pricing_extractor.py:192 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_pricing_extractor.py:209 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_pricing_extractor.py:239 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_pricing_extractor.py:267 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_pricing_extractor.py:295 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_pricing_extractor.py:329 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_pricing_extractor.py:371 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_pricing_extractor.py:418 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_pricing_extractor.py:422 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_pricing_extractor.py:428 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_catalog_discovery.py:12 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_catalog_discovery.py:15 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_catalog_discovery.py:20 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_catalog_discovery.py:37 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_catalog_discovery.py:44 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_catalog_discovery.py:61 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_catalog_discovery.py:74 | Function is missing a type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:37 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:51 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:59 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:67 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:75 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:89 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:102 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:115 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:129 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:143 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:162 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:167 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:188 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:199 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:206 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:214 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:225 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:234 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:241 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:250 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:257 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:271 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:299 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:341 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:358 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:371 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:382 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:388 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:400 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_infrastructure_pricing_service.py:412 | Function is missing a return type annotation |
+| mypy | tests/services/test_filter_feedback.py:47 | Argument 1 to "emit_feedback" has incompatible type "_FakeSession"; expected "Session" |
+| mypy | tests/services/test_filter_feedback.py:66 | Argument 1 to "emit_feedback" has incompatible type "_FakeSession"; expected "Session" |
+| mypy | tests/services/test_filter_feedback.py:78 | Argument 1 to "emit_feedback" has incompatible type "_FakeSession"; expected "Session" |
+| mypy | tests/services/test_filter_feedback.py:91 | Argument 1 to "emit_feedback" has incompatible type "_FakeSession"; expected "Session" |
+| mypy | tests/services/test_filter_feedback.py:110 | Argument 1 to "emit_feedback" has incompatible type "_FakeSession"; expected "Session" |
+| mypy | tests/integration/test_local_supabase.py:43 | Function is missing a return type annotation |
+| mypy | tests/integration/test_local_supabase.py:78 | Function is missing a type annotation |
+| mypy | tests/integration/test_local_supabase.py:97 | Function is missing a type annotation |
+| mypy | tests/integration/test_local_supabase.py:105 | Function is missing a type annotation |
+| mypy | tests/integration/test_local_supabase.py:115 | Function is missing a type annotation |
+| mypy | tests/integration/test_local_supabase.py:125 | Function is missing a type annotation |
+| mypy | tests/integration/test_local_supabase.py:136 | Function is missing a type annotation |
+| mypy | tests/integration/test_local_supabase.py:180 | Function is missing a type annotation |
+| mypy | tests/integration/test_local_supabase.py:202 | Function is missing a type annotation |
+| mypy | tests/integration/test_local_supabase.py:213 | Function is missing a type annotation |
+| mypy | tests/integration/test_local_supabase.py:222 | Function is missing a type annotation |
+| mypy | tests/integration/test_local_supabase.py:240 | Function is missing a type annotation |
+| mypy | tests/integration/test_local_supabase.py:250 | Function is missing a type annotation |
+| mypy | tests/services/test_content_set_resolver.py:26 | Function is missing a type annotation |
+| mypy | tests/services/test_content_set_resolver.py:30 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/services/test_content_set_resolver.py:49 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/services/test_content_set_resolver.py:57 | "ContentFactory" has no attribute "id" |
+| mypy | tests/services/test_content_set_resolver.py:64 | "ContentFactory" has no attribute "id" |
+| mypy | tests/services/test_content_set_resolver.py:70 | "ContentFactory" has no attribute "id" |
+| mypy | tests/services/test_content_set_resolver.py:71 | "ContentFactory" has no attribute "id" |
+| mypy | tests/services/test_content_set_resolver.py:74 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/services/test_content_set_resolver.py:86 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/services/test_content_set_resolver.py:114 | "ContentFactory" has no attribute "id" |
+| mypy | tests/services/test_content_set_resolver.py:118 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/services/test_content_set_resolver.py:132 | "ContentFactory" has no attribute "id" |
+| mypy | tests/services/test_content_set_resolver.py:133 | "ContentFactory" has no attribute "id" |
+| mypy | tests/services/test_content_set_resolver.py:134 | "ContentFactory" has no attribute "id" |
+| mypy | tests/services/test_content_set_resolver.py:136 | "ContentFactory" has no attribute "id" |
+| mypy | tests/services/test_content_set_resolver.py:139 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/services/test_content_set_resolver.py:153 | "ContentFactory" has no attribute "id" |
+| mypy | tests/services/test_content_set_resolver.py:154 | "ContentFactory" has no attribute "id" |
+| mypy | tests/services/test_content_set_resolver.py:159 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/services/test_content_set_resolver.py:196 | "ContentFactory" has no attribute "id" |
+| mypy | tests/services/test_content_set_resolver.py:199 | "ContentFactory" has no attribute "id" |
+| mypy | tests/services/test_content_set_resolver.py:202 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/services/test_content_set_resolver.py:236 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/services/test_content_set_resolver.py:259 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/services/test_content_set_resolver.py:278 | Function is missing a type annotation |
+| mypy | tests/services/test_content_set_resolver.py:285 | "ContentFactory" has no attribute "id" |
+| mypy | tests/services/test_content_set_resolver.py:286 | "ContentFactory" has no attribute "id" |
+| mypy | tests/services/test_content_set_resolver.py:287 | "ContentFactory" has no attribute "id" |
+| mypy | tests/services/test_content_set_resolver.py:291 | "ContentFactory" has no attribute "id" |
+| mypy | tests/services/test_content_set_resolver.py:296 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/services/test_content_set_resolver.py:315 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/services/test_content_set_resolver.py:321 | Property "fingerprint" defined in "ResolvedContentSet" is read-only |
+| mypy | tests/services/test_content_set_resolver.py:323 | Property "limit" defined in "SelectionPolicy" is read-only |
+| mypy | tests/services/test_content_query.py:25 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:33 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:37 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:41 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:45 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:50 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:54 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:58 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:62 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:66 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:78 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:82 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:109 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:119 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:131 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:142 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:154 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:165 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:177 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:188 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:199 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:210 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:219 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:233 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:245 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:254 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:264 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:293 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:305 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:317 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:339 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:360 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:373 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:379 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:391 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:404 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:412 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:428 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:437 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:448 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:457 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:469 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:477 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:483 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:501 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:512 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:520 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:529 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:537 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:543 | Function is missing a return type annotation |
+| mypy | tests/services/test_content_query.py:551 | Function is missing a type annotation |
+| mypy | tests/services/test_content_query.py:565 | Function is missing a return type annotation |
+| mypy | tests/api/test_connection_status_api.py:16 | Function is missing a type annotation |
+| mypy | tests/api/test_connection_status_api.py:50 | Function is missing a type annotation |
+| mypy | tests/api/test_connection_status_api.py:66 | Function is missing a type annotation |
+| mypy | tests/api/test_connection_status_api.py:84 | Function is missing a type annotation |
+| mypy | tests/api/test_connection_status_api.py:101 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:20 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:38 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:52 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:63 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:77 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:88 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:109 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:122 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:135 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:150 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:168 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:184 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:200 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:216 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:238 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:244 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:253 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:277 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:300 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:321 | Function is missing a return type annotation |
+| mypy | tests/api/test_chat_api.py:324 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:340 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:350 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:360 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:370 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:383 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:420 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_api.py:440 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_savings.py:13 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_batch_savings.py:19 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_batch_savings.py:31 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_batch_savings.py:42 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_batch_savings.py:49 | Function is missing a return type annotation |
+| mypy | tests/scripts/test_switch_embeddings.py:20 | Function is missing a type annotation |
+| mypy | tests/scripts/test_switch_embeddings.py:57 | Function is missing a type annotation |
+| mypy | tests/scripts/test_switch_embeddings.py:92 | Function is missing a type annotation |
+| mypy | tests/scripts/test_switch_embeddings.py:112 | Function is missing a type annotation |
+| mypy | tests/test_queue/test_setup.py:21 | Function is missing a return type annotation |
+| mypy | tests/test_queue/test_setup.py:49 | Function is missing a type annotation |
+| mypy | tests/test_queue/test_setup.py:60 | Function is missing a type annotation |
+| mypy | tests/test_queue/test_setup.py:76 | Function is missing a type annotation |
+| mypy | tests/test_queue/test_setup.py:83 | Function is missing a type annotation |
+| mypy | tests/test_queue/test_setup.py:97 | Function is missing a type annotation |
+| mypy | tests/test_queue/test_setup.py:110 | Function is missing a type annotation |
+| mypy | tests/test_queue/test_setup.py:124 | Function is missing a type annotation |
+| mypy | tests/test_queue/test_setup.py:134 | Function is missing a type annotation |
+| mypy | tests/test_queue/test_setup.py:142 | Function is missing a type annotation |
+| mypy | tests/test_queue/test_setup.py:152 | Function is missing a type annotation |
+| mypy | tests/test_queue/test_setup.py:163 | Function is missing a type annotation |
+| mypy | tests/test_queue/test_setup.py:173 | Function is missing a type annotation |
 | mypy | tests/test_processors/test_digest_text_preparer.py:13 | Function is missing a return type annotation |
 | mypy | tests/test_processors/test_digest_text_preparer.py:18 | Function is missing a return type annotation |
 | mypy | tests/test_processors/test_digest_text_preparer.py:23 | Function is missing a return type annotation |
@@ -2274,301 +3557,309 @@
 | mypy | tests/test_processors/test_digest_text_preparer.py:588 | Function is missing a return type annotation |
 | mypy | tests/test_processors/test_digest_text_preparer.py:595 | Function is missing a return type annotation |
 | mypy | tests/test_processors/test_digest_text_preparer.py:602 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:15 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:38 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:48 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:55 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:64 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:79 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:100 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:105 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:128 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:139 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:150 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:159 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:169 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:183 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:200 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:217 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:223 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:238 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:325 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:330 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:344 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:363 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:380 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:400 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:420 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:440 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:460 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:477 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:501 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_html_markdown.py:554 | Function is missing a type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:16 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:22 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:27 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:33 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:38 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:44 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:54 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:61 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:74 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:84 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:99 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:114 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:132 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:148 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:161 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:178 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:193 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:213 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:220 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:230 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:240 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:250 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:263 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:273 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:278 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:283 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:288 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:293 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:310 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:318 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:335 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:359 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:372 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:396 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:408 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:420 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:432 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:447 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:460 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:478 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:494 | Function is missing a return type annotation |
-| mypy | tests/test_delivery/test_text_chunker.py:501 | Function is missing a return type annotation |
-| mypy | tests/test_cli/test_profile_migrate.py:8 | Library stubs not installed for "yaml" |
+| mypy | tests/test_config/test_migrate_sources.py:95 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:105 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:111 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:122 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:128 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:137 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:147 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:162 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:171 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:181 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:208 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:217 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:223 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:229 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:235 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:245 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:252 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:258 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:264 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:270 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:287 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:297 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:305 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:316 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:326 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:336 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:339 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:344 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:363 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:380 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:400 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:419 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:447 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:463 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:480 | Argument 1 to "write_sources_directory" has incompatible type "dict[str, object]"; expected "list[dict[str, Any]] | dict[str, list[dict[str, Any]]]" |
+| mypy | tests/test_config/test_migrate_sources.py:490 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:505 | Argument 1 has incompatible type "dict[str, object]"; expected "list[dict[str, Any]] | dict[str, list[dict[str, Any]]]" |
+| mypy | tests/test_config/test_migrate_sources.py:513 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:521 | Argument 1 has incompatible type "dict[str, object]"; expected "list[dict[str, Any]] | dict[str, list[dict[str, Any]]]" |
+| mypy | tests/test_config/test_migrate_sources.py:530 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:531 | Need type annotation for "sources" |
+| mypy | tests/test_config/test_migrate_sources.py:552 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:575 | Argument 1 to "write_sources_directory" has incompatible type "dict[str, object]"; expected "list[dict[str, Any]] | dict[str, list[dict[str, Any]]]" |
+| mypy | tests/test_config/test_migrate_sources.py:593 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:609 | Argument 1 has incompatible type "dict[str, object]"; expected "list[dict[str, Any]] | dict[str, list[dict[str, Any]]]" |
+| mypy | tests/test_config/test_migrate_sources.py:625 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:648 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:660 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:687 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:706 | Function is missing a return type annotation |
+| mypy | tests/test_config/test_migrate_sources.py:720 | Function is missing a return type annotation |
+| mypy | tests/cli_gen_eval/test_selection.py:376 | Function is missing a return type annotation |
 | mypy | tests/test_cli/test_profile_migrate.py:385 | Function is missing a type annotation for one or more arguments |
 | mypy | tests/test_cli/test_profile_migrate.py:418 | Function is missing a type annotation for one or more arguments |
 | mypy | tests/test_cli/test_profile_migrate.py:450 | Function is missing a type annotation for one or more arguments |
-| mypy | tests/test_cli/test_profile_commands.py:8 | Library stubs not installed for "yaml" |
-| mypy | tests/security/test_storage_traversal.py:18 | Function is missing a type annotation |
-| mypy | tests/security/test_storage_traversal.py:32 | Function is missing a type annotation |
-| mypy | tests/security/test_storage_traversal.py:40 | Function is missing a type annotation |
-| mypy | tests/security/test_storage_traversal.py:48 | Function is missing a type annotation |
-| mypy | tests/security/test_path_traversal.py:16 | Function is missing a return type annotation |
-| mypy | tests/security/test_path_traversal.py:25 | Function is missing a type annotation |
-| mypy | tests/security/test_path_traversal.py:36 | Function is missing a type annotation |
-| mypy | tests/security/test_path_traversal.py:44 | Function is missing a type annotation |
-| mypy | tests/security/test_path_traversal.py:52 | Function is missing a type annotation |
-| mypy | tests/integration/test_local_supabase.py:43 | Function is missing a return type annotation |
-| mypy | tests/integration/test_local_supabase.py:78 | Function is missing a type annotation |
-| mypy | tests/integration/test_local_supabase.py:97 | Function is missing a type annotation |
-| mypy | tests/integration/test_local_supabase.py:105 | Function is missing a type annotation |
-| mypy | tests/integration/test_local_supabase.py:115 | Function is missing a type annotation |
-| mypy | tests/integration/test_local_supabase.py:125 | Function is missing a type annotation |
-| mypy | tests/integration/test_local_supabase.py:136 | Function is missing a type annotation |
-| mypy | tests/integration/test_local_supabase.py:180 | Function is missing a type annotation |
-| mypy | tests/integration/test_local_supabase.py:202 | Function is missing a type annotation |
-| mypy | tests/integration/test_local_supabase.py:213 | Function is missing a type annotation |
-| mypy | tests/integration/test_local_supabase.py:222 | Function is missing a type annotation |
-| mypy | tests/integration/test_local_supabase.py:240 | Function is missing a type annotation |
-| mypy | tests/integration/test_local_supabase.py:250 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_rendering.py:6 | Function is missing a return type annotation |
-| mypy | tests/api/test_settings_rendering.py:21 | Function is missing a return type annotation |
-| mypy | tests/api/test_settings_rendering.py:31 | Function is missing a return type annotation |
-| mypy | tests/api/test_settings_rendering.py:38 | Function is missing a return type annotation |
-| mypy | tests/test_queue/test_setup.py:21 | Function is missing a return type annotation |
-| mypy | tests/test_queue/test_setup.py:49 | Function is missing a type annotation |
-| mypy | tests/test_queue/test_setup.py:60 | Function is missing a type annotation |
-| mypy | tests/test_queue/test_setup.py:76 | Function is missing a type annotation |
-| mypy | tests/test_queue/test_setup.py:83 | Function is missing a type annotation |
-| mypy | tests/test_queue/test_setup.py:97 | Function is missing a type annotation |
-| mypy | tests/test_queue/test_setup.py:110 | Function is missing a type annotation |
-| mypy | tests/test_queue/test_setup.py:124 | Function is missing a type annotation |
-| mypy | tests/test_queue/test_setup.py:134 | Function is missing a type annotation |
-| mypy | tests/test_queue/test_setup.py:142 | Function is missing a type annotation |
-| mypy | tests/test_queue/test_setup.py:152 | Function is missing a type annotation |
-| mypy | tests/test_queue/test_setup.py:163 | Function is missing a type annotation |
-| mypy | tests/test_queue/test_setup.py:173 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:18 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:36 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:50 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:61 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:75 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:86 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:107 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:120 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:133 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:148 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:166 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:182 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:198 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:214 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:236 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:246 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:270 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:293 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:314 | Function is missing a return type annotation |
-| mypy | tests/api/test_chat_api.py:317 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:333 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:343 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:353 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:363 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:376 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:413 | Function is missing a type annotation |
-| mypy | tests/api/test_chat_api.py:433 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_otel_smoke.py:34 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_otel_smoke.py:46 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_otel_smoke.py:66 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_otel_smoke.py:114 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_otel_smoke.py:142 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_otel_smoke.py:166 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_otel_smoke.py:200 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_otel_smoke.py:235 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_otel_smoke.py:265 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_youtube_parser.py:15 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_youtube_parser.py:19 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_youtube_parser.py:23 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_youtube_parser.py:27 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_youtube_parser.py:31 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_youtube_parser.py:36 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_youtube_parser.py:40 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_youtube_parser.py:45 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_youtube_parser.py:49 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_youtube_parser.py:55 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_youtube_parser.py:84 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_youtube_parser.py:89 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_youtube_parser.py:102 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_youtube_parser.py:122 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_youtube_parser.py:137 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_youtube_parser.py:149 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_youtube_parser.py:162 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:13 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:17 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:21 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:30 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:34 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:40 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:44 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:49 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:54 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:60 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:66 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:71 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:81 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:91 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:101 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:111 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:120 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:134 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:147 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:160 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_markitdown_parser.py:172 | Function is missing a type annotation |
-| mypy | tests/security/test_global_error_handler.py:15 | Function is missing a type annotation |
-| mypy | tests/security/test_global_error_handler.py:26 | Function is missing a return type annotation |
-| mypy | tests/security/test_global_error_handler.py:37 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:27 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:35 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:46 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:71 | Function is missing a type annotation |
-| mypy | tests/test_services/test_url_extractor.py:88 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:108 | Function is missing a type annotation |
-| mypy | tests/test_services/test_url_extractor.py:126 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:148 | Function is missing a type annotation |
-| mypy | tests/test_services/test_url_extractor.py:164 | Function is missing a type annotation |
-| mypy | tests/test_services/test_url_extractor.py:177 | Function is missing a type annotation |
-| mypy | tests/test_services/test_url_extractor.py:189 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:200 | Function is missing a type annotation |
-| mypy | tests/test_services/test_url_extractor.py:217 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:253 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:269 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:289 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:307 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:325 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:337 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:347 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:361 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:398 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:429 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:440 | Function is missing a type annotation |
-| mypy | tests/test_services/test_url_extractor.py:469 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:480 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:495 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:522 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:553 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:560 | Function is missing a type annotation |
-| mypy | tests/test_services/test_url_extractor.py:583 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:599 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_url_extractor.py:607 | Function is missing a type annotation |
-| mypy | tests/security/test_ssrf_protection.py:11 | Function is missing a return type annotation |
-| mypy | tests/security/test_ssrf_protection.py:24 | Function is missing a return type annotation |
-| mypy | tests/security/test_ssrf_protection.py:36 | Function is missing a return type annotation |
-| mypy | tests/security/test_ssrf_protection.py:48 | Function is missing a return type annotation |
-| mypy | tests/security/test_ssrf_protection.py:60 | Function is missing a return type annotation |
-| mypy | tests/security/test_ssrf_protection.py:68 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:18 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:28 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:61 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:80 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:104 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:114 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:121 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:135 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:154 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:172 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:190 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:214 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:242 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:261 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:278 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:300 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:316 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:331 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:346 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:361 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:369 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:387 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:398 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_digest_reviser.py:419 | Function is missing a return type annotation |
-| mypy | src/agents/claude/summarizer.py:80 | Argument 1 to "AnthropicBedrock" has incompatible type "**dict[str, str]"; expected "float | Timeout | NotGiven | None" |
-| mypy | src/agents/claude/summarizer.py:80 | Argument 1 to "AnthropicBedrock" has incompatible type "**dict[str, str]"; expected "int" |
-| mypy | src/agents/claude/summarizer.py:80 | Argument 1 to "AnthropicBedrock" has incompatible type "**dict[str, str]"; expected "Mapping[str, str] | None" |
-| mypy | src/agents/claude/summarizer.py:80 | Argument 1 to "AnthropicBedrock" has incompatible type "**dict[str, str]"; expected "Mapping[str, object] | None" |
-| mypy | src/agents/claude/summarizer.py:80 | Argument 1 to "AnthropicBedrock" has incompatible type "**dict[str, str]"; expected "Client | None" |
-| mypy | src/agents/claude/summarizer.py:80 | Argument 1 to "AnthropicBedrock" has incompatible type "**dict[str, str]"; expected "bool" |
-| mypy | src/agents/claude/summarizer.py:92 | Argument 1 to "AnthropicVertex" has incompatible type "**dict[str, str]"; expected "Credentials | None" |
-| mypy | src/agents/claude/summarizer.py:92 | Argument 1 to "AnthropicVertex" has incompatible type "**dict[str, str]"; expected "float | Timeout | NotGiven | None" |
-| mypy | src/agents/claude/summarizer.py:92 | Argument 1 to "AnthropicVertex" has incompatible type "**dict[str, str]"; expected "int" |
-| mypy | src/agents/claude/summarizer.py:92 | Argument 1 to "AnthropicVertex" has incompatible type "**dict[str, str]"; expected "Mapping[str, str] | None" |
-| mypy | src/agents/claude/summarizer.py:92 | Argument 1 to "AnthropicVertex" has incompatible type "**dict[str, str]"; expected "Mapping[str, object] | None" |
-| mypy | src/agents/claude/summarizer.py:92 | Argument 1 to "AnthropicVertex" has incompatible type "**dict[str, str]"; expected "Client | None" |
-| mypy | src/agents/claude/summarizer.py:92 | Argument 1 to "AnthropicVertex" has incompatible type "**dict[str, str]"; expected "bool" |
-| mypy | tests/test_ingestion/test_podcast.py:21 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:39 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:45 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:55 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:117 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:144 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:163 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:185 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:195 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:206 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:219 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:246 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:265 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:275 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:315 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:356 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:392 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:427 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:482 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:501 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:517 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:560 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:578 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:595 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:626 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_podcast.py:638 | Function is missing a type annotation |
+| mypy | tests/test_cli/test_auth_commands.py:32 | Function is missing a type annotation |
+| mypy | tests/test_cli/test_auth_commands.py:39 | Function is missing a type annotation |
+| mypy | tests/test_cli/test_auth_commands.py:44 | Function is missing a type annotation |
+| mypy | tests/test_cli/test_auth_commands.py:53 | Function is missing a type annotation |
+| mypy | tests/test_cli/test_auth_commands.py:58 | Function is missing a type annotation |
+| mypy | tests/test_cli/test_auth_commands.py:68 | Function is missing a type annotation |
+| mypy | tests/test_cli/test_auth_commands.py:72 | Function is missing a type annotation |
+| mypy | tests/test_cli/test_auth_commands.py:83 | Function is missing a type annotation |
+| mypy | tests/test_cli/test_auth_commands.py:93 | Function is missing a type annotation |
+| mypy | tests/test_cli/test_auth_commands.py:97 | Function is missing a type annotation |
+| mypy | tests/test_cli/test_auth_commands.py:116 | Function is missing a type annotation |
+| mypy | tests/test_cli/test_auth_commands.py:132 | Function is missing a type annotation |
+| mypy | tests/test_cli/test_auth_commands.py:168 | Function is missing a type annotation |
+| mypy | tests/test_cli/test_auth_commands.py:182 | Function is missing a type annotation |
+| mypy | tests/test_cli/test_auth_commands.py:206 | Function is missing a type annotation |
+| mypy | tests/test_cli/test_auth_commands.py:220 | Function is missing a type annotation |
+| mypy | tests/e2e/conftest.py:70 | Function is missing a return type annotation |
+| mypy | tests/e2e/conftest.py:88 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/e2e/conftest.py:91 | Returning Any from function declared to return "str" |
+| mypy | tests/e2e/conftest.py:100 | Function is missing a return type annotation |
+| mypy | tests/e2e/conftest.py:117 | The return type of a generator function should be "Generator" or one of its supertypes |
+| mypy | tests/e2e/conftest.py:131 | Function is missing a return type annotation |
+| mypy | tests/e2e/conftest.py:541 | Returning Any from function declared to return "str | None" |
+| mypy | tests/e2e/conftest.py:583 | Returning Any from function declared to return "dict[Any, Any]" |
+| mypy | tests/config/test_settings_api_url.py:8 | Function is missing a return type annotation |
+| mypy | tests/config/test_settings_api_url.py:15 | Function is missing a type annotation |
+| mypy | tests/config/test_settings_api_url.py:24 | Function is missing a type annotation |
+| mypy | tests/cli/test_api_client_retry.py:25 | Function is missing a return type annotation |
+| mypy | tests/cli/test_api_client_retry.py:36 | Function is missing a return type annotation |
+| mypy | tests/cli/test_api_client_retry.py:47 | Function is missing a return type annotation |
+| mypy | tests/cli/test_api_client_retry.py:61 | Function is missing a return type annotation |
+| mypy | tests/cli/test_api_client_retry.py:73 | Function is missing a return type annotation |
+| mypy | tests/cli/test_api_client_retry.py:85 | Function is missing a type annotation |
+| mypy | tests/cli/test_api_client_retry.py:92 | Function is missing a return type annotation |
+| mypy | tests/cli/test_api_client_retry.py:98 | Function is missing a return type annotation |
+| mypy | tests/cli/test_api_client_retry.py:104 | Function is missing a return type annotation |
+| mypy | tests/unit/test_audit_decorator.py:18 | Function is missing a return type annotation |
+| mypy | tests/unit/test_audit_decorator.py:20 | Function is missing a type annotation |
+| mypy | tests/unit/test_audit_decorator.py:30 | Function is missing a return type annotation |
+| mypy | tests/unit/test_audit_decorator.py:32 | Function is missing a type annotation |
+| mypy | tests/unit/test_audit_decorator.py:40 | Function is missing a return type annotation |
+| mypy | tests/unit/test_audit_decorator.py:42 | Function is missing a type annotation |
+| mypy | tests/unit/test_audit_decorator.py:46 | Function is missing a type annotation |
+| mypy | tests/unit/test_audit_decorator.py:58 | Function is missing a return type annotation |
+| mypy | tests/api/test_audit_observability.py:46 | Function is missing a return type annotation |
+| mypy | tests/api/test_audit_observability.py:63 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_observability.py:76 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_observability.py:87 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_observability.py:99 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_observability.py:108 | Function is missing a return type annotation |
+| mypy | tests/api/test_audit_observability.py:123 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:52 | Function is missing a return type annotation |
+| mypy | tests/api/test_audit_middleware.py:57 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:90 | Function is missing a return type annotation |
+| mypy | tests/api/test_audit_middleware.py:108 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:123 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:137 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:145 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:157 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:168 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:177 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:184 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:191 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:223 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:241 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:256 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:263 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:271 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:284 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:294 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:302 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:309 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_middleware.py:323 | Function is missing a return type annotation |
+| mypy | tests/api/test_audit_middleware.py:329 | Function is missing a type annotation |
+| mypy | tests/agents/specialists/test_base.py:11 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_base.py:24 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_base.py:37 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_base.py:52 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_base.py:65 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_base.py:77 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_base.py:85 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_base.py:102 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_base.py:106 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_base.py:121 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_base.py:123 | Function is missing a type annotation |
+| mypy | tests/agents/specialists/test_base.py:136 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_base.py:138 | Function is missing a type annotation |
+| mypy | tests/agents/specialists/test_base.py:151 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_base.py:153 | Function is missing a type annotation |
+| mypy | tests/agents/specialists/test_base.py:165 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_base.py:167 | Function is missing a type annotation |
+| mypy | tests/integration/fixtures/falkordb.py:35 | Function is missing a return type annotation |
+| mypy | tests/integration/fixtures/falkordb.py:52 | Function is missing a type annotation |
+| mypy | tests/integration/fixtures/falkordb.py:62 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:17 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:27 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:49 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:64 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:71 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:81 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:98 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:116 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:136 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:151 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:169 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:189 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:210 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:228 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:240 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:252 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:265 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:276 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:290 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:301 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_falkordb_provider.py:308 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_web_search.py:35 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_web_search.py:51 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_web_search.py:61 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_web_search.py:75 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:81 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:88 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:94 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_web_search.py:100 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:116 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:121 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:128 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:142 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:147 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:176 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:190 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:200 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:214 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:219 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:236 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:243 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_web_search.py:248 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:274 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:293 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_web_search.py:298 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_web_search.py:304 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:323 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:334 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:349 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:359 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_web_search.py:373 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_web_search.py:383 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_web_search.py:394 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:401 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_web_search.py:406 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:429 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:441 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:457 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_web_search.py:462 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_web_search.py:468 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:479 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:490 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:501 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:521 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:533 | Function is missing a type annotation |
+| mypy | tests/test_services/test_web_search.py:545 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_web_search.py:561 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_scholar_web_search.py:172 | Argument 1 to "_setup_mock_client" has incompatible type Module; expected "MagicMock" |
+| mypy | tests/test_services/test_scholar_web_search.py:172 | Argument 2 to "_setup_mock_client" has incompatible type Module; expected "MagicMock" |
+| mypy | tests/test_services/test_scholar_web_search.py:207 | Argument 1 to "_setup_mock_client" has incompatible type Module; expected "MagicMock" |
+| mypy | tests/test_services/test_scholar_web_search.py:207 | Argument 2 to "_setup_mock_client" has incompatible type Module; expected "MagicMock" |
+| mypy | tests/test_services/test_scholar_web_search.py:238 | Argument 1 to "_setup_mock_client" has incompatible type Module; expected "MagicMock" |
+| mypy | tests/test_services/test_scholar_web_search.py:238 | Argument 2 to "_setup_mock_client" has incompatible type Module; expected "MagicMock" |
+| mypy | tests/test_services/test_search.py:17 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:23 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:27 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:31 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:37 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:40 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:48 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:54 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:60 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:66 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:76 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:95 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:107 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:118 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:143 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:153 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:173 | Function is missing a type annotation |
+| mypy | tests/test_services/test_search.py:199 | Function is missing a type annotation |
+| mypy | tests/test_services/test_search.py:222 | Function is missing a type annotation |
+| mypy | tests/test_services/test_search.py:284 | Function is missing a type annotation |
+| mypy | tests/test_services/test_search.py:299 | Function is missing a type annotation |
+| mypy | tests/test_services/test_search.py:313 | Function is missing a type annotation |
+| mypy | tests/test_services/test_search.py:331 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:343 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:363 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:386 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:398 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:403 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:412 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:422 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:467 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_search.py:473 | Function is missing a type annotation |
+| mypy | tests/test_services/test_search.py:497 | Function is missing a type annotation |
+| mypy | tests/test_services/test_search.py:534 | Function is missing a type annotation |
+| mypy | tests/test_services/test_search.py:575 | Function is missing a type annotation |
+| mypy | tests/test_services/test_search.py:599 | Function is missing a type annotation |
+| mypy | tests/security/test_search_xss.py:4 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_registry_writeback.py:12 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_registry_writeback.py:17 | Function is missing a type annotation |
+| mypy | tests/test_services/test_registry_writeback.py:22 | Function is missing a type annotation |
+| mypy | tests/test_services/test_registry_writeback.py:27 | Function is missing a type annotation |
+| mypy | tests/test_services/test_registry_writeback.py:33 | Function is missing a type annotation |
+| mypy | tests/test_services/test_registry_writeback.py:42 | Function is missing a type annotation |
+| mypy | tests/test_services/test_registry_writeback.py:61 | Function is missing a type annotation |
+| mypy | tests/test_services/test_registry_writeback.py:72 | Function is missing a type annotation |
+| mypy | tests/test_services/test_registry_writeback.py:88 | Function is missing a type annotation |
+| mypy | tests/services/test_image_generator.py:39 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:45 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:50 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:67 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:119 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:146 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:184 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:217 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:257 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:300 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:312 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:316 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:320 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:324 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:330 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:344 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:354 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:364 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:375 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:392 | Function is missing a return type annotation |
+| mypy | tests/services/test_image_generator.py:398 | Function is missing a return type annotation |
+| mypy | tests/api/test_image_generation_api.py:24 | Function is missing a return type annotation |
+| mypy | tests/api/test_image_generation_api.py:68 | Function is missing a type annotation |
+| mypy | tests/api/test_image_generation_api.py:89 | Function is missing a type annotation |
+| mypy | tests/api/test_image_generation_api.py:101 | Function is missing a type annotation |
+| mypy | tests/api/test_image_generation_api.py:113 | Function is missing a type annotation |
+| mypy | tests/api/test_image_generation_api.py:129 | Function is missing a type annotation |
+| mypy | tests/api/test_image_generation_api.py:156 | Function is missing a type annotation |
+| mypy | tests/api/test_image_generation_api.py:183 | Function is missing a type annotation |
+| mypy | tests/api/test_image_generation_api.py:209 | Function is missing a type annotation |
+| mypy | tests/api/test_image_generation_api.py:225 | Function is missing a type annotation |
+| mypy | tests/api/test_image_generation_api.py:241 | Function is missing a type annotation |
+| mypy | tests/api/test_image_generation_api.py:262 | Function is missing a type annotation |
+| mypy | tests/api/test_image_generation_api.py:300 | Function is missing a type annotation |
+| mypy | tests/api/test_image_generation_api.py:320 | Function is missing a type annotation |
 | mypy | tests/test_services/test_file_storage.py:44 | Function is missing a return type annotation |
 | mypy | tests/test_services/test_file_storage.py:50 | Function is missing a type annotation |
 | mypy | tests/test_services/test_file_storage.py:55 | Function is missing a type annotation |
@@ -2649,6 +3940,78 @@
 | mypy | tests/test_services/test_file_storage.py:1113 | Function is missing a return type annotation |
 | mypy | tests/test_services/test_file_storage.py:1119 | Function is missing a type annotation |
 | mypy | tests/test_services/test_file_storage.py:1132 | Function is missing a type annotation |
+| mypy | tests/security/test_markdown_xss.py:4 | Function is missing a return type annotation |
+| mypy | tests/security/test_markdown_xss.py:15 | Function is missing a return type annotation |
+| mypy | tests/security/test_markdown_xss.py:26 | Function is missing a return type annotation |
+| mypy | tests/unit/test_cloud_stt_service.py:16 | Function is missing a return type annotation |
+| mypy | tests/unit/test_cloud_stt_service.py:27 | Function is missing a return type annotation |
+| mypy | tests/unit/test_cloud_stt_service.py:38 | Function is missing a return type annotation |
+| mypy | tests/unit/test_cloud_stt_service.py:46 | Function is missing a return type annotation |
+| mypy | tests/unit/test_cloud_stt_service.py:55 | Function is missing a return type annotation |
+| mypy | tests/unit/test_cloud_stt_service.py:73 | Function is missing a return type annotation |
+| mypy | tests/unit/test_cloud_stt_service.py:82 | Function is missing a return type annotation |
+| mypy | tests/unit/test_cloud_stt_service.py:91 | Function is missing a return type annotation |
+| mypy | tests/unit/test_cloud_stt_service.py:102 | Function is missing a return type annotation |
+| mypy | tests/unit/test_cloud_stt_service.py:113 | Function is missing a return type annotation |
+| mypy | tests/unit/test_cloud_stt_service.py:124 | Function is missing a return type annotation |
+| mypy | tests/unit/test_cloud_stt_service.py:132 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_batch_collector.py:48 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_collector.py:64 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_collector.py:77 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_collector.py:91 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_collector.py:97 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_collector.py:113 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_collector.py:128 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_collector.py:137 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_collector.py:151 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_batch_collector.py:155 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_collector.py:165 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_batch_collector.py:170 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_batch_collector.py:174 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_collector.py:177 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_collector.py:184 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_batch_collector.py:188 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_batch_collector.py:192 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_hook.py:67 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_hook.py:92 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_hook.py:105 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_hook.py:122 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_hook.py:150 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_hook.py:174 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_hook.py:205 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_hook.py:231 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_hook.py:246 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_hook.py:261 | Function is missing a type annotation |
+| mypy | tests/test_services/test_reference_hook.py:281 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_hook.py:293 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_hook.py:305 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_reference_hook.py:317 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:23 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:33 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:66 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:85 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:109 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:120 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:127 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:141 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:167 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:180 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:203 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:230 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:249 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:266 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:288 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:330 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:360 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:397 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:413 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:428 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:443 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:458 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:466 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:482 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:493 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_digest_reviser.py:514 | Function is missing a return type annotation |
 | mypy | tests/test_delivery/test_tts_service.py:14 | Function is missing a return type annotation |
 | mypy | tests/test_delivery/test_tts_service.py:19 | Function is missing a return type annotation |
 | mypy | tests/test_delivery/test_tts_service.py:24 | Function is missing a return type annotation |
@@ -2691,37 +4054,293 @@
 | mypy | tests/test_delivery/test_tts_service.py:435 | Function is missing a return type annotation |
 | mypy | tests/test_delivery/test_tts_service.py:439 | Function is missing a type annotation |
 | mypy | tests/test_delivery/test_tts_service.py:449 | Function is missing a type annotation |
-| mypy | tests/integration/test_supabase_provider.py:37 | Function is missing a return type annotation |
-| mypy | tests/integration/test_supabase_provider.py:43 | Function is missing a return type annotation |
-| mypy | tests/integration/test_supabase_provider.py:50 | Function is missing a return type annotation |
-| mypy | tests/integration/test_supabase_provider.py:55 | Unsupported right operand type for in ("Any | None") |
-| mypy | tests/integration/test_supabase_provider.py:56 | Value of type "Any | None" is not indexable |
-| mypy | tests/integration/test_supabase_provider.py:58 | Function is missing a return type annotation |
-| mypy | tests/integration/test_supabase_provider.py:58 | Function is missing a type annotation for one or more arguments |
-| mypy | tests/integration/test_supabase_provider.py:62 | Function is missing a return type annotation |
-| mypy | tests/integration/test_supabase_provider.py:79 | Function is missing a return type annotation |
-| mypy | tests/integration/test_supabase_provider.py:85 | Function is missing a return type annotation |
-| mypy | tests/integration/test_supabase_provider.py:92 | Function is missing a return type annotation |
-| mypy | tests/integration/test_supabase_provider.py:114 | Function is missing a return type annotation |
-| mypy | tests/integration/test_supabase_provider.py:148 | Function is missing a return type annotation |
-| mypy | tests/integration/test_supabase_provider.py:158 | Function is missing a return type annotation |
-| mypy | tests/integration/test_supabase_provider.py:170 | Incompatible return value type (got "tuple[Any | None, float]", expected "tuple[int, float]") |
-| mypy | tests/integration/test_supabase_provider.py:188 | Function is missing a return type annotation |
-| mypy | tests/integration/test_supabase_provider.py:195 | Incompatible return value type (got "Any | None", expected "int") |
-| mypy | tests/integration/test_supabase_provider.py:208 | Function is missing a return type annotation |
-| mypy | tests/integration/test_supabase_provider.py:254 | Function is missing a type annotation |
-| mypy | tests/integration/test_supabase_provider.py:258 | Function is missing a type annotation |
-| mypy | tests/integration/test_supabase_provider.py:265 | Function is missing a type annotation |
-| mypy | tests/integration/test_supabase_provider.py:273 | Function is missing a type annotation |
-| mypy | tests/integration/test_opik_integration.py:42 | Function is missing a type annotation |
-| mypy | tests/integration/test_opik_integration.py:78 | Function is missing a type annotation |
-| mypy | tests/integration/test_opik_integration.py:102 | Function is missing a type annotation |
-| mypy | tests/integration/test_opik_integration.py:123 | Function is missing a type annotation |
-| mypy | tests/integration/test_opik_integration.py:151 | Function is missing a return type annotation |
-| mypy | tests/integration/test_opik_integration.py:168 | Function is missing a type annotation |
-| mypy | tests/integration/test_opik_integration.py:183 | Function is missing a return type annotation |
-| mypy | tests/integration/test_opik_integration.py:195 | Function is missing a type annotation |
-| mypy | tests/integration/test_opik_integration.py:215 | Function is missing a type annotation |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:92 | Function is missing a return type annotation |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:107 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:114 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:126 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:146 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:158 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:166 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:175 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:189 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:198 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:205 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:211 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:219 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:299 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:312 | Need type annotation for "overrides" |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:330 | Function is missing a type annotation |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:385 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:423 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli_gen_eval/test_mutation_guard.py:445 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli/test_evaluate_commands.py:23 | Function is missing a return type annotation |
+| mypy | tests/cli/test_evaluate_commands.py:30 | Function is missing a return type annotation |
+| mypy | tests/cli/test_evaluate_commands.py:45 | Function is missing a return type annotation |
+| mypy | tests/cli/test_evaluate_commands.py:54 | Function is missing a return type annotation |
+| mypy | tests/cli/test_evaluate_commands.py:73 | Function is missing a return type annotation |
+| mypy | tests/cli/test_evaluate_commands.py:80 | Function is missing a return type annotation |
+| mypy | tests/cli/test_evaluate_commands.py:100 | Function is missing a return type annotation |
+| mypy | tests/cli/test_evaluate_commands.py:105 | Function is missing a return type annotation |
+| mypy | tests/cli/test_evaluate_commands.py:114 | Function is missing a return type annotation |
+| mypy | tests/cli/test_evaluate_commands.py:121 | Function is missing a return type annotation |
+| mypy | tests/cli/test_deploy_commands.py:29 | Function is missing a return type annotation |
+| mypy | tests/cli/test_deploy_commands.py:42 | Function is missing a return type annotation |
+| mypy | tests/cli/test_deploy_commands.py:58 | Function is missing a return type annotation |
+| mypy | tests/cli/test_deploy_commands.py:67 | Function is missing a return type annotation |
+| mypy | tests/cli/test_deploy_commands.py:83 | Function is missing a return type annotation |
+| mypy | tests/cli/test_deploy_commands.py:100 | Function is missing a return type annotation |
+| mypy | tests/cli/test_deploy_commands.py:112 | Function is missing a return type annotation |
+| mypy | tests/cli/test_deploy_commands.py:120 | Function is missing a return type annotation |
+| mypy | tests/cli/test_deploy_commands.py:128 | Function is missing a return type annotation |
+| mypy | tests/cli/test_deploy_commands.py:149 | Function is missing a return type annotation |
+| mypy | tests/cli/test_deploy_commands.py:158 | Function is missing a return type annotation |
+| mypy | tests/cli/test_deploy_commands.py:172 | Function is missing a return type annotation |
+| mypy | tests/agents/test_cli_commands.py:22 | Function is missing a type annotation |
+| mypy | tests/agents/test_cli_commands.py:40 | Function is missing a type annotation |
+| mypy | tests/agents/test_cli_commands.py:61 | Function is missing a type annotation |
+| mypy | tests/agents/test_cli_commands.py:75 | Function is missing a type annotation |
+| mypy | tests/agents/test_cli_commands.py:92 | Function is missing a type annotation |
+| mypy | tests/agents/test_cli_commands.py:109 | Function is missing a type annotation |
+| mypy | tests/agents/test_cli_commands.py:125 | Function is missing a type annotation |
+| mypy | tests/agents/test_cli_commands.py:150 | Function is missing a type annotation |
+| mypy | tests/agents/test_cli_commands.py:162 | Function is missing a type annotation |
+| mypy | tests/agents/test_cli_commands.py:185 | Function is missing a type annotation |
+| mypy | tests/agents/test_cli_commands.py:197 | Function is missing a type annotation |
+| mypy | tests/agents/test_cli_commands.py:209 | Function is missing a type annotation |
+| mypy | tests/agents/test_cli_commands.py:229 | Function is missing a return type annotation |
+| mypy | tests/agents/test_cli_commands.py:242 | Function is missing a return type annotation |
+| mypy | tests/agents/test_cli_commands.py:246 | Function is missing a return type annotation |
+| mypy | tests/agents/test_cli_commands.py:250 | Function is missing a return type annotation |
+| mypy | tests/agents/test_cli_commands.py:254 | Function is missing a return type annotation |
+| mypy | tests/agents/test_cli_commands.py:269 | Function is missing a type annotation |
+| mypy | tests/agents/test_cli_commands.py:285 | Function is missing a type annotation |
+| mypy | tests/agents/test_cli_commands.py:300 | Function is missing a return type annotation |
+| mypy | tests/e2e/test_daily_pipeline_live.py:79 | Function is missing a return type annotation |
+| mypy | tests/e2e/test_daily_pipeline_live.py:99 | Function is missing a return type annotation |
+| mypy | tests/e2e/test_daily_pipeline_live.py:128 | Function is missing a return type annotation |
+| mypy | tests/e2e/test_daily_pipeline_live.py:152 | Function is missing a return type annotation |
+| mypy | tests/e2e/test_daily_pipeline_live.py:169 | Function is missing a return type annotation |
+| mypy | tests/e2e/test_daily_pipeline_live.py:194 | Function is missing a return type annotation |
+| mypy | tests/e2e/test_daily_pipeline_live.py:215 | Function is missing a return type annotation |
+| mypy | tests/e2e/test_daily_pipeline_live.py:236 | Function is missing a return type annotation |
+| mypy | tests/e2e/test_daily_pipeline_live.py:267 | Function is missing a return type annotation |
+| mypy | tests/e2e/test_daily_pipeline_live.py:284 | Function is missing a return type annotation |
+| mypy | tests/e2e/test_daily_pipeline_live.py:303 | Function is missing a return type annotation |
+| mypy | tests/e2e/test_daily_pipeline_live.py:345 | Function is missing a return type annotation |
+| mypy | tests/e2e/test_daily_pipeline_live.py:375 | Function is missing a return type annotation |
+| mypy | tests/e2e/test_daily_pipeline_live.py:398 | Function is missing a return type annotation |
+| mypy | tests/e2e/test_daily_pipeline_live.py:419 | Function is missing a return type annotation |
+| mypy | tests/e2e/test_daily_pipeline_live.py:452 | Function is missing a return type annotation |
+| mypy | tests/e2e/test_daily_pipeline_live.py:489 | Function is missing a return type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:90 | Function is missing a return type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:100 | Function is missing a type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:110 | Function is missing a type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:121 | Function is missing a return type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:135 | Function is missing a type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:160 | Function is missing a type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:182 | Function is missing a type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:193 | Function is missing a type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:213 | Function is missing a type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:236 | Function is missing a type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:251 | Function is missing a type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:276 | Function is missing a type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:311 | Function is missing a type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:332 | Function is missing a type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:351 | Function is missing a type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:368 | Function is missing a type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:378 | Function is missing a type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:394 | Function is missing a type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:410 | Function is missing a type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:429 | Function is missing a type annotation |
+| mypy | tests/test_agents/test_claude_agent.py:439 | Function is missing a type annotation |
+| mypy | tests/integration/test_falkordb_provider.py:22 | Function is missing a type annotation |
+| mypy | tests/integration/test_falkordb_provider.py:27 | Function is missing a type annotation |
+| mypy | tests/integration/test_falkordb_provider.py:34 | Function is missing a type annotation |
+| mypy | tests/integration/test_falkordb_provider.py:47 | Function is missing a type annotation |
+| mypy | tests/integration/test_falkordb_provider.py:60 | Function is missing a type annotation |
+| mypy | tests/integration/test_falkordb_provider.py:69 | Function is missing a type annotation |
+| mypy | tests/integration/test_falkordb_provider.py:83 | Function is missing a type annotation |
+| mypy | tests/integration/test_falkordb_provider.py:105 | Function is missing a type annotation |
+| mypy | tests/integration/test_falkordb_provider.py:122 | Function is missing a type annotation |
+| mypy | tests/integration/test_falkordb_provider.py:137 | Function is missing a return type annotation |
+| mypy | tests/integration/test_falkordb_provider.py:155 | Function is missing a type annotation |
+| mypy | tests/integration/test_falkordb_provider.py:197 | Function is missing a type annotation |
+| mypy | tests/integration/test_falkordb_provider.py:218 | Function is missing a type annotation |
+| mypy | tests/integration/test_falkordb_provider.py:232 | Function is missing a type annotation |
+| mypy | tests/integration/conftest.py:75 | Function is missing a return type annotation |
+| mypy | tests/integration/conftest.py:98 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/integration/conftest.py:126 | Function is missing a type annotation |
+| mypy | tests/integration/conftest.py:135 | Function is missing a return type annotation |
+| mypy | tests/integration/conftest.py:143 | Function is missing a return type annotation |
+| mypy | tests/integration/conftest.py:187 | Function is missing a type annotation |
+| mypy | tests/integration/conftest.py:211 | Function is missing a type annotation |
+| mypy | tests/integration/conftest.py:251 | Function is missing a type annotation |
+| mypy | tests/integration/conftest.py:312 | Function is missing a return type annotation |
+| mypy | tests/integration/conftest.py:354 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:15 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:39 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:46 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:58 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:64 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:73 | Function is missing a return type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:100 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:110 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:122 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:149 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:165 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:187 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:231 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:274 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:300 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:307 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:325 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:372 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:411 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:446 | Function is missing a type annotation |
+| mypy | tests/test_storage/test_graphiti_client.py:459 | Function is missing a type annotation |
+| mypy | scripts/query_knowledge_graph.py:24 | Missing positional arguments "provider", "graphiti" in call to "GraphitiClient" |
+| mypy | scripts/query_knowledge_graph.py:54 | Missing positional arguments "provider", "graphiti" in call to "GraphitiClient" |
+| mypy | scripts/extract_entities.py:57 | Missing positional arguments "provider", "graphiti" in call to "GraphitiClient" |
+| mypy | scripts/extract_entities.py:92 | Missing positional arguments "provider", "graphiti" in call to "GraphitiClient" |
+| mypy | tests/test_services/test_reference_graph_sync.py:161 | Cannot assign to a method |
+| mypy | tests/services/test_source_curator.py:33 | Function is missing a type annotation |
+| mypy | tests/services/test_source_curator.py:40 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:50 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:57 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:68 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:78 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:85 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:90 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:97 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:103 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:114 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:124 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:137 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:146 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:161 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:171 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:179 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:191 | Function is missing a type annotation |
+| mypy | tests/services/test_source_curator.py:196 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:205 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:215 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:225 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:237 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:243 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:249 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:260 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:271 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:280 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:293 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:301 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:311 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:323 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:340 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:358 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:371 | Function is missing a type annotation |
+| mypy | tests/services/test_source_curator.py:375 | Function is missing a type annotation |
+| mypy | tests/services/test_source_curator.py:382 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:394 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:402 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:412 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:423 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:434 | Function is missing a return type annotation |
+| mypy | tests/services/test_source_curator.py:447 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:106 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:204 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:216 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:234 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:241 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:250 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:268 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:279 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:324 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:330 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:341 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:347 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:363 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:379 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:406 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:428 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:443 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:470 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:501 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:524 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:542 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:558 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:575 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:587 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:598 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:631 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:654 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:663 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:680 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:703 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:731 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:743 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:767 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_podcast_script_generator.py:776 | Function is missing a return type annotation |
+| mypy | tests/services/test_capability_service.py:103 | Need type annotation for "parsed" |
+| mypy | tests/ingestion/test_ingestion_service.py:137 | Function is missing a type annotation |
+| mypy | tests/ingestion/test_ingestion_service.py:263 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/ingestion/test_ingestion_service.py:390 | "_publish_content" does not return a value (it only ever returns None) |
+| mypy | tests/ingestion/test_ingestion_service.py:402 | "_record_loaded_content_reference" does not return a value (it only ever returns None) |
+| mypy | tests/ingestion/test_ingestion_service.py:428 | "_publish_content" does not return a value (it only ever returns None) |
+| mypy | tests/ingestion/test_ingestion_service.py:464 | "_publish_content" does not return a value (it only ever returns None) |
+| mypy | tests/ingestion/test_ingestion_service.py:471 | "_publish_content" does not return a value (it only ever returns None) |
+| mypy | tests/ingestion/test_ingestion_service.py:489 | "_publish_content" does not return a value (it only ever returns None) |
+| mypy | tests/fixtures/sources/harness.py:63 | Function is missing a return type annotation |
+| mypy | tests/fixtures/sources/harness.py:121 | "ContentFactory" has no attribute "id" |
+| mypy | tests/fixtures/sources/harness.py:122 | "ContentFactory" has no attribute "id" |
+| mypy | tests/fixtures/sources/harness.py:150 | Incompatible types in assignment (expression has type "_SessionDigestLoader", variable has type "ExactContentSetLoader") |
+| mypy | tests/fixtures/sources/harness.py:154 | "DigestFactory" has no attribute "id" |
+| mypy | tests/fixtures/sources/harness.py:160 | Argument "digest" to "VerticalWorkflowResult" has incompatible type "DigestFactory"; expected "Digest" |
+| mypy | tests/fixtures/sources/harness.py:167 | "StrictModel" has no attribute "kind" |
+| mypy | tests/fixtures/sources/harness.py:190 | "ContentFactory" has no attribute "id" |
+| mypy | tests/fixtures/sources/harness.py:193 | "ContentFactory" has no attribute "id" |
+| mypy | tests/fixtures/sources/harness.py:194 | Incompatible types in assignment (expression has type "tuple[ContentFactory, SummaryFactory, ContentSource]", variable has type "tuple[Content, Summary, ContentSource] | None") |
+| mypy | tests/fixtures/sources/harness.py:201 | "ContentFactory" has no attribute "id" |
+| mypy | tests/fixtures/sources/harness.py:202 | "ContentFactory" has no attribute "id" |
+| mypy | tests/fixtures/sources/harness.py:208 | Argument "upload_service" to "IngestionService" has incompatible type "_FixtureUploadService | None"; expected "UploadService | None" |
+| mypy | tests/fixtures/sources/harness.py:216 | "StrictModel" has no attribute "upload_ids" |
+| mypy | tests/fixtures/sources/harness.py:233 | Argument "content_id" to "PersistedFixture" has incompatible type "int | None"; expected "int" |
+| mypy | tests/fixtures/sources/harness.py:234 | Argument "summary_id" to "PersistedFixture" has incompatible type "int | None"; expected "int" |
+| mypy | tests/services/test_html_processor.py:29 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/services/test_html_processor.py:51 | Function is missing a return type annotation |
+| mypy | tests/services/test_html_processor.py:78 | Function is missing a return type annotation |
+| mypy | tests/services/test_html_processor.py:95 | Function is missing a return type annotation |
+| mypy | tests/services/test_html_processor.py:104 | Function is missing a return type annotation |
+| mypy | tests/services/test_html_processor.py:117 | Function is missing a return type annotation |
+| mypy | tests/services/test_html_processor.py:127 | Function is missing a return type annotation |
+| mypy | tests/services/test_html_processor.py:145 | Function is missing a return type annotation |
+| mypy | tests/services/test_html_processor.py:155 | Function is missing a return type annotation |
+| mypy | tests/services/test_html_processor.py:160 | Function is missing a return type annotation |
+| mypy | tests/services/test_html_processor.py:168 | Function is missing a return type annotation |
+| mypy | tests/services/test_html_processor.py:185 | Function is missing a type annotation |
+| mypy | tests/services/test_html_processor.py:222 | Function is missing a type annotation |
+| mypy | tests/services/test_html_processor.py:236 | Function is missing a type annotation |
+| mypy | tests/services/test_html_processor.py:242 | Function is missing a type annotation |
+| mypy | tests/services/test_html_processor.py:310 | Function is missing a type annotation |
+| mypy | tests/services/test_html_processor.py:349 | Function is missing a type annotation |
+| mypy | tests/services/test_html_processor.py:386 | Function is missing a type annotation |
+| mypy | tests/services/test_html_processor.py:417 | Function is missing a type annotation |
+| mypy | tests/regression/test_canonical_workflow_edge_cases.py:31 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/regression/test_canonical_workflow_edge_cases.py:71 | Function is missing a return type annotation |
+| mypy | tests/regression/test_canonical_workflow_edge_cases.py:71 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/regression/test_canonical_workflow_edge_cases.py:89 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/regression/test_canonical_workflow_edge_cases.py:100 | "ContentFactory" has no attribute "id" |
+| mypy | tests/regression/test_canonical_workflow_edge_cases.py:139 | "ContentFactory" has no attribute "id" |
+| mypy | tests/regression/test_canonical_workflow_edge_cases.py:140 | "ContentFactory" has no attribute "id" |
+| mypy | tests/regression/test_canonical_workflow_edge_cases.py:148 | "ContentFactory" has no attribute "id" |
+| mypy | tests/regression/test_canonical_workflow_edge_cases.py:149 | "ContentFactory" has no attribute "id" |
+| mypy | tests/regression/test_canonical_workflow_edge_cases.py:156 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/regression/test_canonical_workflow_edge_cases.py:210 | Item "None" of "_Call | None" has no attribute "args" |
+| mypy | tests/queue/test_operation_service.py:302 | Item "None" of "_Call | None" has no attribute "args" |
+| mypy | tests/queue/test_operation_service.py:343 | Item "None" of "_Call | None" has no attribute "args" |
+| mypy | tests/queue/test_operation_service.py:354 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_operation_service.py:391 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_operation_service.py:432 | Item "None" of "_Call | None" has no attribute "args" |
+| mypy | tests/queue/test_operation_service.py:447 | Function is missing a type annotation for one or more arguments |
 | mypy | tests/api/test_script_error_leakage.py:11 | Function is missing a type annotation |
 | mypy | tests/test_services/test_review_service.py:14 | Function is missing a return type annotation |
 | mypy | tests/test_services/test_review_service.py:39 | Function is missing a return type annotation |
@@ -2767,99 +4386,41 @@
 | mypy | scripts/review_digest.py:259 | Item "None" of "list[Any] | str | None" has no attribute "append" |
 | mypy | scripts/review_digest.py:283 | Argument 1 to "to_markdown" of "DigestFormatter" has incompatible type "Digest"; expected "DigestData" |
 | mypy | scripts/review_digest.py:375 | Function is missing a return type annotation |
-| mypy | tests/test_agents/test_claude_agent.py:83 | Function is missing a type annotation |
-| mypy | tests/test_agents/test_claude_agent.py:94 | Function is missing a type annotation |
-| mypy | tests/test_agents/test_claude_agent.py:106 | Function is missing a return type annotation |
-| mypy | tests/test_agents/test_claude_agent.py:115 | Function is missing a type annotation |
-| mypy | tests/test_agents/test_claude_agent.py:131 | Function is missing a type annotation |
-| mypy | tests/test_agents/test_claude_agent.py:157 | Function is missing a type annotation |
-| mypy | tests/test_agents/test_claude_agent.py:191 | Function is missing a type annotation |
-| mypy | tests/test_agents/test_claude_agent.py:213 | Function is missing a type annotation |
-| mypy | tests/test_agents/test_claude_agent.py:232 | Function is missing a type annotation |
-| mypy | tests/test_agents/test_claude_agent.py:245 | Function is missing a type annotation |
-| mypy | tests/test_agents/test_claude_agent.py:255 | Function is missing a type annotation |
-| mypy | tests/test_agents/test_claude_agent.py:271 | Function is missing a type annotation |
-| mypy | tests/test_agents/test_claude_agent.py:287 | Function is missing a type annotation |
-| mypy | tests/test_agents/test_claude_agent.py:306 | Function is missing a type annotation |
-| mypy | tests/test_agents/test_claude_agent.py:316 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_gmail.py:13 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_gmail.py:22 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_gmail.py:31 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_gmail.py:38 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_gmail.py:54 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_gmail.py:72 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_gmail.py:101 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_gmail.py:133 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_gmail.py:154 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_gmail.py:171 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_gmail.py:204 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_gmail.py:230 | Function is missing a return type annotation |
-| mypy | src/ingestion/substack.py:16 | Library stubs not installed for "yaml" |
-| mypy | src/ingestion/substack.py:17 | Library stubs not installed for "dateutil.parser" |
-| mypy | src/delivery/email.py:18 | Function is missing a return type annotation |
-| mypy | src/delivery/email.py:43 | Argument 1 to "to_html" of "DigestFormatter" has incompatible type "Digest"; expected "DigestData" |
-| mypy | src/delivery/email.py:49 | Incompatible types in assignment (expression has type "str | None", target has type "str") |
-| mypy | scripts/ingest_gmail.py:6 | Module "src.ingestion.gmail" has no attribute "GmailIngestionService"; maybe "GmailContentIngestionService"? |
-| mypy | tests/scripts/test_switch_embeddings.py:20 | Function is missing a type annotation |
-| mypy | tests/scripts/test_switch_embeddings.py:57 | Function is missing a type annotation |
-| mypy | tests/scripts/test_switch_embeddings.py:92 | Function is missing a type annotation |
-| mypy | tests/scripts/test_switch_embeddings.py:112 | Function is missing a type annotation |
-| mypy | tests/services/test_html_processor.py:32 | Function is missing a return type annotation |
-| mypy | tests/services/test_html_processor.py:60 | Function is missing a type annotation |
-| mypy | tests/services/test_html_processor.py:76 | Function is missing a type annotation for one or more arguments |
-| mypy | tests/services/test_html_processor.py:98 | Function is missing a return type annotation |
-| mypy | tests/services/test_html_processor.py:125 | Function is missing a return type annotation |
-| mypy | tests/services/test_html_processor.py:142 | Function is missing a return type annotation |
-| mypy | tests/services/test_html_processor.py:151 | Function is missing a return type annotation |
-| mypy | tests/services/test_html_processor.py:164 | Function is missing a return type annotation |
-| mypy | tests/services/test_html_processor.py:174 | Function is missing a return type annotation |
-| mypy | tests/services/test_html_processor.py:192 | Function is missing a return type annotation |
-| mypy | tests/services/test_html_processor.py:202 | Function is missing a return type annotation |
-| mypy | tests/services/test_html_processor.py:207 | Function is missing a return type annotation |
-| mypy | tests/services/test_html_processor.py:215 | Function is missing a return type annotation |
-| mypy | tests/services/test_html_processor.py:232 | Function is missing a type annotation |
-| mypy | tests/services/test_html_processor.py:269 | Function is missing a type annotation |
-| mypy | tests/services/test_html_processor.py:283 | Function is missing a type annotation |
-| mypy | tests/services/test_html_processor.py:289 | Function is missing a type annotation |
-| mypy | tests/services/test_html_processor.py:357 | Function is missing a type annotation |
-| mypy | tests/services/test_html_processor.py:396 | Function is missing a type annotation |
-| mypy | tests/services/test_html_processor.py:433 | Function is missing a type annotation |
-| mypy | tests/services/test_html_processor.py:464 | Function is missing a type annotation |
 | mypy | tests/test_processors/test_audio_digest_generator.py:19 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:35 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:48 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:62 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:77 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:84 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:87 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:90 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:114 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:138 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:183 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:213 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:229 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:265 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:306 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:311 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:314 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:317 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:343 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:395 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:442 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:483 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:488 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:491 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:494 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:518 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:563 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:587 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:608 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:638 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:668 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:673 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:676 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:679 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_audio_digest_generator.py:703 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:36 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:50 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:65 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:81 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:88 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:91 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:94 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:118 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:143 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:189 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:220 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:236 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:273 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:315 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:320 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:323 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:326 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:352 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:405 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:453 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:495 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:500 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:503 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:506 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:530 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:576 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:601 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:623 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:654 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:685 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:690 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:693 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:696 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_audio_digest_generator.py:720 | Function is missing a type annotation |
 | mypy | tests/integration/test_audio_digest_flow.py:23 | Function is missing a type annotation for one or more arguments |
 | mypy | tests/integration/test_audio_digest_flow.py:107 | Function is missing a type annotation |
 | mypy | tests/integration/test_audio_digest_flow.py:154 | Function is missing a type annotation |
@@ -2880,35 +4441,254 @@
 | mypy | tests/integration/test_audio_digest_flow.py:657 | Function is missing a type annotation |
 | mypy | tests/integration/test_audio_digest_flow.py:678 | Function is missing a type annotation |
 | mypy | tests/integration/test_audio_digest_flow.py:704 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:15 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:25 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:29 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:40 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:44 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:51 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:55 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:62 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:69 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:74 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:80 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:85 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:92 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:102 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:112 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:123 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:128 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:132 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:138 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:144 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:149 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:159 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:178 | Function is missing a return type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:190 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:197 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:213 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:227 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:249 | Function is missing a type annotation |
-| mypy | tests/test_parsers/test_docling_parser.py:262 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_evaluation_api.py:30 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_evaluation_api.py:36 | Function is missing a return type annotation |
+| mypy | tests/evaluation/test_evaluation_api.py:55 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_evaluation_api.py:62 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_evaluation_api.py:69 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_evaluation_api.py:75 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_evaluation_api.py:100 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_evaluation_api.py:109 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_evaluation_api.py:120 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_evaluation_api.py:127 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_evaluation_api.py:134 | Function is missing a type annotation |
+| mypy | tests/evaluation/test_evaluation_api.py:141 | Function is missing a type annotation |
+| mypy | tests/api/test_ingest_extended.py:23 | Function is missing a return type annotation |
+| mypy | tests/api/test_ingest_extended.py:36 | Function is missing a return type annotation |
+| mypy | tests/api/test_ingest_extended.py:43 | Function is missing a return type annotation |
+| mypy | tests/api/test_ingest_extended.py:48 | Function is missing a return type annotation |
+| mypy | tests/api/test_ingest_extended.py:58 | Function is missing a return type annotation |
+| mypy | tests/api/test_ingest_extended.py:70 | Function is missing a return type annotation |
+| mypy | tests/api/test_ingest_extended.py:74 | Function is missing a return type annotation |
+| mypy | tests/api/test_ingest_extended.py:78 | Function is missing a return type annotation |
+| mypy | tests/api/test_ingest_extended.py:82 | Function is missing a return type annotation |
+| mypy | tests/api/test_ingest_extended.py:86 | Function is missing a return type annotation |
+| mypy | tests/api/test_ingest_extended.py:97 | Function is missing a return type annotation |
+| mypy | tests/api/test_ingest_extended.py:105 | Function is missing a return type annotation |
+| mypy | tests/api/test_ingest_extended.py:109 | Function is missing a return type annotation |
+| mypy | tests/api/test_ingest_extended.py:113 | Function is missing a return type annotation |
+| mypy | tests/api/test_ingest_extended.py:117 | Function is missing a return type annotation |
+| mypy | tests/api/test_ingest_extended.py:121 | Function is missing a return type annotation |
+| mypy | tests/api/test_ingest_extended.py:125 | Function is missing a return type annotation |
+| mypy | tests/api/test_ingest_extended.py:138 | Function is missing a type annotation |
+| mypy | tests/api/test_ingest_extended.py:153 | Function is missing a type annotation |
+| mypy | tests/api/test_ingest_extended.py:166 | Function is missing a type annotation |
+| mypy | tests/api/test_ingest_extended.py:186 | Function is missing a type annotation |
+| mypy | tests/api/test_ingest_extended.py:206 | Function is missing a type annotation |
+| mypy | tests/api/test_ingest_extended.py:217 | Function is missing a type annotation |
+| mypy | tests/api/test_ingest_extended.py:229 | Function is missing a type annotation |
+| mypy | tests/api/test_ingest_extended.py:240 | Function is missing a type annotation |
+| mypy | tests/api/test_ingest_extended.py:252 | Function is missing a type annotation |
+| mypy | tests/api/test_ingest_extended.py:271 | Function is missing a type annotation |
+| mypy | tests/agents/test_api_routes.py:41 | Function is missing a type annotation |
+| mypy | tests/agents/test_api_routes.py:69 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:69 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/agents/test_api_routes.py:90 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:90 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/agents/test_api_routes.py:114 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:121 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:128 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:133 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:133 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/agents/test_api_routes.py:145 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:145 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/agents/test_api_routes.py:157 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:157 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/agents/test_api_routes.py:171 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:175 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:189 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:189 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/agents/test_api_routes.py:201 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:201 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/agents/test_api_routes.py:213 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:213 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/agents/test_api_routes.py:224 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:228 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:242 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:242 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/agents/test_api_routes.py:257 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:257 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/agents/test_api_routes.py:271 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:284 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:289 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:293 | Function is missing a return type annotation |
+| mypy | tests/agents/test_api_routes.py:306 | Function is missing a return type annotation |
+| mypy | tests/services/test_knowledge_base.py:28 | Function is missing a return type annotation |
+| mypy | tests/services/test_knowledge_base.py:31 | Function is missing a return type annotation |
+| mypy | tests/services/test_knowledge_base.py:34 | Function is missing a return type annotation |
+| mypy | tests/services/test_knowledge_base.py:37 | Function is missing a return type annotation |
+| mypy | tests/services/test_knowledge_base.py:41 | Function is missing a return type annotation |
+| mypy | tests/services/test_knowledge_base.py:46 | Function is missing a return type annotation |
+| mypy | tests/services/test_knowledge_base.py:49 | Function is missing a return type annotation |
+| mypy | tests/services/test_knowledge_base.py:52 | Function is missing a return type annotation |
+| mypy | tests/services/test_knowledge_base.py:56 | Function is missing a return type annotation |
+| mypy | tests/services/test_knowledge_base.py:59 | Function is missing a return type annotation |
+| mypy | tests/services/test_knowledge_base.py:67 | Function is missing a type annotation |
+| mypy | tests/services/test_knowledge_base.py:84 | Function is missing a type annotation |
+| mypy | tests/services/test_knowledge_base.py:92 | Function is missing a type annotation |
+| mypy | tests/services/test_knowledge_base.py:128 | Function is missing a type annotation |
+| mypy | tests/services/test_knowledge_base.py:170 | Function is missing a type annotation |
+| mypy | tests/services/test_knowledge_base.py:199 | Function is missing a type annotation |
+| mypy | tests/services/test_knowledge_base.py:234 | Function is missing a type annotation |
+| mypy | tests/services/test_knowledge_base.py:244 | Function is missing a type annotation |
+| mypy | tests/services/test_knowledge_base.py:253 | Function is missing a type annotation |
+| mypy | tests/services/test_knowledge_base.py:307 | Function is missing a type annotation |
+| mypy | tests/services/test_knowledge_base.py:328 | Function is missing a type annotation |
+| mypy | tests/services/test_knowledge_base.py:346 | Function is missing a type annotation |
+| mypy | tests/services/test_knowledge_base.py:373 | Function is missing a type annotation |
+| mypy | tests/services/test_knowledge_base.py:401 | Function is missing a type annotation |
+| mypy | tests/services/test_knowledge_base.py:423 | Function is missing a type annotation |
+| mypy | tests/services/test_knowledge_base.py:436 | Function is missing a type annotation |
+| mypy | tests/services/test_knowledge_base.py:457 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:23 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_kb_routes.py:45 | Argument "relevance_score" to "Topic" has incompatible type "float"; expected "_N | None" |
+| mypy | tests/api/test_kb_routes.py:60 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:65 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:76 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:90 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:104 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:116 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:129 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:143 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:147 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:166 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:179 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:183 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:195 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:205 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:214 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:218 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:229 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:240 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:249 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:256 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:264 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:278 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:287 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:298 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:305 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:316 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:322 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:326 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:343 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:350 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:360 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:382 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:403 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:417 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:434 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:450 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:457 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:471 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:482 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:508 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_routes.py:518 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_historical_context.py:123 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_historical_context.py:134 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_historical_context.py:143 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_historical_context.py:190 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_historical_context.py:220 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_historical_context.py:262 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_historical_context.py:289 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_historical_context.py:305 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_historical_context.py:327 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_historical_context.py:337 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_historical_context.py:374 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_historical_context.py:390 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_historical_context.py:417 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_historical_context.py:448 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_historical_context.py:466 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_historical_context.py:475 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_historical_context.py:497 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_historical_context.py:521 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_historical_context.py:546 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_historical_context.py:571 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_historical_context.py:596 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_historical_context.py:621 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_registry.py:99 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_registry.py:106 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_registry.py:110 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_registry.py:119 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_registry.py:127 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_registry.py:133 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_registry.py:144 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_registry.py:151 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_registry.py:155 | Function is missing a type annotation |
+| mypy | tests/agents/specialists/test_registry.py:177 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_registry.py:181 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_registry.py:190 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_registry.py:205 | Function is missing a return type annotation |
+| mypy | tests/agents/specialists/test_registry.py:210 | Function is missing a type annotation |
+| mypy | tests/contract/test_source_workflow_matrix.py:45 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/contract/test_source_workflow_matrix.py:78 | "StrictModel" has no attribute "kind" |
+| mypy | tests/contract/test_source_workflow_matrix.py:81 | "StrictModel" has no attribute "kind" |
+| mypy | tests/contract/test_source_workflow_matrix.py:93 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/contract/test_source_workflow_matrix.py:111 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_save_api.py:18 | Function is missing a type annotation |
+| mypy | tests/api/test_save_api.py:23 | Function is missing a return type annotation |
+| mypy | tests/api/test_save_api.py:33 | Function is missing a type annotation |
+| mypy | tests/api/test_save_api.py:73 | Function is missing a type annotation |
+| mypy | tests/api/test_save_api.py:119 | Function is missing a type annotation |
+| mypy | tests/api/test_save_api.py:144 | Function is missing a type annotation |
+| mypy | tests/api/test_save_api.py:168 | Function is missing a type annotation |
+| mypy | tests/api/test_save_api.py:191 | Function is missing a type annotation |
+| mypy | tests/api/test_save_api.py:202 | Function is missing a type annotation |
+| mypy | tests/api/test_save_api.py:210 | Function is missing a type annotation |
+| mypy | tests/api/test_save_api.py:228 | Function is missing a type annotation |
+| mypy | tests/api/test_save_api.py:235 | Function is missing a type annotation |
+| mypy | tests/api/test_save_api.py:243 | Function is missing a type annotation |
+| mypy | tests/api/test_save_api.py:253 | Function is missing a type annotation |
+| mypy | tests/api/test_save_api.py:270 | Function is missing a type annotation |
+| mypy | tests/api/test_save_api.py:281 | Function is missing a type annotation |
+| mypy | tests/workflows/test_podcast_script_workflow.py:20 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/workflows/test_podcast_script_workflow.py:47 | Function is missing a return type annotation |
+| mypy | tests/security/test_global_error_handler.py:15 | Function is missing a type annotation |
+| mypy | tests/security/test_global_error_handler.py:26 | Function is missing a return type annotation |
+| mypy | tests/security/test_global_error_handler.py:37 | Function is missing a return type annotation |
+| mypy | tests/api/test_error_handler.py:22 | Function is missing a return type annotation |
+| mypy | tests/api/test_error_handler.py:26 | Function is missing a return type annotation |
+| mypy | tests/api/test_error_handler.py:31 | Function is missing a return type annotation |
+| mypy | tests/api/test_error_handler.py:43 | Function is missing a return type annotation |
+| mypy | tests/api/test_error_handler.py:52 | Function is missing a return type annotation |
+| mypy | tests/api/test_error_handler.py:78 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:26 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:36 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:42 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:51 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:57 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:63 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:68 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:74 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:91 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:100 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:108 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:121 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:126 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:133 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:149 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:174 | Function is missing a type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:203 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:223 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:235 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_model_registry_service.py:250 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_service.py:28 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_service.py:44 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_service.py:51 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_service.py:59 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_service.py:70 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_service.py:84 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_service.py:98 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_service.py:120 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_service.py:133 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_service.py:146 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_service.py:159 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_service.py:177 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_service.py:183 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_service.py:209 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_service.py:214 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_service.py:239 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_service.py:269 | Function is missing a return type annotation |
+| mypy | tests/services/test_notification_service.py:283 | Function is missing a return type annotation |
 | mypy | tests/services/test_embedding_providers.py:25 | Function is missing a return type annotation |
 | mypy | tests/services/test_embedding_providers.py:32 | Function is missing a return type annotation |
 | mypy | tests/services/test_embedding_providers.py:61 | Function is missing a return type annotation |
@@ -2925,105 +4705,22 @@
 | mypy | tests/services/test_embedding_providers.py:254 | Function is missing a return type annotation |
 | mypy | tests/services/test_embedding_providers.py:279 | Function is missing a type annotation |
 | mypy | tests/services/test_embedding_providers.py:298 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss_sources.py:21 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_rss_sources.py:24 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss_sources.py:36 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_rss_sources.py:39 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss_sources.py:66 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss_sources.py:92 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss_sources.py:127 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss_sources.py:149 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss_sources.py:164 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss_sources.py:185 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss_sources.py:204 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss_sources.py:227 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss_sources.py:245 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss_sources.py:264 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss_sources.py:280 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss.py:13 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_rss.py:19 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_rss.py:37 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_rss.py:69 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss.py:94 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss.py:129 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss.py:149 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss.py:155 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss.py:168 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss.py:182 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss.py:190 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss.py:195 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_rss.py:207 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss.py:216 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_rss.py:230 | Function is missing a type annotation |
-| mypy | scripts/ingest_rss.py:6 | Module "src.ingestion.rss" has no attribute "RSSIngestionService"; maybe "RSSContentIngestionService"? |
-| mypy | tests/test_telemetry/test_metrics.py:17 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_metrics.py:20 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_metrics.py:33 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_metrics.py:43 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_metrics.py:46 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_metrics.py:91 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_metrics.py:109 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_log_setup.py:12 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_log_setup.py:30 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_log_setup.py:41 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_log_setup.py:56 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_log_setup.py:66 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_log_setup.py:75 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_log_setup.py:85 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_log_setup.py:97 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_log_setup.py:109 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_log_setup.py:130 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_log_setup.py:149 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_log_setup.py:167 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_log_setup.py:181 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_log_setup.py:195 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_log_setup.py:204 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_factory.py:15 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_factory.py:25 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_factory.py:44 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_factory.py:60 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_factory.py:76 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_factory.py:88 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_factory.py:95 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_factory.py:103 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_factory.py:111 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_factory.py:123 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_factory.py:128 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_factory.py:142 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_factory.py:148 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_factory.py:154 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_factory.py:159 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_factory.py:168 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_factory.py:185 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_factory.py:199 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_factory.py:217 | Function is missing a return type annotation |
-| mypy | tests/integration/test_neon_integration.py:73 | Function is missing a return type annotation |
-| mypy | tests/integration/test_neon_integration.py:78 | Function is missing a return type annotation |
-| mypy | tests/integration/test_neon_integration.py:86 | Function is missing a return type annotation |
-| mypy | tests/integration/test_neon_integration.py:95 | Function is missing a return type annotation |
-| mypy | tests/integration/test_neon_integration.py:103 | Function is missing a return type annotation |
-| mypy | tests/integration/test_neon_integration.py:127 | Function is missing a return type annotation |
-| mypy | tests/integration/test_neon_integration.py:139 | Function is missing a return type annotation |
-| mypy | tests/integration/test_neon_integration.py:168 | Function is missing a return type annotation |
-| mypy | tests/integration/test_neon_integration.py:193 | Function is missing a return type annotation |
-| mypy | tests/integration/test_neon_integration.py:217 | Function is missing a return type annotation |
-| mypy | tests/integration/test_neon_integration.py:237 | Function is missing a return type annotation |
-| mypy | tests/integration/test_neon_integration.py:255 | Function is missing a return type annotation |
-| mypy | tests/integration/test_neon_integration.py:301 | Function is missing a return type annotation |
-| mypy | tests/integration/test_neon_integration.py:339 | Function is missing a return type annotation |
-| mypy | tests/integration/test_neon_integration.py:444 | Function is missing a return type annotation |
-| mypy | tests/integration/test_neon_integration.py:500 | Function is missing a return type annotation |
-| mypy | tests/integration/test_neon_integration.py:514 | Function is missing a return type annotation |
-| mypy | tests/integration/conftest.py:75 | Function is missing a return type annotation |
-| mypy | tests/integration/conftest.py:98 | Function is missing a type annotation for one or more arguments |
-| mypy | tests/integration/conftest.py:126 | Function is missing a type annotation |
-| mypy | tests/integration/conftest.py:135 | Function is missing a return type annotation |
-| mypy | tests/integration/conftest.py:143 | Function is missing a return type annotation |
-| mypy | tests/integration/conftest.py:187 | Function is missing a type annotation |
-| mypy | tests/integration/conftest.py:211 | Function is missing a type annotation |
-| mypy | tests/integration/conftest.py:251 | Function is missing a type annotation |
-| mypy | tests/integration/conftest.py:312 | Function is missing a return type annotation |
-| mypy | tests/integration/conftest.py:354 | Function is missing a return type annotation |
+| mypy | tests/api/test_model_registry_routes.py:17 | Function is missing a type annotation |
+| mypy | tests/api/test_model_registry_routes.py:27 | Function is missing a type annotation |
+| mypy | tests/api/test_model_registry_routes.py:37 | Function is missing a type annotation |
+| mypy | tests/api/test_model_registry_routes.py:46 | Function is missing a type annotation |
+| mypy | tests/api/test_model_registry_routes.py:61 | Function is missing a type annotation |
+| mypy | tests/api/test_model_registry_routes.py:71 | Function is missing a type annotation |
+| mypy | tests/api/test_model_registry_routes.py:76 | Function is missing a type annotation |
+| mypy | tests/api/test_model_registry_routes.py:96 | Function is missing a type annotation |
+| mypy | tests/api/test_model_registry_routes.py:105 | Function is missing a type annotation |
+| mypy | tests/api/test_model_registry_routes.py:117 | Function is missing a type annotation |
+| mypy | tests/api/test_model_registry_routes.py:150 | Function is missing a type annotation |
+| mypy | tests/api/test_model_registry_routes.py:171 | Function is missing a type annotation |
+| mypy | tests/workflows/test_audio_digest_workflow.py:15 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/workflows/test_audio_digest_workflow.py:35 | Function is missing a return type annotation |
+| mypy | tests/services/test_public_audio_services.py:42 | Function is missing a return type annotation |
+| mypy | tests/services/test_public_audio_services.py:42 | Function is missing a type annotation for one or more arguments |
 | mypy | tests/test_processors/test_summarizer.py:23 | Function is missing a return type annotation |
 | mypy | tests/test_processors/test_summarizer.py:73 | Function is missing a return type annotation |
 | mypy | tests/test_processors/test_summarizer.py:80 | Function is missing a return type annotation |
@@ -3047,307 +4744,34 @@
 | mypy | tests/integration/test_summarization_workflow.py:131 | Function is missing a type annotation |
 | mypy | tests/integration/test_summarization_workflow.py:161 | Function is missing a type annotation |
 | mypy | tests/integration/test_summarization_workflow.py:186 | Function is missing a type annotation |
-| mypy | tests/integration/test_summarization_flow_functional.py:26 | Function is missing a type annotation for one or more arguments |
-| mypy | tests/integration/test_summarization_flow_functional.py:47 | Function is missing a type annotation for one or more arguments |
-| mypy | tests/integration/test_summarization_flow_functional.py:60 | Function is missing a type annotation |
-| mypy | tests/integration/test_summarization_flow_functional.py:132 | Function is missing a type annotation |
-| mypy | tests/integration/test_summarization_flow_functional.py:204 | Function is missing a type annotation |
-| mypy | tests/integration/test_summarization_flow_functional.py:295 | Function is missing a type annotation |
-| mypy | tests/integration/test_summarization_flow_functional.py:361 | Function is missing a type annotation |
-| mypy | tests/integration/test_summarization_flow_functional.py:404 | Function is missing a type annotation |
-| mypy | tests/integration/test_summarization_flow_functional.py:436 | Function is missing a type annotation |
-| mypy | tests/test_telemetry/test_llm_integration.py:13 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_llm_integration.py:51 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_llm_integration.py:79 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_llm_integration.py:105 | Function is missing a return type annotation |
-| mypy | tests/test_telemetry/test_llm_integration.py:135 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_llm_router_video.py:14 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_llm_router_video.py:24 | Function is missing a type annotation |
-| mypy | tests/test_services/test_llm_router_video.py:35 | Function is missing a type annotation |
-| mypy | tests/test_services/test_llm_router_video.py:70 | Function is missing a type annotation |
-| mypy | tests/test_services/test_llm_router_video.py:105 | Function is missing a type annotation |
-| mypy | tests/test_services/test_llm_router_video.py:138 | Function is missing a type annotation |
-| mypy | tests/api/test_upload_security.py:18 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:23 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:30 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:35 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:40 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:45 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:50 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:55 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:60 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:65 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:71 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:76 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:84 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:110 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:117 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:123 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:128 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:132 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:136 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:140 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:144 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:148 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security.py:159 | Function is missing a type annotation |
-| mypy | tests/api/test_upload_security.py:174 | Function is missing a type annotation |
-| mypy | tests/api/test_upload_security.py:212 | Function is missing a type annotation |
-| mypy | tests/api/test_upload_security.py:223 | Function is missing a type annotation |
-| mypy | tests/api/test_upload_security.py:234 | Function is missing a type annotation |
-| mypy | tests/api/test_upload_security.py:261 | Function is missing a type annotation |
-| mypy | tests/api/test_upload_security.py:293 | Function is missing a type annotation |
-| mypy | tests/api/test_upload_security.py:304 | Function is missing a type annotation |
-| mypy | tests/conftest.py:49 | Function is missing a return type annotation |
-| mypy | tests/conftest.py:77 | Function is missing a return type annotation |
-| mypy | tests/conftest.py:118 | Function is missing a return type annotation |
-| mypy | tests/conftest.py:148 | Function is missing a type annotation |
-| mypy | tests/conftest.py:184 | Function is missing a type annotation |
-| mypy | tests/conftest.py:193 | Function is missing a type annotation |
-| mypy | tests/conftest.py:202 | Function is missing a type annotation |
-| mypy | tests/conftest.py:215 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:106 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:204 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:216 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:234 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:241 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:250 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:268 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:283 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:344 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:350 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:361 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:367 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:383 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:398 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:424 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:450 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:478 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:500 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:517 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:533 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:550 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:562 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:573 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:606 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:629 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:638 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:655 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:678 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:706 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:718 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:742 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_podcast_script_generator.py:751 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:22 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:40 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:53 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:70 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:83 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:94 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:120 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:144 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:168 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:192 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:231 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:256 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:279 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:307 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:345 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:375 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:402 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:420 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:431 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:450 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:482 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:509 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:534 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:560 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:584 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_sources.py:608 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:22 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:30 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:38 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:42 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:45 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:51 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:63 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:82 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:103 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:121 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:137 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:160 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:183 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:223 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:271 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:301 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:337 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:395 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:418 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_rss.py:441 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_captions.py:28 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_captions.py:31 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_captions.py:35 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_captions.py:40 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_captions.py:45 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_captions.py:50 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_captions.py:55 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_captions.py:59 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_captions.py:68 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_captions.py:80 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_captions.py:86 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_captions.py:120 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_captions.py:160 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_captions.py:182 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_captions.py:188 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_backoff.py:12 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_backoff.py:33 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_backoff.py:48 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_backoff.py:57 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_backoff.py:73 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_backoff.py:92 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_backoff.py:110 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_backoff.py:119 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube_backoff.py:139 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube_backoff.py:148 | Function is missing a return type annotation |
-| mypy | tests/test_ingestion/test_youtube.py:302 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube.py:312 | Cannot assign to a method |
-| mypy | tests/test_ingestion/test_youtube.py:312 | Incompatible types in assignment (expression has type "def mock_ingest_playlist(**kwargs: Any) -> Any", variable has type "def ingest_playlist(self, playlist_id: str, max_videos: int = ..., after_date: datetime | None = ..., force_reprocess: bool = ..., languages: list[str] | None = ..., *, gemini_summary: bool = ..., gemini_resolution: str = ..., proofread: bool = ..., hint_terms: list[str] | None = ...) -> Coroutine[Any, Any, int]") |
-| mypy | tests/test_ingestion/test_youtube.py:343 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube.py:348 | Cannot assign to a method |
-| mypy | tests/test_ingestion/test_youtube.py:348 | Incompatible types in assignment (expression has type "def mock_process(video: Any, playlist_id: Any, **kwargs: Any) -> Any", variable has type "def _process_video(self, video: dict[str, Any], playlist_id: str, force_reprocess: bool = ..., languages: list[str] | None = ..., *, gemini_summary: bool = ..., gemini_resolution: str = ..., proofread: bool = ..., hint_terms: list[str] | None = ...) -> Coroutine[Any, Any, bool]") |
-| mypy | tests/test_ingestion/test_youtube.py:404 | Function is missing a type annotation |
-| mypy | tests/test_ingestion/test_youtube.py:414 | Cannot assign to a method |
-| mypy | tests/test_ingestion/test_youtube.py:414 | Incompatible types in assignment (expression has type "def mock_ingest_feed(**kwargs: Any) -> Any", variable has type "def ingest_feed(self, feed_url: str, max_entries: int = ..., after_date: datetime | None = ..., force_reprocess: bool = ..., source_name: str | None = ..., source_tags: list[str] | None = ..., *, gemini_summary: bool = ..., gemini_resolution: str = ...) -> Coroutine[Any, Any, int]") |
-| mypy | tests/integration/test_content_ingestion.py:21 | Function is missing a return type annotation |
-| mypy | tests/integration/test_content_ingestion.py:82 | Function is missing a return type annotation |
-| mypy | tests/integration/test_content_ingestion.py:86 | Function is missing a type annotation |
-| mypy | tests/integration/test_content_ingestion.py:95 | Function is missing a type annotation |
-| mypy | tests/integration/test_content_ingestion.py:124 | Function is missing a return type annotation |
-| mypy | tests/integration/test_content_ingestion.py:180 | Function is missing a type annotation |
-| mypy | tests/integration/test_content_ingestion.py:212 | Function is missing a type annotation |
-| mypy | tests/integration/test_content_ingestion.py:226 | Function is missing a type annotation |
-| mypy | tests/integration/test_content_ingestion.py:250 | Function is missing a type annotation |
-| mypy | tests/integration/test_content_ingestion.py:295 | Function is missing a type annotation |
-| mypy | tests/integration/test_content_ingestion.py:307 | Function is missing a type annotation |
-| mypy | tests/integration/test_content_ingestion.py:317 | Function is missing a type annotation |
-| mypy | tests/integration/test_content_ingestion.py:345 | Function is missing a type annotation |
-| mypy | tests/integration/test_content_ingestion.py:379 | Function is missing a type annotation |
-| mypy | tests/integration/test_content_ingestion.py:391 | Function is missing a type annotation |
-| mypy | tests/integration/test_content_ingestion.py:418 | Function is missing a type annotation |
-| mypy | tests/integration/test_content_ingestion.py:448 | Function is missing a type annotation |
-| mypy | tests/integration/test_content_ingestion.py:501 | Function is missing a type annotation |
-| mypy | tests/test_services/test_search.py:18 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_search.py:22 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_search.py:26 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_search.py:32 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_search.py:35 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_search.py:43 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_search.py:49 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_search.py:55 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_search.py:61 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_search.py:71 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_search.py:90 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_search.py:102 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_search.py:113 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_search.py:138 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_search.py:148 | Function is missing a return type annotation |
-| mypy | tests/test_services/test_search.py:168 | Function is missing a type annotation |
-| mypy | tests/test_services/test_search.py:194 | Function is missing a type annotation |
-| mypy | tests/test_services/test_search.py:217 | Function is missing a type annotation |
-| mypy | tests/test_services/test_search.py:277 | Function is missing a type annotation |
-| mypy | tests/test_services/test_search.py:292 | Function is missing a type annotation |
-| mypy | tests/test_services/test_search.py:306 | Function is missing a type annotation |
-| mypy | tests/security/test_search_xss.py:3 | Function is missing a return type annotation |
-| mypy | scripts/generate_podcast.py:44 | Function is missing a return type annotation |
-| mypy | scripts/generate_podcast.py:81 | Function is missing a type annotation for one or more arguments |
-| mypy | scripts/generate_podcast.py:251 | Function is missing a return type annotation |
-| mypy | scripts/generate_podcast.py:322 | Unsupported operand types for // ("None" and "int") |
-| mypy | scripts/generate_podcast.py:322 | Unsupported operand types for % ("None" and "int") |
-| mypy | scripts/generate_podcast.py:324 | Item "str" of "str | None" has no attribute "value" |
-| mypy | scripts/generate_podcast.py:324 | Item "None" of "str | None" has no attribute "value" |
-| mypy | scripts/generate_podcast.py:337 | Item "None" of "PodcastScriptRecord | None" has no attribute "status" |
-| mypy | scripts/generate_podcast.py:383 | Unsupported operand types for // ("None" and "int") |
-| mypy | scripts/generate_podcast.py:383 | Unsupported operand types for % ("None" and "int") |
-| mypy | scripts/generate_podcast.py:385 | Item "str" of "str | None" has no attribute "value" |
-| mypy | scripts/generate_podcast.py:385 | Item "None" of "str | None" has no attribute "value" |
-| mypy | scripts/generate_podcast.py:390 | Item "None" of "PodcastSection | None" has no attribute "title" |
-| mypy | scripts/generate_podcast.py:393 | Item "None" of "PodcastSection | None" has no attribute "title" |
-| mypy | scripts/generate_podcast.py:414 | Item "None" of "PodcastScriptRecord | None" has no attribute "status" |
-| mypy | scripts/generate_podcast.py:422 | Argument 2 to "interactive_script_review" has incompatible type "int | None"; expected "int" |
-| mypy | scripts/generate_podcast.py:434 | Function is missing a return type annotation |
-| mypy | scripts/generate_podcast.py:441 | Argument "script_id" to "generate_audio" of "PodcastCreator" has incompatible type "int | None"; expected "int" |
-| mypy | scripts/generate_podcast.py:454 | Unsupported operand types for // ("None" and "int") |
-| mypy | scripts/generate_podcast.py:454 | Unsupported operand types for % ("None" and "int") |
-| mypy | scripts/generate_podcast.py:456 | Unsupported operand types for / ("None" and "int") |
-| mypy | scripts/generate_podcast.py:460 | Argument 1 to "Path" has incompatible type "str | None"; expected "str | PathLike[str]" |
-| mypy | tests/api/test_script_security.py:11 | Function is missing a type annotation |
-| mypy | tests/api/test_script_security.py:31 | Function is missing a return type annotation |
-| mypy | tests/api/test_script_security.py:57 | Function is missing a type annotation |
-| mypy | tests/api/test_script_security.py:97 | Function is missing a return type annotation |
-| mypy | tests/ingestion/test_orchestrator.py:19 | Function is missing a type annotation |
-| mypy | tests/ingestion/test_orchestrator.py:28 | Function is missing a type annotation |
-| mypy | tests/ingestion/test_orchestrator.py:48 | Function is missing a type annotation |
-| mypy | tests/ingestion/test_orchestrator.py:57 | Function is missing a type annotation |
-| mypy | tests/ingestion/test_orchestrator.py:69 | Function is missing a type annotation |
-| mypy | tests/ingestion/test_orchestrator.py:78 | Function is missing a type annotation |
-| mypy | tests/ingestion/test_orchestrator.py:104 | Function is missing a type annotation |
-| mypy | tests/ingestion/test_orchestrator.py:125 | Function is missing a type annotation |
-| mypy | tests/ingestion/test_orchestrator.py:138 | Function is missing a type annotation |
-| mypy | tests/ingestion/test_orchestrator.py:151 | Function is missing a type annotation |
-| mypy | tests/ingestion/test_orchestrator.py:185 | Function is missing a type annotation |
-| mypy | tests/ingestion/test_orchestrator.py:194 | Function is missing a type annotation |
-| mypy | tests/ingestion/test_orchestrator.py:213 | Function is missing a type annotation |
-| mypy | tests/ingestion/test_orchestrator.py:222 | Function is missing a type annotation |
-| mypy | tests/ingestion/test_orchestrator.py:234 | Function is missing a type annotation |
-| mypy | tests/ingestion/test_orchestrator.py:247 | Function is missing a type annotation |
-| mypy | tests/ingestion/test_orchestrator.py:257 | Function is missing a type annotation |
-| mypy | src/storage/graphiti_client.py:201 | Incompatible return value type (got "list[EntityEdge]", expected "list[dict[str, Any]]") |
-| mypy | src/storage/graphiti_client.py:242 | "EntityEdge" has no attribute "get" |
-| mypy | src/storage/graphiti_client.py:248 | Incompatible return value type (got "list[EntityEdge]", expected "list[dict[str, Any]]") |
-| mypy | src/storage/graphiti_client.py:333 | Incompatible return value type (got "list[EntityEdge]", expected "list[dict[str, Any]]") |
-| mypy | src/storage/graphiti_client.py:364 | Incompatible return value type (got "list[EntityEdge]", expected "list[dict[str, Any]]") |
-| mypy | src/storage/graphiti_client.py:430 | Unsupported operand types for in ("str" and "EntityEdge") |
-| mypy | src/storage/graphiti_client.py:430 | Value of type "EntityEdge" is not indexable |
-| mypy | src/storage/graphiti_client.py:438 | Unsupported operand types for + ("list[dict[str, Any]]" and "list[EntityEdge]") |
-| mypy | tests/test_storage/test_graphiti_client.py:15 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_graphiti_client.py:37 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_graphiti_client.py:45 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_graphiti_client.py:55 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_graphiti_client.py:64 | Function is missing a return type annotation |
-| mypy | tests/test_storage/test_graphiti_client.py:91 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_graphiti_client.py:122 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_graphiti_client.py:138 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_graphiti_client.py:170 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_graphiti_client.py:186 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_graphiti_client.py:214 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_graphiti_client.py:269 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_graphiti_client.py:301 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_graphiti_client.py:308 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_graphiti_client.py:332 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_graphiti_client.py:392 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_graphiti_client.py:442 | Function is missing a type annotation |
-| mypy | tests/test_storage/test_graphiti_client.py:483 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_historical_context.py:123 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_historical_context.py:134 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_historical_context.py:143 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_historical_context.py:183 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_historical_context.py:211 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_historical_context.py:250 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_historical_context.py:277 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_historical_context.py:293 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_historical_context.py:315 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_historical_context.py:325 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_historical_context.py:359 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_historical_context.py:375 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_historical_context.py:399 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_historical_context.py:427 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_historical_context.py:445 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_historical_context.py:454 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_historical_context.py:476 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_historical_context.py:500 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_historical_context.py:525 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_historical_context.py:550 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_historical_context.py:575 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_historical_context.py:600 | Function is missing a return type annotation |
+| mypy | tests/integration/test_summarization_flow_functional.py:38 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/integration/test_summarization_flow_functional.py:59 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/integration/test_summarization_flow_functional.py:72 | Function is missing a type annotation |
+| mypy | tests/integration/test_summarization_flow_functional.py:144 | Function is missing a type annotation |
+| mypy | tests/integration/test_summarization_flow_functional.py:216 | Function is missing a type annotation |
+| mypy | tests/integration/test_summarization_flow_functional.py:307 | Function is missing a type annotation |
+| mypy | tests/integration/test_summarization_flow_functional.py:373 | Function is missing a type annotation |
+| mypy | tests/integration/test_summarization_flow_functional.py:416 | Function is missing a type annotation |
+| mypy | tests/integration/test_summarization_flow_functional.py:448 | Function is missing a type annotation |
+| mypy | tests/services/test_kb_qa_health.py:24 | Function is missing a return type annotation |
+| mypy | tests/services/test_kb_qa_health.py:34 | Function is missing a type annotation |
+| mypy | tests/services/test_kb_qa_health.py:42 | Function is missing a type annotation |
+| mypy | tests/services/test_kb_qa_health.py:47 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/services/test_kb_qa_health.py:73 | Argument "relevance_score" to "Topic" has incompatible type "float"; expected "_N | None" |
+| mypy | tests/services/test_kb_qa_health.py:90 | Function is missing a type annotation |
+| mypy | tests/services/test_kb_qa_health.py:108 | Function is missing a type annotation |
+| mypy | tests/services/test_kb_qa_health.py:118 | Function is missing a type annotation |
+| mypy | tests/services/test_kb_qa_health.py:126 | Function is missing a type annotation |
+| mypy | tests/services/test_kb_qa_health.py:140 | Function is missing a type annotation |
+| mypy | tests/services/test_kb_qa_health.py:165 | Function is missing a type annotation |
+| mypy | tests/services/test_kb_qa_health.py:183 | Function is missing a type annotation |
+| mypy | tests/services/test_kb_qa_health.py:203 | Function is missing a type annotation |
+| mypy | tests/services/test_kb_qa_health.py:231 | Function is missing a type annotation |
+| mypy | tests/services/test_kb_qa_health.py:252 | Function is missing a type annotation |
+| mypy | tests/services/test_kb_qa_health.py:267 | Function is missing a type annotation |
+| mypy | tests/services/test_kb_qa_health.py:280 | Function is missing a type annotation |
+| mypy | tests/services/test_kb_qa_health.py:296 | Function is missing a type annotation |
+| mypy | tests/services/test_kb_qa_health.py:315 | Function is missing a type annotation |
 | mypy | tests/unit/test_theme_analyzer_providers.py:20 | Function is missing a return type annotation |
 | mypy | tests/unit/test_theme_analyzer_providers.py:29 | Function is missing a type annotation |
 | mypy | tests/unit/test_theme_analyzer_providers.py:37 | Function is missing a return type annotation |
@@ -3356,18 +4780,18 @@
 | mypy | tests/unit/test_theme_analyzer_providers.py:109 | Function is missing a type annotation |
 | mypy | tests/unit/test_theme_analyzer_providers.py:132 | Function is missing a type annotation |
 | mypy | tests/unit/test_theme_analyzer_providers.py:148 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_theme_analyzer.py:47 | Function is missing a type annotation for one or more arguments |
-| mypy | tests/test_processors/test_theme_analyzer.py:49 | Returning Any from function declared to return "list[dict[Any, Any]]" |
-| mypy | tests/test_processors/test_theme_analyzer.py:137 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_theme_analyzer.py:150 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_theme_analyzer.py:163 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_theme_analyzer.py:175 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_theme_analyzer.py:48 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/test_processors/test_theme_analyzer.py:50 | Returning Any from function declared to return "list[dict[Any, Any]]" |
+| mypy | tests/test_processors/test_theme_analyzer.py:140 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_theme_analyzer.py:153 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_theme_analyzer.py:166 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_theme_analyzer.py:178 | Function is missing a return type annotation |
 | mypy | tests/test_processors/test_theme_analyzer.py:207 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_theme_analyzer.py:227 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_theme_analyzer.py:239 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_theme_analyzer.py:260 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_theme_analyzer.py:280 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_theme_analyzer.py:352 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_theme_analyzer.py:228 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_theme_analyzer.py:240 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_theme_analyzer.py:262 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_theme_analyzer.py:282 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_theme_analyzer.py:354 | Function is missing a type annotation |
 | mypy | tests/integration/test_theme_analyzer_fetching.py:16 | Function is missing a type annotation |
 | mypy | tests/integration/test_theme_analyzer_fetching.py:20 | Function is missing a return type annotation |
 | mypy | tests/integration/test_theme_analyzer_fetching.py:28 | Function is missing a return type annotation |
@@ -3396,54 +4820,355 @@
 | mypy | tests/integration/test_e2e_model_combinations.py:274 | Function is missing a type annotation |
 | mypy | tests/integration/test_e2e_model_combinations.py:284 | Function is missing a return type annotation |
 | mypy | scripts/analyze_themes.py:19 | Function is missing a type annotation for one or more arguments |
+| mypy | scripts/analyze_themes.py:47 | Missing positional argument "resolved_set" in call to "analyze_themes" of "ThemeAnalyzer" |
+| mypy | scripts/analyze_themes.py:57 | "ThemeAnalysisResult" has no attribute "newsletter_count" |
+| mypy | scripts/analyze_themes.py:119 | Unexpected keyword argument "newsletter_count" for "ThemeAnalysis" |
+| mypy | scripts/analyze_themes.py:119 | Unexpected keyword argument "newsletter_ids" for "ThemeAnalysis" |
+| mypy | scripts/analyze_themes.py:122 | "ThemeAnalysisResult" has no attribute "newsletter_count" |
+| mypy | scripts/analyze_themes.py:123 | "ThemeAnalysisResult" has no attribute "newsletter_ids" |
 | mypy | scripts/analyze_themes.py:130 | Argument "processing_time_seconds" to "ThemeAnalysis" has incompatible type "float"; expected "_N | None" |
+| mypy | scripts/analyze_themes.py:149 | "ThemeAnalysisResult" has no attribute "newsletter_count" |
+| mypy | scripts/analyze_themes.py:151 | "ThemeAnalysisResult" has no attribute "newsletter_count" |
+| mypy | scripts/analyze_themes.py:160 | "ThemeAnalysisResult" has no attribute "newsletter_count" |
+| mypy | scripts/analyze_themes.py:161 | "ThemeAnalysisResult" has no attribute "newsletter_count" |
+| mypy | tests/integration/test_agent_integration.py:226 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:246 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:261 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:275 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:310 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:343 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:356 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:365 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:401 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:435 | Value of type "dict[str, Any] | None" is not indexable |
+| mypy | tests/integration/test_agent_integration.py:436 | Value of type "dict[str, Any] | None" is not indexable |
+| mypy | tests/integration/test_agent_integration.py:440 | Item "None" of "dict[str, Any] | None" has no attribute "get" |
+| mypy | tests/integration/test_agent_integration.py:441 | Item "None" of "dict[str, Any] | None" has no attribute "get" |
+| mypy | tests/integration/test_agent_integration.py:445 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:475 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:500 | Value of type "dict[str, Any] | None" is not indexable |
+| mypy | tests/integration/test_agent_integration.py:513 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:577 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:623 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:683 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:709 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:733 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:746 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:765 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:797 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:822 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:850 | Function is missing a return type annotation |
+| mypy | tests/integration/test_agent_integration.py:883 | Function is missing a return type annotation |
+| mypy | tests/agents/test_conductor.py:22 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/agents/test_conductor.py:56 | Function is missing a return type annotation |
+| mypy | tests/agents/test_conductor.py:69 | Function is missing a return type annotation |
+| mypy | tests/agents/test_conductor.py:77 | Function is missing a return type annotation |
+| mypy | tests/agents/test_conductor.py:84 | Function is missing a return type annotation |
+| mypy | tests/agents/test_conductor.py:91 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:110 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:121 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:130 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:145 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:158 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:180 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:189 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:198 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:212 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:224 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:239 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:253 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:268 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:282 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:301 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:313 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:324 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:335 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:350 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:369 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:390 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:407 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:418 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:441 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:453 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:473 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:486 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:498 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:521 | Function is missing a type annotation |
+| mypy | tests/agents/test_conductor.py:569 | Function is missing a type annotation |
+| mypy | tests/workflows/test_podcast_audio_workflow.py:15 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/workflows/test_podcast_audio_workflow.py:20 | Function is missing a return type annotation |
+| mypy | tests/workflows/test_podcast_audio_workflow.py:36 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/workflows/test_podcast_audio_workflow.py:66 | Function is missing a return type annotation |
+| mypy | scripts/generate_podcast.py:44 | Function is missing a return type annotation |
+| mypy | scripts/generate_podcast.py:81 | Function is missing a type annotation for one or more arguments |
+| mypy | scripts/generate_podcast.py:251 | Function is missing a return type annotation |
+| mypy | scripts/generate_podcast.py:322 | Unsupported operand types for // ("None" and "int") |
+| mypy | scripts/generate_podcast.py:322 | Unsupported operand types for % ("None" and "int") |
+| mypy | scripts/generate_podcast.py:324 | Item "str" of "str | None" has no attribute "value" |
+| mypy | scripts/generate_podcast.py:324 | Item "None" of "str | None" has no attribute "value" |
+| mypy | scripts/generate_podcast.py:337 | Item "None" of "PodcastScriptRecord | None" has no attribute "status" |
+| mypy | scripts/generate_podcast.py:383 | Unsupported operand types for // ("None" and "int") |
+| mypy | scripts/generate_podcast.py:383 | Unsupported operand types for % ("None" and "int") |
+| mypy | scripts/generate_podcast.py:385 | Item "str" of "str | None" has no attribute "value" |
+| mypy | scripts/generate_podcast.py:385 | Item "None" of "str | None" has no attribute "value" |
+| mypy | scripts/generate_podcast.py:390 | Item "None" of "PodcastSection | None" has no attribute "title" |
+| mypy | scripts/generate_podcast.py:393 | Item "None" of "PodcastSection | None" has no attribute "title" |
+| mypy | scripts/generate_podcast.py:414 | Item "None" of "PodcastScriptRecord | None" has no attribute "status" |
+| mypy | scripts/generate_podcast.py:422 | Argument 2 to "interactive_script_review" has incompatible type "int | None"; expected "int" |
+| mypy | scripts/generate_podcast.py:434 | Function is missing a return type annotation |
+| mypy | scripts/generate_podcast.py:441 | Argument "script_id" to "generate_audio" of "PodcastCreator" has incompatible type "int | None"; expected "int" |
+| mypy | scripts/generate_podcast.py:454 | Unsupported operand types for // ("None" and "int") |
+| mypy | scripts/generate_podcast.py:454 | Unsupported operand types for % ("None" and "int") |
+| mypy | scripts/generate_podcast.py:456 | Unsupported operand types for / ("None" and "int") |
+| mypy | scripts/generate_podcast.py:460 | Argument 1 to "Path" has incompatible type "str | None"; expected "str | PathLike[str]" |
+| mypy | tests/api/test_script_security.py:11 | Function is missing a type annotation |
+| mypy | tests/api/test_script_security.py:31 | Function is missing a return type annotation |
+| mypy | tests/api/test_script_security.py:57 | Function is missing a type annotation |
+| mypy | tests/api/test_script_security.py:97 | Function is missing a return type annotation |
+| mypy | tests/workflows/test_theme_analysis_workflow.py:27 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/workflows/test_theme_analysis_workflow.py:51 | Function is missing a return type annotation |
+| mypy | tests/workflows/test_theme_analysis_workflow.py:107 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/workflows/test_theme_analysis_workflow.py:123 | Function is missing a return type annotation |
+| mypy | tests/workflows/test_theme_analysis_workflow.py:150 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/workflows/test_theme_analysis_workflow.py:176 | Function is missing a return type annotation |
 | mypy | tests/test_scripts/test_digest_generation.py:17 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_digest_creator.py:87 | Function is missing a type annotation for one or more arguments |
-| mypy | tests/test_processors/test_digest_creator.py:89 | Returning Any from function declared to return "list[dict[Any, Any]]" |
-| mypy | tests/test_processors/test_digest_creator.py:182 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_creator.py:246 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_digest_creator.py:286 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_creator.py:323 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_creator.py:342 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_creator.py:354 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_digest_creator.py:399 | Function is missing a type annotation |
-| mypy | tests/test_processors/test_digest_creator.py:413 | Function is missing a return type annotation |
-| mypy | tests/test_processors/test_digest_creator.py:433 | Function is missing a return type annotation |
-| mypy | tests/integration/test_digest_creation_flow_functional.py:50 | Function is missing a type annotation |
-| mypy | tests/integration/test_digest_creation_flow_functional.py:170 | Function is missing a type annotation |
-| mypy | tests/integration/test_digest_creation_flow_functional.py:269 | Function is missing a type annotation |
-| mypy | tests/integration/test_digest_creation_flow_functional.py:325 | Function is missing a type annotation |
-| mypy | tests/integration/test_digest_creation_flow_functional.py:435 | Function is missing a type annotation |
-| mypy | tests/integration/test_digest_creation_flow_functional.py:526 | Function is missing a type annotation |
-| mypy | scripts/run_pipeline.py:36 | Module "src.ingestion.gmail" has no attribute "GmailIngestionService"; maybe "GmailContentIngestionService"? |
-| mypy | scripts/run_pipeline.py:37 | Module "src.ingestion.rss" has no attribute "RSSIngestionService"; maybe "RSSContentIngestionService"? |
-| mypy | scripts/run_pipeline.py:51 | Need type annotation for "stats" |
-| mypy | scripts/run_pipeline.py:133 | No overload variant of "__add__" of "list" matches argument type "int" |
-| mypy | scripts/run_pipeline.py:133 | Unsupported operand types for + ("None" and "int") |
-| mypy | scripts/run_pipeline.py:181 | Item "int" of "list[Any] | int | None" has no attribute "append" |
-| mypy | scripts/run_pipeline.py:181 | Item "None" of "list[Any] | int | None" has no attribute "append" |
-| mypy | scripts/run_pipeline.py:199 | Item "int" of "list[Any] | int | None" has no attribute "append" |
-| mypy | scripts/run_pipeline.py:199 | Item "None" of "list[Any] | int | None" has no attribute "append" |
-| mypy | scripts/run_pipeline.py:216 | "ContentSummarizer" has no attribute "summarize_pending_newsletters"; maybe "summarize_pending_contents"? |
-| mypy | scripts/run_pipeline.py:218 | Returning Any from function declared to return "int" |
-| mypy | scripts/run_pipeline.py:221 | Item "int" of "list[Any] | int | None" has no attribute "append" |
-| mypy | scripts/run_pipeline.py:221 | Item "None" of "list[Any] | int | None" has no attribute "append" |
-| mypy | scripts/run_pipeline.py:281 | Item "int" of "list[Any] | int | None" has no attribute "append" |
-| mypy | scripts/run_pipeline.py:281 | Item "None" of "list[Any] | int | None" has no attribute "append" |
-| mypy | scripts/run_pipeline.py:284 | Function is missing a return type annotation |
-| mypy | scripts/run_pipeline.py:305 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_digest_creator.py:96 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/test_processors/test_digest_creator.py:98 | Returning Any from function declared to return "list[dict[Any, Any]]" |
+| mypy | tests/test_processors/test_digest_creator.py:125 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_creator.py:244 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_creator.py:295 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_digest_creator.py:318 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_creator.py:378 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_creator.py:397 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_creator.py:409 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_digest_creator.py:454 | Function is missing a type annotation |
+| mypy | tests/test_processors/test_digest_creator.py:468 | Function is missing a return type annotation |
+| mypy | tests/test_processors/test_digest_creator.py:488 | Function is missing a return type annotation |
+| mypy | tests/processors/test_provider_boundaries.py:99 | Need type annotation for "context" |
+| mypy | tests/processors/test_provider_boundaries.py:209 | Cannot assign to a method |
+| mypy | tests/processors/test_provider_boundaries.py:237 | Cannot assign to a method |
+| mypy | tests/processors/test_processor_workflow_provenance.py:179 | Cannot assign to a method |
+| mypy | tests/processors/test_processor_workflow_provenance.py:180 | Cannot assign to a method |
+| mypy | tests/processors/test_processor_workflow_provenance.py:183 | Argument "request" to "analyze_themes" of "ThemeAnalyzer" has incompatible type "SimpleNamespace"; expected "ThemeAnalysisRequest" |
+| mypy | tests/processors/test_processor_workflow_provenance.py:195 | Item "None" of "_Call | None" has no attribute "kwargs" |
+| mypy | tests/processors/test_processor_workflow_provenance.py:210 | Cannot assign to a method |
+| mypy | tests/processors/test_processor_workflow_provenance.py:211 | Cannot assign to a method |
+| mypy | tests/processors/test_processor_workflow_provenance.py:214 | Argument "request" to "analyze_themes" of "ThemeAnalyzer" has incompatible type "SimpleNamespace"; expected "ThemeAnalysisRequest" |
+| mypy | tests/processors/test_processor_workflow_provenance.py:261 | Cannot assign to a method |
+| mypy | tests/processors/test_processor_workflow_provenance.py:262 | Cannot assign to a method |
+| mypy | tests/processors/test_processor_workflow_provenance.py:428 | Argument 1 to "_ordered_cited_ids" of "PodcastScriptReviser" has incompatible type "SimpleNamespace"; expected "PodcastScript" |
 | mypy | scripts/generate_weekly_digest.py:19 | Function is missing a type annotation for one or more arguments |
+| mypy | scripts/generate_weekly_digest.py:55 | Missing positional argument "resolved_set" in call to "create_digest" of "DigestCreator" |
 | mypy | scripts/generate_weekly_digest.py:148 | Unsupported operand types for / ("None" and "int") |
 | mypy | scripts/generate_daily_digest.py:19 | Function is missing a type annotation for one or more arguments |
+| mypy | scripts/generate_daily_digest.py:47 | Missing positional argument "resolved_set" in call to "create_digest" of "DigestCreator" |
 | mypy | scripts/generate_daily_digest.py:143 | Unsupported operand types for / ("None" and "int") |
-| mypy | tests/cli/test_adapters.py:19 | Function is missing a return type annotation |
-| mypy | tests/cli/test_adapters.py:20 | Function is missing a return type annotation |
-| mypy | tests/cli/test_adapters.py:26 | Function is missing a return type annotation |
-| mypy | tests/cli/test_adapters.py:27 | Function is missing a return type annotation |
-| mypy | tests/cli/test_adapters.py:36 | Function is missing a type annotation |
-| mypy | tests/cli/test_adapters.py:47 | Function is missing a type annotation |
-| mypy | tests/cli/test_adapters.py:58 | Function is missing a type annotation |
-| mypy | tests/cli/test_adapters.py:69 | Function is missing a type annotation |
+| mypy | tests/workflows/test_resource.py:21 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/workflows/test_resource.py:32 | Function is missing a return type annotation |
+| mypy | tests/workflows/test_resource.py:52 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/workflows/test_resource.py:62 | Function is missing a return type annotation |
+| mypy | tests/workflows/test_resource.py:77 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/workflows/test_resource.py:86 | Function is missing a return type annotation |
+| mypy | tests/workflows/test_resource.py:97 | Item "None" of "Any | None" has no attribute "operation_id" |
+| mypy | tests/workflows/test_resource.py:113 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/workflows/test_resource.py:134 | Argument "speed" to "AudioDigest" has incompatible type "float"; expected "_N | None" |
+| mypy | tests/workflows/test_resource.py:149 | Function is missing a return type annotation |
+| mypy | tests/workflows/test_resource.py:205 | Item "None" of "Digest | ThemeAnalysis | PodcastScriptRecord | Podcast | AudioDigest | None" has no attribute "id" |
+| mypy | tests/workflows/test_digest_workflow.py:23 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/workflows/test_digest_workflow.py:68 | Function is missing a return type annotation |
+| mypy | tests/workflows/test_digest_workflow.py:154 | Argument 1 to "_apply" of "DigestWorkflow" has incompatible type "SimpleNamespace"; expected "Digest" |
+| mypy | tests/workflows/test_digest_workflow.py:164 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/workflows/test_digest_workflow.py:194 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:15 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:83 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:88 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:94 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:101 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:108 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:114 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:122 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:129 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:135 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:140 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:145 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:150 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:165 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:171 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:177 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:182 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:189 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:198 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:203 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:208 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:222 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:227 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:236 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:242 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:248 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:254 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:260 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:273 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:280 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:287 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:294 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:300 | Function is missing a type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:311 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:331 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:345 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:351 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:374 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:388 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:406 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:418 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:432 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:444 | Function is missing a return type annotation |
+| mypy | tests/test_utils/test_digest_markdown.py:467 | Function is missing a return type annotation |
+| mypy | tests/regression/test_api_contract_consistency.py:31 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/regression/test_api_contract_consistency.py:134 | Function is missing a return type annotation |
+| mypy | tests/regression/test_api_contract_consistency.py:151 | Function is missing a return type annotation |
+| mypy | tests/regression/test_api_contract_consistency.py:167 | Function is missing a return type annotation |
+| mypy | tests/regression/test_api_contract_consistency.py:183 | Function is missing a return type annotation |
+| mypy | tests/regression/test_api_contract_consistency.py:199 | Function is missing a return type annotation |
+| mypy | tests/regression/test_api_contract_consistency.py:223 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/regression/test_api_contract_consistency.py:231 | Function is missing a return type annotation |
+| mypy | tests/regression/test_api_contract_consistency.py:243 | Function is missing a return type annotation |
+| mypy | tests/regression/test_api_contract_consistency.py:253 | Function is missing a return type annotation |
+| mypy | tests/regression/test_api_contract_consistency.py:263 | Function is missing a return type annotation |
+| mypy | tests/regression/test_api_contract_consistency.py:286 | Function is missing a return type annotation |
+| mypy | tests/regression/test_api_contract_consistency.py:297 | Function is missing a return type annotation |
+| mypy | tests/regression/test_api_contract_consistency.py:306 | Function is missing a return type annotation |
+| mypy | tests/mcp/test_workflow_conformance.py:74 | Argument 1 to "signature" has incompatible type "function"; expected "Callable[..., Any]" |
+| mypy | tests/mcp/test_workflow_conformance.py:98 | Argument 1 to "ingest_url" has incompatible type "str"; expected "AnyUrl" |
+| mypy | tests/mcp/test_workflow_conformance.py:153 | Value of type "Any | None" is not indexable |
+| mypy | tests/mcp/test_workflow_conformance.py:154 | Value of type "Any | None" is not indexable |
+| mypy | tests/mcp/test_workflow_conformance.py:155 | Value of type "Any | None" is not indexable |
+| mypy | tests/mcp/test_workflow_conformance.py:156 | Value of type "Any | None" is not indexable |
+| mypy | tests/mcp/test_workflow_conformance.py:168 | Value of type "Any | None" is not indexable |
+| mypy | tests/mcp/test_workflow_conformance.py:231 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/mcp/test_workflow_conformance.py:446 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/mcp/test_workflow_conformance.py:512 | Value of type "dict[str, Any] | None" is not indexable |
+| mypy | tests/mcp/test_workflow_conformance.py:513 | Value of type "dict[str, Any] | None" is not indexable |
+| mypy | tests/mcp/test_workflow_conformance.py:514 | Value of type "dict[str, Any] | None" is not indexable |
+| mypy | tests/mcp/test_workflow_conformance.py:536 | Value of type "TextContent | ImageContent | AudioContent | ResourceLink | EmbeddedResource | str" is not indexable |
+| mypy | tests/mcp/test_workflow_conformance.py:536 | Invalid index type "str" for "str"; expected type "SupportsIndex | slice[Any, Any, Any]" |
+| mypy | tests/mcp/test_workflow_conformance.py:537 | Value of type "TextContent | ImageContent | AudioContent | ResourceLink | EmbeddedResource | str" is not indexable |
+| mypy | tests/mcp/test_workflow_conformance.py:537 | Invalid index type "str" for "str"; expected type "SupportsIndex | slice[Any, Any, Any]" |
+| mypy | tests/mcp/test_workflow_conformance.py:538 | Value of type "TextContent | ImageContent | AudioContent | ResourceLink | EmbeddedResource | str" is not indexable |
+| mypy | tests/mcp/test_workflow_conformance.py:538 | Invalid index type "str" for "str"; expected type "SupportsIndex | slice[Any, Any, Any]" |
+| mypy | tests/mcp/test_workflow_conformance.py:539 | Value of type "TextContent | ImageContent | AudioContent | ResourceLink | EmbeddedResource | str" is not indexable |
+| mypy | tests/mcp/test_workflow_conformance.py:539 | Invalid index type "str" for "str"; expected type "SupportsIndex | slice[Any, Any, Any]" |
+| mypy | tests/mcp/test_workflow_conformance.py:540 | Value of type "TextContent | ImageContent | AudioContent | ResourceLink | EmbeddedResource | str" is not indexable |
+| mypy | tests/mcp/test_workflow_conformance.py:540 | Invalid index type "str" for "str"; expected type "SupportsIndex | slice[Any, Any, Any]" |
+| mypy | tests/mcp/test_workflow_conformance.py:563 | Value of type "Any | None" is not indexable |
+| mypy | tests/mcp/test_workflow_conformance.py:571 | Value of type "Any | None" is not indexable |
+| mypy | tests/mcp/test_workflow_conformance.py:627 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/mcp/test_workflow_conformance.py:648 | Value of type "Any | None" is not indexable |
+| mypy | tests/mcp/test_workflow_conformance.py:649 | Value of type "Any | None" is not indexable |
+| mypy | tests/mcp/test_workflow_conformance.py:677 | Value of type "Any | None" is not indexable |
+| mypy | tests/mcp/test_workflow_conformance.py:678 | Value of type "Any | None" is not indexable |
+| mypy | tests/workflows/test_pipeline_workflow.py:115 | Function is missing a return type annotation |
+| mypy | tests/workflows/test_pipeline_workflow.py:350 | "Callable[[int], Digest | Any | None]" has no attribute "assert_not_called" |
+| mypy | tests/workflows/test_pipeline_workflow.py:465 | Item "None" of "_Call | None" has no attribute "args" |
+| mypy | tests/workflows/test_pipeline_workflow.py:466 | Item "None" of "_Call | None" has no attribute "args" |
+| mypy | tests/workflows/test_pipeline_workflow.py:495 | Item "None" of "_Call | None" has no attribute "args" |
+| mypy | tests/workflows/test_pipeline_workflow.py:523 | Item "None" of "_Call | None" has no attribute "args" |
+| mypy | tests/workflows/test_pipeline_workflow.py:598 | Item "None" of "_Call | None" has no attribute "args" |
+| mypy | tests/test_services/test_batch_workers.py:49 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:58 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:64 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:69 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:75 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:88 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:105 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:111 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:119 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:125 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:144 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:147 | Function is missing a return type annotation |
+| mypy | tests/test_services/test_batch_workers.py:160 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:179 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:199 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:218 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:252 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:284 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:298 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:313 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:348 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:384 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:411 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:435 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:467 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:499 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:538 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:563 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:582 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:592 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:597 | Function is missing a type annotation |
+| mypy | tests/test_services/test_batch_workers.py:623 | Function is missing a return type annotation |
+| mypy | tests/security/test_agent_error_leakage.py:16 | Function is missing a return type annotation |
+| mypy | tests/queue/test_workflow_handlers.py:26 | Function is missing a return type annotation |
+| mypy | tests/queue/test_workflow_handlers.py:29 | Function is missing a return type annotation |
+| mypy | tests/queue/test_workflow_handlers.py:29 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_workflow_handlers.py:60 | Item "None" of "_Call | None" has no attribute "kwargs" |
+| mypy | tests/queue/test_workflow_handlers.py:65 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_workflow_handlers.py:117 | Function is missing a type annotation |
+| mypy | tests/queue/test_workflow_handlers.py:144 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_workflow_handlers.py:269 | Function is missing a type annotation |
+| mypy | tests/queue/test_workflow_handlers.py:354 | Function is missing a type annotation |
+| mypy | tests/queue/test_workflow_handlers.py:377 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_workflow_handlers.py:402 | Item "None" of "_Call | None" has no attribute "kwargs" |
+| mypy | tests/queue/test_workflow_handlers.py:406 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_workflow_handlers.py:415 | Function is missing a return type annotation |
+| mypy | tests/queue/test_workflow_handlers.py:415 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_workflow_handlers.py:419 | Function is missing a return type annotation |
+| mypy | tests/queue/test_workflow_handlers.py:419 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_worker_extended.py:17 | Function is missing a return type annotation |
+| mypy | tests/queue/test_worker_extended.py:23 | Function is missing a return type annotation |
+| mypy | tests/queue/test_worker_extended.py:36 | Function is missing a type annotation |
+| mypy | tests/queue/test_worker_extended.py:47 | Function is missing a type annotation |
+| mypy | tests/queue/test_worker_extended.py:68 | Function is missing a type annotation |
+| mypy | tests/queue/test_worker_extended.py:91 | Function is missing a type annotation |
+| mypy | tests/queue/test_worker_extended.py:100 | Function is missing a type annotation |
+| mypy | tests/queue/test_worker_extended.py:110 | Function is missing a type annotation |
+| mypy | tests/queue/test_worker_extended.py:121 | Function is missing a type annotation |
+| mypy | tests/queue/test_worker_extended.py:131 | Function is missing a type annotation |
+| mypy | tests/queue/test_worker_extended.py:140 | Function is missing a type annotation |
+| mypy | tests/queue/test_worker_extended.py:150 | Function is missing a type annotation |
+| mypy | tests/queue/test_worker_extended.py:165 | Function is missing a type annotation |
+| mypy | tests/queue/test_worker_extended.py:193 | Function is missing a type annotation |
+| mypy | tests/queue/test_worker_extended.py:204 | Function is missing a return type annotation |
+| mypy | tests/queue/test_worker_extended.py:217 | Function is missing a type annotation |
+| mypy | tests/queue/test_operation_controls.py:54 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_operation_controls.py:95 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_operation_controls.py:108 | Item "None" of "_Call | None" has no attribute "kwargs" |
+| mypy | tests/queue/test_operation_controls.py:117 | Function is missing a return type annotation |
+| mypy | tests/queue/test_operation_controls.py:117 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_operation_controls.py:147 | Item "None" of "_Call | None" has no attribute "args" |
+| mypy | tests/queue/test_operation_controls.py:163 | Item "None" of "_Call | None" has no attribute "args" |
+| mypy | tests/queue/test_operation_controls.py:172 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_operation_controls.py:185 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_operation_controls.py:197 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_operation_controls.py:218 | Item "None" of "_Call | None" has no attribute "args" |
+| mypy | tests/queue/test_operation_controls.py:252 | Item "None" of "_Call | None" has no attribute "args" |
+| mypy | tests/queue/test_operation_controls.py:266 | Function is missing a return type annotation |
+| mypy | tests/queue/test_operation_controls.py:266 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_operation_controls.py:274 | Function is missing a return type annotation |
+| mypy | tests/queue/test_operation_controls.py:274 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_operation_controls.py:299 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_operation_controls.py:322 | Item "None" of "_Call | None" has no attribute "args" |
+| mypy | tests/queue/test_operation_controls.py:361 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_operation_controls.py:368 | Function is missing a type annotation |
+| mypy | tests/queue/test_operation_controls.py:380 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/queue/test_operation_controls.py:416 | Function is missing a type annotation |
+| mypy | tests/queue/test_batch_maintenance.py:19 | Function is missing a return type annotation |
+| mypy | tests/queue/test_batch_maintenance.py:30 | Function is missing a type annotation |
+| mypy | tests/queue/test_batch_maintenance.py:32 | Function is missing a return type annotation |
+| mypy | tests/queue/test_batch_maintenance.py:39 | Function is missing a type annotation |
+| mypy | tests/queue/test_batch_maintenance.py:52 | Function is missing a type annotation |
+| mypy | tests/queue/test_batch_maintenance.py:68 | Function is missing a type annotation |
+| mypy | tests/real_ingestion/test_pr_tier.py:26 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/real_ingestion/test_pr_tier.py:37 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/real_ingestion/conftest.py:34 | Function is missing a type annotation for one or more arguments |
 | mypy | tests/test_telemetry/test_otel_setup.py:14 | Function is missing a type annotation |
 | mypy | tests/test_telemetry/test_otel_setup.py:24 | Function is missing a type annotation |
 | mypy | tests/test_telemetry/test_otel_setup.py:35 | Function is missing a type annotation |
@@ -3457,14 +5182,24 @@
 | mypy | tests/test_telemetry/test_otel_setup.py:116 | Function is missing a return type annotation |
 | mypy | tests/test_telemetry/test_otel_setup.py:127 | Function is missing a return type annotation |
 | mypy | tests/test_telemetry/test_otel_setup.py:139 | Function is missing a return type annotation |
-| mypy | tests/security/test_upload_error_leakage.py:17 | Function is missing a type annotation |
-| mypy | tests/security/test_upload_error_leakage.py:35 | Function is missing a return type annotation |
-| mypy | tests/security/test_upload_error_leakage.py:43 | Function is missing a type annotation |
+| mypy | tests/security/test_upload_signature_bypass.py:14 | Function is missing a type annotation |
+| mypy | tests/security/test_upload_signature_bypass.py:32 | Function is missing a return type annotation |
+| mypy | tests/security/test_upload_signature_bypass.py:43 | Function is missing a type annotation |
+| mypy | tests/security/test_upload_signature_bypass.py:51 | Function is missing a type annotation |
+| mypy | tests/security/test_upload_signature_bypass.py:59 | Function is missing a type annotation |
+| mypy | tests/security/test_upload_signature_bypass.py:67 | Function is missing a type annotation |
+| mypy | tests/security/test_upload_signature_bypass.py:75 | Function is missing a type annotation |
+| mypy | tests/security/test_upload_signature_bypass.py:83 | Function is missing a type annotation |
+| mypy | tests/security/test_upload_signature_bypass.py:92 | Function is missing a type annotation |
+| mypy | tests/security/test_upload_signature_bypass.py:100 | Function is missing a type annotation |
+| mypy | tests/security/test_upload_signature_bypass.py:108 | Function is missing a type annotation |
+| mypy | tests/security/test_upload_signature_bypass.py:116 | Function is missing a type annotation |
+| mypy | tests/security/test_upload_error_leakage.py:18 | Function is missing a type annotation |
 | mypy | tests/security/test_settings_auth.py:11 | Function is missing a type annotation |
 | mypy | tests/security/test_settings_auth.py:37 | Function is missing a type annotation |
 | mypy | tests/security/test_settings_auth.py:64 | Function is missing a type annotation |
-| mypy | tests/security/test_search_auth.py:13 | Function is missing a type annotation |
-| mypy | tests/security/test_search_auth.py:34 | Function is missing a type annotation |
+| mypy | tests/security/test_search_auth.py:28 | Function is missing a type annotation |
+| mypy | tests/security/test_search_auth.py:46 | Function is missing a type annotation |
 | mypy | tests/security/test_owner_auth.py:42 | Function is missing a return type annotation |
 | mypy | tests/security/test_owner_auth.py:54 | Function is missing a type annotation |
 | mypy | tests/security/test_owner_auth.py:103 | Function is missing a return type annotation |
@@ -3500,29 +5235,55 @@
 | mypy | tests/security/test_error_sanitization.py:143 | Function is missing a type annotation |
 | mypy | tests/security/test_error_sanitization.py:154 | Function is missing a type annotation |
 | mypy | tests/security/test_error_sanitization.py:170 | Function is missing a type annotation |
-| mypy | tests/security/test_error_sanitization.py:196 | Function is missing a type annotation |
-| mypy | tests/security/test_error_sanitization.py:209 | Function is missing a type annotation |
-| mypy | tests/security/test_error_sanitization.py:224 | Function is missing a type annotation |
-| mypy | tests/security/test_error_sanitization.py:240 | Function is missing a type annotation |
-| mypy | tests/security/test_error_sanitization.py:254 | Function is missing a type annotation |
-| mypy | tests/security/test_digest_auth.py:11 | Function is missing a type annotation |
+| mypy | tests/security/test_error_sanitization.py:198 | Function is missing a type annotation |
+| mypy | tests/security/test_error_sanitization.py:211 | Function is missing a type annotation |
+| mypy | tests/security/test_error_sanitization.py:226 | Function is missing a type annotation |
+| mypy | tests/security/test_error_sanitization.py:242 | Function is missing a type annotation |
+| mypy | tests/security/test_error_sanitization.py:256 | Function is missing a type annotation |
 | mypy | tests/security/test_digest_auth.py:29 | Function is missing a type annotation |
+| mypy | tests/security/test_digest_auth.py:47 | Function is missing a type annotation |
+| mypy | tests/contract/test_openapi_drift.py:29 | Function is missing a return type annotation |
+| mypy | tests/contract/test_openapi_drift.py:50 | Function is missing a return type annotation |
+| mypy | tests/contract/test_openapi_drift.py:81 | Function is missing a type annotation |
+| mypy | tests/contract/test_openapi_drift.py:96 | Function is missing a type annotation |
+| mypy | tests/contract/test_openapi_drift.py:115 | Function is missing a type annotation |
+| mypy | tests/contract/test_openapi_drift.py:149 | Function is missing a type annotation |
+| mypy | tests/contract/test_openapi_drift.py:182 | Function is missing a type annotation |
+| mypy | tests/contract/test_openapi_drift.py:204 | Function is missing a type annotation |
+| mypy | tests/contract/test_openapi_drift.py:212 | Function is missing a type annotation |
+| mypy | tests/contract/test_openapi_drift.py:219 | Function is missing a type annotation |
+| mypy | tests/contract/test_openapi_drift.py:229 | Function is missing a type annotation |
+| mypy | tests/contract/test_openapi_drift.py:235 | Function is missing a type annotation |
+| mypy | tests/contract/test_openapi_drift.py:241 | Function is missing a type annotation |
 | mypy | tests/contract/conftest.py:80 | Function is missing a type annotation |
-| mypy | tests/contract/conftest.py:93 | Function is missing a type annotation for one or more arguments |
-| mypy | tests/contract/conftest.py:109 | Function is missing a return type annotation |
-| mypy | tests/contract/conftest.py:154 | The return type of a generator function should be "Generator" or one of its supertypes |
-| mypy | tests/contract/conftest.py:154 | Function is missing a type annotation for one or more arguments |
-| mypy | tests/contract/conftest.py:202 | Function is missing a type annotation |
-| mypy | tests/contract/conftest.py:290 | Function is missing a type annotation |
-| mypy | tests/contract/conftest.py:303 | Function is missing a return type annotation |
-| mypy | tests/contract/conftest.py:314 | Function is missing a type annotation |
-| mypy | tests/api/test_upload_security_regression.py:10 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_security_regression.py:17 | Function is missing a type annotation |
-| mypy | tests/api/test_upload_auth.py:11 | Function is missing a type annotation |
-| mypy | tests/api/test_upload_auth.py:21 | Function is missing a return type annotation |
-| mypy | tests/api/test_upload_auth.py:61 | Function is missing a type annotation |
-| mypy | tests/api/test_upload_auth.py:74 | Function is missing a type annotation |
-| mypy | tests/api/test_upload_auth.py:88 | Function is missing a type annotation |
+| mypy | tests/contract/conftest.py:95 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/contract/conftest.py:111 | Function is missing a return type annotation |
+| mypy | tests/contract/conftest.py:156 | The return type of a generator function should be "Generator" or one of its supertypes |
+| mypy | tests/contract/conftest.py:156 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/contract/conftest.py:186 | Function is missing a type annotation |
+| mypy | tests/contract/conftest.py:274 | Function is missing a type annotation |
+| mypy | tests/contract/conftest.py:285 | Function is missing a return type annotation |
+| mypy | tests/contract/conftest.py:295 | Function is missing a type annotation |
+| mypy | tests/contract/conftest.py:301 | Function is missing a return type annotation |
+| mypy | tests/contract/conftest.py:309 | Function is missing a type annotation |
+| mypy | tests/api/test_source_write_api.py:22 | Function is missing a return type annotation |
+| mypy | tests/api/test_source_write_api.py:41 | Function is missing a type annotation |
+| mypy | tests/api/test_source_write_api.py:50 | Function is missing a return type annotation |
+| mypy | tests/api/test_source_write_api.py:64 | Function is missing a type annotation |
+| mypy | tests/api/test_source_write_api.py:73 | Function is missing a type annotation |
+| mypy | tests/api/test_source_write_api.py:78 | Function is missing a type annotation |
+| mypy | tests/api/test_source_write_api.py:84 | Function is missing a type annotation |
+| mypy | tests/api/test_source_write_api.py:90 | Function is missing a type annotation |
+| mypy | tests/api/test_source_write_api.py:94 | Function is missing a type annotation |
+| mypy | tests/api/test_source_write_api.py:100 | Function is missing a type annotation |
+| mypy | tests/api/test_source_write_api.py:108 | Function is missing a type annotation |
+| mypy | tests/api/test_source_write_api.py:117 | Function is missing a type annotation |
+| mypy | tests/api/test_source_write_api.py:125 | Function is missing a return type annotation |
+| mypy | tests/api/test_source_write_api.py:135 | Function is missing a type annotation |
+| mypy | tests/api/test_source_write_api.py:139 | Function is missing a type annotation |
+| mypy | tests/api/test_source_write_api.py:143 | Function is missing a type annotation |
+| mypy | tests/api/test_source_write_api.py:149 | Function is missing a type annotation |
+| mypy | tests/api/test_source_write_api.py:161 | Function is missing a return type annotation |
 | mypy | tests/api/test_settings_security.py:16 | Function is missing a type annotation |
 | mypy | tests/api/test_settings_security.py:20 | Function is missing a return type annotation |
 | mypy | tests/api/test_settings_security.py:28 | Function is missing a type annotation |
@@ -3537,88 +5298,154 @@
 | mypy | tests/api/test_settings_override_api.py:86 | Function is missing a type annotation |
 | mypy | tests/api/test_settings_override_api.py:102 | Function is missing a type annotation |
 | mypy | tests/api/test_settings_override_api.py:123 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_override_api.py:132 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_override_api.py:146 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_override_api.py:128 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_override_api.py:136 | Function is missing a type annotation |
 | mypy | tests/api/test_settings_override_api.py:150 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_override_api.py:159 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_override_api.py:170 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_override_api.py:182 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_override_api.py:193 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_override_api.py:200 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_override_api.py:211 | Function is missing a type annotation |
-| mypy | tests/api/test_settings_override_api.py:224 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_override_api.py:154 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_override_api.py:163 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_override_api.py:174 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_override_api.py:186 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_override_api.py:197 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_override_api.py:204 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_override_api.py:215 | Function is missing a type annotation |
 | mypy | tests/api/test_settings_override_api.py:228 | Function is missing a type annotation |
+| mypy | tests/api/test_settings_override_api.py:232 | Function is missing a type annotation |
+| mypy | tests/api/test_security_headers.py:15 | Function is missing a return type annotation |
+| mypy | tests/api/test_security_headers.py:26 | Function is missing a return type annotation |
+| mypy | tests/api/test_security_headers.py:35 | Function is missing a return type annotation |
+| mypy | tests/api/test_security_headers.py:42 | Function is missing a type annotation |
+| mypy | tests/api/test_security_headers.py:59 | Function is missing a return type annotation |
+| mypy | tests/api/test_security_headers.py:68 | Function is missing a return type annotation |
+| mypy | tests/api/test_security_headers.py:84 | Function is missing a return type annotation |
 | mypy | tests/api/test_script_auth.py:10 | Function is missing a type annotation |
 | mypy | tests/api/test_script_auth.py:16 | Function is missing a return type annotation |
-| mypy | tests/api/test_otel_proxy.py:30 | Function is missing a return type annotation |
-| mypy | tests/api/test_otel_proxy.py:47 | Function is missing a return type annotation |
-| mypy | tests/api/test_otel_proxy.py:56 | Function is missing a return type annotation |
-| mypy | tests/api/test_otel_proxy.py:83 | Function is missing a return type annotation |
-| mypy | tests/api/test_otel_proxy.py:106 | Function is missing a return type annotation |
-| mypy | tests/api/test_otel_proxy.py:116 | Function is missing a return type annotation |
-| mypy | tests/api/test_otel_proxy.py:138 | Function is missing a return type annotation |
-| mypy | tests/api/test_otel_proxy.py:149 | Function is missing a return type annotation |
-| mypy | tests/api/test_otel_proxy.py:171 | Function is missing a return type annotation |
-| mypy | tests/api/test_otel_proxy.py:192 | Function is missing a return type annotation |
-| mypy | tests/api/test_job_routes.py:24 | Function is missing a return type annotation |
-| mypy | tests/api/test_job_routes.py:48 | Function is missing a return type annotation |
+| mypy | tests/api/test_pricing_security.py:12 | Function is missing a return type annotation |
+| mypy | tests/api/test_pricing_security.py:16 | Function is missing a type annotation |
+| mypy | tests/api/test_pricing_security.py:30 | Function is missing a type annotation |
+| mypy | tests/api/test_pricing_security.py:41 | Function is missing a type annotation |
+| mypy | tests/api/test_pricing_security.py:54 | Function is missing a type annotation |
+| mypy | tests/api/test_otel_proxy.py:29 | Function is missing a return type annotation |
+| mypy | tests/api/test_otel_proxy.py:43 | Function is missing a return type annotation |
+| mypy | tests/api/test_otel_proxy.py:60 | Function is missing a return type annotation |
+| mypy | tests/api/test_otel_proxy.py:69 | Function is missing a return type annotation |
+| mypy | tests/api/test_otel_proxy.py:96 | Function is missing a return type annotation |
+| mypy | tests/api/test_otel_proxy.py:119 | Function is missing a return type annotation |
+| mypy | tests/api/test_otel_proxy.py:129 | Function is missing a return type annotation |
+| mypy | tests/api/test_otel_proxy.py:151 | Function is missing a return type annotation |
+| mypy | tests/api/test_otel_proxy.py:162 | Function is missing a return type annotation |
+| mypy | tests/api/test_otel_proxy.py:184 | Function is missing a return type annotation |
+| mypy | tests/api/test_otel_proxy.py:205 | Function is missing a return type annotation |
+| mypy | tests/api/test_otel_proxy.py:217 | Function is missing a return type annotation |
+| mypy | tests/api/test_kb_search.py:24 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_search.py:33 | Function is missing a return type annotation |
+| mypy | tests/api/test_kb_search.py:40 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_kb_search.py:59 | Argument "relevance_score" to "Topic" has incompatible type "float"; expected "_N | None" |
+| mypy | tests/api/test_kb_search.py:69 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_search.py:93 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_search.py:113 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_search.py:137 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_search.py:152 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_search.py:168 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_search.py:172 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_search.py:178 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_lint.py:27 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_lint.py:31 | Function is missing a return type annotation |
+| mypy | tests/api/test_kb_lint.py:38 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_kb_lint.py:56 | Argument "relevance_score" to "Topic" has incompatible type "float"; expected "_N | None" |
+| mypy | tests/api/test_kb_lint.py:73 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_lint.py:82 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_lint.py:102 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_lint.py:128 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_lint.py:141 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_lint.py:158 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_lint.py:179 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_lint.py:192 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_lint.py:209 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_lint.py:226 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_lint.py:235 | Function is missing a type annotation |
+| mypy | tests/api/test_kb_lint.py:249 | Function is missing a type annotation |
+| mypy | tests/api/test_job_routes.py:22 | Function is missing a return type annotation |
+| mypy | tests/api/test_job_routes.py:43 | Function is missing a return type annotation |
 | mypy | tests/api/test_job_routes.py:67 | Function is missing a return type annotation |
-| mypy | tests/api/test_job_routes.py:85 | Function is missing a return type annotation |
-| mypy | tests/api/test_job_routes.py:94 | Function is missing a return type annotation |
-| mypy | tests/api/test_job_routes.py:112 | Function is missing a return type annotation |
-| mypy | tests/api/test_job_routes.py:121 | Function is missing a type annotation |
-| mypy | tests/api/test_job_routes.py:138 | Function is missing a type annotation |
-| mypy | tests/api/test_job_routes.py:154 | Function is missing a type annotation |
-| mypy | tests/api/test_job_routes.py:168 | Function is missing a return type annotation |
-| mypy | tests/api/test_job_routes.py:181 | Function is missing a return type annotation |
-| mypy | tests/api/test_job_routes.py:195 | Function is missing a return type annotation |
-| mypy | tests/api/test_job_routes.py:236 | Function is missing a type annotation |
-| mypy | tests/api/test_job_routes.py:253 | Function is missing a type annotation |
-| mypy | tests/api/test_job_routes.py:271 | Function is missing a type annotation |
-| mypy | tests/api/test_job_routes.py:285 | Function is missing a type annotation |
-| mypy | tests/api/test_job_routes.py:311 | Function is missing a return type annotation |
-| mypy | tests/api/test_job_routes.py:326 | Function is missing a type annotation |
-| mypy | tests/api/test_job_routes.py:347 | Function is missing a type annotation |
-| mypy | tests/api/test_job_routes.py:368 | Function is missing a type annotation |
-| mypy | tests/api/test_job_routes.py:397 | Function is missing a return type annotation |
-| mypy | tests/api/test_job_routes.py:412 | Function is missing a return type annotation |
-| mypy | tests/api/test_job_routes.py:437 | Function is missing a return type annotation |
-| mypy | tests/api/test_job_routes.py:466 | Function is missing a type annotation |
+| mypy | tests/api/test_job_routes.py:86 | Function is missing a return type annotation |
+| mypy | tests/api/test_job_routes.py:104 | Function is missing a return type annotation |
+| mypy | tests/api/test_job_routes.py:113 | Function is missing a return type annotation |
+| mypy | tests/api/test_job_routes.py:131 | Function is missing a return type annotation |
+| mypy | tests/api/test_job_routes.py:140 | Function is missing a type annotation |
+| mypy | tests/api/test_job_routes.py:157 | Function is missing a type annotation |
+| mypy | tests/api/test_job_routes.py:173 | Function is missing a type annotation |
+| mypy | tests/api/test_job_routes.py:187 | Function is missing a return type annotation |
+| mypy | tests/api/test_job_routes.py:200 | Function is missing a return type annotation |
+| mypy | tests/api/test_job_routes.py:214 | Function is missing a return type annotation |
+| mypy | tests/api/test_job_routes.py:255 | Function is missing a type annotation |
+| mypy | tests/api/test_job_routes.py:272 | Function is missing a type annotation |
+| mypy | tests/api/test_job_routes.py:290 | Function is missing a type annotation |
+| mypy | tests/api/test_job_routes.py:304 | Function is missing a type annotation |
+| mypy | tests/api/test_job_routes.py:330 | Function is missing a return type annotation |
+| mypy | tests/api/test_job_routes.py:345 | Function is missing a type annotation |
+| mypy | tests/api/test_job_routes.py:366 | Function is missing a type annotation |
+| mypy | tests/api/test_job_routes.py:387 | Function is missing a type annotation |
+| mypy | tests/api/test_job_routes.py:416 | Function is missing a return type annotation |
+| mypy | tests/api/test_job_routes.py:431 | Function is missing a return type annotation |
+| mypy | tests/api/test_job_routes.py:456 | Function is missing a return type annotation |
 | mypy | tests/api/test_job_routes.py:485 | Function is missing a type annotation |
-| mypy | tests/api/test_job_routes.py:501 | Function is missing a type annotation |
-| mypy | tests/api/test_job_routes.py:519 | Function is missing a return type annotation |
-| mypy | tests/api/test_job_routes.py:528 | Function is missing a type annotation |
-| mypy | tests/api/test_job_routes.py:550 | Function is missing a return type annotation |
-| mypy | tests/api/test_job_routes.py:565 | Function is missing a type annotation |
-| mypy | tests/api/test_job_routes.py:588 | Function is missing a type annotation |
-| mypy | tests/api/test_health_routes.py:17 | Function is missing a return type annotation |
-| mypy | tests/api/test_health_routes.py:31 | Function is missing a type annotation |
-| mypy | tests/api/test_health_routes.py:48 | Function is missing a type annotation |
-| mypy | tests/api/test_health_routes.py:65 | Function is missing a type annotation |
-| mypy | tests/api/test_health_routes.py:82 | Function is missing a type annotation |
-| mypy | tests/api/test_health_routes.py:100 | Function is missing a type annotation |
-| mypy | tests/api/test_health_routes.py:120 | Function is missing a type annotation |
-| mypy | tests/api/test_health_routes.py:134 | Function is missing a type annotation |
+| mypy | tests/api/test_job_routes.py:504 | Function is missing a type annotation |
+| mypy | tests/api/test_job_routes.py:520 | Function is missing a type annotation |
+| mypy | tests/api/test_job_routes.py:538 | Function is missing a return type annotation |
+| mypy | tests/api/test_job_routes.py:547 | Function is missing a type annotation |
+| mypy | tests/api/test_job_routes.py:569 | Function is missing a return type annotation |
+| mypy | tests/api/test_job_routes.py:584 | Function is missing a type annotation |
+| mypy | tests/api/test_job_routes.py:607 | Function is missing a type annotation |
+| mypy | tests/api/test_health_routes.py:19 | Function is missing a return type annotation |
+| mypy | tests/api/test_health_routes.py:30 | Function is missing a type annotation |
+| mypy | tests/api/test_health_routes.py:40 | Function is missing a return type annotation |
+| mypy | tests/api/test_health_routes.py:48 | Function is missing a return type annotation |
+| mypy | tests/api/test_health_routes.py:60 | Function is missing a return type annotation |
+| mypy | tests/api/test_health_routes.py:68 | Function is missing a return type annotation |
+| mypy | tests/api/test_health_routes.py:79 | Function is missing a type annotation |
+| mypy | tests/api/test_health_routes.py:96 | Function is missing a type annotation |
+| mypy | tests/api/test_health_routes.py:113 | Function is missing a type annotation |
+| mypy | tests/api/test_health_routes.py:130 | Function is missing a type annotation |
 | mypy | tests/api/test_health_routes.py:148 | Function is missing a type annotation |
-| mypy | tests/api/test_health_routes.py:174 | Function is missing a type annotation |
-| mypy | tests/api/test_health_routes.py:190 | Function is missing a type annotation |
-| mypy | tests/api/test_health_routes.py:214 | Function is missing a type annotation |
-| mypy | tests/api/test_health_routes.py:239 | Function is missing a type annotation |
-| mypy | tests/api/test_health_routes.py:263 | Function is missing a type annotation |
-| mypy | tests/api/test_files_api.py:21 | Function is missing a return type annotation |
-| mypy | tests/api/test_files_api.py:27 | Function is missing a return type annotation |
-| mypy | tests/api/test_files_api.py:36 | Function is missing a type annotation |
-| mypy | tests/api/test_files_api.py:44 | Function is missing a type annotation |
+| mypy | tests/api/test_health_routes.py:168 | Function is missing a type annotation |
+| mypy | tests/api/test_health_routes.py:182 | Function is missing a type annotation |
+| mypy | tests/api/test_health_routes.py:196 | Function is missing a type annotation |
+| mypy | tests/api/test_health_routes.py:222 | Function is missing a type annotation |
+| mypy | tests/api/test_health_routes.py:238 | Function is missing a type annotation |
+| mypy | tests/api/test_health_routes.py:262 | Function is missing a type annotation |
+| mypy | tests/api/test_health_routes.py:287 | Function is missing a type annotation |
+| mypy | tests/api/test_health_routes.py:311 | Function is missing a type annotation |
+| mypy | tests/api/test_files_api.py:22 | Function is missing a return type annotation |
+| mypy | tests/api/test_files_api.py:41 | Function is missing a return type annotation |
+| mypy | tests/api/test_files_api.py:50 | Function is missing a type annotation |
 | mypy | tests/api/test_files_api.py:58 | Function is missing a type annotation |
-| mypy | tests/api/test_files_api.py:80 | Function is missing a type annotation |
-| mypy | tests/api/test_files_api.py:98 | Function is missing a type annotation |
-| mypy | tests/api/test_files_api.py:124 | Function is missing a type annotation |
-| mypy | tests/api/test_files_api.py:145 | Function is missing a type annotation |
-| mypy | tests/api/test_files_api.py:165 | Function is missing a type annotation |
-| mypy | tests/api/test_files_api.py:193 | Function is missing a type annotation |
+| mypy | tests/api/test_files_api.py:72 | Function is missing a type annotation |
+| mypy | tests/api/test_files_api.py:94 | Function is missing a type annotation |
+| mypy | tests/api/test_files_api.py:112 | Function is missing a type annotation |
+| mypy | tests/api/test_files_api.py:138 | Function is missing a type annotation |
+| mypy | tests/api/test_files_api.py:159 | Function is missing a type annotation |
+| mypy | tests/api/test_files_api.py:179 | Function is missing a type annotation |
+| mypy | tests/api/test_files_api.py:207 | Function is missing a type annotation |
 | mypy | tests/api/test_content_security.py:18 | Function is missing a type annotation |
 | mypy | tests/api/test_content_security.py:28 | Function is missing a return type annotation |
 | mypy | tests/api/test_content_security.py:37 | Function is missing a type annotation |
+| mypy | tests/api/test_chat_routes_mock.py:24 | Function is missing a return type annotation |
+| mypy | tests/api/test_chat_routes_mock.py:43 | Function is missing a return type annotation |
+| mypy | tests/api/test_chat_routes_mock.py:63 | Function is missing a return type annotation |
+| mypy | tests/api/test_chat_routes_mock.py:78 | Function is missing a return type annotation |
+| mypy | tests/api/test_canonical_workflow_api.py:21 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_canonical_workflow_api.py:62 | Function is missing a return type annotation |
+| mypy | tests/api/test_canonical_workflow_api.py:62 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_canonical_workflow_api.py:110 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_canonical_workflow_api.py:121 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_canonical_workflow_api.py:158 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_canonical_workflow_api.py:176 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_canonical_workflow_api.py:215 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_canonical_workflow_api.py:225 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_canonical_workflow_api.py:271 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_canonical_workflow_api.py:294 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_canonical_workflow_api.py:323 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/test_canonical_workflow_api.py:363 | Function is missing a type annotation for one or more arguments |
 | mypy | tests/api/test_auth_routes.py:39 | Function is missing a return type annotation |
 | mypy | tests/api/test_auth_routes.py:51 | Function is missing a type annotation |
 | mypy | tests/api/test_auth_routes.py:79 | Function is missing a type annotation |
@@ -3640,51 +5467,107 @@
 | mypy | tests/api/test_auth_routes.py:297 | Function is missing a type annotation |
 | mypy | tests/api/test_auth_routes.py:304 | Function is missing a type annotation |
 | mypy | tests/api/test_auth_routes.py:313 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_routes.py:319 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_routes.py:334 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_routes.py:340 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_routes.py:346 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_routes.py:352 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_routes.py:330 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_routes.py:351 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_routes.py:357 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_routes.py:363 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_routes.py:369 | Function is missing a type annotation |
 | mypy | tests/api/test_auth_middleware.py:47 | Function is missing a return type annotation |
 | mypy | tests/api/test_auth_middleware.py:59 | Function is missing a type annotation |
 | mypy | tests/api/test_auth_middleware.py:82 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_middleware.py:151 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_middleware.py:162 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_middleware.py:170 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_middleware.py:177 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_middleware.py:185 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_middleware.py:195 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_middleware.py:203 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_middleware.py:227 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_middleware.py:240 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_middleware.py:248 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_middleware.py:273 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_middleware.py:297 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_middleware.py:324 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_middleware.py:339 | Function is missing a type annotation |
-| mypy | tests/api/test_auth_middleware.py:355 | Function is missing a type annotation |
-| mypy | tests/api/conftest.py:49 | Function is missing a type annotation |
-| mypy | tests/api/conftest.py:68 | Function is missing a return type annotation |
-| mypy | tests/api/conftest.py:90 | Function is missing a type annotation for one or more arguments |
-| mypy | tests/api/conftest.py:129 | Function is missing a type annotation |
-| mypy | tests/api/conftest.py:137 | Function is missing a type annotation |
-| mypy | tests/api/conftest.py:141 | Function is missing a type annotation |
-| mypy | tests/api/conftest.py:145 | Function is missing a type annotation |
-| mypy | tests/api/conftest.py:149 | Function is missing a type annotation |
-| mypy | tests/api/conftest.py:153 | Function is missing a type annotation |
-| mypy | tests/api/conftest.py:157 | Function is missing a type annotation |
-| mypy | tests/api/conftest.py:161 | Function is missing a type annotation |
-| mypy | tests/api/conftest.py:167 | Function is missing a type annotation for one or more arguments |
-| mypy | tests/api/conftest.py:178 | Function is missing a return type annotation |
-| mypy | tests/api/conftest.py:212 | Function is missing a type annotation |
-| mypy | tests/api/conftest.py:241 | Function is missing a type annotation |
-| mypy | tests/api/conftest.py:276 | Function is missing a type annotation |
-| mypy | tests/api/conftest.py:321 | Function is missing a type annotation |
-| mypy | tests/api/conftest.py:360 | Function is missing a type annotation for one or more arguments |
-| mypy | tests/api/conftest.py:405 | Function is missing a type annotation for one or more arguments |
-| mypy | tests/api/conftest.py:435 | Function is missing a type annotation |
-| mypy | tests/api/conftest.py:453 | Function is missing a type annotation |
-| mypy | tests/api/conftest.py:497 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_middleware.py:153 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_middleware.py:164 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_middleware.py:172 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_middleware.py:180 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_middleware.py:188 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_middleware.py:198 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_middleware.py:206 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_middleware.py:230 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_middleware.py:243 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_middleware.py:251 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_middleware.py:276 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_middleware.py:300 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_middleware.py:327 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_middleware.py:333 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_middleware.py:365 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_middleware.py:381 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_bypass.py:12 | Function is missing a return type annotation |
+| mypy | tests/api/test_auth_bypass.py:19 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_bypass.py:23 | Function is missing a return type annotation |
+| mypy | tests/api/test_auth_bypass.py:32 | Function is missing a type annotation |
+| mypy | tests/api/test_auth_bypass.py:50 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_routes.py:30 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_routes.py:40 | Function is missing a return type annotation |
+| mypy | tests/api/test_audit_routes.py:61 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_routes.py:116 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_routes.py:204 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_routes.py:212 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_routes.py:221 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_routes.py:230 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_routes.py:238 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_routes.py:246 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_routes.py:255 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_routes.py:263 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_routes.py:271 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_routes.py:277 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_routes.py:283 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_routes.py:310 | Function is missing a return type annotation |
+| mypy | tests/api/test_audit_routes.py:318 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_routes.py:348 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_routes.py:360 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_ordering.py:42 | Function is missing a return type annotation |
+| mypy | tests/api/test_audit_ordering.py:49 | Function is missing a return type annotation |
+| mypy | tests/api/test_audit_ordering.py:65 | Function is missing a return type annotation |
+| mypy | tests/api/test_audit_ordering.py:74 | Function is missing a return type annotation |
+| mypy | tests/api/test_audit_ordering.py:93 | Function is missing a return type annotation |
+| mypy | tests/api/test_audit_ordering.py:117 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_ordering.py:137 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_ordering.py:143 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_ordering.py:161 | Function is missing a type annotation |
+| mypy | tests/api/test_audit_ordering.py:167 | Function is missing a type annotation |
+| mypy | tests/api/conftest.py:25 | Cannot assign to a type |
+| mypy | tests/api/conftest.py:25 | Incompatible types in assignment (expression has type "type[JSON]", variable has type "type[JSONB]") |
+| mypy | tests/api/conftest.py:68 | Function is missing a type annotation |
+| mypy | tests/api/conftest.py:87 | Function is missing a return type annotation |
+| mypy | tests/api/conftest.py:112 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/conftest.py:151 | Function is missing a type annotation |
+| mypy | tests/api/conftest.py:159 | Function is missing a type annotation |
+| mypy | tests/api/conftest.py:163 | Function is missing a type annotation |
+| mypy | tests/api/conftest.py:167 | Function is missing a type annotation |
+| mypy | tests/api/conftest.py:171 | Function is missing a type annotation |
+| mypy | tests/api/conftest.py:175 | Function is missing a type annotation |
+| mypy | tests/api/conftest.py:179 | Function is missing a type annotation |
+| mypy | tests/api/conftest.py:188 | Function is missing a type annotation |
+| mypy | tests/api/conftest.py:194 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/conftest.py:208 | Function is missing a return type annotation |
+| mypy | tests/api/conftest.py:255 | Function is missing a type annotation |
+| mypy | tests/api/conftest.py:284 | Function is missing a type annotation |
+| mypy | tests/api/conftest.py:319 | Function is missing a type annotation |
+| mypy | tests/api/conftest.py:364 | Function is missing a type annotation |
+| mypy | tests/api/conftest.py:403 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/conftest.py:448 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/api/conftest.py:478 | Function is missing a type annotation |
+| mypy | tests/api/conftest.py:496 | Function is missing a type annotation |
+| mypy | tests/api/conftest.py:540 | Function is missing a type annotation |
+| mypy | tests/contract/test_cross_interface_workflows.py:117 | Function is missing a return type annotation |
+| mypy | tests/contract/test_cross_interface_workflows.py:199 | List item 6 has incompatible type "object"; expected "str" |
+| mypy | tests/contract/test_cross_interface_workflows.py:201 | List item 8 has incompatible type "object"; expected "str" |
+| mypy | tests/contract/test_cross_interface_workflows.py:230 | Argument 1 to "create_digest" has incompatible type "**dict[str, object]"; expected "Literal['daily', 'weekly']" |
+| mypy | tests/contract/test_cross_interface_workflows.py:230 | Argument 1 to "create_digest" has incompatible type "**dict[str, object]"; expected "str" |
+| mypy | tests/contract/test_cross_interface_workflows.py:230 | Argument 1 to "create_digest" has incompatible type "**dict[str, object]"; expected "ContentQuery | None" |
+| mypy | tests/contract/test_cross_interface_workflows.py:230 | Argument 1 to "create_digest" has incompatible type "**dict[str, object]"; expected "bool" |
+| mypy | tests/contract/test_cross_interface_workflows.py:240 | Argument 1 to "create_digest" has incompatible type "**dict[str, object]"; expected "Literal['daily', 'weekly']" |
+| mypy | tests/contract/test_cross_interface_workflows.py:240 | Argument 1 to "create_digest" has incompatible type "**dict[str, object]"; expected "str" |
+| mypy | tests/contract/test_cross_interface_workflows.py:240 | Argument 1 to "create_digest" has incompatible type "**dict[str, object]"; expected "ContentQuery | None" |
+| mypy | tests/contract/test_cross_interface_workflows.py:240 | Argument 1 to "create_digest" has incompatible type "**dict[str, object]"; expected "bool" |
+| mypy | tests/contract/test_cross_interface_workflows.py:297 | Need type annotation for "typed_command" |
+| mypy | tests/contract/test_cross_interface_workflows.py:299 | Argument 1 to "_error_signature" has incompatible type "ErrorDetails"; expected "dict[str, Any]" |
+| mypy | tests/contract/test_cross_interface_workflows.py:338 | Value of type "Any | None" is not indexable |
+| mypy | tests/contract/test_cross_interface_workflows.py:349 | Value of type "Any | None" is not indexable |
+| mypy | tests/cli_gen_eval/test_descriptor_drift.py:148 | Returning Any from function declared to return "dict[str, Any]" |
+| mypy | tests/cli_gen_eval/test_descriptor_drift.py:155 | Returning Any from function declared to return "dict[str, Any]" |
+| mypy | tests/cli_gen_eval/test_descriptor_drift.py:196 | Returning Any from function declared to return "dict[str, Any]" |
+| mypy | tests/cli_gen_eval/test_descriptor_drift.py:416 | Function is missing a return type annotation |
 | mypy | tests/cli/test_worker_commands.py:38 | Function is missing a return type annotation |
 | mypy | tests/cli/test_worker_commands.py:46 | Function is missing a return type annotation |
 | mypy | tests/cli/test_worker_commands.py:52 | Function is missing a return type annotation |
@@ -3700,23 +5583,32 @@
 | mypy | tests/cli/test_worker_commands.py:124 | Function is missing a type annotation |
 | mypy | tests/cli/test_worker_commands.py:133 | Function is missing a type annotation |
 | mypy | tests/cli/test_worker_commands.py:143 | Function is missing a type annotation |
-| mypy | tests/cli/test_worker_commands.py:161 | Function is missing a return type annotation |
-| mypy | tests/cli/test_worker_commands.py:191 | Function is missing a return type annotation |
-| mypy | tests/cli/test_worker_commands.py:202 | Function is missing a type annotation |
-| mypy | tests/cli/test_worker_commands.py:223 | Function is missing a return type annotation |
-| mypy | tests/cli/test_worker_commands.py:247 | Function is missing a return type annotation |
-| mypy | tests/cli/test_summarize_commands.py:16 | Function is missing a type annotation |
-| mypy | tests/cli/test_summarize_commands.py:26 | Function is missing a type annotation |
-| mypy | tests/cli/test_summarize_commands.py:36 | Function is missing a type annotation |
-| mypy | tests/cli/test_summarize_commands.py:44 | Function is missing a type annotation |
-| mypy | tests/cli/test_summarize_commands.py:61 | Function is missing a type annotation |
-| mypy | tests/cli/test_summarize_commands.py:79 | Function is missing a type annotation |
-| mypy | tests/cli/test_summarize_commands.py:89 | Function is missing a type annotation |
-| mypy | tests/cli/test_summarize_commands.py:99 | Function is missing a type annotation |
-| mypy | tests/cli/test_summarize_commands.py:106 | Function is missing a type annotation |
-| mypy | tests/cli/test_summarize_commands.py:116 | Function is missing a type annotation |
-| mypy | tests/cli/test_summarize_commands.py:126 | Function is missing a type annotation |
-| mypy | tests/cli/test_summarize_commands.py:148 | Function is missing a type annotation |
+| mypy | tests/cli/test_worker_commands.py:170 | Function is missing a return type annotation |
+| mypy | tests/cli/test_worker_commands.py:189 | Function is missing a return type annotation |
+| mypy | tests/cli/test_worker_commands.py:197 | Function is missing a type annotation |
+| mypy | tests/cli/test_worker_commands.py:217 | Function is missing a return type annotation |
+| mypy | tests/cli/test_worker_commands.py:234 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:23 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:28 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:47 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:72 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:87 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:98 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:132 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:160 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:168 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:177 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:186 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:196 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:210 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:224 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:238 | Function is missing a type annotation |
+| mypy | tests/cli/test_source_commands.py:255 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:267 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:282 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:293 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:301 | Function is missing a return type annotation |
+| mypy | tests/cli/test_source_commands.py:309 | Function is missing a return type annotation |
 | mypy | tests/cli/test_settings_commands.py:16 | Function is missing a return type annotation |
 | mypy | tests/cli/test_settings_commands.py:25 | Function is missing a return type annotation |
 | mypy | tests/cli/test_settings_commands.py:35 | Function is missing a type annotation |
@@ -3738,6 +5630,25 @@
 | mypy | tests/cli/test_review_commands.py:95 | Function is missing a type annotation |
 | mypy | tests/cli/test_review_commands.py:109 | Function is missing a type annotation |
 | mypy | tests/cli/test_review_commands.py:129 | Function is missing a type annotation |
+| mypy | tests/cli/test_restore_from_cloud.py:30 | Function is missing a return type annotation |
+| mypy | tests/cli/test_restore_from_cloud.py:47 | Function is missing a type annotation |
+| mypy | tests/cli/test_restore_from_cloud.py:80 | Function is missing a type annotation |
+| mypy | tests/cli/test_restore_from_cloud.py:109 | Function is missing a type annotation |
+| mypy | tests/cli/test_restore_from_cloud.py:123 | Function is missing a type annotation |
+| mypy | tests/cli/test_restore_from_cloud.py:138 | Function is missing a type annotation |
+| mypy | tests/cli/test_restore_from_cloud.py:159 | Function is missing a type annotation |
+| mypy | tests/cli/test_restore_from_cloud.py:178 | Function is missing a type annotation |
+| mypy | tests/cli/test_restore_from_cloud.py:197 | Function is missing a type annotation |
+| mypy | tests/cli/test_restore_from_cloud.py:223 | Function is missing a type annotation |
+| mypy | tests/cli/test_restore_from_cloud.py:242 | Function is missing a type annotation |
+| mypy | tests/cli/test_restore_from_cloud.py:262 | Function is missing a type annotation |
+| mypy | tests/cli/test_restore_from_cloud.py:283 | Function is missing a type annotation |
+| mypy | tests/cli/test_restore_from_cloud.py:308 | Function is missing a type annotation |
+| mypy | tests/cli/test_restore_from_cloud.py:325 | Function is missing a type annotation |
+| mypy | tests/cli/test_restore_from_cloud.py:354 | Function is missing a type annotation |
+| mypy | tests/cli/test_restore_from_cloud.py:393 | Function is missing a return type annotation |
+| mypy | tests/cli/test_remote_backend_guard.py:66 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli/test_remote_backend_guard.py:85 | Function is missing a type annotation for one or more arguments |
 | mypy | tests/cli/test_prompt_commands.py:19 | Function is missing a return type annotation |
 | mypy | tests/cli/test_prompt_commands.py:29 | Function is missing a return type annotation |
 | mypy | tests/cli/test_prompt_commands.py:37 | Function is missing a type annotation |
@@ -3755,7 +5666,6 @@
 | mypy | tests/cli/test_prompt_commands.py:162 | Function is missing a type annotation |
 | mypy | tests/cli/test_prompt_commands.py:175 | Function is missing a type annotation |
 | mypy | tests/cli/test_prompt_commands.py:186 | Function is missing a type annotation |
-| mypy | tests/cli/test_prompt_commands.py:197 | Library stubs not installed for "yaml" |
 | mypy | tests/cli/test_prompt_commands.py:206 | Function is missing a type annotation |
 | mypy | tests/cli/test_prompt_commands.py:216 | Function is missing a type annotation |
 | mypy | tests/cli/test_prompt_commands.py:227 | Function is missing a type annotation |
@@ -3772,33 +5682,49 @@
 | mypy | tests/cli/test_profile_commands.py:122 | Function is missing a type annotation |
 | mypy | tests/cli/test_profile_commands.py:145 | Function is missing a return type annotation |
 | mypy | tests/cli/test_profile_commands.py:158 | Function is missing a type annotation |
-| mypy | tests/cli/test_podcast_commands.py:16 | Function is missing a type annotation |
-| mypy | tests/cli/test_podcast_commands.py:39 | Function is missing a type annotation |
-| mypy | tests/cli/test_podcast_commands.py:61 | Function is missing a return type annotation |
-| mypy | tests/cli/test_podcast_commands.py:77 | Function is missing a type annotation |
-| mypy | tests/cli/test_podcast_commands.py:86 | Function is missing a type annotation |
-| mypy | tests/cli/test_podcast_commands.py:108 | Function is missing a type annotation |
-| mypy | tests/cli/test_podcast_commands.py:119 | Function is missing a type annotation |
-| mypy | tests/cli/test_pipeline_integration.py:47 | Variable "unittest.mock.patch" is not valid as a type |
-| mypy | tests/cli/test_pipeline_integration.py:96 | Function is missing a type annotation |
-| mypy | tests/cli/test_pipeline_integration.py:116 | Function is missing a type annotation |
-| mypy | tests/cli/test_pipeline_integration.py:138 | Function is missing a type annotation |
-| mypy | tests/cli/test_pipeline_integration.py:164 | Function is missing a return type annotation |
-| mypy | tests/cli/test_pipeline_integration.py:179 | Function is missing a return type annotation |
-| mypy | tests/cli/test_pipeline_integration.py:206 | Function is missing a type annotation |
-| mypy | tests/cli/test_pipeline_integration.py:224 | Function is missing a type annotation |
-| mypy | tests/cli/test_pipeline_integration.py:251 | Function is missing a return type annotation |
-| mypy | tests/cli/test_pipeline_integration.py:273 | Function is missing a return type annotation |
-| mypy | tests/cli/test_pipeline_integration.py:291 | Function is missing a return type annotation |
-| mypy | tests/cli/test_pipeline_integration.py:322 | Function is missing a type annotation |
-| mypy | tests/cli/test_pipeline_integration.py:359 | Function is missing a type annotation |
-| mypy | tests/cli/test_pipeline_commands.py:18 | Function is missing a return type annotation |
-| mypy | tests/cli/test_pipeline_commands.py:53 | Function is missing a type annotation |
-| mypy | tests/cli/test_pipeline_commands.py:81 | Function is missing a type annotation |
-| mypy | tests/cli/test_pipeline_commands.py:88 | Function is missing a return type annotation |
-| mypy | tests/cli/test_pipeline_commands.py:92 | Function is missing a return type annotation |
-| mypy | tests/cli/test_pipeline_commands.py:107 | Function is missing a type annotation |
-| mypy | tests/cli/test_pipeline_commands.py:129 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:44 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli/test_neon_commands.py:72 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:88 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:98 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:117 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:132 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:145 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:156 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:174 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:186 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:203 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:217 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:228 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:245 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:256 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:266 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:276 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:287 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:299 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:314 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:329 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:344 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:359 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:404 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:419 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:432 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:446 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:481 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:497 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:512 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:524 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:558 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:573 | Function is missing a return type annotation |
+| mypy | tests/cli/test_neon_commands.py:589 | Function is missing a return type annotation |
+| mypy | tests/cli/test_manage_refs.py:17 | Function is missing a type annotation |
+| mypy | tests/cli/test_manage_refs.py:44 | Function is missing a type annotation |
+| mypy | tests/cli/test_manage_refs.py:67 | Function is missing a type annotation |
+| mypy | tests/cli/test_manage_refs.py:89 | Function is missing a type annotation |
+| mypy | tests/cli/test_manage_refs.py:110 | Function is missing a type annotation |
+| mypy | tests/cli/test_manage_refs.py:132 | Function is missing a type annotation |
+| mypy | tests/cli/test_manage_refs.py:150 | Function is missing a type annotation |
+| mypy | tests/cli/test_manage_refs.py:169 | Function is missing a type annotation |
+| mypy | tests/cli/test_manage_refs.py:186 | Function is missing a type annotation |
 | mypy | tests/cli/test_manage_commands.py:16 | Function is missing a type annotation |
 | mypy | tests/cli/test_manage_commands.py:24 | Function is missing a type annotation |
 | mypy | tests/cli/test_manage_commands.py:36 | Function is missing a type annotation |
@@ -3807,107 +5733,116 @@
 | mypy | tests/cli/test_manage_commands.py:66 | Function is missing a type annotation |
 | mypy | tests/cli/test_manage_commands.py:75 | Function is missing a type annotation |
 | mypy | tests/cli/test_manage_commands.py:90 | Function is missing a type annotation |
-| mypy | tests/cli/test_job_commands.py:48 | Function is missing a return type annotation |
-| mypy | tests/cli/test_job_commands.py:64 | Function is missing a return type annotation |
-| mypy | tests/cli/test_job_commands.py:83 | Function is missing a return type annotation |
-| mypy | tests/cli/test_job_commands.py:95 | Function is missing a return type annotation |
-| mypy | tests/cli/test_job_commands.py:111 | Function is missing a return type annotation |
-| mypy | tests/cli/test_job_commands.py:126 | Function is missing a return type annotation |
-| mypy | tests/cli/test_job_commands.py:133 | Function is missing a return type annotation |
-| mypy | tests/cli/test_job_commands.py:148 | Function is missing a return type annotation |
-| mypy | tests/cli/test_job_commands.py:175 | Function is missing a return type annotation |
-| mypy | tests/cli/test_job_commands.py:182 | Function is missing a return type annotation |
-| mypy | tests/cli/test_job_commands.py:196 | Function is missing a return type annotation |
-| mypy | tests/cli/test_job_commands.py:203 | Function is missing a return type annotation |
-| mypy | tests/cli/test_job_commands.py:217 | Function is missing a return type annotation |
-| mypy | tests/cli/test_ingest_commands.py:20 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:29 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:55 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:63 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:74 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:83 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:91 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:105 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:114 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:123 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:133 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:142 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:156 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:165 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:173 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:184 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:193 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:206 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:214 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:223 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:234 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:243 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:253 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:266 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:272 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:297 | Function is missing a return type annotation |
-| mypy | tests/cli/test_ingest_commands.py:305 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:316 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:327 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:357 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:365 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:377 | Function is missing a type annotation |
-| mypy | tests/cli/test_ingest_commands.py:387 | Function is missing a return type annotation |
-| mypy | tests/cli/test_ingest_commands.py:391 | Function is missing a return type annotation |
+| mypy | tests/cli/test_kb_commands.py:23 | Function is missing a return type annotation |
+| mypy | tests/cli/test_kb_commands.py:28 | Function is missing a return type annotation |
+| mypy | tests/cli/test_kb_commands.py:38 | Function is missing a type annotation |
+| mypy | tests/cli/test_kb_commands.py:64 | Function is missing a type annotation |
+| mypy | tests/cli/test_kb_commands.py:88 | Function is missing a type annotation |
+| mypy | tests/cli/test_kb_commands.py:110 | Function is missing a type annotation |
+| mypy | tests/cli/test_kb_commands.py:116 | Function is missing a return type annotation |
+| mypy | tests/cli/test_kb_commands.py:129 | Function is missing a type annotation |
+| mypy | tests/cli/test_kb_commands.py:135 | Function is missing a return type annotation |
+| mypy | tests/cli/test_kb_commands.py:145 | Function is missing a type annotation |
+| mypy | tests/cli/test_kb_commands.py:151 | Function is missing a return type annotation |
+| mypy | tests/cli/test_kb_commands.py:174 | Function is missing a type annotation |
+| mypy | tests/cli/test_kb_commands.py:201 | Function is missing a type annotation |
+| mypy | tests/cli/test_kb_commands.py:230 | Function is missing a type annotation |
+| mypy | tests/cli/test_kb_commands.py:246 | Function is missing a type annotation |
+| mypy | tests/cli/test_kb_commands.py:263 | Function is missing a type annotation |
+| mypy | tests/cli/test_kb_commands.py:275 | Function is missing a type annotation |
 | mypy | tests/cli/test_graph_commands.py:18 | Function is missing a type annotation |
-| mypy | tests/cli/test_graph_commands.py:44 | Function is missing a type annotation |
-| mypy | tests/cli/test_graph_commands.py:55 | Function is missing a type annotation |
-| mypy | tests/cli/test_graph_commands.py:74 | Function is missing a type annotation |
-| mypy | tests/cli/test_graph_commands.py:85 | Function is missing a type annotation |
-| mypy | tests/cli/test_graph_commands.py:93 | Function is missing a type annotation |
-| mypy | tests/cli/test_graph_commands.py:101 | Function is missing a type annotation |
-| mypy | tests/cli/test_digest_commands.py:16 | Function is missing a type annotation |
-| mypy | tests/cli/test_digest_commands.py:31 | Function is missing a type annotation |
-| mypy | tests/cli/test_digest_commands.py:44 | Function is missing a return type annotation |
-| mypy | tests/cli/test_digest_commands.py:49 | Function is missing a type annotation |
-| mypy | tests/cli/test_digest_commands.py:59 | Function is missing a type annotation |
-| mypy | tests/cli/test_digest_commands.py:74 | Function is missing a type annotation |
-| mypy | tests/cli/test_digest_commands.py:87 | Function is missing a return type annotation |
-| mypy | tests/cli/test_digest_commands.py:92 | Function is missing a type annotation |
-| mypy | tests/cli/test_app.py:16 | Function is missing a return type annotation |
-| mypy | tests/cli/test_app.py:21 | Function is missing a return type annotation |
-| mypy | tests/cli/test_app.py:28 | Function is missing a return type annotation |
-| mypy | tests/cli/test_app.py:36 | Function is missing a return type annotation |
-| mypy | tests/cli/test_app.py:40 | Function is missing a return type annotation |
-| mypy | tests/cli/test_app.py:47 | Function is missing a type annotation |
-| mypy | tests/cli/test_app.py:53 | Function is missing a type annotation |
+| mypy | tests/cli/test_graph_commands.py:46 | Function is missing a type annotation |
+| mypy | tests/cli/test_graph_commands.py:57 | Function is missing a type annotation |
+| mypy | tests/cli/test_graph_commands.py:76 | Function is missing a type annotation |
+| mypy | tests/cli/test_graph_commands.py:87 | Function is missing a type annotation |
+| mypy | tests/cli/test_graph_commands.py:95 | Function is missing a type annotation |
+| mypy | tests/cli/test_graph_commands.py:103 | Function is missing a type annotation |
+| mypy | tests/cli/test_graph_commands.py:118 | Function is missing a type annotation |
+| mypy | tests/cli/test_graph_commands.py:136 | Function is missing a type annotation |
+| mypy | tests/cli/test_graph_commands.py:156 | Function is missing a type annotation |
+| mypy | tests/cli/test_graph_commands.py:174 | Function is missing a type annotation |
+| mypy | tests/cli/test_graph_commands.py:200 | Function is missing a type annotation |
+| mypy | tests/cli/test_graph_commands.py:217 | Function is missing a type annotation |
+| mypy | tests/cli/test_graph_commands.py:232 | Function is missing a type annotation |
+| mypy | tests/cli/test_graph_commands.py:253 | Function is missing a type annotation |
+| mypy | tests/cli/test_graph_commands.py:271 | Function is missing a type annotation |
+| mypy | tests/cli/test_curate_commands.py:35 | Function is missing a type annotation |
+| mypy | tests/cli/test_curate_commands.py:45 | Function is missing a return type annotation |
+| mypy | tests/cli/test_curate_commands.py:55 | Function is missing a type annotation |
+| mypy | tests/cli/test_curate_commands.py:76 | Function is missing a type annotation |
+| mypy | tests/cli/test_curate_commands.py:94 | Function is missing a type annotation |
+| mypy | tests/cli/test_curate_commands.py:104 | Function is missing a type annotation |
+| mypy | tests/cli/test_curate_commands.py:123 | Function is missing a type annotation |
+| mypy | tests/cli/test_canonical_workflows.py:110 | Function is missing a return type annotation |
+| mypy | tests/cli/test_canonical_workflows.py:375 | Need type annotation for "command" |
+| mypy | tests/cli/test_batch_commands.py:24 | Function is missing a type annotation |
+| mypy | tests/cli/test_batch_commands.py:26 | Function is missing a return type annotation |
+| mypy | tests/cli/test_batch_commands.py:32 | Function is missing a return type annotation |
+| mypy | tests/cli/test_batch_commands.py:38 | Function is missing a return type annotation |
+| mypy | tests/cli/test_batch_commands.py:60 | Function is missing a return type annotation |
+| mypy | tests/cli/test_batch_commands.py:75 | Function is missing a return type annotation |
+| mypy | tests/cli/test_batch_commands.py:94 | Function is missing a return type annotation |
+| mypy | tests/cli/test_batch_commands.py:134 | Function is missing a return type annotation |
+| mypy | tests/cli/test_batch_commands.py:146 | Function is missing a return type annotation |
+| mypy | tests/cli/test_app.py:22 | Function is missing a return type annotation |
+| mypy | tests/cli/test_app.py:27 | Function is missing a return type annotation |
+| mypy | tests/cli/test_app.py:34 | Function is missing a return type annotation |
+| mypy | tests/cli/test_app.py:42 | Function is missing a return type annotation |
+| mypy | tests/cli/test_app.py:46 | Function is missing a return type annotation |
+| mypy | tests/cli/test_app.py:55 | Function is missing a return type annotation |
 | mypy | tests/cli/test_app.py:62 | Function is missing a type annotation |
-| mypy | tests/cli/test_app.py:74 | Function is missing a return type annotation |
-| mypy | tests/cli/test_app.py:78 | Function is missing a return type annotation |
-| mypy | tests/cli/test_app.py:82 | Function is missing a return type annotation |
-| mypy | tests/cli/test_app.py:86 | Function is missing a return type annotation |
-| mypy | tests/cli/test_app.py:90 | Function is missing a return type annotation |
-| mypy | tests/cli/test_app.py:94 | Function is missing a return type annotation |
-| mypy | tests/cli/test_app.py:98 | Function is missing a return type annotation |
-| mypy | tests/cli/test_app.py:102 | Function is missing a return type annotation |
-| mypy | tests/cli/test_app.py:106 | Function is missing a return type annotation |
-| mypy | tests/cli/test_app.py:110 | Function is missing a return type annotation |
-| mypy | tests/cli/test_analyze_commands.py:16 | Function is missing a type annotation |
-| mypy | tests/cli/test_analyze_commands.py:40 | Function is missing a type annotation |
-| mypy | tests/cli/test_analyze_commands.py:59 | Function is missing a return type annotation |
-| mypy | tests/cli/test_analyze_commands.py:64 | Function is missing a return type annotation |
-| mypy | tests/cli/test_analyze_commands.py:79 | Function is missing a type annotation |
-| mypy | tests/cli/test_analyze_commands.py:89 | Function is missing a type annotation |
+| mypy | tests/cli/test_app.py:68 | Function is missing a type annotation |
+| mypy | tests/cli/test_app.py:77 | Function is missing a type annotation |
+| mypy | tests/cli/test_app.py:89 | Function is missing a return type annotation |
+| mypy | tests/cli/test_app.py:93 | Function is missing a return type annotation |
+| mypy | tests/cli/test_app.py:97 | Function is missing a return type annotation |
+| mypy | tests/cli/test_app.py:101 | Function is missing a return type annotation |
+| mypy | tests/cli/test_app.py:105 | Function is missing a return type annotation |
+| mypy | tests/cli/test_app.py:109 | Function is missing a return type annotation |
+| mypy | tests/cli/test_app.py:113 | Function is missing a return type annotation |
+| mypy | tests/cli/test_app.py:117 | Function is missing a return type annotation |
+| mypy | tests/cli/test_app.py:121 | Function is missing a return type annotation |
+| mypy | tests/cli/test_app.py:125 | Function is missing a return type annotation |
 | mypy | tests/cli/conftest.py:13 | Function is missing a return type annotation |
 | mypy | tests/cli/conftest.py:19 | Function is missing a return type annotation |
 | mypy | tests/cli/conftest.py:25 | Function is missing a return type annotation |
-| mypy | tests/contract/test_schema_conformance.py:31 | Function is missing a type annotation |
-| mypy | tests/contract/test_schema_conformance.py:71 | Function is missing a type annotation |
-| mypy | tests/contract/test_schema_conformance.py:82 | Function is missing a type annotation |
-| mypy | tests/contract/test_fuzz.py:48 | Function is missing a type annotation |
-| mypy | tests/contract/test_fuzz.py:64 | Function is missing a type annotation |
-| mypy | tests/contract/test_fuzz.py:80 | Function is missing a type annotation |
-| mypy | tests/contract/test_fuzz.py:93 | Function is missing a type annotation |
+| mypy | tests/contract/test_schema_conformance.py:32 | Function is missing a return type annotation |
+| mypy | tests/contract/test_schema_conformance.py:59 | Function is missing a type annotation |
+| mypy | tests/contract/test_schema_conformance.py:103 | Function is missing a type annotation |
+| mypy | tests/contract/test_schema_conformance.py:114 | Function is missing a type annotation |
+| mypy | tests/contract/test_fuzz.py:66 | Function is missing a type annotation |
+| mypy | tests/contract/test_fuzz.py:82 | Function is missing a type annotation |
 | mypy | tests/contract/test_fuzz.py:106 | Function is missing a type annotation |
+| mypy | tests/contract/test_fuzz.py:123 | Function is missing a type annotation |
+| mypy | tests/contract/test_fuzz.py:144 | Function is missing a type annotation |
 | mypy | tests/cli/test_main.py:13 | Function is missing a return type annotation |
 | mypy | tests/cli/test_main.py:29 | Function is missing a return type annotation |
-| openspec | N/A | TypeError: fetch failed |
-| openspec | N/A | TypeError: fetch failed |
+| mypy | tests/regression/test_agent_regression.py:16 | Function is missing a return type annotation |
+| mypy | tests/regression/test_agent_regression.py:39 | Function is missing a return type annotation |
+| mypy | tests/regression/test_agent_regression.py:49 | Function is missing a return type annotation |
+| mypy | tests/regression/test_agent_regression.py:69 | Function is missing a return type annotation |
+| mypy | tests/regression/test_agent_regression.py:77 | Function is missing a return type annotation |
+| mypy | tests/regression/test_agent_regression.py:89 | Function is missing a return type annotation |
+| mypy | tests/regression/test_agent_regression.py:104 | Function is missing a return type annotation |
+| mypy | tests/regression/test_agent_regression.py:112 | Function is missing a return type annotation |
+| mypy | tests/regression/test_agent_regression.py:123 | Function is missing a return type annotation |
+| mypy | tests/regression/test_agent_regression.py:136 | Function is missing a return type annotation |
+| mypy | tests/regression/test_agent_regression.py:148 | Function is missing a return type annotation |
+| mypy | tests/cli/test_railway.py:16 | Function is missing a type annotation |
+| mypy | tests/cli/test_railway.py:23 | Function is missing a type annotation |
+| mypy | tests/cli/test_railway.py:27 | Function is missing a type annotation |
+| mypy | tests/cli/test_railway.py:36 | Function is missing a type annotation |
+| mypy | tests/cli/test_railway.py:39 | Function is missing a type annotation |
+| mypy | tests/cli/test_railway.py:50 | Function is missing a type annotation |
+| mypy | tests/cli/test_railway.py:54 | Function is missing a type annotation |
+| mypy | tests/cli/test_railway.py:66 | Function is missing a type annotation |
+| mypy | tests/cli/test_railway.py:69 | Function is missing a type annotation |
+| mypy | tests/cli/test_railway.py:81 | Function is missing a type annotation |
+| mypy | tests/cli/test_railway.py:86 | Function is missing a type annotation |
+| mypy | tests/cli/test_railway.py:98 | Function is missing a type annotation |
+| mypy | tests/cli/test_railway.py:113 | Function is missing a type annotation |
+| mypy | tests/cli/test_auth_commands.py:52 | Function is missing a type annotation for one or more arguments |
+| mypy | tests/cli/test_auth_commands.py:73 | Function is missing a type annotation for one or more arguments |
 | deferred:open-tasks | N/A | 1.1 Create `src/api/versioning.py` |
 | deferred:open-tasks | N/A | 1.2 Define `VersionStatus` enum (ACTIVE, DEPRECATED, SUNSET) |
 | deferred:open-tasks | N/A | 1.3 Create `API_VERSIONS` configuration dict |
@@ -3950,567 +5885,333 @@
 | deferred:open-tasks | N/A | 9.3 Update `API_VERSIONS` to deprecate v1 |
 | deferred:open-tasks | N/A | 9.4 Create migration guide |
 | deferred:open-tasks | N/A | 9.5 Announce deprecation timeline |
-| deferred:open-tasks | N/A | 1.1 Install `@capacitor/core`, `@capacitor/cli` in `web/` |
-| deferred:open-tasks | N/A | 1.2 Run `npx cap init` with app ID and name, configure `capacitor.config.ts` |
-| deferred:open-tasks | N/A | 1.3 Add iOS platform (`npx cap add ios`) |
-| deferred:open-tasks | N/A | 1.4 Add Android platform (`npx cap add android`) — scaffolded only, deployment deferred |
-| deferred:open-tasks | N/A | 1.5 Configure `webDir` to point to Vite `dist/` output |
-| deferred:open-tasks | N/A | 1.6 Add `ios/` and `android/` to `.gitignore` (or commit — decide convention) |
-| deferred:open-tasks | N/A | 2.1 Create `web/src/lib/platform.ts` with `isNative()`, `getPlatform()` utilities |
-| deferred:open-tasks | N/A | 2.2 Add `usePlatform` hook for React components that need platform-conditional rendering |
-| deferred:open-tasks | N/A | 2.3 Add platform info to telemetry resource attributes |
-| deferred:open-tasks | N/A | 3.1 Install `@capacitor/push-notifications`, `@capacitor/haptics`, `@capacitor/status-bar`, `@capacitor/splash-screen` |
-| deferred:open-tasks | N/A | 3.2 Install `@capacitor-community/speech-recognition` for native STT |
-| deferred:open-tasks | N/A | 3.3 Configure iOS permissions in `Info.plist` (microphone, speech recognition, push notifications) |
-| deferred:open-tasks | N/A | 4.1 Create `web/src/lib/push-notifications.ts` with Capacitor Push Notifications plugin wrapper |
-| deferred:open-tasks | N/A | 4.2 Implement device token registration via backend API (`POST /api/v1/notifications/devices`) |
-| deferred:open-tasks | N/A | 4.3 Handle token refresh (re-register updated token with backend) |
-| deferred:open-tasks | N/A | 4.4 Add push notification opt-in toggle to settings UI (native platforms only) |
-| deferred:open-tasks | N/A | 4.5 Handle notification tap — navigate to content via event `payload.url` |
-| deferred:open-tasks | N/A | 5.1 Create iOS Share Extension target in Xcode project |
-| deferred:open-tasks | N/A | 5.3 Implement share handler that extracts URL and calls `save-url` API |
-| deferred:open-tasks | N/A | 5.4 Add confirmation toast after successful share save |
-| deferred:open-tasks | N/A | 5.5 Add offline queue for shares when device is disconnected |
-| deferred:open-tasks | N/A | 6.1 Create `NativeSTTEngine` class implementing the `STTEngine` interface (from `add-on-device-stt`) |
-| deferred:open-tasks | N/A | 6.2 Wire `@capacitor-community/speech-recognition` plugin to the engine interface |
-| deferred:open-tasks | N/A | 6.3 Update `AutoSTTEngine` to prefer `"native"` when running on Capacitor |
-| deferred:open-tasks | N/A | 6.4 Handle native STT permissions (request on first use, handle denial) |
-| deferred:open-tasks | N/A | 7.1 Integrate `@capacitor/status-bar` with the existing dark/light theme system |
-| deferred:open-tasks | N/A | 7.2 Update status bar style on theme toggle |
-| deferred:open-tasks | N/A | 7.3 Configure splash screen with app branding |
-| deferred:open-tasks | N/A | 8.1 Create `web/src/lib/haptics.ts` with `triggerHaptic(style)` utility (no-op on web) |
-| deferred:open-tasks | N/A | 8.2 Add haptic feedback on voice input toggle |
-| deferred:open-tasks | N/A | 8.3 Add haptic feedback on content save confirmation |
-| deferred:open-tasks | N/A | 9.1 Add `pnpm cap:dev` script (Vite dev server + live reload) |
-| deferred:open-tasks | N/A | 9.2 Add `pnpm cap:build` script (Vite build + cap sync) |
-| deferred:open-tasks | N/A | 9.3 Add `pnpm cap:open:ios` script |
-| deferred:open-tasks | N/A | 9.4 Document build requirements (Xcode, macOS) in README |
-| deferred:open-tasks | N/A | 10.1 Set up Fastlane Match for iOS code signing (private Git repo for profiles + certificates) |
-| deferred:open-tasks | N/A | 10.2 Create `ios/fastlane/Fastfile` with `build_app` and `upload_to_testflight` lanes |
-| deferred:open-tasks | N/A | 10.3 Create `.github/workflows/ios-build.yml` with macOS runner |
-| deferred:open-tasks | N/A | 10.4 Configure CI secrets: Apple Developer credentials, Match passphrase |
-| deferred:open-tasks | N/A | 10.5 Implement automatic build versioning — set `CFBundleVersion` from CI run number, `CFBundleShortVersionString` from  |
-| deferred:open-tasks | N/A | 10.6 Configure CI trigger on merge to main + manual workflow dispatch |
-| deferred:open-tasks | N/A | 10.7 Add TestFlight beta tester group configuration (Apple Developer Console) |
-| deferred:open-tasks | N/A | 10.8 Document promotion-to-App-Store steps (manual process) |
-| deferred:open-tasks | N/A | 10.9 Add required App Store metadata: privacy policy URL, app description, screenshots, app icon assets |
-| deferred:open-tasks | N/A | 11.1 Add E2E tests for platform detection (mock Capacitor context) |
-| deferred:open-tasks | N/A | 11.2 Add E2E tests for share target flow (mocked) |
-| deferred:open-tasks | N/A | 11.3 Add E2E tests for push notification opt-in flow (mocked) |
-| deferred:open-tasks | N/A | 11.4 Manual testing checklist for iOS builds |
-| deferred:open-tasks | N/A | 11.5 Verify CI pipeline end-to-end: commit → build → TestFlight upload |
-| deferred:open-tasks | N/A | 11.6 Verify build versioning (monotonic build numbers, version from package.json) |
-| deferred:open-tasks | N/A | 1.1 Create `src/services/cloud_stt/` package with `CloudSTTProvider` interface (`start_stream`, `send_audio`, `get_resul |
-| deferred:open-tasks | N/A | 1.2 Implement `GeminiSTTProvider` (default) — native audio input with built-in cleanup prompt, returns `cleaned: true` |
-| deferred:open-tasks | N/A | 1.3 Implement `OpenAIWhisperProvider` — raw transcription, returns `cleaned: false` |
-| deferred:open-tasks | N/A | 1.4 Implement `DeepgramProvider` using Deepgram's streaming WebSocket API, returns `cleaned: false` |
-| deferred:open-tasks | N/A | 1.5 Create provider factory that resolves adapter from model family: `gemini` → `GeminiSTTProvider`, `whisper` → `Whispe |
-| deferred:open-tasks | N/A | 1.6 Define common transcript result model: `{ type: "interim"|"final"|"error", text: str, cleaned: bool, confidence?: fl |
-| deferred:open-tasks | N/A | 1.7 Add Gemini transcription+cleanup prompt template (fix grammar, remove filler words, structure text, preserve intent) |
-| deferred:open-tasks | N/A | 2.1 Add `CLOUD_STT = "cloud_stt"` to `ModelStep` enum in `src/config/models.py` |
-| deferred:open-tasks | N/A | 2.2 Add `supports_audio: bool` field to `ModelInfo` dataclass (analogous to `supports_video`) |
-| deferred:open-tasks | N/A | 2.3 Update `load_model_registry()` to parse `supports_audio` from YAML model definitions |
-| deferred:open-tasks | N/A | 2.4 Add `supports_audio: true` to Gemini family models (2.0+) in `model_registry.yaml` |
-| deferred:open-tasks | N/A | 2.5 Add `supports_audio: false` to Claude, GPT models in `model_registry.yaml` (explicit for clarity) |
-| deferred:open-tasks | N/A | 2.6 Add STT-specific model entries to `model_registry.yaml`: `whisper-1` (family: whisper, `supports_audio: true`) and ` |
-| deferred:open-tasks | N/A | 2.7 Add `whisper` and `deepgram` to `ModelFamily` enum in `src/config/models.py` |
-| deferred:open-tasks | N/A | 2.8 Add `cloud_stt: gemini-2.5-flash` default to `model_registry.yaml` under `default_models` |
-| deferred:open-tasks | N/A | 2.9 Add `cloud_stt` parameter to `ModelConfig.__init__()` and wire to `self._models` |
-| deferred:open-tasks | N/A | 2.10 Update model settings test step count assertion |
-| deferred:open-tasks | N/A | 3.1 Create `src/api/voice_stream_routes.py` with WebSocket endpoint at `/ws/voice/stream` |
-| deferred:open-tasks | N/A | 3.2 Implement WebSocket authentication via `X-Admin-Key` query parameter in handshake |
-| deferred:open-tasks | N/A | 3.3 Resolve cloud STT provider adapter from `CLOUD_STT` pipeline step model family |
-| deferred:open-tasks | N/A | 3.4 Accept binary audio chunks (PCM 16-bit mono 16kHz) and forward to resolved provider |
-| deferred:open-tasks | N/A | 3.5 Stream interim/final transcript results back as JSON WebSocket messages (include `cleaned` flag on final results) |
-| deferred:open-tasks | N/A | 3.6 Handle provider errors and send error messages to client |
-| deferred:open-tasks | N/A | 3.7 Implement clean connection teardown (stop provider stream on WebSocket close) |
-| deferred:open-tasks | N/A | 3.8 Register WebSocket route in `src/api/app.py` |
-| deferred:open-tasks | N/A | 4.1 Create `CloudSTTEngine` class implementing the `STTEngine` interface |
-| deferred:open-tasks | N/A | 4.2 Implement MediaRecorder-based audio capture with AudioContext PCM conversion |
-| deferred:open-tasks | N/A | 4.3 Implement WebSocket connection to `/ws/voice/stream` with auth query param |
-| deferred:open-tasks | N/A | 4.4 Stream audio chunks at 100-250ms intervals via WebSocket binary messages |
-| deferred:open-tasks | N/A | 4.5 Parse incoming JSON messages, emit interim/final transcript events, and propagate `cleaned` flag |
-| deferred:open-tasks | N/A | 4.6 Skip automatic `VOICE_CLEANUP` call when `cleaned: true` (Gemini); keep cleanup button available for manual use |
-| deferred:open-tasks | N/A | 4.7 Implement WebSocket reconnection with exponential backoff (1s, 2s, 4s, max 3 retries) |
-| deferred:open-tasks | N/A | 4.8 Add "Reconnecting..." state to voice input UI during reconnection attempts |
-| deferred:open-tasks | N/A | 5.1 Update `AutoSTTEngine` to support configurable preference order (default: cloud → native → browser → on-device) |
-| deferred:open-tasks | N/A | 5.2 Add `cloudAvailable` to feature detection (check API key for current CLOUD_STT model's provider via settings API) |
-| deferred:open-tasks | N/A | 5.3 Skip unavailable engines in the preference order automatically |
-| deferred:open-tasks | N/A | 5.4 Refactor `useVoiceInput` to read engine preference from settings |
-| deferred:open-tasks | N/A | 6.1 Extend `voice_settings_routes.py` to include `cloud_stt_language`, `engine_preference_order` (provider/model handled |
-| deferred:open-tasks | N/A | 6.2 Add defaults: `cloud_stt_language="auto"`, `engine_preference_order="cloud,native,browser,on-device"` |
-| deferred:open-tasks | N/A | 6.3 Add `PUT` endpoints with validation for `cloud_stt_language` and `engine_preference_order` |
-| deferred:open-tasks | N/A | 6.4 Add `DELETE` endpoints for reset to defaults |
-| deferred:open-tasks | N/A | 6.5 Include `cloud_stt_model` as read-only field in `GET /api/v1/settings/voice` response (referencing current CLOUD_STT |
-| deferred:open-tasks | N/A | 6.6 Add cloud STT provider API key status check to connection status API (resolved from CLOUD_STT model family) |
-| deferred:open-tasks | N/A | 7.1 Add Cloud STT subsection to `VoiceConfigurator.tsx` (language + engine preference only — model selection is in Model |
-| deferred:open-tasks | N/A | 7.2 Show current CLOUD_STT model as a read-only badge linking to Model Configuration dialog |
-| deferred:open-tasks | N/A | 7.3 Show API key configuration status for the current model's provider with setup hint if unconfigured |
-| deferred:open-tasks | N/A | 7.4 Add language selector (Auto, English US, English UK, Spanish, French, German, Japanese, Chinese) |
-| deferred:open-tasks | N/A | 7.5 Add engine preference order list with drag-and-drop reordering |
-| deferred:open-tasks | N/A | 7.6 Wire settings to `use-settings.ts` hooks |
-| deferred:open-tasks | N/A | 7.7 Add source badges (env/db/default) for cloud STT settings |
-| deferred:open-tasks | N/A | 7.8 In Model Configuration dialog, filter CLOUD_STT step selector to only show models with `supports_audio: true` |
-| deferred:open-tasks | N/A | 8.1 Add unit tests for cloud STT provider abstraction (mock provider APIs) |
-| deferred:open-tasks | N/A | 8.2 Add unit tests for model-family → provider resolution |
-| deferred:open-tasks | N/A | 8.3 Add integration tests for WebSocket endpoint (mock provider, verify message flow) |
-| deferred:open-tasks | N/A | 8.4 Add unit tests for audio format conversion (PCM 16-bit mono) |
-| deferred:open-tasks | N/A | 8.5 Add backend tests for cloud STT settings API endpoints |
-| deferred:open-tasks | N/A | 8.6 Add unit tests for `supports_audio` flag parsing in `load_model_registry()` |
-| deferred:open-tasks | N/A | 8.7 Add E2E tests for cloud STT settings UI (language, engine preference, model badge link) |
-| deferred:open-tasks | N/A | 8.8 Add E2E tests for CLOUD_STT model selector filtering (only `supports_audio: true` models) |
-| deferred:open-tasks | N/A | 8.9 Add E2E tests for WebSocket reconnection behavior (mocked) |
-| deferred:open-tasks | N/A | 8.10 Update model settings test step count assertion |
-| deferred:open-tasks | N/A | 1.1 Add `crawl4ai>=0.7.0` to pyproject.toml as optional dependency |
-| deferred:open-tasks | N/A | 1.2 Document `pip install -e ".[crawl4ai]"` installation |
-| deferred:open-tasks | N/A | 1.3 Document `crawl4ai-setup` command for browser dependencies |
-| deferred:open-tasks | N/A | 1.4 Add verification step using `crawl4ai-doctor` |
-| deferred:open-tasks | N/A | 2.1 Add `crawl4ai_enabled: bool = False` to Settings class |
-| deferred:open-tasks | N/A | 2.2 Add `crawl4ai_cache_mode: str = "bypass"` setting |
-| deferred:open-tasks | N/A | 2.3 Add `crawl4ai_cache_dir: str = "data/crawl4ai_cache"` setting |
-| deferred:open-tasks | N/A | 2.4 Update `HtmlMarkdownConverter` to read settings |
-| deferred:open-tasks | N/A | 2.5 Update `CRAWL4AI_AVAILABLE` check to include settings flag |
-| deferred:open-tasks | N/A | 3.1 Add Crawl4AI service to docker-compose.yml |
-| deferred:open-tasks | N/A | 3.2 Add `CRAWL4AI_SERVER_URL` setting for Docker mode |
-| deferred:open-tasks | N/A | 3.3 Update converter to support remote Crawl4AI server |
-| deferred:open-tasks | N/A | 3.4 Add health check endpoint integration |
-| deferred:open-tasks | N/A | 3.5 Document Docker deployment in README or docs |
-| deferred:open-tasks | N/A | 4.1 Update `_convert_with_crawl4ai()` to use cache settings |
-| deferred:open-tasks | N/A | 4.2 Add support for remote Crawl4AI server (Docker mode) |
-| deferred:open-tasks | N/A | 4.3 Add timeout configuration for browser operations |
-| deferred:open-tasks | N/A | 4.4 Improve error handling for browser launch failures |
-| deferred:open-tasks | N/A | 5.1 Add integration test with JS-heavy page URL |
-| deferred:open-tasks | N/A | 5.2 Add test for fallback triggering from Trafilatura to Crawl4AI |
-| deferred:open-tasks | N/A | 5.3 Add test for cache mode behavior |
-| deferred:open-tasks | N/A | 5.4 Add test for Docker/remote server mode |
-| deferred:open-tasks | N/A | 5.5 Mark tests with `@pytest.mark.crawl4ai` for conditional execution |
-| deferred:open-tasks | N/A | 6.1 Update ARCHITECTURE.md with Crawl4AI integration diagram |
-| deferred:open-tasks | N/A | 6.2 Add Crawl4AI setup section to docs/SETUP.md |
-| deferred:open-tasks | N/A | 6.3 Document when Crawl4AI fallback triggers |
-| deferred:open-tasks | N/A | 6.4 Add troubleshooting section for browser issues |
-| deferred:open-tasks | N/A | 6.5 Update CLAUDE.md with new settings |
-| deferred:open-tasks | N/A | 1.1 Create `Dockerfile` with multi-stage build: |
-| deferred:open-tasks | N/A | 1.2 Create `.dockerignore`: |
-| deferred:open-tasks | N/A | 1.3 Test Docker build locally |
-| deferred:open-tasks | N/A | 1.4 Verify image size is reasonable (<500MB) |
-| deferred:open-tasks | N/A | 2.1 Create `.github/workflows/ci.yml` |
-| deferred:open-tasks | N/A | 2.2 Add lint job (ruff check) |
-| deferred:open-tasks | N/A | 2.3 Add typecheck job (mypy) |
-| deferred:open-tasks | N/A | 2.4 Add test job with service containers: |
-| deferred:open-tasks | N/A | 2.5 Add Docker build verification job |
-| deferred:open-tasks | N/A | 2.6 Configure job parallelization |
-| deferred:open-tasks | N/A | 2.7 Add coverage reporting (codecov or similar) |
-| deferred:open-tasks | N/A | 2.8 Add PR comment with test results |
-| deferred:open-tasks | N/A | 3.1 Create `.github/workflows/deploy.yml` |
-| deferred:open-tasks | N/A | 3.2 Add Docker build and push job: |
-| deferred:open-tasks | N/A | 3.3 Add staging migration job |
-| deferred:open-tasks | N/A | 3.4 Add staging deployment job |
-| deferred:open-tasks | N/A | 3.5 Add production migration job (manual approval) |
-| deferred:open-tasks | N/A | 3.6 Add production deployment job |
-| deferred:open-tasks | N/A | 4.1 Create GitHub Environment: `staging` |
-| deferred:open-tasks | N/A | 4.2 Create GitHub Environment: `production` |
-| deferred:open-tasks | N/A | 4.3 Configure production approval requirement |
-| deferred:open-tasks | N/A | 4.4 Add environment secrets: |
-| deferred:open-tasks | N/A | 4.5 Document secrets in README |
-| deferred:open-tasks | N/A | 5.1 Update `docker-compose.yml` for local dev parity |
-| deferred:open-tasks | N/A | 5.2 Create `docker-compose.prod.yml` for production |
-| deferred:open-tasks | N/A | 5.3 Add Opik service to docker-compose.yml |
-| deferred:open-tasks | N/A | 5.4 Add healthcheck configurations |
-| deferred:open-tasks | N/A | 5.5 Document compose file differences |
-| deferred:open-tasks | N/A | 6.1 Create `scripts/deploy.sh` for server-side deployment |
-| deferred:open-tasks | N/A | 6.2 Add graceful shutdown handling |
-| deferred:open-tasks | N/A | 6.3 Add rollback script |
-| deferred:open-tasks | N/A | 6.4 Document deployment process |
-| deferred:open-tasks | N/A | 7.1 Create `.github/dependabot.yml` |
-| deferred:open-tasks | N/A | 7.2 Configure Python dependency updates |
-| deferred:open-tasks | N/A | 7.3 Configure GitHub Actions updates |
-| deferred:open-tasks | N/A | 7.4 Configure Docker base image updates |
-| deferred:open-tasks | N/A | 8.1 Enable branch protection on main |
-| deferred:open-tasks | N/A | 8.2 Require CI to pass before merge |
-| deferred:open-tasks | N/A | 8.3 Require review approval |
-| deferred:open-tasks | N/A | 8.4 Create CODEOWNERS file |
-| deferred:open-tasks | N/A | 9.1 Test CI workflow on feature branch |
-| deferred:open-tasks | N/A | 9.2 Test Docker build in CI |
-| deferred:open-tasks | N/A | 9.3 Test deployment to staging |
-| deferred:open-tasks | N/A | 9.4 Verify rollback procedure |
-| deferred:open-tasks | N/A | 10.1 Document CI/CD pipeline in docs/ |
-| deferred:open-tasks | N/A | 10.2 Document environment setup |
-| deferred:open-tasks | N/A | 10.3 Document deployment procedure |
-| deferred:open-tasks | N/A | 10.4 Document rollback procedure |
-| deferred:open-tasks | N/A | 10.5 Add badges to README (CI status, coverage) |
-| deferred:open-tasks | N/A | 1.1 Add `xai-sdk>=1.3.1` to project dependencies (pyproject.toml) |
-| deferred:open-tasks | N/A | 1.2 Add configuration settings to `src/config/settings.py`: |
-| deferred:open-tasks | N/A | 1.3 Document environment variables in `.env.example` |
-| deferred:open-tasks | N/A | 2.1 Add `XSEARCH = "xsearch"` to `ContentSource` enum in `src/models/content.py` |
-| deferred:open-tasks | N/A | 2.2 Create Alembic migration to add `xsearch` value to `content_source` enum type in PostgreSQL: |
-| deferred:open-tasks | N/A | 2.3 Run migration and verify enum update |
-| deferred:open-tasks | N/A | 3.1 Create `src/ingestion/xsearch.py` module |
-| deferred:open-tasks | N/A | 3.2 Implement `GrokXClient` class: |
-| deferred:open-tasks | N/A | 3.3 Implement `XThreadData` Pydantic model for parsed thread data: |
-| deferred:open-tasks | N/A | 3.4 Implement streaming response handling with tool call logging |
-| deferred:open-tasks | N/A | 3.5 Add error handling for API failures, rate limits, authentication errors |
-| deferred:open-tasks | N/A | 3.6 Add retry logic with exponential backoff |
-| deferred:open-tasks | N/A | 3.7 Implement thread fetching: when a post is discovered, fetch its complete thread |
-| deferred:open-tasks | N/A | 4.1 Implement `GrokXContentIngestionService` class: |
-| deferred:open-tasks | N/A | 4.2 Implement thread-to-ContentData conversion with markdown formatting: |
-| deferred:open-tasks | N/A | 4.3 Implement thread-aware deduplication: |
-| deferred:open-tasks | N/A | 4.4 Add cost tracking in metadata_json (tool calls made, estimated cost) |
-| deferred:open-tasks | N/A | 5.1 Create `src/ingestion/xsearch.py` `__main__` block for CLI usage: |
-| deferred:open-tasks | N/A | 5.2 Add argument parsing with argparse |
-| deferred:open-tasks | N/A | 5.3 Add progress output and summary statistics |
-| deferred:open-tasks | N/A | 6.1 Create `tests/test_ingestion/test_xsearch.py` |
-| deferred:open-tasks | N/A | 6.2 Write unit tests for `XThreadData` model validation |
-| deferred:open-tasks | N/A | 6.3 Write unit tests for thread markdown content generation (numbered sections) |
-| deferred:open-tasks | N/A | 6.4 Write unit tests for thread-aware deduplication: |
-| deferred:open-tasks | N/A | 6.5 Write integration tests with mocked xAI SDK responses |
-| deferred:open-tasks | N/A | 6.6 Add test fixtures for sample thread data (single post, multi-post threads) |
-| deferred:open-tasks | N/A | 7.1 Update `docs/ARCHITECTURE.md` with X search ingestion section |
-| deferred:open-tasks | N/A | 7.2 Add X search to ingestion services table |
-| deferred:open-tasks | N/A | 7.3 Update `CLAUDE.md` with X search commands |
-| deferred:open-tasks | N/A | 7.4 Document prompt templates and best practices |
-| deferred:open-tasks | N/A | 8.1 Run end-to-end test with real Grok API (manual, requires API key) |
-| deferred:open-tasks | N/A | 8.2 Verify posts appear in Content table with correct structure |
-| deferred:open-tasks | N/A | 8.3 Verify posts flow through summarization pipeline |
-| deferred:open-tasks | N/A | 8.4 Verify posts appear in digest output |
-| deferred:open-tasks | N/A | 1.1 Create `src/services/image_generator.py`: |
-| deferred:open-tasks | N/A | 1.2 Implement `generate_for_summary(summary, prompt) -> Image`: |
-| deferred:open-tasks | N/A | 1.3 Implement `generate_for_digest(digest, prompt) -> Image`: |
-| deferred:open-tasks | N/A | 1.4 Implement `suggest_images(content: str) -> list[ImageSuggestion]`: |
-| deferred:open-tasks | N/A | 2.1 Add settings to `src/config/settings.py`: |
-| deferred:open-tasks | N/A | 2.2 Add credentials to environment: |
-| deferred:open-tasks | N/A | 3.1 Create `ImageSuggestion` schema: |
-| deferred:open-tasks | N/A | 3.2 Create `ImageGenerationRequest` schema: |
-| deferred:open-tasks | N/A | 3.3 Create `ImageGenerationResponse` schema: |
-| deferred:open-tasks | N/A | 4.1 Create `src/api/image_generation_routes.py`: |
-| deferred:open-tasks | N/A | 4.2 Add rate limiting for generation endpoints |
-| deferred:open-tasks | N/A | 4.3 Register routes in `src/api/app.py` |
-| deferred:open-tasks | N/A | 5.1 Update `src/services/review_service.py`: |
-| deferred:open-tasks | N/A | 5.2 Update Summary/Digest review UI (future): |
-| deferred:open-tasks | N/A | 6.1 Unit tests for ImageGenerator: |
-| deferred:open-tasks | N/A | 6.2 Unit tests for suggestion generation: |
-| deferred:open-tasks | N/A | 6.3 API endpoint tests: |
-| deferred:open-tasks | N/A | 7.1 Document configuration options in SETUP.md |
-| deferred:open-tasks | N/A | 7.2 Document API endpoints in ARCHITECTURE.md |
-| deferred:open-tasks | N/A | 7.3 Create usage guide for image generation feature |
-| deferred:open-tasks | N/A | 1.1 Create `src/api/save_routes.py` with router |
-| deferred:open-tasks | N/A | 1.2 Implement `POST /api/v1/content/save-url` endpoint |
-| deferred:open-tasks | N/A | 1.3 Add URL validation (valid URL format, https preferred) |
-| deferred:open-tasks | N/A | 1.4 Add duplicate detection by source_url |
-| deferred:open-tasks | N/A | 1.5 Implement `GET /api/v1/content/{id}/status` endpoint |
-| deferred:open-tasks | N/A | 1.6 Configure CORS for mobile clients (allow all origins for API key auth) |
-| deferred:open-tasks | N/A | 1.7 Register router in `src/api/app.py` |
-| deferred:open-tasks | N/A | 2.1 Create `src/api/auth/api_keys.py` module |
-| deferred:open-tasks | N/A | 2.2 Create APIKey model (id, hashed_key, name, rate_limit, created_at) |
-| deferred:open-tasks | N/A | 2.3 Implement `verify_api_key()` dependency |
-| deferred:open-tasks | N/A | 2.4 Add rate limiting per API key (60 req/min default) |
-| deferred:open-tasks | N/A | 2.5 Create Alembic migration for api_keys table |
-| deferred:open-tasks | N/A | 2.6 Add API key management CLI commands |
-| deferred:open-tasks | N/A | 3.1 Create `src/services/url_extractor.py` |
-| deferred:open-tasks | N/A | 3.2 Integrate with existing `ParserRouter` for HTML parsing |
-| deferred:open-tasks | N/A | 3.3 Add fallback extraction (title, meta description) if parsing fails |
-| deferred:open-tasks | N/A | 3.4 Implement async extraction as background task |
-| deferred:open-tasks | N/A | 3.5 Add timeout handling (30s max per URL) |
-| deferred:open-tasks | N/A | 3.6 Handle common errors (404, timeout, blocked) |
-| deferred:open-tasks | N/A | 4.1 Create `GET /save` endpoint in save_routes.py |
-| deferred:open-tasks | N/A | 4.2 Create `src/templates/save.html` (mobile-optimized) |
-| deferred:open-tasks | N/A | 4.3 Pre-fill form from URL query parameters |
-| deferred:open-tasks | N/A | 4.4 Add JavaScript for async form submission |
-| deferred:open-tasks | N/A | 4.5 Show success/error states with clear messaging |
-| deferred:open-tasks | N/A | 4.6 Add responsive design (works on phone and desktop) |
-| deferred:open-tasks | N/A | 5.1 Create Shortcut in Apple Shortcuts app |
-| deferred:open-tasks | N/A | 5.2 Configure to receive URLs from Share Sheet |
-| deferred:open-tasks | N/A | 5.3 Add input fields for API URL and API key |
-| deferred:open-tasks | N/A | 5.4 Implement HTTP POST action to save-url endpoint |
-| deferred:open-tasks | N/A | 5.5 Add success/error notifications |
-| deferred:open-tasks | N/A | 5.6 Export as .shortcut file to `shortcuts/` directory |
-| deferred:open-tasks | N/A | 5.7 Create `shortcuts/README.md` with installation guide |
-| deferred:open-tasks | N/A | 6.1 Write integration tests for save-url with local PostgreSQL |
-| deferred:open-tasks | N/A | 6.2 Write integration tests for save-url with Supabase |
-| deferred:open-tasks | N/A | 6.3 Write integration tests for save-url with Neon |
-| deferred:open-tasks | N/A | 6.4 Verify cold start handling with Neon (test after idle period) |
-| deferred:open-tasks | N/A | 6.5 Test duplicate detection across providers |
-| deferred:open-tasks | N/A | 7.1 Test save_routes.py endpoint logic |
-| deferred:open-tasks | N/A | 7.2 Test URL validation edge cases |
-| deferred:open-tasks | N/A | 7.3 Test duplicate detection logic |
-| deferred:open-tasks | N/A | 7.4 Test API key authentication |
-| deferred:open-tasks | N/A | 7.5 Test rate limiting behavior |
-| deferred:open-tasks | N/A | 7.6 Test url_extractor.py with mock responses |
-| deferred:open-tasks | N/A | 8.1 Create `docs/MOBILE_CAPTURE.md` user guide |
-| deferred:open-tasks | N/A | 8.2 Document iOS Shortcut installation |
-| deferred:open-tasks | N/A | 8.3 Document API key setup |
-| deferred:open-tasks | N/A | 8.4 Add troubleshooting section |
-| deferred:open-tasks | N/A | 8.5 Update CLAUDE.md with new endpoint |
-| deferred:open-tasks | N/A | 1.1 Create `neon-branch` skill in `agentic-coding-tools` with create/verify/cleanup actions |
-| deferred:open-tasks | N/A | 1.2 Update `openspec-apply-change` skill to invoke `neon-branch create` before implementation |
-| deferred:open-tasks | N/A | 1.3 Update `openspec-verify-change` skill to invoke `neon-branch verify` during validation |
-| deferred:open-tasks | N/A | 1.4 Update `openspec-archive-change` skill to invoke `neon-branch cleanup` after archiving |
-| deferred:open-tasks | N/A | 2.1 Register `neon` pytest marker in `pyproject.toml` |
-| deferred:open-tasks | N/A | 2.2 Add `neon_available` session fixture to `tests/integration/conftest.py` |
-| deferred:open-tasks | N/A | 2.3 Add `neon_session_branch` session-scoped fixture to `tests/integration/conftest.py` |
-| deferred:open-tasks | N/A | 2.4 Add `neon_engine` session-scoped fixture |
-| deferred:open-tasks | N/A | 2.5 Verify existing Neon fixtures in `tests/integration/fixtures/neon.py` are importable from conftest |
-| deferred:open-tasks | N/A | 3.1 Create `profiles/ci-neon.yaml` profile for CI Neon integration tests |
-| deferred:open-tasks | N/A | 3.2 Create `.github/workflows/neon-pr.yml` — full PR-based Neon branch lifecycle |
-| deferred:open-tasks | N/A | 3.3 Update `.github/workflows/ci.yml` with profile-aware test job (optional) |
-| deferred:open-tasks | N/A | 3.4 Document required GitHub repository configuration |
-| deferred:open-tasks | N/A | 4.1 Add unit tests for `aca neon` CLI commands |
-| deferred:open-tasks | N/A | 4.2 Add `--json` output validation to CLI tests |
-| deferred:open-tasks | N/A | 4.3 Handle edge case: `aca neon create` when branch already exists |
-| deferred:open-tasks | N/A | 5.1 Update `CLAUDE.md` "Critical Gotchas" table with Neon branching gotchas |
-| deferred:open-tasks | N/A | 5.2 Update `docs/SETUP.md` Neon section with agent workflow instructions |
-| deferred:open-tasks | N/A | 5.3 Add Neon branch management to `docs/DEVELOPMENT.md` development workflow section |
-| deferred:open-tasks | N/A | 1.1 Create Alembic migration for `notification_events` table (id UUID, event_type varchar indexed, title varchar, summar |
-| deferred:open-tasks | N/A | 1.2 Create Alembic migration for `device_registrations` table (id UUID, platform varchar, token varchar unique, delivery |
-| deferred:open-tasks | N/A | 1.3 Create SQLAlchemy models for `NotificationEvent` and `DeviceRegistration` |
-| deferred:open-tasks | N/A | 2.1 Create `src/services/notification_service.py` with `NotificationEventType` enum (batch_summary, theme_analysis, dige |
-| deferred:open-tasks | N/A | 2.2 Implement `NotificationDispatcher` class with `emit(event_type, title, summary, payload)` method |
-| deferred:open-tasks | N/A | 2.3 Implement database persistence of events in the dispatcher |
-| deferred:open-tasks | N/A | 2.4 Implement in-process pub/sub for pushing events to connected SSE clients |
-| deferred:open-tasks | N/A | 2.5 Add notification preference checking — skip delivery (not storage) for disabled event types |
-| deferred:open-tasks | N/A | 3.1 Integrate dispatcher into batch summarization completion handler |
-| deferred:open-tasks | N/A | 3.2 Integrate dispatcher into theme analysis completion handler |
-| deferred:open-tasks | N/A | 3.3 Integrate dispatcher into digest creation completion handler |
-| deferred:open-tasks | N/A | 3.4 Integrate dispatcher into podcast script generation completion handler |
-| deferred:open-tasks | N/A | 3.5 Integrate dispatcher into audio generation (podcast + audio digest) completion handler |
-| deferred:open-tasks | N/A | 3.6 Integrate dispatcher into pipeline completion handler |
-| deferred:open-tasks | N/A | 3.7 Integrate dispatcher into job failure handler (all job types) |
-| deferred:open-tasks | N/A | 4.1 Create `src/api/notification_routes.py` with route prefix `/api/v1/notifications` |
-| deferred:open-tasks | N/A | 4.2 Implement `GET /events` — list recent events (pagination, type filter, since filter) |
-| deferred:open-tasks | N/A | 4.3 Implement `GET /unread-count` — return unread event count |
-| deferred:open-tasks | N/A | 4.4 Implement `PUT /events/{id}/read` — mark single event as read |
-| deferred:open-tasks | N/A | 4.5 Implement `PUT /events/read-all` — mark all events as read |
-| deferred:open-tasks | N/A | 4.6 Add `X-Admin-Key` authentication to all notification endpoints |
-| deferred:open-tasks | N/A | 4.7 Register notification routes in `src/api/app.py` |
-| deferred:open-tasks | N/A | 5.1 Implement `GET /notifications/stream` SSE endpoint with `X-Admin-Key` auth via query param |
-| deferred:open-tasks | N/A | 5.2 Wire dispatcher pub/sub to push events to connected SSE clients |
-| deferred:open-tasks | N/A | 5.3 Implement `Last-Event-ID` reconnection support (send missed events) |
-| deferred:open-tasks | N/A | 5.4 Add 30-second heartbeat (`: ping` comment) to keep connections alive |
-| deferred:open-tasks | N/A | 6.1 Implement `POST /notifications/devices` — register device (platform, token, delivery_method) |
-| deferred:open-tasks | N/A | 6.2 Implement `DELETE /notifications/devices/{id}` — unregister device |
-| deferred:open-tasks | N/A | 6.3 Implement `GET /notifications/devices` — list registered devices |
-| deferred:open-tasks | N/A | 6.4 Add upsert logic (update existing registration if platform+token matches) |
-| deferred:open-tasks | N/A | 7.1 Add notification preference defaults (all event types enabled) using `notification.*` settings namespace |
-| deferred:open-tasks | N/A | 7.2 Extend voice settings routes (or create notification settings routes) with `GET /settings/notifications` returning p |
-| deferred:open-tasks | N/A | 7.3 Add `PUT /settings/notifications/{event_type}` to set per-type preference |
-| deferred:open-tasks | N/A | 7.4 Add `DELETE /settings/notifications/{event_type}` to reset per-type preference |
-| deferred:open-tasks | N/A | 8.1 Add `aca manage cleanup-notifications --older-than <duration>` CLI command |
-| deferred:open-tasks | N/A | 8.2 Add auto-cleanup on startup (delete events older than 90 days) |
-| deferred:open-tasks | N/A | 9.1 Create `web/src/components/notifications/NotificationBell.tsx` with bell icon and unread badge |
-| deferred:open-tasks | N/A | 9.2 Create `web/src/components/notifications/NotificationDropdown.tsx` with recent events list |
-| deferred:open-tasks | N/A | 9.3 Add notification bell to app header (`AppShell.tsx`) |
-| deferred:open-tasks | N/A | 9.4 Create `web/src/hooks/use-notifications.ts` with React Query hooks for events, unread count, and SSE subscription |
-| deferred:open-tasks | N/A | 9.5 Add SSE client (EventSource) for real-time badge updates |
-| deferred:open-tasks | N/A | 9.6 Implement click-to-navigate for events in dropdown (route to digest/script/audio/job based on payload URL) |
-| deferred:open-tasks | N/A | 9.7 Add "Mark all as read" button in dropdown |
-| deferred:open-tasks | N/A | 10.1 Add Notifications section to Settings page with per-event-type toggles |
-| deferred:open-tasks | N/A | 10.2 Wire toggles to notification preferences API |
-| deferred:open-tasks | N/A | 10.3 Add source badges (env/db/default) for each preference |
-| deferred:open-tasks | N/A | 10.4 Add event type descriptions next to each toggle |
-| deferred:open-tasks | N/A | 11.1 Add unit tests for `NotificationDispatcher` (emit, preference filtering, pub/sub) |
-| deferred:open-tasks | N/A | 11.2 Add API tests for notification event endpoints (list, filter, mark read, unread count) |
-| deferred:open-tasks | N/A | 11.3 Add API tests for device registration endpoints (register, unregister, list, upsert) |
-| deferred:open-tasks | N/A | 11.4 Add API tests for notification preferences endpoints |
-| deferred:open-tasks | N/A | 11.5 Add E2E tests for notification bell rendering and badge count |
-| deferred:open-tasks | N/A | 11.6 Add E2E tests for notification dropdown (event list, click navigation, mark all read) |
-| deferred:open-tasks | N/A | 11.7 Add E2E tests for notification preferences toggles in settings |
-| deferred:open-tasks | N/A | 1.1 Create `web/src/lib/voice/engine.ts` with `STTEngine` interface (`start`, `stop`, `onResult`, `onError`) |
-| deferred:open-tasks | N/A | 1.2 Implement `BrowserSTTEngine` class wrapping SpeechRecognition (extract from `useVoiceInput`) |
-| deferred:open-tasks | N/A | 1.3 Implement `OnDeviceSTTEngine` class wrapping Whisper Web Worker communication |
-| deferred:open-tasks | N/A | 1.4 Implement `AutoSTTEngine` that selects browser or on-device based on availability and connectivity |
-| deferred:open-tasks | N/A | 1.5 Refactor `useVoiceInput` hook to accept `engine` option and delegate to the engine abstraction |
-| deferred:open-tasks | N/A | 2.1 Add Whisper WASM dependency (`whisper-turbo` or equivalent) to `web/package.json` |
-| deferred:open-tasks | N/A | 2.2 Configure Vite to handle WASM file imports and worker bundling |
-| deferred:open-tasks | N/A | 2.3 Create `web/src/lib/voice/whisper-worker.ts` Web Worker for model loading and inference |
-| deferred:open-tasks | N/A | 2.4 Define typed message protocol between main thread and worker (`load-model`, `transcribe`, `result`, `error`, `progre |
-| deferred:open-tasks | N/A | 2.5 Implement model loading in worker (initialize Whisper from cached model bytes) |
-| deferred:open-tasks | N/A | 2.6 Implement audio transcription in worker (accept Float32Array, return transcript string) |
-| deferred:open-tasks | N/A | 3.1 Create `web/src/lib/voice/model-cache.ts` with Cache API operations (`downloadModel`, `isModelCached`, `deleteModel` |
-| deferred:open-tasks | N/A | 3.2 Implement model download with progress tracking via fetch + ReadableStream |
-| deferred:open-tasks | N/A | 3.3 Implement persistent model storage in Cache API |
-| deferred:open-tasks | N/A | 3.4 Add model size constants (tiny: 39MB, base: 74MB) and CDN URLs |
-| deferred:open-tasks | N/A | 3.5 Implement download retry logic with cleanup of partial downloads on failure |
-| deferred:open-tasks | N/A | 4.1 Create `web/src/lib/voice/audio-recorder.ts` with `getUserMedia` + `MediaRecorder` wrapper |
-| deferred:open-tasks | N/A | 4.2 Implement start/stop recording with audio blob capture |
-| deferred:open-tasks | N/A | 4.3 Implement audio format conversion (MediaRecorder blob → Float32Array for Whisper) |
-| deferred:open-tasks | N/A | 4.4 Handle microphone permission denial with user-facing error message |
-| deferred:open-tasks | N/A | 5.1 Extend `voice_settings_routes.py` to include `stt_engine` and `stt_model_size` fields |
-| deferred:open-tasks | N/A | 5.2 Add defaults: `stt_engine="auto"`, `stt_model_size="tiny"` |
-| deferred:open-tasks | N/A | 5.3 Add `PUT /api/v1/settings/voice/stt_engine` with validation (`auto`, `browser`, `on-device`) |
-| deferred:open-tasks | N/A | 5.4 Add `PUT /api/v1/settings/voice/stt_model_size` with validation (`tiny`, `base`) |
-| deferred:open-tasks | N/A | 5.5 Add corresponding `DELETE` endpoints for reset |
-| deferred:open-tasks | N/A | 6.1 Add STT Engine subsection to `VoiceConfigurator.tsx` |
-| deferred:open-tasks | N/A | 6.2 Add engine selector dropdown (Auto / Browser / On-Device) |
-| deferred:open-tasks | N/A | 6.3 Add model size selector (Tiny ~39MB / Base ~74MB) |
-| deferred:open-tasks | N/A | 6.4 Add model download button with progress bar |
-| deferred:open-tasks | N/A | 6.5 Add model status indicator (cached model name, size, delete button) |
-| deferred:open-tasks | N/A | 6.6 Wire settings to `use-settings.ts` hooks |
-| deferred:open-tasks | N/A | 7.1 Add "Processing..." state to `VoiceInputButton` (spinner animation during on-device transcription) |
-| deferred:open-tasks | N/A | 7.2 Add "Transcribing..." placeholder to input field during on-device processing |
-| deferred:open-tasks | N/A | 7.3 Replace indicator with transcript text when processing completes |
-| deferred:open-tasks | N/A | 8.1 Add unit tests for engine abstraction (mock SpeechRecognition and Whisper worker) |
-| deferred:open-tasks | N/A | 8.2 Add unit tests for model cache operations (mock Cache API) |
-| deferred:open-tasks | N/A | 8.3 Add E2E test for STT engine settings UI |
-| deferred:open-tasks | N/A | 8.4 Add E2E test for model download/delete flow (mocked) |
-| deferred:open-tasks | N/A | 8.5 Add backend tests for STT engine settings API endpoints |
-| deferred:open-tasks | N/A | 1.1 Install Tauri v2 CLI and `@tauri-apps/api` in `web/` |
-| deferred:open-tasks | N/A | 1.2 Run `npx tauri init` and configure `tauri.conf.json` (app name, identifier, window settings) |
-| deferred:open-tasks | N/A | 1.3 Configure `src-tauri/Cargo.toml` with required Tauri plugins |
-| deferred:open-tasks | N/A | 1.4 Configure Vite to work with Tauri dev server (dev URL forwarding) |
-| deferred:open-tasks | N/A | 1.5 Add `src-tauri/target/` to `.gitignore` |
-| deferred:open-tasks | N/A | 2.1 Extend `web/src/lib/platform.ts` to detect Tauri via `window.__TAURI_INTERNALS__` |
-| deferred:open-tasks | N/A | 2.2 Add `isTauri()` function returning boolean |
-| deferred:open-tasks | N/A | 2.3 Update `getPlatform()` to return `"desktop"` when running in Tauri |
-| deferred:open-tasks | N/A | 3.1 Add `tauri-plugin-tray` to Rust dependencies |
-| deferred:open-tasks | N/A | 3.2 Create system tray with app icon in `src-tauri/src/tray.rs` |
-| deferred:open-tasks | N/A | 3.3 Implement context menu: Open App, Ingest URL, Start Voice Input, Quit |
-| deferred:open-tasks | N/A | 3.4 Handle "Open App" action (show and focus main window) |
-| deferred:open-tasks | N/A | 3.5 Handle "Ingest URL" action (open small input dialog, call save-url API) |
-| deferred:open-tasks | N/A | 3.6 Handle "Start Voice Input" action (launch floating overlay) |
-| deferred:open-tasks | N/A | 3.7 Handle "Quit" action (exit app and remove tray) |
-| deferred:open-tasks | N/A | 4.1 Add `tauri-plugin-global-shortcut` to Rust dependencies |
-| deferred:open-tasks | N/A | 4.2 Register `Cmd+Shift+V` / `Ctrl+Shift+V` as global shortcut on app start |
-| deferred:open-tasks | N/A | 4.3 Create floating voice input overlay window (small, always-on-top, transparent background) |
-| deferred:open-tasks | N/A | 4.4 Wire shortcut to toggle voice input and show/hide floating overlay |
-| deferred:open-tasks | N/A | 4.5 Handle shortcut registration failure gracefully (log warning, no crash) |
-| deferred:open-tasks | N/A | 4.6 Add shortcut customization to settings UI |
-| deferred:open-tasks | N/A | 5.1 Listen for `tauri://file-drop` events on the main window |
-| deferred:open-tasks | N/A | 5.2 Validate dropped files against supported format list (PDF, DOCX, PPTX, XLSX, TXT, MD, HTML) |
-| deferred:open-tasks | N/A | 5.3 Upload valid files via `POST /api/v1/documents/upload` |
-| deferred:open-tasks | N/A | 5.4 Show drop zone overlay when files are dragged over the window |
-| deferred:open-tasks | N/A | 5.5 Display success/error toast for each dropped file |
-| deferred:open-tasks | N/A | 5.6 Support multiple file drops with summary notification |
-| deferred:open-tasks | N/A | 6.1 Add `tauri-plugin-notification` to Rust dependencies |
-| deferred:open-tasks | N/A | 6.2 Request notification permission on first launch |
-| deferred:open-tasks | N/A | 6.3 Subscribe to backend SSE endpoint (`GET /api/v1/notifications/stream`) on app start |
-| deferred:open-tasks | N/A | 6.4 Convert incoming SSE events to native desktop notifications via Tauri notification plugin |
-| deferred:open-tasks | N/A | 6.5 Handle notification click — show/focus window, navigate via event `payload.url` |
-| deferred:open-tasks | N/A | 6.6 Implement SSE reconnection with `Last-Event-ID` for missed events |
-| deferred:open-tasks | N/A | 7.1 Add `pnpm tauri:dev` script (Tauri dev mode with Vite HMR) |
-| deferred:open-tasks | N/A | 7.2 Add `pnpm tauri:build` script (production build for current platform) |
-| deferred:open-tasks | N/A | 7.3 Add `pnpm tauri:build:all` script (cross-platform builds via CI) |
-| deferred:open-tasks | N/A | 7.4 Document Rust toolchain setup requirements |
-| deferred:open-tasks | N/A | 8.1 Add E2E tests for platform detection (mock Tauri context) |
-| deferred:open-tasks | N/A | 8.2 Add E2E tests for drag-and-drop file upload (mocked) |
-| deferred:open-tasks | N/A | 8.3 Manual testing checklist for macOS, Windows, Linux builds |
-| deferred:open-tasks | N/A | 8.4 Test global shortcut registration and voice overlay flow |
-| deferred:open-tasks | N/A | 1.1 Create `web/src/hooks/use-voice-input.ts` with `useVoiceInput` hook wrapping SpeechRecognition API |
-| deferred:open-tasks | N/A | 1.2 Implement feature detection (`isSupported`) for `SpeechRecognition` / `webkitSpeechRecognition` |
-| deferred:open-tasks | N/A | 1.3 Implement `startListening`, `stopListening`, `toggleListening` control methods |
-| deferred:open-tasks | N/A | 1.4 Implement interim transcript (`interimTranscript`) and final transcript (`transcript`) state |
-| deferred:open-tasks | N/A | 1.5 Implement `continuous` mode and `lang` configuration options |
-| deferred:open-tasks | N/A | 1.6 Implement `resetTranscript` method |
-| deferred:open-tasks | N/A | 1.7 Handle all SpeechRecognition error events (`not-allowed`, `no-speech`, `network`, `audio-capture`) with user-facing  |
-| deferred:open-tasks | N/A | 2.1 Create `web/src/components/voice/VoiceInputButton.tsx` with microphone icon (Lucide `Mic` / `MicOff`) |
-| deferred:open-tasks | N/A | 2.2 Implement idle state (mic icon, `aria-label="Start voice input"`) |
-| deferred:open-tasks | N/A | 2.3 Implement recording state (pulsing red ring animation, `aria-label="Stop voice input"`) |
-| deferred:open-tasks | N/A | 2.4 Implement disabled state (`aria-disabled="true"`, tooltip for unsupported browsers) |
-| deferred:open-tasks | N/A | 2.5 Implement error state (brief error indicator + toast notification) |
-| deferred:open-tasks | N/A | 2.6 Add keyboard activation (Enter/Space toggle) |
-| deferred:open-tasks | N/A | 3.1 Add `VoiceInputButton` to `ChatInput.tsx` adjacent to the send button |
-| deferred:open-tasks | N/A | 3.2 Wire `useVoiceInput` to append final transcript to textarea content |
-| deferred:open-tasks | N/A | 3.3 Display interim transcript in textarea with reduced opacity styling |
-| deferred:open-tasks | N/A | 3.4 Implement auto-submit behavior (when enabled, submit on final result in single-utterance mode) |
-| deferred:open-tasks | N/A | 3.5 Auto-resize textarea after voice transcript insertion |
-| deferred:open-tasks | N/A | 4.1 Add `VoiceInputButton` inside the main search input (right side) |
-| deferred:open-tasks | N/A | 4.2 Wire voice transcript to replace search text and trigger search automatically |
-| deferred:open-tasks | N/A | 5.1 Extend `voice_settings_routes.py` to include `input_language`, `input_continuous`, `input_auto_submit` fields |
-| deferred:open-tasks | N/A | 5.2 Add defaults: `input_language="en-US"`, `input_continuous="false"`, `input_auto_submit="false"` |
-| deferred:open-tasks | N/A | 5.3 Add `PUT /api/v1/settings/voice/input_language` with BCP-47 validation |
-| deferred:open-tasks | N/A | 5.4 Add `PUT /api/v1/settings/voice/input_continuous` with boolean validation |
-| deferred:open-tasks | N/A | 5.5 Add `PUT /api/v1/settings/voice/input_auto_submit` with boolean validation |
-| deferred:open-tasks | N/A | 5.6 Add `DELETE` endpoints for each voice input field (reset to default) |
-| deferred:open-tasks | N/A | 6.1 Add Voice Input subsection to `VoiceConfigurator.tsx` below existing TTS settings |
-| deferred:open-tasks | N/A | 6.2 Add language selector dropdown (English US, English UK, Spanish, French, German, Japanese, Chinese) |
-| deferred:open-tasks | N/A | 6.3 Add continuous mode toggle with description |
-| deferred:open-tasks | N/A | 6.4 Add auto-submit toggle with description |
-| deferred:open-tasks | N/A | 6.5 Wire settings to `use-settings.ts` hooks (query + mutations for voice input fields) |
-| deferred:open-tasks | N/A | 6.6 Add source badges (env/db/default) for voice input settings |
-| deferred:open-tasks | N/A | 7.1 Create `POST /api/v1/voice/cleanup` endpoint accepting `{ "text": "..." }` and returning `{ "cleaned_text": "..." }` |
-| deferred:open-tasks | N/A | 7.2 Add cleanup prompt template (fix grammar, remove filler words, structure text, preserve intent) |
-| deferred:open-tasks | N/A | 7.3 Add `VOICE_CLEANUP = "voice_cleanup"` to `ModelStep` enum in `src/config/models.py` |
-| deferred:open-tasks | N/A | 7.4 Add `voice_cleanup: claude-haiku-4-5` to `default_models` in `src/config/model_registry.yaml` |
-| deferred:open-tasks | N/A | 7.5 Add `voice_cleanup` parameter to `ModelConfig.__init__()` and wire to `self._models` |
-| deferred:open-tasks | N/A | 7.6 Wire cleanup endpoint to use `model_config.get_model_for_step(ModelStep.VOICE_CLEANUP)` |
-| deferred:open-tasks | N/A | 7.7 Update model settings test step count assertion in `tests/api/test_model_settings_api.py` |
-| deferred:open-tasks | N/A | 8.1 Create `CleanupButton` component (sparkle/wand icon) with loading spinner state |
-| deferred:open-tasks | N/A | 8.2 Add `CleanupButton` to `ChatInput.tsx` adjacent to `VoiceInputButton` |
-| deferred:open-tasks | N/A | 8.3 Add `POST /api/v1/voice/cleanup` API client function in `web/src/lib/api/` |
-| deferred:open-tasks | N/A | 8.4 Wire cleanup button to call API, replace textarea content with cleaned text |
-| deferred:open-tasks | N/A | 8.5 Implement voice key phrase detection ("clean up") in continuous mode to auto-trigger cleanup |
-| deferred:open-tasks | N/A | 8.6 Add keyboard shortcut `Ctrl+Shift+C` / `Cmd+Shift+C` for cleanup |
-| deferred:open-tasks | N/A | 8.7 Handle cleanup errors (preserve original text, show error toast) |
-| deferred:open-tasks | N/A | 8.8 Add cleanup key phrase configuration to voice input settings |
-| deferred:open-tasks | N/A | 9.1 Add ARIA live region for voice input state announcements ("Recording started", "Recording stopped") |
-| deferred:open-tasks | N/A | 9.2 Ensure focus returns to input field when voice input stops |
-| deferred:open-tasks | N/A | 9.3 Position cursor at end of inserted text after transcript insertion |
-| deferred:open-tasks | N/A | 10.1 Add E2E test for voice input button rendering in ChatInput |
-| deferred:open-tasks | N/A | 10.2 Add E2E test for voice input button rendering in search |
-| deferred:open-tasks | N/A | 10.3 Add E2E test for voice input settings UI (language, continuous, auto-submit toggles) |
-| deferred:open-tasks | N/A | 10.4 Add E2E test for disabled state on unsupported browsers (mock `SpeechRecognition` as undefined) |
-| deferred:open-tasks | N/A | 10.5 Add backend tests for voice input settings API endpoints (GET, PUT, DELETE) |
-| deferred:open-tasks | N/A | 10.6 Add backend tests for voice cleanup API endpoint |
-| deferred:open-tasks | N/A | 10.7 Add E2E test for cleanup button rendering and click flow (mocked API) |
-| deferred:open-tasks | N/A | 10.8 Add E2E test for cleanup keyboard shortcut |
-| deferred:open-tasks | N/A | 1.1 Create Alembic migration for `contents` table: |
-| deferred:open-tasks | N/A | 1.2 Create migration for `newsletter_summaries` table (same fields) |
-| deferred:open-tasks | N/A | 1.3 Create migration for `digests` table (same fields) |
-| deferred:open-tasks | N/A | 1.4 Test migrations and rollback |
-| deferred:open-tasks | N/A | 2.1 Add `is_public` and `share_token` to `Content` model |
-| deferred:open-tasks | N/A | 2.2 Add fields to `NewsletterSummary` model |
-| deferred:open-tasks | N/A | 2.3 Add fields to `Digest` model |
-| deferred:open-tasks | N/A | 2.4 Create Pydantic schemas: `ShareRequest`, `ShareResponse`, `ShareStatus` |
-| deferred:open-tasks | N/A | 3.1 Add `POST /api/v1/content/{id}/share` - enable sharing |
-| deferred:open-tasks | N/A | 3.2 Add `GET /api/v1/content/{id}/share` - get share status |
-| deferred:open-tasks | N/A | 3.3 Add `DELETE /api/v1/content/{id}/share` - disable sharing |
-| deferred:open-tasks | N/A | 3.4 Duplicate for `/summaries/{id}/share` |
-| deferred:open-tasks | N/A | 3.5 Duplicate for `/digests/{id}/share` |
-| deferred:open-tasks | N/A | 4.1 Create `src/api/shared_routes.py` |
-| deferred:open-tasks | N/A | 4.2 Implement `GET /shared/content/{token}` |
-| deferred:open-tasks | N/A | 4.3 Implement `GET /shared/summary/{token}` |
-| deferred:open-tasks | N/A | 4.4 Implement `GET /shared/digest/{token}` |
-| deferred:open-tasks | N/A | 4.5 Implement `GET /shared/audio/{token}` (redirect to storage URL) |
-| deferred:open-tasks | N/A | 4.6 Add content negotiation (HTML vs JSON) |
-| deferred:open-tasks | N/A | 5.1 Create `src/templates/shared/base.html` with OG tags |
-| deferred:open-tasks | N/A | 5.2 Create `content.html` template |
-| deferred:open-tasks | N/A | 5.3 Create `summary.html` template |
-| deferred:open-tasks | N/A | 5.4 Create `digest.html` template with audio player |
-| deferred:open-tasks | N/A | 5.5 Add responsive CSS for mobile |
-| deferred:open-tasks | N/A | 5.6 Add "Shared via Newsletter Aggregator" attribution |
-| deferred:open-tasks | N/A | 6.1 Add rate limiting middleware for `/shared/*` |
-| deferred:open-tasks | N/A | 6.2 Configure limits (100/min per IP) |
-| deferred:open-tasks | N/A | 6.3 Add `Retry-After` header on 429 |
-| deferred:open-tasks | N/A | 7.1 Unit tests for share token generation |
-| deferred:open-tasks | N/A | 7.2 API tests for share management endpoints |
-| deferred:open-tasks | N/A | 7.3 Tests for public access (valid token, invalid token, disabled share) |
-| deferred:open-tasks | N/A | 7.4 Test HTML and JSON response formats |
-| deferred:open-tasks | N/A | 7.5 Test rate limiting |
-| deferred:open-tasks | N/A | 8.1 Document sharing feature in user guide |
-| deferred:open-tasks | N/A | 8.2 Add API documentation for share endpoints |
-| markers | .gemini/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
-| markers | .gemini/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
-| markers | .gemini/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
-| markers | .gemini/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
-| markers | .gemini/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
-| markers | .gemini/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
-| markers | .claude/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
-| markers | .claude/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
-| markers | .claude/skills/bug-scrub/tests/test_collect_markers.py:130 | FIXME: in b\n") |
-| markers | .claude/skills/bug-scrub/tests/test_collect_markers.py:281 | FIXME: no git here\n") |
-| markers | .codex/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
-| markers | .codex/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
-| markers | .codex/skills/bug-scrub/tests/test_collect_markers.py:130 | FIXME: in b\n") |
-| markers | .codex/skills/bug-scrub/tests/test_collect_markers.py:281 | FIXME: no git here\n") |
+| deferred:open-tasks | N/A | 1.1 Finalize Obsidian clip frontmatter contract (`source_url`, `captured_at`, optional fields) |
+| deferred:open-tasks | N/A | 1.2 Publish ACA-recommended Web Clipper template |
+| deferred:open-tasks | N/A | 1.3 Define compatibility behavior for missing/extra fields |
+| deferred:open-tasks | N/A | 2.1 Add settings for vault path + ingest folder + settle/poll controls |
+| deferred:open-tasks | N/A | 2.2 Enforce allowed-root validation and path traversal protection |
+| deferred:open-tasks | N/A | 2.3 Add runtime support for `type: obsidian_ingest` in source loader |
+| deferred:open-tasks | N/A | 3.1 Add migration for `obsidian_ingest_state` table |
+| deferred:open-tasks | N/A | 3.2 Add indexes for `status` and `canonical_url_hash` |
+| deferred:open-tasks | N/A | 3.3 Add data access methods for upsert/read transitions |
+| deferred:open-tasks | N/A | 4.1 Implement poller for markdown files in ingest folder |
+| deferred:open-tasks | N/A | 4.2 Add file settle-window stabilization checks |
+| deferred:open-tasks | N/A | 4.3 Skip temp/lock/partial files safely |
+| deferred:open-tasks | N/A | 4.4 Add optional watcher trigger with poller fallback |
+| deferred:open-tasks | N/A | 5.1 Parse frontmatter and validate required fields |
+| deferred:open-tasks | N/A | 5.2 Normalize Obsidian constructs (wikilinks/embeds/callouts) |
+| deferred:open-tasks | N/A | 5.3 Extract canonical URL + compute dedupe hashes |
+| deferred:open-tasks | N/A | 5.4 Map normalized payload to existing ingestion contract |
+| deferred:open-tasks | N/A | 6.1 Deduplicate by canonical URL hash (primary), file hash (fallback) |
+| deferred:open-tasks | N/A | 6.2 Record failure classes and actionable error messages |
+| deferred:open-tasks | N/A | 6.3 Auto-retry on file changes |
+| deferred:open-tasks | N/A | 6.4 Add manual reprocess operation for failed notes |
+| deferred:open-tasks | N/A | 7.1 Add optional move-to-processed-folder behavior |
+| deferred:open-tasks | N/A | 7.2 Handle filename collisions deterministically |
+| deferred:open-tasks | N/A | 7.3 Keep state-table idempotency when move is disabled |
+| deferred:open-tasks | N/A | 8.1 Unit: frontmatter parsing, URL canonicalization, hash strategy |
+| deferred:open-tasks | N/A | 8.2 Integration: poller + settle behavior under partial-write simulation |
+| deferred:open-tasks | N/A | 8.3 Integration: duplicate clip replay and content linking behavior |
+| deferred:open-tasks | N/A | 8.4 Migration: `obsidian_ingest_state` create/rollback coverage |
+| deferred:open-tasks | N/A | 8.5 Negative-path: path traversal, malformed YAML, invalid URL |
+| deferred:open-tasks | N/A | 9.1 Add setup docs for Obsidian Sync/iCloud/Dropbox variants |
+| deferred:open-tasks | N/A | 9.2 Add security/privacy and trust-boundary guidance |
+| deferred:open-tasks | N/A | 9.3 Add troubleshooting for sync lag, lock files, malformed clips |
+| deferred:open-tasks | N/A | 9.4 Maintain `sources.d/obsidian-ingest.yaml.example` |
+| deferred:open-tasks | N/A | 9.5 Promote to active `.yaml` only after 2.3 lands |
+| deferred:open-tasks | N/A | Align OpenAPI, server, and generated client request/response shapes. |
+| deferred:open-tasks | N/A | Document canonical PATCH behavior in current durable design docs or an |
+| deferred:open-tasks | N/A | Add component and browser tests for source settings operations. |
+| deferred:open-tasks | N/A | Add migration upgrade evidence against a disposable PostgreSQL database. |
+| deferred:open-tasks | N/A | Document database source override setup, precedence, and recovery. |
+| deferred:open-tasks | N/A | Run contract drift, backend, frontend, migration, and strict OpenSpec |
+| deferred:open-tasks | N/A | Done |
+| deferred:open-tasks | N/A | Refine effective configuration and router-factory contracts. |
+| deferred:open-tasks | N/A | Define a non-executable classifier format, dependency, immutable |
+| deferred:open-tasks | N/A | Implement real paired-dataset generation or import. |
+| deferred:open-tasks | N/A | Close the training/calibration/enablement bootstrap loop. |
+| deferred:open-tasks | N/A | Align configured judges, optional human verdicts, failures, and cost data. |
+| deferred:open-tasks | N/A | Align CLI, API, durable operation behavior, and documentation. |
+| deferred:open-tasks | N/A | Prove fresh-runtime config consumption, weak-model selection, decision |
+| deferred:open-tasks | N/A | Prove tampered, malformed, traversal, symlink-escape, and legacy-pickle |
+| deferred:open-tasks | N/A | Planning |
+| deferred:open-tasks | N/A | Implementation |
+| deferred:open-tasks | N/A | Testing |
+| deferred:open-tasks | N/A | Review |
+| deferred:open-tasks | N/A | Done |
+| deferred:open-tasks | N/A | Define detailed requirements |
+| deferred:open-tasks | N/A | Implement core functionality |
+| deferred:open-tasks | N/A | Write tests |
+| deferred:open-tasks | N/A | Update documentation |
+| deferred:open-tasks | N/A | Review and merge |
+| deferred:open-tasks | N/A | Planning |
+| deferred:open-tasks | N/A | Implementation |
+| deferred:open-tasks | N/A | Testing |
+| deferred:open-tasks | N/A | Review |
+| deferred:open-tasks | N/A | Done |
+| deferred:open-tasks | N/A | Define detailed requirements |
+| deferred:open-tasks | N/A | Implement core functionality |
+| deferred:open-tasks | N/A | Write tests |
+| deferred:open-tasks | N/A | Update documentation |
+| deferred:open-tasks | N/A | Review and merge |
+| deferred:open-tasks | N/A | Inventory current filtering behavior and select retained historical |
+| deferred:open-tasks | N/A | Define global/persona/source/command control precedence in typed contracts. |
+| deferred:open-tasks | N/A | Retain and implement the language gate with detector/fail-open tests, or |
+| deferred:open-tasks | N/A | Align dry-run, rerun, explain, content projection, feedback, and |
+| deferred:open-tasks | N/A | Create a reviewed implementation plan and work-package graph. |
+| deferred:open-tasks | N/A | Implement retained gaps test-first without restoring legacy execution. |
+| deferred:open-tasks | N/A | Validate cross-surface contracts, behavior, documentation, and migration |
+| deferred:open-tasks | N/A | Planning |
+| deferred:open-tasks | N/A | Implementation |
+| deferred:open-tasks | N/A | Testing |
+| deferred:open-tasks | N/A | Review |
+| deferred:open-tasks | N/A | Done |
+| deferred:open-tasks | N/A | Define detailed requirements |
+| deferred:open-tasks | N/A | Implement core functionality |
+| deferred:open-tasks | N/A | Write tests |
+| deferred:open-tasks | N/A | Update documentation |
+| deferred:open-tasks | N/A | Review and merge |
+| deferred:open-tasks | N/A | Align all image names and version documentation to the canonical build. |
+| deferred:open-tasks | N/A | Capture production topology, active revisions/digests, backup, rollback, |
+| deferred:open-tasks | N/A | Obtain explicit production deployment authority. |
+| deferred:open-tasks | N/A | Deploy or verify the immutable ParadeDB image digest. |
+| deferred:open-tasks | N/A | Capture extension/version and `paradedb_bm25` evidence. |
+| deferred:open-tasks | N/A | Capture one revision-correlated Langfuse trace round trip. |
+| deferred:open-tasks | N/A | Validate health, restore/rollback readiness, documentation, and evidence. |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.codex/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.codex/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.codex/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.codex/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.codex/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.codex/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.claude/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.claude/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.claude/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.claude/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.claude/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.claude/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.claude/skills/refresh-architecture/scripts/tests/test_enrich_with_treesitter.py:92 | FIXME: broken") |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.claude/skills/refresh-architecture/scripts/tests/test_comment_linker.py:39 | FIXME: broken", "language": "python", |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.agents/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.agents/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.agents/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.agents/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.agents/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.agents/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.agents/skills/refresh-architecture/scripts/tests/test_enrich_with_treesitter.py:92 | FIXME: broken") |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.agents/skills/refresh-architecture/scripts/tests/test_comment_linker.py:39 | FIXME: broken", "language": "python", |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.gemini/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.gemini/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.gemini/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.gemini/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.gemini/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/roadmap-workflow-surface-reliability/.gemini/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.codex/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.codex/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.codex/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.codex/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.codex/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.codex/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.claude/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.claude/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.claude/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.claude/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.claude/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.claude/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.claude/skills/refresh-architecture/scripts/tests/test_enrich_with_treesitter.py:92 | FIXME: broken") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.claude/skills/refresh-architecture/scripts/tests/test_comment_linker.py:39 | FIXME: broken", "language": "python", |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.agents/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.agents/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.agents/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.agents/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.agents/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.agents/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.agents/skills/refresh-architecture/scripts/tests/test_enrich_with_treesitter.py:92 | FIXME: broken") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.agents/skills/refresh-architecture/scripts/tests/test_comment_linker.py:39 | FIXME: broken", "language": "python", |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.gemini/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.gemini/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.gemini/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.gemini/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.gemini/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-reconciliation/.gemini/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.codex/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.codex/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.codex/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.codex/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.codex/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.codex/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.claude/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.claude/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.claude/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.claude/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.claude/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.claude/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.claude/skills/refresh-architecture/scripts/tests/test_enrich_with_treesitter.py:92 | FIXME: broken") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.claude/skills/refresh-architecture/scripts/tests/test_comment_linker.py:39 | FIXME: broken", "language": "python", |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.agents/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.agents/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.agents/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.agents/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.agents/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.agents/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.agents/skills/refresh-architecture/scripts/tests/test_enrich_with_treesitter.py:92 | FIXME: broken") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.agents/skills/refresh-architecture/scripts/tests/test_comment_linker.py:39 | FIXME: broken", "language": "python", |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.gemini/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.gemini/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.gemini/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.gemini/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.gemini/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-retry/.gemini/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.codex/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.codex/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.codex/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.codex/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.codex/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.codex/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.claude/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.claude/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.claude/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.claude/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.claude/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.claude/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.claude/skills/refresh-architecture/scripts/tests/test_enrich_with_treesitter.py:92 | FIXME: broken") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.claude/skills/refresh-architecture/scripts/tests/test_comment_linker.py:39 | FIXME: broken", "language": "python", |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.agents/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.agents/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.agents/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.agents/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.agents/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.agents/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.agents/skills/refresh-architecture/scripts/tests/test_enrich_with_treesitter.py:92 | FIXME: broken") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.agents/skills/refresh-architecture/scripts/tests/test_comment_linker.py:39 | FIXME: broken", "language": "python", |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.gemini/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.gemini/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.gemini/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.gemini/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.gemini/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-contracts/.gemini/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.codex/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.codex/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.codex/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.codex/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.codex/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.codex/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.claude/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.claude/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.claude/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.claude/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.claude/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.claude/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.claude/skills/refresh-architecture/scripts/tests/test_enrich_with_treesitter.py:92 | FIXME: broken") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.claude/skills/refresh-architecture/scripts/tests/test_comment_linker.py:39 | FIXME: broken", "language": "python", |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.agents/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.agents/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.agents/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.agents/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.agents/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.agents/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.agents/skills/refresh-architecture/scripts/tests/test_enrich_with_treesitter.py:92 | FIXME: broken") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.agents/skills/refresh-architecture/scripts/tests/test_comment_linker.py:39 | FIXME: broken", "language": "python", |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.gemini/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.gemini/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.gemini/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.gemini/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.gemini/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-surfaces/.gemini/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.codex/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.codex/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.codex/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.codex/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.codex/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.codex/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.claude/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.claude/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.claude/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.claude/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.claude/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.claude/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.claude/skills/refresh-architecture/scripts/tests/test_enrich_with_treesitter.py:92 | FIXME: broken") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.claude/skills/refresh-architecture/scripts/tests/test_comment_linker.py:39 | FIXME: broken", "language": "python", |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.agents/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.agents/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.agents/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.agents/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.agents/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.agents/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.agents/skills/refresh-architecture/scripts/tests/test_enrich_with_treesitter.py:92 | FIXME: broken") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.agents/skills/refresh-architecture/scripts/tests/test_comment_linker.py:39 | FIXME: broken", "language": "python", |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.gemini/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.gemini/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.gemini/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.gemini/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.gemini/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-schema/.gemini/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.codex/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.codex/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.codex/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.codex/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.codex/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.codex/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.claude/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.claude/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.claude/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.claude/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.claude/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.claude/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.claude/skills/refresh-architecture/scripts/tests/test_enrich_with_treesitter.py:92 | FIXME: broken") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.claude/skills/refresh-architecture/scripts/tests/test_comment_linker.py:39 | FIXME: broken", "language": "python", |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.agents/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.agents/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.agents/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.agents/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.agents/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.agents/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.agents/skills/refresh-architecture/scripts/tests/test_enrich_with_treesitter.py:92 | FIXME: broken") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.agents/skills/refresh-architecture/scripts/tests/test_comment_linker.py:39 | FIXME: broken", "language": "python", |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.gemini/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.gemini/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.gemini/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.gemini/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.gemini/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-integration/.gemini/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.codex/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.codex/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.codex/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.codex/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.codex/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.codex/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.claude/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.claude/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.claude/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.claude/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.claude/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.claude/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.claude/skills/refresh-architecture/scripts/tests/test_enrich_with_treesitter.py:92 | FIXME: broken") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.claude/skills/refresh-architecture/scripts/tests/test_comment_linker.py:39 | FIXME: broken", "language": "python", |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.agents/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.agents/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.agents/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.agents/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.agents/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.agents/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.agents/skills/refresh-architecture/scripts/tests/test_enrich_with_treesitter.py:92 | FIXME: broken") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.agents/skills/refresh-architecture/scripts/tests/test_comment_linker.py:39 | FIXME: broken", "language": "python", |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.gemini/skills/bug-scrub/tests/test_collect_markers.py:60 | FIXME: race condition\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.gemini/skills/bug-scrub/tests/test_collect_markers.py:69 | HACK: fragile workaround\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.gemini/skills/bug-scrub/tests/test_collect_markers.py:105 | FIXME: second item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.gemini/skills/bug-scrub/tests/test_collect_markers.py:106 | HACK: third item\n" |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.gemini/skills/bug-scrub/tests/test_collect_markers.py:135 | FIXME: in b\n") |
+| markers | .git-worktrees/stuck-content-sweeper-and-requeue-cli/wp-fence/.gemini/skills/bug-scrub/tests/test_collect_markers.py:292 | FIXME: no git here\n") |
 
 ## Low / Info Findings
 
-- **Low**: 417 findings
+- **Low**: 1191 findings
 - **Info**: 0 findings
 
 _(See JSON report for full details)_
 
 ## Recommendations
 
-1. Fix failing tests before other fixes
-2. Run /fix-scrub --tier auto for quick lint fixes
-3. Consolidate deferred items into a follow-up proposal
-4. Consider running /fix-scrub --dry-run to preview remediation plan
+1. Run /fix-scrub --tier auto for quick lint fixes
+2. Consolidate deferred items into a follow-up proposal
+3. Consider running /fix-scrub --dry-run to preview remediation plan
