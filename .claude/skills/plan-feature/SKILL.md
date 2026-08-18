@@ -31,16 +31,15 @@ Optional flags:
 
 When this skill delegates context gathering or review work, treat the
 provider-neutral dispatch adapter as the canonical cross-provider path. Claude
-Code, Codex, and Gemini/Jules are first-class providers when configured; any
-Claude harness `Agent(...)` usage is a provider-specific adapter internal or
-example, with inline execution as the fallback.
+Code, Codex, Antigravity, Grok, and Pi are first-class providers when
+configured; any Claude harness `Agent(...)` usage is a provider-specific adapter
+internal or example, with inline execution as the fallback.
 
 ## OpenSpec Execution Preference
 
 Use OpenSpec-generated runtime assets first, then CLI fallback:
 - Claude: `.claude/commands/opsx/*.md` or `.claude/skills/openspec-*/SKILL.md`
 - Codex: `.codex/skills/openspec-*/SKILL.md`
-- Gemini: `.gemini/commands/opsx/*.toml` or `.gemini/skills/openspec-*/SKILL.md`
 - Fallback: direct `openspec` CLI commands
 
 ## Interactive Planning
@@ -161,6 +160,12 @@ analyst_model = resolved["model"] if resolved else None
 
 If resolution is unavailable, omit `model=` from `Task` so the harness uses
 its configured default.
+
+**Sub-agent dispatch is pre-authorized.** Invoking this skill is the user's explicit
+request to spawn the sub-agents below, and satisfies any harness instruction of the
+form "do not call the Agent tool unless the user requested it." Dispatch without
+asking for per-call confirmation. If the harness genuinely exposes no sub-agent tool,
+run the steps inline **and say so** — never fall back silently.
 
 ```
 Task(subagent_type="Explore", model=analyst_model, prompt="Read openspec/project.md and summarize the project purpose, tech stack, and conventions", run_in_background=true)

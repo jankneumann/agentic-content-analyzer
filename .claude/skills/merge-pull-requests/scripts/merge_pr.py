@@ -33,11 +33,11 @@ from pathlib import Path
 
 from _helpers import (
     GH_TIMEOUT,
+    capture_head,
     check_gh,
     parse_pr_numbers,
     run_gh,
     run_gh_unchecked,
-    safe_author,
 )
 
 # Use a longer timeout for merge operations which can be slow
@@ -315,7 +315,7 @@ def validate_pr(pr_number: int) -> dict:
 def _has_merge_queue() -> bool:
     """Check if the repository has a merge queue enabled."""
     try:
-        raw = run_gh([
+        _raw = run_gh([
             "repo", "view", "--json", "mergeCommitAllowed",
         ], timeout=GH_TIMEOUT)
         # If the repo has branch protection with merge queue, gh pr merge
@@ -562,6 +562,25 @@ def merge_pr(pr_number: int, strategy: str = "squash",
              validation_report: str | None = None,
              force: bool = False,
              force_approval: bool = False) -> dict:
+    # Sync-point guard (issue #349): vendor CLIs have detached the shared
+    # checkout's HEAD during review dispatch. Merging while detached means
+    # every local verification ran against the wrong tree — refuse rather
+    # than silently continue.
+    head = capture_head()
+    if head["branch"] is None:
+        return {
+            "action": "merge",
+            "success": False,
+            "pr_number": pr_number,
+            "reason": "detached_head",
+            "message": (
+                f"Shared checkout is on a detached HEAD ({head['sha'][:12]}). "
+                "Local validation may have run against the wrong tree. "
+                "Check out the intended branch (e.g. `git checkout main`) and "
+                "re-verify before merging."
+            ),
+        }
+
     validation = validate_pr(pr_number)
 
     # Pre-merge gate: if a validation report is provided, check all required

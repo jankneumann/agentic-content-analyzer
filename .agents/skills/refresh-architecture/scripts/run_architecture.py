@@ -1,18 +1,37 @@
 #!/usr/bin/env python3
-"""Run the architecture refresh pipeline against an arbitrary target directory."""
+"""Run the architecture refresh pipeline against an arbitrary target directory.
+
+Three modes:
+
+* default — exec ``refresh_architecture.sh`` in place (legacy behavior).
+* ``--check`` — read-only, mtime-independent freshness check via architecture
+  provenance. Writes nothing; exits 0 only when ``fresh`` (ri-04 D4).
+* ``--staged`` — deterministic stage → validate → promote → write provenance.
+  A failed generation leaves the last known-good committed artifacts intact
+  (spec scenarios architecture-refresh.8 and .9).
+"""
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Sequence
 
-
 SCRIPTS_DIR = Path(__file__).resolve().parent
 REFRESH_SCRIPT = SCRIPTS_DIR / "refresh_architecture.sh"
+
+# Ensure ``arch_utils`` is importable under ``python -m`` invocation too.
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+#: Required outputs a full/quick refresh must stage before promotion.
+_REQUIRED_STAGED = ("architecture.graph.json", "architecture.summary.json")
+_STAGING_DIRNAME = ".architecture-staging"
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -38,6 +57,22 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Skip Layer 3 report/view generation",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "Read-only freshness check via architecture provenance. Writes "
+            "nothing; prints a JSON drift report and exits 0 only when fresh."
+        ),
+    )
+    parser.add_argument(
+        "--staged",
+        action="store_true",
+        help=(
+            "Deterministic stage/validate/promote refresh that writes "
+            "architecture provenance and preserves last known-good on failure."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -60,6 +95,145 @@ def build_env(args: argparse.Namespace) -> dict[str, str]:
     return env
 
 
+# --------------------------------------------------------------------------- #
+# Check mode (read-only)
+# --------------------------------------------------------------------------- #
+def run_check(target_dir: Path, *, mode: str) -> int:
+    """Print a JSON freshness report; return 0 only when ``fresh``."""
+    from arch_utils.provenance import check_freshness
+
+    result = check_freshness(target_dir, mode=mode)
+    print(json.dumps(result.to_dict(), indent=2, sort_keys=True))
+    return 0 if result.is_fresh else 1
+
+
+# --------------------------------------------------------------------------- #
+# Staged generation (stage → validate → promote → provenance)
+# --------------------------------------------------------------------------- #
+def _run_pipeline(target_dir: Path, env: dict[str, str], quick: bool) -> int:
+    """Execute refresh_architecture.sh once. Split out for test injection."""
+    cmd = ["bash", str(REFRESH_SCRIPT)]
+    if quick:
+        cmd.append("--quick")
+    try:
+        return subprocess.run(cmd, cwd=str(target_dir), env=env, check=False).returncode
+    except OSError as exc:
+        print(f"ERROR: failed to launch refresh script: {exc}", file=sys.stderr)
+        return 1
+
+
+def _required_outputs_present(staging: Path) -> bool:
+    return all((staging / name).is_file() for name in _REQUIRED_STAGED)
+
+
+def _promote(staging: Path, dest: Path) -> set[str]:
+    """Copy every staged file into *dest*; return the promoted relative paths.
+
+    Atomic per file, and a byte-identical write is skipped so an unchanged
+    rebuild leaves no repository diff. Promotion is a one-way merge on purpose:
+    a file in *dest* with no staged counterpart is left alone, because the
+    optional stages skip soft (a partial refresh must not destroy the last good
+    copy) and ``views/.gitkeep`` is committed but never staged.
+
+    The returned set is what makes that survivable in the record — provenance
+    needs to know which artifacts this run produced, and the output directory
+    cannot tell it. A path is reported as promoted when it was staged, whether
+    or not its bytes changed: an unchanged artifact was still regenerated from
+    the current inputs, which is exactly what a deterministic producer means.
+    """
+    from arch_utils.provenance import _atomic_write_bytes  # canonical primitive
+
+    promoted: set[str] = set()
+    for src in sorted(staging.rglob("*")):
+        if not src.is_file():
+            continue
+        rel = src.relative_to(staging)
+        _atomic_write_bytes(dest / rel, src.read_bytes())
+        promoted.add(rel.as_posix())
+    return promoted
+
+
+def run_staged(target_dir: Path, args: argparse.Namespace) -> int:
+    """Deterministic staged refresh; preserves committed artifacts on failure."""
+    from arch_utils import provenance
+
+    mode = "quick" if args.quick else "full"
+    rev = provenance.analyzed_revision(target_dir)
+    if rev is None:
+        print(
+            "ERROR: --staged requires a committed Git revision (HEAD)",
+            file=sys.stderr,
+        )
+        return 2
+
+    env = build_env(args)
+    # Deterministic clock: every producer stamps the analyzed commit's epoch, so
+    # identical inputs yield byte-identical staged artifacts.
+    env["SOURCE_DATE_EPOCH"] = str(provenance.deterministic_epoch(target_dir, rev))
+
+    staging = target_dir / _STAGING_DIRNAME
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(parents=True, exist_ok=True)
+    env["ARCH_DIR"] = str(staging.resolve())
+
+    try:
+        rc = _run_pipeline(target_dir, env, args.quick)
+        if rc != 0 or not _required_outputs_present(staging):
+            print(
+                "refresh failed before promotion — committed architecture "
+                "artifacts left untouched",
+                file=sys.stderr,
+            )
+            return rc or 1
+
+        dest = target_dir / provenance.ARCH_DIR_DEFAULT
+        dest.mkdir(parents=True, exist_ok=True)
+        promoted = _promote(staging, dest)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+    # Record the roots the analyzers were actually pointed at. `env` carries the
+    # --python-src-dir/--ts-src-dir/--migrations-dir overrides; os.environ does
+    # not, so letting build_provenance fall back to the ambient environment
+    # stamps roots that may not exist and yields an inert input fingerprint.
+    # `promoted` is what this run actually produced. Without it the record is
+    # built by scanning the output directory, which cannot distinguish a fresh
+    # artifact from one a soft-skipped stage left behind at an older revision.
+    doc = provenance.build_provenance(
+        target_dir,
+        mode=mode,
+        roots=provenance.default_input_roots(env),
+        generated=promoted,
+    )
+    changed, _sha = provenance.write_provenance(target_dir, doc)
+    carried_over = [a["path"] for a in doc["artifacts"] if a.get("carried_over")]
+    if carried_over:
+        print(
+            "NOTE: left in place from an earlier revision, not regenerated by "
+            "this run:\n  " + "\n  ".join(carried_over),
+            file=sys.stderr,
+        )
+    print(
+        json.dumps(
+            {
+                "status": "generated",
+                "source_revision": doc["source_revision"],
+                "worktree_dirty": doc["worktree_dirty"],
+                "input_fingerprint": doc["input_fingerprint"],
+                "provenance_changed": changed,
+                "provenance_path": (
+                    f"{provenance.ARCH_DIR_DEFAULT}/{provenance.PROVENANCE_FILENAME}"
+                ),
+                "artifacts": [a["path"] for a in doc["artifacts"]],
+                "carried_over": carried_over,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entrypoint."""
     args = parse_args(argv)
@@ -69,9 +243,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"ERROR: target directory not found: {target_dir}", file=sys.stderr)
         return 2
 
+    mode = "quick" if args.quick else "full"
+
+    if args.check:
+        return run_check(target_dir, mode=mode)
+
     if not REFRESH_SCRIPT.is_file():
         print(f"ERROR: refresh script not found: {REFRESH_SCRIPT}", file=sys.stderr)
         return 2
+
+    if args.staged:
+        return run_staged(target_dir, args)
 
     env = build_env(args)
     # Use bash explicitly so execution does not depend on executable bit state.

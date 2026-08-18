@@ -105,6 +105,7 @@ def test_detect_coordination_partial_capabilities(monkeypatch) -> None:
             "/features/active": {"status_code": 404, "data": {}, "error": "not found"},
             "/merge-queue": {"status_code": 404, "data": {}, "error": "not found"},
             "/issues/list": {"status_code": 404, "data": {}, "error": "not found"},
+            "/search/code/status": {"status_code": 404, "data": {}, "error": "not found"},
         }
         return responses[path]
 
@@ -122,6 +123,7 @@ def test_detect_coordination_partial_capabilities(monkeypatch) -> None:
     assert result["CAN_GUARDRAILS"] is False
     assert result["CAN_FEATURE_REGISTRY"] is False
     assert result["CAN_MERGE_QUEUE"] is False
+    assert result["CAN_CODE_SEARCH"] is False
 
 
 def test_try_lock_skips_when_capability_missing(monkeypatch) -> None:

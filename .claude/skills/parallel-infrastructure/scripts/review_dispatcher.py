@@ -40,8 +40,88 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Canonical review-findings schema access (single source of truth). Imported
+# lazily so the dispatcher still imports in environments that vendor only this
+# file, and located by file path when the scripts dir is not on sys.path.
+# ---------------------------------------------------------------------------
+
+def _schema_mod() -> Any:
+    """Return the ``review_findings_schema`` module, or ``None`` if absent."""
+    try:
+        import review_findings_schema  # type: ignore[import-untyped]
+
+        return review_findings_schema
+    except ImportError:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "review_findings_schema",
+            Path(__file__).parent / "review_findings_schema.py",
+        )
+        if spec and spec.loader:
+            mod = importlib.util.module_from_spec(spec)
+            try:
+                spec.loader.exec_module(mod)  # type: ignore[union-attr]
+                return mod
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("review_findings_schema load failed: %s", exc)
+                return None
+        return None
+
+
+def _validate_findings_or_error(
+    findings: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Validate parsed vendor findings against the canonical schema.
+
+    Returns ``(findings, None)`` when valid (or when validation is
+    unavailable), and ``(None, error)`` when the findings violate the schema —
+    so a drifted finding fails loudly here rather than flowing downstream into
+    the consensus synthesizer as if it conformed.
+    """
+    if findings is None:
+        return None, None
+    mod = _schema_mod()
+    if mod is None:
+        # The canonical schema module is what makes this check meaningful.
+        # Returning the payload as valid here would report success for findings
+        # nothing ever inspected — the false-consensus failure ri-14 exists to
+        # prevent — so an unloadable module fails the dispatch instead.
+        msg = (
+            "review-findings schema module could not be loaded; refusing to "
+            "accept unvalidated findings (expected review_findings_schema.py "
+            f"beside {Path(__file__).name})"
+        )
+        print(f"[ERROR] {msg}", file=sys.stderr)
+        return None, msg
+    try:
+        errors = mod.validate_findings_payload(findings)
+    except Exception as exc:  # noqa: BLE001 — surfaced, never swallowed
+        # Includes ValidationUnavailableError (jsonschema missing) and a
+        # missing/malformed canonical schema file. Every one of those means the
+        # contract could not be checked, which is not the same as it holding.
+        msg = f"review-findings validation could not run: {exc}"
+        print(f"[ERROR] {msg}", file=sys.stderr)
+        return None, msg
+    if errors:
+        detail = "; ".join(errors[:5])
+        msg = f"Findings failed review-findings schema validation: {detail}"
+        print(f"[WARN] {msg}", file=sys.stderr)
+        return None, msg
+    return findings, None
+
+
+# ---------------------------------------------------------------------------
 # Error classification
 # ---------------------------------------------------------------------------
+
+class SchemaInjectionError(RuntimeError):
+    """Raised when the canonical review-findings schema cannot be injected.
+
+    A configuration fault, not a vendor fault: agents.yaml asked for the
+    schema sentinel and the schema could not be resolved to fill it.
+    """
+
 
 class ErrorClass(str, Enum):
     """Classification of vendor subprocess errors."""
@@ -49,23 +129,70 @@ class ErrorClass(str, Enum):
     CAPACITY = "capacity_exhausted"
     AUTH = "auth_required"
     TRANSIENT = "transient"
+    UNAVAILABLE = "vendor_unavailable"
     UNKNOWN = "unknown"
 
 
 _CAPACITY_PATTERNS = ["429", "resource_exhausted", "capacity", "rate limit", "rate_limit"]
 _AUTH_PATTERNS = ["401", "unauthenticated", "token expired", "login required", "unauthorized"]
 _TRANSIENT_PATTERNS = ["500", "503", "unavailable", "internal server error"]
+_UNAVAILABLE_PATTERNS = [
+    "insufficient credits",
+    "insufficient_credits",
+    "payment required",
+    "payment_required",
+    "insufficient_quota",
+]
+# HTTP 402 as a standalone token — not part of a larger number ("8,402 items")
+# or an identifier ("v402").
+_UNAVAILABLE_402_RE = re.compile(r"(?<![\d,.\w])402(?![\d\w])")
 
+# Re-login command per CLI binary, keyed by ``cli.command`` (E4). Only harnesses
+# with a real ``<cmd> login`` subcommand appear here.
 _RELOGIN_COMMANDS: dict[str, str] = {
     "codex": "codex login",
-    "gemini": "gemini login",
+    "grok": "grok login",
     "claude": "claude login",
 }
 
+# Harnesses whose auth is NOT restored by a ``<cmd> login`` subcommand (E4). A
+# fabricated ``agy login`` / ``pi login`` would be invalid, so these carry an
+# explicit manual-remediation hint instead.
+_MANUAL_REAUTH: dict[str, str] = {
+    # agy: no login subcommand — auto-auth on launch; re-auth is the interactive
+    # `/logout` slash command followed by relaunch (design.md §L3).
+    "agy": "re-auth manually: run `/logout` inside an agy session, then relaunch",
+    # pi: env-var key model — a missing key is a config error, not a re-auth
+    # (design.md §L7).
+    "pi": "set OPENROUTER_API_KEY in the environment (pi has no login subcommand)",
+}
 
-def classify_error(stderr: str) -> ErrorClass:
-    """Classify a vendor error from stderr text."""
-    lower = stderr.lower()
+
+def _relogin_hint(command: str) -> str:
+    """Return an actionable auth-recovery hint for a CLI binary (E4).
+
+    Falls back to ``<command> login`` only for binaries not covered by either
+    table — never fabricating an invalid ``agy login`` / ``pi login``.
+    """
+    if command in _RELOGIN_COMMANDS:
+        return _RELOGIN_COMMANDS[command]
+    if command in _MANUAL_REAUTH:
+        return _MANUAL_REAUTH[command]
+    return f"{command} login"
+
+
+def classify_error(text: str) -> ErrorClass:
+    """Classify a vendor error from its output text.
+
+    Accepts stderr OR stdout — some CLIs (pi) exit 0 with the provider's
+    error body on stdout (issue #383), so classification cannot assume the
+    text arrived on stderr. UNAVAILABLE is checked first: a billing body
+    ("Insufficient credits … upgrade your limit") contains words that would
+    otherwise false-positive the capacity patterns.
+    """
+    lower = text.lower()
+    if any(p in lower for p in _UNAVAILABLE_PATTERNS) or _UNAVAILABLE_402_RE.search(lower):
+        return ErrorClass.UNAVAILABLE
     if any(p in lower for p in _AUTH_PATTERNS):
         return ErrorClass.AUTH
     if any(p in lower for p in _CAPACITY_PATTERNS):
@@ -113,6 +240,15 @@ class CliConfig:
     model: str | None = None
     model_fallbacks: list[str] = field(default_factory=list)
     prompt_via_stdin: bool = False
+    # When set, the prompt is attached as the value of this flag (e.g. agy's
+    # ``--prompt``) rather than as a trailing positional or via stdin. E7:
+    # antigravity ignores stdin and a trailing positional — the prompt must be
+    # the value of ``--prompt``/``-p``.
+    prompt_via_flag: str | None = None
+    # Env var the CLI resolves its provider credential from (pi:
+    # OPENROUTER_API_KEY). A present binary with this var unset cannot serve
+    # a request — can_dispatch() fails closed on it (issue #383).
+    api_key_env: str = ""
 
 
 @dataclass
@@ -178,10 +314,56 @@ class CliVendorAdapter:
         self.transport = transport
 
     def can_dispatch(self, mode: str) -> bool:
-        """Check if this adapter can dispatch the given mode."""
+        """Check if this adapter can dispatch the given mode.
+
+        A binary on PATH is not enough when the config declares a required
+        credential env var: pi with OPENROUTER_API_KEY unset cannot serve a
+        single request, so it must not count as available (issue #383).
+        """
         if mode not in self.cli_config.dispatch_modes:
             return False
-        return shutil.which(self.cli_config.command) is not None
+        if shutil.which(self.cli_config.command) is None:
+            return False
+        if self.cli_config.api_key_env and not os.environ.get(self.cli_config.api_key_env):
+            return False
+        return True
+
+    def _resolve_args(self, args: list[str]) -> list[str]:
+        """Expand config placeholders in a mode's args.
+
+        The grok schema sentinel (``@review-findings-schema``) is replaced with
+        the schema derived from the canonical ``review-findings.schema.json``.
+        This is what keeps agents.yaml from carrying a hand-copied — and
+        drift-prone — ``--json-schema`` blob: the schema is injected here from
+        the single canonical file at dispatch time.
+
+        Raises :class:`SchemaInjectionError` when the schema cannot be resolved.
+        Dropping ``--json-schema`` and dispatching anyway used to look like
+        graceful degradation, but grok only populates ``structuredOutput`` when
+        that flag is present (see the agents.yaml comment on the review mode) —
+        so the "degraded" path reliably produced output the dispatcher then
+        rejected as invalid JSON, while the real cause (an unresolvable
+        canonical schema) appeared only as a warning. Failing here names the
+        actual problem.
+        """
+        mod = _schema_mod()
+        sentinel = getattr(mod, "GROK_SCHEMA_SENTINEL", "@review-findings-schema")
+        if sentinel not in args:
+            return list(args)
+
+        if mod is None:
+            raise SchemaInjectionError(
+                "review_findings_schema module could not be loaded, so the "
+                f"{sentinel!r} placeholder in agents.yaml cannot be resolved"
+            )
+        try:
+            schema_arg = mod.grok_schema_arg()
+        except Exception as exc:  # noqa: BLE001 — re-raised with context
+            raise SchemaInjectionError(
+                f"could not derive the canonical review-findings schema: {exc}"
+            ) from exc
+
+        return [schema_arg if arg == sentinel else arg for arg in args]
 
     def build_command(
         self,
@@ -193,13 +375,18 @@ class CliVendorAdapter:
 
         When ``cli_config.prompt_via_stdin`` is True, the prompt is NOT
         appended to the command — it will be passed via stdin instead.
+        When ``cli_config.prompt_via_flag`` is set, the prompt is attached as
+        the value of that flag (e.g. ``--prompt <prompt>``) and is neither a
+        trailing positional nor sent via stdin.
         """
         mode_config = self.cli_config.dispatch_modes[mode]
-        cmd = [self.cli_config.command, *mode_config.args]
+        cmd = [self.cli_config.command, *self._resolve_args(mode_config.args)]
         effective_model = model or self.cli_config.model
         if effective_model:
             cmd.extend([self.cli_config.model_flag, effective_model])
-        if not self.cli_config.prompt_via_stdin:
+        if self.cli_config.prompt_via_flag:
+            cmd.extend([self.cli_config.prompt_via_flag, prompt])
+        elif not self.cli_config.prompt_via_stdin:
             cmd.append(prompt)
         return cmd
 
@@ -234,7 +421,21 @@ class CliVendorAdapter:
             model_name = model or "(default)"
             models_attempted.append(model_name)
 
-            cmd = self.build_command(mode, prompt, model)
+            try:
+                cmd = self.build_command(mode, prompt, model)
+            except SchemaInjectionError as exc:
+                # Fail this vendor, not the whole panel: the other vendors'
+                # dispatches are independent and a partial panel beats none.
+                # Retrying the fallback models would not help — schema
+                # resolution is model-independent.
+                return ReviewResult(
+                    vendor=self.vendor,
+                    success=False,
+                    models_attempted=models_attempted,
+                    elapsed_seconds=time.monotonic() - dispatch_start,
+                    error=f"Schema injection failed: {exc}",
+                    error_class=ErrorClass.UNKNOWN,
+                )
             stdin_text = prompt if self.cli_config.prompt_via_stdin else None
             start = time.monotonic()
 
@@ -250,28 +451,72 @@ class CliVendorAdapter:
                 elapsed = time.monotonic() - start
 
                 if result.returncode == 0:
-                    # Try to parse JSON from stdout
+                    # Try to parse JSON from stdout, then validate against the
+                    # canonical review-findings schema so a drifted finding
+                    # fails here instead of silently reaching consensus.
                     findings = self._parse_findings(result.stdout)
-                    return ReviewResult(
-                        vendor=self.vendor,
-                        success=findings is not None,
-                        findings=findings,
-                        model_used=model_name,
-                        models_attempted=models_attempted,
-                        elapsed_seconds=elapsed,
-                        error=None if findings else "Invalid JSON output",
+                    if findings is not None:
+                        findings, schema_error = _validate_findings_or_error(findings)
+                        return ReviewResult(
+                            vendor=self.vendor,
+                            success=findings is not None,
+                            findings=findings,
+                            model_used=model_name,
+                            models_attempted=models_attempted,
+                            elapsed_seconds=elapsed,
+                            error=schema_error,
+                        )
+                    # Exit 0 but no findings. Some CLIs (pi, issue #383) exit 0
+                    # when the provider refused the request, with the error body
+                    # on stdout — classify the raw output before treating this
+                    # as a format failure, and always carry an excerpt so the
+                    # raw output is never silently discarded.
+                    raw = "\n".join(
+                        part for part in (result.stdout.strip(), result.stderr.strip()) if part
                     )
+                    excerpt = raw[:500]
+                    zero_exit_class = classify_error(raw)
+                    if zero_exit_class in (ErrorClass.AUTH, ErrorClass.UNAVAILABLE):
+                        last_error = excerpt
+                        last_error_class = zero_exit_class
+                    elif zero_exit_class == ErrorClass.CAPACITY:
+                        logger.info(
+                            "%s model %s reported capacity exhaustion on stdout, "
+                            "trying fallback",
+                            self.vendor, model_name,
+                        )
+                        last_error = excerpt
+                        last_error_class = zero_exit_class
+                        continue
+                    else:
+                        return ReviewResult(
+                            vendor=self.vendor,
+                            success=False,
+                            model_used=model_name,
+                            models_attempted=models_attempted,
+                            elapsed_seconds=elapsed,
+                            error=f"Invalid JSON output: {excerpt}" if excerpt
+                            else "Invalid JSON output (empty stdout)",
+                        )
+                else:
+                    # Non-zero exit — classify error
+                    last_error = result.stderr
+                    last_error_class = classify_error(result.stderr)
 
-                # Non-zero exit — classify error
-                last_error = result.stderr
-                last_error_class = classify_error(result.stderr)
-
-                if last_error_class == ErrorClass.AUTH:
-                    # Auth errors can't be fixed by model fallback
-                    relogin = _RELOGIN_COMMANDS.get(self.cli_config.command, f"{self.cli_config.command} login")
+                if last_error_class in (ErrorClass.AUTH, ErrorClass.UNAVAILABLE):
+                    # Neither auth nor billing/entitlement errors can be fixed
+                    # by model fallback — they are account-scoped.
+                    relogin = _relogin_hint(self.cli_config.command)
+                    if last_error_class == ErrorClass.AUTH:
+                        summary = f"Auth expired. Run: {relogin}"
+                    else:
+                        summary = (
+                            f"Vendor unavailable (billing/credits): "
+                            f"{last_error[:500] if last_error else 'no error output'}"
+                        )
                     msg = (
-                        f"[WARN] {self.vendor} review failed: auth expired.\n"
-                        f"       Run: {relogin}"
+                        f"[WARN] {self.vendor} review failed: "
+                        f"{last_error_class.value}.\n       {summary}"
                     )
                     print(msg, file=sys.stderr)
                     return ReviewResult(
@@ -279,8 +524,8 @@ class CliVendorAdapter:
                         success=False,
                         models_attempted=models_attempted,
                         elapsed_seconds=time.monotonic() - start,
-                        error=f"Auth expired. Run: {relogin}",
-                        error_class=ErrorClass.AUTH,
+                        error=summary,
+                        error_class=last_error_class,
                     )
 
                 if last_error_class == ErrorClass.CAPACITY:
@@ -319,17 +564,21 @@ class CliVendorAdapter:
     def _extract_findings(data: dict[str, Any]) -> dict[str, Any] | None:
         """Extract findings from a parsed JSON dict.
 
-        Handles both direct findings objects and vendor CLI envelopes.
-        Gemini CLI ``-o json`` wraps model output in
-        ``{"session_id": ..., "response": "<json-string>", "stats": ...}``.
+        Handles both direct findings objects and vendor CLI envelopes. grok
+        ``--output-format json --json-schema`` places the schema-conforming
+        object under ``structuredOutput`` (E6), so unwrap that key when the
+        top level is not already a findings object.
         """
         if "findings" in data:
             return data
-        # Unwrap vendor envelopes (e.g. Gemini -o json)
-        resp = data.get("response")
-        if isinstance(resp, str):
+        # Unwrap grok's structured-output envelope (E6). structuredOutput is
+        # normally the parsed object, but tolerate a JSON-string form too.
+        structured = data.get("structuredOutput")
+        if isinstance(structured, dict) and "findings" in structured:
+            return structured
+        if isinstance(structured, str):
             try:
-                inner = json.loads(resp)
+                inner = json.loads(structured)
                 if isinstance(inner, dict) and "findings" in inner:
                     return inner
             except json.JSONDecodeError:
@@ -337,14 +586,13 @@ class CliVendorAdapter:
         return None
 
     @staticmethod
-    def _parse_findings(stdout: str) -> dict[str, Any] | None:
-        """Try to parse review findings JSON from stdout.
+    def _parse_json_blob(text: str) -> dict[str, Any] | None:
+        """Parse a findings object from a single text blob.
 
-        Handles cases where the vendor outputs extra text before/after JSON,
-        and vendor CLI envelopes that wrap model output (e.g. Gemini
-        ``-o json`` producing ``{"response": "<escaped-json>"}``).
+        Handles a bare JSON object, a vendor envelope (grok
+        ``structuredOutput``), and prose wrapped around the JSON.
         """
-        text = stdout.strip()
+        text = text.strip()
         if not text:
             return None
 
@@ -372,6 +620,78 @@ class CliVendorAdapter:
                 pass
 
         return None
+
+    @staticmethod
+    def _assistant_text(message: Any) -> str | None:
+        """Concatenate assistant text parts from a pi/Claude-shaped message."""
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            return None
+        content = message.get("content")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = [
+                part["text"]
+                for part in content
+                if isinstance(part, dict) and isinstance(part.get("text"), str)
+            ]
+            if parts:
+                return "\n".join(parts)
+        return None
+
+    @staticmethod
+    def _parse_ndjson_findings(text: str) -> dict[str, Any] | None:
+        """Parse findings from an NDJSON event stream (e.g. ``pi --mode json``).
+
+        pi emits one JSON event per line; the model's answer is carried as the
+        ``message`` payload of assistant ``message_end``/``turn_end`` events, so
+        a whole-stdout ``json.loads`` fails and the single-brace scan spans
+        unrelated events. Each parsed line is checked directly first (in case a
+        vendor emits a bare findings object on its own line); otherwise the last
+        complete assistant message wins, mirroring how streaming deltas are
+        superseded by the final message snapshot.
+        """
+        lines = [ln for ln in text.splitlines() if ln.strip()]
+        if len(lines) < 2:
+            return None  # not an event stream — the single-blob path already ran
+
+        saw_event = False
+        last_assistant_text: str | None = None
+        for line in lines:
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            saw_event = True
+            direct = CliVendorAdapter._extract_findings(obj)
+            if direct is not None:
+                return direct
+            assistant_text = CliVendorAdapter._assistant_text(obj.get("message"))
+            if assistant_text:
+                last_assistant_text = assistant_text
+
+        if not saw_event or last_assistant_text is None:
+            return None
+        return CliVendorAdapter._parse_json_blob(last_assistant_text)
+
+    @staticmethod
+    def _parse_findings(stdout: str) -> dict[str, Any] | None:
+        """Try to parse review findings JSON from stdout.
+
+        Handles a bare JSON object, prose wrapped around the JSON, vendor
+        envelopes (e.g. grok ``--output-format json`` nesting the object under
+        ``structuredOutput``), and NDJSON event streams (e.g. pi ``--mode
+        json``) that carry the answer inside assistant message events.
+        """
+        text = stdout.strip()
+        if not text:
+            return None
+        result = CliVendorAdapter._parse_json_blob(text)
+        if result is not None:
+            return result
+        return CliVendorAdapter._parse_ndjson_findings(text)
 
     def dispatch_async(
         self,
@@ -401,7 +721,19 @@ class CliVendorAdapter:
             model_name = model or "(default)"
             models_attempted.append(model_name)
 
-            cmd = self.build_command(mode, prompt, model)
+            try:
+                cmd = self.build_command(mode, prompt, model)
+            except SchemaInjectionError as exc:
+                # Same posture as the sync path: fail this vendor loudly rather
+                # than submitting a schema-less async task whose result would
+                # be unparseable for a reason the logs never name.
+                return ReviewResult(
+                    vendor=self.vendor,
+                    success=False,
+                    models_attempted=models_attempted,
+                    error=f"Schema injection failed: {exc}",
+                    error_class=ErrorClass.UNKNOWN,
+                )
             stdin_text = prompt if self.cli_config.prompt_via_stdin else None
             start = time.monotonic()
 
@@ -429,10 +761,7 @@ class CliVendorAdapter:
             if result.returncode != 0:
                 error_class = classify_error(result.stderr)
                 if error_class == ErrorClass.AUTH:
-                    relogin = _RELOGIN_COMMANDS.get(
-                        self.cli_config.command,
-                        f"{self.cli_config.command} login",
-                    )
+                    relogin = _relogin_hint(self.cli_config.command)
                     print(
                         f"[WARN] {self.vendor} async dispatch failed: "
                         f"auth expired.\n       Run: {relogin}",
@@ -558,14 +887,19 @@ class CliVendorAdapter:
                 )
 
             if success_re.search(combined):
-                # Task completed — try to extract findings from output
+                # Task completed — try to extract findings from output, then
+                # validate against the canonical review-findings schema.
                 findings = self._parse_findings(result.stdout)
+                parse_error = (
+                    None if findings else "Task completed but no findings JSON in output"
+                )
+                findings, schema_error = _validate_findings_or_error(findings)
                 return ReviewResult(
                     vendor=self.vendor,
                     success=findings is not None,
                     findings=findings,
                     elapsed_seconds=time.monotonic() - start,
-                    error=None if findings else "Task completed but no findings JSON in output",
+                    error=schema_error or parse_error,
                     task_id=task_id,
                 )
 
@@ -658,6 +992,8 @@ class SdkVendorAdapter:
                     api_key=api_key,
                     timeout=timeout_seconds,
                 )
+                parse_error = None if findings else "Invalid JSON in SDK response"
+                findings, schema_error = _validate_findings_or_error(findings)
                 return ReviewResult(
                     vendor=self.vendor,
                     success=findings is not None,
@@ -665,7 +1001,7 @@ class SdkVendorAdapter:
                     model_used=model,
                     models_attempted=models_attempted,
                     elapsed_seconds=time.monotonic() - dispatch_start,
-                    error=None if findings else "Invalid JSON in SDK response",
+                    error=schema_error or parse_error,
                 )
             except _SdkCapacityError:
                 logger.info(
@@ -1105,6 +1441,8 @@ class ReviewOrchestrator:
                         model=cli.get("model"),
                         model_fallbacks=cli.get("model_fallbacks", []),
                         prompt_via_stdin=cli.get("prompt_via_stdin", False),
+                        prompt_via_flag=cli.get("prompt_via_flag"),
+                        api_key_env=cli.get("api_key_env") or "",
                     ),
                     transport=agent.get("transport", "mcp"),
                 )
@@ -1315,11 +1653,12 @@ class ReviewOrchestrator:
         reviewers: list[ReviewerInfo] = []
 
         for vendor in sorted(all_vendors):
-            # Tier 1: Local CLI
+            # Tier 1: Local CLI. can_dispatch() checks mode + PATH + declared
+            # credential env — a pi binary without OPENROUTER_API_KEY must not
+            # be reported available (issue #383).
             if vendor in cli_by_vendor:
                 agent_id, cli_adapter = cli_by_vendor[vendor]
-                cli_available = shutil.which(cli_adapter.cli_config.command) is not None
-                if cli_available:
+                if cli_adapter.can_dispatch(dispatch_mode):
                     logger.info("Tier 1 (CLI) selected for %s: %s", vendor, agent_id)
                     reviewers.append(ReviewerInfo(
                         vendor=vendor,
@@ -1526,6 +1865,62 @@ class ReviewOrchestrator:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+# Exit code for "fewer dispatchable vendors than the requested quorum". Distinct
+# from 1 (operational failure) so a caller can tell "below quorum" from "the
+# probe itself broke" — both are non-zero, so a caller that only checks
+# truthiness still degrades safely.
+CHECK_VENDORS_BELOW_QUORUM = 2
+
+
+def _check_vendors(
+    *,
+    agents_yaml: str | None = None,
+    exclude_vendor: str | None = None,
+    min_vendors: int = 2,
+    dispatch_mode: str = "review",
+) -> int:
+    """Report whether enough vendors are dispatchable for multi-vendor review.
+
+    Returns 0 when at least *min_vendors* reviewers are available, else
+    :data:`CHECK_VENDORS_BELOW_QUORUM`. Orchestrators use the exit status to
+    decide whether to enable CLI review — so this MUST fail closed: any error
+    resolving the roster reports "below quorum" rather than passing silently.
+    """
+    try:
+        if agents_yaml:
+            orch = ReviewOrchestrator.from_agents_yaml(Path(agents_yaml))
+        else:
+            orch = ReviewOrchestrator.from_coordinator()
+            if not orch.adapters:
+                orch = ReviewOrchestrator.from_agents_yaml()
+        reviewers = orch.discover_reviewers(
+            exclude_vendor=exclude_vendor,
+            dispatch_mode=dispatch_mode,
+        )
+    except Exception as exc:  # noqa: BLE001 — fail closed on any resolution error
+        print(
+            f"check-vendors: unable to resolve vendor roster ({exc})",
+            file=sys.stderr,
+        )
+        return CHECK_VENDORS_BELOW_QUORUM
+
+    names = sorted({r.vendor for r in reviewers})
+    # flush so the summary precedes the stderr diagnostic when both are captured
+    print(
+        f"check-vendors: {len(names)}/{min_vendors} available: "
+        f"{', '.join(names) or '(none)'}",
+        flush=True,
+    )
+    if len(names) < min_vendors:
+        print(
+            f"check-vendors: below quorum ({len(names)} < {min_vendors}) — "
+            f"multi-vendor review unavailable",
+            file=sys.stderr,
+        )
+        return CHECK_VENDORS_BELOW_QUORUM
+    return 0
+
+
 def main() -> int:
     """Dispatch reviews to vendor CLIs and collect results.
 
@@ -1545,6 +1940,21 @@ def main() -> int:
     parser.add_argument(
         "--list-agents", action="store_true",
         help="List available agents with CLI dispatch configs and exit",
+    )
+    parser.add_argument(
+        "--check-vendors", action="store_true",
+        help=(
+            "Exit 0 if at least --min-vendors reviewers are dispatchable, 2 "
+            "otherwise. For orchestrator CLI-mode detection; honors "
+            "--exclude-vendor."
+        ),
+    )
+    parser.add_argument(
+        "--min-vendors", type=int, default=2,
+        help=(
+            "Quorum required by --check-vendors (default: 2, the minimum for "
+            "multi-vendor convergence)"
+        ),
     )
     parser.add_argument(
         "--review-type",
@@ -1578,6 +1988,17 @@ def main() -> int:
         "--agents-yaml", help="Path to agents.yaml (default: auto-detect)",
     )
     args = parser.parse_args()
+
+    # --check-vendors: quorum probe for orchestrator CLI-mode detection.
+    # Exits 0 (quorum met) or 2 (below quorum / no config) so callers can
+    # branch on the exit status. Never dispatches; never writes.
+    if args.check_vendors:
+        return _check_vendors(
+            agents_yaml=args.agents_yaml,
+            exclude_vendor=args.exclude_vendor,
+            min_vendors=args.min_vendors,
+            dispatch_mode=args.mode,
+        )
 
     # --list-agents: show available agents and exit
     if args.list_agents:

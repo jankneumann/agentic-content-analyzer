@@ -26,12 +26,12 @@ import logging
 import re
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from arch_utils.graph_io import load_graph  # noqa: E402
+from arch_utils.determinism import generated_at_iso  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +142,7 @@ def _section_system_overview(
 
     # Metadata
     git_sha = "unknown"
-    generated_at = datetime.now(timezone.utc).isoformat()
+    generated_at = generated_at_iso()
     if summary:
         git_sha = summary.get("git_sha", git_sha)
         generated_at = summary.get("generated_at", generated_at)
@@ -442,9 +442,14 @@ def _section_dependency_layers(
     lines.append("```")
     lines.append("")
 
-    # Single points of failure callout
-    spof = [(m, len(imported_by.get(m, set()))) for m in foundation]
-    spof.sort(key=lambda x: -x[1])
+    # Single points of failure callout.
+    #
+    # Ranked by (descending importer count, then name). Ranking on the count
+    # alone left equal-count modules in the iteration order of the `foundation`
+    # set, so they swapped places between runs and every refresh produced a
+    # large diff carrying no information (issue #362).
+    spof = [(m, len(imported_by.get(m, set()))) for m in sorted(foundation)]
+    spof.sort(key=lambda x: (-x[1], x[0]))
     if spof:
         lines.append("**Single points of failure** — changes to these modules ripple widely:")
         lines.append("")

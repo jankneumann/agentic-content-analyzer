@@ -135,18 +135,28 @@ try_install_typescript_deps() {
     return 1
 }
 
+# Interpreter that can run the tree-sitter stages, resolved once and cached.
+# Empty string means "resolved and unavailable"; unset means "not yet resolved".
+TREESITTER_PYTHON="${TREESITTER_PYTHON:-}"
+_TREESITTER_RESOLVED=false
+
 check_treesitter() {
-    # Check if tree-sitter is available via the scripts venv
+    # Delegates to arch_utils/interpreters.py rather than probing a path here.
+    #
+    # This used to hard-code "${SCRIPTS_DIR}/.venv/bin/python" — a per-skill venv
+    # that does not exist in this repository and that nothing creates — so the
+    # probe failed on a normal checkout and three stages skipped silently while
+    # provenance, which asked a *different* question in a different process,
+    # still recorded tree-sitter as available (issue #378). One resolver means
+    # the pipeline and the provenance record cannot disagree.
     if [ "${TREESITTER_ENABLED}" != "true" ]; then
         return 1
     fi
-    local scripts_python="${SCRIPTS_DIR}/.venv/bin/python"
-    if [ -x "${scripts_python}" ]; then
-        if "${scripts_python}" -c "import tree_sitter; import tree_sitter_sql" 2>/dev/null; then
-            return 0
-        fi
+    if [ "${_TREESITTER_RESOLVED}" = false ]; then
+        _TREESITTER_RESOLVED=true
+        TREESITTER_PYTHON="$(${PYTHON} "${SCRIPTS_DIR}/arch_utils/interpreters.py" 2>/dev/null || true)"
     fi
-    return 1
+    [ -n "${TREESITTER_PYTHON}" ]
 }
 
 try_install_jsonschema() {
@@ -249,7 +259,7 @@ echo ""
 info "--- [1.2b] Tree-sitter SQL Analyzer ---"
 
 if check_treesitter; then
-    SCRIPTS_PYTHON="${SCRIPTS_DIR}/.venv/bin/python"
+    SCRIPTS_PYTHON="${TREESITTER_PYTHON}"
     if [ -f "${SCRIPTS_DIR}/analyze_sql_treesitter.py" ] && [ -d "${MIGRATIONS_DIR}" ]; then
         if "${SCRIPTS_PYTHON}" "${SCRIPTS_DIR}/analyze_sql_treesitter.py" \
             "${MIGRATIONS_DIR}" \
@@ -278,6 +288,20 @@ info "--- [1.3] TypeScript Analyzer ---"
 if [ ! -f "${SCRIPTS_DIR}/analyze_typescript.ts" ]; then
     warn "TypeScript analyzer script not found: ${SCRIPTS_DIR}/analyze_typescript.ts — skipping"
     skip "typescript_analyzer"
+elif [ ! -d "${TS_SRC_DIR}" ]; then
+    # Fail loudly on a misconfigured root instead of analysing nothing.
+    #
+    # The analyzer itself exits 0 on a missing directory and writes an artifact
+    # reading "Modules: 0, Components: 0, Functions: 0" — indistinguishable from
+    # a repository that genuinely has no TypeScript. That silence is how this
+    # repository shipped an all-zeros ts_analysis.json for five months while
+    # TS_SRC_DIR pointed at a `web` directory that never existed. A configured
+    # input root that is absent is a configuration error, not an empty result.
+    warn "TS_SRC_DIR does not exist: ${TS_SRC_DIR} — skipping TypeScript analyzer"
+    warn "Set TS_SRC_DIR to this repository's TypeScript root, or leave it unset if there is none."
+    warn "NOT writing an empty ${TS_ANALYSIS}: zero modules from a missing directory is a"
+    warn "configuration error, and recording it as a result would misreport it as analysis."
+    skip "typescript_analyzer"
 elif ! command -v npx >/dev/null 2>&1; then
     warn "npx not found — skipping TypeScript analyzer (install Node.js to enable)"
     skip "typescript_analyzer"
@@ -292,13 +316,33 @@ else
     fi
 
     if [ "$(_get_result typescript_analyzer)" != "SKIP" ]; then
-        if npx ts-node "${SCRIPTS_DIR}/analyze_typescript.ts" \
+        # Runner selection, most robust first.
+        #
+        # Node 23.6+ strips TypeScript types natively, so it runs the analyzer
+        # with no transpiler at all. That is preferred because `ts-node` couples
+        # the analyzer to whichever `typescript` happens to resolve: this repo
+        # has no root package.json, so node_modules is unmanaged, and ts-node
+        # 10.9.2 against the resolved typescript 7.x dies in its own config
+        # loader with "Cannot read properties of undefined (reading
+        # 'fileExists')". Native stripping has no such coupling.
+        TS_RUNNER=""
+        if node --experimental-strip-types -e '' >/dev/null 2>&1 \
+           || node -e 'process.exit(parseInt(process.versions.node,10) >= 23 ? 0 : 1)' >/dev/null 2>&1; then
+            TS_RUNNER="node"
+        elif npx ts-node --version >/dev/null 2>&1; then
+            TS_RUNNER="npx ts-node"
+        fi
+
+        if [ -z "${TS_RUNNER}" ]; then
+            warn "no usable TypeScript runner (need Node 23.6+ or a working ts-node) — skipping"
+            skip "typescript_analyzer"
+        elif ${TS_RUNNER} "${SCRIPTS_DIR}/analyze_typescript.ts" \
             "${TS_SRC_DIR}" \
             --output "${TS_ANALYSIS}" 2>&1; then
-            info "TypeScript analysis written to ${TS_ANALYSIS}"
+            info "TypeScript analysis written to ${TS_ANALYSIS} (runner: ${TS_RUNNER})"
             pass "typescript_analyzer"
         else
-            error "TypeScript analyzer failed (exit code $?)"
+            error "TypeScript analyzer failed (runner: ${TS_RUNNER}, exit code $?)"
             fail "typescript_analyzer"
         fi
     fi
@@ -362,7 +406,7 @@ echo ""
 info "--- [2.1b] Tree-sitter Enrichment ---"
 
 if check_treesitter && [ -f "${SCRIPTS_DIR}/enrich_with_treesitter.py" ]; then
-    SCRIPTS_PYTHON="${SCRIPTS_DIR}/.venv/bin/python"
+    SCRIPTS_PYTHON="${TREESITTER_PYTHON}"
     ENRICH_ARGS=("--queries" "${QUERIES_DIR}" "--output" "${ENRICHMENT_FILE}")
     [ -d "${PYTHON_SRC_DIR}" ] && ENRICH_ARGS+=("--python-src" "${PYTHON_SRC_DIR}")
     [ -d "${TS_SRC_DIR}" ] && ENRICH_ARGS+=("--ts-src" "${TS_SRC_DIR}")
@@ -388,8 +432,11 @@ echo ""
 
 info "--- [2.1c] Comment Linker ---"
 
-if [ -f "${ENRICHMENT_FILE}" ] && [ -f "${SCRIPTS_DIR}/insights/comment_linker.py" ]; then
-    SCRIPTS_PYTHON="${SCRIPTS_DIR}/.venv/bin/python"
+# check_treesitter is part of the condition, not an assumption. The enrichment
+# file can predate this run (in non-staged mode it is whatever the last refresh
+# left behind), so its presence does not imply an interpreter was resolved.
+if check_treesitter && [ -f "${ENRICHMENT_FILE}" ] && [ -f "${SCRIPTS_DIR}/insights/comment_linker.py" ]; then
+    SCRIPTS_PYTHON="${TREESITTER_PYTHON}"
     if "${SCRIPTS_PYTHON}" "${SCRIPTS_DIR}/insights/comment_linker.py" \
         --input-dir "${ARCH_DIR}" \
         --output "${COMMENT_INSIGHTS_FILE}" 2>&1; then
@@ -410,8 +457,8 @@ echo ""
 
 info "--- [2.1d] Pattern Reporter ---"
 
-if [ -f "${ENRICHMENT_FILE}" ] && [ -f "${SCRIPTS_DIR}/insights/pattern_reporter.py" ]; then
-    SCRIPTS_PYTHON="${SCRIPTS_DIR}/.venv/bin/python"
+if check_treesitter && [ -f "${ENRICHMENT_FILE}" ] && [ -f "${SCRIPTS_DIR}/insights/pattern_reporter.py" ]; then
+    SCRIPTS_PYTHON="${TREESITTER_PYTHON}"
     if "${SCRIPTS_PYTHON}" "${SCRIPTS_DIR}/insights/pattern_reporter.py" \
         --input-dir "${ARCH_DIR}" \
         --output "${PATTERN_INSIGHTS_FILE}" 2>&1; then
@@ -454,8 +501,8 @@ fi
 # Also run the schema validator if available
 if [ -f "${GRAPH_FILE}" ] && [ -f "${SCRIPTS_DIR}/validate_schema.py" ]; then
     info "Running schema validation..."
-    SCRIPTS_PYTHON="${SCRIPTS_DIR}/.venv/bin/python"
-    if [ -x "${SCRIPTS_PYTHON}" ] && "${SCRIPTS_PYTHON}" -c "import jsonschema" >/dev/null 2>&1; then
+    SCRIPTS_PYTHON="${TREESITTER_PYTHON:-}"
+    if [ -n "${SCRIPTS_PYTHON}" ] && "${SCRIPTS_PYTHON}" -c "import jsonschema" >/dev/null 2>&1; then
         if "${SCRIPTS_PYTHON}" "${SCRIPTS_DIR}/validate_schema.py" "${GRAPH_FILE}" 2>&1; then
             info "Schema validation passed"
         else

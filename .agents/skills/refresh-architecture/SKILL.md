@@ -234,9 +234,37 @@ Architecture artifacts are designed to be committed to the repo so agents can co
 | `docs/architecture-analysis/architecture.report.md` | Human-readable Markdown report |
 | `docs/architecture-analysis/views/*.mmd` | Mermaid diagrams at multiple zoom levels |
 
+## Revision-Aware Provenance & Freshness
+
+The architecture producer records `docs/architecture-analysis/architecture.provenance.json`
+(analyzed Git SHA, dirty state, producer version, relevant input fingerprint,
+mode, and owned-artifact SHA-256 digests). Freshness is **content-based and
+mtime-independent** — decided by input/producer/artifact identity, never file age.
+
+- `make architecture-refresh` — deterministic staged refresh (stage → validate →
+  promote → write provenance). Byte-identical for the same revision/inputs; a
+  failed run preserves the last known-good committed artifacts.
+- `make architecture-check` — read-only freshness check; exits 0 only when
+  `fresh` and prints precise drift reason codes + stale artifact paths.
+- `carried_over` — promotion copies staged files into the output directory and
+  never deletes, because the optional stages skip soft (a partial refresh must
+  not destroy the last good copy) and `views/.gitkeep` is committed but never
+  staged. So an artifact a stage failed to produce survives at the bytes an
+  earlier revision wrote. Each recorded artifact therefore carries
+  `carried_over`: `false` means this run produced it, `true` means it was left
+  in place. Both are recorded — the digest still pins the committed bytes — and
+  both refresh and check list the carried-over paths. Carrying an artifact over
+  is **not** drift; it is a soft skip, and the flag is what keeps the record
+  from claiming the revision generated it. An entry with no `carried_over` key
+  was written outside a staged run: unknown, never "freshly generated".
+- Durable cross-process status is owned by `project-context-runtime`
+  (`add-durable-context-refresh-records`); this skill records one canonical
+  `producer_id=architecture` result per `(repository, revision)` operation and
+  projects it onto the refresh RPC. It never finalizes the whole operation.
+
 ## Integration with Workflow
 
 - **Before `/plan-feature`**: Run full pipeline to ensure agents have current architecture context
 - **During `/implement-feature`**: Run `--validate` after code changes to check for broken flows
 - **Before `/validate-feature`**: Run `--diff` against the base branch to understand architectural impact
-- **In CI**: Run `make architecture-validate` to catch regressions
+- **In CI**: Run `make architecture-check` (content-based) to catch stale committed artifacts
