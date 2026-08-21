@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-08-21T17:05:36.191756+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "claude_code",
+    "session_id": null,
+    "summary": "All 112 tasks across six packages implemented and committed in eight phase-scoped commits. The change delivers the project's first working backup: an `aca backup` group that streams every store through age-encryption to an S3-compatible target, a manifest-derived freshness check that replaces an unfixable pg_cron watchdog, a durable system_check alert path (with the Alembic migration A1 established was unavoidable), an endpoint-agnostic restore carrying three credential-safety fixes, and host scheduling with provider-side retention. Implemented inline rather than via sub-agents: this harness exposes no Task/Agent tool, so the local-parallel tier's dispatch step was executed sequentially.",
+    "completed_work": [
+      "wp-contracts (0.1-0.4): backup manifest and system_check alert JSON Schemas in a new durable contracts domain, plus 36 conformance tests.",
+      "wp-settings (1.1-1.10): backup_s3_*, age and monitoring settings with one deprecation mapper for all three groups; `*_KEY_ID` masking gap closed; check-profile-secrets.sh extended to S3-shaped credentials; boto3 declared.",
+      "wp-backup-cli (2.1-2.15): store adapters as pure argv builders, a Popen-chaining executor with per-stage status and in-pipeline digest, manifest and canary writing, tier promotion, the shared manifest reader, and `aca backup run|verify|list`.",
+      "wp-health-alerts (3.1-3.10): manifest-derived freshness, three health-check defects fixed, eleven widening points across the model/DDL/service, an Alembic migration relaxing three CHECK constraints, and idempotent per-window emission.",
+      "wp-restore-cli (4.1-4.11): endpoint-agnostic restore with prefix-based discovery and age decryption, plus the three credential-safety fixes.",
+      "wp-deploy-assets (5.1-5.10): systemd service/timer/env template, committed tiered retention with a dry-run applier, docs/BACKUP_RESTORE.md, and SYNC_DOWN / SETUP / MOBILE_DEPLOYMENT / GOTCHAS / CLAUDE.md updates.",
+      "wp-integration (6.1-6.4): MinIO compose fixture, the round-trip test, executor tests against real subprocesses, and full-suite reconciliation against a branch-point baseline."
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "The acceptance test found an eleventh widening point nobody designed",
+        "rationale": "A13 identified ten places a system_check alert is rejected. Driving the real emission path end to end found `_event_from_row`, which carries its own closed set of source kinds. Like the other ten it fails SILENTLY \u2014 process_pending_event catches the ValueError, writes classification_status='rejected', enqueues no delivery, logs no failure, and the worker's orphan cleanup later DELETEs the row. Without the acceptance test the alert saying backups were dead would itself have been silently dropped. This is A13's lesson landing a fourth time.",
+        "capability": "backup-and-restore",
+        "supersedes": null
+      },
+      {
+        "title": "Two bugs were caught by tests rather than by reading",
+        "rationale": "`int(hours or 48)` in the check-window calculation: zero is falsy, so a misconfigured backup_staleness_hours=0 silently became 48 hours and defeated the floor meant to clamp it. And the executor's live run showed the digest measures the CIPHERTEXT, not the source \u2014 correct and load-bearing, since the size read-back compares against the stored object, but easy to 'fix' backwards. Both are now pinned by tests.",
+        "capability": "backup-and-restore",
+        "supersedes": null
+      },
+      {
+        "title": "The alert schema lives in openspec/contracts/backup/events/",
+        "rationale": "Task 0.2's prose said content-workflows/events/, but work-packages.yaml locks the backup path, A11 refers to it that way, and the contracts README's lifecycle model gives each domain its own subdirectory. Both paths were inside the package's write_allow; the machine-readable lock won over the prose.",
+        "capability": "backup-and-restore",
+        "supersedes": null
+      },
+      {
+        "title": "`backup` joins the help sweep in batch 1 rather than reflowing it",
+        "rationale": "Alphabetical reflow is the tidier edit and the wrong one: it moves commands between scenarios, churning the CAPTURED gen-eval report fixtures far beyond the single interface that changed. Appending a fifth step keeps the scenario count at 8, so the tier-cap arithmetic the file documents still holds.",
+        "capability": "cli-interface",
+        "supersedes": null
+      },
+      {
+        "title": "Retention is a dry-run-by-default renderer that cannot delete",
+        "rationale": "The applier sets provider-side expiry policy and issues no delete call, asserted by a test. Provider-side expiry keeps working while gx-10 is down, and an unattended process with delete rights over the backup target is the single most dangerous component such a system can have \u2014 a bug in it destroys the backups instead of the data.",
+        "capability": "backup-and-restore",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Run the round-trip and live-migration tests with the compose `test` profile and a Postgres available \u2014 they are the only unexecuted evidence in this change.",
+      "Confirm `alembic upgrade head` applies c3f1a8b6e40d cleanly, then insert and drain one real system_check event end to end.",
+      "Verify the systemd units on a host: `systemd-analyze verify` plus one manual `aca backup run` as the aca-backup user.",
+      "Check that no emitted alert or CLI output carries a credential, against real settings rather than fixtures."
+    ],
+    "relevant_files": [
+      {
+        "path": "src/services/backup/executor.py",
+        "description": "The pipeline. Chains Popen so a mid-pipe failure cannot be masked by the last stage's exit code \u2014 the defect class this whole change exists to eliminate."
+      },
+      {
+        "path": "src/services/backup/engine.py",
+        "description": "Where the four refusals to call a backup successful are implemented."
+      },
+      {
+        "path": "src/services/backup/manifest_reader.py",
+        "description": "One reader, one cache, one definition of stale; never raises and holds no decryption identity."
+      },
+      {
+        "path": "src/services/workflow_terminal_event_service.py",
+        "description": "The emitting service. Four of the eleven widening points live here, including the one no review round found."
+      },
+      {
+        "path": "alembic/versions/c3f1a8b6e40d_admit_system_check_terminal_events.py",
+        "description": "Relaxes all three CHECK constraints together; widening two of three still leaves the row uninsertable."
+      },
+      {
+        "path": "tests/unit/test_system_check_alert_emission.py",
+        "description": "The acceptance criterion for the alerting slice (A13, task 3.9b)."
+      },
+      {
+        "path": "tests/test_services/test_backup_executor.py",
+        "description": "Runs against real subprocesses, including a live age round trip. Found the ciphertext-vs-plaintext digest property."
+      },
+      {
+        "path": "docs/BACKUP_RESTORE.md",
+        "description": "The runbook. Leads with recovering the decryption identity."
+      }
+    ]
+  }
+}

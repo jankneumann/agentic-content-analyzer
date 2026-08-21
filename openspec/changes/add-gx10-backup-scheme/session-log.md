@@ -98,3 +98,60 @@ Planned the first working disaster-recovery backup scheme for the gx-10 self-hos
 ### Context
 Two review passes over the approved plan. Pass 1 found two critical settings gaps that structurally blocked three of six work packages, an unresolved D4/D7 contradiction over whether the manifest is encrypted, an out-of-scope existing contract test that the alert widening would break, an orphan work package with no tasks, six spec scenarios with no owning task, and a missing Impact section. Pass 2 caught two ordering bugs introduced by pass 1 and one genuinely unaddressed question - how the app tier reads the manifest at probe frequency. Added D11-D14, Phase 0, and eleven tasks; all validators green.
 
+---
+
+## Phase: Implementation (2026-08-21)
+
+**Agent**: claude_code | **Session**: N/A
+
+### Decisions
+1. **The acceptance test found an eleventh widening point nobody designed** `architectural: backup-and-restore` — A13 identified ten places a system_check alert is rejected. Driving the real emission path end to end found `_event_from_row`, which carries its own closed set of source kinds. Like the other ten it fails SILENTLY — process_pending_event catches the ValueError, writes classification_status='rejected', enqueues no delivery, logs no failure, and the worker's orphan cleanup later DELETEs the row. Without the acceptance test the alert saying backups were dead would itself have been silently dropped. This is A13's lesson landing a fourth time.
+2. **Two bugs were caught by tests rather than by reading** `architectural: backup-and-restore` — `int(hours or 48)` in the check-window calculation: zero is falsy, so a misconfigured backup_staleness_hours=0 silently became 48 hours and defeated the floor meant to clamp it. And the executor's live run showed the digest measures the CIPHERTEXT, not the source — correct and load-bearing, since the size read-back compares against the stored object, but easy to 'fix' backwards. Both are now pinned by tests.
+3. **The alert schema lives in openspec/contracts/backup/events/** `architectural: backup-and-restore` — Task 0.2's prose said content-workflows/events/, but work-packages.yaml locks the backup path, A11 refers to it that way, and the contracts README's lifecycle model gives each domain its own subdirectory. Both paths were inside the package's write_allow; the machine-readable lock won over the prose.
+4. **`backup` joins the help sweep in batch 1 rather than reflowing it** `architectural: cli-interface` — Alphabetical reflow is the tidier edit and the wrong one: it moves commands between scenarios, churning the CAPTURED gen-eval report fixtures far beyond the single interface that changed. Appending a fifth step keeps the scenario count at 8, so the tier-cap arithmetic the file documents still holds.
+5. **Retention is a dry-run-by-default renderer that cannot delete** `architectural: backup-and-restore` — The applier sets provider-side expiry policy and issues no delete call, asserted by a test. Provider-side expiry keeps working while gx-10 is down, and an unattended process with delete rights over the backup target is the single most dangerous component such a system can have — a bug in it destroys the backups instead of the data.
+
+### Alternatives Considered
+- Reflow the help sweep alphabetically across all 8 batches: rejected because Would have required hand-reconstructing every verdict in two captured report fixtures, weakening the evidence those fixtures exist to provide.
+- `sh -c 'pg_dump | age | rclone'` for the backup pipeline: rejected because A shell pipeline reports the LAST stage's status, so pg_dump dying halfway still yields zero and a truncated ciphertext uploads under a green light. `set -o pipefail` fixes that but needs a shell, and putting these argv through a shell is how credentials reach a process listing.
+- Freeze the freshness condition on the event row at emission time: rejected because Classification reads committed evidence fresh for every other source kind. Reading the current manifest in `_fresh_snapshot` keeps classify_terminal_event a pure function of (event, snapshot) and describes what is true when the alert is projected, not minutes earlier.
+
+### Trade-offs
+- Accepted Hand-inserting one entry into captured gen-eval fixtures over Leaving three cli_gen_eval tests red until the next pin bump because The insertion is mechanical and identical in shape to the entry beside it, and the fixture README now records that this one entry is derived rather than observed, with instructions to drop the note on regeneration.
+- Accepted FIFO-based tee/sha256sum/wc measurement inside the pipeline over Computing the digest in Python because Preserves Approach C's defining property — a multi-GB dump never enters the interpreter — at the cost of a more intricate executor. The executor is covered by tests against real subprocesses rather than mocks.
+- Accepted Postgres is the only REQUIRED store over Failing the whole run when any store fails because A non-required failure still exits non-zero and still marks the run partial, so nothing is hidden; it just does not suppress the manifest and thereby make a good Postgres backup invisible to the freshness check.
+
+### Open Questions
+- [ ] The round-trip integration test and the live migration test have never been executed: this sandbox has no Docker, no Postgres, and rclone downloads are blocked by the proxy. Both skip cleanly and are written to run in CI. Until CI runs them, the end-to-end claim rests on component tests plus a live `age` round trip through the real executor.
+- [ ] tests/property/test_workflow_alert_redaction.py fails identically at the branch point: hypothesis has recorded a hostile string that is a PREFIX of the fixed trusted origin, so the test's own strategy can generate a substring of the legitimate value. Pre-existing and unrelated; needs the strategy narrowed.
+- [ ] `railway/postgres/**` still contains the dead pg_cron job, untouched per D1. Retiring it is a follow-up for verify-production-paradedb-langfuse; the finding is recorded in docs/GOTCHAS.md so it cannot be lost.
+- [ ] The gx-10 host needs `rclone`, `age`, `pg_dump` and optionally `neo4j-admin` / `bao` installed. `aca backup run` preflights and names each missing one, but nothing provisions them — that is a deployment step, documented in docs/BACKUP_RESTORE.md.
+
+### Completed Work
+- wp-contracts (0.1-0.4): backup manifest and system_check alert JSON Schemas in a new durable contracts domain, plus 36 conformance tests.
+- wp-settings (1.1-1.10): backup_s3_*, age and monitoring settings with one deprecation mapper for all three groups; `*_KEY_ID` masking gap closed; check-profile-secrets.sh extended to S3-shaped credentials; boto3 declared.
+- wp-backup-cli (2.1-2.15): store adapters as pure argv builders, a Popen-chaining executor with per-stage status and in-pipeline digest, manifest and canary writing, tier promotion, the shared manifest reader, and `aca backup run|verify|list`.
+- wp-health-alerts (3.1-3.10): manifest-derived freshness, three health-check defects fixed, eleven widening points across the model/DDL/service, an Alembic migration relaxing three CHECK constraints, and idempotent per-window emission.
+- wp-restore-cli (4.1-4.11): endpoint-agnostic restore with prefix-based discovery and age decryption, plus the three credential-safety fixes.
+- wp-deploy-assets (5.1-5.10): systemd service/timer/env template, committed tiered retention with a dry-run applier, docs/BACKUP_RESTORE.md, and SYNC_DOWN / SETUP / MOBILE_DEPLOYMENT / GOTCHAS / CLAUDE.md updates.
+- wp-integration (6.1-6.4): MinIO compose fixture, the round-trip test, executor tests against real subprocesses, and full-suite reconciliation against a branch-point baseline.
+
+### Next Steps
+- Run the round-trip and live-migration tests with the compose `test` profile and a Postgres available — they are the only unexecuted evidence in this change.
+- Confirm `alembic upgrade head` applies c3f1a8b6e40d cleanly, then insert and drain one real system_check event end to end.
+- Verify the systemd units on a host: `systemd-analyze verify` plus one manual `aca backup run` as the aca-backup user.
+- Check that no emitted alert or CLI output carries a credential, against real settings rather than fixtures.
+
+### Relevant Files
+- `src/services/backup/executor.py` — The pipeline. Chains Popen so a mid-pipe failure cannot be masked by the last stage's exit code — the defect class this whole change exists to eliminate.
+- `src/services/backup/engine.py` — Where the four refusals to call a backup successful are implemented.
+- `src/services/backup/manifest_reader.py` — One reader, one cache, one definition of stale; never raises and holds no decryption identity.
+- `src/services/workflow_terminal_event_service.py` — The emitting service. Four of the eleven widening points live here, including the one no review round found.
+- `alembic/versions/c3f1a8b6e40d_admit_system_check_terminal_events.py` — Relaxes all three CHECK constraints together; widening two of three still leaves the row uninsertable.
+- `tests/unit/test_system_check_alert_emission.py` — The acceptance criterion for the alerting slice (A13, task 3.9b).
+- `tests/test_services/test_backup_executor.py` — Runs against real subprocesses, including a live age round trip. Found the ciphertext-vs-plaintext digest property.
+- `docs/BACKUP_RESTORE.md` — The runbook. Leads with recovering the decryption identity.
+
+### Context
+All 112 tasks across six packages implemented and committed in eight phase-scoped commits. The change delivers the project's first working backup: an `aca backup` group that streams every store through age-encryption to an S3-compatible target, a manifest-derived freshness check that replaces an unfixable pg_cron watchdog, a durable system_check alert path (with the Alembic migration A1 established was unavoidable), an endpoint-agnostic restore carrying three credential-safety fixes, and host scheduling with provider-side retention. Implemented inline rather than via sub-agents: this harness exposes no Task/Agent tool, so the local-parallel tier's dispatch step was executed sequentially.
+
