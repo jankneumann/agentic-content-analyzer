@@ -207,7 +207,7 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
   **Spec scenarios**: backup-and-restore.6 (Stale backup raises a durable alert; Readiness polling does not multiply alerts)
   **Design decisions**: D6
   **Dependencies**: 3.6
-- [ ] 3.9 Implement idempotent freshness-alert emission in periodic worker maintenance, keyed on the observed manifest generation per design D6 (M)
+- [ ] 3.9 Implement idempotent freshness-alert emission in periodic worker maintenance, keyed on the check window per design A10, which supersedes D6's manifest-generation sketch (M)
   **Design decisions**: D6
   **Dependencies**: 3.8, 3.7b, 3.3b
 - [ ] 3.7c Write a migration test asserting a `system_check` row is rejected before the migration and accepted after, covering all three CHECK constraints (M)
@@ -233,7 +233,7 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
 - [ ] 3.7j Widen `WorkflowAlertCounts` with the four backup tally fields — it is a StrictModel with `extra="forbid"`, so backup counts are rejected without this (S)
   **Design decisions**: A9
   **Dependencies**: 3.7h
-- [ ] 3.7k Write a mechanical schema-vs-model conformance test asserting the alert schema and `WorkflowAlertEnvelopeV1` agree field-for-field, and that `WorkflowAlertDiagnosticCode` admits exactly the schema's code enum (S)
+- [ ] 3.7k Write a mechanical schema-vs-model conformance test asserting narrowing-compatibility between the alert schema and `WorkflowAlertEnvelopeV1` — every schema constraint at least as strict as the model's, and no schema field absent from the model (the schema is correctly a narrowed variant in six places), and that `WorkflowAlertDiagnosticCode` admits exactly the schema's code enum (S)
   **Design decisions**: A11, A12
   **Dependencies**: 3.6
 - [ ] 3.7l Write tests for check-window key derivation — every evaluation inside one window derives the identical key, and one alert is emitted per staleness period during a sustained outage (S)
@@ -241,7 +241,16 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
   **Dependencies**: 3.6
 - [ ] 3.7m Implement check-window truncation as a pure function of the window length (S)
   **Dependencies**: 3.7l
-- [ ] 3.9b Write an end-to-end enqueue-and-drain test proving a `system_check` alert is persisted and delivered against a migrated database — envelope construction alone is not evidence of delivery (M)
+- [ ] 3.7n Write a test driving the REAL emission path — enqueue a `system_check` terminal event, run `process_pending_event`, and assert a delivery is created; assert the pre-fix behaviour is a silent `classification_status='rejected'` with no delivery and no raise (M)
+  **Design decisions**: A13
+  **Dependencies**: 3.7f
+- [ ] 3.7o Add a `system_check` arm to `_validate_event_identity` admitting null reconciliation identity, and admit the A2 key grammar in `WorkflowTerminalEventV1.validate_source_identity` (M)
+  **Design decisions**: A13
+  **Dependencies**: 3.7n
+- [ ] 3.7p Add a `system_check` branch to `classify_terminal_event` returning a classification instead of falling through to `_operation_type(None)` (M)
+  **Design decisions**: A13
+  **Dependencies**: 3.7o
+- [ ] 3.9b ACCEPTANCE — end-to-end test proving a `system_check` alert is persisted, classified, projected to an envelope, and drained to a delivery against a migrated database. Envelope construction, classification and persistence are each necessary and none is sufficient; assert a delivery row exists and that no path silently sets `classification_status='rejected'` (M)
   **Design decisions**: A1
   **Dependencies**: 3.9, 3.7f
 - [ ] 3.9c Write tests asserting a fresh-but-partial manifest is not reported `ok` and raises the partial alert code (S)

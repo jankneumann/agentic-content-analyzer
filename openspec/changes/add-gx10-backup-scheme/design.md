@@ -156,6 +156,9 @@ that 404s.
 
 ### D6 — Emit from the worker's periodic loop, never from `/ready`
 
+> **Partially superseded.** D6's rationale stands. Its key sketch does not — see
+> A2 for the grammar and A10 for the check-window definition.
+
 **Decision.** `readiness_check()` continues to only *report* `checks["backup"]`.
 Alert emission lives in the worker's periodic maintenance loop, alongside
 `_drain_workflow_alert_deliveries` (`queue/worker.py:570`).
@@ -650,3 +653,97 @@ not envelope fields at all and are rejected by `extra="forbid"`; and admitted
 The schema is now checked field-for-field against the model: no missing fields, no
 invented fields, identical required sets. That check is mechanical and belongs in
 CI, not in a reviewer's attention — task 3.7b asserts it.
+
+---
+
+# Amendments from PLAN_REVIEW (round 3)
+
+Findings 12; criticals 5 → 1. All five round-2 criticals verified closed. The one
+remaining critical is new, and it is the most consequential finding of the whole
+review.
+
+### A13 — The emitting service is authoritative, not the envelope model (supersedes A9's scope)
+
+**Finding.** A9 concluded that the closed model is authoritative and the table
+describing it is not — then applied that conclusion one layer too shallow. All
+seven widening points in A9 live in `workflow_alert_models.py`. **That model does
+not emit the alert.** `WorkflowTerminalEventService.process_pending_event`
+(`workflow_terminal_event_service.py:132`) does, and a `system_check` row hits
+three further gates before an envelope is ever constructed:
+
+1. `_validate_event_identity` (`:802-807`) raises for any non-operation kind
+   whose `reconciliation_run_id` or `reconciliation_content_id` is NULL. A system
+   check has neither.
+2. The same function then constructs a `WorkflowTerminalEventV1` (`:810`) — the
+   class A9's table dismissed as "a different class entirely." It is on the
+   emission path precisely because this function instantiates it.
+3. `classify_terminal_event` (`:472`) calls that validator first and then branches
+   only on `reconciliation_failure`, falling through to `_operation_type(None)`,
+   which raises.
+
+**Why this is the worst possible failure mode.** All three raise `ValueError`, and
+`process_pending_event` catches it at `:167`, writing
+`classification_status='rejected'` with `envelope=None`. **Nothing raises to the
+caller. No delivery is enqueued. No error is logged as a failure.** The
+orphan-cleanup query in `src/queue/worker.py:70-86` then DELETEs the row.
+
+Built as planned, *the alert reporting that backups are dead would itself be
+silently dropped* — the exact silent-success failure this change exists to
+eliminate, reproduced inside the change's own alerting path. Verified by reading
+all three call sites, not inferred.
+
+Task 3.7f covered persisting the row. Persisting is not classifying, and
+classifying is not projecting. Existing task 3.9b would have caught it — but only
+after `wp-health-alerts` was built, which is the wrong time to discover that
+`classify_terminal_event` needs a branch nobody designed.
+
+**Amendment.** The widening extends into the service:
+
+| # | Element | Location |
+|---|---|---|
+| 8 | `_validate_event_identity` needs a `system_check` arm admitting null reconciliation identity | `:802-807` |
+| 9 | `WorkflowTerminalEventV1.validate_source_identity` must admit the A2 key grammar | `workflow_alert_models.py:141-176` |
+| 10 | `classify_terminal_event` needs a `system_check` branch returning a classification | `:472` |
+
+Point 9 retracts A9's dismissal of `WorkflowTerminalEventV1` as irrelevant. It was
+wrong: the service instantiates that class on the emission path.
+
+**Generalised lesson, now stated once instead of rediscovered each round.** Three
+rounds produced the same class of defect in five locations — `event_key` grammar,
+`_validate_identity_and_collections`, `WorkflowAlertCounts`, then these three.
+Each time a *document describing* a constraint stood in for the *code enforcing*
+it. The durable fix is not another table: it is that **every widening point is
+proven by a test that drives the real emission path end to end** — enqueue a
+`system_check` event, drain it, and assert a delivery was actually created.
+Envelope construction, classification, and persistence are each necessary and
+none is sufficient. Task 3.9b is upgraded accordingly and is the acceptance
+criterion for the alerting slice.
+
+### A14 — Round-2 residue and cross-artifact drift
+
+Eight nits, none architectural, all cheap. Recorded rather than deferred, because
+three of them are round-2 items that were agreed and then simply not applied —
+which is its own lesson about amendment rounds:
+
+- `wp-contracts`'s lock path still named a stale contracts location.
+- The manifest key still lacked the environment segment A6.3 required — the
+  *reader* check landed, the *key* did not, leaving the cross-environment
+  overwrite half-fixed.
+- **A8 inverted its own intent**: it granted `wp-health-alerts` read access to
+  `manifest_reader.py`, but the yaml *denied* exactly that file, and deny beats
+  `read_allow`. The package could not read the reader it was designed to consume.
+- Task 3.9 still described D6's superseded "manifest generation" keying while task
+  3.7m specified window truncation; D6's superseded sketch still stood as
+  normative prose.
+- The schema left `release_revision` / `release_revision_source` unconstrained
+  where the model pins a pattern, an enum, and a present-together rule.
+- Task 3.7k's "agree field-for-field" is not literally satisfiable: the schema is
+  *correctly* a narrowed variant in six places (constants and subsets). The
+  assertion is restated as narrowing-compatibility — every schema constraint must
+  be at least as strict as the model's, and no schema field may be absent from
+  the model.
+
+The 48h-vs-24h staleness default is **accepted as-is**: a 24h backup cadence with
+a 48h staleness threshold means one missed run is tolerated before alerting,
+which is deliberate — alerting on a single transient failure trains operators to
+ignore the channel.
