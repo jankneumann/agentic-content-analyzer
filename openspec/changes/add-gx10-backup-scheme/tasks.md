@@ -7,20 +7,20 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
 
 ## Phase 0 — Contracts (wp-contracts)
 
-- [ ] 0.1 Land `openspec/contracts/backup/schemas/backup-manifest.schema.json` as the durable manifest contract, including the plaintext-and-credential-free constraints (S)
+- [x] 0.1 Land `openspec/contracts/backup/schemas/backup-manifest.schema.json` as the durable manifest contract, including the plaintext-and-credential-free constraints (S)
   **Spec scenarios**: backup-and-restore.4 (Manifest records the run; Manifest contains no credentials; Manifest is readable without the decryption identity)
   **Design decisions**: D7, D11
   **Dependencies**: None
-- [ ] 0.2 Land the widened alert-envelope event schema beside the existing envelope contracts in `openspec/contracts/content-workflows/events/` (S)
+- [x] 0.2 Land the widened alert-envelope event schema beside the existing envelope contracts in `openspec/contracts/content-workflows/events/` (S)
   **Spec scenarios**: backup-and-restore.6 (System-check alerts carry no operation identity)
   **Design decisions**: D5
   **Dependencies**: None
   **Ordering note**: the schema is the coordination boundary, so it lands first. The
   test asserting it agrees with `WorkflowAlertEnvelopeV1` is 3.7b, because the model
   is not widened until 3.7 — asserting agreement here would fail by construction.
-- [ ] 0.3 Register the `backup` contract domain in `openspec/contracts/README.md` (XS)
+- [x] 0.3 Register the `backup` contract domain in `openspec/contracts/README.md` (XS)
   **Dependencies**: 0.1
-- [ ] 0.4 Checkpoint: contract tests green, diff reviewed, scope verified
+- [x] 0.4 Checkpoint: contract tests green, diff reviewed, scope verified
 
 ## Phase 1 — Backup settings (wp-settings)
 

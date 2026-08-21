@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aca.rotkohl.ai/schemas/backup/backup-freshness-alert.v1.json",
+  "title": "BackupFreshnessAlertEnvelope",
+  "description": "The `system_check` narrowing of WorkflowAlertEnvelopeV1 used for backup freshness alerts. Per design A11 this file is the SINGLE SOURCE OF TRUTH for the backup diagnostic-code set; design prose and tasks reference it and do not restate it. Per A12 it mirrors the model field-for-field: no field here is absent from WorkflowAlertEnvelopeV1, no field of the model is missing here, and the required sets are identical. Every constraint here is at least as strict as the model's — this schema is deliberately a NARROWED variant, so equality of constraints is not expected, narrowing-compatibility is.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_key",
+    "occurred_at",
+    "severity",
+    "outcome",
+    "source_kind",
+    "workflow_type",
+    "operation_id",
+    "attempt",
+    "diagnostic_url",
+    "resource_refs",
+    "source_keys",
+    "counts",
+    "codes"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+    },
+    "event_key": {
+      "description": "A2/A10 — one lowercase grammar. The suffix is the START of the fixed-length check window containing the evaluation (evaluation time truncated to a multiple of the window length), never a wall-clock read at emission time. Every evaluation inside one window therefore derives the identical key, which is what makes the durable path deduplicate per window.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^system_check:backup_freshness:[0-9]+$"
+    },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "severity": { "enum": ["warning", "error"] },
+    "outcome": {
+      "description": "Narrowed subset of the model's outcome literal. `reconciled` and `zero_items` are reconciliation/ingestion concepts and cannot describe a backup check.",
+      "enum": ["partial", "failed", "unknown"]
+    },
+    "source_kind": { "const": "system_check" },
+    "workflow_type": { "const": "system.backup_freshness" },
+    "release_revision": {
+      "type": "string",
+      "maxLength": 40,
+      "pattern": "^(?:[a-f0-9]{40}|development|unavailable)$"
+    },
+    "release_revision_source": {
+      "enum": ["railway_commit_sha", "local_development", "unavailable"]
+    },
+    "operation_id": {
+      "description": "A system check has no operation identity. The field is present-and-null rather than omitted, matching the model, which declares it required-but-nullable.",
+      "type": "null"
+    },
+    "attempt": {
+      "description": "System checks are not retried claims; the model's `attempt >= 1` is narrowed to the immutable 1, matching the reconciliation precedent.",
+      "const": 1
+    },
+    "diagnostic_url": {
+      "description": "A3 — points at the existing, already-allowlisted terminal-event route rather than inventing /api/v1/health/backup. https only, matching both the model's UrlConstraints and the producer, which hardcodes https.",
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https://[^/@?#]+/api/v1/workflow-terminal-events/[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+    },
+    "resource_refs": {
+      "description": "A backup check references no application resource.",
+      "type": "array",
+      "maxItems": 0
+    },
+    "source_keys": {
+      "description": "A backup check references no ingestion source.",
+      "type": "array",
+      "maxItems": 0
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A9 point 7 — WorkflowAlertCounts is a StrictModel with extra=\"forbid\", so these four tallies exist on the model or they are rejected at construction. Explicit nulls are rejected by the model; omit instead.",
+      "properties": {
+        "manifest_age_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9223372036854775807
+        },
+        "stores_succeeded": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9223372036854775807
+        },
+        "stores_failed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9223372036854775807
+        },
+        "stores_skipped": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9223372036854775807
+        }
+      }
+    },
+    "codes": {
+      "description": "A11 — authoritative backup diagnostic-code set. WorkflowAlertDiagnosticCode MUST admit exactly these, asserted mechanically by the conformance test so the two cannot drift again.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "backup_stale",
+          "backup_no_history",
+          "backup_partial",
+          "backup_target_unreachable",
+          "backup_environment_mismatch"
+        ]
+      }
+    }
+  },
+  "dependentRequired": {
+    "release_revision": ["release_revision_source"],
+    "release_revision_source": ["release_revision"]
+  },
+  "examples": [
+    {
+      "schema_version": 1,
+      "event_id": "550e8400-e29b-41d4-a716-446655440000",
+      "event_key": "system_check:backup_freshness:1755734400",
+      "occurred_at": "2026-08-21T03:00:00Z",
+      "severity": "error",
+      "outcome": "failed",
+      "source_kind": "system_check",
+      "workflow_type": "system.backup_freshness",
+      "release_revision": "development",
+      "release_revision_source": "local_development",
+      "operation_id": null,
+      "attempt": 1,
+      "diagnostic_url": "https://ops.example.com/api/v1/workflow-terminal-events/550e8400-e29b-41d4-a716-446655440000",
+      "resource_refs": [],
+      "source_keys": [],
+      "counts": { "manifest_age_seconds": 187200, "stores_succeeded": 3, "stores_skipped": 1 },
+      "codes": ["backup_stale"]
+    }
+  ]
+}
