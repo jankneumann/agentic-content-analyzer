@@ -22,6 +22,21 @@ import pytest
 from src.services.backup.executor import Stage, run_pipeline
 
 
+def _bin(name: str) -> str:
+    """Resolve a tool to its absolute path.
+
+    ruff S607 flags bare executable names: a partial path resolves through
+    PATH at exec time, so what actually runs depends on the caller's
+    environment. These tests shell out to real binaries, so resolve once
+    and fail loudly if the tool is absent rather than silently running
+    something else.
+    """
+    resolved = shutil.which(name)
+    if resolved is None:  # pragma: no cover - guarded by skipif
+        raise RuntimeError(f"required test binary not found: {name}")
+    return resolved
+
+
 class TestEveryStageStatusIsVisible:
     def test_a_clean_pipeline_reports_every_stage(self) -> None:
         result = run_pipeline(
@@ -34,7 +49,7 @@ class TestEveryStageStatusIsVisible:
         assert result.ok
         assert [name for name, _ in result.stage_status] == ["src", "mid", "tee", "sink"]
 
-    def test_a_failure_in_the_FIRST_stage_is_not_masked_by_the_last(self) -> None:
+    def test_a_failure_in_the_first_stage_is_not_masked_by_the_last(self) -> None:
         """This is the whole reason the executor chains Popen instead of running
         `sh -c 'a | b | c'`. A shell pipeline reports the LAST stage's status, so
         `pg_dump` dying halfway yields zero from `rclone` and a truncated
@@ -86,7 +101,7 @@ class TestMeasurement:
         assert sink.read_bytes() == payload.encode()
 
     @pytest.mark.skipif(shutil.which("age") is None, reason="needs the age binary")
-    def test_with_encryption_it_measures_the_CIPHERTEXT(self, tmp_path: Path) -> None:
+    def test_with_encryption_it_measures_the_ciphertext(self, tmp_path: Path) -> None:
         """Load-bearing and easy to get backwards.
 
         `tee` sits immediately before the upload, so it measures exactly the bytes
@@ -99,9 +114,9 @@ class TestMeasurement:
         from src.services.backup.target import encrypt_stage
 
         identity = tmp_path / "id.txt"
-        subprocess.run(["age-keygen", "-o", str(identity)], check=True, capture_output=True)
+        subprocess.run([_bin("age-keygen"), "-o", str(identity)], check=True, capture_output=True)
         recipient = subprocess.run(
-            ["age-keygen", "-y", str(identity)],
+            [_bin("age-keygen"), "-y", str(identity)],
             check=True,
             capture_output=True,
             text=True,
@@ -130,9 +145,9 @@ class TestMeasurement:
         from src.services.backup.target import encrypt_stage
 
         identity = tmp_path / "id.txt"
-        subprocess.run(["age-keygen", "-o", str(identity)], check=True, capture_output=True)
+        subprocess.run([_bin("age-keygen"), "-o", str(identity)], check=True, capture_output=True)
         recipient = subprocess.run(
-            ["age-keygen", "-y", str(identity)],
+            [_bin("age-keygen"), "-y", str(identity)],
             check=True,
             capture_output=True,
             text=True,
@@ -153,7 +168,7 @@ class TestMeasurement:
         assert b"alice@example.com" not in raw
 
         recovered = subprocess.run(
-            ["age", "--decrypt", "--identity", str(identity), str(artifact)],
+            [_bin("age"), "--decrypt", "--identity", str(identity), str(artifact)],
             check=True,
             capture_output=True,
         )
