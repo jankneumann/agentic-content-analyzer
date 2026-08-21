@@ -497,6 +497,36 @@ class Settings(BaseSettings):
     minio_root_user: str | None = None  # MinIO root user (auto-injected by Railway)
     minio_root_password: str | None = None  # MinIO root password (auto-injected)
 
+    # -------------------------------------------------------------------------
+    # Off-site backup (provider-neutral)
+    # -------------------------------------------------------------------------
+    # Target. Works unchanged against Cloudflare R2, AWS S3, and MinIO — the
+    # providers differ only in the VALUES here, never in a code branch. Read by
+    # both the backup and the restore paths.
+    #
+    # Every field defaults to unset so that adding this surface changes behavior
+    # for no existing deployment. The legacy railway_minio_* / railway_backup_*
+    # names keep working via _apply_deprecated_backup_aliases below.
+    backup_s3_endpoint: str | None = None  # e.g. https://<acct>.r2.cloudflarestorage.com
+    backup_s3_bucket: str | None = None
+    backup_s3_region: str = "auto"  # R2 wants "auto"; AWS wants a real region
+    backup_s3_access_key_id: SecretStr | None = None
+    backup_s3_secret_access_key: SecretStr | None = None
+    backup_s3_prefix: str = "aca"  # key namespace inside the bucket
+
+    # Encryption. The recipient is a PUBLIC age key used by the backup path; the
+    # identity is the private key used by restore and verify. They are deliberately
+    # split so the gx-10 unit can hold the recipient and never the identity — a
+    # host compromise then cannot decrypt the backups it produced.
+    backup_age_recipient: str | None = None
+    backup_age_identity_path: str | None = None
+
+    # Monitoring. Provider-neutral successors to railway_backup_enabled and
+    # railway_backup_staleness_hours. A freshness check that no longer depends on
+    # Railway must not keep reading a setting named railway_*.
+    backup_monitoring_enabled: bool = True
+    backup_staleness_hours: int = Field(default=48, ge=1)
+
     # Graph Database Provider Configuration
     # Orthogonal axes: provider (what backend) x mode (how deployed)
     graphdb_provider: GraphDBProviderType = "neo4j"
@@ -1593,6 +1623,58 @@ class Settings(BaseSettings):
             object.__setattr__(self, "neo4j_cloud_uri", self.neo4j_auradb_uri)
         if self.neo4j_auradb_password and not self.neo4j_cloud_password:
             object.__setattr__(self, "neo4j_cloud_password", self.neo4j_auradb_password)
+
+    @model_validator(mode="after")
+    def _migrate_backup_settings(self) -> Settings:
+        """Map the legacy Railway/MinIO backup names onto the neutral namespace."""
+        self._apply_deprecated_backup_aliases()
+        return self
+
+    def _apply_deprecated_backup_aliases(self) -> None:
+        """Map railway_minio_* / railway_backup_* onto the backup_* namespace.
+
+        Mirrors ``_apply_deprecated_neo4j_aliases``: explicit assignment always wins,
+        detected via ``model_fields_set`` rather than by truthiness, so an explicit
+        ``backup_monitoring_enabled=False`` is not mistaken for "unset".
+
+        Target and monitoring are mapped in ONE pass by ONE validator. Splitting them
+        would let a config that sets only legacy names resolve half of the neutral
+        surface — which is how a dead backup stays invisible.
+        """
+        explicitly_set = self.model_fields_set
+        mapped: list[str] = []
+
+        def adopt(new_field: str, legacy_value: object, *, secret: bool = False) -> None:
+            if legacy_value is None or new_field in explicitly_set:
+                return
+            value = SecretStr(str(legacy_value)) if secret else legacy_value
+            object.__setattr__(self, new_field, value)
+            mapped.append(new_field)
+
+        adopt("backup_s3_endpoint", self.railway_minio_endpoint)
+        adopt(
+            "backup_s3_bucket",
+            self.railway_backup_bucket
+            if "railway_backup_bucket" in explicitly_set
+            else self.railway_minio_bucket,
+        )
+        adopt("backup_s3_access_key_id", self.minio_root_user, secret=True)
+        adopt("backup_s3_secret_access_key", self.minio_root_password, secret=True)
+
+        if "railway_backup_enabled" in explicitly_set:
+            adopt("backup_monitoring_enabled", self.railway_backup_enabled)
+        if "railway_backup_staleness_hours" in explicitly_set:
+            adopt("backup_staleness_hours", self.railway_backup_staleness_hours)
+
+        if mapped:
+            # Exactly one warning per resolution, naming every replacement field —
+            # one line per mapped field would train operators to filter the channel.
+            logger.warning(
+                "Deprecated Railway/MinIO backup settings mapped forward to %s. "
+                "Update your config to set the provider-neutral BACKUP_* fields "
+                "directly; the railway_* names are legacy configuration only.",
+                ", ".join(sorted(mapped)),
+            )
 
     def _validate_graphdb_config(self) -> None:
         """Validate graphdb_provider + graphdb_mode combination."""

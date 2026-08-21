@@ -220,11 +220,31 @@ class StorageSettings(BaseModel):
     supabase_secret_access_key: str | None = None
     supabase_storage_public: bool = False
 
-    # Railway MinIO
+    # Railway MinIO (legacy — superseded by the backup_s3_* namespace below)
     railway_minio_endpoint: str | None = None
     railway_minio_bucket: str | None = None
     minio_root_user: str | None = None
     minio_root_password: str | None = None
+
+    # Off-site backup target (provider-neutral: Cloudflare R2, AWS S3, MinIO).
+    #
+    # ONE credential namespace, not two. Per design D11 the gx-10 host and the app
+    # tier hold *different values* for these same fields — the host gets a write
+    # credential, the app tier a manifest-read-only one — because that is a
+    # per-environment value difference, not a second pair of settings. Declaring
+    # separate read/write fields would mean every consumer has to pick, and picking
+    # wrong is silent.
+    backup_s3_endpoint: str | None = None
+    backup_s3_bucket: str | None = None
+    backup_s3_region: str = "auto"
+    backup_s3_access_key_id: str | None = None
+    backup_s3_secret_access_key: str | None = None
+    backup_s3_prefix: str = "aca"
+
+    # Client-side encryption. Recipient = public key, safe on the host. Identity =
+    # private key, restore/verify only, never shipped to the scheduled unit.
+    backup_age_recipient: str | None = None
+    backup_age_identity_path: str | None = None
 
     model_config = {"extra": "allow"}
 
