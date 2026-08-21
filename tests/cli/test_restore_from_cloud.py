@@ -1,399 +1,471 @@
-"""Tests for `aca manage restore-from-cloud` CLI command.
+"""`aca manage restore-from-cloud` — target resolution, safety, decryption.
 
-Per design D5, this command is a thin subprocess orchestrator that wraps
-`mc` (MinIO client) and `pg_restore`. Tests mock `subprocess.run` and the
-Settings object; no real MinIO / Postgres interaction occurs.
+Two testing choices here are deliberate and worth stating, because the previous
+version of this file made the opposite ones:
+
+**The settings fixture is an explicit fake, not a `MagicMock`.** A `MagicMock`
+answers every attribute, so a test passes just as happily when the command reads a
+setting that does not exist — which is exactly how you fail to notice that a
+rename left a reader behind. `FakeSettings` declares the fields the command may
+read and nothing else; touching an undeclared one raises.
+
+**Assertions match on invoked argv, never on `call_args_list[N]`.** Positional
+indices assert an ORDERING, not a behavior: they break when a stage is added and,
+worse, silently assert the wrong call when one is removed. `_invocation("age")`
+finds the age call wherever it happens to be.
+
+No subprocess runs and no store is contacted.
 """
 
 from __future__ import annotations
 
 import json
 import subprocess
-from unittest.mock import MagicMock, patch
+from typing import Any
+from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
 
 from src.cli.app import app
+from src.cli.restore_commands import (
+    DatabaseIdentity,
+    _addresses_same_database,
+    mask_database_url,
+)
 
 runner = CliRunner()
 
-
-def _make_completed(
-    returncode: int = 0, stdout: str = "", stderr: str = ""
-) -> subprocess.CompletedProcess:
-    """Build a stub `CompletedProcess` to return from `subprocess.run`."""
-    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
+PROD_URL = "postgresql://aca:prodpass@prod.db.internal:5432/newsletters"
+LOCAL_URL = "postgresql://aca:localpass@localhost:5432/newsletters_scratch"
 
 
-@pytest.fixture
-def fake_settings():
-    """Settings stub populated with MinIO + DB credentials."""
-    s = MagicMock()
-    s.railway_minio_endpoint = "https://minio.railway.internal"
-    s.railway_backup_bucket = "backups"
-    s.minio_root_user = "test-user"
-    s.minio_root_password = "test-pass"
-    s.database_url = "postgresql://localhost:5432/newsletters_sync"
-    s.railway_database_url = None
-    return s
+class FakeSettings:
+    """Explicit stand-in exposing only the fields the command is allowed to read."""
 
+    _DECLARED = frozenset(
+        {
+            "backup_s3_endpoint",
+            "backup_s3_bucket",
+            "backup_s3_region",
+            "backup_s3_prefix",
+            "backup_s3_access_key_id",
+            "backup_s3_secret_access_key",
+            "backup_age_identity_path",
+            "database_url",
+            "railway_database_url",
+        }
+    )
 
-class TestRestoreFromCloudCLI:
-    """Unit tests for argument parsing, subprocess orchestration, exit codes."""
+    def __init__(self, **overrides: Any) -> None:
+        values: dict[str, Any] = {
+            "backup_s3_endpoint": "https://acct.r2.cloudflarestorage.com",
+            "backup_s3_bucket": "aca-backups",
+            "backup_s3_region": "auto",
+            "backup_s3_prefix": "aca",
+            "backup_s3_access_key_id": "AKIAEXAMPLE",
+            "backup_s3_secret_access_key": "r2-secret-key",
+            "backup_age_identity_path": "/etc/aca/identity.txt",
+            "database_url": LOCAL_URL,
+            "railway_database_url": None,
+        }
+        values.update(overrides)
+        unknown = set(values) - self._DECLARED
+        if unknown:
+            raise AssertionError(f"test declared undeclared settings: {sorted(unknown)}")
+        self.__dict__.update(values)
 
-    @patch("src.cli.restore_commands.get_settings")
-    @patch("src.cli.restore_commands.subprocess.run")
-    def test_specific_backup_date_resolves_filename(self, mock_run, mock_settings, fake_settings):
-        """--backup-date 2026-04-20 selects matching dump from `mc ls` listing."""
-        mock_settings.return_value = fake_settings
-        # Sequence: mc alias set, mc ls (returns dumps), mc cp, pg_restore, mc rm (local)
-        mock_run.side_effect = [
-            _make_completed(0),  # mc alias set
-            _make_completed(
-                0,
-                stdout=(
-                    "[2026-04-19 03:00:00 UTC]  50MiB railway-2026-04-19-0300.dump\n"
-                    "[2026-04-20 03:00:00 UTC]  50MiB railway-2026-04-20-0300.dump\n"
-                    "[2026-04-21 03:00:00 UTC]  50MiB railway-2026-04-21-0300.dump\n"
-                ),
-            ),  # mc ls
-            _make_completed(0),  # mc cp
-            _make_completed(0),  # pg_restore
-        ]
-
-        result = runner.invoke(
-            app,
-            ["manage", "restore-from-cloud", "--backup-date", "2026-04-20", "--yes"],
+    def __getattr__(self, name: str) -> Any:
+        raise AttributeError(
+            f"restore-from-cloud read undeclared setting {name!r}. "
+            "A MagicMock would have returned a Mock and hidden this."
         )
 
-        assert result.exit_code == 0, result.output
-        # Verify mc cp was called with the filename matching the date
-        cp_call = mock_run.call_args_list[2]
-        cp_args = cp_call[0][0]  # positional args list
-        assert any("railway-2026-04-20" in str(a) for a in cp_args), (
-            f"Expected railway-2026-04-20 in cp args, got: {cp_args}"
-        )
 
-    @patch("src.cli.restore_commands.get_settings")
-    @patch("src.cli.restore_commands.subprocess.run")
-    def test_latest_backup_picked_when_no_date(self, mock_run, mock_settings, fake_settings):
-        """No --backup-date picks the most recent dump from the listing."""
-        mock_settings.return_value = fake_settings
-        mock_run.side_effect = [
-            _make_completed(0),
-            _make_completed(
-                0,
-                stdout=(
-                    "[2026-04-19 03:00:00 UTC]  50MiB railway-2026-04-19-0300.dump\n"
-                    "[2026-04-20 03:00:00 UTC]  50MiB railway-2026-04-20-0300.dump\n"
-                    "[2026-04-21 03:00:00 UTC]  50MiB railway-2026-04-21-0300.dump\n"
-                ),
-            ),
-            _make_completed(0),
-            _make_completed(0),
-        ]
+def listing(*keys: str) -> str:
+    return json.dumps([{"Path": key, "Name": key.rsplit("/", 1)[-1]} for key in keys])
 
-        result = runner.invoke(app, ["manage", "restore-from-cloud", "--yes"])
 
-        assert result.exit_code == 0, result.output
-        cp_call = mock_run.call_args_list[2]
-        cp_args = cp_call[0][0]
-        # The latest date in the listing is 2026-04-21
-        assert any("railway-2026-04-21" in str(a) for a in cp_args), (
-            f"Expected latest (2026-04-21) dump, got: {cp_args}"
-        )
+DEFAULT_LISTING = listing(
+    "daily/2026-08-19T030000Z/postgres.dump.age",
+    "daily/2026-08-21T030000Z/postgres.dump.age",
+)
 
-    @patch("src.cli.restore_commands.get_settings")
-    @patch("src.cli.restore_commands.subprocess.run")
-    def test_mc_alias_failure_surfaces_nonzero_exit(self, mock_run, mock_settings, fake_settings):
-        """`mc` subprocess nonzero exit propagates to CLI exit code."""
-        mock_settings.return_value = fake_settings
-        mock_run.side_effect = [
-            _make_completed(1, stderr="mc: authentication failed"),
-        ]
 
-        result = runner.invoke(app, ["manage", "restore-from-cloud", "--yes"])
+class Runs:
+    """Records subprocess invocations, keyed by program rather than by position."""
 
-        assert result.exit_code != 0
-        assert "mc" in result.output.lower() or "error" in result.output.lower()
+    def __init__(self, *, ls_stdout: str = DEFAULT_LISTING, failures: dict[str, int] | None = None):
+        self.calls: list[dict[str, Any]] = []
+        self._ls_stdout = ls_stdout
+        self._failures = failures or {}
 
-    @patch("src.cli.restore_commands.get_settings")
-    @patch("src.cli.restore_commands.subprocess.run")
-    def test_mc_ls_empty_listing_errors(self, mock_run, mock_settings, fake_settings):
-        """If `mc ls` returns no dumps, CLI exits non-zero with clear message."""
-        mock_settings.return_value = fake_settings
-        mock_run.side_effect = [
-            _make_completed(0),  # mc alias set
-            _make_completed(0, stdout=""),  # mc ls returns empty
-        ]
+    def __call__(self, argv: Any, **kwargs: Any) -> subprocess.CompletedProcess:
+        argv = list(argv)
+        self.calls.append({"argv": argv, "env": kwargs.get("env") or {}})
+        program = argv[0]
+        subcommand = argv[1] if len(argv) > 1 else ""
+        code = self._failures.get(f"{program} {subcommand}", self._failures.get(program, 0))
+        stdout = self._ls_stdout if (program, subcommand) == ("rclone", "lsjson") else ""
+        return subprocess.CompletedProcess(args=argv, returncode=code, stdout=stdout, stderr="")
 
-        result = runner.invoke(app, ["manage", "restore-from-cloud", "--yes"])
+    def invocation(self, program: str, subcommand: str | None = None) -> dict[str, Any] | None:
+        for call in self.calls:
+            if call["argv"][0] != program:
+                continue
+            if subcommand is None or (len(call["argv"]) > 1 and call["argv"][1] == subcommand):
+                return call
+        return None
 
-        assert result.exit_code != 0
-        assert "no backup" in result.output.lower() or "not found" in result.output.lower()
+    @property
+    def programs(self) -> list[str]:
+        return [call["argv"][0] for call in self.calls]
 
-    @patch("src.cli.restore_commands.get_settings")
-    @patch("src.cli.restore_commands.subprocess.run")
-    def test_backup_date_not_found_errors(self, mock_run, mock_settings, fake_settings):
-        """--backup-date that doesn't match any dump → non-zero exit with message."""
-        mock_settings.return_value = fake_settings
-        mock_run.side_effect = [
-            _make_completed(0),
-            _make_completed(
-                0,
-                stdout="[2026-04-19 03:00:00 UTC]  50MiB railway-2026-04-19-0300.dump\n",
-            ),
-        ]
+    def all_argv_text(self) -> str:
+        return " ".join(" ".join(map(str, call["argv"])) for call in self.calls)
 
-        result = runner.invoke(
-            app,
-            ["manage", "restore-from-cloud", "--backup-date", "2099-01-01", "--yes"],
-        )
 
-        assert result.exit_code != 0
-        assert "2099-01-01" in result.output or "not found" in result.output.lower()
-
-    @patch("src.cli.restore_commands.get_settings")
-    @patch("src.cli.restore_commands.subprocess.run")
-    def test_pg_restore_nonzero_exit_surfaces(self, mock_run, mock_settings, fake_settings):
-        """`pg_restore` nonzero exit → CLI nonzero exit."""
-        mock_settings.return_value = fake_settings
-        mock_run.side_effect = [
-            _make_completed(0),  # mc alias
-            _make_completed(
-                0, stdout="[2026-04-20 03:00:00 UTC]  50MiB railway-2026-04-20-0300.dump\n"
-            ),  # mc ls
-            _make_completed(0),  # mc cp
-            _make_completed(1, stderr="pg_restore: could not connect"),  # pg_restore fails
-        ]
-
-        result = runner.invoke(app, ["manage", "restore-from-cloud", "--yes"])
-
-        assert result.exit_code != 0
-        assert "pg_restore" in result.output.lower() or "restore" in result.output.lower()
-
-    @patch("src.cli.restore_commands.get_settings")
-    @patch("src.cli.restore_commands.subprocess.run")
-    def test_happy_path_exit_zero_with_summary(self, mock_run, mock_settings, fake_settings):
-        """All subprocesses succeed → exit 0 with human-readable summary."""
-        mock_settings.return_value = fake_settings
-        mock_run.side_effect = [
-            _make_completed(0),
-            _make_completed(
-                0, stdout="[2026-04-20 03:00:00 UTC]  50MiB railway-2026-04-20-0300.dump\n"
-            ),
-            _make_completed(0),
-            _make_completed(0),
-        ]
-
-        result = runner.invoke(app, ["manage", "restore-from-cloud", "--yes"])
-
-        assert result.exit_code == 0, result.output
-        assert "railway-2026-04-20" in result.output or "restore" in result.output.lower()
-
-    @patch("src.cli.restore_commands.get_settings")
-    @patch("src.cli.restore_commands.subprocess.run")
-    def test_json_mode_emits_only_json(self, mock_run, mock_settings, fake_settings):
-        """--json mode: stdout parses as JSON; no human text."""
-        mock_settings.return_value = fake_settings
-        mock_run.side_effect = [
-            _make_completed(0),
-            _make_completed(
-                0, stdout="[2026-04-20 03:00:00 UTC]  50MiB railway-2026-04-20-0300.dump\n"
-            ),
-            _make_completed(0),
-            _make_completed(0),
-        ]
-
-        result = runner.invoke(
-            app,
-            ["--json", "manage", "restore-from-cloud", "--yes"],
-        )
-
-        assert result.exit_code == 0, result.output
-        # Strip any trailing whitespace and parse
-        payload = json.loads(result.stdout.strip())
-        assert payload["success"] is True
-        assert "dump_file" in payload
-        assert "railway-2026-04-20" in payload["dump_file"]
-        assert payload["target_db"].startswith("postgresql://")
-
-    @patch("src.cli.restore_commands.get_settings")
-    def test_missing_minio_credentials_errors(self, mock_settings):
-        """If MinIO endpoint/creds are not configured, CLI errors clearly."""
-        s = MagicMock()
-        s.railway_minio_endpoint = None
-        s.minio_root_user = None
-        s.minio_root_password = None
-        s.railway_backup_bucket = "backups"
-        s.database_url = "postgresql://localhost/newsletters"
-        s.railway_database_url = None
-        mock_settings.return_value = s
-
-        result = runner.invoke(app, ["manage", "restore-from-cloud", "--yes"])
-
-        assert result.exit_code != 0
-        assert "minio" in result.output.lower() or "credentials" in result.output.lower()
-
-    # ---- Safety guards against restoring over Railway production DB (IR-002) ----
-
-    @patch("src.cli.restore_commands.get_settings")
-    def test_refuses_to_fallback_to_railway_database_url(self, mock_settings, fake_settings):
-        """IMPL_REVIEW IR-002: restore-from-cloud must NOT default to RAILWAY_DATABASE_URL.
-
-        Without --target-db and without local DATABASE_URL, the command must refuse
-        rather than silently target the Railway production DB.
-        """
-        fake_settings.database_url = None
-        fake_settings.railway_database_url = "postgresql://railway-prod:5432/main"
-        mock_settings.return_value = fake_settings
-
-        result = runner.invoke(app, ["manage", "restore-from-cloud", "--yes"])
-
-        assert result.exit_code != 0
-        assert (
-            "RAILWAY_DATABASE_URL" in result.output
-            or "refused" in result.output.lower()
-            or "production" in result.output.lower()
-        ), f"Expected refusal message, got: {result.output!r}"
-
-    @patch("src.cli.restore_commands.get_settings")
-    def test_refuses_when_database_url_equals_railway_url(self, mock_settings, fake_settings):
-        """VF-C1 (codex VAL_REVIEW VR-001): if DATABASE_URL itself is set to the
-        Railway production URL, the command must refuse even without --target-db.
-        The prior IMPL_FIX covered explicit-match and missing-local-url cases but
-        missed this third path."""
-        railway = "postgresql://railway-prod:5432/main"
-        fake_settings.database_url = railway  # MISCONFIGURED profile
-        fake_settings.railway_database_url = railway
-        mock_settings.return_value = fake_settings
-
-        result = runner.invoke(app, ["manage", "restore-from-cloud", "--yes"])
-
-        assert result.exit_code != 0
-        assert (
-            "RAILWAY_DATABASE_URL" in result.output
-            or "production" in result.output.lower()
-            or "--allow-remote-target" in result.output
-        ), f"Expected refusal, got: {result.output!r}"
-
-    @patch("src.cli.restore_commands.get_settings")
-    @patch("src.cli.restore_commands.subprocess.run")
-    def test_allow_remote_target_overrides_database_url_match(
-        self, mock_run, mock_settings, fake_settings
+def invoke(
+    args: list[str],
+    *,
+    settings: FakeSettings | None = None,
+    runs: Runs | None = None,
+) -> tuple[Any, Runs]:
+    runs = runs or Runs()
+    with (
+        patch("src.cli.restore_commands.get_settings", return_value=settings or FakeSettings()),
+        patch("src.cli.restore_commands.subprocess.run", runs),
     ):
-        """VF-C1: --allow-remote-target is the explicit opt-in even when
-        DATABASE_URL == RAILWAY_DATABASE_URL."""
-        railway = "postgresql://railway-prod:5432/main"
-        fake_settings.database_url = railway
-        fake_settings.railway_database_url = railway
-        mock_settings.return_value = fake_settings
-        mock_run.side_effect = [
-            _make_completed(0),
-            _make_completed(
-                0, stdout="[2026-04-20 03:00:00 UTC]  50MiB railway-2026-04-20-0300.dump\n"
-            ),
-            _make_completed(0),
-            _make_completed(0),
-        ]
+        result = runner.invoke(app, args)
+    return result, runs
 
-        result = runner.invoke(
-            app, ["manage", "restore-from-cloud", "--yes", "--allow-remote-target"]
-        )
 
+# ---------------------------------------------------------- endpoint-agnostic
+
+
+class TestEndpointAgnosticRestore:
+    def test_it_resolves_the_target_from_the_provider_neutral_settings(self) -> None:
+        result, runs = invoke(["manage", "restore-from-cloud", "--yes"])
         assert result.exit_code == 0, result.output
+        ls = runs.invocation("rclone", "lsjson")
+        assert ls is not None
+        assert "aca-backups" in " ".join(ls["argv"])
 
-    @patch("src.cli.restore_commands.get_settings")
-    def test_refuses_explicit_target_db_matching_railway_url(self, mock_settings, fake_settings):
-        """IR-002: even an explicit --target-db that matches RAILWAY_DATABASE_URL is refused."""
-        railway = "postgresql://railway-prod:5432/main"
-        fake_settings.database_url = "postgresql://localhost:5432/newsletters_sync"
-        fake_settings.railway_database_url = railway
-        mock_settings.return_value = fake_settings
+    @pytest.mark.parametrize(
+        ("endpoint", "region"),
+        [
+            ("https://acct.r2.cloudflarestorage.com", "auto"),
+            (None, "us-east-1"),
+            ("http://minio.internal:9000", "us-east-1"),
+        ],
+        ids=["r2", "aws", "minio"],
+    )
+    def test_every_provider_takes_the_same_code_path(
+        self, endpoint: str | None, region: str
+    ) -> None:
+        """Providers differ in the VALUES of these settings, never in a branch."""
+        settings = FakeSettings(backup_s3_endpoint=endpoint, backup_s3_region=region)
+        result, runs = invoke(["manage", "restore-from-cloud", "--yes"], settings=settings)
+        assert result.exit_code == 0, result.output
+        assert runs.programs == ["rclone", "rclone", "age", "pg_restore"]
 
-        result = runner.invoke(
-            app,
-            ["manage", "restore-from-cloud", "--target-db", railway, "--yes"],
-        )
+    def test_it_no_longer_shells_out_to_mc(self) -> None:
+        _, runs = invoke(["manage", "restore-from-cloud", "--yes"])
+        assert "mc" not in runs.programs
 
+    def test_a_missing_bucket_is_a_named_error(self) -> None:
+        settings = FakeSettings(backup_s3_bucket=None)
+        result, _ = invoke(["--json", "manage", "restore-from-cloud", "--yes"], settings=settings)
         assert result.exit_code != 0
-        assert "--allow-remote-target" in result.output or "refused" in result.output.lower()
+        assert "BACKUP_S3_BUCKET" in json.loads(result.stdout)["error"]
 
-    @patch("src.cli.restore_commands.get_settings")
-    @patch("src.cli.restore_commands.subprocess.run")
-    def test_allow_remote_target_opts_into_railway_url(
-        self, mock_run, mock_settings, fake_settings
-    ):
-        """IR-002: explicit --allow-remote-target lets the operator use RAILWAY_DATABASE_URL."""
-        railway = "postgresql://railway-prod:5432/main"
-        fake_settings.database_url = None
-        fake_settings.railway_database_url = railway
-        mock_settings.return_value = fake_settings
-        mock_run.side_effect = [
-            _make_completed(0),
-            _make_completed(
-                0, stdout="[2026-04-20 03:00:00 UTC]  50MiB railway-2026-04-20-0300.dump\n"
-            ),
-            _make_completed(0),
-            _make_completed(0),
-        ]
 
-        result = runner.invoke(
-            app,
-            ["manage", "restore-from-cloud", "--yes", "--allow-remote-target"],
-        )
-
+class TestDiscoveryIsIndependentOfLegacyNaming:
+    def test_artifacts_are_found_by_prefix_and_timestamp(self) -> None:
+        """No artifact this project writes carries a `railway-` filename prefix."""
+        result, runs = invoke(["manage", "restore-from-cloud", "--yes"])
         assert result.exit_code == 0, result.output
-        pg_call = mock_run.call_args_list[3]
-        pg_args = pg_call[0][0]
-        assert any(railway in str(a) for a in pg_args)
+        copy = runs.invocation("rclone", "copyto")
+        assert copy is not None
+        assert "postgres.dump.age" in " ".join(copy["argv"])
 
-    @patch("src.cli.restore_commands.get_settings")
-    @patch("src.cli.restore_commands.subprocess.run")
-    def test_target_db_override_used(self, mock_run, mock_settings, fake_settings):
-        """--target-db overrides DATABASE_URL for pg_restore."""
-        mock_settings.return_value = fake_settings
-        mock_run.side_effect = [
-            _make_completed(0),
-            _make_completed(
-                0, stdout="[2026-04-20 03:00:00 UTC]  50MiB railway-2026-04-20-0300.dump\n"
-            ),
-            _make_completed(0),
-            _make_completed(0),
-        ]
+    def test_the_latest_backup_is_chosen_by_default(self) -> None:
+        _, runs = invoke(["manage", "restore-from-cloud", "--yes"])
+        copy = runs.invocation("rclone", "copyto")
+        assert copy is not None
+        assert "2026-08-21T030000Z" in " ".join(copy["argv"])
 
-        result = runner.invoke(
-            app,
+    def test_an_explicit_date_selects_that_backup(self) -> None:
+        _, runs = invoke(
+            ["manage", "restore-from-cloud", "--yes", "--backup-date", "2026-08-19"]
+        )
+        copy = runs.invocation("rclone", "copyto")
+        assert copy is not None
+        assert "2026-08-19T030000Z" in " ".join(copy["argv"])
+
+    def test_legacy_railway_named_dumps_are_still_discoverable(self) -> None:
+        runs = Runs(ls_stdout=listing("daily/2026-08-20T030000Z/railway-legacy.dump"))
+        result, runs = invoke(["manage", "restore-from-cloud", "--yes"], runs=runs)
+        assert result.exit_code == 0, result.output
+
+    def test_an_unknown_date_lists_what_is_available(self) -> None:
+        result, _ = invoke(
+            ["--json", "manage", "restore-from-cloud", "--yes", "--backup-date", "1999-01-01"]
+        )
+        assert result.exit_code != 0
+        assert "2026-08-21" in json.loads(result.stdout)["error"]
+
+    def test_an_empty_target_is_a_named_error(self) -> None:
+        runs = Runs(ls_stdout="[]")
+        result, _ = invoke(["--json", "manage", "restore-from-cloud", "--yes"], runs=runs)
+        assert result.exit_code != 0
+        assert "No backup dumps found" in json.loads(result.stdout)["error"]
+
+
+# ------------------------------------------------------------- security fixes
+
+
+class TestCredentialsNeverReachArgv:
+    def test_no_credential_appears_in_any_invocation(self) -> None:
+        """`mc alias set <endpoint> <user> <password>` put the secret in argv,
+        which every local user can read out of /proc for the life of the process."""
+        _, runs = invoke(["manage", "restore-from-cloud", "--yes"])
+        text = runs.all_argv_text()
+        for secret in ("r2-secret-key", "AKIAEXAMPLE"):
+            assert secret not in text
+
+    def test_the_target_credentials_travel_by_environment(self) -> None:
+        _, runs = invoke(["manage", "restore-from-cloud", "--yes"])
+        ls = runs.invocation("rclone", "lsjson")
+        assert ls is not None
+        assert ls["env"]["RCLONE_CONFIG_BACKUP_SECRET_ACCESS_KEY"] == "r2-secret-key"
+
+    def test_the_database_password_never_reaches_a_listing_or_copy_invocation(self) -> None:
+        _, runs = invoke(["manage", "restore-from-cloud", "--yes"])
+        for call in runs.calls:
+            if call["argv"][0] == "pg_restore":
+                continue  # --dbname must carry the URL; nothing else may
+            assert "localpass" not in " ".join(map(str, call["argv"]))
+
+
+class TestOutputMasksTheTargetDatabase:
+    def test_json_output_masks_the_password(self) -> None:
+        """A JSON log of a SUCCESSFUL restore previously carried the password."""
+        result, _ = invoke(["--json", "manage", "restore-from-cloud", "--yes"])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.stdout)
+        assert "localpass" not in json.dumps(payload)
+        assert payload["target_db"] == "postgresql://aca:***@localhost:5432/newsletters_scratch"
+
+    def test_human_output_masks_the_password(self) -> None:
+        result, _ = invoke(["manage", "restore-from-cloud", "--yes"])
+        assert "localpass" not in result.output
+
+    @pytest.mark.parametrize(
+        ("url", "expected"),
+        [
+            ("postgresql://u:p@h:5432/d", "postgresql://u:***@h:5432/d"),
+            ("postgresql://u@h/d", "postgresql://u@h/d"),
+            ("postgresql://h/d", "postgresql://h/d"),
+            ("postgresql://u:p@h/d?sslmode=require", "postgresql://u:***@h/d?sslmode=require"),
+        ],
+    )
+    def test_masking_preserves_everything_but_the_password(
+        self, url: str, expected: str
+    ) -> None:
+        """The URL is how an operator confirms the restore went where they meant.
+        Masking the whole thing would remove the confirmation along with the risk."""
+        assert mask_database_url(url) == expected
+
+
+class TestLiveDatabaseGuardResistsUrlVariation:
+    @pytest.mark.parametrize(
+        "variant",
+        [
+            PROD_URL,
+            PROD_URL + "/",
+            PROD_URL.replace(":5432", ""),
+            PROD_URL + "?sslmode=require",
+            PROD_URL.replace("prod.db.internal", "PROD.DB.INTERNAL"),
+            PROD_URL.replace("prodpass", "different-password"),
+            PROD_URL.replace("aca:prodpass@", ""),
+        ],
+        ids=[
+            "identical",
+            "trailing-slash",
+            "implicit-default-port",
+            "extra-query-param",
+            "different-host-case",
+            "different-password",
+            "no-credentials",
+        ],
+    )
+    def test_every_spelling_of_the_production_database_is_refused(self, variant: str) -> None:
+        """Each of these defeated `str.strip()` equality while still addressing
+        production — and the guarded operation drops objects in the target."""
+        settings = FakeSettings(railway_database_url=PROD_URL)
+        result, runs = invoke(
+            ["--json", "manage", "restore-from-cloud", "--yes", "--target-db", variant],
+            settings=settings,
+        )
+        assert result.exit_code != 0, f"{variant} was NOT refused"
+        assert "--allow-remote-target" in json.loads(result.stdout)["error"]
+        assert runs.calls == [], "the guard fired after contacting the target"
+
+    def test_a_genuinely_different_database_is_allowed(self) -> None:
+        """Over-matching is its own failure: refusing every restore is not safety."""
+        settings = FakeSettings(railway_database_url=PROD_URL)
+        result, _ = invoke(
             [
                 "manage",
                 "restore-from-cloud",
-                "--target-db",
-                "postgresql://localhost/my_local",
                 "--yes",
+                "--target-db",
+                "postgresql://aca:x@localhost:5432/scratch",
             ],
+            settings=settings,
         )
-
         assert result.exit_code == 0, result.output
-        pg_call = mock_run.call_args_list[3]
-        pg_args = pg_call[0][0]
-        # pg_restore should get the overridden target
-        assert any("postgresql://localhost/my_local" in str(a) for a in pg_args), (
-            f"Expected override DB in pg_restore args, got: {pg_args}"
+
+    def test_a_different_database_on_the_same_host_is_allowed(self) -> None:
+        settings = FakeSettings(railway_database_url=PROD_URL)
+        result, _ = invoke(
+            [
+                "manage",
+                "restore-from-cloud",
+                "--yes",
+                "--target-db",
+                "postgresql://aca:prodpass@prod.db.internal:5432/scratch",
+            ],
+            settings=settings,
+        )
+        assert result.exit_code == 0, result.output
+
+    def test_the_explicit_opt_in_still_works(self) -> None:
+        settings = FakeSettings(railway_database_url=PROD_URL)
+        result, _ = invoke(
+            [
+                "manage",
+                "restore-from-cloud",
+                "--yes",
+                "--allow-remote-target",
+                "--target-db",
+                PROD_URL,
+            ],
+            settings=settings,
+        )
+        assert result.exit_code == 0, result.output
+
+    def test_a_local_url_that_points_at_production_is_refused(self) -> None:
+        settings = FakeSettings(railway_database_url=PROD_URL, database_url=PROD_URL + "/")
+        result, _ = invoke(["--json", "manage", "restore-from-cloud", "--yes"], settings=settings)
+        assert result.exit_code != 0
+        assert "overwrite production" in json.loads(result.stdout)["error"]
+
+    def test_identity_ignores_everything_that_does_not_select_a_database(self) -> None:
+        assert DatabaseIdentity.parse("postgresql://u:p@h:5432/d") == DatabaseIdentity.parse(
+            "postgresql://other:secret@h/d?sslmode=require"
         )
 
+    def test_unparseable_urls_never_compare_equal(self) -> None:
+        """Two things we cannot identify are not thereby the same thing."""
+        assert _addresses_same_database(None, None) is False
+        assert _addresses_same_database("", "") is False
+        assert _addresses_same_database("not-a-url", "not-a-url") is False
 
-# -------------------- integration test (best-effort / skipped) --------------------
+
+# ------------------------------------------------------------------ decryption
 
 
-@pytest.mark.slow
-@pytest.mark.skip(
-    reason="requires MinIO + seeded backup fixture (not yet provisioned in docker-compose)"
-)
-def test_restore_integration_round_trip():  # pragma: no cover
-    """Integration: restore a known dump from a local MinIO to a scratch DB.
+class TestDecryption:
+    def test_an_encrypted_artifact_is_decrypted_before_replay(self) -> None:
+        _, runs = invoke(["manage", "restore-from-cloud", "--yes"])
+        age = runs.invocation("age")
+        assert age is not None
+        assert "--decrypt" in age["argv"]
+        assert "/etc/aca/identity.txt" in age["argv"]
 
-    Blocked pending a `docker-compose.yml` MinIO service + seeded dump file.
-    See docs/SYNC_DOWN.md "Integration test" section for the intended flow.
-    """
-    pytest.skip("MinIO fixture not yet available")
+    def test_pg_restore_reads_the_decrypted_file_not_the_ciphertext(self) -> None:
+        _, runs = invoke(["manage", "restore-from-cloud", "--yes"])
+        pg = runs.invocation("pg_restore")
+        assert pg is not None
+        assert not any(str(arg).endswith(".age") for arg in pg["argv"])
+
+    def test_a_missing_identity_aborts_naming_the_setting(self) -> None:
+        settings = FakeSettings(backup_age_identity_path=None)
+        result, runs = invoke(
+            ["--json", "manage", "restore-from-cloud", "--yes"], settings=settings
+        )
+        assert result.exit_code != 0
+        assert "BACKUP_AGE_IDENTITY_PATH" in json.loads(result.stdout)["error"]
+        assert "pg_restore" not in runs.programs
+
+    def test_a_failed_decryption_aborts_before_pg_restore(self) -> None:
+        """Replaying a file that did not decrypt would corrupt the target."""
+        runs = Runs(failures={"age": 1})
+        result, runs = invoke(["manage", "restore-from-cloud", "--yes"], runs=runs)
+        assert result.exit_code != 0
+        assert "pg_restore" not in runs.programs
+
+    def test_an_unencrypted_artifact_skips_decryption(self) -> None:
+        runs = Runs(ls_stdout=listing("daily/2026-08-20T030000Z/postgres.dump"))
+        result, runs = invoke(["manage", "restore-from-cloud", "--yes"], runs=runs)
+        assert result.exit_code == 0, result.output
+        assert "age" not in runs.programs
+
+
+# -------------------------------------------------------- retained safeguards
+
+
+class TestDestructiveRestoreSafeguardsAreRetained:
+    def test_pg_restore_still_runs_with_clean_and_if_exists(self) -> None:
+        """Retained deliberately. A restore into a database holding stale objects
+        produces a silently mixed state, which is worse than a loud one."""
+        _, runs = invoke(["manage", "restore-from-cloud", "--yes"])
+        pg = runs.invocation("pg_restore")
+        assert pg is not None
+        assert "--clean" in pg["argv"]
+        assert "--if-exists" in pg["argv"]
+
+    def test_interactive_mode_requires_confirmation(self) -> None:
+        runs = Runs()
+        with (
+            patch("src.cli.restore_commands.get_settings", return_value=FakeSettings()),
+            patch("src.cli.restore_commands.subprocess.run", runs),
+        ):
+            result = runner.invoke(app, ["manage", "restore-from-cloud"], input="n\n")
+        assert result.exit_code == 0
+        assert runs.calls == []
+
+    def test_declining_the_prompt_runs_nothing(self) -> None:
+        runs = Runs()
+        with (
+            patch("src.cli.restore_commands.get_settings", return_value=FakeSettings()),
+            patch("src.cli.restore_commands.subprocess.run", runs),
+        ):
+            runner.invoke(app, ["manage", "restore-from-cloud"], input="n\n")
+        assert "pg_restore" not in runs.programs
+
+    def test_the_confirmation_prompt_names_the_destructive_operation(self) -> None:
+        with (
+            patch("src.cli.restore_commands.get_settings", return_value=FakeSettings()),
+            patch("src.cli.restore_commands.subprocess.run", Runs()),
+        ):
+            result = runner.invoke(app, ["manage", "restore-from-cloud"], input="n\n")
+        assert "pg_restore --clean --if-exists" in result.output
+
+    def test_the_confirmation_prompt_masks_the_target_password(self) -> None:
+        with (
+            patch("src.cli.restore_commands.get_settings", return_value=FakeSettings()),
+            patch("src.cli.restore_commands.subprocess.run", Runs()),
+        ):
+            result = runner.invoke(app, ["manage", "restore-from-cloud"], input="n\n")
+        assert "localpass" not in result.output
+
+
+class TestSubprocessFailuresPropagate:
+    @pytest.mark.parametrize("failing", ["rclone lsjson", "rclone copyto", "pg_restore"])
+    def test_a_nonzero_exit_fails_the_command(self, failing: str) -> None:
+        runs = Runs(failures={failing: 2})
+        result, _ = invoke(["manage", "restore-from-cloud", "--yes"], runs=runs)
+        assert result.exit_code != 0
