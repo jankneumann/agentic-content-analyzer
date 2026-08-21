@@ -318,18 +318,18 @@ packages:
     - src/services/workflow_terminal_event_service.py
     - tests/test_storage/test_workflow_terminal_event_migration.py
     read_allow:
-    - src/**
-    - tests/**
     - openspec/**
+    - src/**
+    - src/services/backup/**
+    - tests/**
     deny:
     - src/cli/**
     - src/config/**
-    - src/services/backup/manifest_reader.py
   worktree:
     name: wp-health-alerts
     mode: isolated
   metadata:
-    loc_estimate: 1700
+    loc_estimate: 2100
     complexity: high
     package_kind: migration
   inputs:
@@ -359,6 +359,9 @@ packages:
     - 3.7k
     - 3.7l
     - 3.7m
+    - 3.7n
+    - 3.7o
+    - 3.7p
     - 3.9b
     - 3.9c
     - 3.9d

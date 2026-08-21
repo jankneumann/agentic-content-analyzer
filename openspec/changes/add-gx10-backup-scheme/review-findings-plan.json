@@ -7,100 +7,110 @@
       "id": 1,
       "axis": "correctness",
       "severity": "critical",
-      "type": "contract_mismatch",
+      "type": "correctness",
       "criticality": "critical",
-      "description": "Critical: the envelope's own identity validator is never named in the widening set, and its non-operation branch rejects every system_check alert at construction. Task 3.7 widens five elements (source kind, event-key grammar, workflow type, diagnostic-URL validator, diagnostic codes), and D5's table pins 'event_key grammar' to workflow_alert_models.py:141-176 -- that range is WorkflowTerminalEventV1.validate_source_identity (:152), a different class from the envelope. WorkflowAlertEnvelopeV1._validate_identity_and_collections (:296) is cited nowhere in design.md, tasks.md, or the amendments. Its else-branch (:322-323) raises 'reconciliation alerts must omit operation_id and use workflow type' unless workflow_type == 'content.reconciliation', then requires attempt == 1 and an event_key matching one of two reconciliation regexes. A system_check envelope carrying workflow_type 'system.backup_freshness' hits that branch and raises before any of the five widened elements matter. This is the same failure mode A2 corrected for the key grammar -- rejected at construction, so no alert is ever emitted -- surviving in a second location.",
-      "resolution": "Add _validate_identity_and_collections (workflow_alert_models.py:296-340) to D5's widening table and to task 3.7's element list as a third source_kind branch: for system_check, require operation_id/attempt absent, workflow_type == 'system.backup_freshness', event_key matching the A2 grammar, and diagnostic_url path == /api/v1/workflow-terminal-events/{event_id}. Have task 3.6 assert construction of a system_check envelope succeeds, so the gap fails a test rather than surfacing at integration.",
-      "disposition": "fix"
+      "description": "Critical: A9 widened the envelope but not the pipeline that builds it. Every widening point in A9's seven-row table lives in src/contracts/workflow_alert_models.py. The only code path that turns a persisted workflow_terminal_events row into a delivered alert is WorkflowTerminalEventService.process_pending_event (workflow_terminal_event_service.py:132), and it passes through three further gates that reject a system_check row before the envelope is ever constructed. (a) _validate_event_identity (:782) branches on source_kind == 'operation'; for anything else it requires reconciliation_run_id AND reconciliation_content_id to be non-NULL (:802-807) and raises 'reconciliation terminal event identity is incomplete' -- a system_check row has both NULL by the A1 migration's own source_shape relaxation. (b) That same function then constructs a WorkflowTerminalEventV1 (:810); for a non-operation kind that model's validate_source_identity falls into its else branch and matches event_key against the reconciliation-failure regex (workflow_alert_models.py:167-173), so 'system_check:backup_freshness:<epoch>' raises 'reconciliation terminal event_key has an invalid identity'. A9 explicitly dismissed this class as 'a different class entirely' -- but _validate_event_identity instantiates it for every non-operation event, so it is squarely on the path. (c) classify_terminal_event (:472) has branches only for reconciliation_failure and reconciliation_action, then falls through to _operation_type(snapshot.operation_type) (:500); _fresh_snapshot returns an empty PersistedTerminalSnapshot for any other kind (:293), so operation_type is None and _operation_type raises 'persisted operation has no closed workflow type' (:823-826). The failure is silent by construction: process_pending_event catches (KeyError, TypeError, ValueError, ValidationError) at :167 and writes classification_status='rejected' with envelope=None, so the row is marked rejected, no delivery is enqueued, nothing raises, and the orphan-cleanup query (worker.py:70-86) later DELETEs the rejected row. The change's central deliverable -- a durable alert that a backup has stopped -- would itself be dropped without a trace, which is precisely the silent-success failure mode A6 exists to eliminate. No task covers any of the three: 3.7f is scoped to persisting the row ('persist a system-check event with no operation identity'), not to classifying or projecting it.",
+      "resolution": "Add a design amendment (A13) recording that the widening set spans two modules, not one, and naming the three service-layer gates: a system_check branch in _validate_event_identity asserting all operation- and reconciliation-scoped columns are NULL; a system_check branch in WorkflowTerminalEventV1.validate_source_identity matching the A2 event-key grammar; and a system_check branch in classify_terminal_event returning a TerminalClassification with workflow_type 'system.backup_freshness', outcome and codes derived from the alert schema (A11), and external_routed true. Add the three as tasks in wp-health-alerts (whose write_allow already covers both files) ordered before 3.9b, and change 3.7h to assert the full process_pending_event path yields classification_status='ready' with a non-null envelope -- not merely that WorkflowAlertEnvelopeV1(...) constructs.",
+      "disposition": "fix",
+      "file_path": "src/services/workflow_terminal_event_service.py",
+      "line_range": { "start": 472, "end": 826 }
     },
     {
       "id": 2,
       "axis": "correctness",
-      "severity": "critical",
-      "type": "contract_mismatch",
-      "criticality": "critical",
-      "description": "Critical: the alert JSON Schema omits four fields that WorkflowAlertEnvelopeV1 makes mandatory, and types a fifth as null where the model requires a positive int. The model declares attempt: Annotated[int, Field(ge=1, ...)] (:232) -- non-nullable and required -- plus resource_refs (:234), source_keys (:238) and counts (:239), none with defaults. The schema's required list is [schema_version, event_id, event_key, occurred_at, severity, outcome, source_kind, workflow_type, diagnostic_url, codes] and it declares attempt as {'type': 'null'}. A payload that satisfies the schema therefore fails model construction on four missing fields, and any payload the model accepts carries an attempt the schema forbids. D5 says operation_id and attempt must 'be made optional for the new kind', but task 3.7's element list does not include attempt, so the nullability change has no owning task. Task 3.7b's conformance assertion ('the event schema landed in 0.2 agrees with WorkflowAlertEnvelopeV1') fails by construction against the schema as written.",
-      "resolution": "Regenerate contracts/events/backup-freshness-alert.schema.json against the widened model: add resource_refs, source_keys and counts to required (empty list / empty object are the system_check values), and make attempt's schema type match whatever task 3.7 changes the model field to. Add attempt nullability explicitly to task 3.7's element list and to D5's table so it has an owner.",
-      "disposition": "regenerate"
+      "severity": "nit",
+      "type": "correctness",
+      "criticality": "high",
+      "description": "Nit: A10 reconciled D6's rationale but left two artifacts still instructing the opposite. tasks.md 3.9 still reads 'Implement idempotent freshness-alert emission in periodic worker maintenance, keyed on the observed manifest generation per design D6' -- the manifest-generation keying A10 replaced -- while the new 3.7m says 'Implement check-window truncation as a pure function of the window length'. Two tasks in one package therefore specify two different key derivations. D6's own text is likewise untouched: it still gives the literal form 'system_check:backup_stale:<manifest_completed_at>' (a key that fails both the A2 grammar and the contract's ^system_check:backup_freshness:[0-9]{10}$ pattern), still says the no_history key 'uses the UTC date -- one alert per day until a backup lands' where A11 makes the code, not the key, carry the condition, and still draws the consequence 'exactly one alert exists no matter how often maintenance runs', which A10 deliberately reverses to one alert per staleness period. The amendments header says amendments supersede named parts of D4-D14, so precedence is formally resolved; the residue is that an implementer reading either D6 or task 3.9 in isolation builds the superseded behaviour.",
+      "resolution": "Rewrite task 3.9 to reference A10's window truncation rather than D6's manifest generation, and strike the three superseded sentences in D6 (the key sketch, the UTC-date no_history rule, and the 'no matter how often maintenance runs' consequence) rather than leaving them as standing prose.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/tasks.md"
     },
     {
       "id": 3,
       "axis": "correctness",
-      "severity": "critical",
-      "type": "contract_mismatch",
-      "criticality": "high",
-      "description": "Critical: the alert schema declares two properties that do not exist on WorkflowAlertEnvelopeV1, and StrictModel forbids extras. The schema defines claim_generation and terminal_status (both 'type': 'null') with descriptions calling them 'absent for system checks'. Those fields exist on WorkflowTerminalEventV1 (:145-147), not on the envelope, whose field list ends at codes (:240). StrictModel sets model_config = ConfigDict(extra='forbid') (workflow_models.py:69-70), so an envelope payload carrying either key raises a validation error rather than ignoring it. Because the schema also omits additionalProperties: false, it is simultaneously more permissive than the model everywhere else -- it will not catch a genuinely misspelled field.",
-      "resolution": "Drop claim_generation and terminal_status from the alert schema -- the envelope has no such fields, so the null-typed declarations describe a shape that can never validate. Set additionalProperties: false to mirror extra='forbid'. Both are properties of the schema-vs-model conformance test in task 3.7b; state them there so the test is written to assert field-set equality, not just field-by-field compatibility.",
-      "disposition": "regenerate"
+      "severity": "nit",
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "Nit: A1 asks the migration for something the event-identity CHECK cannot express. It says the migration adds 'the new event-key literal form (A2) ... to the event-identity CHECK'. Verified against the DDL (src/queue/setup.py:111-124): all three existing branches of ck_workflow_terminal_events_event_identity are literal equalities built by concatenating stored columns -- event_key = 'operation:' || operation_id::text || ... -- which is what makes it an identity check rather than a format check. The A2 key's only variable segment is the check-window start in epoch seconds, and no column on workflow_terminal_events carries it. A literal form is therefore not constructible; the system_check branch can only be a pattern predicate (event_key ~ '^system_check:backup_freshness:[0-9]+$'), a weaker guarantee than the other three branches give, and it should be named as such rather than discovered by the implementer of 3.7d. Separately verified and correct: A1's claim that exactly three CHECK constraints reject a system_check row holds -- the other seven on that table (terminal_status, classification_status, operation_id, claim_generation, reconciliation_action_id, reconciliation_content_id, envelope_object) are all IS NULL OR ... predicates and admit the new kind unchanged.",
+      "resolution": "State in A1 (or in task 3.7d) that the system_check branch of ck_workflow_terminal_events_event_identity is a pattern predicate on event_key, not a column-derived literal, and record the consequence: for this kind the database no longer guarantees the key is derivable from stored columns, so the A2 grammar is enforced by the CHECK's regex plus the model, not by column identity.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/design.md"
     },
     {
       "id": 4,
       "axis": "correctness",
-      "severity": "critical",
+      "severity": "nit",
       "type": "contract_mismatch",
-      "criticality": "high",
-      "description": "Critical: the diagnostic_url pattern admits http://, which the model rejects and no producer emits. The schema pins diagnostic_url to '^https?://[^/]+/api/v1/workflow-terminal-events/<uuid>$'. The model field is WorkflowDiagnosticUrl = Annotated[AnyUrl, UrlConstraints(max_length=2048, allowed_schemes=['https'])] (:133-136) -- https only -- and the sole producer hardcodes the scheme: workflow_terminal_event_service.py:568 builds origin = f'https://{parsed.netloc}'. So the optional 's' describes a URL that is unreachable from the code and rejected at the boundary. A6 exists to close silent-success gaps; this is the inverse, a contract looser than the thing it documents, and it is exactly what task 3.7b's conformance test is meant to catch.",
-      "resolution": "Change the pattern to require https:// literally, matching UrlConstraints(allowed_schemes=['https']).",
-      "disposition": "regenerate"
+      "criticality": "medium",
+      "description": "Nit: the schema is still looser than the model on the release-revision pair -- the same class of defect round 2 rated critical for the http:// scheme. backup-freshness-alert.schema.json types release_revision and release_revision_source as {'type': ['string','null']} with no further constraint. The model pins release_revision to ^(?:[a-f0-9]{40}|development|unavailable)$ with max_length 40 (workflow_alert_models.py:36-39) and release_revision_source to Literal['railway_commit_sha','local_development','unavailable'] (:41), and validate_closed_identity_and_collections (:277-292) requires the two to be present together and to agree -- 'local_development' demands release_revision == 'development', 'railway_commit_sha' demands a 40-hex SHA. The schema admits arbitrary strings, admits either one null while the other is set, and admits a provenance/revision pair the model rejects. This is live on the system_check path, not hypothetical: project_alert_envelope always populates both (:581-582 defaults, :610-611 assignment).",
+      "resolution": "Copy the model's pattern onto release_revision and its enum onto release_revision_source, and encode the present-together rule as a JSON Schema dependentRequired pair. The revision/provenance agreement rule is not expressible in JSON Schema -- assert it in task 3.7k's conformance test instead.",
+      "disposition": "regenerate",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/contracts/events/backup-freshness-alert.schema.json"
     },
     {
       "id": 5,
       "axis": "correctness",
-      "severity": "critical",
-      "type": "correctness",
-      "criticality": "high",
-      "description": "Critical: A2's event-key grammar contradicts D6's idempotency rationale, and D6 was not amended. D6 states under a bolded 'Definition of \"check window\"' that idempotency is 'keyed, not timed by wall clock', deriving the key from the observed manifest generation ('system_check:backup_stale:<manifest_completed_at>', with a UTC date for no_history) and drawing the consequence that 'while a backup stays stale the manifest timestamp does not move, so exactly one alert exists no matter how often maintenance runs'. A2 replaces this with 'system_check:backup_freshness:<epoch-seconds>' where the suffix is 'the check-window start' -- a wall-clock quantity -- and asserts 'idempotency-per-window is preserved'. Under A2 a persistently stale backup emits a new alert every window, which is the alert storm D6 was written to prevent; under D6 it emits one. A2's header says it supersedes 'D5's key sketch' only, so D6's text stands as normative and the two conflict. Compounding this, no artifact defines the window's duration: design.md:165/168, tasks.md:206 and spec.md:290/309 all say 'per check window' without ever fixing its length, so the alert volume for a sustained outage is unspecified.",
-      "resolution": "Amend D6 explicitly rather than leaving it standing, and state the window duration as a number in one place (the spec requirement is the right home, since tasks.md:206 tests against it). Then state the intended behaviour for a sustained stale condition -- one alert total, or one per window -- and make task 3.8's 'one alert per check window' assertion test that decision.",
-      "disposition": "fix"
-    },
-    {
-      "id": 6,
-      "axis": "readability",
       "severity": "nit",
       "type": "contract_mismatch",
       "criticality": "medium",
-      "description": "Nit: the diagnostic-code set still disagrees across three artifacts, and the gap widened rather than closed. Round-1 finding 15 flagged the alert schema listing four codes against D5's three. The schema now enumerates six -- backup_stale, backup_no_history, backup_partial, backup_verify_failed, backup_target_unreachable, backup_environment_mismatch -- while D5's widening table still reads 'add backup_stale, backup_no_history, backup_verify_failed'. A6 introduced backup_partial and backup_environment_mismatch without updating D5's table, and backup_target_unreachable appears in no design text at all. Task 3.7 says only 'diagnostic codes' without enumerating, so nothing reconciles them; WorkflowAlertDiagnosticCode is a closed Literal union, so any code missed at implementation raises at construction.",
-      "resolution": "Update D5's table to the full six-code set, or replace the enumeration with a pointer to the schema as the single source of truth. Either way, name the schema as authoritative in task 3.7 so the implementer widens the Literal union from one list.",
-      "disposition": "fix"
+      "description": "Nit: task 3.7k asks for an assertion that cannot pass as literally worded. It requires a 'mechanical schema-vs-model conformance test asserting the alert schema and WorkflowAlertEnvelopeV1 agree field-for-field', and A12 claims 'identical required sets'. The schema is deliberately a narrowed system_check variant, not a mirror, in at least six places, each of which a literal equality test would flag: schema_version is in the schema's required list but has a default on the model so the model does not require it; counts sets additionalProperties:false over only the four new backup tallies, excluding the seven fields WorkflowAlertCounts already declares (:194-201); codes has minItems:1 where the model sets only max_length=20; attempt is const 1 against int in [1, 2147483648]; outcome and severity are enum subsets; source_kind and workflow_type are consts. Every one of those narrowings is correct for this variant -- the problem is that the test's direction is unspecified, so the implementer must either weaken the test until it passes or widen the schema until it stops describing a system_check alert.",
+      "resolution": "Specify the three assertions 3.7k actually needs instead of 'agree field-for-field': (1) property-name set equality between the schema and the model's fields -- this is what catches invented and omitted fields; (2) the schema's required set is a superset of the model's required set; (3) for every shared field the schema's constraint is no looser than the model's, checked by round-tripping a fixture envelope. Keep exact-set equality only for the codes enum vs WorkflowAlertDiagnosticCode, which A11 already scopes correctly.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/tasks.md"
+    },
+    {
+      "id": 6,
+      "axis": "correctness",
+      "severity": "nit",
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "Nit: three of the six authoritative diagnostic codes have no emitting path. A11 makes the schema's enum the single source of truth -- backup_stale, backup_no_history, backup_partial, backup_verify_failed, backup_target_unreachable, backup_environment_mismatch -- and 3.7k asserts WorkflowAlertDiagnosticCode admits exactly that set, so all six will exist in the model. But the alerting requirement's scenarios cover only the stale condition ('Stale backup raises a durable alert'), and no task emits the rest. backup_verify_failed is the sharpest case: verify is operator-invoked and D13 states it is deliberately not wired to the timer, so nothing unattended can ever produce that code. backup_target_unreachable and backup_environment_mismatch have matching freshness statuses in the spec ('unknown', and the environment-mismatch scenario) but no alert scenario ties a status to a code. The result is a closed enum where half the members are unreachable -- which is how the code set drifted in the first place.",
+      "resolution": "Either add alerting scenarios mapping each freshness status to its code (stale, no_history, partial, target_unreachable, environment_mismatch), or drop the codes nothing emits. For backup_verify_failed specifically, decide whether verify gains an emission path or the code leaves the enum -- a code with no producer will read as dead on the next review.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/specs/backup-and-restore/spec.md"
     },
     {
       "id": 7,
       "axis": "architecture",
       "severity": "nit",
       "type": "architecture",
-      "criticality": "medium",
-      "description": "Nit: wp-contracts still locks the alert schema at a path it will never write. Round-1 finding 14 was half-applied: scope.write_allow gained openspec/contracts/content-workflows/events/**, matching contracts/README.md:22 ('the alert schema lands in content-workflows, not in the new backup domain'), but locks.files still names openspec/contracts/backup/events/backup-freshness-alert.schema.json. The lock therefore guards an unwritten path while the real target is unguarded -- harmless for a single-package run, but the lock is the coordination boundary the package description leans on ('Runs first so downstream packages code against a fixed shape').",
-      "resolution": "Change wp-contracts locks.files to openspec/contracts/content-workflows/events/backup-freshness-alert.schema.json so lock and write scope name the same object.",
-      "disposition": "fix"
+      "criticality": "low",
+      "description": "Nit: round-2 finding 7 was not applied. wp-contracts locks.files still names openspec/contracts/backup/events/backup-freshness-alert.schema.json while scope.write_allow and contracts/README.md both place the alert schema in openspec/contracts/content-workflows/events/. The lock therefore reserves a path the package will never write, and the path it does write is unlocked. Harmless while the package runs alone, but the package description leans on the lock ('Runs first so downstream packages code against a fixed shape'), and wp-health-alerts holds contract:workflow-alert-envelope over the same shape.",
+      "resolution": "Change wp-contracts locks.files to openspec/contracts/content-workflows/events/backup-freshness-alert.schema.json so the lock and the write scope name the same object.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/work-packages.yaml"
     },
     {
       "id": 8,
-      "axis": "correctness",
+      "axis": "architecture",
       "severity": "nit",
-      "type": "correctness",
-      "criticality": "medium",
-      "description": "Nit: A6 made the shared-bucket collision loud but left the collision itself, and the cheap structural fix was not taken. spec.md:19 still has backup_s3_prefix default to the shared constant 'aca', and spec.md:202 still requires the manifest at 'a stable, well-known key under the configured prefix'. Two environments on one bucket at the default prefix therefore still write the same object. A6's environment field converts the old silent failure (staging's fresh timestamp masking a dead production backup) into a detected one, which is the important half. What remains is that both environments then sit permanently in environment-mismatch: each run clobbers the other's manifest, so neither has a usable freshness signal and both alert continuously. Backup artifacts are unaffected -- they live under tier and timestamp keys -- so this costs monitoring, not recoverability.",
-      "resolution": "Require the manifest key to carry the environment segment (e.g. <prefix>/manifest/<environment>/latest.json) so the two environments cannot address the same object. The environment field and its rejection rule stay as the defence for a misconfigured prefix.",
-      "disposition": "fix"
+      "type": "architecture",
+      "criticality": "low",
+      "description": "Nit: A8's deny-list narrowing was applied in the wrong direction and now blocks the read it was meant to permit. A8 moves manifest_reader.py's ownership to wp-backup-cli and states wp-health-alerts 'gains a dependency on wp-backup-cli and read-only access to it, narrowing its deny list'. The yaml now denies exactly src/services/backup/manifest_reader.py and no longer denies the rest of src/services/backup/**. Deny takes precedence over read_allow in the scope model (.claude/skills/validate-packages/scripts/context_impact.py:172-186 -- 'Whether path is readable. deny takes precedence'), so the one file wp-health-alerts must import is the one file it is denied, while its siblings -- which it has no business reading -- became readable. Writes are unaffected either way, since src/services/backup/** is absent from write_allow.",
+      "resolution": "Restore deny to src/services/backup/** and add src/services/backup/manifest_reader.py to read_allow, or drop the deny entry entirely and rely on write_allow to prevent writes. Either expresses A8's intent; the current pair expresses its inverse.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/work-packages.yaml"
     },
     {
       "id": 9,
       "axis": "correctness",
       "severity": "nit",
-      "type": "contract_mismatch",
+      "type": "correctness",
       "criticality": "low",
-      "description": "Nit: the schema's UUID pattern is looser than the validator it documents, in two ways. diagnostic_url matches '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', which constrains neither the version nor the variant nibble, while _is_canonical_uuid (:436-441) requires parsed.version in {1,2,3,4,5} and str(parsed) == value. A UUIDv7 diagnostic URL -- a plausible choice for a new emitter -- validates against the schema and is rejected by the model. Separately, the model's non-operation branch requires path == f'/api/v1/workflow-terminal-events/{self.event_id}' (:325-327), tying the URL's UUID to the envelope's own event_id; the schema accepts any UUID in that position, so a payload whose diagnostic_url points at a different event validates.",
-      "resolution": "Tighten the version/variant nibbles in the pattern to match _is_canonical_uuid. The event_id correspondence is not expressible in JSON Schema -- record it as an assertion in task 3.7b's conformance test instead of trying to encode it.",
-      "disposition": "fix"
+      "description": "Nit: carried from round-2 finding 8 and not adopted -- the manifest key still has no environment segment. spec.md still defaults backup_s3_prefix to the shared constant 'aca' and still requires the manifest at 'a stable, well-known key under the configured prefix', so two environments sharing a bucket at the default prefix address the same object. A6's environment stamping converts the dangerous half (staging's fresh timestamp masking a dead production backup) into a detected mismatch, so recoverability is unaffected and only monitoring is lost -- but both environments then sit permanently in environment-mismatch, each clobbering the other's manifest, and neither has a usable freshness signal. The structural fix is one path segment.",
+      "resolution": "Require the manifest key to carry the environment segment -- <prefix>/manifest/<environment>/latest.json -- and keep the recorded-environment field and its rejection rule as the defence against a misconfigured prefix rather than as the only defence against a shared one.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/specs/backup-and-restore/spec.md"
     },
     {
       "id": 10,
-      "axis": "correctness",
+      "axis": "performance",
       "severity": "optional",
       "type": "observability",
       "criticality": "low",
-      "description": "Optional: backup_staleness_hours keeps the legacy 48-hour default (spec.md:58, 'SHALL default to the same value as the legacy staleness setting it replaces') against a daily schedule and D2's stated 24-hour RPO, so two consecutive failed runs elapse before anything is reported. Round-1 finding 23 raised this and the plan kept parity. The choice is defensible -- parity is what makes the railway_backup_staleness_hours forward-mapping in specs/database-provider/spec.md:29 a true no-op rename, and changing the default silently retunes existing deployments -- so this is flagged as a conscious trade-off rather than a defect.",
-      "resolution": "Either accept and note in D2 that the alerting threshold is deliberately 2x the RPO, or set the new setting's default to 24 and treat the changed threshold as a documented behavioural change in the deprecation mapping.",
+      "description": "Optional: unchanged from round 2 and still a defensible trade. backup_staleness_hours keeps the legacy 48-hour default against a daily schedule and D2's 24-hour RPO, so two consecutive failed runs elapse before anything alerts. Parity is what makes the railway_backup_staleness_hours forward-mapping a true no-op rename, and A10 now ties the alert window length to this same threshold, so lowering it to 24 would also double alert volume during a sustained outage. Recorded as a conscious choice, not a defect.",
+      "resolution": "Add one line to D2 stating that the alerting threshold is deliberately 2x the RPO and that the check window inherits it, so the next reviewer does not re-raise it.",
       "disposition": "accept"
     },
     {
@@ -109,18 +119,18 @@
       "severity": "none",
       "type": "correctness",
       "criticality": "low",
-      "description": "The round-1 criticals were propagated into the downstream artifacts, not just appended as prose to design.md -- which is the usual failure mode for an amendment round. Spot-verified: the 'no migration' claim is retracted in proposal.md:159-173 rather than quietly edited; A1's migration has real tasks (3.7c-3.7g, including an alembic heads check) and wp-health-alerts' write scope actually gained alembic/versions/**, src/queue/setup.py, src/models/workflow_alert.py and src/services/workflow_terminal_event_service.py; A8's ownership move is reflected in work-packages.yaml as a wp-health-alerts -> wp-backup-cli dependency with the deny list narrowed to src/services/backup/manifest_reader.py; A4's (graphdb_provider, graphdb_mode) branch and A5's write-time retention tiers appear as spec scenarios (spec.md:89-105, :81-86).",
+      "description": "The round-2 contract cluster is genuinely closed, verified field-by-field against the model rather than against the prose claiming it changed. The schema's property set is now exactly WorkflowAlertEnvelopeV1's seventeen fields -- no invented claim_generation/terminal_status, no omitted attempt/resource_refs/source_keys/counts -- additionalProperties:false mirrors StrictModel's extra='forbid', attempt is const 1 matching the non-operation branch's 'reconciliation alerts use immutable attempt 1', and the diagnostic_url pattern is https-only with the version and variant nibbles tightened to match _is_canonical_uuid's version in {1,2,3,4,5}. A11's decision to make the schema the single source of truth for the code set removes the three-way enumeration that let the count drift 3 -> 4 -> 6. A9's self-found seventh point (WorkflowAlertCounts is itself a StrictModel with extra='forbid' and seven closed fields, so the four backup tallies are rejected without widening it) is correct and was not in the review.",
       "resolution": "No action.",
       "disposition": "accept"
     },
     {
       "id": 12,
-      "axis": "correctness",
+      "axis": "architecture",
       "severity": "none",
       "type": "correctness",
       "criticality": "low",
-      "description": "A6's four silent-success defences landed as observable spec scenarios rather than design prose, which is what makes them testable: per-stage exit status with an explicit prohibition on trusting the final stage (spec.md:134-139), a size read-back against the stored object (:144), the run path preflighting its binaries (:154) rather than leaving that on verify where D13 never wires it to the timer, and fresh-but-partial explicitly not reporting healthy (:234-238). A7's decision to tee into sha256sum inside the same pipeline is the right call for a change whose core property is that multi-GB dumps never enter the interpreter.",
-      "resolution": "No action.",
+      "description": "Two structural properties the plan leans on were checked against the tree and hold. The worker's pending-event cohort query already admits non-operation kinds -- worker.py:44-50 selects rows where source_kind <> 'operation' OR the joined job is absent -- so a system_check row is picked up by the existing drain with no query change, which is why A1's migration plus service-layer branches is sufficient and no new scheduler is needed. And workflow_terminal_events.event_key is NOT NULL UNIQUE (setup.py:95), so A10's window-truncated key gives exactly-once-per-window at the database level rather than relying on the emitter's own bookkeeping -- the emitter need only tolerate the unique violation, which is worth naming in task 3.7m.",
+      "resolution": "No action beyond naming the unique-violation tolerance in 3.7m.",
       "disposition": "accept"
     }
   ]

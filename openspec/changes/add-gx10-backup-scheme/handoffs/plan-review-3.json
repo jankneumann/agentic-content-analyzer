@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-08-21T00:00:00+00:00",
+  "coordinator_error": null,
+  "payload": {
+    "agent_name": "reviewer",
+    "session_id": null,
+    "summary": "Round-3 plan review of add-gx10-backup-scheme. Findings 12 -> 12, but criticals 5 -> 1 and the composition changed completely: all five round-2 criticals are verified closed against the artifacts, and the single remaining critical is NEW. The incoming handoff asked for an explicit blocking-vs-carryable verdict, so here it is up front. ONE finding is genuinely blocking, and it is blocking for a specific reason: A9's lesson was applied one layer too shallow. A9 concluded 'the closed model is authoritative, the table describing it is not' and then enumerated seven widening points, all inside src/contracts/workflow_alert_models.py. But the model is not what emits the alert. WorkflowTerminalEventService.process_pending_event (workflow_terminal_event_service.py:132) is, and it passes a system_check row through three more gates before an envelope is ever constructed: _validate_event_identity (:802-807) demands non-NULL reconciliation_run_id and reconciliation_content_id for every non-operation kind; that same function constructs a WorkflowTerminalEventV1 (:810) whose validate_source_identity matches non-operation keys against the reconciliation-failure regex -- the very class A9 dismissed as 'a different class entirely', which is on the path precisely because this function instantiates it; and classify_terminal_event (:472) has no system_check branch, so it falls through to _operation_type(None) and raises. All three raise ValueError, and process_pending_event catches ValueError at :167 and writes classification_status='rejected' with envelope=None. Nothing raises, no delivery is enqueued, and the orphan-cleanup query later DELETEs the row. Built as planned, the alert that says the backup is dead would itself be silently dropped -- the exact failure mode A6 exists to eliminate, reproduced in the change's own alerting path. Task 3.7f covers persisting a system_check row, not classifying or projecting it. VERDICT ON BLOCKING: this needs one targeted PLAN_FIX (a design amendment A13 plus three tasks), NOT another full plan round and NOT a re-plan. Everything it touches is already inside wp-health-alerts' write_allow, the classification's shape is already fixed by the authoritative alert schema (A11), and the existing task 3.9b would fail loudly on it -- but only after the package is built, which is the wrong time to discover that classify_terminal_event needs a branch nobody designed. The other eleven findings are eight nits, one optional and two positive observations; every one of them is carryable into implementation. Three nits are round-2 items that were simply not applied (wp-contracts lock path; the manifest key's missing environment segment; the 48h-vs-24h staleness default, accepted). Two are amendment residue: task 3.9 still says 'keyed on the observed manifest generation per design D6' while the new 3.7m says window truncation, and D6's superseded key sketch still stands as prose. One is an over-narrowing that inverted its own intent: A8 said wp-health-alerts gains read access to manifest_reader.py, but the yaml denies exactly that file, and deny beats read_allow in the scope model. Also verified positively and worth keeping: A1's 'exactly three CHECK constraints' claim is correct -- the other seven on workflow_terminal_events are all IS NULL OR predicates; the worker's pending-event cohort query already admits non-operation source kinds, so no scheduler change is needed; and event_key is NOT NULL UNIQUE, so A10's window key gives exactly-once at the database level. Vendor situation unchanged: codex remains auth_required (no OpenAI key for SDK dispatch) and no other vendor CLI is installed, so the synthesizer again reports blocking_count 0 and quorum NOT met 1/1 -- a quorum artifact, not a clean result.",
+    "completed_work": [
+      "Re-read all plan artifacts at their round-3 state on branch claude/agentic-analyzer-backup-scheme-fy9bdk: proposal.md, design.md (D1-D14 plus amendments A1-A12), tasks.md, three spec deltas, both contract schemas, contracts/README.md, and work-packages.yaml.",
+      "Verified all five round-2 criticals closed against the artifacts that had to change. The alert schema now matches WorkflowAlertEnvelopeV1 property-for-property (seventeen fields, no phantom claim_generation/terminal_status, attempt present as const 1, additionalProperties:false mirroring extra='forbid', https-only diagnostic_url with version and variant nibbles tightened to _is_canonical_uuid). A9's self-found seventh point (WorkflowAlertCounts) is correct.",
+      "Traced the full durable-alert path end to end rather than stopping at the envelope model: process_pending_event -> _fresh_snapshot -> classify_terminal_event -> project_alert_envelope, plus _validate_event_identity and WorkflowTerminalEventV1.validate_source_identity. Found three unwidened gates and confirmed the rejection is swallowed at :167 into classification_status='rejected'.",
+      "Checked A1's migration claim against the real DDL (src/queue/setup.py:95-160 and alembic/versions/91c7d2e4f8a6): exactly three of the ten CHECK constraints reject a system_check row; the other seven are permissive. Also established that the event-identity CHECK's three existing branches are column-derived literals, so the A2 key -- whose only variable segment is not stored in any column -- can only be a pattern predicate.",
+      "Confirmed worker.py:44-50 already selects non-operation source kinds into the root cohort, and that workflow_terminal_events.event_key is NOT NULL UNIQUE.",
+      "Diffed the alert schema against the model for looseness in both directions; found release_revision/release_revision_source unconstrained in the schema while the model pins a pattern, an enum, and a present-together agreement rule.",
+      "Checked the scope model's deny semantics in .claude/skills/validate-packages/scripts/context_impact.py:172-186 to establish that A8's deny entry blocks the read it was meant to permit.",
+      "Wrote 12 findings; validated against openspec/schemas/review-findings.schema.json (Valid), with severity-prefix, axis-spread (correctness/architecture/performance) and severity-disposition coherence all clean.",
+      "Skipped vendor dispatch -- review_dispatcher --list-agents shows only claude-local (self) and codex-remote, and loop state records codex as auth_required with no API key. Synthesized consensus at reviews/consensus-plan.json (12 findings, 0 confirmed, quorum NOT met 1/1)."
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Outcome is not_converged on a single critical, with an explicit statement that it does not warrant a re-plan",
+        "rationale": "The incoming handoff asked for a blocking-vs-carryable verdict rather than another count. Finding 1 is blocking because building the plan as written yields a non-functional central capability whose failure is silent, and because classify_terminal_event needs a TerminalClassification shape nobody has designed -- that is design work, not mechanical widening. It does NOT warrant a re-plan because the affected files are already in wp-health-alerts' write_allow, the classification's fields are already pinned by the authoritative alert schema, and the fix is one amendment plus three tasks. If the loop escalates on iteration exhaustion, the recommended resolution is 'apply A13 and the three tasks, then proceed to IMPLEMENT' rather than a fourth review round.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "The eight nits are explicitly declared carryable into implementation",
+        "rationale": "Each is either an unapplied mechanical edit (lock path, environment segment in the manifest key, D6 prose, task 3.9 wording), a schema tightening the conformance test will surface anyway (release_revision constraints), or a test-authoring ambiguity the implementer can resolve sensibly (3.7k's 'field-for-field'). None changes an architectural decision, none blocks a package from starting, and none can produce a silently wrong system. Fixing them during PLAN_FIX is cheap and preferable, but IMPLEMENT can absorb them.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Finding 5 challenges A12's own claim rather than accepting it",
+        "rationale": "A12 asserts the schema mirrors the model with 'identical required sets', and task 3.7k asks for a mechanical field-for-field agreement test. The schema is correctly a narrowed system_check variant in at least six places, so that test cannot be both literal and passing. Left unstated, the implementer resolves it by weakening the test -- which is how the drift A11 and A12 were written to stop would come back. The finding names the three assertions the test actually needs and their directions.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Round-2 findings 7, 8 and 10 are re-reported rather than dropped",
+        "rationale": "Findings 7 (wp-contracts lock path) and 8 (manifest environment segment) were not applied in PLAN_FIX round 2 and no rationale for declining them appears in the amendments. Re-reporting at the same severity is the honest record; silently dropping them would let a third round conclude they were fixed. Finding 10 (48h staleness) is again marked accept, with the added observation that A10 now ties the alert window length to the same threshold, which strengthens the case for keeping it.",
+        "capability": null,
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "PLAN_FIX round 3, minimal scope: add design amendment A13 stating that the widening set spans src/contracts/workflow_alert_models.py AND src/services/workflow_terminal_event_service.py, and naming the three service-layer gates -- a system_check branch in _validate_event_identity (all operation- and reconciliation-scoped columns NULL), a system_check branch in WorkflowTerminalEventV1.validate_source_identity (A2 grammar), and a system_check branch in classify_terminal_event returning workflow_type 'system.backup_freshness' with outcome and codes from the authoritative alert schema and external_routed true.",
+      "Add the three corresponding tasks to wp-health-alerts ordered before 3.9b, and rewrite 3.7h to assert the whole process_pending_event path yields classification_status='ready' with a non-null envelope -- envelope construction in isolation is not evidence, which is the same distinction A1 already drew for delivery.",
+      "Apply the four mechanical edits if PLAN_FIX is running anyway: task 3.9's keying wording and D6's superseded prose (finding 2), the wp-contracts lock path (7), the wp-health-alerts deny/read pair for manifest_reader.py (8), and the manifest key's environment segment (9).",
+      "Tighten the alert schema's release_revision pattern and release_revision_source enum and add the dependentRequired pair (finding 4), and restate task 3.7k's conformance assertions with explicit directions (finding 5).",
+      "Decide finding 6 -- either add alerting scenarios for the five non-stale diagnostic codes or remove the codes nothing emits, backup_verify_failed in particular, since D13 keeps verify off the timer.",
+      "Do NOT run a fourth review round for its own sake. Once A13 and the three tasks land, the alerting path is fully specified and the remaining items are implementation-time work. A single spot-check that the three service-layer branches appear in tasks.md is sufficient before IMPLEMENT.",
+      "Note for whoever reads the consensus file: blocking_count 0 and quorum NOT met 1/1 are artifacts of codex being undispatchable, not a clean result. Judge on severity."
+    ],
+    "relevant_files": [
+      "openspec/changes/add-gx10-backup-scheme/review-findings-plan.json",
+      "openspec/changes/add-gx10-backup-scheme/reviews/consensus-plan.json",
+      "openspec/changes/add-gx10-backup-scheme/design.md",
+      "openspec/changes/add-gx10-backup-scheme/tasks.md",
+      "openspec/changes/add-gx10-backup-scheme/work-packages.yaml",
+      "openspec/changes/add-gx10-backup-scheme/contracts/events/backup-freshness-alert.schema.json",
+      "openspec/changes/add-gx10-backup-scheme/specs/backup-and-restore/spec.md",
+      "src/services/workflow_terminal_event_service.py",
+      "src/contracts/workflow_alert_models.py",
+      "src/queue/setup.py",
+      "src/queue/worker.py"
+    ]
+  }
+}

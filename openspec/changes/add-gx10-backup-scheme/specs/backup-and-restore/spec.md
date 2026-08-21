@@ -201,6 +201,13 @@ backup freshness.
 - **AND** it SHALL record per-store outcome, artifact key, byte size, and checksum
 - **AND** it SHALL be written to a stable, well-known key under the configured prefix
 
+#### Scenario: The manifest key is environment-scoped
+- **GIVEN** two environments configured against the same backup target
+- **WHEN** each writes its manifest
+- **THEN** the manifest key SHALL include a segment identifying the writing environment
+- **AND** neither environment's manifest SHALL overwrite the other's
+- **AND** the environment recorded inside the manifest SHALL match the segment in its key
+
 #### Scenario: Manifest contains no credentials
 - **GIVEN** a written manifest
 - **WHEN** its contents are inspected

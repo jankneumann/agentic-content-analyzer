@@ -2,34 +2,88 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://aca.local/contracts/backup-freshness-alert.schema.json",
   "title": "Backup Freshness Alert (system_check source)",
-  "description": "AUTHORITATIVE shape for a system_check alert. This schema is the single source of truth for the diagnostic-code set; design prose and task lists reference it rather than re-enumerating it. Every field below was checked against WorkflowAlertEnvelopeV1 in src/contracts/workflow_alert_models.py:218-346 — that model is a StrictModel (extra='forbid'), so a field this schema invents is rejected at construction, and a field the model requires but this schema omits produces a document the model will not accept.",
+  "description": "AUTHORITATIVE shape for a system_check alert. This schema is the single source of truth for the diagnostic-code set; design prose and task lists reference it rather than re-enumerating it. Every field below was checked against WorkflowAlertEnvelopeV1 in src/contracts/workflow_alert_models.py:218-346 \u2014 that model is a StrictModel (extra='forbid'), so a field this schema invents is rejected at construction, and a field the model requires but this schema omits produces a document the model will not accept. release_revision and release_revision_source are constrained to the model's pattern and enum and pinned present-together, matching validate_closed_identity_and_collections.",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version", "event_id", "event_key", "occurred_at", "severity", "outcome",
-    "source_kind", "workflow_type", "operation_id", "attempt", "diagnostic_url",
-    "resource_refs", "source_keys", "counts", "codes"
+    "schema_version",
+    "event_id",
+    "event_key",
+    "occurred_at",
+    "severity",
+    "outcome",
+    "source_kind",
+    "workflow_type",
+    "operation_id",
+    "attempt",
+    "diagnostic_url",
+    "resource_refs",
+    "source_keys",
+    "counts",
+    "codes"
   ],
   "properties": {
-    "schema_version": { "type": "integer", "const": 1 },
-    "event_id": { "type": "string", "format": "uuid" },
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
     "event_key": {
       "type": "string",
       "maxLength": 160,
       "pattern": "^system_check:backup_freshness:[0-9]{10}$",
-      "description": "Lowercase-and-digits only: WorkflowEventKey is ^[a-z0-9:_-]+$, so an ISO-8601 stamp would be rejected. Suffix is the check-window start as epoch seconds — see design A10 for the window definition and why this is a stable key rather than a wall-clock read."
+      "description": "Lowercase-and-digits only: WorkflowEventKey is ^[a-z0-9:_-]+$, so an ISO-8601 stamp would be rejected. Suffix is the check-window start as epoch seconds \u2014 see design A10 for the window definition and why this is a stable key rather than a wall-clock read."
     },
-    "occurred_at": { "type": "string", "format": "date-time" },
-    "severity": { "type": "string", "enum": ["warning", "error"] },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "warning",
+        "error"
+      ]
+    },
     "outcome": {
       "type": "string",
-      "enum": ["failed", "unknown"],
+      "enum": [
+        "failed",
+        "unknown"
+      ],
       "description": "Subset of the model's Literal. 'reconciled' is reserved for reconciliation sources; 'partial'/'zero_items' are operation-shaped."
     },
-    "source_kind": { "type": "string", "const": "system_check" },
-    "workflow_type": { "type": "string", "const": "system.backup_freshness" },
-    "release_revision": { "type": ["string", "null"] },
-    "release_revision_source": { "type": ["string", "null"] },
+    "source_kind": {
+      "type": "string",
+      "const": "system_check"
+    },
+    "workflow_type": {
+      "type": "string",
+      "const": "system.backup_freshness"
+    },
+    "release_revision": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^(?:[a-f0-9]{40}|development|unavailable)$",
+      "maxLength": 40
+    },
+    "release_revision_source": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "railway_commit_sha",
+        "local_development",
+        "unavailable",
+        null
+      ]
+    },
     "operation_id": {
       "type": "null",
       "description": "Required-but-null. The model declares operation_id with no default, so it must be PRESENT; a system check has no operation, so it is explicitly null rather than synthesized."
@@ -37,30 +91,51 @@
     "attempt": {
       "type": "integer",
       "const": 1,
-      "description": "The model types attempt as int >= 1 — NOT nullable. The existing non-operation branch pins it to 1 ('reconciliation alerts use immutable attempt 1'); the system_check branch mirrors that, since a system check has no retry identity."
+      "description": "The model types attempt as int >= 1 \u2014 NOT nullable. The existing non-operation branch pins it to 1 ('reconciliation alerts use immutable attempt 1'); the system_check branch mirrors that, since a system check has no retry identity."
     },
     "diagnostic_url": {
       "type": "string",
       "format": "uri",
       "pattern": "^https://[^/]+/api/v1/workflow-terminal-events/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
-      "description": "https only — the model rejects other schemes and the producer hardcodes https (workflow_terminal_event_service.py:568). The UUID MUST equal event_id: the existing non-operation branch asserts path == /api/v1/workflow-terminal-events/{event_id}. Reuses this already-allowlisted route instead of adding /api/v1/health/backup."
+      "description": "https only \u2014 the model rejects other schemes and the producer hardcodes https (workflow_terminal_event_service.py:568). The UUID MUST equal event_id: the existing non-operation branch asserts path == /api/v1/workflow-terminal-events/{event_id}. Reuses this already-allowlisted route instead of adding /api/v1/health/backup."
     },
-    "resource_refs": { "type": "array", "maxItems": 20, "items": { "type": "object" } },
+    "resource_refs": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object"
+      }
+    },
     "source_keys": {
       "type": "array",
       "maxItems": 100,
-      "items": { "type": "string", "pattern": "^src_[a-f0-9]{20}$" },
-      "description": "Empty for a system check — no ingestion sources are involved. Required by the model, so present-and-empty rather than omitted."
+      "items": {
+        "type": "string",
+        "pattern": "^src_[a-f0-9]{20}$"
+      },
+      "description": "Empty for a system check \u2014 no ingestion sources are involved. Required by the model, so present-and-empty rather than omitted."
     },
     "counts": {
       "type": "object",
       "additionalProperties": false,
-      "description": "WorkflowAlertCounts is itself a StrictModel with seven closed, optional fields. The four backup fields below do NOT exist on it today and are part of the widening (design A9) — without that, any backup tally here is rejected by extra='forbid'.",
+      "description": "WorkflowAlertCounts is itself a StrictModel with seven closed, optional fields. The four backup fields below do NOT exist on it today and are part of the widening (design A9) \u2014 without that, any backup tally here is rejected by extra='forbid'.",
       "properties": {
-        "manifest_age_seconds": { "type": "integer", "minimum": 0 },
-        "stores_succeeded": { "type": "integer", "minimum": 0 },
-        "stores_failed": { "type": "integer", "minimum": 0 },
-        "stores_skipped": { "type": "integer", "minimum": 0 }
+        "manifest_age_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stores_succeeded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stores_failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stores_skipped": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "codes": {
@@ -81,5 +156,13 @@
       },
       "description": "AUTHORITATIVE code set. Six codes. WorkflowAlertDiagnosticCode must be widened to admit exactly these; design and tasks reference this list rather than restating it, because enumerating it in three places is what caused the count to drift across two review rounds."
     }
+  },
+  "dependentRequired": {
+    "release_revision": [
+      "release_revision_source"
+    ],
+    "release_revision_source": [
+      "release_revision"
+    ]
   }
 }
