@@ -257,9 +257,15 @@ class BackupEngine:
                 detail=report.identity_problem,
             )
 
+        # BINARY, both hops. `age` writes raw ciphertext, so fetching the canary
+        # through the text path decodes it as strict UTF-8 — which raises on the
+        # happy path, and would corrupt the bytes on the way back out even if it
+        # did not. The one command whose job is to prove a backup can be restored
+        # must not fail on a backup that is perfectly restorable.
         decrypted = run_command(
             ["rclone", "cat", config.remote_path(key)],
             env=config.rclone_env(),
+            binary=True,
         )
         if not decrypted.ok:
             return VerifyResult(
@@ -271,9 +277,11 @@ class BackupEngine:
             )
         opened = run_command(
             ["age", "--decrypt", "--identity", str(identity)],
-            stdin_text=decrypted.stdout,
+            stdin_bytes=decrypted.stdout_bytes,
+            binary=True,
         )
-        matched = opened.ok and opened.stdout.strip() == target_module.CANARY_PLAINTEXT
+        plaintext = opened.stdout_bytes.decode("utf-8", "replace").strip()
+        matched = opened.ok and plaintext == target_module.CANARY_PLAINTEXT
         return VerifyResult(
             preflight=report,
             canary_present=True,

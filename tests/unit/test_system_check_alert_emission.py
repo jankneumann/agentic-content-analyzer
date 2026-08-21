@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
@@ -310,3 +311,252 @@ class TestEndToEndEmission:
 def _system_check_snapshot_with(settings: Any) -> Any:
     with patch("src.config.settings.get_settings", lambda: settings):
         return _system_check_snapshot()
+
+
+# ------------------------------------------- the two closed points found later
+
+
+class TestTheRealTelemetryEmitterAcceptsSystemCheck:
+    """A twelfth closed point, and the quietest one yet.
+
+    Every test above stubs `telemetry_emitter`, so none of them could see that
+    `src/telemetry/workflow_events._validate_event_key` keys a pattern map by
+    `source_kind` and had no `system_check` entry — `pattern is None` raises, and
+    `process_pending_event` swallows that into `emitted = False`. The alert is still
+    delivered, but it emits no log line, no OTel counter, and never checkpoints
+    `telemetry_emitted_at`: the backup monitor would be invisible in the channel
+    operators actually watch, for exactly the events that matter most.
+
+    These tests drive the REAL emitter, which is the only way the gap was visible.
+    """
+
+    def test_the_real_emitter_accepts_a_system_check_event_key(self) -> None:
+        from src.telemetry.workflow_events import emit_workflow_terminal_telemetry
+
+        assert (
+            emit_workflow_terminal_telemetry(
+                event_id=EVENT_ID,
+                event_key=EVENT_KEY,
+                operation_type="system.backup_freshness",
+                outcome="failed",
+                severity="error",
+                source_kind="system_check",
+            )
+            is True
+        )
+
+    def test_the_real_emitter_still_rejects_a_foreign_key_grammar(self) -> None:
+        """Widening must not become permissiveness."""
+        from src.telemetry.workflow_events import emit_workflow_terminal_telemetry
+
+        with pytest.raises(ValueError, match="correlation key"):
+            emit_workflow_terminal_telemetry(
+                event_id=EVENT_ID,
+                event_key="reconciliation-action:1",
+                operation_type="system.backup_freshness",
+                outcome="failed",
+                severity="error",
+                source_kind="system_check",
+            )
+
+    def test_the_emitter_grammar_is_the_envelope_grammar(self) -> None:
+        """Restating the pattern is how it drifted three times before."""
+        from src.contracts.workflow_alert_models import SYSTEM_CHECK_EVENT_KEY_PATTERN
+        from src.telemetry import workflow_events
+
+        source = Path(workflow_events.__file__).read_text()
+        assert "SYSTEM_CHECK_EVENT_KEY_PATTERN" in source
+        assert SYSTEM_CHECK_EVENT_KEY_PATTERN.startswith("system_check:backup_freshness:")
+
+    @pytest.mark.asyncio
+    async def test_telemetry_is_checkpointed_on_the_real_path(self) -> None:
+        """`emitted=False` is indistinguishable from success at the call site, so
+        the checkpoint UPDATE is what proves the emitter did not quietly fail."""
+        from src.telemetry.workflow_events import emit_workflow_terminal_telemetry
+
+        conn = FakeConnection(pending_row())
+        service = WorkflowTerminalEventService(
+            conn,
+            diagnostic_origin=ORIGIN,
+            external_delivery_enabled=True,
+            telemetry_emitter=emit_workflow_terminal_telemetry,
+        )
+        with patch(
+            "src.services.backup.manifest_reader.read_freshness",
+            lambda *_a, **_k: stale_freshness(),
+        ), patch("src.config.settings.get_settings", backup_settings):
+            await service.process_pending_event(EVENT_ID)
+
+        assert any("telemetry_emitted_at" in query for query in conn.executed)
+
+
+class TestTheDiagnosticRouteAdmitsSystemCheck:
+    """A thirteenth closed point: the alert's OWN follow-up link.
+
+    Every system_check envelope carries
+    `/api/v1/workflow-terminal-events/{event_id}` as its `diagnostic_url` — the
+    validator in `WorkflowAlertEnvelopeV1` requires exactly that path. The response
+    model behind that route closed `source_kind` over three kinds, so the one route
+    an operator reaches from a backup alert raised a ValidationError for precisely
+    the events it exists to explain.
+    """
+
+    def test_the_response_model_admits_system_check(self) -> None:
+        from src.contracts.workflow_models import WorkflowTerminalEventDiagnostic
+
+        diagnostic = WorkflowTerminalEventDiagnostic(
+            event_id=EVENT_ID,
+            event_key=EVENT_KEY,
+            source_kind="system_check",
+            operation_id=None,
+            claim_generation=None,
+            terminal_status=None,
+            classification_status="ready",
+            release_revision="development",
+            release_revision_source="local_development",
+            occurred_at=NOW,
+            telemetry_emitted_at=None,
+            delivery_counts={
+                "pending": 1,
+                "leased": 0,
+                "delivered": 0,
+                "permanent_failure": 0,
+                "exhausted": 0,
+            },
+        )
+        assert diagnostic.source_kind == "system_check"
+
+    def test_the_published_openapi_admits_it_too(self) -> None:
+        """A response the server can return and the contract forbids is a lie the
+        generated clients inherit."""
+        import yaml
+
+        contract = (
+            Path(__file__).resolve().parents[2]
+            / "openspec"
+            / "contracts"
+            / "content-workflows"
+            / "openapi"
+            / "v1.yaml"
+        )
+        openapi = yaml.safe_load(contract.read_text())
+        schema = openapi["components"]["schemas"]["WorkflowTerminalEventDiagnostic"]
+        assert "system_check" in schema["properties"]["source_kind"]["enum"]
+
+    @pytest.mark.asyncio
+    async def test_get_diagnostic_projects_a_system_check_row(self) -> None:
+        class DiagnosticConnection:
+            async def fetchrow(self, _query: str, *_args: Any) -> Any:
+                return {
+                    "id": EVENT_ID,
+                    "event_key": EVENT_KEY,
+                    "source_kind": "system_check",
+                    "operation_id": None,
+                    "claim_generation": None,
+                    "terminal_status": None,
+                    "classification_status": "ready",
+                    "release_revision": None,
+                    "release_revision_source": None,
+                    "occurred_at": NOW,
+                    "telemetry_emitted_at": None,
+                    "deliveries_pending": 1,
+                    "deliveries_leased": 0,
+                    "deliveries_delivered": 0,
+                    "deliveries_permanent_failure": 0,
+                    "deliveries_exhausted": 0,
+                }
+
+        diagnostic = await WorkflowTerminalEventService(
+            DiagnosticConnection()
+        ).get_diagnostic(EVENT_ID)
+        assert diagnostic is not None
+        assert diagnostic.source_kind == "system_check"
+
+
+class TestARecoveredBackupDoesNotRaiseAnAlert:
+    """Classification reads the CURRENT manifest, so the condition can resolve
+    between emission and classification — a backup lands in the gap.
+
+    Mapping that to `unknown` gave severity `warning`, which IS externally routed,
+    with an EMPTY `codes` list: an alert asserting a problem it cannot name, about a
+    backup that is fine. `success` classifies to `info`, which is not routed, so the
+    event is stored `telemetry_only` and no delivery is created.
+    """
+
+    @staticmethod
+    def _freshness(status_name: str) -> Any:
+        from src.services.backup.manifest_reader import BackupFreshness, BackupFreshnessStatus
+
+        return BackupFreshness(
+            status=getattr(BackupFreshnessStatus, status_name),
+            manifest_age_seconds=60,
+            stores_succeeded=4,
+        )
+
+    @pytest.mark.parametrize("status_name", ["OK", "NOT_CONFIGURED"])
+    def test_a_healthy_reading_classifies_as_info(self, status_name: str) -> None:
+        event = system_check_event()
+        with patch(
+            "src.services.backup.manifest_reader.read_freshness",
+            lambda *_a, **_k: self._freshness(status_name),
+        ), patch("src.config.settings.get_settings", backup_settings):
+            snapshot = _system_check_snapshot()
+        classification = classify_terminal_event(event, snapshot)
+        assert classification.outcome == "success"
+        assert classification.severity == "info"
+        assert classification.external_routed is False
+
+    @pytest.mark.parametrize("status_name", ["OK", "NOT_CONFIGURED"])
+    def test_no_codeless_warning_is_ever_projected(self, status_name: str) -> None:
+        event = system_check_event()
+        with patch(
+            "src.services.backup.manifest_reader.read_freshness",
+            lambda *_a, **_k: self._freshness(status_name),
+        ), patch("src.config.settings.get_settings", backup_settings):
+            snapshot = _system_check_snapshot()
+        with pytest.raises(ValueError, match="not externally routable"):
+            project_alert_envelope(event, classify_terminal_event(event, snapshot), ORIGIN)
+
+    @pytest.mark.asyncio
+    async def test_a_recovered_backup_stores_telemetry_only_and_no_envelope(self) -> None:
+        conn = FakeConnection(pending_row())
+        service = WorkflowTerminalEventService(
+            conn,
+            diagnostic_origin=ORIGIN,
+            external_delivery_enabled=True,
+            telemetry_emitter=lambda **_: True,
+        )
+        with patch(
+            "src.services.backup.manifest_reader.read_freshness",
+            lambda *_a, **_k: self._freshness("OK"),
+        ), patch("src.config.settings.get_settings", backup_settings):
+            processed = await service.process_pending_event(EVENT_ID)
+
+        assert processed is not None
+        assert processed.classification_status == "telemetry_only"
+        assert conn.stored["envelope"] is None
+
+    @pytest.mark.parametrize(
+        ("status_name", "expected_outcome"),
+        [
+            ("STALE", "failed"),
+            ("PARTIAL", "partial"),
+            ("NO_HISTORY", "unknown"),
+            ("UNKNOWN", "unknown"),
+            ("ENVIRONMENT_MISMATCH", "unknown"),
+        ],
+    )
+    def test_every_alertable_status_still_routes(
+        self, status_name: str, expected_outcome: str
+    ) -> None:
+        """The recovery branch must not swallow a real problem on its way past."""
+        event = system_check_event()
+        with patch(
+            "src.services.backup.manifest_reader.read_freshness",
+            lambda *_a, **_k: self._freshness(status_name),
+        ), patch("src.config.settings.get_settings", backup_settings):
+            snapshot = _system_check_snapshot()
+        classification = classify_terminal_event(event, snapshot)
+        assert classification.outcome == expected_outcome
+        assert classification.external_routed is True
+        assert classification.codes  # every alertable status names its code

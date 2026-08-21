@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-08-21T19:05:15.302957+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "claude_code",
+    "session_id": null,
+    "summary": "Six findings addressed, two critical, both of the same shape as A6 and A13: a defence described accurately and enforced somewhere no test reached. `aca backup verify` read age ciphertext through a strict-UTF-8 text path, so the one command that proves restorability failed on restorable backups; and the restore path put the database password back into argv via `pg_restore --dbname`, the exact leak the same function's `mc alias set` fix removed one subprocess earlier. Two further closed points on the emission path were found beyond the eleven (`_validate_event_key` in the telemetry emitter, and `WorkflowTerminalEventDiagnostic.source_kind` behind the alert's own diagnostic_url), taking the count to 13. A recovered backup no longer delivers a codeless warning, and a dead `decrypt_command()` helper was removed.",
+    "completed_work": [
+      "[critical] bug: `BackupEngine.verify()` decoded age ciphertext as strict UTF-8 \u2014 fixed with a binary mode on `run_command`, covered by tests against the real `age` binary.",
+      "[critical] security: `pg_restore --dbname <url-with-password>` leaked the database password into argv \u2014 moved to PGPASSWORD; the test exemption that hid it is deleted.",
+      "[high] bug: `WorkflowTerminalEventDiagnostic.source_kind` excluded `system_check`, so the alert's own diagnostic_url 500'd \u2014 widened at the OpenAPI source and regenerated.",
+      "[high] observability: the telemetry emitter's event-key pattern map had no `system_check` entry, so every backup alert emitted no log line, no metric, and no telemetry checkpoint.",
+      "[medium] bug: a backup that recovered before classification delivered a warning-severity alert with an empty `codes` list \u2014 non-alertable statuses now classify as `info`.",
+      "[low] workflow: removed the dead and incorrect `target.decrypt_command()`."
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Give run_command an explicit binary mode rather than armouring the ciphertext",
+        "rationale": "Adding `age --armor` would have fixed the decode at the cost of ~33% on every multi-GB artifact and would have changed what the size read-back compares. The bytes are binary; the seam should carry bytes.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Move the pg_restore password to PGPASSWORD, not to a .pgpass file",
+        "rationale": "A credentials file is readable by anything running as the same user for as long as it exists and needs cleanup on every error path. A process environment is readable only by its owner and disappears with the process. It also matches how rclone credentials already travel in this change.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Regenerate the contract triple from openapi/v1.yaml rather than hand-editing",
+        "rationale": "src/contracts/workflow_models.py and both generated client files are outputs of scripts/generate_workflow_contracts.py, and a drift test enforces it. Hand-editing them produced exactly that drift failure; the YAML is the one place the widening belongs.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Map non-alertable freshness to `success`, not to a suppressed alert",
+        "rationale": "`success` classifies to severity `info`, which the existing projection already refuses to route. Reusing that path means no new suppression branch exists to be wrong later, and the event is still stored `telemetry_only` so the recovery is visible rather than absent.",
+        "capability": null,
+        "supersedes": null
+      }
+    ],
+    "next_steps": [],
+    "relevant_files": []
+  }
+}

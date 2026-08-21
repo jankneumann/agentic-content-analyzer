@@ -13,7 +13,6 @@ filesystem — and the environment of a process is readable only by its owner.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -199,11 +198,3 @@ def list_objects(config: TargetConfig, *, sub_prefix: str | None = None) -> list
     except json.JSONDecodeError:
         return []
     return [entry for entry in entries if isinstance(entry, dict)]
-
-
-def decrypt_command(identity_path: str, remote_key: str) -> tuple[list[str], Mapping[str, str]]:
-    """argv for decrypting one object to stdout, for `verify` and for restore."""
-    return (
-        ["age", "--decrypt", "--identity", identity_path, remote_key],
-        {},
-    )

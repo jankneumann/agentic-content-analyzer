@@ -1,5 +1,5 @@
 // Generated from contracts/openapi/v1.yaml; do not edit.
-export const CONTRACT_SHA256 = "5dad552a43c043d1c11e1b587b9bc68724e7e23742ec74134164840db306197b" as const;
+export const CONTRACT_SHA256 = "42c7725900d7c46933c6df9edb8f0e51c08325ba7102492cff1e3c7774ffe8fe" as const;
 
 export type OperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 export type OperationType = "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
@@ -208,7 +208,7 @@ export interface WorkflowTerminalEventDiagnostic {
   schema_version: 1;
   event_id: string;
   event_key: string;
-  source_kind: "operation" | "reconciliation_action" | "reconciliation_failure";
+  source_kind: "operation" | "reconciliation_action" | "reconciliation_failure" | "system_check";
   operation_id: string | null;
   claim_generation: number | null;
   terminal_status: "completed" | "failed" | "cancelled" | null;

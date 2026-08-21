@@ -63,6 +63,10 @@ class CommandResult:
     returncode: int
     stdout: str = ""
     stderr: str = ""
+    #: Populated only by ``binary=True`` calls. Ciphertext is not text: decoding it
+    #: as UTF-8 either raises or mangles it, and re-encoding the result does not
+    #: reproduce the original bytes.
+    stdout_bytes: bytes = b""
 
     @property
     def ok(self) -> bool:
@@ -99,8 +103,34 @@ def run_command(
     env: Mapping[str, str] | None = None,
     timeout: int = DEFAULT_STAGE_TIMEOUT_SECONDS,
     stdin_text: str | None = None,
+    stdin_bytes: bytes | None = None,
+    binary: bool = False,
 ) -> CommandResult:
-    """Run one process and capture its output."""
+    """Run one process and capture its output.
+
+    ``binary=True`` is not a convenience. ``age`` writes raw binary ciphertext
+    unless asked for armour, and ``text=True`` decodes stdout as strict UTF-8 —
+    so reading a canary back through the text path raises ``UnicodeDecodeError``
+    on the happy path, and any ciphertext that did happen to decode would not
+    survive being re-encoded on the way into the next process. Anything carrying
+    an encrypted artifact must use this mode.
+    """
+    if binary or stdin_bytes is not None:
+        completed_bytes = subprocess.run(
+            list(argv),
+            capture_output=True,
+            env=_merged_env(env),
+            timeout=timeout,
+            input=stdin_bytes,
+            check=False,
+        )
+        return CommandResult(
+            argv=tuple(argv),
+            returncode=completed_bytes.returncode,
+            stdout="",
+            stderr=(completed_bytes.stderr or b"").decode("utf-8", "replace"),
+            stdout_bytes=completed_bytes.stdout or b"",
+        )
     completed = subprocess.run(
         list(argv),
         capture_output=True,
