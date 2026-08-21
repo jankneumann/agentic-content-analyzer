@@ -43,7 +43,7 @@ from src.cli.models_commands import app as models_app
 from src.cli.neon_commands import app as neon_app
 
 # Import output utilities from the shared module (avoids circular imports)
-from src.cli.output import (  # noqa: F401
+from src.cli.output import (  # ruff: ignore[unused-import]
     _set_direct_mode,
     _set_json_mode,
     _set_remote_db,
