@@ -298,37 +298,37 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
 
 ## Phase 5 — Deployment assets, retention, documentation (wp-deploy-assets)
 
-- [ ] 5.1 Write tests for the retention applier — dry-run default, explicit flag required to modify, both provider dialects emitted (S)
+- [x] 5.1 Write tests for the retention applier — dry-run default, explicit flag required to modify, both provider dialects emitted (S)
   **Spec scenarios**: backup-and-restore.7 (all scenarios)
   **Design decisions**: D10
   **Dependencies**: 1.2
-- [ ] 5.2 Author the committed tiered retention configuration (7 daily / 4 weekly / 12 monthly) (S)
+- [x] 5.2 Author the committed tiered retention configuration (7 daily / 4 weekly / 12 monthly) (S)
   **Dependencies**: 5.1
-- [ ] 5.3 Implement the dry-run-by-default retention applier (S)
+- [x] 5.3 Implement the dry-run-by-default retention applier (S)
   **Dependencies**: 5.1
-- [ ] 5.4 Author the systemd service and timer units invoking the backup command, resolving configuration through the application's own settings path per design D13 — dedicated user, `PROFILE`, root-owned `0600` `EnvironmentFile`, write credential and recipient key only, no identity key, no secret in the unit file (S)
+- [x] 5.4 Author the systemd service and timer units invoking the backup command, resolving configuration through the application's own settings path per design D13 — dedicated user, `PROFILE`, root-owned `0600` `EnvironmentFile`, write credential and recipient key only, no identity key, no secret in the unit file (S)
   **Spec scenarios**: backup-and-restore.8 (Scheduling units are provided; Scheduling requires no database privileges), database-provider.1 (Backup job execution)
   **Design decisions**: D13
   **Dependencies**: 2.14c
-- [ ] 5.4b Write a test asserting the shipped units contain no literal secret and never invoke a delete operation (XS)
+- [x] 5.4b Write a test asserting the shipped units contain no literal secret and never invoke a delete operation (XS)
   **Spec scenarios**: backup-and-restore.7 (No unattended deletion path exists), database-provider.1 (Backup retention cleanup)
   **Design decisions**: D10, D13
   **Dependencies**: 5.4
-- [ ] 5.5 Checkpoint: run tests, review diff, verify scope
-- [ ] 5.6 Write the gx-10 multi-store restore runbook, leading with decryption-identity recovery (M)
+- [x] 5.5 Checkpoint: run tests, review diff, verify scope
+- [x] 5.6 Write the gx-10 multi-store restore runbook, leading with decryption-identity recovery (M)
   **Spec scenarios**: backup-and-restore.9 (Restore is possible for each backed-up store)
   **Design decisions**: D4
   **Dependencies**: 4.10
-- [ ] 5.7 Document the `age` key-escrow procedure, the lost-key consequence, and the issuance of the two separate target credentials — gx-10 write, app-tier manifest read-only (S)
+- [x] 5.7 Document the `age` key-escrow procedure, the lost-key consequence, and the issuance of the two separate target credentials — gx-10 write, app-tier manifest read-only (S)
   **Design decisions**: D4, D11
   **Dependencies**: 5.6
-- [ ] 5.8 Update `docs/SYNC_DOWN.md` and `docs/SETUP.md` for the provider-neutral target (S)
+- [x] 5.8 Update `docs/SYNC_DOWN.md` and `docs/SETUP.md` for the provider-neutral target (S)
   **Dependencies**: 4.3
-- [ ] 5.9 Record the three-point pg_cron backup failure in `docs/GOTCHAS.md`, and record that `railway_backup_schedule` and `railway_backup_retention_days` are inert (XS)
+- [x] 5.9 Record the three-point pg_cron backup failure in `docs/GOTCHAS.md`, and record that `railway_backup_schedule` and `railway_backup_retention_days` are inert (XS)
   **Spec scenarios**: database-provider.1 (Backup settings configuration)
   **Design decisions**: D1
   **Dependencies**: None
-- [ ] 5.10 Checkpoint: run tests, review diff, verify scope
+- [x] 5.10 Checkpoint: run tests, review diff, verify scope
 
 ## Phase 6 — Round-trip verification (wp-integration)
 

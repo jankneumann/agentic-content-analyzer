@@ -1,0 +1,28 @@
+# Daily schedule for the off-site backup.
+#
+# 24-hour cadence against a 48-hour staleness threshold, which means one missed
+# run is tolerated before an alert fires. That gap is deliberate: alerting on a
+# single transient failure is how operators learn to ignore a channel, and the
+# channel this feeds is the one that says the backups are gone.
+
+[Unit]
+Description=Daily ACA off-site backup
+Documentation=file:///opt/aca/docs/BACKUP_RESTORE.md
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 UTC
+
+# Spread the start so a fleet does not stampede the backup target at 03:00:00.
+RandomizedDelaySec=15m
+
+# Catch up after downtime. Without this, a host that was off at 03:00 simply skips
+# the day — silently, and with the freshness check the only thing that would ever
+# notice.
+Persistent=true
+
+# The unit name is derived from the timer name, but state it explicitly so a
+# rename of one cannot silently orphan the other.
+Unit=aca-backup.service
+
+[Install]
+WantedBy=timers.target

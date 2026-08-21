@@ -1,0 +1,61 @@
+# Backup retention policy — committed configuration, not a cron job.
+# =============================================================================
+#
+# Retention is enforced by the BACKUP TARGET's own lifecycle rules, never by a
+# scheduled process that deletes objects. Two reasons, and the second is the one
+# that matters:
+#
+#   1. Provider-side expiry keeps working while gx-10 is down. A retention cron
+#      on the host stops running exactly when the host is unavailable — which is
+#      also when nobody is watching.
+#   2. An unattended process with delete rights against the backup target is the
+#      single most dangerous component such a system can have. A bug in it
+#      destroys the backups instead of the data. There is no such process here,
+#      and `aca backup` has no delete path at all, so this is a property of the
+#      code rather than a promise in a runbook.
+#
+# Tiers are KEY SEGMENTS chosen at write time, not object tags (design A5).
+# Lifecycle rules expire by age under a prefix, and Cloudflare R2 supports no tag
+# filters — so tiering by tag would have collapsed to "keep everything N days,
+# then nothing", and the weekly and monthly tiers could not have existed.
+#
+# The promotion rule that decides an artifact's tier lives in
+# `src/services/backup/models.py::retention_tier_for`:
+#   * first of the month -> monthly
+#   * Sunday             -> weekly
+#   * otherwise          -> daily
+# Checked most-specific-first, so a run belongs to exactly one tier.
+
+schema_version: 1
+
+# The bucket these rules apply to is read from BACKUP_S3_BUCKET; it is not
+# committed here, because the same policy applies to every environment's bucket
+# and hardcoding one invites applying production's policy to staging.
+tiers:
+  - name: daily
+    prefix_suffix: daily/
+    retain_days: 7
+    description: >-
+      Seven days of daily snapshots. Covers the common case: something was
+      corrupted and somebody noticed within the week.
+
+  - name: weekly
+    prefix_suffix: weekly/
+    retain_days: 28
+    description: >-
+      Four weekly snapshots. Covers slower-burning corruption — a bad migration
+      whose effects are only visible once enough new rows have accumulated.
+
+  - name: monthly
+    prefix_suffix: monthly/
+    retain_days: 365
+    description: >-
+      Twelve monthly snapshots. Covers "what did this look like before the
+      redesign" and any retention obligation measured in months rather than days.
+
+# The manifest is excluded from expiry. It is small, it is the freshness signal,
+# and an expired manifest would report `no_history` — indistinguishable from a
+# backup that never ran.
+exclusions:
+  - prefix_suffix: manifests/
+    reason: freshness signal; expiring it would fake a never-ran backup

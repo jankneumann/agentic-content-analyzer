@@ -296,10 +296,11 @@ Set all variables directly in Railway's service settings (legacy approach).
 - Note: No public domain needed (internal only)
 - Both embedded and standalone workers can run simultaneously (safe via `SKIP LOCKED`)
 
-**Automated Backups** (Railway custom image only):
-- Backups are handled automatically via pg_cron → MinIO when using the custom PostgreSQL image
-- Configure with `RAILWAY_BACKUP_ENABLED`, `RAILWAY_BACKUP_SCHEDULE`, `RAILWAY_BACKUP_RETENTION_DAYS`
-- See [Automated Backups](SETUP.md#automated-backups-pg_cron--minio) in SETUP.md for full configuration and restore procedures
+**Automated Backups**:
+- **The pg_cron → MinIO backup described here previously never produced a backup.** See [GOTCHAS.md](GOTCHAS.md#the-pg_cron-backup-never-produced-a-backup) for the three independent failure points.
+- Backups are produced by `aca backup run`, scheduled by a systemd timer on the host — no database extension, no superuser, and no binary inside the database container.
+- Configure with `BACKUP_S3_*`, `BACKUP_AGE_RECIPIENT`, and `BACKUP_MONITORING_ENABLED`. `RAILWAY_BACKUP_SCHEDULE` and `RAILWAY_BACKUP_RETENTION_DAYS` are inert.
+- See [BACKUP_RESTORE.md](BACKUP_RESTORE.md) for setup, the restore runbook, and key escrow, and [Automated Backups](SETUP.md#automated-backups) in SETUP.md for configuration.
 
 ### pg_cron Setup (Neon)
 

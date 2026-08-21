@@ -1,0 +1,78 @@
+# Scheduled off-site backup for the gx-10 host.
+#
+# This unit replaces the in-database pg_cron job, which could never have worked:
+# the MinIO endpoint was never supplied to the Postgres service, the job body
+# self-skipped without it, `mc` was not installed in the database image, and the
+# GUC mechanism it depended on is restricted on the target platform.
+#
+# A host-level timer fixes all four at once. It survives database container
+# replacement, needs no superuser, needs no binary inside the database image, and
+# one unit covers every store.
+#
+# Install:
+#   sudo install -m 0644 aca-backup.service aca-backup.timer /etc/systemd/system/
+#   sudo install -m 0600 -o root -g root aca-backup.env /etc/aca/backup.env
+#   sudo systemctl daemon-reload && sudo systemctl enable --now aca-backup.timer
+
+[Unit]
+Description=ACA off-site backup (Postgres, graph, artifacts, secrets)
+Documentation=file:///opt/aca/docs/BACKUP_RESTORE.md
+# Wants=, not Requires=: a transient network failure should fail this run and be
+# reported, not deactivate the unit.
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+
+# Dedicated unprivileged user. The backup reads databases and writes to a bucket;
+# it needs neither root nor any privilege beyond that.
+User=aca-backup
+Group=aca-backup
+
+WorkingDirectory=/opt/aca
+
+# Configuration is resolved through the application's OWN settings path (design
+# D13), so the scheduled backup cannot drift from application configuration. The
+# profile selects the environment; everything else comes from the EnvironmentFile.
+Environment=PROFILE=production
+
+# Root-owned, 0600, and NOT world-readable. It holds the backup target's WRITE
+# credential and the age RECIPIENT (a public key).
+#
+# It must NOT hold BACKUP_AGE_IDENTITY_PATH or the identity key itself. The whole
+# point of client-side encryption is that compromising this host does not yield
+# the plaintext of the backups it produced — shipping the decryption identity here
+# would give that away for nothing. Restore and `aca backup verify` are operator-
+# initiated and supply the identity themselves.
+EnvironmentFile=/etc/aca/backup.env
+
+# One command. The same one an operator runs by hand, and the same one the
+# round-trip integration test drives — so "the backup works" is a claim the test
+# suite makes about the thing that actually runs at 03:00.
+ExecStart=/opt/aca/.venv/bin/aca backup run
+
+# A backup that hangs must not block the next one indefinitely.
+TimeoutStartSec=4h
+
+# Hardening. The unit reads local artifact directories and talks to the network;
+# it has no reason to write anywhere except its own temporary space.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/opt/aca
+ReadWritePaths=/var/lib/aca-backup
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+
+# Backups are I/O heavy and never urgent. Yield to anything serving traffic.
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target

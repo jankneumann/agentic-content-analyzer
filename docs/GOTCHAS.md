@@ -49,6 +49,63 @@ Things that will bite you if ignored. Organized by area.
 | ParadeDB SSL on Railway private network | Append `?sslmode=disable` to `DATABASE_URL` when using `.railway.internal` hostnames. Railway's private network does not terminate TLS — the DB driver's default SSL handshake **hangs until timeout**. |
 | ParadeDB volume mount path | Mount persistent volume at `/var/lib/postgresql/data` and set `PGDATA=/var/lib/postgresql/data/pgdata`. Railway creates `lost+found` at the mount root (ext4 filesystem) — PG refuses to init into a non-empty directory. The `PGDATA` subdirectory avoids this. |
 
+
+### The pg_cron backup never produced a backup
+
+`railway/postgres/init-backup-job.sql` schedules a pg_cron job that pipes
+`pg_dump -Fc` into `mc pipe`. It has **never produced a backup**, and could not
+have. Four independent blockers, any one of which is fatal:
+
+1. **`MINIO_ENDPOINT` is never set for the Postgres service.** It appears in no
+   `railway.toml`, `docker-compose*.yml`, or `railway/` file outside the backup
+   scripts themselves, so `railway/postgres/00-set-backup-gucs.sh:11-14` takes its
+   early exit and writes no GUCs.
+2. **The job body then self-skips.** `init-backup-job.sql:55-58` —
+   `IF minio_ep IS NULL THEN RAISE NOTICE ... RETURN`.
+3. **`mc` is not installed in the image.** `railway/postgres/Dockerfile` has zero
+   `RUN` lines; it only `COPY`s config onto `paradedb/paradedb`. A Postgres image
+   does not ship the MinIO client, so `COPY TO PROGRAM 'mc alias set ...'` could
+   only ever fail.
+4. **The GUC mechanism is unsupported on the target platform** — see
+   "pg_cron + Railway managed PG" below. The chosen mechanism was already
+   documented in-repo as restricted.
+
+The watchdog could not have caught it either: the check was gated on
+`database_provider == "railway"`, inspected `cron.job_run_details` for a job that
+never succeeded, and a stale result was non-gating with no alert emission on that
+path at all.
+
+**What this cost:** the project believed it had backups for as long as this
+existed. The lesson generalises past this one job — *a scheduled job that is
+never observed to have produced its artifact is not a backup*. Freshness is now
+derived from a manifest written by the process that takes the backup, and an
+alert fires when it goes stale.
+
+**Status:** `railway/postgres/**` is deliberately NOT touched by
+`add-gx10-backup-scheme` (design D1) — `verify-production-paradedb-langfuse` edits
+those files and treats the current arrangement as a precondition for its DB image
+cutover. Retiring the dead job is a follow-up for that change, on its own
+schedule. The working backup is `aca backup run` on the host; see
+[BACKUP_RESTORE.md](./BACKUP_RESTORE.md).
+
+### `railway_backup_schedule` and `railway_backup_retention_days` are inert
+
+Both settings exist on `Settings`, are documented, and have **no Python consumer
+whatsoever**. They were shadowed by the shell script's own, differently-named env
+vars (`BACKUP_BUCKET`, `BACKUP_RETENTION_DAYS`), so changing them changed nothing.
+
+They read as live configuration and are not, which is how a dead backup stayed
+invisible for as long as it did. Their real replacements:
+
+| Inert setting | What actually controls it now |
+|---|---|
+| `railway_backup_schedule` | `OnCalendar=` in `deploy/backup/aca-backup.timer` |
+| `railway_backup_retention_days` | Backup-target lifecycle rules, from `deploy/backup/retention.yaml` |
+
+`railway_backup_enabled` and `railway_backup_staleness_hours` are different: they
+map forward onto `backup_monitoring_enabled` and `backup_staleness_hours` and
+still work.
+
 ## Python & Pydantic
 
 | Issue | Solution |
