@@ -117,6 +117,26 @@ def harness() -> Any:
     return _make
 
 
+def artifact_dirs(tmp_path: Any) -> dict[str, object]:
+    """Settings overrides pointing the artifact stores at real directories.
+
+    `plan_artifacts` stats the configured paths and skips when none exist, so a
+    test that injects a failing `tar` stage needs the directories to be present
+    or the stage never runs and the injected failure is unreachable.
+    """
+    names = (
+        ("image_storage_path", "images"),
+        ("podcast_storage_path", "podcasts"),
+        ("audio_digest_storage_path", "audio-digests"),
+    )
+    overrides: dict[str, object] = {}
+    for key, name in names:
+        directory = tmp_path / name
+        directory.mkdir(parents=True, exist_ok=True)
+        overrides[key] = str(directory)
+    return overrides
+
+
 def run_engine(harness: Harness, settings: Any, *, now: datetime | None = None) -> Any:
     with (
         patch.object(engine_module, "run_pipeline", harness.run_pipeline),
@@ -168,7 +188,7 @@ class TestPerStoreOutcomes:
         assert result.exit_code != 0
 
     def test_stores_that_succeeded_are_still_recorded_when_another_fails(
-        self, harness: Any
+        self, harness: Any, tmp_path: Any
     ) -> None:
         def failing(stages: Any, **_: Any) -> PipelineResult:
             if stages[0].name == "tar":
@@ -176,12 +196,14 @@ class TestPerStoreOutcomes:
             return ok_pipeline()
 
         h = harness(pipeline=failing)
-        result = run_engine(h, make_settings())
+        result = run_engine(h, make_settings(**artifact_dirs(tmp_path)))
         by_store = {s.store: s.outcome for s in result.stores}
         assert by_store[StoreName.ARTIFACTS] is StoreOutcome.FAILED
         assert by_store[StoreName.POSTGRES] is StoreOutcome.SUCCEEDED
 
-    def test_a_non_required_failure_still_exits_non_zero(self, harness: Any) -> None:
+    def test_a_non_required_failure_still_exits_non_zero(
+        self, harness: Any, tmp_path: Any
+    ) -> None:
         """`succeeded` (manifest-worthy) and `exit_code` (operator-visible) are
         deliberately different questions. A failing artifacts store does not
         invalidate the Postgres backup, but it must not be reported as fine."""
@@ -192,7 +214,7 @@ class TestPerStoreOutcomes:
             return ok_pipeline()
 
         h = harness(pipeline=failing)
-        result = run_engine(h, make_settings())
+        result = run_engine(h, make_settings(**artifact_dirs(tmp_path)))
         assert result.succeeded is True
         assert result.exit_code == 1
 
