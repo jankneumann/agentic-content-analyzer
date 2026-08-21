@@ -37,63 +37,25 @@ def _cached_graph_provider() -> GraphDBProvider:
 
 
 def _check_backup_recency() -> str:
-    """Check if the most recent pg_cron backup completed within expected window.
+    """Report backup freshness for THIS environment, derived from the manifest.
 
-    Queries the cron.job_run_details table for the 'railway-backup' job
-    and compares its last successful run against 2x the schedule interval.
+    Rewritten from the pg_cron original, which was unfixable rather than merely
+    wrong. It queried `cron.job_run_details` for a job that had never once
+    succeeded, on a platform where the GUC mechanism that job depended on is
+    restricted — so the honest answer to "when did the backup last run?" was never
+    available from inside the database.
 
-    Returns:
-        "ok" if backup ran recently, "stale" if overdue,
-        "no_history" if no runs found, "not_configured" if pg_cron unavailable
+    Freshness now comes from the backup target's own manifest, which is written by
+    the process that actually takes the backup. Reading the evidence where the work
+    happens is the whole difference between a monitored backup and a scheduled one.
+
+    The reader never raises: a slow or unreachable bucket becomes a status value.
+    A readiness probe that 500s because a bucket is slow has converted a monitoring
+    signal into an outage.
     """
-    from datetime import UTC, datetime, timedelta
+    from src.services.backup.manifest_reader import read_freshness
 
-    from sqlalchemy import text
-
-    from src.storage.database import get_engine
-
-    try:
-        engine = get_engine()
-    except Exception:
-        return "not_configured"
-
-    try:
-        with engine.connect() as conn:
-            # Check if cron schema exists (pg_cron installed)
-            result = conn.execute(
-                text(
-                    "SELECT 1 FROM information_schema.tables "
-                    "WHERE table_schema = 'cron' AND table_name = 'job_run_details'"
-                )
-            )
-            if result.fetchone() is None:
-                return "not_configured"
-
-            # Get last successful run of the backup job
-            result = conn.execute(
-                text(
-                    "SELECT end_time FROM cron.job_run_details "
-                    "WHERE jobname = 'railway-backup' AND status = 'succeeded' "
-                    "ORDER BY end_time DESC LIMIT 1"
-                )
-            )
-            row = result.fetchone()
-
-            if row is None:
-                return "no_history"
-
-            last_run = row[0]
-            if last_run.tzinfo is None:
-                last_run = last_run.replace(tzinfo=UTC)
-
-            # Stale if last backup exceeds configured threshold
-            threshold = timedelta(hours=settings.railway_backup_staleness_hours)
-            if datetime.now(UTC) - last_run > threshold:
-                return "stale"
-
-            return "ok"
-    except Exception:
-        return "not_configured"
+    return str(read_freshness(settings).status)
 
 
 @router.get("/health")
@@ -117,11 +79,17 @@ async def readiness_check() -> JSONResponse:
     checks: dict[str, str] = {}
     all_ok = True
 
+    # Bound OUTSIDE the database try block. It was previously bound at the top of
+    # that block and used by the backup check far below, so an import failure in
+    # the database layer left `loop` unbound — the backup check then raised
+    # NameError, which its own except swallowed into "unknown". The backup monitor
+    # went dark at exactly the moment something was already wrong (design D8).
+    loop = asyncio.get_event_loop()
+
     # Database check (synchronous function, run in executor)
     try:
         from src.storage.database import health_check as db_health_check
 
-        loop = asyncio.get_event_loop()
         db_ok = await asyncio.wait_for(
             loop.run_in_executor(None, db_health_check),
             timeout=settings.health_check_timeout_seconds,
@@ -181,8 +149,14 @@ async def readiness_check() -> JSONResponse:
             logger.warning("Crawl4AI health check failed: %s", exc)
             checks["crawl4ai"] = "unavailable"
 
-    # Backup recency check (Railway provider with pg_cron only)
-    if settings.database_provider == "railway" and settings.railway_backup_enabled:
+    # Backup recency check.
+    #
+    # No longer gated on `database_provider == "railway"`. That gate meant the
+    # check never ran anywhere except Railway — including on the self-hosted host
+    # this project is migrating to, where there is no managed PITR to fall back on
+    # and the check matters most. Backup freshness has nothing to do with which
+    # database provider is configured.
+    if settings.backup_monitoring_enabled:
         try:
             backup_status = await asyncio.wait_for(
                 loop.run_in_executor(None, _check_backup_recency),
@@ -190,10 +164,21 @@ async def readiness_check() -> JSONResponse:
             )
             checks["backup"] = backup_status
             if backup_status == "stale":
-                logger.warning("Backup is stale — last successful run exceeds 2x schedule interval")
+                # The old text claimed "2x schedule interval". The real threshold is
+                # backup_staleness_hours, which is independent of any schedule — so
+                # the message told operators to look at the wrong setting.
+                logger.warning(
+                    "Backup is stale — the last recorded run is older than the "
+                    "configured backup_staleness_hours threshold (%s hours)",
+                    settings.backup_staleness_hours,
+                )
         except Exception as exc:
             logger.warning("Backup health check failed: %s", exc)
             checks["backup"] = "unknown"
+        # `all_ok` is deliberately NOT touched. Backup staleness is a real problem,
+        # but it is not a reason to pull this instance out of the load balancer:
+        # doing so would turn a backup problem into a serving outage. The durable
+        # alert emitted by worker maintenance is what makes it actionable.
 
     status_code = 200 if all_ok else 503
     return JSONResponse(

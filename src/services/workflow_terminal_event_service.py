@@ -78,6 +78,13 @@ class PersistedTerminalSnapshot:
     pipeline_root_status: str | None = None
     pipeline_root_result: object = None
     reconciliation_reason: str | None = None
+    # System-check evidence. A system check has no operation row and no
+    # reconciliation row to read, so its committed evidence is the backup target's
+    # manifest — read here, in the I/O layer, so `classify_terminal_event` stays a
+    # pure function of (event, snapshot) exactly as it is for every other kind.
+    system_check_outcome: WorkflowTerminalOutcome | None = None
+    system_check_codes: tuple[WorkflowAlertDiagnosticCode, ...] = ()
+    system_check_counts: WorkflowAlertCounts | None = None
 
 
 @dataclass(frozen=True)
@@ -290,6 +297,8 @@ class WorkflowTerminalEventService:
             if row is None:
                 raise ValueError("reconciliation action evidence no longer exists")
             return PersistedTerminalSnapshot(reconciliation_reason=row["reason"])
+        if event.source_kind == "system_check":
+            return _system_check_snapshot()
         return PersistedTerminalSnapshot()
 
     async def _store_classification(
@@ -441,10 +450,17 @@ def _decode_json(value: object) -> object:
 
 def _event_from_row(row: Any) -> TerminalEventEvidence:
     source_kind = row["source_kind"]
+    # A FOURTH closed set on the emission path, in addition to the three CHECK
+    # constraints and the three gates A13 identified. It was found by the
+    # end-to-end acceptance test rather than by reading the design — which is the
+    # point of that test existing: this raise is caught by `process_pending_event`
+    # and written as `classification_status='rejected'` with no delivery and no
+    # error anybody sees, so a missing entry here silently drops the alert.
     if source_kind not in {
         "operation",
         "reconciliation_action",
         "reconciliation_failure",
+        "system_check",
     }:
         raise ValueError("terminal event has an unknown source kind")
     event_id = row["id"]
@@ -478,6 +494,22 @@ def classify_terminal_event(
     """Classify only closed, committed lifecycle/result evidence."""
 
     _validate_event_identity(event)
+    if event.source_kind == "system_check":
+        # A13 point 10. Without this branch the function falls through to
+        # `_operation_type(None)`, which raises — and the raise is swallowed into a
+        # rejected row. Persisting is not classifying, and classifying is not
+        # projecting; all three are needed before a delivery exists.
+        #
+        # The condition (stale / no-history / partial) and the tallies are carried
+        # on the event by the emitter, because this function reads only committed
+        # persistence and a system check has no row to read.
+        return _classification(
+            workflow_type="system.backup_freshness",
+            outcome=snapshot.system_check_outcome or "unknown",
+            source_kind=event.source_kind,
+            codes=tuple(snapshot.system_check_codes),
+            counts=snapshot.system_check_counts or WorkflowAlertCounts(),
+        )
     if event.source_kind == "reconciliation_failure":
         return _classification(
             workflow_type="content.reconciliation",
@@ -799,6 +831,31 @@ def _validate_event_identity(event: TerminalEventEvidence) -> None:
             raise ValueError("operation terminal event contains reconciliation identity")
         return
 
+    if event.source_kind == "system_check":
+        # A13 point 8. Without this arm the reconciliation check below raises for
+        # any non-operation kind whose reconciliation identity is NULL — and a
+        # system check has none. `process_pending_event` catches that ValueError
+        # and writes classification_status='rejected' with envelope=None: no
+        # delivery, no raise, no error logged as a failure, and the orphan cleanup
+        # in the worker then DELETEs the row. The alert reporting that backups are
+        # dead would itself have been silently dropped.
+        if (
+            event.operation_id is not None
+            or event.claim_generation is not None
+            or event.terminal_status is not None
+            or event.reconciliation_action_id is not None
+            or event.reconciliation_run_id is not None
+            or event.reconciliation_content_id is not None
+        ):
+            raise ValueError("system check terminal event must carry no workflow identity")
+        WorkflowTerminalEventV1(
+            event_id=event.event_id,
+            event_key=event.event_key,
+            source_kind=event.source_kind,
+            occurred_at=event.occurred_at,
+        )
+        return
+
     if (
         event.operation_id is not None
         or event.claim_generation is not None
@@ -818,6 +875,39 @@ def _validate_event_identity(event: TerminalEventEvidence) -> None:
             raise ValueError("reconciliation action event requires action ID")
     elif event.reconciliation_action_id is not None:
         raise ValueError("reconciliation failure event must omit action ID")
+
+
+def _system_check_snapshot() -> PersistedTerminalSnapshot:
+    """Read the backup manifest as this event's committed evidence.
+
+    Classifying on the CURRENT manifest rather than on a condition frozen at
+    emission time is deliberate: if a backup succeeded between the worker noticing
+    staleness and the classifier running, the alert should describe what is true
+    now. The reader is cached and never raises, so this costs nothing on the
+    common path and cannot turn a classification into an outage.
+    """
+    from src.config.settings import get_settings
+    from src.services.backup.manifest_reader import BackupFreshnessStatus, read_freshness
+
+    freshness = read_freshness(get_settings())
+    code = freshness.diagnostic_code
+    outcome: WorkflowTerminalOutcome
+    if freshness.status is BackupFreshnessStatus.STALE:
+        outcome = "failed"
+    elif freshness.status is BackupFreshnessStatus.PARTIAL:
+        outcome = "partial"
+    else:
+        outcome = "unknown"
+    return PersistedTerminalSnapshot(
+        system_check_outcome=outcome,
+        system_check_codes=(cast(WorkflowAlertDiagnosticCode, code),) if code else (),
+        system_check_counts=WorkflowAlertCounts(
+            manifest_age_seconds=_bounded_count(freshness.manifest_age_seconds or 0),
+            stores_succeeded=_bounded_count(freshness.stores_succeeded),
+            stores_failed=_bounded_count(freshness.stores_failed),
+            stores_skipped=_bounded_count(freshness.stores_skipped),
+        ),
+    )
 
 
 def _operation_type(value: str | None) -> OperationType:

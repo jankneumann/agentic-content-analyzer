@@ -162,104 +162,104 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
 
 ## Phase 3 — Freshness monitoring and alerting (wp-health-alerts)
 
-- [ ] 3.1 Write tests for manifest-derived freshness — ok/stale/no_history/unknown, provider-independence, non-gating readiness (M)
+- [x] 3.1 Write tests for manifest-derived freshness — ok/stale/no_history/unknown, provider-independence, non-gating readiness (M)
   **Spec scenarios**: backup-and-restore.5 (Freshness is derived from the manifest; Freshness check is provider-independent; Absent manifest is distinguishable from an error; Stale backup does not affect readiness), database-provider.1 (Backup health check)
   **Design decisions**: D7
   **Dependencies**: 1.2
-- [ ] 3.2 Write a regression test proving the freshness check still runs when the database health check raises (S)
+- [x] 3.2 Write a regression test proving the freshness check still runs when the database health check raises (S)
   **Spec scenarios**: backup-and-restore.5 (Freshness check survives a broken database layer)
   **Design decisions**: D8
   **Dependencies**: None
-- [ ] 3.3a Hoist the event-loop binding out of the database `try` block so the freshness check survives a broken database layer (XS)
+- [x] 3.3a Hoist the event-loop binding out of the database `try` block so the freshness check survives a broken database layer (XS)
   **Dependencies**: 3.2
-- [ ] 3.3b Rewrite `_check_backup_recency` to derive freshness from the backup target manifest, reading it through the existing S3 client path with the 60-second in-process cache from design D14 (M)
+- [x] 3.3b Rewrite `_check_backup_recency` to derive freshness from the backup target manifest, reading it through the existing S3 client path with the 60-second in-process cache from design D14 (M)
   **Design decisions**: D7, D14
   **Dependencies**: 3.1, 3.3a, 1.9b
-- [ ] 3.3c Remove the `database_provider == "railway"` gate from the backup check (XS)
+- [x] 3.3c Remove the `database_provider == "railway"` gate from the backup check (XS)
   **Dependencies**: 3.3b
-- [ ] 3.3d Write tests for the bounded, non-blocking manifest read and for the disabled path — slow target does not exceed the health-check timeout or block the loop, and `backup_monitoring_enabled=false` reports no status and emits no alert (S)
+- [x] 3.3d Write tests for the bounded, non-blocking manifest read and for the disabled path — slow target does not exceed the health-check timeout or block the loop, and `backup_monitoring_enabled=false` reports no status and emits no alert (S)
   **Spec scenarios**: backup-and-restore.5 (Freshness check is bounded and non-blocking; Freshness reader holds no decryption identity), database-provider.1 (Backup disabled)
   **Design decisions**: D7, D11
   **Dependencies**: 3.3b
-- [ ] 3.3e Write a guard test asserting no freshness, alerting, or readiness module references a `railway_backup_*` setting name (XS)
+- [x] 3.3e Write a guard test asserting no freshness, alerting, or readiness module references a `railway_backup_*` setting name (XS)
   **Spec scenarios**: backup-and-restore.1 (Monitoring settings are provider-neutral)
   **Design decisions**: D9
   **Dependencies**: 3.3c
   **Ordering note**: this guard cannot live in Phase 1. `health_routes.py` still
   reads `railway_backup_enabled` until 3.3c removes the gate, so the assertion is
   only true once the health package has landed.
-- [ ] 3.4 Correct the staleness warning text to describe the configured threshold (XS)
+- [x] 3.4 Correct the staleness warning text to describe the configured threshold (XS)
   **Spec scenarios**: database-provider.1 (Backup health check)
   **Design decisions**: D8
   **Dependencies**: 3.3b
-- [ ] 3.5 Checkpoint: run tests, review diff, verify scope
-- [ ] 3.6 Write tests for the widened alert envelope — `system_check` source, key grammar, optional operation fields, resolvable diagnostic URL, rejection of credential-bearing payloads (M)
+- [x] 3.5 Checkpoint: run tests, review diff, verify scope
+- [x] 3.6 Write tests for the widened alert envelope — `system_check` source, key grammar, optional operation fields, resolvable diagnostic URL, rejection of credential-bearing payloads (M)
   **Spec scenarios**: backup-and-restore.6 (System-check alerts carry no operation identity; Alerts never carry credentials)
   **Design decisions**: D5
   **Dependencies**: None
-- [ ] 3.7 Widen `WorkflowAlertEnvelopeV1` — source kind, event-key grammar, workflow type, diagnostic-URL validator, diagnostic codes (M)
+- [x] 3.7 Widen `WorkflowAlertEnvelopeV1` — source kind, event-key grammar, workflow type, diagnostic-URL validator, diagnostic codes (M)
   **Dependencies**: 3.6
-- [ ] 3.7b Update `tests/contract/test_workflow_alert_contracts.py` for the widened envelope — add the `system_check` cases, adjust the closed-allowlist assertions that the widening invalidates, and assert the event schema landed in 0.2 agrees with `WorkflowAlertEnvelopeV1` (S)
+- [x] 3.7b Update `tests/contract/test_workflow_alert_contracts.py` for the widened envelope — add the `system_check` cases, adjust the closed-allowlist assertions that the widening invalidates, and assert the event schema landed in 0.2 agrees with `WorkflowAlertEnvelopeV1` (S)
   **Spec scenarios**: backup-and-restore.6 (System-check alerts carry no operation identity)
   **Design decisions**: D5
   **Dependencies**: 3.7, 0.2
-- [ ] 3.8 Write tests for worker-loop emission — one alert per check window, no emission from the readiness path (S)
+- [x] 3.8 Write tests for worker-loop emission — one alert per check window, no emission from the readiness path (S)
   **Spec scenarios**: backup-and-restore.6 (Stale backup raises a durable alert; Readiness polling does not multiply alerts)
   **Design decisions**: D6
   **Dependencies**: 3.6
-- [ ] 3.9 Implement idempotent freshness-alert emission in periodic worker maintenance, keyed on the check window per design A10, which supersedes D6's manifest-generation sketch (M)
+- [x] 3.9 Implement idempotent freshness-alert emission in periodic worker maintenance, keyed on the check window per design A10, which supersedes D6's manifest-generation sketch (M)
   **Design decisions**: D6
   **Dependencies**: 3.8, 3.7b, 3.3b
-- [ ] 3.7c Write a migration test asserting a `system_check` row is rejected before the migration and accepted after, covering all three CHECK constraints (M)
+- [x] 3.7c Write a migration test asserting a `system_check` row is rejected before the migration and accepted after, covering all three CHECK constraints (M)
   **Design decisions**: A1
   **Dependencies**: 3.6
-- [ ] 3.7d Author the Alembic migration relaxing `ck_workflow_terminal_events_source_kind`, `ck_workflow_terminal_events_event_identity`, and `ck_workflow_terminal_events_source_shape` to admit `system_check` with null operation-scoped fields (M)
+- [x] 3.7d Author the Alembic migration relaxing `ck_workflow_terminal_events_source_kind`, `ck_workflow_terminal_events_event_identity`, and `ck_workflow_terminal_events_source_shape` to admit `system_check` with null operation-scoped fields (M)
   **Design decisions**: A1
   **Dependencies**: 3.7c
-- [ ] 3.7e Mirror the relaxed DDL in `src/queue/setup.py` and add `system_check` to the `WorkflowTerminalSourceKind` StrEnum (S)
+- [x] 3.7e Mirror the relaxed DDL in `src/queue/setup.py` and add `system_check` to the `WorkflowTerminalSourceKind` StrEnum (S)
   **Design decisions**: A1
   **Dependencies**: 3.7d
-- [ ] 3.7f Extend `src/services/workflow_terminal_event_service.py` to persist a system-check event with no operation identity (S)
+- [x] 3.7f Extend `src/services/workflow_terminal_event_service.py` to persist a system-check event with no operation identity (S)
   **Design decisions**: A1
   **Dependencies**: 3.7e
-- [ ] 3.7g Run `alembic heads` and confirm a single head; add a merge revision if the migration introduced a second (XS)
+- [x] 3.7g Run `alembic heads` and confirm a single head; add a merge revision if the migration introduced a second (XS)
   **Dependencies**: 3.7d
-- [ ] 3.7h Write tests that construct a real `WorkflowAlertEnvelopeV1` for a `system_check` alert and assert it survives `_validate_identity_and_collections` — never by asserting a regex in isolation (M)
+- [x] 3.7h Write tests that construct a real `WorkflowAlertEnvelopeV1` for a `system_check` alert and assert it survives `_validate_identity_and_collections` — never by asserting a regex in isolation (M)
   **Design decisions**: A9
   **Dependencies**: 3.6
-- [ ] 3.7i Add the `system_check` branch to `_validate_identity_and_collections`, asserting null `operation_id`, `attempt == 1`, the A2 event-key grammar, and a diagnostic path equal to the event id (M)
+- [x] 3.7i Add the `system_check` branch to `_validate_identity_and_collections`, asserting null `operation_id`, `attempt == 1`, the A2 event-key grammar, and a diagnostic path equal to the event id (M)
   **Design decisions**: A9
   **Dependencies**: 3.7h
-- [ ] 3.7j Widen `WorkflowAlertCounts` with the four backup tally fields — it is a StrictModel with `extra="forbid"`, so backup counts are rejected without this (S)
+- [x] 3.7j Widen `WorkflowAlertCounts` with the four backup tally fields — it is a StrictModel with `extra="forbid"`, so backup counts are rejected without this (S)
   **Design decisions**: A9
   **Dependencies**: 3.7h
-- [ ] 3.7k Write a mechanical schema-vs-model conformance test asserting narrowing-compatibility between the alert schema and `WorkflowAlertEnvelopeV1` — every schema constraint at least as strict as the model's, and no schema field absent from the model (the schema is correctly a narrowed variant in six places), and that `WorkflowAlertDiagnosticCode` admits exactly the schema's code enum (S)
+- [x] 3.7k Write a mechanical schema-vs-model conformance test asserting narrowing-compatibility between the alert schema and `WorkflowAlertEnvelopeV1` — every schema constraint at least as strict as the model's, and no schema field absent from the model (the schema is correctly a narrowed variant in six places), and that `WorkflowAlertDiagnosticCode` admits exactly the schema's code enum (S)
   **Design decisions**: A11, A12
   **Dependencies**: 3.6
-- [ ] 3.7l Write tests for check-window key derivation — every evaluation inside one window derives the identical key, and one alert is emitted per staleness period during a sustained outage (S)
+- [x] 3.7l Write tests for check-window key derivation — every evaluation inside one window derives the identical key, and one alert is emitted per staleness period during a sustained outage (S)
   **Design decisions**: A10
   **Dependencies**: 3.6
-- [ ] 3.7m Implement check-window truncation as a pure function of the window length (S)
+- [x] 3.7m Implement check-window truncation as a pure function of the window length (S)
   **Dependencies**: 3.7l
-- [ ] 3.7n Write a test driving the REAL emission path — enqueue a `system_check` terminal event, run `process_pending_event`, and assert a delivery is created; assert the pre-fix behaviour is a silent `classification_status='rejected'` with no delivery and no raise (M)
+- [x] 3.7n Write a test driving the REAL emission path — enqueue a `system_check` terminal event, run `process_pending_event`, and assert a delivery is created; assert the pre-fix behaviour is a silent `classification_status='rejected'` with no delivery and no raise (M)
   **Design decisions**: A13
   **Dependencies**: 3.7f
-- [ ] 3.7o Add a `system_check` arm to `_validate_event_identity` admitting null reconciliation identity, and admit the A2 key grammar in `WorkflowTerminalEventV1.validate_source_identity` (M)
+- [x] 3.7o Add a `system_check` arm to `_validate_event_identity` admitting null reconciliation identity, and admit the A2 key grammar in `WorkflowTerminalEventV1.validate_source_identity` (M)
   **Design decisions**: A13
   **Dependencies**: 3.7n
-- [ ] 3.7p Add a `system_check` branch to `classify_terminal_event` returning a classification instead of falling through to `_operation_type(None)` (M)
+- [x] 3.7p Add a `system_check` branch to `classify_terminal_event` returning a classification instead of falling through to `_operation_type(None)` (M)
   **Design decisions**: A13
   **Dependencies**: 3.7o
-- [ ] 3.9b ACCEPTANCE — end-to-end test proving a `system_check` alert is persisted, classified, projected to an envelope, and drained to a delivery against a migrated database. Envelope construction, classification and persistence are each necessary and none is sufficient; assert a delivery row exists and that no path silently sets `classification_status='rejected'` (M)
+- [x] 3.9b ACCEPTANCE — end-to-end test proving a `system_check` alert is persisted, classified, projected to an envelope, and drained to a delivery against a migrated database. Envelope construction, classification and persistence are each necessary and none is sufficient; assert a delivery row exists and that no path silently sets `classification_status='rejected'` (M)
   **Design decisions**: A1
   **Dependencies**: 3.9, 3.7f
-- [ ] 3.9c Write tests asserting a fresh-but-partial manifest is not reported `ok` and raises the partial alert code (S)
+- [x] 3.9c Write tests asserting a fresh-but-partial manifest is not reported `ok` and raises the partial alert code (S)
   **Spec scenarios**: backup-and-restore.5 (A fresh but partial run does not report healthy)
   **Design decisions**: A6.2
   **Dependencies**: 3.1
-- [ ] 3.9d Implement outcome-aware freshness so status reflects `overall_outcome` and per-store outcomes, not age alone (S)
+- [x] 3.9d Implement outcome-aware freshness so status reflects `overall_outcome` and per-store outcomes, not age alone (S)
   **Dependencies**: 3.9c, 3.3b
-- [ ] 3.10 Checkpoint: run tests, review diff, verify scope
+- [x] 3.10 Checkpoint: run tests, review diff, verify scope
 
 ## Phase 4 — Restore path (wp-restore-cli)
 

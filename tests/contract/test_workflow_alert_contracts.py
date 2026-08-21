@@ -654,3 +654,202 @@ def test_workflow_alert_secret_is_absent_from_settings_api_contract() -> None:
 
     assert "workflow_alert_webhook_secret" not in openapi
     assert "WORKFLOW_ALERT_WEBHOOK_SECRET" not in openapi
+
+
+# ---------------------------------------------------------------------------
+# system_check widening (design A9/A11/A12/A14)
+#
+# The schema for backup-freshness alerts is a NARROWED variant of
+# WorkflowAlertEnvelopeV1 — constants where the model has enums, subsets where it
+# has full literals. So the assertion is narrowing-compatibility, not field
+# equality: every schema constraint at least as strict as the model's, no schema
+# field absent from the model, and no model field absent from the schema.
+#
+# This check is mechanical and belongs in CI rather than in a reviewer's
+# attention. The diagnostic-code set drifted three times during planning while it
+# was enumerated in three places; it is now decided in the schema alone.
+# ---------------------------------------------------------------------------
+
+BACKUP_ALERT_SCHEMA_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "openspec"
+    / "contracts"
+    / "backup"
+    / "events"
+    / "backup-freshness-alert.schema.json"
+)
+
+
+def _backup_alert_schema() -> dict[str, object]:
+    return json.loads(BACKUP_ALERT_SCHEMA_PATH.read_text())
+
+
+def _valid_system_check_envelope() -> dict[str, object]:
+    event_id = "550e8400-e29b-41d4-a716-446655440000"
+    return {
+        "schema_version": 1,
+        "event_id": event_id,
+        "event_key": "system_check:backup_freshness:1755734400",
+        "occurred_at": "2026-08-21T03:00:00Z",
+        "severity": "error",
+        "outcome": "failed",
+        "source_kind": "system_check",
+        "workflow_type": "system.backup_freshness",
+        "release_revision": "development",
+        "release_revision_source": "local_development",
+        "operation_id": None,
+        "attempt": 1,
+        "diagnostic_url": (
+            f"https://ops.example.com/api/v1/workflow-terminal-events/{event_id}"
+        ),
+        "resource_refs": [],
+        "source_keys": [],
+        "counts": {"manifest_age_seconds": 187200, "stores_succeeded": 3},
+        "codes": ["backup_stale"],
+    }
+
+
+def test_backup_alert_schema_declares_no_field_the_model_lacks() -> None:
+    schema_fields = set(_backup_alert_schema()["properties"])
+    model_fields = set(WorkflowAlertEnvelopeV1.model_fields)
+
+    assert schema_fields - model_fields == set(), (
+        "the schema invents fields the model rejects under extra='forbid'"
+    )
+
+
+def test_backup_alert_schema_omits_no_model_field() -> None:
+    schema_fields = set(_backup_alert_schema()["properties"])
+    model_fields = set(WorkflowAlertEnvelopeV1.model_fields)
+
+    assert model_fields - schema_fields == set(), (
+        "the schema omits a model field, so a valid envelope could fail validation"
+    )
+
+
+def test_backup_alert_schema_requires_at_least_what_the_model_requires() -> None:
+    schema_required = set(_backup_alert_schema()["required"])
+    model_required = {
+        name
+        for name, field in WorkflowAlertEnvelopeV1.model_fields.items()
+        if field.is_required()
+    }
+
+    assert model_required <= schema_required
+
+
+def test_backup_alert_schema_instance_is_accepted_by_the_model() -> None:
+    """Narrowing-compatibility, checked where it matters: an instance the schema
+    accepts must construct as a real envelope, not merely resemble one."""
+    _validate(_backup_alert_schema(), _valid_system_check_envelope())
+    envelope = WorkflowAlertEnvelopeV1.model_validate(_valid_system_check_envelope())
+
+    assert envelope.source_kind == "system_check"
+
+
+def test_backup_alert_schema_examples_are_accepted_by_the_model() -> None:
+    for example in _backup_alert_schema()["examples"]:
+        _validate(_backup_alert_schema(), example)
+        WorkflowAlertEnvelopeV1.model_validate(example)
+
+
+def test_diagnostic_code_type_admits_exactly_the_schema_code_enum() -> None:
+    """A11 — the schema is the single source of truth for the backup code set."""
+    from pydantic import TypeAdapter
+
+    from src.contracts.workflow_alert_models import WorkflowAlertDiagnosticCode
+
+    adapter = TypeAdapter(WorkflowAlertDiagnosticCode)
+    schema_codes = set(_backup_alert_schema()["properties"]["codes"]["items"]["enum"])
+
+    for code in schema_codes:
+        adapter.validate_python(code)
+
+    model_backup_codes = {
+        value
+        for value in _literal_values(WorkflowAlertDiagnosticCode)
+        if isinstance(value, str) and value.startswith("backup_")
+    }
+    assert model_backup_codes == schema_codes
+
+
+def _literal_values(annotation: object) -> set[object]:
+    from typing import get_args
+
+    collected: set[object] = set()
+    for arg in get_args(annotation):
+        nested = get_args(arg)
+        collected.update(nested if nested else ())
+    return collected
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "why"),
+    [
+        ("operation_id", "42", "system checks have no operation identity"),
+        ("attempt", 2, "system checks are not retried claims"),
+        ("workflow_type", "content.reconciliation", "wrong workflow type"),
+        ("outcome", "reconciled", "reconciliation outcome on a system check"),
+        (
+            "event_key",
+            "system_check:backup_freshness:2026-08-21T03:00:00Z",
+            "uppercase T/Z fail WorkflowEventKey",
+        ),
+    ],
+)
+def test_model_rejects_malformed_system_check_envelopes(
+    field: str, value: object, why: str
+) -> None:
+    """Asserted by constructing a REAL envelope, never by matching a regex in
+    isolation — the closed model is authoritative, the table describing it is not."""
+    payload = {**_valid_system_check_envelope(), field: value}
+
+    with pytest.raises(ValidationError):
+        WorkflowAlertEnvelopeV1.model_validate(payload)
+
+
+def test_system_check_envelope_requires_the_event_scoped_diagnostic_route() -> None:
+    payload = {
+        **_valid_system_check_envelope(),
+        "diagnostic_url": "https://ops.example.com/api/v1/operations/42",
+    }
+
+    with pytest.raises(ValidationError):
+        WorkflowAlertEnvelopeV1.model_validate(payload)
+
+
+def test_counts_model_accepts_the_backup_tallies() -> None:
+    """WorkflowAlertCounts is a StrictModel with extra='forbid' — widening
+    source_kind alone would have produced an alert that could never be built."""
+    counts = WorkflowAlertCounts(
+        manifest_age_seconds=1,
+        stores_succeeded=2,
+        stores_failed=3,
+        stores_skipped=4,
+    )
+
+    assert counts.model_dump()["stores_failed"] == 3
+
+
+def test_terminal_event_model_admits_the_system_check_key_grammar() -> None:
+    """A13 point 9 retracts the earlier dismissal of this class as irrelevant: the
+    emitting service instantiates it on the emission path."""
+    event = WorkflowTerminalEventV1(
+        event_id=UUID("550e8400-e29b-41d4-a716-446655440000"),
+        event_key="system_check:backup_freshness:1755734400",
+        source_kind="system_check",
+        occurred_at=datetime(2026, 8, 21, 3, 0, tzinfo=UTC),
+    )
+
+    assert event.source_kind == "system_check"
+
+
+def test_terminal_event_model_rejects_a_system_check_with_workflow_identity() -> None:
+    with pytest.raises(ValidationError):
+        WorkflowTerminalEventV1(
+            event_id=UUID("550e8400-e29b-41d4-a716-446655440000"),
+            event_key="system_check:backup_freshness:1755734400",
+            source_kind="system_check",
+            operation_id="42",
+            occurred_at=datetime(2026, 8, 21, 3, 0, tzinfo=UTC),
+        )

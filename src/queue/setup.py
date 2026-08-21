@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS workflow_terminal_events (
     occurred_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT ck_workflow_terminal_events_source_kind CHECK (
-        source_kind IN ('operation','reconciliation_action','reconciliation_failure')
+        source_kind IN ('operation','reconciliation_action','reconciliation_failure','system_check')
     ),
     CONSTRAINT ck_workflow_terminal_events_event_identity CHECK (
         (source_kind = 'operation' AND event_key =
@@ -121,6 +121,9 @@ CREATE TABLE IF NOT EXISTS workflow_terminal_events (
           reconciliation_content_id::text || ':reason:apply_failed'
          AND event_key ~
           '^reconciliation-failure:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}:content:[1-9][0-9]*:reason:apply_failed$')
+        OR
+        (source_kind = 'system_check' AND event_key ~
+          '^system_check:backup_freshness:[0-9]+$')
     ),
     CONSTRAINT ck_workflow_terminal_events_terminal_status CHECK (
         terminal_status IS NULL OR terminal_status IN ('completed','failed','cancelled')
@@ -158,6 +161,14 @@ CREATE TABLE IF NOT EXISTS workflow_terminal_events (
          AND claim_generation IS NULL AND terminal_status IS NULL
          AND reconciliation_action_id IS NULL AND reconciliation_run_id IS NOT NULL
          AND reconciliation_content_id IS NOT NULL)
+        OR
+        -- A system check reports on infrastructure, not on a workflow: no operation
+        -- claim and no reconciliation identity. This arm is what makes the row
+        -- insertable at all.
+        (source_kind = 'system_check' AND operation_id IS NULL
+         AND claim_generation IS NULL AND terminal_status IS NULL
+         AND reconciliation_action_id IS NULL AND reconciliation_run_id IS NULL
+         AND reconciliation_content_id IS NULL)
     )
 );
 
@@ -883,7 +894,7 @@ async def list_jobs(
         # Get total count
         # Note: where_clause is built from controlled inputs (status/entrypoint enum values)
         # not user input, so this is safe from SQL injection
-        count_query = f"SELECT COUNT(*) FROM pgqueuer_jobs WHERE {where_clause}"  # noqa: S608
+        count_query = f"SELECT COUNT(*) FROM pgqueuer_jobs WHERE {where_clause}"  # ruff: ignore[hardcoded-sql-expression]
         total = await conn.fetchval(count_query, *params)
 
         # Get jobs
@@ -903,7 +914,7 @@ async def list_jobs(
             WHERE {where_clause}
             ORDER BY created_at DESC
             LIMIT ${param_idx} OFFSET ${param_idx + 1}
-        """  # noqa: S608
+        """  # ruff: ignore[hardcoded-sql-expression]
 
         rows = await conn.fetch(query, *params)
 
@@ -1722,7 +1733,7 @@ async def list_job_history(
         # Note: where_clause is built from controlled inputs, not user input
         count_query = f"""
             SELECT COUNT(*) FROM pgqueuer_jobs j WHERE {where_clause}
-        """  # noqa: S608
+        """  # ruff: ignore[hardcoded-sql-expression]
         total = await conn.fetchval(count_query, *params)
 
         params.extend([limit, offset])
@@ -1738,7 +1749,7 @@ async def list_job_history(
             WHERE {where_clause}
             ORDER BY j.created_at DESC
             LIMIT ${param_idx} OFFSET ${param_idx + 1}
-        """  # noqa: S608
+        """  # ruff: ignore[hardcoded-sql-expression]
 
         rows = await conn.fetch(query, *params)
 
