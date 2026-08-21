@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aca.local/contracts/backup-manifest.schema.json",
+  "title": "Backup Run Manifest",
+  "description": "Authoritative record of a backup run, written to the backup target at the well-known manifest key. Read by the freshness check; never contains credentials.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "completed_at", "overall_outcome", "stores"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "run_id": { "type": "string", "description": "Opaque unique id for this run." },
+    "started_at": { "type": "string", "format": "date-time" },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC completion time. Sole input to the staleness calculation."
+    },
+    "overall_outcome": { "type": "string", "enum": ["succeeded", "partial"] },
+    "prefix": { "type": "string", "description": "Object key prefix. Never a credential-bearing URL." },
+    "stores": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["store", "outcome"],
+        "properties": {
+          "store": {
+            "type": "string",
+            "enum": ["postgres", "graphdb", "artifacts", "secrets"]
+          },
+          "outcome": { "type": "string", "enum": ["succeeded", "failed", "skipped"] },
+          "reason": {
+            "type": "string",
+            "description": "Why the store was skipped or failed. Closed, log-safe text; never a raw exception or command line."
+          },
+          "artifact_key": { "type": "string" },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "checksum_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "encrypted": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

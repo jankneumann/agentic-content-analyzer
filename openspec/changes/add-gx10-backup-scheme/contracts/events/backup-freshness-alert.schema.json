@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aca.local/contracts/backup-freshness-alert.schema.json",
+  "title": "Backup Freshness Alert (system_check source)",
+  "description": "Widening of WorkflowAlertEnvelopeV1 to carry a non-operation system check. Operation-scoped fields are absent rather than synthesized, because a fabricated operation id yields a diagnostic URL that 404s.",
+  "type": "object",
+  "required": ["schema_version", "event_id", "event_key", "occurred_at", "severity", "outcome", "source_kind", "workflow_type", "codes"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "event_id": { "type": "string", "format": "uuid" },
+    "event_key": {
+      "type": "string",
+      "pattern": "^system_check:backup_freshness:[0-9]{8}T[0-9]{6}Z$",
+      "description": "Key grammar for the system_check source. The trailing check-window stamp is what makes emission idempotent per window."
+    },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "severity": { "type": "string", "enum": ["warning", "error"] },
+    "outcome": { "type": "string", "enum": ["failed", "unknown"] },
+    "source_kind": { "type": "string", "const": "system_check" },
+    "workflow_type": { "type": "string", "const": "system.backup_freshness" },
+    "operation_id": {
+      "type": "null",
+      "description": "Absent for system checks. Explicitly null rather than a synthesized value."
+    },
+    "attempt": { "type": "null", "description": "Absent for system checks." },
+    "diagnostic_url": {
+      "type": "string",
+      "pattern": "^/api/v1/health/backup$",
+      "description": "Must resolve to a route that exists."
+    },
+    "codes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": ["backup_stale", "backup_no_history", "backup_verify_failed", "backup_target_unreachable"]
+      }
+    },
+    "counts": { "type": "object", "description": "Age in seconds and per-store outcome tallies. No credentials." }
+  }
+}
