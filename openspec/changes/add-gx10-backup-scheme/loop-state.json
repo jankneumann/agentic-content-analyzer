@@ -1,7 +1,7 @@
 {
   "schema_version": 4,
   "change_id": "add-gx10-backup-scheme",
-  "current_phase": "GATEKEEPER",
+  "current_phase": "PLAN_ITERATE",
   "iteration": 0,
   "total_iterations": 0,
   "max_phase_iterations": 3,
@@ -13,7 +13,8 @@
   "implementation_strategy": {},
   "memory_ids": [],
   "handoff_ids": [
-    "gatekeeper-1"
+    "gatekeeper-1",
+    "gatekeeper-2"
   ],
   "phase_history": [
     {
@@ -29,32 +30,43 @@
     },
     {
       "at": "2026-08-21T12:50:41.594405+00:00",
-      "phase": "PLAN",
+      "note": "Gate 1 (Approach C) and Gate 2 (approve) both passed. Artifacts validated: openspec strict, work-packages VALID, parallel zones no overlap.",
       "outcome": "created",
-      "note": "Gate 1 (Approach C) and Gate 2 (approve) both passed. Artifacts validated: openspec strict, work-packages VALID, parallel zones no overlap."
+      "phase": "PLAN"
+    },
+    {
+      "at": "2026-08-21T12:53:26.672524+00:00",
+      "outcome": "proceed_with_review",
+      "phase": "GATEKEEPER"
+    },
+    {
+      "at": "2026-08-21T12:53:26.776049+00:00",
+      "phase": "PLAN",
+      "outcome": "exists",
+      "note": "Plan artifacts already produced and approved at Gate 2; advancing to self-review."
     }
   ],
-  "last_handoff_id": "gatekeeper-1",
+  "last_handoff_id": "gatekeeper-2",
   "started_at": "",
   "phase_started_at": "",
   "previous_phase": "PLAN",
   "escalation_reason": null,
-  "val_review_enabled": false,
+  "val_review_enabled": true,
   "cli_review_enabled": true,
   "error": null,
-  "phase_archetype": "architect",
+  "phase_archetype": "gatekeeper",
   "force": false,
   "gate_signals": {
     "external_dep_count": 0,
     "has_broad_write_scope": false,
     "has_db_migration": false,
-    "has_proposal": false,
-    "has_security_signal": false,
-    "has_specs": false,
-    "has_tasks": false,
-    "has_work_packages": false,
-    "package_count": 0,
-    "total_loc_estimate": null
+    "has_proposal": true,
+    "has_security_signal": true,
+    "has_specs": true,
+    "has_tasks": true,
+    "has_work_packages": true,
+    "package_count": 6,
+    "total_loc_estimate": 4350
   },
   "gate_verdict": null
 }
