@@ -61,104 +61,104 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
 
 ## Phase 2 — Backup engine and CLI (wp-backup-cli)
 
-- [ ] 2.1 Write tests for per-store backup outcome reporting — success, failure, skipped; non-zero exit when a required store fails (M)
+- [x] 2.1 Write tests for per-store backup outcome reporting — success, failure, skipped; non-zero exit when a required store fails (M)
   **Spec scenarios**: backup-and-restore.2 (A failing store does not silently pass; OpenBao is captured when configured)
   **Design decisions**: D3
   **Dependencies**: 1.2
-- [ ] 2.2a Implement the store-outcome model (S)
+- [x] 2.2a Implement the store-outcome model (S)
   **Dependencies**: 2.1
-- [ ] 2.2b Implement the run orchestrator over that model (S)
+- [x] 2.2b Implement the run orchestrator over that model (S)
   **Dependencies**: 2.2a
-- [ ] 2.3 Write tests for each store adapter's invocation, patching `subprocess.run` and asserting on argv rather than call position (M)
+- [x] 2.3 Write tests for each store adapter's invocation, patching `subprocess.run` and asserting on argv rather than call position (M)
   **Spec scenarios**: backup-and-restore.2 (PostgreSQL is captured as a portable dump; Graph database is captured per configured provider; Artifact directories are captured wholesale)
   **Design decisions**: D3
   **Dependencies**: 2.1
-- [ ] 2.4 Implement PostgreSQL, graph-database, artifact-directory, and OpenBao store adapters (L — see design note; decomposition attempted below)
+- [x] 2.4 Implement PostgreSQL, graph-database, artifact-directory, and OpenBao store adapters (L — see design note; decomposition attempted below)
   **Dependencies**: 2.3
-- [ ] 2.5 Checkpoint: run tests, review diff, verify scope
-- [ ] 2.6 Write tests for encryption in the pipe — abort before upload when no recipient configured, encrypted suffix on uploaded key (S)
+- [x] 2.5 Checkpoint: run tests, review diff, verify scope
+- [x] 2.6 Write tests for encryption in the pipe — abort before upload when no recipient configured, encrypted suffix on uploaded key (S)
   **Spec scenarios**: backup-and-restore.3 (Artifacts are encrypted before leaving the host; Missing recipient key aborts before any upload)
   **Design decisions**: D4
   **Dependencies**: 2.1
-- [ ] 2.7 Implement `age` encryption in the artifact pipeline (S)
+- [x] 2.7 Implement `age` encryption in the artifact pipeline (S)
   **Dependencies**: 2.6
-- [ ] 2.8 Write tests for manifest contents — timestamps, per-store records, no credentials, not overwritten on failed run (S)
+- [x] 2.8 Write tests for manifest contents — timestamps, per-store records, no credentials, not overwritten on failed run (S)
   **Spec scenarios**: backup-and-restore.4 (all scenarios)
   **Design decisions**: D7
   **Dependencies**: 2.1
-- [ ] 2.9 Implement manifest writing to the well-known bucket key (S)
+- [x] 2.9 Implement manifest writing to the well-known bucket key (S)
   **Dependencies**: 2.8
-- [ ] 2.9b Write tests and implementation for canary emission — the run writes an encrypted canary through the same pipeline, and `verify` distinguishes an absent canary from a decryption failure (S)
+- [x] 2.9b Write tests and implementation for canary emission — the run writes an encrypted canary through the same pipeline, and `verify` distinguishes an absent canary from a decryption failure (S)
   **Spec scenarios**: backup-and-restore.3 (The canary is produced by the backup run, not placed by hand)
   **Design decisions**: D4
   **Dependencies**: 2.7, 2.9
-- [ ] 2.9c Write a read-only-behavior test asserting the run issues no delete or write operation against source stores and no delete against the backup target (S)
+- [x] 2.9c Write a read-only-behavior test asserting the run issues no delete or write operation against source stores and no delete against the backup target (S)
   **Spec scenarios**: backup-and-restore.2 (Backup makes no production mutations), cli-interface.1 (Listing backups does not mutate the target)
   **Dependencies**: 2.1
-- [ ] 2.9d Write a failing-mid-pipe test — simulate a non-zero exit from the dump stage and assert the store outcome is `failed`, no manifest is written, and the last stage's zero exit does not mask it (M)
+- [x] 2.9d Write a failing-mid-pipe test — simulate a non-zero exit from the dump stage and assert the store outcome is `failed`, no manifest is written, and the last stage's zero exit does not mask it (M)
   **Spec scenarios**: backup-and-restore.2 (Every pipeline stage's exit status is checked)
   **Design decisions**: A6.1
   **Dependencies**: 2.1
-- [ ] 2.9e Implement per-stage exit-status propagation across the dump/encrypt/upload pipeline (S)
+- [x] 2.9e Implement per-stage exit-status propagation across the dump/encrypt/upload pipeline (S)
   **Dependencies**: 2.9d
-- [ ] 2.9f Write tests for size read-back — assert a stored-object size mismatch against bytes streamed marks the store failed (S)
+- [x] 2.9f Write tests for size read-back — assert a stored-object size mismatch against bytes streamed marks the store failed (S)
   **Spec scenarios**: backup-and-restore.2 (Uploaded artifact size is verified against bytes streamed)
   **Design decisions**: A6.1
   **Dependencies**: 2.1
-- [ ] 2.9g Implement size read-back verification (S)
+- [x] 2.9g Implement size read-back verification (S)
   **Dependencies**: 2.9f
-- [ ] 2.9h Write tests asserting no credential appears in any constructed subprocess argv across every store adapter (S)
+- [x] 2.9h Write tests asserting no credential appears in any constructed subprocess argv across every store adapter (S)
   **Spec scenarios**: backup-and-restore.2 (Credentials are not passed as process arguments)
   **Design decisions**: A6
   **Dependencies**: 2.1
-- [ ] 2.9i Pass every credential via process environment or credentials file rather than argv (S)
+- [x] 2.9i Pass every credential via process environment or credentials file rather than argv (S)
   **Dependencies**: 2.9h
-- [ ] 2.9j Implement in-pipeline SHA-256 via tee so no artifact passes through the interpreter, and record bytes and digest per succeeded store (S)
+- [x] 2.9j Implement in-pipeline SHA-256 via tee so no artifact passes through the interpreter, and record bytes and digest per succeeded store (S)
   **Spec scenarios**: backup-and-restore.4 (Manifest records the run)
   **Design decisions**: A7
   **Dependencies**: 2.8
-- [ ] 2.9k Write tests for the retention-tier promotion rule and assert the tier segment appears in the artifact key and the manifest (S)
+- [x] 2.9k Write tests for the retention-tier promotion rule and assert the tier segment appears in the artifact key and the manifest (S)
   **Spec scenarios**: backup-and-restore.2 (Artifacts are written under a retention tier decided at write time)
   **Design decisions**: A5
   **Dependencies**: 2.1
-- [ ] 2.9l Implement tier promotion at write time (S)
+- [x] 2.9l Implement tier promotion at write time (S)
   **Dependencies**: 2.9k
-- [ ] 2.9m Write tests for environment stamping — the manifest records its environment and a foreign-environment manifest is rejected by the reader (S)
+- [x] 2.9m Write tests for environment stamping — the manifest records its environment and a foreign-environment manifest is rejected by the reader (S)
   **Spec scenarios**: backup-and-restore.4, backup-and-restore.5 (A manifest from another environment is rejected)
   **Design decisions**: A6.3
   **Dependencies**: 2.8
-- [ ] 2.9n Implement `src/services/backup/manifest_reader.py` — the single cached, environment-checked manifest reader consumed by both the readiness check and the worker (M)
+- [x] 2.9n Implement `src/services/backup/manifest_reader.py` — the single cached, environment-checked manifest reader consumed by both the readiness check and the worker (M)
   **Design decisions**: A8
   **Dependencies**: 2.9m
-- [ ] 2.9o Write tests for graph-database mode branching — local/embedded dumps, cloud records a named skip, FalkorDB snapshot is the declared write exception (M)
+- [x] 2.9o Write tests for graph-database mode branching — local/embedded dumps, cloud records a named skip, FalkorDB snapshot is the declared write exception (M)
   **Spec scenarios**: backup-and-restore.2 (Graph database is captured per configured provider and mode; Managed graph database without filesystem access is skipped explicitly; FalkorDB snapshot is a declared write exception)
   **Design decisions**: A4
   **Dependencies**: 2.3
-- [ ] 2.9p Implement graph-database branching on (`graphdb_provider`, `graphdb_mode`) (S)
+- [x] 2.9p Implement graph-database branching on (`graphdb_provider`, `graphdb_mode`) (S)
   **Dependencies**: 2.9o
-- [ ] 2.10 Checkpoint: run tests, review diff, verify scope
-- [ ] 2.11 Write tests for `aca backup verify` — missing-binary preflight, canary decryption success and failure (S)
+- [x] 2.10 Checkpoint: run tests, review diff, verify scope
+- [x] 2.11 Write tests for `aca backup verify` — missing-binary preflight, canary decryption success and failure (S)
   **Spec scenarios**: backup-and-restore.3 (Decryption capability is verified, not assumed), backup-and-restore.8 (Preflight names missing prerequisites)
   **Design decisions**: D4
   **Dependencies**: 2.1
-- [ ] 2.12 Implement `aca backup verify` (S)
+- [x] 2.12 Implement `aca backup verify` (S)
   **Dependencies**: 2.11
-- [ ] 2.13 Write tests for `aca backup list` and the CLI JSON output contract — single JSON document on stdout, no credentials in output (S)
+- [x] 2.13 Write tests for `aca backup list` and the CLI JSON output contract — single JSON document on stdout, no credentials in output (S)
   **Spec scenarios**: cli-interface.1 (all scenarios)
   **Dependencies**: 2.1
-- [ ] 2.14a Implement the `aca backup run` command surface (S)
+- [x] 2.14a Implement the `aca backup run` command surface (S)
   **Dependencies**: 2.13, 2.2b
-- [ ] 2.14b Implement the `aca backup list` command surface (S)
+- [x] 2.14b Implement the `aca backup list` command surface (S)
   **Dependencies**: 2.13
-- [ ] 2.14c Register the backup command group on the CLI app (XS)
+- [x] 2.14c Register the backup command group on the CLI app (XS)
   **Dependencies**: 2.14a, 2.14b
-- [ ] 2.14d Write tests asserting `aca backup run` preflights its binaries and aborts naming each missing one before contacting any store (S)
+- [x] 2.14d Write tests asserting `aca backup run` preflights its binaries and aborts naming each missing one before contacting any store (S)
   **Spec scenarios**: backup-and-restore.2 (Scheduled run preflights its binaries before touching any store)
   **Design decisions**: A6.4
   **Dependencies**: 2.11
-- [ ] 2.14e Implement the run-side binary preflight as a subset of `verify`'s check — binaries only, no identity (S)
+- [x] 2.14e Implement the run-side binary preflight as a subset of `verify`'s check — binaries only, no identity (S)
   **Dependencies**: 2.14d
-- [ ] 2.15 Checkpoint: run tests, review diff, verify scope
+- [x] 2.15 Checkpoint: run tests, review diff, verify scope
 
 ## Phase 3 — Freshness monitoring and alerting (wp-health-alerts)
 
