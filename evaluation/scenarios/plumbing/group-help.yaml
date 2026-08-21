@@ -1,8 +1,8 @@
 # Category: plumbing — no backend, no database, no credentials.
 #
 # The coverage floor for the whole declared command surface: every command declared in
-# the descriptor answers `--help` with exit 0. 31 commands across
-# 8 scenarios of at most 4 steps each.
+# the descriptor answers `--help` with exit 0. 32 commands across
+# 8 scenarios of at most 5 steps each.
 #
 # ---------------------------------------------------------------------------
 # Why batched, and what it costs
@@ -20,10 +20,10 @@
 # reflow, so a run without change detection can evaluate at most 30 scenarios, of which
 # at most 13 may be non-critical.
 #
-# 31 one-command scenarios therefore cannot run whatever priority they carry:
+# 32 one-command scenarios therefore cannot run whatever priority they carry:
 # at priority >= 2 the tier-3 cap keeps 13 of them, and at priority <= 1 they crowd the
 # behavioural scenarios out of tier 2. The first version of this file learned that the
-# expensive way — 31 expected, 13 evaluated, "PASS (100.0%)", exit 0. That report is
+# expensive way — 32 expected, 13 evaluated, "PASS (100.0%)", exit 0. That report is
 # what `scenarios_expected` in the contract validator and the tier assertions in
 # tests/cli_gen_eval/test_descriptor_drift.py now exist to prevent.
 #
@@ -50,22 +50,26 @@
 # only `error_contains`, which would read as nonsense in a passing report row.
 #
 # The batch membership below is alphabetical by command name, so it is predictable and
-# reviewable rather than incidental. tests/cli_gen_eval/test_descriptor_drift.py asserts
+# reviewable rather than incidental. `backup` was added to batch 1 as a fifth step
+# rather than by reflowing every batch: reflowing would have moved commands between
+# scenarios, which churns the captured report fixtures in tests/fixtures/gen_eval/
+# far beyond the one interface that actually changed. tests/cli_gen_eval/test_descriptor_drift.py asserts
 # these steps and the descriptor's declared commands are the same set, in both
 # directions.
 
 - id: plumbing-help-batch-01
-  name: 'aca --help sweep, batch 1: agent, audio-digest, auth, batch'
+  name: 'aca --help sweep, batch 1: agent, audio-digest, auth, backup, batch'
   description: >
     Each of these commands is registered on the root application and renders its
     own help without a backend, a database, or credentials. Credits the
-    interfaces cli:agent, cli:audio-digest, cli:auth, cli:batch.
+    interfaces cli:agent, cli:audio-digest, cli:auth, cli:backup, cli:batch.
   category: plumbing
   priority: 2
   interfaces:
     - "cli:agent"
     - "cli:audio-digest"
     - "cli:auth"
+    - "cli:backup"
     - "cli:batch"
   tags:
     - read-only
@@ -90,6 +94,14 @@
     - id: help-auth
       transport: cli
       command: auth
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-backup
+      transport: cli
+      command: backup
       args:
         - "--help"
       expect:

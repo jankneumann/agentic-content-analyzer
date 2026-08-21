@@ -156,7 +156,11 @@ def test_materialized_descriptor_preserves_the_declared_command_surface(
 
     original = descriptor["services"][0]["commands"]
     assert written["services"][0]["commands"] == original
-    assert len(written["services"][0]["commands"]) == 31
+    # Pinned against the descriptor rather than a literal: the count is incidental
+    # to what this test checks (that materialization preserves the command surface
+    # exactly), and hardcoding it makes every new command group a spurious failure
+    # here instead of in the drift test that actually owns command membership.
+    assert len(written["services"][0]["commands"]) == len(original)
 
 
 def test_materialize_does_not_leak_a_previous_selection(suite: Path, tmp_path: Path) -> None:

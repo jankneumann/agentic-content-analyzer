@@ -48,6 +48,11 @@
       "fail": 0,
       "pass": 1
     },
+    "cli:backup": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
     "cli:batch": {
       "error": 0,
       "fail": 0,
@@ -2636,10 +2641,11 @@
         "cli:agent",
         "cli:audio-digest",
         "cli:auth",
+        "cli:backup",
         "cli:batch"
       ],
       "scenario_id": "plumbing-help-batch-01",
-      "scenario_name": "aca --help sweep, batch 1: agent, audio-digest, auth, batch",
+      "scenario_name": "aca --help sweep, batch 1: agent, audio-digest, auth, backup, batch",
       "status": "pass",
       "steps": [
         {
@@ -2706,6 +2712,28 @@
           "side_effect_verdicts": null,
           "status": "pass",
           "step_id": "help-auth",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca backup [OPTIONS] COMMAND [ARGS]...\n\u2026 [trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 661.4208749961108,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-backup",
           "transport": "cli"
         },
         {

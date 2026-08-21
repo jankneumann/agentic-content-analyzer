@@ -23,6 +23,17 @@ accounted for most of the original 167 KB. Nothing structural is touched, and
 the documents. The remaining bulk is genuine structured payload — `aca capabilities`
 alone is about 15 KB of JSON — and is left intact.
 
+**One structural edit, recorded so it is not mistaken for capture.** The `aca backup`
+command group (`add-gx10-backup-scheme`) was added to the help sweep after these
+reports were captured, so `cli:backup` was inserted by hand into
+`plumbing-help-batch-01`: one passing step, one credited interface, identical in
+shape to the `cli:batch` entry beside it. It was added to the existing batch rather
+than by reflowing the sweep alphabetically, precisely to keep this edit to the one
+interface that changed instead of moving commands between scenarios.
+
+Regenerate these fixtures at the next pin bump and this note can go. Until then,
+treat `cli:backup`'s entries as derived rather than observed.
+
 The negative cases are **not** checked in. Every one is derived in the test by mutating a
 loaded fixture, so the mutation sits next to the assertion it is supposed to trip. A
 checked-in `report-truncated.json` would state that eighteen scenarios went missing; a
