@@ -95,6 +95,47 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
 - [ ] 2.9c Write a read-only-behavior test asserting the run issues no delete or write operation against source stores and no delete against the backup target (S)
   **Spec scenarios**: backup-and-restore.2 (Backup makes no production mutations), cli-interface.1 (Listing backups does not mutate the target)
   **Dependencies**: 2.1
+- [ ] 2.9d Write a failing-mid-pipe test — simulate a non-zero exit from the dump stage and assert the store outcome is `failed`, no manifest is written, and the last stage's zero exit does not mask it (M)
+  **Spec scenarios**: backup-and-restore.2 (Every pipeline stage's exit status is checked)
+  **Design decisions**: A6.1
+  **Dependencies**: 2.1
+- [ ] 2.9e Implement per-stage exit-status propagation across the dump/encrypt/upload pipeline (S)
+  **Dependencies**: 2.9d
+- [ ] 2.9f Write tests for size read-back — assert a stored-object size mismatch against bytes streamed marks the store failed (S)
+  **Spec scenarios**: backup-and-restore.2 (Uploaded artifact size is verified against bytes streamed)
+  **Design decisions**: A6.1
+  **Dependencies**: 2.1
+- [ ] 2.9g Implement size read-back verification (S)
+  **Dependencies**: 2.9f
+- [ ] 2.9h Write tests asserting no credential appears in any constructed subprocess argv across every store adapter (S)
+  **Spec scenarios**: backup-and-restore.2 (Credentials are not passed as process arguments)
+  **Design decisions**: A6
+  **Dependencies**: 2.1
+- [ ] 2.9i Pass every credential via process environment or credentials file rather than argv (S)
+  **Dependencies**: 2.9h
+- [ ] 2.9j Implement in-pipeline SHA-256 via tee so no artifact passes through the interpreter, and record bytes and digest per succeeded store (S)
+  **Spec scenarios**: backup-and-restore.4 (Manifest records the run)
+  **Design decisions**: A7
+  **Dependencies**: 2.8
+- [ ] 2.9k Write tests for the retention-tier promotion rule and assert the tier segment appears in the artifact key and the manifest (S)
+  **Spec scenarios**: backup-and-restore.2 (Artifacts are written under a retention tier decided at write time)
+  **Design decisions**: A5
+  **Dependencies**: 2.1
+- [ ] 2.9l Implement tier promotion at write time (S)
+  **Dependencies**: 2.9k
+- [ ] 2.9m Write tests for environment stamping — the manifest records its environment and a foreign-environment manifest is rejected by the reader (S)
+  **Spec scenarios**: backup-and-restore.4, backup-and-restore.5 (A manifest from another environment is rejected)
+  **Design decisions**: A6.3
+  **Dependencies**: 2.8
+- [ ] 2.9n Implement `src/services/backup/manifest_reader.py` — the single cached, environment-checked manifest reader consumed by both the readiness check and the worker (M)
+  **Design decisions**: A8
+  **Dependencies**: 2.9m
+- [ ] 2.9o Write tests for graph-database mode branching — local/embedded dumps, cloud records a named skip, FalkorDB snapshot is the declared write exception (M)
+  **Spec scenarios**: backup-and-restore.2 (Graph database is captured per configured provider and mode; Managed graph database without filesystem access is skipped explicitly; FalkorDB snapshot is a declared write exception)
+  **Design decisions**: A4
+  **Dependencies**: 2.3
+- [ ] 2.9p Implement graph-database branching on (`graphdb_provider`, `graphdb_mode`) (S)
+  **Dependencies**: 2.9o
 - [ ] 2.10 Checkpoint: run tests, review diff, verify scope
 - [ ] 2.11 Write tests for `aca backup verify` — missing-binary preflight, canary decryption success and failure (S)
   **Spec scenarios**: backup-and-restore.3 (Decryption capability is verified, not assumed), backup-and-restore.8 (Preflight names missing prerequisites)
@@ -111,6 +152,12 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
   **Dependencies**: 2.13
 - [ ] 2.14c Register the backup command group on the CLI app (XS)
   **Dependencies**: 2.14a, 2.14b
+- [ ] 2.14d Write tests asserting `aca backup run` preflights its binaries and aborts naming each missing one before contacting any store (S)
+  **Spec scenarios**: backup-and-restore.2 (Scheduled run preflights its binaries before touching any store)
+  **Design decisions**: A6.4
+  **Dependencies**: 2.11
+- [ ] 2.14e Implement the run-side binary preflight as a subset of `verify`'s check — binaries only, no identity (S)
+  **Dependencies**: 2.14d
 - [ ] 2.15 Checkpoint: run tests, review diff, verify scope
 
 ## Phase 3 — Freshness monitoring and alerting (wp-health-alerts)
@@ -163,6 +210,29 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
 - [ ] 3.9 Implement idempotent freshness-alert emission in periodic worker maintenance, keyed on the observed manifest generation per design D6 (M)
   **Design decisions**: D6
   **Dependencies**: 3.8, 3.7b, 3.3b
+- [ ] 3.7c Write a migration test asserting a `system_check` row is rejected before the migration and accepted after, covering all three CHECK constraints (M)
+  **Design decisions**: A1
+  **Dependencies**: 3.6
+- [ ] 3.7d Author the Alembic migration relaxing `ck_workflow_terminal_events_source_kind`, `ck_workflow_terminal_events_event_identity`, and `ck_workflow_terminal_events_source_shape` to admit `system_check` with null operation-scoped fields (M)
+  **Design decisions**: A1
+  **Dependencies**: 3.7c
+- [ ] 3.7e Mirror the relaxed DDL in `src/queue/setup.py` and add `system_check` to the `WorkflowTerminalSourceKind` StrEnum (S)
+  **Design decisions**: A1
+  **Dependencies**: 3.7d
+- [ ] 3.7f Extend `src/services/workflow_terminal_event_service.py` to persist a system-check event with no operation identity (S)
+  **Design decisions**: A1
+  **Dependencies**: 3.7e
+- [ ] 3.7g Run `alembic heads` and confirm a single head; add a merge revision if the migration introduced a second (XS)
+  **Dependencies**: 3.7d
+- [ ] 3.9b Write an end-to-end enqueue-and-drain test proving a `system_check` alert is persisted and delivered against a migrated database — envelope construction alone is not evidence of delivery (M)
+  **Design decisions**: A1
+  **Dependencies**: 3.9, 3.7f
+- [ ] 3.9c Write tests asserting a fresh-but-partial manifest is not reported `ok` and raises the partial alert code (S)
+  **Spec scenarios**: backup-and-restore.5 (A fresh but partial run does not report healthy)
+  **Design decisions**: A6.2
+  **Dependencies**: 3.1
+- [ ] 3.9d Implement outcome-aware freshness so status reflects `overall_outcome` and per-store outcomes, not age alone (S)
+  **Dependencies**: 3.9c, 3.3b
 - [ ] 3.10 Checkpoint: run tests, review diff, verify scope
 
 ## Phase 4 — Restore path (wp-restore-cli)

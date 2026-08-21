@@ -2,16 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://aca.local/contracts/backup-freshness-alert.schema.json",
   "title": "Backup Freshness Alert (system_check source)",
-  "description": "Widening of WorkflowAlertEnvelopeV1 to carry a non-operation system check. Operation-scoped fields are absent rather than synthesized, because a fabricated operation id yields a diagnostic URL that 404s.",
+  "description": "Widening of WorkflowAlertEnvelopeV1 to carry a non-operation system check. Operation-scoped fields are absent rather than synthesized. NOTE: persisting this envelope requires an Alembic migration relaxing three CHECK constraints on workflow_terminal_events (ck_..._source_kind, ck_..._event_identity, ck_..._source_shape) — see design D5.",
   "type": "object",
-  "required": ["schema_version", "event_id", "event_key", "occurred_at", "severity", "outcome", "source_kind", "workflow_type", "codes"],
+  "required": ["schema_version", "event_id", "event_key", "occurred_at", "severity", "outcome", "source_kind", "workflow_type", "diagnostic_url", "codes"],
   "properties": {
     "schema_version": { "type": "integer", "const": 1 },
     "event_id": { "type": "string", "format": "uuid" },
     "event_key": {
       "type": "string",
-      "pattern": "^system_check:backup_freshness:[0-9]{8}T[0-9]{6}Z$",
-      "description": "Key grammar for the system_check source. The trailing check-window stamp is what makes emission idempotent per window."
+      "maxLength": 160,
+      "pattern": "^system_check:backup_freshness:[0-9]{10}$",
+      "description": "Single grammar for every backup freshness alert, stale and no_history alike; the condition is carried in `codes`, not in the key. The suffix is the check-window start as epoch seconds, which is what makes emission idempotent per window. Deliberately lowercase-and-digits only: the existing WorkflowEventKey type constrains keys to ^[a-z0-9:_-]+$, so an ISO-8601 stamp (uppercase T/Z, dot) would be rejected at construction. This exact literal form must also be admitted by the widened ck_workflow_terminal_events_event_identity CHECK."
     },
     "occurred_at": { "type": "string", "format": "date-time" },
     "severity": { "type": "string", "enum": ["warning", "error"] },
@@ -20,22 +21,34 @@
     "workflow_type": { "type": "string", "const": "system.backup_freshness" },
     "operation_id": {
       "type": "null",
-      "description": "Absent for system checks. Explicitly null rather than a synthesized value."
+      "description": "Absent for system checks. Explicitly null rather than synthesized — a fabricated operation id would produce a diagnostic URL that 404s. Requires the source_shape CHECK to admit null for this kind."
     },
+    "claim_generation": { "type": "null", "description": "Absent for system checks." },
     "attempt": { "type": "null", "description": "Absent for system checks." },
+    "terminal_status": { "type": "null", "description": "Absent for system checks." },
     "diagnostic_url": {
       "type": "string",
-      "pattern": "^/api/v1/health/backup$",
-      "description": "Must resolve to a route that exists."
+      "format": "uri",
+      "pattern": "^https?://[^/]+/api/v1/workflow-terminal-events/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "description": "Reuses the existing, already-allowlisted workflow-terminal-events route rather than introducing /api/v1/health/backup. That route does not exist, is not in validate_diagnostic_route's allowlist, and would require an OpenAPI delta and an owning package. Absolute because the model field is AnyUrl, not a relative path."
     },
     "codes": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "string",
-        "enum": ["backup_stale", "backup_no_history", "backup_verify_failed", "backup_target_unreachable"]
+        "enum": ["backup_stale", "backup_no_history", "backup_partial", "backup_verify_failed", "backup_target_unreachable", "backup_environment_mismatch"]
       }
     },
-    "counts": { "type": "object", "description": "Age in seconds and per-store outcome tallies. No credentials." }
+    "counts": {
+      "type": "object",
+      "description": "Manifest age in seconds and per-store outcome tallies. Carries the partial-run signal so a fresh-but-partial manifest is distinguishable from a healthy one. No credentials.",
+      "properties": {
+        "manifest_age_seconds": { "type": "integer", "minimum": 0 },
+        "stores_succeeded": { "type": "integer", "minimum": 0 },
+        "stores_failed": { "type": "integer", "minimum": 0 },
+        "stores_skipped": { "type": "integer", "minimum": 0 }
+      }
+    }
   }
 }

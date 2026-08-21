@@ -218,7 +218,7 @@ packages:
     name: wp-backup-cli
     mode: isolated
   metadata:
-    loc_estimate: 1220
+    loc_estimate: 1900
     complexity: high
     package_kind: algorithm
   inputs:
@@ -235,6 +235,19 @@ packages:
     - '2.9'
     - 2.9b
     - 2.9c
+    - 2.9d
+    - 2.9e
+    - 2.9f
+    - 2.9g
+    - 2.9h
+    - 2.9i
+    - 2.9j
+    - 2.9k
+    - 2.9l
+    - 2.9m
+    - 2.9n
+    - 2.9o
+    - 2.9p
     - '2.10'
     - '2.11'
     - '2.12'
@@ -242,6 +255,8 @@ packages:
     - 2.14a
     - 2.14b
     - 2.14c
+    - 2.14d
+    - 2.14e
     - '2.15'
   verification:
     tier_required: B
@@ -274,14 +289,18 @@ packages:
   priority: 2
   depends_on:
   - wp-settings
+  - wp-backup-cli
   locks:
     files:
     - src/api/health_routes.py
     - src/contracts/workflow_alert_models.py
     - src/queue/worker.py
+    - alembic/versions/
+    - src/services/workflow_terminal_event_service.py
     keys:
     - api:GET /ready
     - contract:workflow-alert-envelope
+    - db:migration-slot
     ttl_minutes: 240
     reason: Health route and alert envelope contract ownership.
   scope:
@@ -293,6 +312,11 @@ packages:
     - tests/unit/test_workflow_alert_models.py
     - tests/unit/test_backup_freshness_alert.py
     - tests/contract/test_workflow_alert_contracts.py
+    - alembic/versions/**
+    - src/models/workflow_alert.py
+    - src/queue/setup.py
+    - src/services/workflow_terminal_event_service.py
+    - tests/test_storage/test_workflow_terminal_event_migration.py
     read_allow:
     - src/**
     - tests/**
@@ -300,14 +324,14 @@ packages:
     deny:
     - src/cli/**
     - src/config/**
-    - src/services/backup/**
+    - src/services/backup/manifest_reader.py
   worktree:
     name: wp-health-alerts
     mode: isolated
   metadata:
-    loc_estimate: 920
+    loc_estimate: 1400
     complexity: high
-    package_kind: integration
+    package_kind: migration
   inputs:
     tasks:
     - '3.1'
@@ -324,6 +348,14 @@ packages:
     - 3.7b
     - '3.8'
     - '3.9'
+    - 3.7c
+    - 3.7d
+    - 3.7e
+    - 3.7f
+    - 3.7g
+    - 3.9b
+    - 3.9c
+    - 3.9d
     - '3.10'
   verification:
     tier_required: B
@@ -356,6 +388,14 @@ packages:
         result_keys:
         - test_count
         - pass_count
+    - name: alembic-single-head
+      kind: command
+      command: alembic heads
+      expect_exit_code: 0
+      evidence:
+        artifacts: []
+        result_keys:
+        - head_count
   timeout_minutes: 240
   retry_budget: 1
   min_trust_level: 4

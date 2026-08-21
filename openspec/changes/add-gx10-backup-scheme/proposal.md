@@ -154,9 +154,25 @@ not repurposed as the backup. See `design.md` D8.
 
 ### Not affected
 
-`railway/postgres/**` (see D1), `src/sync/**` (see D3), and the database schema —
-this change adds no migration, deliberately, because backup state lives in the
-backup target so it survives loss of the database (D7).
+`railway/postgres/**` (see D1) and `src/sync/**` (see D3).
+
+### Retracted: "no migration"
+
+An earlier revision of this proposal claimed this change adds no migration,
+on the reasoning that backup state lives in the backup target so it survives
+loss of the database (D7). That reasoning still holds for backup *state* — no
+backup data is stored in Postgres.
+
+It does not hold for backup *alerting*. PLAN_REVIEW established that the durable
+alert path is anchored on `workflow_terminal_events`, whose three CHECK
+constraints reject a `system_check` row outright. The alert could have been
+constructed in Pydantic and never persisted or delivered. The operator was
+offered the real cost and chose to accept it, so **this change does add an
+Alembic migration** relaxing those constraints. See design amendment A1.
+
+Consequence worth stating plainly: `has_db_migration` is now **true**, where the
+GATEKEEPER assessed this change as `false`. The risk profile changed after the
+gate ran, and that is recorded rather than absorbed silently.
 
 ## Hard Constraints
 

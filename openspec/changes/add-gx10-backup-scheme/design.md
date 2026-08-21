@@ -418,3 +418,143 @@ Two traps in the existing test file that the tasks must account for:
 - Several tests assert on `mock_run.call_args_list[N]` by **positional index**
   (`:47`, `:325`). Adding or reordering any subprocess step silently breaks them.
   Tests must match on the invoked argv rather than on call position.
+
+---
+
+# Amendments from PLAN_REVIEW (round 1)
+
+Twelve critical findings. Each was verified against the tree before being
+accepted — the three that reshape the alerting design were confirmed by reading
+the constraints themselves, not by trusting the review. These amendments
+supersede the named parts of D4–D14.
+
+### A1 — D5 now requires a database migration (supersedes D5 and the proposal's "no migration" claim)
+
+**Finding.** The durable alert path is anchored on `workflow_terminal_events`,
+which enforces three CHECK constraints that a `system_check` row violates:
+`ck_workflow_terminal_events_source_kind` (`source_kind IN
+('operation','reconciliation_action','reconciliation_failure')`),
+`ck_workflow_terminal_events_event_identity` (an XOR over three exact
+`event_key` formulas), and `ck_workflow_terminal_events_source_shape` (per-kind
+nullability of `operation_id` / `claim_generation` / `terminal_status`). The
+same DDL is duplicated in `src/queue/setup.py`, and `WorkflowTerminalSourceKind`
+is a `StrEnum` in `src/models/workflow_alert.py`.
+
+**Amendment.** The operator was told at the discovery gate that widening Path B
+was a Pydantic contract change; it is not. Presented with the real cost, the
+operator chose to accept the migration. Therefore:
+
+- An Alembic migration relaxes all three CHECK constraints to admit
+  `system_check`, with the new event-key literal form (A2) added to the
+  event-identity CHECK and `operation_id` / `claim_generation` /
+  `terminal_status` permitted NULL for the new kind.
+- The duplicated DDL in `src/queue/setup.py`, the `StrEnum` in
+  `src/models/workflow_alert.py`, and the insert path in
+  `src/services/workflow_terminal_event_service.py` all move into
+  `wp-health-alerts`'s write scope.
+- `proposal.md`'s "no migration, deliberately" claim is retracted.
+- `has_db_migration` becomes **true**. This is a material change to the risk
+  profile the GATEKEEPER assessed under `has_db_migration: false`, and is
+  recorded as such rather than absorbed silently.
+- Envelope construction is not evidence of delivery. A task proves an
+  end-to-end enqueue **and drain** of a `system_check` alert against a migrated
+  database.
+
+**Alternative rejected.** Routing over a path needing no terminal-event row —
+offered to the operator alongside the migration and declined.
+
+### A2 — One lowercase event-key grammar (supersedes D5's key sketch)
+
+`WorkflowEventKey` is `^[a-z0-9:_-]+$`. Both previously proposed grammars
+contained uppercase `T`/`Z` from an ISO-8601 stamp, so **every** emitted alert
+would have failed validation at construction — and the two grammars disagreed
+with each other on the middle segment.
+
+One grammar now, stated identically in the contract, this design, and the
+widened annotation: `system_check:backup_freshness:<epoch-seconds>`, where the
+suffix is the check-window start. The condition (stale, no-history, partial)
+travels in `codes`, not in the key, so one grammar covers every case and
+idempotency-per-window is preserved. The literal form is added to the
+event-identity CHECK in the A1 migration.
+
+### A3 — Reuse the existing diagnostic route (supersedes the `/api/v1/health/backup` proposal)
+
+`/api/v1/health/backup` does not exist, is not in `validate_diagnostic_route`'s
+allowlist, and no task created it — while `contracts/README.md` simultaneously
+claimed no endpoint was added. Rather than add a route, an OpenAPI delta, and an
+owning package, the alert points at
+`/api/v1/workflow-terminal-events/{event_id}`, which already exists and is
+already allowlisted. The contract's type is corrected to absolute, matching the
+`AnyUrl` the model actually declares.
+
+### A4 — Graph backup branches on mode, and the snapshot write is declared (supersedes D3's graph note)
+
+`neo4j-admin database dump` needs a stopped database and is impossible against
+AuraDB, which `graphdb_mode: cloud` supports. FalkorDB `BGSAVE` is a write, which
+contradicted the read-only requirement as originally written.
+
+The requirement now branches on `(graphdb_provider, graphdb_mode)`. The managed
+path records a skip with a named reason, following the OpenBao precedent, and the
+runbook names the provider-native snapshot that covers it. The read-only scenario
+is narrowed to forbid *application-data* mutation, with the provider snapshot as
+a single declared exception — precise rather than aspirational.
+
+### A5 — Retention tiers are decided at write time (supersedes D10)
+
+Lifecycle rules expire by age under a prefix; R2 does not support tag filters.
+Age-based expiry over one flat prefix keeps everything for N days and then
+nothing, so the 4 weekly and 12 monthly tiers **could not exist**. Artifacts are
+now written under a tier segment chosen at write time by a documented promotion
+rule, and lifecycle rules are expressed per tier prefix. D10's provider-awareness
+gains a defined scope: the applier must account for R2 lacking tag filters.
+
+### A6 — Silent-success defences (new; closes the change's own failure mode)
+
+Four gaps each reproduced the exact failure this change exists to eliminate — a
+backup that reports success and is not restorable:
+
+1. **Pipeline exit status.** A shell pipeline reports the *last* stage's status.
+   `pg_dump` failing halfway still yields zero from `rclone` and uploads a
+   truncated ciphertext the manifest records as succeeded. Every stage's status
+   is now checked, and a size read-back compares the stored object against the
+   bytes streamed.
+2. **Partial reads as healthy.** Freshness derived from timestamp alone meant a
+   manifest with `overall_outcome: "partial"` reported `ok` — precisely what D11
+   rejected when it dismissed reading freshness from a HEAD on the newest
+   artifact. Status now reflects outcomes as well as age.
+3. **Cross-environment overwrite.** A fixed manifest key under a prefix
+   defaulting to a shared constant meant a staging run overwrote the production
+   freshness signal: production backups could stop entirely while `/ready`
+   reported `ok`. The manifest records its environment and the reader rejects a
+   mismatch.
+4. **Preflight never ran unattended.** The missing-binary preflight was attached
+   to `verify`, which D13 deliberately does not wire to the timer. `run` — the
+   only path that ever executes unattended — had none. `run` now preflights the
+   binaries it will invoke, before touching any store; it is a subset of
+   `verify`'s check (binaries only, no identity).
+
+### A7 — Digest computation named (supersedes the manifest contract's optional fields)
+
+`bytes` and `checksum_sha256` were mandatory in the spec but optional in the
+contract, so a manifest omitting both validated — leaving an empty upload
+indistinguishable from a good one. They are now conditionally required whenever a
+store's outcome is `succeeded`, enforced by `if/then` in the schema.
+
+The digest is produced by teeing into `sha256sum` **inside the same pipeline**, so
+no artifact passes through the interpreter — preserving Approach C's property that
+multi-GB dumps never enter Python.
+
+### A8 — The shared manifest reader gets an owner (supersedes D14)
+
+D14 required the readiness check and the worker to read through one cached
+helper, but `wp-health-alerts` had no service module in scope and explicitly
+denied `src/services/backup/**`, which belongs to a package it did not depend on.
+The only in-scope options were duplicating the reader (two caches, two timeout
+policies) or importing an API module from the queue worker, inverting the
+layering.
+
+`src/services/backup/manifest_reader.py` is owned by **`wp-backup-cli`**, which
+already owns that tree and already needs a client to write the manifest.
+`wp-health-alerts` gains a dependency on `wp-backup-cli` and read-only access to
+it, narrowing its deny list. The serialization cost is accepted: one owner for one
+cache is worth more than the lost parallelism.
