@@ -768,64 +768,106 @@ If your repository is private, configure GHCR access:
 
 For public repositories, no authentication is needed.
 
-### Automated Backups (pg_cron → MinIO)
+### Automated Backups
 
-The custom PostgreSQL image includes automated backup jobs using pg_cron that dump the database to MinIO storage.
+> **The pg_cron backup described in earlier revisions of this document never
+> produced a backup.** It failed at three independent points, any one of which
+> was fatal: `MINIO_ENDPOINT` was never supplied to the Postgres service, the job
+> body self-skipped without it, and `mc` is not installed in the database image.
+> A fourth blocker — `current_setting('app.*')` being restricted on Railway
+> managed Postgres — is documented in
+> [GOTCHAS.md](./GOTCHAS.md#the-pg_cron-backup-never-produced-a-backup).
+>
+> Backups are now produced by `aca backup run`, scheduled by a systemd timer on
+> the host. See **[BACKUP_RESTORE.md](./BACKUP_RESTORE.md)** for setup, the
+> restore runbook, and the age key-escrow procedure.
 
 #### Configuration
 
-```bash
-# .env backup settings (all have sensible defaults)
-RAILWAY_BACKUP_ENABLED=true         # Enable/disable backups (default: true)
-RAILWAY_BACKUP_SCHEDULE="0 3 * * *" # Cron schedule (default: daily 3 AM UTC)
-RAILWAY_BACKUP_RETENTION_DAYS=7     # Days to keep backups (default: 7)
-RAILWAY_BACKUP_BUCKET=backups       # MinIO bucket for backups (default: backups)
-```
-
-The backup job creates compressed `pg_dump` files (custom format, `-Fc`) and stores them in MinIO with timestamped filenames like `railway-2026-02-06-0300.dump`.
-
-A separate cleanup job runs one hour after the backup and removes files older than the retention period.
-
-#### Restoring from Backup
-
-> **Shortcut**: use `aca manage restore-from-cloud` to wrap the steps below.
-> See [SYNC_DOWN.md](./SYNC_DOWN.md) for the full workflow, PII caveats, and
-> troubleshooting.
+The backup target is provider-neutral: the same settings address Cloudflare R2,
+AWS S3 and MinIO, differing only in their values.
 
 ```bash
-# 1. List available backups
-mc alias set railway $RAILWAY_MINIO_ENDPOINT $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD
-mc ls railway/backups/
+BACKUP_S3_ENDPOINT=https://<account>.r2.cloudflarestorage.com  # omit for AWS
+BACKUP_S3_BUCKET=aca-backups
+BACKUP_S3_REGION=auto                # "auto" for R2; a real region for AWS
+BACKUP_S3_PREFIX=aca                 # key namespace (default: aca)
+BACKUP_S3_ACCESS_KEY_ID=...          # SecretStr; masked in diagnostics
+BACKUP_S3_SECRET_ACCESS_KEY=...      # SecretStr; masked in diagnostics
 
-# 2. Download a specific backup
-mc cp railway/backups/railway-2026-02-06-0300.dump ./restore.dump
+BACKUP_AGE_RECIPIENT=age1...         # PUBLIC key; encrypts. Safe on the host.
+BACKUP_AGE_IDENTITY_PATH=/path/...   # PRIVATE key; decrypts. NEVER on the host.
 
-# 3. Restore to a database
-pg_restore -d $DATABASE_URL --clean --if-exists ./restore.dump
-
-# 4. Verify restore
-psql $DATABASE_URL -c "SELECT count(*) FROM content_items;"
+BACKUP_MONITORING_ENABLED=true       # freshness check + durable alert
+BACKUP_STALENESS_HOURS=48            # alert threshold (default: 48)
 ```
 
-#### Verifying Backups
+#### Legacy settings
+
+| Legacy | Status |
+|---|---|
+| `RAILWAY_MINIO_ENDPOINT`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `RAILWAY_BACKUP_BUCKET` | Map forward onto `BACKUP_S3_*`. One deprecation warning names the replacements. |
+| `RAILWAY_BACKUP_ENABLED`, `RAILWAY_BACKUP_STALENESS_HOURS` | Map forward onto `BACKUP_MONITORING_ENABLED` / `BACKUP_STALENESS_HOURS`. |
+| `RAILWAY_BACKUP_SCHEDULE`, `RAILWAY_BACKUP_RETENTION_DAYS` | **Inert.** They have no Python consumer and never had one — the shell script used its own differently-named env vars. They read as live configuration and are not. The schedule now lives in `aca-backup.timer`; retention lives in the backup target's lifecycle rules. |
+
+Explicitly-set new settings always win over legacy ones.
+
+#### Running a backup
 
 ```bash
-# Check backup job status in pg_cron
-psql $DATABASE_URL -c "
-  SELECT jobname, status, start_time, end_time
-  FROM cron.job_run_details
-  WHERE jobname = 'railway-backup'
-  ORDER BY start_time DESC LIMIT 5;
-"
-
-# The /ready health endpoint also reports backup status
-curl https://your-app.railway.app/ready | jq '.checks.backup'
-# Returns: "ok", "stale", "no_history", or "not_configured"
+aca backup run       # capture every configured store; non-zero if any failed
+aca backup verify    # check prerequisites and prove the canary still decrypts
+aca backup list      # read-only listing of artifacts under the prefix
 ```
 
-#### Disabling Backups
+#### Restoring
 
-Set `RAILWAY_BACKUP_ENABLED=false` in your environment to skip backup job creation. The pg_cron jobs will not be scheduled.
+> Full multi-store runbook: **[BACKUP_RESTORE.md](./BACKUP_RESTORE.md)**. For
+> pulling one Postgres dump into a local scratch database, see
+> [SYNC_DOWN.md](./SYNC_DOWN.md).
+
+```bash
+export BACKUP_AGE_IDENTITY_PATH=/path/to/escrowed-identity.txt
+aca backup list
+aca manage restore-from-cloud --backup-date 2026-08-21 --target-db postgresql://localhost/scratch
+```
+
+#### Verifying backups
+
+```bash
+# Does a restorable backup exist, and can we still decrypt it?
+aca backup verify
+
+# Freshness, from the bucket-side manifest rather than scheduler history
+curl https://your-app/ready | jq '.checks.backup'
+# "ok" | "stale" | "partial" | "no_history" | "unknown" | "environment_mismatch"
+```
+
+`partial` is worth knowing about: it means the run was recent but a store failed
+or was skipped. A fresh manifest is not by itself a healthy backup.
+
+Backup staleness never affects overall readiness — pulling an instance out of the
+load balancer over a stale backup would turn a backup problem into a serving
+outage. The durable alert emitted by worker maintenance is the actionable signal.
+
+#### Retention
+
+```bash
+python scripts/backup_retention.py            # dry run: prints, changes nothing
+python scripts/backup_retention.py --apply    # set the lifecycle rules
+```
+
+7 daily / 4 weekly / 12 monthly, declared in `deploy/backup/retention.yaml` and
+enforced by the target's own lifecycle rules. No scheduled process in this
+repository deletes a backup object.
+
+#### Disabling backup monitoring
+
+`BACKUP_MONITORING_ENABLED=false` suppresses the readiness status and the durable
+alert. It does **not** stop the timer — disable `aca-backup.timer` for that. The
+two are separate on purpose: silencing the monitor is not the same decision as
+stopping the backups, and conflating them is how a monitor gets muted and then
+forgotten.
 
 ### Troubleshooting Railway
 

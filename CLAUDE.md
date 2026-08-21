@@ -22,6 +22,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | [Obsidian Vault Ingest](docs/OBSIDIAN_VAULT_INGEST.md) | Web Clipper vault ingress: allowed roots, clip contract, privacy, troubleshooting |
 | [Search](docs/SEARCH.md) | Hybrid BM25+vector search, embedding providers, chunking |
 | [Deployment](docs/MOBILE_DEPLOYMENT.md) | Railway deployment, Docker, migrations, CORS |
+| [**Backup & Restore**](docs/BACKUP_RESTORE.md) | gx-10 off-site backup: `aca backup`, age encryption, key escrow, multi-store restore runbook |
 | [Deploy Secrets](docs/DEPLOY_SECRETS.md) | `aca deploy sync-secrets`: push local secrets to Railway (allowlist, dry-run) |
 | [Desktop](docs/DESKTOP_DEPLOYMENT.md) | Tauri desktop app: build, distribute, remote backend, CORS |
 | [**ACA Agents**](docs/ACA-AGENTS.md) | Agentic analysis: personas, specialists, memory, approvals, scheduling |
@@ -76,6 +77,12 @@ aca evaluate create-dataset --step summarization  # Create dataset
 aca evaluate run <dataset-id>          # Run judge evaluation
 aca evaluate calibrate --step summarization       # Calibrate threshold
 aca evaluate report                    # Cost savings report
+
+# Off-site backup (gx-10)
+aca backup run                         # capture every store; non-zero if any failed
+aca backup verify                      # preflight binaries + prove the canary decrypts
+aca backup list                        # read-only listing under the configured prefix
+python scripts/backup_retention.py     # lifecycle rules; DRY RUN unless --apply
 
 # Model registry freshness
 aca models discover                    # Catalog models not yet in the registry
@@ -167,6 +174,9 @@ The full list is in [docs/GOTCHAS.md](docs/GOTCHAS.md). These are the ones that 
 | Workflow mutations are always durable | Use `OperationService` or the canonical `/api/v1/*` submission routes. Do not restore direct CLI execution, `BackgroundTasks`, legacy `/contents/*` mutations, or transport-owned source maps. |
 | Optional query parameters at HTTP boundaries | `httpx` serializes `None` values as empty query values. Build cursor-page params so absent values are omitted; keep strict server cursor validation and assert the actual serialized URL in transport tests. |
 | CLI JSON output purity | Stdout contains one JSON document; logging and diagnostics belong on stderr. Tests for auto-selected external transports must pass the transport flag explicitly (for example `--via-rss`) so local credentials cannot trigger live calls. |
+| The pg_cron backup never worked | `railway/postgres/init-backup-job.sql` failed at four independent points and never produced a backup. Backups are `aca backup run` + a systemd timer. `railway_backup_schedule` / `railway_backup_retention_days` are **inert** — no Python consumer, ever. See [GOTCHAS](docs/GOTCHAS.md#the-pg_cron-backup-never-produced-a-backup). |
+| A backup that reports success is the failure mode | A shell pipeline reports the LAST stage's status, so `pg_dump` dying halfway still yields zero from the uploader. `src/services/backup/executor.py` checks EVERY stage, reads the stored size back, and refuses to record a store with no digest. Never replace it with `sh -c 'a \| b \| c'`. |
+| Widening `WorkflowTerminalSourceKind` is never enough | A new source kind is rejected by 3 CHECK constraints (in **three** copies of the DDL), 7 closed points in `workflow_alert_models.py`, and 4 more on the emission path — including `_event_from_row`. Every one fails SILENTLY as `classification_status='rejected'`. Prove a new kind end to end (`tests/unit/test_system_check_alert_emission.py`), never by asserting a regex. |
 | `ruff S608` on multi-line SQL strings | `# noqa: S608` span is single-line. Prefer single-line f-strings so the noqa covers the violation line, OR put the noqa on the LINE where `SELECT`/`DELETE` appears — not the closing paren line. Otherwise you get a RUF100 "unused noqa" flip-flop. |
 
 ## Quick Links by Task
