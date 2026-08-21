@@ -29,7 +29,16 @@ WorkflowTerminalOutcome = Literal[
 ]
 WorkflowAlertSeverity = Literal["info", "warning", "error"]
 WorkflowAlertExternalSeverity = Literal["warning", "error"]
-WorkflowTerminalSourceKind = Literal["operation", "reconciliation_action", "reconciliation_failure"]
+WorkflowTerminalSourceKind = Literal[
+    "operation",
+    "reconciliation_action",
+    "reconciliation_failure",
+    # A system check is not a workflow. It has no operation, no claim, and no
+    # reconciliation identity, which is exactly why widening this literal alone was
+    # not enough: six further closed points in this module and three in the
+    # emitting service reject it. See the `system_check` branches below.
+    "system_check",
+]
 WorkflowAlertDeliveryStatus = Literal[
     "pending", "leased", "delivered", "permanent_failure", "exhausted"
 ]
@@ -47,7 +56,7 @@ WorkflowEventKey = Annotated[
     str,
     Field(min_length=1, max_length=160, pattern="^[a-z0-9:_-]+$"),
 ]
-WorkflowTypeName = OperationType | Literal["content.reconciliation"]
+WorkflowTypeName = OperationType | Literal["content.reconciliation", "system.backup_freshness"]
 WorkflowAlertResourceType = Literal[
     "content",
     "ingestion_run",
@@ -128,12 +137,36 @@ WorkflowAlertDiagnosticCode = (
         "yaml_node_limit",
         "yaml_string_limit",
         "yaml_unsupported_type",
+        # Backup freshness. The AUTHORITATIVE set for these lives in
+        # openspec/contracts/backup/events/backup-freshness-alert.schema.json —
+        # this list must admit exactly those codes, which
+        # tests/contract/test_workflow_alert_contracts.py asserts mechanically.
+        # The set drifted three times during planning while it was enumerated in
+        # three places; the schema is now the only place it is decided.
+        "backup_environment_mismatch",
+        "backup_no_history",
+        "backup_partial",
+        "backup_stale",
+        "backup_target_unreachable",
     ]
 )
 WorkflowDiagnosticUrl = Annotated[
     AnyUrl,
     UrlConstraints(max_length=2048, allowed_schemes=["https"]),
 ]
+
+#: A2/A10 — the ONE system-check event-key grammar, stated here and referenced
+#: everywhere else. Both earlier candidate grammars embedded an ISO-8601 stamp,
+#: whose uppercase `T`/`Z` fail `WorkflowEventKey` — so every alert would have
+#: failed at construction, and the two candidates disagreed with each other.
+#:
+#: The suffix is the START of the fixed-length check window containing the
+#: evaluation, not a wall-clock read at emission time. Every evaluation inside one
+#: window therefore derives the identical key however often the worker ticks, which
+#: is what makes the durable path deduplicate per window. The condition — stale,
+#: no-history, partial — travels in `codes`, so one grammar covers every case
+#: without breaking that idempotency.
+SYSTEM_CHECK_EVENT_KEY_PATTERN = r"system_check:backup_freshness:[0-9]+"
 
 
 class WorkflowTerminalEventV1(StrictModel):
@@ -170,7 +203,18 @@ class WorkflowTerminalEventV1(StrictModel):
             or self.claim_generation is not None
             or self.terminal_status is not None
         ):
-            raise ValueError("reconciliation terminal events must omit operation claim fields")
+            raise ValueError("non-operation terminal events must omit operation claim fields")
+
+        if self.source_kind == "system_check":
+            # A13 point 9. An earlier revision dismissed this class as "a different
+            # class entirely" and widened only the alert envelope. It is on the
+            # emission path: `_validate_event_identity` instantiates it, so a
+            # system_check event that never reaches this branch is rejected before
+            # an envelope is ever constructed — silently, as a rejected row.
+            if re.fullmatch(SYSTEM_CHECK_EVENT_KEY_PATTERN, self.event_key) is None:
+                raise ValueError("system check terminal event_key has an invalid identity")
+            return self
+
         if self.source_kind == "reconciliation_action":
             valid_key = re.fullmatch(r"reconciliation-action:[1-9][0-9]*", self.event_key)
         else:
@@ -199,6 +243,14 @@ class WorkflowAlertCounts(StrictModel):
     sources_omitted: int | None = Field(None, ge=0, le=9_223_372_036_854_775_807)
     resources_omitted: int | None = Field(None, ge=0, le=9_223_372_036_854_775_807)
     codes_omitted: int | None = Field(None, ge=0, le=9_223_372_036_854_775_807)
+    # Backup-freshness tallies. This is a StrictModel with extra="forbid", so a
+    # system_check alert carrying `manifest_age_seconds` is rejected at
+    # CONSTRUCTION unless the field exists here — widening `source_kind` alone
+    # would have produced an alert that could never be built.
+    manifest_age_seconds: int | None = Field(None, ge=0, le=9_223_372_036_854_775_807)
+    stores_succeeded: int | None = Field(None, ge=0, le=9_223_372_036_854_775_807)
+    stores_failed: int | None = Field(None, ge=0, le=9_223_372_036_854_775_807)
+    stores_skipped: int | None = Field(None, ge=0, le=9_223_372_036_854_775_807)
 
     @model_validator(mode="before")
     @classmethod
@@ -317,6 +369,27 @@ class WorkflowAlertEnvelopeV1(StrictModel):
                 )
             if path != f"/api/v1/operations/{self.operation_id}":
                 raise ValueError("operation diagnostic_url must match operation_id")
+            return self
+
+        if self.source_kind == "system_check":
+            # A9 point 6. Without this branch a system_check alert falls through to
+            # the reconciliation check below and raises on `workflow_type !=
+            # "content.reconciliation"` — AFTER every other widening point is in
+            # place. This branch asserts for system checks exactly what the other
+            # branches assert for their kinds, so the widening is not merely
+            # permissive.
+            if self.operation_id is not None:
+                raise ValueError("system check alerts must omit operation_id")
+            if self.workflow_type != "system.backup_freshness":
+                raise ValueError("system check alerts require a system workflow type")
+            if self.attempt != 1:
+                raise ValueError("system check alerts use immutable attempt 1")
+            if re.fullmatch(SYSTEM_CHECK_EVENT_KEY_PATTERN, self.event_key) is None:
+                raise ValueError("system check alert event_key has an invalid identity")
+            if path != f"/api/v1/workflow-terminal-events/{self.event_id}":
+                raise ValueError("system check diagnostic_url must match event_id")
+            if self.outcome == "reconciled":
+                raise ValueError("system check alerts are not reconciliation outcomes")
             return self
 
         if self.operation_id is not None or self.workflow_type != "content.reconciliation":

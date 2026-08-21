@@ -713,6 +713,20 @@ def _cleanup_terminal_workflow_alert_records(
     return len(candidate_ids)
 
 
+async def _emit_backup_freshness_alert(conn: asyncpg.Connection, *, alert_settings: Any) -> None:
+    """Evaluate backup freshness once per tick and enqueue at most one alert.
+
+    Kept as a named seam so a test can assert the readiness path never reaches it,
+    and so the emission itself can be exercised without standing up a worker loop.
+    """
+    from src.config.settings import get_settings
+    from src.services.backup_freshness_alert import emit_backup_freshness_alert
+
+    settings = getattr(alert_settings, "backup_monitoring_enabled", None)
+    resolved = alert_settings if settings is not None else get_settings()
+    await emit_backup_freshness_alert(conn, settings=resolved)
+
+
 async def _run_workflow_alert_maintenance_tick(
     conn: asyncpg.Connection,
     *,
@@ -749,6 +763,20 @@ async def _run_workflow_alert_maintenance_tick(
             )
             for row in event_rows:
                 await processor.process_pending_event(row["id"])
+
+            # Backup freshness is evaluated HERE and never from /ready: the
+            # readiness endpoint is polled many times a minute, so emitting there
+            # would produce one alert per probe. This tick holds the leader lock,
+            # and the event key is keyed on the check window, so a sustained
+            # outage produces exactly one alert per staleness period.
+            #
+            # Failure to evaluate freshness must not abort the alert tick that
+            # delivers every other alert — including, in the worst case, the ones
+            # explaining why the backup target is unreachable.
+            try:
+                await _emit_backup_freshness_alert(conn, alert_settings=alert_settings)
+            except Exception:
+                logger.exception("backup freshness alert emission failed")
 
     # Classification commits with the transaction-scoped leader lock before
     # synchronous sessions create delivery intents. The unique event/sink key

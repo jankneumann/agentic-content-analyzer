@@ -622,7 +622,11 @@ async def test_alert_maintenance_commits_claim_before_sink_io(
         )
     generic_dispatcher.assert_not_called()
     assert len(sessions) >= 4
-    connection.fetchval.assert_awaited_once_with(
+    # The tick takes the transaction-scoped leader lock FIRST. It now also
+    # evaluates backup freshness inside the same locked section (which may issue
+    # its own fetchval to enqueue a system_check event), so this asserts the lock
+    # is the first fetchval rather than the only one.
+    assert connection.fetchval.await_args_list[0].args == (
         "SELECT pg_try_advisory_xact_lock($1::bigint)",
         worker._WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK,
     )

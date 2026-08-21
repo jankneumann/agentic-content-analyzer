@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from starlette.testclient import TestClient
 
@@ -145,171 +144,206 @@ class TestReadinessEndpoint:
         assert "queue" in data["checks"]
 
     @patch("src.api.health_routes.settings")
-    def test_ready_includes_backup_check_for_railway(self, mock_settings):
-        """Readiness should include backup status when using Railway provider."""
+    def test_ready_includes_backup_status_regardless_of_database_provider(self, mock_settings):
+        """The old check was gated on `database_provider == "railway"`, so it never
+        ran anywhere else — including on the self-hosted host this project is
+        migrating to, where there is no managed PITR to fall back on and the check
+        matters most. Backup freshness has nothing to do with the database
+        provider."""
         mock_settings.health_check_timeout_seconds = 5
-        mock_settings.database_provider = "railway"
-        mock_settings.railway_backup_enabled = True
+        mock_settings.database_provider = "local"
+        mock_settings.backup_monitoring_enabled = True
+        mock_settings.backup_staleness_hours = 48
 
         with (
             patch("src.storage.database.health_check", return_value=True),
-            patch(
-                "src.api.health_routes._check_backup_recency",
-                return_value="ok",
-            ),
+            patch("src.api.health_routes._check_backup_recency", return_value="ok"),
         ):
-            client = TestClient(app)
-            response = client.get("/ready")
+            response = TestClient(app).get("/ready")
 
-        data = response.json()
-        assert data["checks"]["backup"] == "ok"
+        assert response.json()["checks"]["backup"] == "ok"
 
     @patch("src.api.health_routes.settings")
-    def test_ready_excludes_backup_check_for_non_railway(self, mock_settings):
-        """Readiness should not include backup check for non-Railway providers."""
-        mock_settings.health_check_timeout_seconds = 5
-        mock_settings.database_provider = "local"
-        mock_settings.railway_backup_enabled = True
-
-        with patch("src.storage.database.health_check", return_value=True):
-            client = TestClient(app)
-            response = client.get("/ready")
-
-        data = response.json()
-        assert "backup" not in data["checks"]
-
-    @patch("src.api.health_routes.settings")
-    def test_ready_excludes_backup_when_disabled(self, mock_settings):
-        """Readiness should not include backup check when backups are disabled."""
+    def test_ready_excludes_backup_when_monitoring_is_disabled(self, mock_settings):
+        """The disable decision comes from the provider-neutral setting."""
         mock_settings.health_check_timeout_seconds = 5
         mock_settings.database_provider = "railway"
-        mock_settings.railway_backup_enabled = False
+        mock_settings.backup_monitoring_enabled = False
 
         with patch("src.storage.database.health_check", return_value=True):
-            client = TestClient(app)
-            response = client.get("/ready")
+            response = TestClient(app).get("/ready")
 
-        data = response.json()
-        assert "backup" not in data["checks"]
+        assert "backup" not in response.json()["checks"]
 
     @patch("src.api.health_routes.settings")
     def test_ready_backup_check_handles_failure(self, mock_settings):
-        """Backup check failure should not affect overall readiness."""
+        """Backup check failure must not affect overall readiness."""
         mock_settings.health_check_timeout_seconds = 5
-        mock_settings.database_provider = "railway"
-        mock_settings.railway_backup_enabled = True
+        mock_settings.database_provider = "local"
+        mock_settings.backup_monitoring_enabled = True
+        mock_settings.backup_staleness_hours = 48
 
         with (
             patch("src.storage.database.health_check", return_value=True),
             patch(
                 "src.api.health_routes._check_backup_recency",
-                side_effect=Exception("pg_cron not available"),
+                side_effect=Exception("backup target unreachable"),
             ),
         ):
-            client = TestClient(app)
-            response = client.get("/ready")
+            response = TestClient(app).get("/ready")
 
-        data = response.json()
-        # Backup check failure should not cause 503 (it's informational)
         assert response.status_code == 200
-        assert data["checks"]["backup"] == "unknown"
+        assert response.json()["checks"]["backup"] == "unknown"
+
+    @patch("src.api.health_routes.settings")
+    def test_stale_backup_does_not_make_the_service_not_ready(self, mock_settings):
+        """Pulling an instance out of the load balancer over a stale backup turns a
+        backup problem into a serving outage. The durable alert is what makes it
+        actionable; readiness is not."""
+        mock_settings.health_check_timeout_seconds = 5
+        mock_settings.database_provider = "local"
+        mock_settings.backup_monitoring_enabled = True
+        mock_settings.backup_staleness_hours = 48
+
+        with (
+            patch("src.storage.database.health_check", return_value=True),
+            patch("src.api.health_routes._check_backup_recency", return_value="stale"),
+        ):
+            response = TestClient(app).get("/ready")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "ready"
+        assert response.json()["checks"]["backup"] == "stale"
+
+    @patch("src.api.health_routes.settings")
+    def test_backup_check_survives_a_broken_database_layer(self, mock_settings):
+        """`loop` was bound at the top of the database try block and used by the
+        backup check far below. If the import there raised, `loop` was unbound and
+        the backup check raised NameError — swallowed by its own except into
+        "unknown". The backup monitor went dark at exactly the moment something was
+        already wrong."""
+        mock_settings.health_check_timeout_seconds = 5
+        mock_settings.database_provider = "local"
+        mock_settings.backup_monitoring_enabled = True
+        mock_settings.backup_staleness_hours = 48
+
+        with (
+            patch(
+                "src.storage.database.health_check",
+                side_effect=RuntimeError("database layer is broken"),
+            ),
+            patch("src.api.health_routes._check_backup_recency", return_value="stale") as check,
+        ):
+            response = TestClient(app).get("/ready")
+
+        assert check.called, "the backup check did not run when the database check raised"
+        assert response.json()["checks"]["backup"] == "stale"
+        assert response.json()["checks"]["database"] == "unavailable"
+
+    @patch("src.api.health_routes.settings")
+    def test_the_staleness_warning_names_the_setting_that_controls_it(
+        self, mock_settings, caplog
+    ):
+        """The old text claimed "2x schedule interval". The real threshold is
+        `backup_staleness_hours`, independent of any schedule — so the message sent
+        operators to the wrong setting."""
+        import logging
+
+        mock_settings.health_check_timeout_seconds = 5
+        mock_settings.database_provider = "local"
+        mock_settings.backup_monitoring_enabled = True
+        mock_settings.backup_staleness_hours = 12
+
+        with (
+            caplog.at_level(logging.WARNING),
+            patch("src.storage.database.health_check", return_value=True),
+            patch("src.api.health_routes._check_backup_recency", return_value="stale"),
+        ):
+            TestClient(app).get("/ready")
+
+        messages = " ".join(record.getMessage() for record in caplog.records)
+        assert "backup_staleness_hours" in messages
+        assert "12" in messages
+        assert "2x schedule" not in messages
 
 
 class TestCheckBackupRecency:
-    """Tests for _check_backup_recency helper function."""
+    """The freshness helper now reads the manifest, not `cron.job_run_details`.
 
-    @patch("src.storage.database.get_engine")
-    def test_returns_not_configured_when_no_cron_schema(self, mock_get_engine):
-        """Should return 'not_configured' when cron schema doesn't exist."""
-        mock_conn = MagicMock()
-        mock_result = MagicMock()
-        mock_result.fetchone.return_value = None  # No cron.job_run_details table
-        mock_conn.execute.return_value = mock_result
-        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
-        mock_conn.__exit__ = MagicMock(return_value=False)
+    The pg_cron original was unfixable rather than merely wrong: it queried for a
+    job that had never once succeeded, on a platform where the GUC mechanism that
+    job depended on is restricted. The honest answer to "when did the backup last
+    run?" was never available from inside the database.
+    """
 
-        mock_engine = MagicMock()
-        mock_engine.connect.return_value = mock_conn
-        mock_get_engine.return_value = mock_engine
+    @staticmethod
+    def _with_status(status):
+        from src.services.backup.manifest_reader import BackupFreshness
 
-        assert _check_backup_recency() == "not_configured"
+        return patch(
+            "src.services.backup.manifest_reader.read_freshness",
+            return_value=BackupFreshness(status=status),
+        )
 
-    @patch("src.storage.database.get_engine")
-    def test_returns_no_history_when_no_runs(self, mock_get_engine):
-        """Should return 'no_history' when no backup runs exist."""
-        mock_conn = MagicMock()
+    def test_derives_status_from_the_manifest(self):
+        from src.services.backup.manifest_reader import BackupFreshnessStatus
 
-        # First call: cron schema exists
-        schema_result = MagicMock()
-        schema_result.fetchone.return_value = (1,)
+        with self._with_status(BackupFreshnessStatus.OK):
+            assert _check_backup_recency() == "ok"
 
-        # Second call: no backup runs
-        runs_result = MagicMock()
-        runs_result.fetchone.return_value = None
+    def test_reports_stale(self):
+        from src.services.backup.manifest_reader import BackupFreshnessStatus
 
-        mock_conn.execute.side_effect = [schema_result, runs_result]
-        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
-        mock_conn.__exit__ = MagicMock(return_value=False)
+        with self._with_status(BackupFreshnessStatus.STALE):
+            assert _check_backup_recency() == "stale"
 
-        mock_engine = MagicMock()
-        mock_engine.connect.return_value = mock_conn
-        mock_get_engine.return_value = mock_engine
+    def test_absent_manifest_is_no_history(self):
+        from src.services.backup.manifest_reader import BackupFreshnessStatus
 
-        assert _check_backup_recency() == "no_history"
+        with self._with_status(BackupFreshnessStatus.NO_HISTORY):
+            assert _check_backup_recency() == "no_history"
 
-    @patch("src.api.health_routes.settings")
-    @patch("src.storage.database.get_engine")
-    def test_returns_ok_for_recent_backup(self, mock_get_engine, mock_settings):
-        """Should return 'ok' when last backup was within threshold."""
-        mock_settings.railway_backup_staleness_hours = 48
-        mock_conn = MagicMock()
+    def test_unreachable_target_is_unknown(self):
+        from src.services.backup.manifest_reader import BackupFreshnessStatus
 
-        schema_result = MagicMock()
-        schema_result.fetchone.return_value = (1,)
+        with self._with_status(BackupFreshnessStatus.UNKNOWN):
+            assert _check_backup_recency() == "unknown"
 
-        # Last backup was 6 hours ago (well within 48h threshold)
-        recent_time = datetime.now(UTC) - timedelta(hours=6)
-        runs_result = MagicMock()
-        runs_result.fetchone.return_value = (recent_time,)
+    def test_it_does_not_query_the_database_scheduler(self):
+        """`cron.job_run_details` records whether a job RAN. The manifest records
+        whether a backup EXISTS. Only one of those is the question."""
+        import inspect
 
-        mock_conn.execute.side_effect = [schema_result, runs_result]
-        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
-        mock_conn.__exit__ = MagicMock(return_value=False)
+        from src.api import health_routes
 
-        mock_engine = MagicMock()
-        mock_engine.connect.return_value = mock_conn
-        mock_get_engine.return_value = mock_engine
+        # The docstring names the old mechanism to explain why it was replaced, so
+        # the assertion is against the executable body only.
+        body = inspect.getsource(health_routes._check_backup_recency).split('"""')[-1]
+        assert "cron.job_run_details" not in body
+        assert "railway-backup" not in body
+        assert "railway_backup" not in body
 
-        assert _check_backup_recency() == "ok"
 
-    @patch("src.api.health_routes.settings")
-    @patch("src.storage.database.get_engine")
-    def test_returns_stale_for_old_backup(self, mock_get_engine, mock_settings):
-        """Should return 'stale' when last backup exceeds threshold."""
-        mock_settings.railway_backup_staleness_hours = 48
-        mock_conn = MagicMock()
+class TestNoRailwaySettingNamesRemainOnTheseePaths:
+    """Guard for the provider-neutral rename (task 3.3e).
 
-        schema_result = MagicMock()
-        schema_result.fetchone.return_value = (1,)
+    This cannot live in the settings package: `health_routes` read
+    `railway_backup_enabled` until the gate was removed here, so the assertion is
+    only true once this package has landed.
+    """
 
-        # Last backup was 3 days ago (exceeds 48h threshold)
-        old_time = datetime.now(UTC) - timedelta(days=3)
-        runs_result = MagicMock()
-        runs_result.fetchone.return_value = (old_time,)
+    def test_no_freshness_alerting_or_readiness_module_reads_a_railway_backup_setting(self):
+        import inspect
 
-        mock_conn.execute.side_effect = [schema_result, runs_result]
-        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
-        mock_conn.__exit__ = MagicMock(return_value=False)
+        from src.api import health_routes
+        from src.services import backup_freshness_alert
+        from src.services.backup import manifest_reader
 
-        mock_engine = MagicMock()
-        mock_engine.connect.return_value = mock_conn
-        mock_get_engine.return_value = mock_engine
-
-        assert _check_backup_recency() == "stale"
-
-    @patch("src.storage.database.get_engine")
-    def test_returns_not_configured_on_engine_error(self, mock_get_engine):
-        """Should return 'not_configured' when engine creation fails."""
-        mock_get_engine.side_effect = Exception("No database configured")
-
-        assert _check_backup_recency() == "not_configured"
+        for module in (health_routes, manifest_reader, backup_freshness_alert):
+            source = inspect.getsource(module)
+            code = "\n".join(
+                line for line in source.splitlines() if not line.strip().startswith("#")
+            )
+            assert "settings.railway_backup" not in code
+            assert "railway_backup_enabled" not in code
+            assert "railway_backup_staleness_hours" not in code

@@ -31,6 +31,11 @@ class WorkflowTerminalSourceKind(StrEnum):
     OPERATION = "operation"
     RECONCILIATION_ACTION = "reconciliation_action"
     RECONCILIATION_FAILURE = "reconciliation_failure"
+    # A system check reports on infrastructure, not on a workflow, so it carries
+    # neither operation nor reconciliation identity. All three CHECK constraints
+    # below had to be relaxed to admit it — this StrEnum on its own would not have
+    # been enough, and the row would have been rejected by Postgres.
+    SYSTEM_CHECK = "system_check"
 
 
 class WorkflowTerminalClassificationStatus(StrEnum):
@@ -85,7 +90,8 @@ class WorkflowTerminalEvent(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "source_kind IN ('operation','reconciliation_action','reconciliation_failure')",
+            "source_kind IN ('operation','reconciliation_action',"
+            "'reconciliation_failure','system_check')",
             name="ck_workflow_terminal_events_source_kind",
         ),
         CheckConstraint(
@@ -98,7 +104,9 @@ class WorkflowTerminalEvent(Base):
             "'reconciliation-failure:' || reconciliation_run_id::text || ':content:' || "
             "reconciliation_content_id::text || ':reason:apply_failed' AND event_key ~ "
             "'^reconciliation-failure:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-"
-            "[89ab][0-9a-f]{3}-[0-9a-f]{12}:content:[1-9][0-9]*:reason:apply_failed$')",
+            "[89ab][0-9a-f]{3}-[0-9a-f]{12}:content:[1-9][0-9]*:reason:apply_failed$') OR "
+            "(source_kind = 'system_check' AND event_key ~ "
+            "'^system_check:backup_freshness:[0-9]+$')",
             name="ck_workflow_terminal_events_event_identity",
         ),
         CheckConstraint(
@@ -141,7 +149,11 @@ class WorkflowTerminalEvent(Base):
             "(source_kind = 'reconciliation_failure' AND operation_id IS NULL "
             "AND claim_generation IS NULL AND terminal_status IS NULL "
             "AND reconciliation_action_id IS NULL AND reconciliation_run_id IS NOT NULL "
-            "AND reconciliation_content_id IS NOT NULL)",
+            "AND reconciliation_content_id IS NOT NULL) OR "
+            "(source_kind = 'system_check' AND operation_id IS NULL "
+            "AND claim_generation IS NULL AND terminal_status IS NULL "
+            "AND reconciliation_action_id IS NULL AND reconciliation_run_id IS NULL "
+            "AND reconciliation_content_id IS NULL)",
             name="ck_workflow_terminal_events_source_shape",
         ),
         Index(
