@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-08-21T00:00:00+00:00",
+  "coordinator_error": null,
+  "payload": {
+    "agent_name": "reviewer",
+    "session_id": null,
+    "summary": "Multi-vendor plan review of add-gx10-backup-scheme. Only one reviewer was dispatchable (codex-remote SDK has no API key; all other vendor CLIs are missing), so the review is single-vendor and the consensus synthesizer reports quorum NOT met — 26 unique findings, all unconfirmed by construction. Twelve findings are critical-severity with disposition 'fix', so the phase does NOT converge. The plan's diagnosis of the existing broken backup verified completely against the tree; the blocking findings are all in the forward design. The largest is that the durable alerting decision (D5/D6) is unbuildable as scoped: workflow_terminal_events carries three CHECK constraints that reject a system_check row, the constraint DDL is duplicated in src/queue/setup.py, the source kind is a StrEnum in src/models/workflow_alert.py, and wp-health-alerts has write access to none of those files while the proposal explicitly declares 'no migration'. Two further contract defects make the alert unconstructible even in memory: the event_key grammar violates the existing lowercase-only WorkflowEventKey pattern, and the pinned diagnostic_url route /api/v1/health/backup does not exist and is created by no task. Beyond alerting, four backup-engine gaps would reproduce the exact silent-success failure this change exists to eliminate: no per-stage exit-status requirement in the pg_dump|age|rclone pipeline, no environment scoping on a fixed manifest key shared across environments, freshness derived from timestamp alone so a 'partial' manifest reads 'ok', and no binary preflight on the only path that runs unattended. The graph-database requirement and the GFS retention requirement are each unachievable as specified.",
+    "completed_work": [
+      "Read all plan artifacts: proposal.md, design.md (D1-D14), tasks.md (6 phases), three spec deltas, contracts/README.md, both contract schemas, and work-packages.yaml (7 packages).",
+      "Cross-checked every code claim in proposal.md § Why against the live tree — all verified (health_routes.py gate at :185, loop bound at :124 used at :188, hardcoded '2x schedule interval' at :193, railway_backup_staleness_hours at settings.py:490, string-equality guard at restore_commands.py:110-120, mc credentials in argv at :195-206, unmasked target_db at :287-296, boto3 absent from pyproject.toml).",
+      "Cross-checked the D5 alert widening against src/contracts/workflow_alert_models.py, src/models/workflow_alert.py, alembic/versions/91c7d2e4f8a6, and src/queue/setup.py — found three blocking contract/persistence defects.",
+      "Checked every package's write_allow/deny against the files its tasks must change; found two structural scope blockers (D5/D6 persistence path, D14 shared manifest reader) and one mis-targeted lock path.",
+      "Ran openspec validate --strict (passes) and separately verified that the cli-interface MODIFIED requirement has no base-spec counterpart in openspec/specs/.",
+      "Wrote 26 findings to openspec/changes/add-gx10-backup-scheme/review-findings-plan.json; validated against openspec/schemas/review-findings.schema.json (Valid), with severity-prefix and severity/disposition coherence checks passing.",
+      "Attempted multi-vendor dispatch via review_dispatcher.py excluding claude_code — 0/1 vendors succeeded (codex: no API key for SDK dispatch). Manifest at reviews/review-manifest.json.",
+      "Synthesized consensus at reviews/consensus-plan.json: 26 findings, 0 confirmed, 26 unconfirmed, quorum not met (1/1)."
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Outcome is not_converged despite the synthesizer reporting blocking_count 0",
+        "rationale": "The synthesizer can only mark a finding blocking once two or more vendors confirm it, and no second vendor was dispatchable. Twelve findings carry severity 'critical' with disposition 'fix', including three that make the alert envelope unconstructible and one that leaves an entire work package unable to write the files its tasks require. Reporting convergence on a quorum artifact rather than on the findings themselves would hand IMPLEMENT a plan whose alerting capability cannot be built.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Findings and reviews were written into the agent worktree, not the shared checkout",
+        "rationale": "This sub-agent is isolated to the worktree at .claude/worktrees/agent-aa000d64b422b28eb, and writes to the shared checkout are refused by the harness. The plan artifacts themselves live only in the shared checkout, so they were read from there and the review outputs were written to the same relative paths inside the worktree. The next phase must copy or merge them into the shared checkout before acting on them.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Single-vendor review is a known coverage limitation of this pass",
+        "rationale": "review_dispatcher.py --list-agents shows claude-local and codex-remote as the only configured reviewers, and codex-remote has no API key. A second opinion on the twelve criticals — especially the graph-database and retention feasibility findings, which rest on external-tool behavior rather than on in-repo evidence — is not available in this environment. PLAN_ITERATE should treat those two as arguments to verify rather than as confirmed defects.",
+        "capability": null,
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Resolve findings 1, 2 and 3 together — they are one decision about how a non-operation alert reaches the durable path. Either widen the persistence layer (migration + StrEnum + duplicated DDL in src/queue/setup.py + the insert path in workflow_terminal_event_service.py, all added to a package's write scope) or pick a different alerting route, then make the event_key grammar and diagnostic_url land inside the constraints that already exist.",
+      "Resolve finding 12 by giving D14's shared manifest reader an owning package and a path that wp-health-alerts may write; today it falls between wp-health-alerts' deny list and wp-backup-cli's tree, with no dependency edge between them.",
+      "Add the four missing backup-engine requirements (findings 6, 8, 9, 10, 11): per-stage exit-status checking with a size read-back, no credentials in any subprocess argv on the backup path, freshness that reflects overall_outcome rather than timestamp alone, a binary preflight on 'aca backup run', and environment scoping for the manifest key.",
+      "Re-specify the two unachievable requirements (findings 4 and 5): branch the graph-database backup on graphdb_mode and reconcile BGSAVE with the read-only scenario; give retention tier-distinguishing prefixes or tags so 7/4/12 is expressible as lifecycle rules.",
+      "Sweep the nine nit-severity findings (13-21) — most are one-line corrections to design cross-references, lock paths, and enum lists that would otherwise fail the conformance test in task 3.7b.",
+      "Re-run PLAN_REVIEW after PLAN_ITERATE. If a second vendor becomes dispatchable, re-run the dispatch step so the criticals can reach confirmed status."
+    ],
+    "relevant_files": [
+      "openspec/changes/add-gx10-backup-scheme/review-findings-plan.json",
+      "openspec/changes/add-gx10-backup-scheme/reviews/consensus-plan.json",
+      "openspec/changes/add-gx10-backup-scheme/reviews/review-manifest.json",
+      "openspec/changes/add-gx10-backup-scheme/reviews/review-prompt.md",
+      "openspec/changes/add-gx10-backup-scheme/design.md",
+      "openspec/changes/add-gx10-backup-scheme/tasks.md",
+      "openspec/changes/add-gx10-backup-scheme/work-packages.yaml",
+      "openspec/changes/add-gx10-backup-scheme/specs/backup-and-restore/spec.md",
+      "openspec/changes/add-gx10-backup-scheme/specs/cli-interface/spec.md",
+      "openspec/changes/add-gx10-backup-scheme/contracts/events/backup-freshness-alert.schema.json",
+      "openspec/changes/add-gx10-backup-scheme/contracts/schemas/backup-manifest.schema.json",
+      "src/contracts/workflow_alert_models.py",
+      "src/models/workflow_alert.py",
+      "alembic/versions/91c7d2e4f8a6_add_workflow_alert_persistence.py",
+      "src/queue/setup.py",
+      "src/api/health_routes.py",
+      "src/cli/restore_commands.py"
+    ]
+  }
+}

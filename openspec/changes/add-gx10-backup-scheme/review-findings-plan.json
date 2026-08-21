@@ -1,0 +1,291 @@
+{
+  "review_type": "plan",
+  "target": "add-gx10-backup-scheme",
+  "reviewer_vendor": "claude_code",
+  "findings": [
+    {
+      "id": 1,
+      "axis": "correctness",
+      "severity": "critical",
+      "type": "spec_gap",
+      "criticality": "critical",
+      "description": "Critical: D5/D6 cannot land as scoped. The durable alert path is anchored on the workflow_terminal_events table, which enforces three CHECK constraints that a system_check row violates: ck_workflow_terminal_events_source_kind (source_kind IN ('operation','reconciliation_action','reconciliation_failure')), ck_workflow_terminal_events_event_identity (an XOR over three exact event_key formulas), and ck_workflow_terminal_events_source_shape (per-kind nullability of operation_id/claim_generation/terminal_status). The same DDL is duplicated in src/queue/setup.py, and src/models/workflow_alert.py declares WorkflowTerminalSourceKind as a StrEnum. The proposal states 'this change adds no migration, deliberately', and wp-health-alerts' write_allow covers only health_routes.py, workflow_alert_models.py, worker.py and four test files. No package can write alembic/versions/**, src/models/workflow_alert.py, src/queue/setup.py, or src/services/workflow_terminal_event_service.py, so the alert can be constructed in Pydantic but never persisted or delivered.",
+      "resolution": "Either (a) add an Alembic migration relaxing the three CHECK constraints plus the StrEnum, the duplicated DDL in src/queue/setup.py, and the insert path in src/services/workflow_terminal_event_service.py to wp-health-alerts' write_allow (and retract the 'no migration' claim in proposal.md and design D7), or (b) revisit D5 and route freshness alerts over a path that does not require a workflow_terminal_events row. Add a task that proves an end-to-end enqueue-and-drain of a system_check alert against a migrated database, not just envelope construction.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/design.md"
+    },
+    {
+      "id": 2,
+      "axis": "correctness",
+      "severity": "critical",
+      "type": "contract_mismatch",
+      "criticality": "critical",
+      "description": "Critical: both proposed event_key grammars are rejected by the existing WorkflowEventKey type. src/contracts/workflow_alert_models.py constrains event_key to pattern ^[a-z0-9:_-]+$ (lowercase only, max 160). D6's key 'system_check:backup_stale:<manifest_completed_at>' and the contract schema's pattern ^system_check:backup_freshness:[0-9]{8}T[0-9]{6}Z$ both contain uppercase T and Z (and an ISO timestamp would add '.'), so every emitted alert fails validation at construction. The two grammars also disagree with each other on the middle segment (backup_stale vs backup_freshness), and the schema's fixed 15-character stamp cannot express D6's date-only backup_no_history key. On top of that, the DB constraint ck_workflow_terminal_events_event_identity admits only the three existing literal key formulas.",
+      "resolution": "Pick one grammar, express it in lowercase-safe characters (e.g. system_check:backup_freshness:20260821t030000z or an epoch-seconds suffix), state it identically in design D6, in contracts/events/backup-freshness-alert.schema.json, and in the widened WorkflowEventKey annotation, and extend the DB event-identity CHECK to admit it. Add a test that constructs both the stale and no_history keys through WorkflowAlertEnvelopeV1 rather than asserting the regex in isolation.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/contracts/events/backup-freshness-alert.schema.json"
+    },
+    {
+      "id": 3,
+      "axis": "architecture",
+      "severity": "critical",
+      "type": "contract_mismatch",
+      "criticality": "critical",
+      "description": "Critical: the alert contract pins diagnostic_url to ^/api/v1/health/backup$, a route that does not exist and that no task creates. src/api/health_routes.py registers only GET /health and GET /ready, neither under /api/v1, and contracts/README.md states 'OpenAPI - No: No endpoint is added.' The existing validate_diagnostic_route allowlist accepts only /api/v1/operations/{digits} and /api/v1/workflow-terminal-events/{uuid}, and the model field is AnyUrl (absolute) whereas the schema types a relative path string. Spec scenario 'System-check alerts carry no operation identity' requires the diagnostic URL to 'resolve to a route that exists', so the conformance test in task 3.7b fails by construction and the alert cannot be built.",
+      "resolution": "Decide explicitly: either add the /api/v1/health/backup route (a new endpoint, which means an OpenAPI delta, a task, and a package that owns it) or reuse /api/v1/workflow-terminal-events/{event_id}, which already exists and is already allowlisted. Then align the schema's type and pattern with the AnyUrl field the model actually declares, and update contracts/README.md's 'no endpoint added' claim if a route is added.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/contracts/events/backup-freshness-alert.schema.json"
+    },
+    {
+      "id": 4,
+      "axis": "correctness",
+      "severity": "critical",
+      "type": "spec_gap",
+      "criticality": "critical",
+      "description": "Critical: the graph-database backup contradicts the change's own 'no production mutations' requirement and is not achievable in every supported configuration. 'neo4j-admin database dump' requires the database to be stopped on Community Edition and is impossible against AuraDB, where there is no filesystem access at all - yet settings.py declares graphdb_mode local|cloud|embedded and settings.py:1208 shows AuraDB is a live configuration. FalkorDB BGSAVE is a write command issued to the running server, which directly contradicts spec scenario 'Backup makes no production mutations' ('SHALL perform only read operations against source data stores'). The spec scenario 'Graph database is captured per configured provider' branches on graphdb_provider only and never on graphdb_mode.",
+      "resolution": "Branch the requirement on (graphdb_provider, graphdb_mode). Specify the cloud/AuraDB path explicitly - either a provider-native export API or an outcome of 'skipped' with a named reason, matching the OpenBao skip precedent. Reconcile FalkorDB BGSAVE with the read-only scenario by narrowing that scenario to 'no destructive or state-changing mutation of application data' and naming BGSAVE as the declared exception, or by copying the existing RDB without triggering a save. Add a task covering the stopped-database question for Neo4j Community so it is not discovered during implementation.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/specs/backup-and-restore/spec.md"
+    },
+    {
+      "id": 5,
+      "axis": "correctness",
+      "severity": "critical",
+      "type": "spec_gap",
+      "criticality": "high",
+      "description": "Critical: the 7 daily / 4 weekly / 12 monthly retention requirement is not expressible as the bucket lifecycle rules D10 prescribes. S3 and R2 lifecycle rules expire objects by age under a prefix (S3 additionally by tag; R2 does not support tag filters), so a grandfather-father-son policy requires the backup run to write tier-distinguishing prefixes or tags. Nothing in 'Multi-Store Scheduled Backup' does: the only key requirement is that the artifact key embeds an ISO-8601 UTC timestamp under one flat prefix. Age-based expiry over that layout keeps everything for N days and then nothing - the 4 weekly and 12 monthly tiers cannot exist.",
+      "resolution": "Add a requirement that the backup run writes each artifact under a tier-distinguishing key or object tag (for example <prefix>/daily/, <prefix>/weekly/, <prefix>/monthly/, promoted by day-of-week and day-of-month at write time), and state the promotion rule in design D10. Then re-express the lifecycle rules per tier prefix, and note in D10 which dialect features R2 lacks so the applier's provider-awareness has a defined scope.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/design.md"
+    },
+    {
+      "id": 6,
+      "axis": "correctness",
+      "severity": "critical",
+      "type": "correctness",
+      "criticality": "critical",
+      "description": "Critical: nothing in the plan requires per-stage exit-status checking in the 'pg_dump -Fc | age -r <recipient> | rclone rcat' pipeline. In a shell pipeline without pipefail, and in a naive subprocess.Popen chain, the exit code observed is the last stage's; pg_dump failing halfway (connection drop, out of disk, permission error) still yields a zero exit from rclone and uploads a truncated ciphertext that the manifest then records as 'succeeded'. Spec scenario 'A failing store does not silently pass' only covers a store that 'fails to produce an artifact', which a truncated-but-uploaded dump does not. This is the exact failure class the change exists to eliminate - a backup that reports success and is not restorable.",
+      "resolution": "Add a spec scenario under Multi-Store Scheduled Backup requiring that every stage's exit status is checked and that a non-zero status from any stage marks the store failed and suppresses the manifest write - plus a requirement that the uploaded object's size is read back and compared against the bytes streamed. Add a corresponding test task under Phase 2 that simulates an upstream failure mid-pipe and asserts the store outcome is 'failed' and no manifest is written.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/specs/backup-and-restore/spec.md"
+    },
+    {
+      "id": 7,
+      "axis": "correctness",
+      "severity": "critical",
+      "type": "contract_mismatch",
+      "criticality": "high",
+      "description": "Critical: the manifest's checksum and size fields are mandatory in the spec, optional in the contract, and have no specified means of computation. Spec scenario 'Manifest records the run' says it SHALL record 'per-store outcome, artifact key, byte size, and checksum', but backup-manifest.schema.json lists only ['store','outcome'] as required, so a manifest omitting both validates. Meanwhile Approach C and design D14 forbid streaming artifacts through Python, and no task states how a SHA-256 over a streamed multi-GB artifact is produced (tee to sha256sum, rclone's own hash, or a post-upload HEAD).",
+      "resolution": "Make bytes and checksum_sha256 required in the schema for stores whose outcome is 'succeeded' (a conditional required via if/then on outcome), and add a design note naming the digest mechanism - for example tee into sha256sum inside the same pipeline so no artifact passes through the interpreter. Add the checksum-and-size assertion to task 2.8's test list.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/contracts/schemas/backup-manifest.schema.json"
+    },
+    {
+      "id": 8,
+      "axis": "security",
+      "severity": "critical",
+      "type": "security",
+      "criticality": "high",
+      "description": "Critical: the credential-in-argv requirement exists only for the restore path, not for the new backup path. Spec scenario 'Credentials are not passed as process arguments' sits under the cli-interface Restore From Cloud Command requirement, while the backup path - which shells out to pg_dump, rclone, neo4j-admin/redis-cli and bao under a systemd timer - has no equivalent constraint. Hard Constraint 3 only forbids logging, committing, or emitting credentials in CLI output; it says nothing about the process argument list. A pg_dump invoked with a password-bearing URL, or rclone invoked with --s3-access-key-id, exposes the backup target's write credential and the database password to every local user via ps, on a host whose whole purpose is holding the only copy of production data.",
+      "resolution": "Add a scenario under Multi-Store Scheduled Backup mirroring the restore one: access keys, secret keys and database passwords SHALL NOT appear in any subprocess argument list, and SHALL be passed via environment (PGPASSWORD/.pgpass, RCLONE_CONFIG_* or AWS_*, BAO_TOKEN). Add a test task asserting it over every constructed argv, alongside the existing 2.9c read-only-behavior test.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/specs/backup-and-restore/spec.md"
+    },
+    {
+      "id": 9,
+      "axis": "correctness",
+      "severity": "critical",
+      "type": "spec_gap",
+      "criticality": "high",
+      "description": "Critical: the freshness check reproduces the exact failure mode D11 was written to avoid. D11 rejects reading freshness from a HEAD on the newest artifact because 'a partially-failed run would read as a healthy backup - the exact failure mode D7 exists to eliminate'. But spec scenario 'Freshness is derived from the manifest' derives status solely from the manifest's completion timestamp, and the manifest schema's overall_outcome enum explicitly admits 'partial'. A run in which the graph database or artifacts store failed writes a fresh manifest with overall_outcome='partial' and the check reports 'ok'.",
+      "resolution": "Add to the freshness requirement that the reported status SHALL reflect overall_outcome and per-store outcomes, not just age - for example a 'degraded' or 'partial' status when overall_outcome is 'partial' or any required store is 'failed' - and add the corresponding alert code path (the schema already carries counts for per-store tallies). Extend task 3.1's test list to cover a fresh-but-partial manifest.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/specs/backup-and-restore/spec.md"
+    },
+    {
+      "id": 10,
+      "axis": "correctness",
+      "severity": "critical",
+      "type": "spec_gap",
+      "criticality": "high",
+      "description": "Critical: the binary-preflight mitigation never runs on the scheduled path. The Approach C risk 'Host binaries missing on gx-10' is mitigated by 'an explicit preflight check in aca backup verify that names each missing binary rather than failing mid-run', and spec scenario 'Preflight names missing prerequisites' attaches that preflight to verify only. D13 then states that verify is deliberately NOT wired to the timer, because it needs the identity key. The scheduled 'aca backup run' - the only path that ever executes unattended - therefore has no preflight, and a missing age or rclone binary is discovered after pg_dump has already run, or worse produces a partial upload.",
+      "resolution": "Add a scenario requiring 'aca backup run' to preflight the binaries it will invoke and abort with a named-binary error before contacting any store, and state in D13 that run's preflight is a subset of verify's (binaries only, no identity). Attach it to a task in Phase 2 alongside 2.11.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/design.md"
+    },
+    {
+      "id": 11,
+      "axis": "correctness",
+      "severity": "critical",
+      "type": "spec_gap",
+      "criticality": "high",
+      "description": "Critical: the manifest key is fixed and the prefix defaults to a shared constant, so two environments pointed at one bucket silently corrupt each other's freshness signal. backup_s3_prefix defaults to 'aca' and the manifest lives at the stable key <prefix>/manifest/latest.json. A staging or developer run against the same bucket overwrites the production manifest with its own fresh timestamp - production backups can stop entirely while /ready keeps reporting 'ok' and no alert fires. Nothing in the specs requires the prefix to be environment-scoped or the manifest to identify the environment that wrote it.",
+      "resolution": "Require the manifest to record the environment/profile that produced it and the freshness reader to reject a manifest whose environment does not match its own, and either default backup_s3_prefix to an environment-derived value or add a documented requirement in the runbook that each environment uses a distinct prefix (or bucket). Pin it with a test in task 2.8 and 3.1.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/specs/backup-and-restore/spec.md"
+    },
+    {
+      "id": 12,
+      "axis": "architecture",
+      "severity": "critical",
+      "type": "architecture",
+      "criticality": "high",
+      "description": "Critical: D14's shared manifest reader has no legal home in the package decomposition. D14 requires that the worker's alert emission 'reads through the same helper' as the readiness check, so both src/api/health_routes.py (task 3.3b) and src/queue/worker.py (task 3.9) consume one cached reader. wp-health-alerts' write_allow contains no service module, and its deny list explicitly names src/services/backup/** - which belongs to wp-backup-cli, a package wp-health-alerts does not depend on. The only in-scope options are duplicating the reader in both files (two caches, two timeout policies) or importing an API module from the queue worker, which inverts the layering.",
+      "resolution": "Give the shared reader an explicit home and owner - for example src/services/backup/manifest_reader.py added to wp-health-alerts' write_allow with the deny narrowed accordingly, or a new module under a path neither package denies - and state in D14 which package owns it. If it lands in wp-backup-cli's tree, add wp-backup-cli to wp-health-alerts' depends_on and accept the serialization, or move the reader into wp-settings-adjacent shared code.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/work-packages.yaml"
+    },
+    {
+      "id": 13,
+      "axis": "architecture",
+      "severity": "nit",
+      "type": "architecture",
+      "criticality": "medium",
+      "description": "Nit: the plan leaves three different S3 clients in the tree for one backup target and never reconciles them. The backup path uses rclone (Approach C), the freshness reader uses boto3 (D14), and the restore path keeps mc - src/cli/restore_commands.py:195-252 invokes 'mc alias set', 'mc ls' and 'mc cp', and task 4.3 only repoints it at the new settings without saying whether the client changes. The runbook's prerequisites become three tools with three credential-passing conventions, and the verify preflight (task 2.11) names only the binaries the backup path uses, so a missing mc is still discovered during a restore.",
+      "resolution": "State the intended client per path in design (a short D15), or converge the restore path onto rclone with the backup path. Either way, include every binary the documented recovery procedure requires - mc or rclone, age, pg_restore, neo4j-admin, bao - in verify's preflight list, and say so in task 2.11.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/tasks.md"
+    },
+    {
+      "id": 14,
+      "axis": "correctness",
+      "severity": "nit",
+      "type": "contract_mismatch",
+      "criticality": "medium",
+      "description": "Nit: wp-contracts declares a lock on openspec/contracts/backup/events/backup-freshness-alert.schema.json, but task 0.2 and contracts/README.md both state the alert schema lands in openspec/contracts/content-workflows/events/. The lock therefore protects a path nobody writes, and the path that is written (content-workflows/events/**) is covered by write_allow but by no lock key - so the coordination boundary the package exists to establish is not actually locked.",
+      "resolution": "Change wp-contracts' locks.files entry to openspec/contracts/content-workflows/events/backup-freshness-alert.schema.json to match task 0.2 and contracts/README.md, keeping the contract:backup-freshness-alert lock key.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/work-packages.yaml"
+    },
+    {
+      "id": 15,
+      "axis": "correctness",
+      "severity": "nit",
+      "type": "contract_mismatch",
+      "criticality": "medium",
+      "description": "Nit: the alert schema's codes enum lists four diagnostic codes - backup_stale, backup_no_history, backup_verify_failed, backup_target_unreachable - but design D5's widening table and task 3.7 name only the first three. Task 3.7b asserts the schema and WorkflowAlertDiagnosticCode agree, so the fourth code makes that conformance test fail unless it is added to the model as well. The unreachable case is also the one the freshness check reports as 'unknown', so it is probably the intended fourth code rather than an accident.",
+      "resolution": "Add backup_target_unreachable to D5's diagnostic-code table and to task 3.7's enumeration, or drop it from the schema. Whichever way, keep the schema, D5, and task 3.7 listing an identical set.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/design.md"
+    },
+    {
+      "id": 16,
+      "axis": "correctness",
+      "severity": "nit",
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "Nit: specs/cli-interface/spec.md places 'Restore From Cloud Command' under '## MODIFIED Requirements', but no requirement by that name - or any requirement mentioning restore-from-cloud - exists in openspec/specs/cli-interface/spec.md or anywhere else in openspec/specs/. The behavior is implemented in src/cli/restore_commands.py but was never specced. 'openspec validate --strict' passes because it checks delta shape, not base-spec existence; archiving a MODIFIED requirement with no base counterpart is what actually breaks.",
+      "resolution": "Move the Restore From Cloud Command requirement from '## MODIFIED Requirements' to '## ADDED Requirements' in the cli-interface delta and correct proposal.md's Impact table, which currently says 'MODIFIED: Restore From Cloud Command'. If the intent is to record the pre-existing behavior as well, state the full requirement text (not only the changed clauses) so the added spec stands alone.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/specs/cli-interface/spec.md"
+    },
+    {
+      "id": 17,
+      "axis": "security",
+      "severity": "nit",
+      "type": "resilience",
+      "criticality": "medium",
+      "description": "Nit: nothing verifies that the artifacts the manifest names still exist. verify only decrypts the canary, and the freshness check only reads the manifest's timestamp. A lifecycle misconfiguration, an accidental bucket-wide delete, or an attacker holding the gx-10 write credential can empty the bucket while a fresh manifest keeps /ready green - and the manifest itself is the one plaintext, overwritable object (D11), so an attacker with that credential can also keep rewriting it. The plan's own risk table lists 'Backups run but never restore-tested' but the mitigation is a CI round trip against a container, not a check against the real target.",
+      "resolution": "Add a scenario requiring aca backup verify to confirm that every artifact_key in the current manifest exists at the target with the recorded byte size, and note in the runbook that verify is the periodic drill that closes this gap. Optionally recommend object-lock/versioning on the manifest prefix in D10 rather than only for the artifact prefixes.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/design.md"
+    },
+    {
+      "id": 18,
+      "axis": "correctness",
+      "severity": "nit",
+      "type": "observability",
+      "criticality": "medium",
+      "description": "Nit: D6 defends worker-only alert emission with 'the dead-man's-switch consideration in D7 covers total host loss', but D7 contains no such consideration - it only argues that the manifest survives destruction of the source host. Nothing in the plan evaluates freshness from outside the gx-10 blast radius, so total host loss (the scenario backups exist for) produces silence rather than an alert: no worker, no emission, no signal. The dangling cross-reference makes an unaddressed failure mode look addressed.",
+      "resolution": "Either add the missing consideration to D7 with an explicit accepted-risk statement ('total host loss is detected by X, or is knowingly undetected'), or add an external heartbeat requirement - a push to an external dead-man's-switch on each successful run, which the same run already has network access to perform. Fix the cross-reference either way.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/design.md"
+    },
+    {
+      "id": 19,
+      "axis": "correctness",
+      "severity": "nit",
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "Nit: the artifact-directory requirement assumes local disk and has no scenario for the other storage providers. Spec scenario 'Artifact directories are captured wholesale' opens with 'GIVEN local artifact directories', but CLAUDE.md documents storage_provider as local|s3|supabase|railway. When artifacts live in an object store there is no directory to rclone, and the plan does not say whether that store is reported skipped (with a reason, as OpenBao is) or copied bucket-to-bucket. Silence here means an implementer picks one, and the wrong pick is a store that reports 'succeeded' while backing up an empty directory.",
+      "resolution": "Add a scenario branching on storage_provider: local directories are synced wholesale; a remote object store is either mirrored to the backup target or reported as 'skipped' with a named reason, mirroring the OpenBao precedent. An empty source directory should be a failure or an explicit zero-item skip, never a silent success.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/specs/backup-and-restore/spec.md"
+    },
+    {
+      "id": 20,
+      "axis": "architecture",
+      "severity": "nit",
+      "type": "compatibility",
+      "criticality": "medium",
+      "description": "Nit: D5 widens WorkflowTerminalSourceKind at workflow_alert_models.py:32, but that alias is shared - WorkflowTerminalEventV1.source_kind (:145) uses the same type. Adding 'system_check' therefore also admits a system_check terminal event, a shape whose validators (:153-185) have no branch for it, so it falls through every check and validates as anything. The plan has no consumer-impact analysis either: alert sinks and any external receiver validating the previously-closed source_kind/workflow_type allowlist will reject system_check envelopes, and no envelope version bump or receiver note is planned.",
+      "resolution": "Introduce a distinct alias for the alert envelope (for example WorkflowAlertSourceKind = WorkflowTerminalSourceKind | Literal['system_check']) so the terminal-event model stays closed, and add a task recording consumer impact for the widened envelope - which receivers validate the shape, and whether the change is additive-safe for them.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/design.md"
+    },
+    {
+      "id": 21,
+      "axis": "architecture",
+      "severity": "nit",
+      "type": "spec_gap",
+      "criticality": "medium",
+      "description": "Nit: D13 specifies how the systemd unit gets its configuration but never says how the host gets the aca CLI or the native tools, on a deployment that is containerized (Dockerfile, docs/MOBILE_DEPLOYMENT.md). A non-login aca-backup user running 'aca backup run' implies a host-native Python install with the project's dependencies, alongside pg_dump, rclone, age, bao and neo4j-admin. Nothing states whether that is a venv on the host, a docker run of the app image, or docker exec into the running container - and each has different consequences for the EnvironmentFile, for PROFILE resolution, and for reaching the database and graph containers. Separately, pg_dump must be at least the server's major version (the target runs paradedb pg17), which is not stated anywhere.",
+      "resolution": "Add to D13 the execution substrate for the unit (host venv vs container invocation) and the resulting network/volume assumptions, plus a requirement that the preflight asserts pg_dump's major version is >= the server's. Reflect it in task 5.4 so the unit that ships matches the substrate the runbook assumes.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/design.md"
+    },
+    {
+      "id": 22,
+      "axis": "performance",
+      "severity": "optional",
+      "type": "performance",
+      "criticality": "low",
+      "description": "Optional: neither 'aca backup list' nor the generalized restore discovery has a bounded-listing requirement. After a year the target holds roughly 12 monthly plus 4 weekly plus 7 daily artifacts per store plus whatever the artifacts sync produced, and prefix-based discovery over an object store is an unbounded ListObjectsV2 walk. The existing restore implementation parses 'mc ls' output wholesale (restore_commands.py:45), so the generalization inherits that shape.",
+      "resolution": "Consider adding a --limit or a newest-N default to the list scenario, and require discovery to page rather than materialize the full listing. Low urgency at the projected object counts, but it is cheaper to specify now than to retrofit.",
+      "disposition": "accept",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/specs/cli-interface/spec.md"
+    },
+    {
+      "id": 23,
+      "axis": "correctness",
+      "severity": "optional",
+      "type": "spec_gap",
+      "criticality": "low",
+      "description": "Optional: backup_staleness_hours inherits the legacy default of 48 hours (settings.py:490) while the schedule is daily and D2 targets a 24-hour RPO. Two consecutive failed runs therefore pass unnoticed, and the first alert arrives roughly 48 hours after the last good backup - twice the stated RPO. The parity requirement in spec scenario 'Monitoring settings are provider-neutral' is what pins the default there.",
+      "resolution": "Consider defaulting backup_staleness_hours to something closer to the schedule (for example 30-36 hours, one missed run plus slack) and dropping the parity clause, or state explicitly in D2 that a two-day detection window is accepted alongside the 24-hour RPO so the discrepancy is a decision rather than an inheritance.",
+      "disposition": "accept",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/specs/backup-and-restore/spec.md"
+    },
+    {
+      "id": 24,
+      "axis": "readability",
+      "severity": "fyi",
+      "type": "style",
+      "criticality": "low",
+      "description": "FYI: the closing note in tasks.md says 'Plan iteration 1 added Phase 0 and eleven tasks (1.4b-1.4d, 2.9b, 2.9c, 3.3d, 3.7b, 4.8b, 5.4b)'. There is no task 1.4d, and the list omits 1.9b and 3.3e, which iteration 1 did add. The enumerated set is nine-or-ten names for a claimed eleven.",
+      "resolution": "Correct the list to the tasks that exist: 1.4b, 1.4c, 1.9b, 2.9b, 2.9c, 3.3d, 3.3e, 3.7b, 4.8b, 5.4b.",
+      "disposition": "accept",
+      "file_path": "openspec/changes/add-gx10-backup-scheme/tasks.md"
+    },
+    {
+      "id": 25,
+      "axis": "correctness",
+      "severity": "none",
+      "type": "correctness",
+      "criticality": "low",
+      "description": "Every load-bearing claim in proposal.md's Why section verifies against the tree. health_routes.py:185 does gate the backup check on database_provider == 'railway' AND railway_backup_enabled; loop is bound at :124 inside the database try block and used at :188; the warning text at :193 does hardcode '2x schedule interval' while railway_backup_staleness_hours defaults independently at settings.py:490; restore_commands.py:110-120 does compare URLs by string equality; mc is invoked with credentials in argv at :195-206 and target_url is emitted unmasked at :287-296; boto3 appears nowhere in pyproject.toml. A plan whose diagnosis survives independent verification is worth naming, because the remaining findings are about the forward design rather than about the premise.",
+      "resolution": "No action.",
+      "disposition": "accept"
+    },
+    {
+      "id": 26,
+      "axis": "architecture",
+      "severity": "none",
+      "type": "architecture",
+      "criticality": "low",
+      "description": "The design resolves several ambiguities that would otherwise have been guessed during implementation, and does so where a reviewer can see the reasoning: D11 names the one plaintext object and explains why the app tier must not hold the identity; D12 fixes the exact tuple the live-database guard compares and justifies each exclusion; D4's canary-provenance argument closes the 'who writes the canary' hole before it exists. The test-first task ordering, per-package deny lists, and the explicit scope note on the integrate task are all above the usual bar.",
+      "resolution": "No action.",
+      "disposition": "accept"
+    }
+  ]
+}

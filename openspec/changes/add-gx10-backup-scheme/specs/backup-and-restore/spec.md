@@ -78,11 +78,32 @@ SHALL report per-store outcomes rather than a single aggregate status.
 - **AND** the resulting artifact SHALL be uploaded under the configured prefix
 - **AND** the artifact key SHALL embed an ISO-8601 UTC timestamp
 
-#### Scenario: Graph database is captured per configured provider
-- **GIVEN** `graphdb_provider` is `neo4j`
+#### Scenario: Artifacts are written under a retention tier decided at write time
+- **GIVEN** a backup run producing artifacts
+- **WHEN** each artifact key is constructed
+- **THEN** it SHALL include a tier segment identifying daily, weekly, or monthly retention
+- **AND** the tier SHALL be derived from the run date by a documented promotion rule
+- **AND** the tier SHALL be recorded in the manifest
+
+#### Scenario: Graph database is captured per configured provider and mode
+- **GIVEN** `graphdb_provider` is `neo4j` and `graphdb_mode` is `local` or `embedded`
 - **WHEN** `aca backup run` executes
 - **THEN** a Neo4j database dump SHALL be produced and uploaded
-- **AND** GIVEN `graphdb_provider` is `falkordb`, an RDB snapshot SHALL be produced and uploaded instead
+- **AND** GIVEN the deployment requires the database to be stopped to dump it, the run SHALL either coordinate that stop or record the store as failed with a named reason, and SHALL NOT produce a silently incomplete dump
+
+#### Scenario: Managed graph database without filesystem access is skipped explicitly
+- **GIVEN** `graphdb_provider` is `neo4j` and `graphdb_mode` is `cloud`
+- **WHEN** `aca backup run` executes
+- **THEN** the store SHALL be recorded as skipped with a named reason identifying the managed-provider limitation
+- **AND** the run SHALL NOT report the graph database as captured
+- **AND** the runbook SHALL name the provider-native snapshot procedure that covers this configuration instead
+
+#### Scenario: FalkorDB snapshot is a declared write exception
+- **GIVEN** `graphdb_provider` is `falkordb`
+- **WHEN** `aca backup run` executes
+- **THEN** an RDB snapshot SHALL be produced and uploaded
+- **AND** the snapshot command SHALL be the single declared exception to the read-only requirement
+- **AND** it SHALL NOT modify any application data
 
 #### Scenario: Artifact directories are captured wholesale
 - **GIVEN** local artifact directories for the `images`, `podcasts`, and `audio-digests` buckets
@@ -103,11 +124,38 @@ SHALL report per-store outcomes rather than a single aggregate status.
 - **AND** the command SHALL exit non-zero
 - **AND** stores that succeeded SHALL still be recorded as succeeded
 
-#### Scenario: Backup makes no production mutations
+#### Scenario: Backup makes no destructive production mutations
 - **GIVEN** any invocation of `aca backup run`
 - **WHEN** the command executes
-- **THEN** it SHALL perform only read operations against source data stores
+- **THEN** it SHALL NOT create, modify, or delete any application data in any source store
+- **AND** the only permitted state-changing operation SHALL be a provider snapshot command that writes no application data, declared explicitly per store
 - **AND** it SHALL NOT delete any object from the backup target
+
+#### Scenario: Every pipeline stage's exit status is checked
+- **GIVEN** a store artifact produced by a multi-stage pipeline of dump, encrypt, and upload
+- **WHEN** any stage exits non-zero
+- **THEN** the store SHALL be recorded as failed
+- **AND** the run SHALL NOT record that store as succeeded on the basis of the final stage's exit status alone
+- **AND** the manifest SHALL NOT be written as though the run succeeded
+
+#### Scenario: Uploaded artifact size is verified against bytes streamed
+- **GIVEN** a store artifact that uploaded without error
+- **WHEN** the run records its outcome
+- **THEN** the stored object's size SHALL be read back from the backup target
+- **AND** it SHALL be compared against the byte count streamed
+- **AND** a mismatch SHALL mark the store failed
+
+#### Scenario: Credentials are not passed as process arguments
+- **GIVEN** the run invokes any external tool for dumping, encrypting, uploading, or reading secrets
+- **WHEN** each subprocess is constructed
+- **THEN** access keys, secret keys, database passwords, and tokens SHALL NOT appear in its argument list
+- **AND** they SHALL be supplied through the process environment or a credentials file instead
+
+#### Scenario: Scheduled run preflights its binaries before touching any store
+- **GIVEN** a required external binary is absent
+- **WHEN** `aca backup run` executes
+- **THEN** it SHALL abort with an error naming each missing binary
+- **AND** it SHALL do so before contacting any source data store or the backup target
 
 ### Requirement: Client-Side Backup Encryption
 
@@ -148,7 +196,8 @@ backup freshness.
 #### Scenario: Manifest records the run
 - **GIVEN** a backup run completes
 - **WHEN** the manifest is written
-- **THEN** it SHALL record the run completion timestamp in UTC
+- **THEN** it SHALL record the environment that produced it
+- **AND** it SHALL record the run completion timestamp in UTC
 - **AND** it SHALL record per-store outcome, artifact key, byte size, and checksum
 - **AND** it SHALL be written to a stable, well-known key under the configured prefix
 
@@ -178,9 +227,22 @@ staleness to affect service readiness.
 #### Scenario: Freshness is derived from the manifest
 - **GIVEN** a manifest exists at the well-known key
 - **WHEN** the readiness endpoint is queried
-- **THEN** the reported backup status SHALL be derived from the manifest's completion timestamp
-- **AND** the status SHALL be `ok` when the age is within the configured staleness threshold
-- **AND** the status SHALL be `stale` when the age exceeds it
+- **THEN** the reported backup status SHALL be derived from the manifest's completion timestamp and its recorded outcomes
+- **AND** the status SHALL be `ok` only when the age is within the configured staleness threshold AND every required store succeeded
+- **AND** the status SHALL be `stale` when the age exceeds the threshold
+
+#### Scenario: A fresh but partial run does not report healthy
+- **GIVEN** a manifest whose age is within the staleness threshold
+- **AND** whose overall outcome is partial, or in which any required store failed
+- **WHEN** the readiness endpoint is queried
+- **THEN** the reported status SHALL distinguish the partial run from a healthy one
+- **AND** it SHALL NOT be reported as `ok`
+
+#### Scenario: A manifest from another environment is rejected
+- **GIVEN** a manifest whose recorded environment differs from the reading process's environment
+- **WHEN** freshness is evaluated
+- **THEN** the manifest SHALL NOT be treated as evidence of a backup for this environment
+- **AND** the reported status SHALL identify the environment mismatch
 
 #### Scenario: Freshness check is provider-independent
 - **GIVEN** `database_provider` is any value other than `railway`

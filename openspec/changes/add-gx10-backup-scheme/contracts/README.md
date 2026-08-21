@@ -37,3 +37,11 @@ shape, with nothing forcing the two to agree.
 
 Task 0.2 closes that with a conformance test asserting the schema and the model
 agree, so the drift is caught by the suite rather than by an undelivered alert.
+
+
+## Revised after PLAN_REVIEW
+
+| Sub-type | Was | Now |
+|---|---|---|
+| OpenAPI | No | **Still No.** The alert's `diagnostic_url` reuses `/api/v1/workflow-terminal-events/{event_id}`, which already exists and is already in `validate_diagnostic_route`'s allowlist. The earlier draft pinned it to `/api/v1/health/backup` — a route that does not exist and that no task created, while this file simultaneously claimed no endpoint was added. Reusing the existing route keeps that claim true. |
+| Database | No | **Yes — a migration is now in scope.** Not for backup state, which still lives in the backup target, but for alert delivery: `workflow_terminal_events` enforces three CHECK constraints that reject a `system_check` row. See design A1. |
