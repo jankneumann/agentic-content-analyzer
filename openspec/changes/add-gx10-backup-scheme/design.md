@@ -835,3 +835,25 @@ code, asserted per status so the recovery branch cannot swallow a real problem.
 
 Dead since it was written, and wrong: it passed a remote object key to `age` as a
 local file path. A helper that no caller exercises is a helper no test exercises.
+
+### A20 — Artifact directories are filtered by existence before tar (new)
+
+`plan_artifacts` took an `existing=` argument and nothing in production ever passed
+it, so `artifact_directories()` — the CONFIGURED set — was tarred unconditionally.
+`tar` exits non-zero on a path that is not there, so on any host that has not yet
+produced a podcast or an audio digest (a fresh gx-10 install, which is the target
+of this change) the artifacts store failed on every run.
+
+That failure is not cosmetic. `BackupRunResult.exit_code` is non-zero when ANY
+store failed, and `overall_outcome` becomes `partial`, which the freshness reader
+treats as alertable. The brand-new backup system would have exited non-zero and
+raised a freshness alert every single night, about a directory that was never
+supposed to exist yet — which is how an alert channel gets muted.
+
+`existing_directories()` now filters by a read-only stat, with an injectable
+predicate so the adapters stay testable without a filesystem. A directory that is
+present but EMPTY is still tarred: missing is not the same as empty, and skipping
+an empty directory would hide the day its contents disappeared.
+
+`SKIP_NO_ARTIFACT_DIRECTORIES` finally has a reachable production path — it
+existed from the first commit and, until now, nothing could ever produce it.
