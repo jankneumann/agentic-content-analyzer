@@ -747,3 +747,113 @@ The 48h-vs-24h staleness default is **accepted as-is**: a 24h backup cadence wit
 a 48h staleness threshold means one missed run is tolerated before alerting,
 which is deliberate — alerting on a single transient failure trains operators to
 ignore the channel.
+
+---
+
+# Amendments from IMPL_ITERATE (round 3)
+
+Six findings, two critical. Both criticals are the same shape as A6 and A13 — a
+defence that was described accurately and enforced somewhere the tests did not
+reach — which is why they are recorded here rather than only in a commit message.
+
+### A15 — `verify` read ciphertext through the text path (new; critical)
+
+`BackupEngine.verify()` fetched the canary with `run_command`, whose only mode
+decoded stdout as **strict UTF-8**, then handed the resulting `str` back as
+`stdin_text` to `age --decrypt`. `age` writes raw binary unless asked for armour,
+and `encrypt_stage` does not ask. So the happy path raised `UnicodeDecodeError`
+out of the CLI, and any ciphertext that did happen to decode would not survive
+being re-encoded on the way into the next process.
+
+`aca backup verify` is the *only* command that answers "could I actually restore
+from this?". It failed on backups that were perfectly restorable, and every
+mock-based test passed because the mocks returned text.
+
+**Amendment.** `run_command` gains an explicit binary mode (`binary=True`,
+`stdin_bytes=`, `CommandResult.stdout_bytes`); both hops of the canary check use
+it. `TestVerifyAgainstRealCiphertext` drives the real `age` binary against real
+`age-keygen` output — the rclone fetch is the single stub — and covers the wrong
+identity and the wrong plaintext as well as the happy path.
+
+**Lesson, same as A6 and A13:** the mock returned the shape the code expected
+rather than the shape the tool produces. Where a defence is about *bytes*, the
+test has to see real bytes.
+
+### A16 — The restore path put the database password back in argv (new; critical)
+
+Security fix 1 removed `mc alias set <endpoint> <user> <password>` from argv
+because argv is world-readable in `/proc`. The same command then ran
+`pg_restore --dbname <url-with-password>` — the identical leak, one subprocess
+later, in the same function. The test that asserts no credential reaches argv
+carried an explicit `if call["argv"][0] == "pg_restore": continue`, so the
+exemption was visible in the test that was supposed to forbid it.
+
+**Amendment.** `split_database_credentials()` returns an argv-safe URL plus
+`{"PGPASSWORD": ...}`; libpq reads the password from an environment only the
+process owner can read. Percent-encoded passwords are decoded, because
+PGPASSWORD is not URL-encoded. `mask_text()` redacts the password from any
+subprocess output quoted back to the operator. The exemption is deleted and the
+assertion now covers every invocation.
+
+### A17 — Two further closed points on the emission path (supersedes A13's count)
+
+A13 enumerated ten widening points and IMPLEMENT found an eleventh
+(`_event_from_row`). Two more exist, and neither lives in a file A13 named:
+
+| # | Element | Location | Silent failure |
+|---|---|---|---|
+| 12 | `_validate_event_key` pattern map | `src/telemetry/workflow_events.py` | `pattern is None` raises; `process_pending_event` catches it as `emitted = False`. The alert is delivered, but with no log line, no OTel counter, and no `telemetry_emitted_at` checkpoint. |
+| 13 | `WorkflowTerminalEventDiagnostic.source_kind` | generated from `openapi/v1.yaml` | `GET /api/v1/workflow-terminal-events/{id}` — the URL every system_check envelope carries as its `diagnostic_url` — raises `ValidationError` for exactly those events. |
+
+Point 12 survived three review rounds and the acceptance test because that test
+stubs `telemetry_emitter`. Point 13 survived because no test read a
+`system_check` row back through `get_diagnostic()`. Both are now driven for real.
+The pattern is imported from `SYSTEM_CHECK_EVENT_KEY_PATTERN` rather than
+restated, and the contract triple is regenerated from the OpenAPI source rather
+than hand-edited.
+
+**The count is 13, and the durable statement is not the number.** It is that a
+widening point is only proven by a test that drives the real component — the real
+emitter, the real projection, the real binary. Every point missed so far was
+missed because something stood in for the thing.
+
+### A18 — A recovered backup must not raise a codeless alert (new)
+
+`_system_check_snapshot` classifies on the **current** manifest, deliberately, so
+that a backup landing between emission and classification is described as it is
+now. But every non-stale, non-partial status mapped to outcome `unknown`, which
+is severity `warning`, which **is** externally routed — with an empty `codes`
+list, because `OK` has no diagnostic code. A recovered backup therefore delivered
+an alert asserting a problem it could not name.
+
+Statuses that are not alertable now map to `success`, which classifies as `info`,
+which is not externally routed: the event is stored `telemetry_only` and no
+delivery is created. Every alertable status still routes and still carries its
+code, asserted per status so the recovery branch cannot swallow a real problem.
+
+### A19 — `decrypt_command()` removed (nit)
+
+Dead since it was written, and wrong: it passed a remote object key to `age` as a
+local file path. A helper that no caller exercises is a helper no test exercises.
+
+### A20 — Artifact directories are filtered by existence before tar (new)
+
+`plan_artifacts` took an `existing=` argument and nothing in production ever passed
+it, so `artifact_directories()` — the CONFIGURED set — was tarred unconditionally.
+`tar` exits non-zero on a path that is not there, so on any host that has not yet
+produced a podcast or an audio digest (a fresh gx-10 install, which is the target
+of this change) the artifacts store failed on every run.
+
+That failure is not cosmetic. `BackupRunResult.exit_code` is non-zero when ANY
+store failed, and `overall_outcome` becomes `partial`, which the freshness reader
+treats as alertable. The brand-new backup system would have exited non-zero and
+raised a freshness alert every single night, about a directory that was never
+supposed to exist yet — which is how an alert channel gets muted.
+
+`existing_directories()` now filters by a read-only stat, with an injectable
+predicate so the adapters stay testable without a filesystem. A directory that is
+present but EMPTY is still tarred: missing is not the same as empty, and skipping
+an empty directory would hide the day its contents disappeared.
+
+`SKIP_NO_ARTIFACT_DIRECTORIES` finally has a reachable production path — it
+existed from the first commit and, until now, nothing could ever produce it.

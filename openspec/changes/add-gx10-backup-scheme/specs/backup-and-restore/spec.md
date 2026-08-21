@@ -145,6 +145,14 @@ SHALL report per-store outcomes rather than a single aggregate status.
 - **AND** it SHALL be compared against the byte count streamed
 - **AND** a mismatch SHALL mark the store failed
 
+#### Scenario: An artifact directory that does not exist is excluded, not failed
+- **GIVEN** a configured artifact directory that is not present on the host
+- **WHEN** the artifacts store is planned
+- **THEN** that directory SHALL be excluded from the capture
+- **AND** the store SHALL NOT be marked failed because of its absence
+- **AND** a configured directory that is present but empty SHALL still be captured
+- **AND** when no configured directory is present the store SHALL record a named skip
+
 #### Scenario: Credentials are not passed as process arguments
 - **GIVEN** the run invokes any external tool for dumping, encrypting, uploading, or reading secrets
 - **WHEN** each subprocess is constructed
@@ -307,7 +315,14 @@ readiness endpoint, and SHALL NOT emit duplicate alerts for one check window.
 - **WHEN** it is constructed
 - **THEN** its source kind SHALL identify a system check
 - **AND** operation-scoped fields SHALL be omitted rather than populated with synthesized values
-- **AND** its diagnostic URL SHALL resolve to a route that exists
+- **AND** fetching its diagnostic URL SHALL return a diagnostic projection for that event
+- **AND** emitting it SHALL produce telemetry rather than being silently dropped
+
+#### Scenario: A backup that recovered before classification raises no alert
+- **GIVEN** a pending backup freshness event whose condition no longer holds when it is classified
+- **WHEN** the event is classified
+- **THEN** no alert envelope SHALL be enqueued for delivery
+- **AND** no alert SHALL be delivered carrying an empty diagnostic-code list
 
 #### Scenario: Readiness polling does not multiply alerts
 - **GIVEN** the readiness endpoint is polled repeatedly while a backup is stale
@@ -379,6 +394,19 @@ overwriting live databases.
 - **WHEN** the restore runbook is followed
 - **THEN** it SHALL provide an ordered procedure for each captured store
 - **AND** it SHALL begin with recovery of the decryption identity
+
+#### Scenario: Verification decrypts a real encrypted canary
+- **GIVEN** a canary object produced by the real encryption tool
+- **WHEN** `aca backup verify` reads it back and decrypts it with the configured identity
+- **THEN** it SHALL report the canary as decrypted
+- **AND** it SHALL do so without decoding the ciphertext as text
+- **AND** a canary encrypted to a different key SHALL be reported as undecryptable rather than raising
+
+#### Scenario: Restore passes no database password as a process argument
+- **GIVEN** a restore into a target database whose URL embeds a password
+- **WHEN** the restore tool is invoked
+- **THEN** the password SHALL NOT appear in any subprocess argument list
+- **AND** it SHALL be supplied through the process environment instead
 
 #### Scenario: Round-trip restore is verified by test
 - **GIVEN** a containerized S3-compatible backup target

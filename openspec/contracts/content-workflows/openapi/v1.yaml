@@ -1117,7 +1117,7 @@ components:
         event_key: { type: string, minLength: 1, maxLength: 160, pattern: "^[a-z0-9:_-]+$" }
         source_kind:
           type: string
-          enum: [operation, reconciliation_action, reconciliation_failure]
+          enum: [operation, reconciliation_action, reconciliation_failure, system_check]
         operation_id:
           type: [string, "null"]
           maxLength: 19

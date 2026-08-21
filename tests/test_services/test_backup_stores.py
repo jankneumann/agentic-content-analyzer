@@ -11,7 +11,9 @@ property over all of them, rather than over the one path a mock happened to take
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
+from typing import ClassVar
 
 import pytest
 
@@ -122,16 +124,21 @@ class TestGraphDatabaseAdapter:
 
 
 class TestArtifactsAdapter:
+    #: Every configured directory, present. Passed explicitly so these assertions
+    #: do not depend on which directories happen to exist in the checkout running
+    #: them — the original version passed only because two of the three did.
+    ALL_PRESENT: ClassVar[list[str]] = ["data/images", "data/podcasts", "data/audio-digests"]
+
     def test_captures_every_artifact_directory(self) -> None:
-        plan = stores.plan_artifacts(make_settings())
+        plan = stores.plan_artifacts(make_settings(), existing=self.ALL_PRESENT)
         assert plan.stage is not None
         assert plan.stage.argv[0] == "tar"
-        for directory in ("data/images", "data/podcasts", "data/audio-digests"):
+        for directory in self.ALL_PRESENT:
             assert directory in plan.stage.argv
 
     def test_capture_is_wholesale_not_row_driven(self) -> None:
         """Files on disk that no database row references are still the only copy."""
-        plan = stores.plan_artifacts(make_settings())
+        plan = stores.plan_artifacts(make_settings(), existing=self.ALL_PRESENT)
         assert plan.stage is not None
         # tar over the directory — nothing in the invocation consults the database.
         assert not any("select" in part.lower() for part in plan.stage.argv)
@@ -222,3 +229,78 @@ class TestNoCredentialReachesArgv:
         stage = encrypt_stage("age1qqqqexamplerecipient")
         assert "age1qqqqexamplerecipient" in stage.argv
         assert stage.env == {}
+
+
+class TestArtifactDirectoriesMustExistBeforeTheyAreTarred:
+    """`tar` exits non-zero on a path that is not there.
+
+    The `existing=` seam was present from the start but nothing in production ever
+    passed it, so the configured set was tarred unconditionally. On a host that has
+    not yet produced a podcast or an audio digest — a fresh gx-10 install, which is
+    the target of this whole change — the artifacts store failed on every run. That
+    exits `aca backup run` non-zero AND marks the run `partial`, which is alertable,
+    so the brand-new backup system would have raised a freshness alert every night
+    about a directory that was never supposed to exist yet.
+    """
+
+    def test_a_missing_directory_is_excluded_rather_than_failing_the_store(self) -> None:
+        present = {"data/images"}
+        plan = stores.plan_artifacts(
+            make_settings(),
+            existing=stores.existing_directories(
+                make_settings(), is_dir=lambda path: path in present
+            ),
+        )
+        assert plan.runnable is True
+        assert plan.stage is not None
+        assert "data/images" in plan.stage.argv
+        assert "data/podcasts" not in plan.stage.argv
+        assert "data/audio-digests" not in plan.stage.argv
+
+    def test_no_present_directory_is_a_named_skip_not_a_failure(self) -> None:
+        plan = stores.plan_artifacts(
+            make_settings(),
+            existing=stores.existing_directories(make_settings(), is_dir=lambda _p: False),
+        )
+        assert plan.runnable is False
+        assert plan.skip_reason == stores.SKIP_NO_ARTIFACT_DIRECTORIES
+
+    def test_the_default_path_filters_by_existence(self, tmp_path: Path) -> None:
+        """The defect was that the DEFAULT call site never filtered — so this
+        asserts the default, not the injectable seam."""
+        images = tmp_path / "images"
+        images.mkdir()
+        settings = make_settings(
+            image_storage_path=str(images),
+            podcast_storage_path=str(tmp_path / "absent-podcasts"),
+            audio_digest_storage_path=str(tmp_path / "absent-audio"),
+        )
+        plan = stores.plan_artifacts(settings)
+        assert plan.stage is not None
+        assert str(images) in plan.stage.argv
+        assert not any("absent-" in part for part in plan.stage.argv)
+
+    def test_a_present_but_empty_directory_is_still_captured(self, tmp_path: Path) -> None:
+        """Missing is not the same as empty. An empty tar is still an artifact with
+        a digest; skipping an empty directory would hide the day its contents
+        vanished."""
+        for name in ("images", "podcasts", "audio"):
+            (tmp_path / name).mkdir()
+        settings = make_settings(
+            image_storage_path=str(tmp_path / "images"),
+            podcast_storage_path=str(tmp_path / "podcasts"),
+            audio_digest_storage_path=str(tmp_path / "audio"),
+        )
+        plan = stores.plan_artifacts(settings)
+        assert plan.runnable is True
+        assert plan.stage is not None
+        assert len([p for p in plan.stage.argv if str(tmp_path) in p]) == 3
+
+    def test_the_configured_set_is_still_reportable_in_full(self) -> None:
+        """`artifact_directories` stays the CONFIGURED set: the runbook needs to
+        name what should be there, not only what happened to be."""
+        assert stores.artifact_directories(make_settings()) == [
+            "data/images",
+            "data/podcasts",
+            "data/audio-digests",
+        ]

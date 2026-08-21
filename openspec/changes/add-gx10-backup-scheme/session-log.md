@@ -155,3 +155,68 @@ Two review passes over the approved plan. Pass 1 found two critical settings gap
 ### Context
 All 112 tasks across six packages implemented and committed in eight phase-scoped commits. The change delivers the project's first working backup: an `aca backup` group that streams every store through age-encryption to an S3-compatible target, a manifest-derived freshness check that replaces an unfixable pg_cron watchdog, a durable system_check alert path (with the Alembic migration A1 established was unavoidable), an endpoint-agnostic restore carrying three credential-safety fixes, and host scheduling with provider-side retention. Implemented inline rather than via sub-agents: this harness exposes no Task/Agent tool, so the local-parallel tier's dispatch step was executed sequentially.
 
+---
+
+## Phase: Implementation Iteration 1 (2026-08-21)
+
+**Agent**: claude_code | **Session**: N/A
+
+### Decisions
+1. **Give run_command an explicit binary mode rather than armouring the ciphertext** — Adding `age --armor` would have fixed the decode at the cost of ~33% on every multi-GB artifact and would have changed what the size read-back compares. The bytes are binary; the seam should carry bytes.
+2. **Move the pg_restore password to PGPASSWORD, not to a .pgpass file** — A credentials file is readable by anything running as the same user for as long as it exists and needs cleanup on every error path. A process environment is readable only by its owner and disappears with the process. It also matches how rclone credentials already travel in this change.
+3. **Regenerate the contract triple from openapi/v1.yaml rather than hand-editing** — src/contracts/workflow_models.py and both generated client files are outputs of scripts/generate_workflow_contracts.py, and a drift test enforces it. Hand-editing them produced exactly that drift failure; the YAML is the one place the widening belongs.
+4. **Map non-alertable freshness to `success`, not to a suppressed alert** — `success` classifies to severity `info`, which the existing projection already refuses to route. Reusing that path means no new suppression branch exists to be wrong later, and the event is still stored `telemetry_only` so the recovery is visible rather than absent.
+
+### Alternatives Considered
+- Run the canary check as a two-stage `run_pipeline` (rclone cat | age --decrypt): rejected because Keeps bytes out of the interpreter, but the last stage inherits the parent's stdout and would print the canary plaintext into `aca backup verify --json`, breaking the CLI JSON purity contract. A canary is a handful of bytes; the interpreter can hold it.
+- Redact the pg_restore password by post-processing argv in a wrapper: rejected because Masking what is printed does nothing about /proc, which is where the leak is. The password has to not be there.
+- Add a fourteenth-point checklist to the design instead of tests: rejected because ('That is precisely what failed three times. Each missed point was missed because a document stood in for the code; a longer document is the same mistake.',)
+
+### Trade-offs
+- Accepted A verify test that shells out to real `age` and `age-keygen` over A fully mocked verify test that runs everywhere because The mock is what hid the bug — it returned the shape the code expected rather than the shape the tool produces. The test skips cleanly where the binaries are absent, and only the object fetch is stubbed.
+- Accepted Leaving the round-trip and live-migration tests unrun over Weakening their gates so they appear to pass because No Docker, no Postgres, and rclone downloads are proxy-blocked here. The new real-`age` verify test recovers the specific restorability claim those tests were carrying without pretending the rest ran.
+
+### Open Questions
+- [ ] The round-trip integration test and the live-migration test still have never executed; they need a host with Docker, Postgres, and unblocked rclone downloads.
+- [ ] `executor.run_pipeline` logs a failed stage's stderr at DEBUG. It is truncated and deliberate, but Hard Constraint 3 is worded absolutely; left as-is and recorded rather than churned in a final iteration.
+
+### Completed Work
+- [critical] bug: `BackupEngine.verify()` decoded age ciphertext as strict UTF-8 — fixed with a binary mode on `run_command`, covered by tests against the real `age` binary.
+- [critical] security: `pg_restore --dbname <url-with-password>` leaked the database password into argv — moved to PGPASSWORD; the test exemption that hid it is deleted.
+- [high] bug: `WorkflowTerminalEventDiagnostic.source_kind` excluded `system_check`, so the alert's own diagnostic_url 500'd — widened at the OpenAPI source and regenerated.
+- [high] observability: the telemetry emitter's event-key pattern map had no `system_check` entry, so every backup alert emitted no log line, no metric, and no telemetry checkpoint.
+- [medium] bug: a backup that recovered before classification delivered a warning-severity alert with an empty `codes` list — non-alertable statuses now classify as `info`.
+- [low] workflow: removed the dead and incorrect `target.decrypt_command()`.
+
+### Context
+Six findings addressed, two critical, both of the same shape as A6 and A13: a defence described accurately and enforced somewhere no test reached. `aca backup verify` read age ciphertext through a strict-UTF-8 text path, so the one command that proves restorability failed on restorable backups; and the restore path put the database password back into argv via `pg_restore --dbname`, the exact leak the same function's `mc alias set` fix removed one subprocess earlier. Two further closed points on the emission path were found beyond the eleven (`_validate_event_key` in the telemetry emitter, and `WorkflowTerminalEventDiagnostic.source_kind` behind the alert's own diagnostic_url), taking the count to 13. A recovered backup no longer delivers a codeless warning, and a dead `decrypt_command()` helper was removed.
+
+---
+
+## Phase: Implementation Iteration 2 (2026-08-21)
+
+**Agent**: claude_code | **Session**: N/A
+
+### Decisions
+1. **Filter in `existing_directories()` with an injectable predicate, not in the engine** — The `existing=` seam and `SKIP_NO_ARTIFACT_DIRECTORIES` were both already there for exactly this; wiring them up is smaller than moving the decision. The injectable predicate keeps the adapters testable without a filesystem, which is the property the module's docstring claims.
+2. **A present-but-empty directory is still captured** — Missing and empty are different facts. An empty tar is still an artifact with a digest; skipping an empty directory would make the day its contents vanished look identical to the day before.
+3. **Rewrote two existing artifact tests to pass `existing=` explicitly** — They asserted on the unfiltered default and passed only because two of the three default directories happen to exist in this checkout — an assertion about the developer's working tree, not about the adapter.
+
+### Alternatives Considered
+- Pass `tar --ignore-failed-read` or create the directories at startup: rejected because Both convert a missing directory into a silent success. The point of the filter is that an absent directory is a known, named condition rather than a suppressed error.
+- Make the artifacts store non-alertable instead: rejected because ('It would hide real artifact-capture failures to work around a planning bug. The store is right to be alertable; the plan was wrong.',)
+
+### Trade-offs
+- Accepted One read-only stat per configured directory inside a 'pure builder' module over Moving the existence decision into the engine because The module docstring is amended rather than the layering: the stat is read-only, injectable, and sits next to the argv it changes.
+
+### Open Questions
+- [ ] `read_freshness` issues its S3 read inside the worker's transaction-scoped leader lock. Timeouts are explicit (3s connect, 3s read, 1 attempt) and the reader is cached for 60s, so the exposure is bounded — recorded rather than changed.
+- [ ] The round-trip and live-migration tests still have never executed here; they need Docker, Postgres, and unblocked rclone downloads.
+
+### Completed Work
+- [high] bug: artifact directories were tarred without an existence check, failing the artifacts store — and raising a nightly freshness alert — on any host missing one of the three configured directories.
+- Reviewed stores/preflight/models, the worker maintenance wiring, and the systemd unit; no further findings at or above the medium threshold.
+
+### Context
+Second review pass over the store adapters, preflight, worker wiring and deploy units. One finding above threshold: `plan_artifacts` carried an `existing=` seam that no production caller ever passed, so the CONFIGURED artifact directories were tarred unconditionally. `tar` exits non-zero on a path that is not there, which made the artifacts store fail on every run on any host that had not yet produced a podcast or an audio digest — exiting non-zero AND marking the run partial, which is alertable. The first working backup this project has had would have raised a freshness alert every night on a fresh gx-10 install. Directories are now filtered by a read-only stat with an injectable predicate.
+

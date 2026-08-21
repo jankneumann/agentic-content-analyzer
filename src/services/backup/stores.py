@@ -1,10 +1,11 @@
 """Per-store dump commands, expressed as pure argv builders.
 
-Every function here returns a :class:`Stage` (or a skip reason) and touches
-nothing. That is what makes the "no credential in argv" requirement testable as a
-property of the code rather than as a property of one mocked call: a test can build
-every stage this module can produce and assert no secret appears in any of them,
-without a subprocess ever running.
+Every function here returns a :class:`Stage` (or a skip reason) and runs nothing.
+That is what makes the "no credential in argv" requirement testable as a property
+of the code rather than as a property of one mocked call: a test can build every
+stage this module can produce and assert no secret appears in any of them, without
+a subprocess ever running. The single exception is `existing_directories`, which
+stats the configured artifact paths and injects its predicate for tests.
 
 The four adapters share one shape on purpose. Decomposing them into four packages
 was attempted at plan time and rejected — they all depend on the same Stage
@@ -14,6 +15,7 @@ contract, so splitting them would have produced four packages each waiting on it
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
@@ -161,6 +163,8 @@ def artifact_directories(settings: Any) -> list[str]:
     Files on disk that no database row references are included deliberately: an
     orphaned artifact is still the only copy, and a backup that only captures
     referenced files silently loses them.
+
+    This is the CONFIGURED set, not the present set — see `existing_directories`.
     """
     candidates = [
         getattr(settings, "image_storage_path", None) or "data/images",
@@ -175,9 +179,29 @@ def artifact_directories(settings: Any) -> list[str]:
     return seen
 
 
+def existing_directories(settings: Any, *, is_dir: Any = None) -> list[str]:
+    """The configured directories that are actually present on this host.
+
+    The one read-only stat in this module, and it earns its place. `tar` exits
+    non-zero when handed a path that does not exist, so tarring the configured set
+    unconditionally makes the artifacts store FAIL on any host that has not yet
+    generated a podcast or an audio digest — a fresh gx-10 install, for one. That
+    failure is not benign: it exits `aca backup run` non-zero and marks the run
+    `partial`, which is alertable, so every nightly run would raise a
+    backup-freshness alert about a directory that was never supposed to exist yet.
+    Nothing trains an operator to ignore an alert channel faster.
+
+    A directory that is configured, expected, and MISSING its contents is a
+    different matter and is not silently tolerated: a present-but-empty directory
+    is still tarred, and an empty tar is still an artifact with a digest.
+    """
+    check = is_dir or (lambda path: Path(path).is_dir())
+    return [directory for directory in artifact_directories(settings) if check(directory)]
+
+
 def plan_artifacts(settings: Any, *, existing: list[str] | None = None) -> StorePlan:
-    """One tar stream over every artifact directory that exists."""
-    directories = existing if existing is not None else artifact_directories(settings)
+    """One tar stream over every artifact directory that is present."""
+    directories = existing if existing is not None else existing_directories(settings)
     if not directories:
         return StorePlan(
             store=StoreName.ARTIFACTS,

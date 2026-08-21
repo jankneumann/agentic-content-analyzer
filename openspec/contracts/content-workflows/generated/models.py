@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
-CONTRACT_SHA256 = "5dad552a43c043d1c11e1b587b9bc68724e7e23742ec74134164840db306197b"
+CONTRACT_SHA256 = "42c7725900d7c46933c6df9edb8f0e51c08325ba7102492cff1e3c7774ffe8fe"
 
 OperationStatus = Literal["queued", "in_progress", "completed", "failed", "cancelled"]
 OperationType = Literal[
@@ -470,7 +470,9 @@ class WorkflowTerminalEventDiagnostic(StrictModel):
     schema_version: Literal[1] = 1
     event_id: UUID
     event_key: Annotated[str, Field(min_length=1, max_length=160, pattern="^[a-z0-9:_-]+$")]
-    source_kind: Literal["operation", "reconciliation_action", "reconciliation_failure"]
+    source_kind: Literal[
+        "operation", "reconciliation_action", "reconciliation_failure", "system_check"
+    ]
     operation_id: Annotated[str | None, Field(max_length=19, pattern="^[1-9][0-9]*$")]
     claim_generation: Annotated[int | None, Field(ge=0, le=2147483647)]
     terminal_status: Literal["completed", "failed", "cancelled", None]
