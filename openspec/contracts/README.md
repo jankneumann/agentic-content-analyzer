@@ -20,3 +20,6 @@ Live application code, generators, and tests MUST NOT depend on files below
   contracts shared by CLI, HTTP, MCP, workers, and the frontend.
 - `release-smoke/` - cross-surface release-smoke evidence schema and the baseline
   retired-workflow-mutation denial policy consumed by the release gate.
+- `backup/` - off-site backup run manifest and the `system_check` backup-freshness alert
+  envelope. The alert schema is the single source of truth for the backup
+  diagnostic-code set.
