@@ -191,3 +191,32 @@ All 112 tasks across six packages implemented and committed in eight phase-scope
 ### Context
 Six findings addressed, two critical, both of the same shape as A6 and A13: a defence described accurately and enforced somewhere no test reached. `aca backup verify` read age ciphertext through a strict-UTF-8 text path, so the one command that proves restorability failed on restorable backups; and the restore path put the database password back into argv via `pg_restore --dbname`, the exact leak the same function's `mc alias set` fix removed one subprocess earlier. Two further closed points on the emission path were found beyond the eleven (`_validate_event_key` in the telemetry emitter, and `WorkflowTerminalEventDiagnostic.source_kind` behind the alert's own diagnostic_url), taking the count to 13. A recovered backup no longer delivers a codeless warning, and a dead `decrypt_command()` helper was removed.
 
+---
+
+## Phase: Implementation Iteration 2 (2026-08-21)
+
+**Agent**: claude_code | **Session**: N/A
+
+### Decisions
+1. **Filter in `existing_directories()` with an injectable predicate, not in the engine** — The `existing=` seam and `SKIP_NO_ARTIFACT_DIRECTORIES` were both already there for exactly this; wiring them up is smaller than moving the decision. The injectable predicate keeps the adapters testable without a filesystem, which is the property the module's docstring claims.
+2. **A present-but-empty directory is still captured** — Missing and empty are different facts. An empty tar is still an artifact with a digest; skipping an empty directory would make the day its contents vanished look identical to the day before.
+3. **Rewrote two existing artifact tests to pass `existing=` explicitly** — They asserted on the unfiltered default and passed only because two of the three default directories happen to exist in this checkout — an assertion about the developer's working tree, not about the adapter.
+
+### Alternatives Considered
+- Pass `tar --ignore-failed-read` or create the directories at startup: rejected because Both convert a missing directory into a silent success. The point of the filter is that an absent directory is a known, named condition rather than a suppressed error.
+- Make the artifacts store non-alertable instead: rejected because ('It would hide real artifact-capture failures to work around a planning bug. The store is right to be alertable; the plan was wrong.',)
+
+### Trade-offs
+- Accepted One read-only stat per configured directory inside a 'pure builder' module over Moving the existence decision into the engine because The module docstring is amended rather than the layering: the stat is read-only, injectable, and sits next to the argv it changes.
+
+### Open Questions
+- [ ] `read_freshness` issues its S3 read inside the worker's transaction-scoped leader lock. Timeouts are explicit (3s connect, 3s read, 1 attempt) and the reader is cached for 60s, so the exposure is bounded — recorded rather than changed.
+- [ ] The round-trip and live-migration tests still have never executed here; they need Docker, Postgres, and unblocked rclone downloads.
+
+### Completed Work
+- [high] bug: artifact directories were tarred without an existence check, failing the artifacts store — and raising a nightly freshness alert — on any host missing one of the three configured directories.
+- Reviewed stores/preflight/models, the worker maintenance wiring, and the systemd unit; no further findings at or above the medium threshold.
+
+### Context
+Second review pass over the store adapters, preflight, worker wiring and deploy units. One finding above threshold: `plan_artifacts` carried an `existing=` seam that no production caller ever passed, so the CONFIGURED artifact directories were tarred unconditionally. `tar` exits non-zero on a path that is not there, which made the artifacts store fail on every run on any host that had not yet produced a podcast or an audio digest — exiting non-zero AND marking the run partial, which is alertable. The first working backup this project has had would have raised a freshness alert every night on a fresh gx-10 install. Directories are now filtered by a read-only stat with an injectable predicate.
+

@@ -145,6 +145,14 @@ SHALL report per-store outcomes rather than a single aggregate status.
 - **AND** it SHALL be compared against the byte count streamed
 - **AND** a mismatch SHALL mark the store failed
 
+#### Scenario: An artifact directory that does not exist is excluded, not failed
+- **GIVEN** a configured artifact directory that is not present on the host
+- **WHEN** the artifacts store is planned
+- **THEN** that directory SHALL be excluded from the capture
+- **AND** the store SHALL NOT be marked failed because of its absence
+- **AND** a configured directory that is present but empty SHALL still be captured
+- **AND** when no configured directory is present the store SHALL record a named skip
+
 #### Scenario: Credentials are not passed as process arguments
 - **GIVEN** the run invokes any external tool for dumping, encrypting, uploading, or reading secrets
 - **WHEN** each subprocess is constructed
