@@ -38,8 +38,10 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
   **Spec scenarios**: backup-and-restore.2 (A failing store does not silently pass; OpenBao is captured when configured)
   **Design decisions**: D3
   **Dependencies**: 1.2
-- [ ] 2.2 Implement the store-outcome model and run orchestrator (M)
+- [ ] 2.2a Implement the store-outcome model (S)
   **Dependencies**: 2.1
+- [ ] 2.2b Implement the run orchestrator over that model (S)
+  **Dependencies**: 2.2a
 - [ ] 2.3 Write tests for each store adapter's invocation, patching `subprocess.run` and asserting on argv rather than call position (M)
   **Spec scenarios**: backup-and-restore.2 (PostgreSQL is captured as a portable dump; Graph database is captured per configured provider; Artifact directories are captured wholesale)
   **Design decisions**: D3
@@ -69,8 +71,12 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
 - [ ] 2.13 Write tests for `aca backup list` and the CLI JSON output contract — single JSON document on stdout, no credentials in output (S)
   **Spec scenarios**: cli-interface.1 (all scenarios)
   **Dependencies**: 2.1
-- [ ] 2.14 Implement `aca backup run` and `aca backup list` command surface and register the group (S)
-  **Dependencies**: 2.13, 2.2
+- [ ] 2.14a Implement the `aca backup run` command surface (S)
+  **Dependencies**: 2.13, 2.2b
+- [ ] 2.14b Implement the `aca backup list` command surface (S)
+  **Dependencies**: 2.13
+- [ ] 2.14c Register the backup command group on the CLI app (XS)
+  **Dependencies**: 2.14a, 2.14b
 - [ ] 2.15 Checkpoint: run tests, review diff, verify scope
 
 ## Phase 3 — Freshness monitoring and alerting (wp-health-alerts)
@@ -83,12 +89,16 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
   **Spec scenarios**: backup-and-restore.5 (Freshness check survives a broken database layer)
   **Design decisions**: D8
   **Dependencies**: None
-- [ ] 3.3 Rewrite `_check_backup_recency` against the manifest, de-gate the provider condition, and hoist the event-loop binding out of the database `try` block (M)
-  **Dependencies**: 3.1, 3.2
+- [ ] 3.3a Hoist the event-loop binding out of the database `try` block so the freshness check survives a broken database layer (XS)
+  **Dependencies**: 3.2
+- [ ] 3.3b Rewrite `_check_backup_recency` to derive freshness from the backup target manifest (M)
+  **Dependencies**: 3.1, 3.3a
+- [ ] 3.3c Remove the `database_provider == "railway"` gate from the backup check (XS)
+  **Dependencies**: 3.3b
 - [ ] 3.4 Correct the staleness warning text to describe the configured threshold (XS)
   **Spec scenarios**: database-provider.1 (Backup health check)
   **Design decisions**: D8
-  **Dependencies**: 3.3
+  **Dependencies**: 3.3b
 - [ ] 3.5 Checkpoint: run tests, review diff, verify scope
 - [ ] 3.6 Write tests for the widened alert envelope — `system_check` source, key grammar, optional operation fields, resolvable diagnostic URL, rejection of credential-bearing payloads (M)
   **Spec scenarios**: backup-and-restore.6 (System-check alerts carry no operation identity; Alerts never carry credentials)
@@ -101,7 +111,7 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
   **Design decisions**: D6
   **Dependencies**: 3.6
 - [ ] 3.9 Implement idempotent freshness-alert emission in periodic worker maintenance (M)
-  **Dependencies**: 3.8, 3.7, 3.3
+  **Dependencies**: 3.8, 3.7, 3.3b
 - [ ] 3.10 Checkpoint: run tests, review diff, verify scope
 
 ## Phase 4 — Restore path (wp-restore-cli)
@@ -147,7 +157,7 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
   **Dependencies**: 5.1
 - [ ] 5.4 Author the systemd service and timer units invoking the backup command (S)
   **Spec scenarios**: backup-and-restore.8 (Scheduling units are provided; Scheduling requires no database privileges)
-  **Dependencies**: 2.14
+  **Dependencies**: 2.14c
 - [ ] 5.5 Checkpoint: run tests, review diff, verify scope
 - [ ] 5.6 Write the gx-10 multi-store restore runbook, leading with decryption-identity recovery (M)
   **Spec scenarios**: backup-and-restore.9 (Restore is possible for each backed-up store)
@@ -167,7 +177,7 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
 
 - [ ] 6.1 Provision a containerized S3-compatible backup target fixture in the compose stack (M)
   **Spec scenarios**: backup-and-restore.9 (Round-trip restore is verified by test)
-  **Dependencies**: 2.14
+  **Dependencies**: 2.14c
 - [ ] 6.2 Implement the round-trip integration test in the integration suite — seed → backup → encrypt → upload → download → decrypt → restore → compare — replacing the placeholder removed in 4.1b (M)
   **Spec scenarios**: backup-and-restore.9 (Round-trip restore is verified by test)
   **Dependencies**: 6.1, 4.10
@@ -184,3 +194,24 @@ on that interface, which raises coordination risk more than it lowers
 implementation risk. It is kept as one L task with a checkpoint immediately
 after (2.5), and its test task (2.3) covers each adapter independently so
 partial progress is still verifiable.
+
+
+## Note on remaining conjunctive task titles
+
+The "and" splitting heuristic flags five further titles. Each was reviewed and
+kept, because the conjunction lists sites or methods for a **single outcome**
+rather than joining two outcomes:
+
+| Task | Why it stays one task |
+|---|---|
+| 1.9 | One outcome — declare the setting — across three declaration sites that must land together or the setting is half-declared. |
+| 2.3 | One outcome — write the adapter tests. "patching … and asserting …" describes the method, not a second deliverable. |
+| 2.4 | Decomposition attempted and rejected; rationale recorded below. |
+| 2.11 | One outcome — the verify test — covering both branches of the same assertion. |
+| 2.13 | One outcome — the command's test suite. The JSON contract is a property of that command, not separate work. |
+
+Three titles that *did* join distinct outcomes were split: 2.2 → 2.2a/2.2b,
+2.14 → 2.14a/b/c, and 3.3 → 3.3a/b/c. In 3.3 the split matters beyond tidiness:
+3.3a is a standalone bug fix (design D8) that is independently valuable and
+independently testable, and burying it inside the manifest rewrite would have
+hidden it from review.

@@ -1,11 +1,48 @@
 {
-  "blocking_findings": [],
+  "schema_version": 4,
   "change_id": "add-gx10-backup-scheme",
-  "cli_review_enabled": true,
-  "current_phase": "PLAN",
-  "error": null,
-  "escalation_reason": null,
+  "current_phase": "GATEKEEPER",
+  "iteration": 0,
+  "total_iterations": 0,
+  "max_phase_iterations": 3,
   "findings_trend": [],
+  "blocking_findings": [],
+  "vendor_availability": {},
+  "packages_status": {},
+  "package_authors": {},
+  "implementation_strategy": {},
+  "memory_ids": [],
+  "handoff_ids": [
+    "gatekeeper-1"
+  ],
+  "phase_history": [
+    {
+      "at": "2026-08-21T09:50:01.055881+00:00",
+      "outcome": "escalate",
+      "phase": "GATEKEEPER"
+    },
+    {
+      "at": "2026-08-21T11:46:25.179276+00:00",
+      "note": "Operator continued. Resolution per GATEKEEPER recommendation: run PLAN to produce proposal/specs/tasks, then re-run GATEKEEPER against real artifacts before IMPLEMENT.",
+      "outcome": "resolved",
+      "phase": "ESCALATE"
+    },
+    {
+      "at": "2026-08-21T12:50:41.594405+00:00",
+      "phase": "PLAN",
+      "outcome": "created",
+      "note": "Gate 1 (Approach C) and Gate 2 (approve) both passed. Artifacts validated: openspec strict, work-packages VALID, parallel zones no overlap."
+    }
+  ],
+  "last_handoff_id": "gatekeeper-1",
+  "started_at": "",
+  "phase_started_at": "",
+  "previous_phase": "PLAN",
+  "escalation_reason": null,
+  "val_review_enabled": false,
+  "cli_review_enabled": true,
+  "error": null,
+  "phase_archetype": "architect",
   "force": false,
   "gate_signals": {
     "external_dep_count": 0,
@@ -19,36 +56,5 @@
     "package_count": 0,
     "total_loc_estimate": null
   },
-  "gate_verdict": null,
-  "handoff_ids": [
-    "gatekeeper-1"
-  ],
-  "implementation_strategy": {},
-  "iteration": 0,
-  "last_handoff_id": "gatekeeper-1",
-  "max_phase_iterations": 3,
-  "memory_ids": [],
-  "package_authors": {},
-  "packages_status": {},
-  "phase_archetype": "architect",
-  "phase_history": [
-    {
-      "at": "2026-08-21T09:50:01.055881+00:00",
-      "outcome": "escalate",
-      "phase": "GATEKEEPER"
-    },
-    {
-      "at": "2026-08-21T11:46:25.179276+00:00",
-      "note": "Operator continued. Resolution per GATEKEEPER recommendation: run PLAN to produce proposal/specs/tasks, then re-run GATEKEEPER against real artifacts before IMPLEMENT.",
-      "outcome": "resolved",
-      "phase": "ESCALATE"
-    }
-  ],
-  "phase_started_at": "",
-  "previous_phase": "GATEKEEPER",
-  "schema_version": 4,
-  "started_at": "",
-  "total_iterations": 0,
-  "val_review_enabled": false,
-  "vendor_availability": {}
+  "gate_verdict": null
 }
