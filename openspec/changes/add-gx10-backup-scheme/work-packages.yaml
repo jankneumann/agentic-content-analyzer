@@ -1,0 +1,563 @@
+schema_version: 1
+feature:
+  id: add-gx10-backup-scheme
+  title: Scheduled off-site backup scheme for the gx-10 self-hosted migration
+  plan_revision: 1
+  created_by: claude
+  created_at: '2026-08-21T00:00:00Z'
+contracts:
+  revision: 1
+  openapi:
+    primary: openspec/contracts/content-workflows/openapi/v1.yaml
+    files:
+    - openspec/contracts/content-workflows/openapi/v1.yaml
+  generated:
+    pydantic_dir: src/contracts
+defaults:
+  priority: 5
+  lock_ttl_minutes: 180
+  timeout_minutes: 180
+  retry_budget: 1
+  verification_tier_required: B
+  min_trust_level: 4
+packages:
+- package_id: wp-contracts
+  title: Publish backup manifest and alert-envelope contracts
+  task_type: implement
+  description: Land the manifest and system_check alert JSON Schemas in the canonical contracts tree and
+    add schema conformance tests. Runs first so downstream packages code against a fixed shape.
+  role: backend-engineer
+  priority: 1
+  depends_on: []
+  locks:
+    files:
+    - openspec/contracts/backup/schemas/backup-manifest.schema.json
+    - openspec/contracts/backup/events/backup-freshness-alert.schema.json
+    keys:
+    - contract:backup-manifest
+    - contract:backup-freshness-alert
+    ttl_minutes: 90
+    reason: Contract shape is the coordination boundary for all other packages.
+  scope:
+    write_allow:
+    - openspec/contracts/backup/**
+    - tests/contract/test_backup_contracts.py
+    read_allow:
+    - src/**
+    - tests/**
+    - openspec/**
+    deny:
+    - src/config/**
+    - src/api/**
+    - src/cli/**
+  worktree:
+    name: wp-contracts
+    mode: isolated
+  metadata:
+    loc_estimate: 200
+    complexity: low
+    package_kind: data_model
+  inputs:
+    tasks: []
+  verification:
+    tier_required: C
+    steps:
+    - name: contract-tests
+      kind: command
+      command: pytest tests/contract/test_backup_contracts.py -m contract --no-cov
+      expect_exit_code: 0
+      evidence:
+        artifacts: []
+        result_keys:
+        - test_count
+        - pass_count
+  timeout_minutes: 90
+  retry_budget: 1
+  min_trust_level: 4
+  outputs:
+    result_keys:
+    - files_modified
+    - test_count
+    - pass_count
+- package_id: wp-settings
+  title: Provider-neutral backup target settings and secret hygiene
+  task_type: implement
+  description: Add backup_s3_* settings with SecretStr credentials, the deprecation mapper for railway_minio_*,
+    and close the two masking gaps that would otherwise leave the new credentials less protected than
+    the old ones.
+  role: backend-engineer
+  priority: 1
+  depends_on:
+  - wp-contracts
+  locks:
+    files:
+    - src/config/settings.py
+    - src/config/secrets.py
+    - src/config/profiles.py
+    keys:
+    - env:backup-s3-target
+    - feature:gx10-backup:settings
+    ttl_minutes: 180
+    reason: Settings surface is read by every other package.
+  scope:
+    write_allow:
+    - src/config/settings.py
+    - src/config/secrets.py
+    - src/config/profiles.py
+    - profiles/base.yaml
+    - profiles/local.yaml
+    - .secrets.yaml.example
+    - scripts/check-profile-secrets.sh
+    - tests/config/**
+    - tests/test_config/**
+    read_allow:
+    - src/**
+    - tests/**
+    - openspec/**
+    - profiles/**
+    deny:
+    - src/api/**
+    - src/cli/**
+    - src/queue/**
+    - src/services/**
+  worktree:
+    name: wp-settings
+    mode: isolated
+  metadata:
+    loc_estimate: 450
+    complexity: medium
+    package_kind: config
+  inputs:
+    tasks:
+    - '1.1'
+    - '1.2'
+    - '1.3'
+    - '1.4'
+    - '1.5'
+    - '1.6'
+    - '1.7'
+    - '1.8'
+    - '1.9'
+    - '1.10'
+  verification:
+    tier_required: B
+    steps:
+    - name: settings-tests
+      kind: command
+      command: pytest tests/config tests/test_config -v
+      expect_exit_code: 0
+      evidence:
+        artifacts: []
+        result_keys:
+        - test_count
+        - pass_count
+    - name: secret-hygiene
+      kind: command
+      command: bash scripts/check-profile-secrets.sh
+      expect_exit_code: 0
+      evidence:
+        artifacts: []
+        result_keys:
+        - test_count
+        - pass_count
+  timeout_minutes: 180
+  retry_budget: 1
+  min_trust_level: 4
+  outputs:
+    result_keys:
+    - files_modified
+    - test_count
+    - pass_count
+- package_id: wp-backup-cli
+  title: Backup engine, store adapters, and aca backup command group
+  task_type: implement
+  description: Python-orchestrated backup engine shelling out to native tools per store, age encryption
+    in the pipe, manifest writing, and the run/verify/list command surface. Subprocess boundaries are
+    mocked in tests; no live data store is contacted.
+  role: backend-engineer
+  priority: 2
+  depends_on:
+  - wp-settings
+  locks:
+    files:
+    - src/cli/backup_commands.py
+    - src/cli/app.py
+    keys:
+    - feature:gx10-backup:engine
+    - feature:gx10-backup:cli
+    ttl_minutes: 240
+    reason: New backup engine and CLI group ownership.
+  scope:
+    write_allow:
+    - src/services/backup/**
+    - src/cli/backup_commands.py
+    - src/cli/app.py
+    - tests/cli/test_backup_commands.py
+    - tests/test_services/test_backup_engine.py
+    - tests/test_services/test_backup_stores.py
+    read_allow:
+    - src/**
+    - tests/**
+    - openspec/**
+    deny:
+    - src/api/**
+    - src/queue/**
+    - src/cli/restore_commands.py
+    - src/config/**
+  worktree:
+    name: wp-backup-cli
+    mode: isolated
+  metadata:
+    loc_estimate: 1100
+    complexity: high
+    package_kind: algorithm
+  inputs:
+    tasks:
+    - '2.1'
+    - '2.2'
+    - '2.3'
+    - '2.4'
+    - '2.5'
+    - '2.6'
+    - '2.7'
+    - '2.8'
+    - '2.9'
+    - '2.10'
+    - '2.11'
+    - '2.12'
+    - '2.13'
+    - '2.14'
+    - '2.15'
+  verification:
+    tier_required: B
+    steps:
+    - name: backup-tests
+      kind: command
+      command: pytest tests/cli/test_backup_commands.py tests/test_services/test_backup_engine.py tests/test_services/test_backup_stores.py
+        -v
+      expect_exit_code: 0
+      evidence:
+        artifacts: []
+        result_keys:
+        - test_count
+        - pass_count
+  timeout_minutes: 240
+  retry_budget: 1
+  min_trust_level: 4
+  outputs:
+    result_keys:
+    - files_modified
+    - test_count
+    - pass_count
+- package_id: wp-health-alerts
+  title: Manifest-derived freshness check and durable system_check alerting
+  task_type: implement
+  description: Rewrite the freshness check against the bucket manifest, de-gate it from the railway provider,
+    fix the unbound event-loop binding and the false warning text, widen the alert envelope for a non-operation
+    source, and emit idempotently from worker maintenance.
+  role: backend-engineer
+  priority: 2
+  depends_on:
+  - wp-settings
+  locks:
+    files:
+    - src/api/health_routes.py
+    - src/contracts/workflow_alert_models.py
+    - src/queue/worker.py
+    keys:
+    - api:GET /ready
+    - contract:workflow-alert-envelope
+    ttl_minutes: 240
+    reason: Health route and alert envelope contract ownership.
+  scope:
+    write_allow:
+    - src/api/health_routes.py
+    - src/contracts/workflow_alert_models.py
+    - src/queue/worker.py
+    - tests/api/test_health_routes.py
+    - tests/unit/test_workflow_alert_models.py
+    - tests/unit/test_backup_freshness_alert.py
+    read_allow:
+    - src/**
+    - tests/**
+    - openspec/**
+    deny:
+    - src/cli/**
+    - src/config/**
+    - src/services/backup/**
+  worktree:
+    name: wp-health-alerts
+    mode: isolated
+  metadata:
+    loc_estimate: 800
+    complexity: high
+    package_kind: integration
+  inputs:
+    tasks:
+    - '3.1'
+    - '3.2'
+    - '3.3'
+    - '3.4'
+    - '3.5'
+    - '3.6'
+    - '3.7'
+    - '3.8'
+    - '3.9'
+    - '3.10'
+  verification:
+    tier_required: B
+    steps:
+    - name: health-alert-tests
+      kind: command
+      command: pytest tests/api/test_health_routes.py tests/unit/test_workflow_alert_models.py tests/unit/test_backup_freshness_alert.py
+        -v
+      expect_exit_code: 0
+      evidence:
+        artifacts: []
+        result_keys:
+        - test_count
+        - pass_count
+    - name: audit-ordering-regression
+      kind: command
+      command: pytest tests/api/test_audit_ordering.py -v
+      expect_exit_code: 0
+      evidence:
+        artifacts: []
+        result_keys:
+        - test_count
+        - pass_count
+  timeout_minutes: 240
+  retry_budget: 1
+  min_trust_level: 4
+  outputs:
+    result_keys:
+    - files_modified
+    - test_count
+    - pass_count
+- package_id: wp-restore-cli
+  title: Endpoint-agnostic restore and three credential-safety fixes
+  task_type: implement
+  description: Repoint restore-from-cloud at the provider-neutral settings, generalize artifact discovery
+    off the railway- filename prefix, add age decryption, and fix credentials-in-argv, unmasked target_db
+    output, and the naive string-equality live-database guard.
+  role: backend-engineer
+  priority: 2
+  depends_on:
+  - wp-settings
+  locks:
+    files:
+    - src/cli/restore_commands.py
+    keys:
+    - feature:gx10-backup:restore
+    ttl_minutes: 180
+    reason: Restore command ownership.
+  scope:
+    write_allow:
+    - src/cli/restore_commands.py
+    - tests/cli/test_restore_from_cloud.py
+    read_allow:
+    - src/**
+    - tests/**
+    - openspec/**
+    - docs/**
+    deny:
+    - src/api/**
+    - src/queue/**
+    - src/config/**
+    - src/services/backup/**
+  worktree:
+    name: wp-restore-cli
+    mode: isolated
+  metadata:
+    loc_estimate: 600
+    complexity: medium
+    package_kind: algorithm
+  inputs:
+    tasks:
+    - '4.1'
+    - 4.1b
+    - '4.2'
+    - '4.3'
+    - '4.4'
+    - '4.5'
+    - '4.6'
+    - '4.7'
+    - '4.8'
+    - '4.9'
+    - '4.10'
+    - '4.11'
+  verification:
+    tier_required: B
+    steps:
+    - name: restore-tests
+      kind: command
+      command: pytest tests/cli/test_restore_from_cloud.py -v
+      expect_exit_code: 0
+      evidence:
+        artifacts: []
+        result_keys:
+        - test_count
+        - pass_count
+  timeout_minutes: 180
+  retry_budget: 1
+  min_trust_level: 4
+  outputs:
+    result_keys:
+    - files_modified
+    - test_count
+    - pass_count
+- package_id: wp-deploy-assets
+  title: Systemd units, lifecycle retention, and the restore runbook
+  task_type: implement
+  description: Host scheduling units, committed tiered retention rules with a dry-run-by-default applier,
+    the gx-10 multi-store restore runbook leading with decryption-identity recovery, and the pg_cron dead-job
+    gotcha entry.
+  role: backend-engineer
+  priority: 3
+  depends_on:
+  - wp-backup-cli
+  - wp-restore-cli
+  locks:
+    files:
+    - deploy/backup/aca-backup.service
+    - deploy/backup/aca-backup.timer
+    - scripts/backup_retention.py
+    keys:
+    - feature:gx10-backup:deploy
+    - flag:backup.retention
+    ttl_minutes: 180
+    reason: Deployment asset and retention policy ownership.
+  scope:
+    write_allow:
+    - deploy/backup/**
+    - scripts/backup_retention.py
+    - tests/test_scripts/test_backup_retention.py
+    - docs/BACKUP_RESTORE.md
+    - docs/SYNC_DOWN.md
+    - docs/SETUP.md
+    - docs/GOTCHAS.md
+    read_allow:
+    - src/**
+    - tests/**
+    - openspec/**
+    - docs/**
+    - railway/**
+    deny:
+    - src/**
+    - railway/postgres/**
+  worktree:
+    name: wp-deploy-assets
+    mode: isolated
+  metadata:
+    loc_estimate: 700
+    complexity: medium
+    package_kind: config
+  inputs:
+    tasks:
+    - '5.1'
+    - '5.2'
+    - '5.3'
+    - '5.4'
+    - '5.5'
+    - '5.6'
+    - '5.7'
+    - '5.8'
+    - '5.9'
+    - '5.10'
+  verification:
+    tier_required: B
+    steps:
+    - name: retention-tests
+      kind: command
+      command: pytest tests/test_scripts/test_backup_retention.py -v
+      expect_exit_code: 0
+      evidence:
+        artifacts: []
+        result_keys:
+        - test_count
+        - pass_count
+  timeout_minutes: 180
+  retry_budget: 1
+  min_trust_level: 4
+  outputs:
+    result_keys:
+    - files_modified
+    - test_count
+    - pass_count
+- package_id: wp-integration
+  title: Round-trip verification and full-suite integration
+  task_type: integrate
+  description: Containerized S3-compatible fixture, the seed-backup-restore-compare round trip proving
+    a backup is actually restorable, then merge and run the full suite.
+  role: backend-engineer
+  priority: 4
+  depends_on:
+  - wp-contracts
+  - wp-settings
+  - wp-backup-cli
+  - wp-health-alerts
+  - wp-restore-cli
+  - wp-deploy-assets
+  locks:
+    files:
+    - docker-compose.yml
+    - tests/integration/test_backup_round_trip.py
+    keys:
+    - feature:gx10-backup:roundtrip
+    ttl_minutes: 240
+    reason: Compose stack and integration suite ownership at merge time.
+  scope:
+    write_allow:
+    - docker-compose.yml
+    - tests/integration/test_backup_round_trip.py
+    - tests/integration/conftest.py
+    read_allow:
+    - src/**
+    - tests/**
+    - openspec/**
+    - docs/**
+    - deploy/**
+    deny:
+    - railway/postgres/**
+  worktree:
+    name: wp-integration
+    mode: isolated
+  metadata:
+    loc_estimate: 500
+    complexity: high
+    package_kind: integration
+  inputs:
+    tasks:
+    - '6.1'
+    - '6.2'
+    - '6.3'
+    - '6.4'
+  verification:
+    tier_required: A
+    steps:
+    - name: round-trip
+      kind: command
+      command: pytest tests/integration/test_backup_round_trip.py -v
+      expect_exit_code: 0
+      evidence:
+        artifacts: []
+        result_keys:
+        - test_count
+        - pass_count
+    - name: full-suite
+      kind: command
+      command: pytest
+      expect_exit_code: 0
+      evidence:
+        artifacts: []
+        result_keys:
+        - test_count
+        - pass_count
+  timeout_minutes: 240
+  retry_budget: 1
+  min_trust_level: 4
+  outputs:
+    result_keys:
+    - files_modified
+    - test_count
+    - pass_count

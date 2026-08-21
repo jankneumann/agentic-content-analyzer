@@ -1,0 +1,274 @@
+# Backup and Restore
+
+## ADDED Requirements
+
+### Requirement: Provider-Neutral Backup Target Configuration
+
+The system SHALL resolve backup destination settings from a provider-neutral
+`backup_s3_*` namespace that works unchanged against Cloudflare R2, AWS S3, and
+any S3-compatible endpoint, and SHALL be read by both the backup and restore
+paths.
+
+#### Scenario: Backup target settings are available
+- **GIVEN** a profile declaring `backup_s3_endpoint`, `backup_s3_bucket`, `backup_s3_region`, `backup_s3_access_key_id`, and `backup_s3_secret_access_key`
+- **WHEN** settings are resolved
+- **THEN** each value SHALL be exposed on `Settings`
+- **AND** `backup_s3_access_key_id` and `backup_s3_secret_access_key` SHALL be typed as `SecretStr`
+- **AND** `backup_s3_prefix` SHALL default to `aca` when not supplied
+
+#### Scenario: Cloudflare R2 endpoint requires no protocol change
+- **GIVEN** `backup_s3_endpoint` is set to an `https://<account>.r2.cloudflarestorage.com` URL
+- **AND** `backup_s3_region` is set to `auto`
+- **WHEN** the backup or restore path builds its storage invocation
+- **THEN** the same code path SHALL be used as for AWS S3
+- **AND** no R2-specific branch SHALL be required
+
+#### Scenario: Deprecated MinIO settings still resolve
+- **GIVEN** a configuration setting only `railway_minio_endpoint`, `minio_root_user`, `minio_root_password`, and `railway_backup_bucket`
+- **AND** no `backup_s3_*` field is explicitly set
+- **WHEN** settings are resolved
+- **THEN** the deprecated values SHALL be mapped onto the corresponding `backup_s3_*` fields
+- **AND** exactly one deprecation warning SHALL be logged naming the replacement fields
+
+#### Scenario: New settings win over deprecated ones
+- **GIVEN** both `backup_s3_endpoint` and `railway_minio_endpoint` are explicitly set to different values
+- **WHEN** settings are resolved
+- **THEN** `backup_s3_endpoint` SHALL retain its explicitly-set value
+- **AND** the deprecated value SHALL NOT overwrite it
+
+#### Scenario: Backup credentials are masked in diagnostics
+- **GIVEN** `backup_s3_access_key_id` and `backup_s3_secret_access_key` are set
+- **WHEN** any settings dump, log line, or CLI diagnostic renders them
+- **THEN** both values SHALL be masked
+- **AND** the masking rule SHALL match identifier-suffixed names such as `*_ACCESS_KEY_ID`
+
+### Requirement: Multi-Store Scheduled Backup
+
+The system SHALL provide an `aca backup run` command that captures every
+durable data store to the configured backup target in a single invocation, and
+SHALL report per-store outcomes rather than a single aggregate status.
+
+#### Scenario: PostgreSQL is captured as a portable dump
+- **GIVEN** a reachable PostgreSQL database
+- **WHEN** `aca backup run` executes
+- **THEN** a `pg_dump` in custom format SHALL be produced
+- **AND** the resulting artifact SHALL be uploaded under the configured prefix
+- **AND** the artifact key SHALL embed an ISO-8601 UTC timestamp
+
+#### Scenario: Graph database is captured per configured provider
+- **GIVEN** `graphdb_provider` is `neo4j`
+- **WHEN** `aca backup run` executes
+- **THEN** a Neo4j database dump SHALL be produced and uploaded
+- **AND** GIVEN `graphdb_provider` is `falkordb`, an RDB snapshot SHALL be produced and uploaded instead
+
+#### Scenario: Artifact directories are captured wholesale
+- **GIVEN** local artifact directories for the `images`, `podcasts`, and `audio-digests` buckets
+- **WHEN** `aca backup run` executes
+- **THEN** the directory contents SHALL be synchronized to the backup target
+- **AND** files present on disk but unreferenced by any database row SHALL be included
+
+#### Scenario: OpenBao is captured when configured
+- **GIVEN** OpenBao is configured and reachable
+- **WHEN** `aca backup run` executes
+- **THEN** a raft snapshot SHALL be produced and uploaded
+- **AND** GIVEN OpenBao is not configured, the store SHALL be reported as skipped rather than failed
+
+#### Scenario: A failing store does not silently pass
+- **GIVEN** one configured store fails to produce an artifact
+- **WHEN** `aca backup run` completes
+- **THEN** that store SHALL be recorded with a failed outcome
+- **AND** the command SHALL exit non-zero
+- **AND** stores that succeeded SHALL still be recorded as succeeded
+
+#### Scenario: Backup makes no production mutations
+- **GIVEN** any invocation of `aca backup run`
+- **WHEN** the command executes
+- **THEN** it SHALL perform only read operations against source data stores
+- **AND** it SHALL NOT delete any object from the backup target
+
+### Requirement: Client-Side Backup Encryption
+
+The system SHALL encrypt every backup artifact with `age` before upload, such
+that the backup target never receives plaintext.
+
+#### Scenario: Artifacts are encrypted before leaving the host
+- **GIVEN** `backup_age_recipient` is configured
+- **WHEN** any store artifact is produced
+- **THEN** it SHALL be piped through `age` encryption before upload
+- **AND** the uploaded object SHALL carry an encrypted-artifact suffix
+
+#### Scenario: Missing recipient key aborts before any upload
+- **GIVEN** `backup_age_recipient` is not configured
+- **WHEN** `aca backup run` executes
+- **THEN** the command SHALL abort with a non-zero exit
+- **AND** no artifact SHALL be uploaded
+- **AND** the error SHALL name the missing setting
+
+#### Scenario: Decryption capability is verified, not assumed
+- **GIVEN** an identity key is available to `aca backup verify`
+- **WHEN** the verify command runs
+- **THEN** it SHALL decrypt a known canary object using that identity
+- **AND** GIVEN decryption fails, the command SHALL report a failed verification
+
+### Requirement: Backup Run Manifest
+
+Each successful backup run SHALL write a manifest object to the backup target
+describing that run, and the manifest SHALL be the authoritative record of
+backup freshness.
+
+#### Scenario: Manifest records the run
+- **GIVEN** a backup run completes
+- **WHEN** the manifest is written
+- **THEN** it SHALL record the run completion timestamp in UTC
+- **AND** it SHALL record per-store outcome, artifact key, byte size, and checksum
+- **AND** it SHALL be written to a stable, well-known key under the configured prefix
+
+#### Scenario: Manifest contains no credentials
+- **GIVEN** a written manifest
+- **WHEN** its contents are inspected
+- **THEN** it SHALL NOT contain access keys, secret keys, or any URL embedding credentials
+
+#### Scenario: Manifest is not written for a failed run
+- **GIVEN** a backup run in which a required store failed
+- **WHEN** the run terminates
+- **THEN** the previous manifest SHALL NOT be overwritten with a failed run's timestamp
+
+### Requirement: Backup Freshness Monitoring
+
+The system SHALL determine backup freshness from the backup target's manifest
+rather than from database-local scheduler history, SHALL apply this check
+independently of the configured database provider, and SHALL NOT allow backup
+staleness to affect service readiness.
+
+#### Scenario: Freshness is derived from the manifest
+- **GIVEN** a manifest exists at the well-known key
+- **WHEN** the readiness endpoint is queried
+- **THEN** the reported backup status SHALL be derived from the manifest's completion timestamp
+- **AND** the status SHALL be `ok` when the age is within the configured staleness threshold
+- **AND** the status SHALL be `stale` when the age exceeds it
+
+#### Scenario: Freshness check is provider-independent
+- **GIVEN** `database_provider` is any value other than `railway`
+- **AND** backup monitoring is enabled
+- **WHEN** the readiness endpoint is queried
+- **THEN** the backup status SHALL still be evaluated and reported
+
+#### Scenario: Absent manifest is distinguishable from an error
+- **GIVEN** no manifest exists at the well-known key
+- **WHEN** the readiness endpoint is queried
+- **THEN** the reported status SHALL be `no_history`
+- **AND** GIVEN the backup target is unreachable, the reported status SHALL be `unknown`
+
+#### Scenario: Stale backup does not affect readiness
+- **GIVEN** the backup status is `stale`
+- **WHEN** the readiness endpoint is queried
+- **THEN** the response status code SHALL remain unchanged by the backup status
+- **AND** overall readiness SHALL NOT be reported as not-ready on account of backup staleness
+
+#### Scenario: Freshness check survives a broken database layer
+- **GIVEN** the database health check raises before the backup check executes
+- **WHEN** the readiness endpoint is queried
+- **THEN** the backup status SHALL still be evaluated
+- **AND** the response SHALL NOT fail due to an unbound local variable
+
+#### Scenario: Freshness check is bounded and non-blocking
+- **GIVEN** the backup target is slow to respond
+- **WHEN** the readiness endpoint is queried
+- **THEN** the backup check SHALL be time-bounded by the configured health-check timeout
+- **AND** it SHALL NOT block the event loop
+
+### Requirement: Durable Backup Freshness Alerting
+
+The system SHALL emit backup freshness alerts over the durable out-of-band alert
+path, SHALL emit them from periodic worker maintenance rather than from the
+readiness endpoint, and SHALL NOT emit duplicate alerts for one check window.
+
+#### Scenario: Stale backup raises a durable alert
+- **GIVEN** the backup manifest is older than the staleness threshold
+- **WHEN** periodic worker maintenance evaluates backup freshness
+- **THEN** an alert envelope SHALL be enqueued on the durable delivery path
+- **AND** its diagnostic code SHALL identify the backup staleness condition
+
+#### Scenario: System-check alerts carry no operation identity
+- **GIVEN** a backup freshness alert envelope
+- **WHEN** it is constructed
+- **THEN** its source kind SHALL identify a system check
+- **AND** operation-scoped fields SHALL be omitted rather than populated with synthesized values
+- **AND** its diagnostic URL SHALL resolve to a route that exists
+
+#### Scenario: Readiness polling does not multiply alerts
+- **GIVEN** the readiness endpoint is polled repeatedly while a backup is stale
+- **WHEN** each poll is served
+- **THEN** no alert SHALL be emitted by the readiness path
+- **AND** at most one alert SHALL be emitted per check window by worker maintenance
+
+#### Scenario: Alerts never carry credentials
+- **GIVEN** any emitted backup alert envelope
+- **WHEN** its payload is inspected
+- **THEN** it SHALL NOT contain access keys, secret keys, bucket credentials, or database URLs
+
+### Requirement: Provider-Side Backup Retention
+
+Backup retention SHALL be enforced by backup-target lifecycle rules declared as
+committed configuration, and no scheduled process SHALL delete backup objects
+unattended.
+
+#### Scenario: Tiered retention is declared as configuration
+- **GIVEN** the committed retention configuration
+- **WHEN** it is read
+- **THEN** it SHALL declare 7 daily, 4 weekly, and 12 monthly retention tiers
+- **AND** it SHALL be expressible for both Cloudflare R2 and AWS S3
+
+#### Scenario: Applying retention is dry-run by default
+- **GIVEN** the retention applier is invoked without an explicit apply flag
+- **WHEN** it runs
+- **THEN** it SHALL report the lifecycle rules it would set
+- **AND** it SHALL NOT modify the backup target
+
+#### Scenario: No unattended deletion path exists
+- **GIVEN** the scheduled backup unit
+- **WHEN** it executes
+- **THEN** it SHALL NOT invoke any object-deletion operation against the backup target
+
+### Requirement: Scheduled Execution On The Host
+
+The system SHALL provide host-level scheduling units that invoke the backup
+command, and scheduling SHALL NOT depend on database extensions or superuser
+privileges.
+
+#### Scenario: Scheduling units are provided
+- **GIVEN** the gx-10 deployment assets
+- **WHEN** they are inspected
+- **THEN** a service unit invoking the backup command SHALL be present
+- **AND** a timer unit declaring the schedule SHALL be present
+
+#### Scenario: Scheduling requires no database privileges
+- **GIVEN** the scheduled backup path
+- **WHEN** it executes
+- **THEN** it SHALL NOT require a database scheduler extension
+- **AND** it SHALL NOT require database superuser privileges
+- **AND** it SHALL NOT require any binary to be installed inside the database container
+
+#### Scenario: Preflight names missing prerequisites
+- **GIVEN** a required host binary is absent
+- **WHEN** `aca backup verify` runs
+- **THEN** it SHALL report each missing binary by name
+- **AND** it SHALL exit non-zero without attempting a backup
+
+### Requirement: Multi-Store Restore
+
+The system SHALL document and support restoring every backed-up store from the
+backup target, and restore procedures SHALL preserve existing safeguards against
+overwriting live databases.
+
+#### Scenario: Restore is possible for each backed-up store
+- **GIVEN** a backup run that captured PostgreSQL, the graph database, artifacts, and secrets
+- **WHEN** the restore runbook is followed
+- **THEN** it SHALL provide an ordered procedure for each captured store
+- **AND** it SHALL begin with recovery of the decryption identity
+
+#### Scenario: Round-trip restore is verified by test
+- **GIVEN** a containerized S3-compatible backup target
+- **WHEN** a backup is produced and then restored into a scratch database
+- **THEN** the restored data SHALL match the source data
+- **AND** the verification SHALL execute without contacting any production system
