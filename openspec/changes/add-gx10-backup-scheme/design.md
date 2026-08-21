@@ -106,6 +106,22 @@ change and is treated as such:
   known-good canary object; a backup scheme that cannot decrypt is not a backup.
 - The restore runbook opens with key recovery, not with `pg_restore`.
 
+**Canary provenance.** The canary is not a hand-placed artifact — an artifact
+nobody re-creates is an artifact that silently ages out under the lifecycle rules
+in D10. Every successful `aca backup run` writes
+`<prefix>/canary/latest.age`: a small, fixed, non-sensitive payload encrypted to
+`backup_age_recipient` in the same pipeline as every other artifact. `verify`
+downloads that object and decrypts it with `backup_age_identity_path`. Because it
+is produced by the same code path as the real artifacts, a canary that decrypts is
+evidence about the real artifacts and not about a special case. `verify` reports
+`no_canary` — distinct from a decryption failure — when the object is absent, so a
+never-run backup is not misreported as a broken key.
+
+**Identity availability.** The gx-10 backup host needs only the *recipient*
+(public) key to run a backup. `backup_age_identity_path` is required by `verify`
+and by restore, not by `run`. This is deliberate: a host compromised through the
+backup timer yields no ability to decrypt existing backups.
+
 **Alternatives rejected.** SSE-only (provider and any credential holder read PII).
 GPG (heavier key handling for no additional guarantee here).
 
@@ -148,6 +164,17 @@ Alert emission lives in the worker's periodic maintenance loop, alongside
 produce one alert per probe — an alert storm that trains operators to ignore the
 channel. Emission must also be idempotent per check window so a flapping probe
 cannot multiply alerts.
+
+**Definition of "check window".** Idempotency is keyed, not timed by wall clock.
+The emitter derives the alert's `event_key` from the condition plus the manifest
+generation it observed — `system_check:backup_stale:<manifest_completed_at>` — and
+the durable path's existing exactly-once semantics suppress the duplicate. The
+consequences are the ones intended: while a backup stays stale the manifest
+timestamp does not move, so exactly one alert exists no matter how often
+maintenance runs; and when a *new* backup lands and is itself stale, the timestamp
+moves and a new alert is emitted rather than being swallowed by the old one. For
+`backup_no_history` there is no manifest timestamp, so the key uses the UTC date —
+one alert per day until a backup lands.
 
 **Consequences.** Freshness alerting requires a running worker. That is correct:
 if the worker is down the system has a larger problem, and the dead-man's-switch
@@ -226,6 +253,145 @@ provider-aware, and the committed rules are the source of truth that the runbook
 points at. Object Lock / versioning is recommended for S3 and noted for R2 but
 not required by this change.
 
+### D11 — The manifest is the one plaintext object, and the app tier gets a read-only credential
+
+**Decision.** `<prefix>/manifest/latest.json` is written **unencrypted**. It is
+the single, explicit exception to D4. The API and worker processes read it with a
+**read-only, prefix-scoped** backup-target credential and are **never** given
+`backup_age_identity_path`.
+
+**Rationale.** D4 and D7 pull in opposite directions and the tension has to be
+resolved in one place rather than discovered during implementation. If the
+manifest were encrypted, every process that reports backup freshness — the API
+serving `/ready`, and the worker emitting alerts — would need the identity key.
+That would put the key that decrypts every backup into the two most
+network-exposed processes in the system, to answer a question ("when did a backup
+last land?") that carries no PII. The blast radius of that trade is much larger
+than the information the manifest exposes.
+
+The exception is safe only because the manifest is *constructed* to be safe:
+object keys, byte sizes, checksums, timestamps, and per-store outcomes. The
+requirement "Manifest contains no credentials" is therefore not a hygiene nicety
+but the precondition that makes this decision valid, and it is pinned by test
+(task 2.8).
+
+**Consequences.**
+- Two credentials exist, not one. gx-10's backup timer holds a write credential;
+  the app tier holds a read-only credential scoped to `<prefix>/manifest/*`.
+- **This is a deployment split, not a settings split.** Both processes read the
+  same `backup_s3_access_key_id` / `backup_s3_secret_access_key` names; the
+  *values* differ per environment. No `backup_s3_readonly_*` settings are added.
+  Adding a parallel credential namespace would mean every reader had to choose
+  between two, and the wrong choice fails open — the app tier would keep working
+  with a write credential and nobody would notice. Separation is enforced where it
+  is actually enforceable: at the provider, when the runbook issues the keys.
+- An attacker with the app tier's credential learns backup *cadence* and object
+  names — not backup *contents*. That is the accepted disclosure.
+- The canary (D4) stays encrypted, so `verify` — which does hold the identity —
+  remains the only path that proves decryptability.
+
+**Alternatives rejected.** Encrypting the manifest and giving the app tier the
+identity (largest blast radius, for a status timestamp). Reporting freshness from
+`HEAD` on the newest artifact key rather than a manifest (no per-store outcomes,
+and a partially-failed run would read as a healthy backup — the exact failure mode
+D7 exists to eliminate).
+
+### D12 — The live-database guard compares connection identity, not URL text
+
+**Decision.** `restore_commands.py:110-120` currently compares
+`str(local_url).strip() == str(railway_url).strip()`. It is replaced by a
+comparison of a normalized tuple parsed from each URL:
+`(lowercased host, effective port, database name)`, where the effective port is
+the scheme's default (5432) when the URL omits it, and the database name is the
+path with its leading slash removed.
+
+**Rationale.** "Normalized identity" would otherwise be an ambiguous instruction
+with several defensible readings, and the guard is a safety control — an
+implementer guessing at its semantics is exactly the wrong outcome. The listed
+components are the ones that determine *which database is written to*.
+
+**Explicitly excluded from the comparison**, each for a reason:
+- **Username and password** — the same database reached as two different roles is
+  still the same database, and including credentials would let a URL that differs
+  only by user slip past the guard.
+- **Query parameters** (`?sslmode=`, `?options=`) — connection transport, not
+  identity.
+- **DNS resolution** — the guard does **not** resolve hostnames. Resolution is a
+  network call on a safety path, it varies with split-horizon DNS, and it would
+  make the guard's verdict depend on the resolver's mood. Two different hostnames
+  that resolve to one server are not caught; that is the accepted limit, and it is
+  strictly better than today's exact-string comparison.
+
+**Consequences.** The guard becomes non-trivially testable — the spec scenario
+"Live database safeguard resists URL variation" is satisfiable with cases like a
+default-port omission and a case-differing host. The `--allow-remote-target`
+opt-in is unchanged and remains the only override.
+
+### D13 — The scheduled unit receives its configuration the same way the app does
+
+**Decision.** `deploy/backup/aca-backup.service` runs `aca backup run` as a
+dedicated non-login `aca-backup` user with `PROFILE` set and an
+`EnvironmentFile=` pointing at a root-owned, `0600` env file holding the backup
+target's write credential and `BACKUP_AGE_RECIPIENT`. It does **not** re-implement
+configuration resolution, and it does **not** carry the age identity.
+
+**Rationale.** The whole argument for Approach C over Approach A is that backup
+configuration cannot drift from application configuration. A systemd unit that
+sourced its own separate settings would reintroduce exactly the drift the approach
+was chosen to prevent — and the failure it produces is silent, because a backup
+pointed at the wrong bucket still exits zero.
+
+**Consequences.**
+- Where the deployment already uses OpenBao, the unit may instead resolve secrets
+  through the app's existing OpenBao path; the env file is the floor, not the
+  ceiling. Either way the secret never appears in the unit file, which is
+  world-readable.
+- `aca backup verify` is **not** wired to the timer, because it needs the identity
+  key and `run` deliberately does not have it. Verify is an operator-invoked
+  command, and the runbook schedules it as a periodic manual restore drill.
+- The unit's failure path matters as much as its success path: `run` exiting
+  non-zero must be visible. Freshness alerting (D5/D6) covers this without any
+  systemd-side notification, because a failed run writes no manifest (D7) and the
+  manifest therefore goes stale.
+
+### D14 — The app tier reads the manifest through the existing S3 client, and `boto3` becomes a declared dependency
+
+**Decision.** The freshness reader retrieves `<prefix>/manifest/latest.json`
+through the S3 client path that `src/services/file_storage.py` already uses, and
+caches the parsed result in-process for 60 seconds. `boto3` is added to
+`pyproject.toml` as a declared runtime dependency.
+
+**Rationale.** D7 makes the freshness signal a network read, and the design has
+to say *with what* — leaving it open would hand an implementer three choices with
+very different consequences:
+
+| Mechanism | Why not |
+|---|---|
+| Shell out to `rclone` per check | `/ready` is polled at probe frequency; a process spawn per probe is a real cost, and it puts a subprocess on the liveness path |
+| Hand-rolled SigV4 over `httpx` | Avoids a dependency by writing signing code by hand, on the path that reports whether the backups are alive |
+| Existing `boto3` client path | Already in the tree, already used for the S3 storage provider, already tested |
+
+The third is the only one that adds nothing new. The tension with Approach C's
+"no `boto3` requirement" is real but narrow, and worth naming: that argument was
+about **streaming multi-GB dumps** through the interpreter, which this change
+still does not do — dumps go `pg_dump | age | rclone`. A one-object JSON GET is a
+different problem with different costs.
+
+Declaring `boto3` also closes a latent defect rather than creating one. It is
+imported lazily at `file_storage.py:381` and appears nowhere in
+`pyproject.toml`, so the S3 storage provider today fails at first use on any
+deployment that did not happen to install it. The freshness check would inherit
+exactly that failure — and inherit it *silently*, degrading to
+`checks["backup"] = "unknown"` forever, which is the precise failure mode this
+whole change exists to eliminate.
+
+**Consequences.**
+- The 60-second cache bounds network reads regardless of probe frequency, and is
+  far shorter than any staleness threshold, so it cannot mask a real transition.
+- The cache is per-process and in-memory; the worker's alert emission (D6) reads
+  through the same helper and inherits the same bound.
+- The dependency lands in Phase 1 (task 1.9b), before any package consumes it.
+
 ## Risks
 
 | Risk | Severity | Mitigation |
@@ -236,6 +402,10 @@ not required by this change.
 | Host binaries missing on gx-10 | Medium | `aca backup verify` preflight names each missing binary before any run |
 | Partial multi-store failure reported as success | Medium | Per-store outcomes in the manifest; run exits non-zero if any required store fails |
 | Test fixture is a `MagicMock`, so new settings silently return truthy Mocks | Low | Replace with an explicit fake exposing only declared fields (see below) |
+| App-tier bucket credential is over-privileged, or is granted the age identity | High | D11 — read-only manifest-scoped credential; identity never leaves gx-10/escrow; pinned by the credential-scope scenario |
+| Widening `WorkflowAlertEnvelopeV1` breaks `tests/contract/test_workflow_alert_contracts.py`, which is outside the owning package's write scope | Medium | File added to `wp-health-alerts` write scope and to its verification steps (task 3.7b) |
+| Hand-maintained alert JSON Schema drifts from the Pydantic envelope, which has no generator | Medium | Schema lives beside the envelope in `content-workflows/events/`, and a conformance test asserts schema-vs-model agreement (task 3.7b, after the widening lands) |
+| `boto3` undeclared, so the freshness check degrades silently to `unknown` | Medium | D14 — declared in `pyproject.toml` in Phase 1, before any consumer |
 
 ## Testing Notes
 

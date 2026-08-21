@@ -25,7 +25,9 @@ therefore narrowed to describe a configuration surface, not an operative backup.
   - `railway_backup_schedule` (cron expression, default `0 3 * * *`)
   - `railway_backup_retention_days` (integer, default `7`)
   - `railway_backup_bucket` (string, default `backups`)
-- **AND** these settings SHALL be documented as legacy configuration superseded by the provider-neutral backup target settings
+- **AND** these settings SHALL be documented as legacy configuration superseded by the provider-neutral backup settings
+- **AND** `railway_backup_enabled` and `railway_backup_staleness_hours` SHALL map forward onto `backup_monitoring_enabled` and `backup_staleness_hours`
+- **AND** `railway_backup_schedule` and `railway_backup_retention_days` SHALL be documented as inert, superseded respectively by the host timer unit and by backup-target lifecycle rules
 
 #### Scenario: Backup job execution
 - **GIVEN** any database provider
@@ -41,17 +43,18 @@ therefore narrowed to describe a configuration surface, not an operative backup.
 - **AND** no scheduled database job SHALL delete backup objects unattended
 
 #### Scenario: Backup disabled
-- **GIVEN** backup monitoring is disabled via settings
+- **GIVEN** `backup_monitoring_enabled` is false
 - **WHEN** the readiness endpoint is queried
 - **THEN** no backup status SHALL be reported
-- **AND** no backup freshness alert SHALL be emitted
+- **AND** no backup freshness alert SHALL be emitted by worker maintenance
+- **AND** the disable decision SHALL be taken from the provider-neutral setting rather than from `railway_backup_enabled`
 
 #### Scenario: Backup health check
 - **GIVEN** backup monitoring is enabled
 - **WHEN** the readiness endpoint is queried
 - **THEN** the response SHALL include a backup recency status regardless of the configured database provider
 - **AND** the status SHALL be derived from the backup target manifest rather than from database scheduler run history
-- **AND** the staleness threshold SHALL be the configured staleness setting
+- **AND** the staleness threshold SHALL be `backup_staleness_hours`
 - **AND** any operator-facing message SHALL describe that configured threshold accurately rather than a derived schedule multiple
 
 #### Scenario: Legacy MinIO settings map to the provider-neutral namespace

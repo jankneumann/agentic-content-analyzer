@@ -45,3 +45,56 @@
 ### Context
 Planned the first working disaster-recovery backup scheme for the gx-10 self-hosted migration. Investigation established that the existing pg_cron backup has never produced a backup (MinIO endpoint never wired, job body self-skips, mc binary absent from the DB image), and that its health check is gated behind the railway provider so it cannot fire on gx-10. Selected a Python-orchestrated, native-tool-executing design across seven work packages with no scope or lock overlap.
 
+---
+
+## Phase: Plan Iteration 1 (2026-08-21)
+
+**Agent**: architect | **Session**: N/A
+
+### Decisions
+1. **D11 - the manifest is the single plaintext object; the app tier never holds the age identity** — D4 ('the bucket never receives plaintext') and D7 ('the freshness check reads the manifest') could not both be true as written. Encrypting the manifest would put the key that decrypts every backup into the API and worker processes to answer a question carrying no PII. Resolved in favor of a narrow, explicit plaintext exception, made safe by the pre-existing 'Manifest contains no credentials' requirement, which is now load-bearing rather than hygiene.
+2. **The write/read-only credential split is a deployment concern, not a settings concern** — A parallel backup_s3_readonly_* namespace would force every reader to choose between two credentials, and the wrong choice fails open - the app tier keeps working with a write credential and nobody notices. One namespace, different values per environment, separation enforced at the provider when the runbook issues the keys.
+3. **D14 - declare boto3 rather than shell out per probe or hand-roll SigV4** — D7 made freshness a network read without saying with what. rclone per probe puts a process spawn on the liveness path; hand-rolled SigV4 writes signing code on the path that reports whether backups are alive. The existing lazy boto3 client adds nothing new and closes a latent defect - boto3 is imported at file_storage.py:381 and appears nowhere in pyproject.toml, so the check would degrade silently to 'unknown' forever, the exact failure mode this change exists to eliminate.
+4. **D12 - the live-database guard compares (host, effective port, database name), and does not resolve DNS** — 'Normalized identity' had several defensible readings and the guard is a safety control, so guessing was the wrong outcome. Username excluded because the same database as a different role is still the same database; DNS excluded because a safety verdict must not depend on the resolver.
+5. **The alert event schema lands in content-workflows, not in the new backup domain** — It describes one variant of WorkflowAlertEnvelopeV1, which already belongs to that domain. Splitting one envelope's shape across two domains leaves no single place to look for it. The envelope is hand-written with no generator, so a conformance test now forces schema and model to agree.
+
+### Alternatives Considered
+- Encrypt the manifest and give the API and worker the age identity: rejected because Largest possible blast radius traded for a status timestamp.
+- Derive freshness from HEAD on the newest artifact key instead of a manifest: rejected because No per-store outcomes, so a partially-failed run reads as healthy - the failure mode D7 exists to eliminate.
+- Add a backup_s3_readonly_* settings namespace: rejected because Fails open when a reader picks the wrong namespace.
+- Keep railway_backup_enabled / railway_backup_staleness_hours as the monitoring settings: rejected because A provider-neutral check reading railway_-prefixed settings is incoherent; mapped forward instead.
+
+### Trade-offs
+- Accepted boto3 as a declared runtime dependency over Approach C's original 'no boto3 requirement' argument because That argument was about streaming multi-GB dumps through the interpreter, which still does not happen. A one-object JSON GET is a different problem, and declaring boto3 fixes an existing latent bug.
+- Accepted The manifest discloses backup cadence and object names to anyone holding the app-tier credential over Uniform encryption of every object because Cadence and object names carry no PII; the identity key in two network-exposed processes would.
+- Accepted The live-database guard misses two distinct hostnames resolving to one server over Resolving DNS inside the guard because Still strictly better than today's exact-string comparison, without making a safety verdict depend on the resolver.
+- Accepted Plan grew from 69 to 80 tasks and six to seven scoped packages over Leaving the gaps for implementation to discover because Three of the added tasks unblock packages that could not otherwise have compiled; the rest attach previously orphaned spec scenarios.
+
+### Open Questions
+- [ ] D10 notes Object Lock / versioning as recommended for S3 and possible for R2 but requires neither. Ransomware resistance is therefore not in scope for this change and should be a follow-up decision.
+- [ ] The 60-second manifest cache TTL in D14 is asserted, not measured; if /ready probe frequency on gx-10 turns out to be very high, the constant may need to become a setting.
+- [ ] Retiring the dead pg_cron job remains owned by verify-production-paradedb-langfuse (D1); this change only records the finding in GOTCHAS.
+
+### Completed Work
+- [critical] completeness/feasibility: backup_age_recipient and backup_age_identity_path were referenced by specs, design D4, and five tasks but declared by none - and wp-backup-cli and wp-restore-cli both deny src/config/**, so both were structurally blocked. Added tasks 1.4b/1.4c and a spec scenario declaring them.
+- [critical] consistency/completeness: the de-gated freshness check would still have read railway_backup_enabled and railway_backup_staleness_hours. Added provider-neutral backup_monitoring_enabled and backup_staleness_hours with forward mapping, a guard test (3.3e), and spec scenarios naming them.
+- [high] consistency: resolved the D4-vs-D7 contradiction over manifest encryption with D11, plus spec scenarios 'Manifest is readable without the decryption identity' and 'Freshness reader holds no decryption identity'.
+- [high] security: the freshness check puts bucket credentials in the app tier; D11 pins a read-only manifest-scoped credential and forbids the identity key there.
+- [high] feasibility/scope: wp-health-alerts widens WorkflowAlertEnvelopeV1 but tests/contract/test_workflow_alert_contracts.py was outside its write_allow, so the package could not have landed green. Added to scope, to verification, and to task 3.7b.
+- [high] traceability: wp-contracts had inputs.tasks: [] - 200 LOC with no task and no checkpoint. Added Phase 0 (0.1-0.4).
+- [high] feasibility (iteration 2): D14 - the design never said how the app tier reads the manifest; rclone-per-probe and hand-rolled SigV4 were both live options. Settled on the existing S3 client with a 60s cache and a declared boto3 dependency (task 1.9b).
+- [high] ordering (iteration 2, self-inflicted): the pass-1 railway_backup_* guard test sat in Phase 1, but health_routes.py still reads that setting until 3.3c. Moved to Phase 3 as 3.3e.
+- [high] ordering (iteration 2, self-inflicted): the pass-1 schema-vs-model conformance test sat in Phase 0, but the model is not widened until 3.7. Task 0.2 now lands the schema only; the test moved into 3.7b.
+- [medium] completeness: six spec scenarios had no owning task - 'Backup makes no production mutations', 'Freshness check is bounded and non-blocking', 'Destructive restore safeguards are retained', 'Backup disabled', 'Backup job execution', 'Backup retention cleanup'. Added 2.9c, 3.3d, 4.8b, 5.4b and extended 5.4/5.9. Coverage is now 0 uncovered.
+- [medium] completeness: the verify canary had no provenance - nobody wrote it, and D10's lifecycle rules would have aged it out. Now emitted by every run through the same encryption pipeline (task 2.9b), with no_canary distinguished from a decryption failure.
+- [medium] clarity/testability: 'normalized identity' in task 4.8 defined as D12, with username, query parameters, and DNS explicitly excluded and each exclusion justified.
+- [medium] clarity/testability: 'at most one alert per check window' defined in D6 as an event_key keyed on the observed manifest generation, with the no_history case keyed by UTC date.
+- [medium] completeness: D13 - the systemd unit's configuration and secret provisioning were unspecified. Now resolves through the application's own settings path, holds the write credential and recipient only, and never the identity.
+- [medium] architecture: openspec/contracts/README.md was outside wp-contracts' write scope, so the new domain could not be registered; and the alert schema was filed in a different domain from its envelope. Both corrected, with the drift risk documented and pinned by test.
+- [medium] consistency: proposal.md had no Impact section despite the repo convention. Added affected-specs, affected-code, and not-affected tables.
+- [medium] feasibility: task 6.3 merges every package's branch, which spans far outside wp-integration's write_allow. Added an explicit scope note that task_type: integrate, not the glob list, governs there.
+- [low] clarity: proposal.md stated the Approach C selection twice in consecutive paragraphs; deduplicated. Approach C's 'no boto3 requirement' pro reconciled with D14 rather than left contradicting it.
+
+### Context
+Two review passes over the approved plan. Pass 1 found two critical settings gaps that structurally blocked three of six work packages, an unresolved D4/D7 contradiction over whether the manifest is encrypted, an out-of-scope existing contract test that the alert widening would break, an orphan work package with no tasks, six spec scenarios with no owning task, and a missing Impact section. Pass 2 caught two ordering bugs introduced by pass 1 and one genuinely unaddressed question - how the app tier reads the manifest at probe frequency. Added D11-D14, Phase 0, and eleven tasks; all validators green.
+

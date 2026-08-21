@@ -2,12 +2,14 @@
 
 ## ADDED Requirements
 
-### Requirement: Provider-Neutral Backup Target Configuration
+### Requirement: Provider-Neutral Backup Configuration
 
-The system SHALL resolve backup destination settings from a provider-neutral
-`backup_s3_*` namespace that works unchanged against Cloudflare R2, AWS S3, and
-any S3-compatible endpoint, and SHALL be read by both the backup and restore
-paths.
+The system SHALL resolve all backup configuration — destination, encryption, and
+monitoring — from provider-neutral setting namespaces declared in a single
+settings surface, such that no backup, restore, health, or alerting code path
+depends on a Railway-specific or MinIO-specific setting name. The destination
+namespace SHALL work unchanged against Cloudflare R2, AWS S3, and any
+S3-compatible endpoint, and SHALL be read by both the backup and restore paths.
 
 #### Scenario: Backup target settings are available
 - **GIVEN** a profile declaring `backup_s3_endpoint`, `backup_s3_bucket`, `backup_s3_region`, `backup_s3_access_key_id`, and `backup_s3_secret_access_key`
@@ -41,6 +43,27 @@ paths.
 - **WHEN** any settings dump, log line, or CLI diagnostic renders them
 - **THEN** both values SHALL be masked
 - **AND** the masking rule SHALL match identifier-suffixed names such as `*_ACCESS_KEY_ID`
+
+#### Scenario: Encryption settings are declared in the same surface
+- **GIVEN** a configuration declaring `backup_age_recipient` and `backup_age_identity_path`
+- **WHEN** settings are resolved
+- **THEN** both values SHALL be exposed on `Settings`
+- **AND** `backup_age_recipient` SHALL be required by the backup path and SHALL NOT be required by the restore or verification paths
+- **AND** `backup_age_identity_path` SHALL be required by the restore and verification paths and SHALL NOT be required by the backup path
+
+#### Scenario: Monitoring settings are provider-neutral
+- **GIVEN** a configuration declaring `backup_monitoring_enabled` and `backup_staleness_hours`
+- **WHEN** settings are resolved
+- **THEN** both values SHALL be exposed on `Settings`
+- **AND** `backup_staleness_hours` SHALL default to the same value as the legacy staleness setting it replaces
+- **AND** no freshness, alerting, or readiness code path SHALL read a setting whose name is prefixed `railway_`
+
+#### Scenario: Legacy monitoring settings map forward
+- **GIVEN** a configuration setting only `railway_backup_enabled` and `railway_backup_staleness_hours`
+- **AND** neither `backup_monitoring_enabled` nor `backup_staleness_hours` is explicitly set
+- **WHEN** settings are resolved
+- **THEN** the legacy values SHALL be mapped onto the provider-neutral monitoring fields
+- **AND** the mapping SHALL be performed by the same validator that maps the deprecated target settings
 
 ### Requirement: Multi-Store Scheduled Backup
 
@@ -107,8 +130,14 @@ that the backup target never receives plaintext.
 #### Scenario: Decryption capability is verified, not assumed
 - **GIVEN** an identity key is available to `aca backup verify`
 - **WHEN** the verify command runs
-- **THEN** it SHALL decrypt a known canary object using that identity
+- **THEN** it SHALL decrypt a canary object using that identity
 - **AND** GIVEN decryption fails, the command SHALL report a failed verification
+
+#### Scenario: The canary is produced by the backup run, not placed by hand
+- **GIVEN** a successful backup run
+- **WHEN** the run completes
+- **THEN** it SHALL write a canary object encrypted to the configured recipient through the same encryption path used for store artifacts
+- **AND** GIVEN no canary object exists, `aca backup verify` SHALL report an absent-canary result distinguishable from a decryption failure
 
 ### Requirement: Backup Run Manifest
 
@@ -127,6 +156,12 @@ backup freshness.
 - **GIVEN** a written manifest
 - **WHEN** its contents are inspected
 - **THEN** it SHALL NOT contain access keys, secret keys, or any URL embedding credentials
+
+#### Scenario: Manifest is readable without the decryption identity
+- **GIVEN** a written manifest
+- **WHEN** a freshness reader retrieves it
+- **THEN** it SHALL be readable without possession of the decryption identity
+- **AND** it SHALL be the only object written to the backup target that is not encrypted
 
 #### Scenario: Manifest is not written for a failed run
 - **GIVEN** a backup run in which a required store failed
@@ -171,11 +206,20 @@ staleness to affect service readiness.
 - **THEN** the backup status SHALL still be evaluated
 - **AND** the response SHALL NOT fail due to an unbound local variable
 
+#### Scenario: Freshness reader holds no decryption identity
+- **GIVEN** the process evaluating backup freshness
+- **WHEN** it reads the manifest
+- **THEN** it SHALL require only read access to the manifest key
+- **AND** it SHALL NOT require, load, or reference the decryption identity
+- **AND** it SHALL NOT require write or delete access to the backup target
+
 #### Scenario: Freshness check is bounded and non-blocking
 - **GIVEN** the backup target is slow to respond
 - **WHEN** the readiness endpoint is queried
 - **THEN** the backup check SHALL be time-bounded by the configured health-check timeout
 - **AND** it SHALL NOT block the event loop
+- **AND** repeated probes within a short interval SHALL be served without issuing a network read per probe
+- **AND** a backup-target read failure SHALL be reported as a status value rather than raised
 
 ### Requirement: Durable Backup Freshness Alerting
 

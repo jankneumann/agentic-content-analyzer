@@ -5,7 +5,24 @@ the test task that pins its behavior.
 
 Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
 
-## Phase 1 — Backup target settings (wp-settings)
+## Phase 0 — Contracts (wp-contracts)
+
+- [ ] 0.1 Land `openspec/contracts/backup/schemas/backup-manifest.schema.json` as the durable manifest contract, including the plaintext-and-credential-free constraints (S)
+  **Spec scenarios**: backup-and-restore.4 (Manifest records the run; Manifest contains no credentials; Manifest is readable without the decryption identity)
+  **Design decisions**: D7, D11
+  **Dependencies**: None
+- [ ] 0.2 Land the widened alert-envelope event schema beside the existing envelope contracts in `openspec/contracts/content-workflows/events/` (S)
+  **Spec scenarios**: backup-and-restore.6 (System-check alerts carry no operation identity)
+  **Design decisions**: D5
+  **Dependencies**: None
+  **Ordering note**: the schema is the coordination boundary, so it lands first. The
+  test asserting it agrees with `WorkflowAlertEnvelopeV1` is 3.7b, because the model
+  is not widened until 3.7 — asserting agreement here would fail by construction.
+- [ ] 0.3 Register the `backup` contract domain in `openspec/contracts/README.md` (XS)
+  **Dependencies**: 0.1
+- [ ] 0.4 Checkpoint: contract tests green, diff reviewed, scope verified
+
+## Phase 1 — Backup settings (wp-settings)
 
 - [ ] 1.1 Write tests for provider-neutral `backup_s3_*` settings resolution — presence, `SecretStr` typing, `backup_s3_prefix` default, R2 endpoint accepted unchanged (S)
   **Spec scenarios**: backup-and-restore.1 (Backup target settings are available; Cloudflare R2 endpoint requires no protocol change)
@@ -19,6 +36,12 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
   **Dependencies**: None
 - [ ] 1.4 Implement the `@model_validator(mode="after")` deprecation mapper mirroring `_apply_deprecated_neo4j_aliases` (S)
   **Dependencies**: 1.3
+- [ ] 1.4b Write tests for the encryption and monitoring settings — presence, `backup_staleness_hours` default parity with the legacy setting, `railway_backup_enabled`/`railway_backup_staleness_hours` mapping forward through the same validator (S)
+  **Spec scenarios**: backup-and-restore.1 (Encryption settings are declared in the same surface; Monitoring settings are provider-neutral; Legacy monitoring settings map forward)
+  **Design decisions**: D9, D11
+  **Dependencies**: 1.3
+- [ ] 1.4c Add `backup_age_recipient`, `backup_age_identity_path`, `backup_monitoring_enabled`, and `backup_staleness_hours` to `Settings`, and extend the deprecation mapper to cover the two legacy monitoring names (S)
+  **Dependencies**: 1.4b, 1.4
 - [ ] 1.5 Checkpoint: run tests, review diff, verify scope
 - [ ] 1.6 Write tests for credential masking of identifier-suffixed names (`*_ACCESS_KEY_ID`) (XS)
   **Spec scenarios**: backup-and-restore.1 (Backup credentials are masked in diagnostics)
@@ -28,8 +51,12 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
   **Dependencies**: 1.6
 - [ ] 1.8 Extend `scripts/check-profile-secrets.sh` to detect hardcoded S3-shaped credentials (XS)
   **Dependencies**: 1.6
-- [ ] 1.9 Declare backup settings in profile config, `.secrets.yaml.example`, and `StorageSettings` (S)
-  **Dependencies**: 1.2
+- [ ] 1.9 Declare backup settings in profile config, `.secrets.yaml.example`, and `StorageSettings` — one credential namespace, with the write/read-only split documented as a per-environment value difference per design D11, not as additional settings (S)
+  **Design decisions**: D11
+  **Dependencies**: 1.2, 1.4c
+- [ ] 1.9b Declare `boto3` as a runtime dependency in `pyproject.toml`, closing the existing lazy-import gap that the freshness reader would otherwise inherit (XS)
+  **Design decisions**: D14
+  **Dependencies**: None
 - [ ] 1.10 Checkpoint: run tests, review diff, verify scope
 
 ## Phase 2 — Backup engine and CLI (wp-backup-cli)
@@ -61,6 +88,13 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
   **Dependencies**: 2.1
 - [ ] 2.9 Implement manifest writing to the well-known bucket key (S)
   **Dependencies**: 2.8
+- [ ] 2.9b Write tests and implementation for canary emission — the run writes an encrypted canary through the same pipeline, and `verify` distinguishes an absent canary from a decryption failure (S)
+  **Spec scenarios**: backup-and-restore.3 (The canary is produced by the backup run, not placed by hand)
+  **Design decisions**: D4
+  **Dependencies**: 2.7, 2.9
+- [ ] 2.9c Write a read-only-behavior test asserting the run issues no delete or write operation against source stores and no delete against the backup target (S)
+  **Spec scenarios**: backup-and-restore.2 (Backup makes no production mutations), cli-interface.1 (Listing backups does not mutate the target)
+  **Dependencies**: 2.1
 - [ ] 2.10 Checkpoint: run tests, review diff, verify scope
 - [ ] 2.11 Write tests for `aca backup verify` — missing-binary preflight, canary decryption success and failure (S)
   **Spec scenarios**: backup-and-restore.3 (Decryption capability is verified, not assumed), backup-and-restore.8 (Preflight names missing prerequisites)
@@ -91,10 +125,22 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
   **Dependencies**: None
 - [ ] 3.3a Hoist the event-loop binding out of the database `try` block so the freshness check survives a broken database layer (XS)
   **Dependencies**: 3.2
-- [ ] 3.3b Rewrite `_check_backup_recency` to derive freshness from the backup target manifest (M)
-  **Dependencies**: 3.1, 3.3a
+- [ ] 3.3b Rewrite `_check_backup_recency` to derive freshness from the backup target manifest, reading it through the existing S3 client path with the 60-second in-process cache from design D14 (M)
+  **Design decisions**: D7, D14
+  **Dependencies**: 3.1, 3.3a, 1.9b
 - [ ] 3.3c Remove the `database_provider == "railway"` gate from the backup check (XS)
   **Dependencies**: 3.3b
+- [ ] 3.3d Write tests for the bounded, non-blocking manifest read and for the disabled path — slow target does not exceed the health-check timeout or block the loop, and `backup_monitoring_enabled=false` reports no status and emits no alert (S)
+  **Spec scenarios**: backup-and-restore.5 (Freshness check is bounded and non-blocking; Freshness reader holds no decryption identity), database-provider.1 (Backup disabled)
+  **Design decisions**: D7, D11
+  **Dependencies**: 3.3b
+- [ ] 3.3e Write a guard test asserting no freshness, alerting, or readiness module references a `railway_backup_*` setting name (XS)
+  **Spec scenarios**: backup-and-restore.1 (Monitoring settings are provider-neutral)
+  **Design decisions**: D9
+  **Dependencies**: 3.3c
+  **Ordering note**: this guard cannot live in Phase 1. `health_routes.py` still
+  reads `railway_backup_enabled` until 3.3c removes the gate, so the assertion is
+  only true once the health package has landed.
 - [ ] 3.4 Correct the staleness warning text to describe the configured threshold (XS)
   **Spec scenarios**: database-provider.1 (Backup health check)
   **Design decisions**: D8
@@ -106,12 +152,17 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
   **Dependencies**: None
 - [ ] 3.7 Widen `WorkflowAlertEnvelopeV1` — source kind, event-key grammar, workflow type, diagnostic-URL validator, diagnostic codes (M)
   **Dependencies**: 3.6
+- [ ] 3.7b Update `tests/contract/test_workflow_alert_contracts.py` for the widened envelope — add the `system_check` cases, adjust the closed-allowlist assertions that the widening invalidates, and assert the event schema landed in 0.2 agrees with `WorkflowAlertEnvelopeV1` (S)
+  **Spec scenarios**: backup-and-restore.6 (System-check alerts carry no operation identity)
+  **Design decisions**: D5
+  **Dependencies**: 3.7, 0.2
 - [ ] 3.8 Write tests for worker-loop emission — one alert per check window, no emission from the readiness path (S)
   **Spec scenarios**: backup-and-restore.6 (Stale backup raises a durable alert; Readiness polling does not multiply alerts)
   **Design decisions**: D6
   **Dependencies**: 3.6
-- [ ] 3.9 Implement idempotent freshness-alert emission in periodic worker maintenance (M)
-  **Dependencies**: 3.8, 3.7, 3.3b
+- [ ] 3.9 Implement idempotent freshness-alert emission in periodic worker maintenance, keyed on the observed manifest generation per design D6 (M)
+  **Design decisions**: D6
+  **Dependencies**: 3.8, 3.7b, 3.3b
 - [ ] 3.10 Checkpoint: run tests, review diff, verify scope
 
 ## Phase 4 — Restore path (wp-restore-cli)
@@ -135,8 +186,12 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
   **Dependencies**: 4.5
 - [ ] 4.7 Mask credentials in the emitted target database value (S)
   **Dependencies**: 4.5
-- [ ] 4.8 Compare databases by normalized identity rather than raw string equality in the live-database guard (S)
+- [ ] 4.8 Compare databases by the normalized `(host, effective port, database name)` identity defined in design D12 rather than raw string equality in the live-database guard (S)
+  **Design decisions**: D12
   **Dependencies**: 4.5
+- [ ] 4.8b Write a regression test proving the existing destructive-restore confirmation safeguard survives the rewrite (S)
+  **Spec scenarios**: cli-interface.2 (Destructive restore safeguards are retained)
+  **Dependencies**: 4.1
 - [ ] 4.9 Write tests for restore-side decryption, including the missing-identity abort (S)
   **Spec scenarios**: cli-interface.2 (Encrypted artifacts are decrypted during restore)
   **Design decisions**: D4
@@ -155,20 +210,26 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
   **Dependencies**: 5.1
 - [ ] 5.3 Implement the dry-run-by-default retention applier (S)
   **Dependencies**: 5.1
-- [ ] 5.4 Author the systemd service and timer units invoking the backup command (S)
-  **Spec scenarios**: backup-and-restore.8 (Scheduling units are provided; Scheduling requires no database privileges)
+- [ ] 5.4 Author the systemd service and timer units invoking the backup command, resolving configuration through the application's own settings path per design D13 — dedicated user, `PROFILE`, root-owned `0600` `EnvironmentFile`, write credential and recipient key only, no identity key, no secret in the unit file (S)
+  **Spec scenarios**: backup-and-restore.8 (Scheduling units are provided; Scheduling requires no database privileges), database-provider.1 (Backup job execution)
+  **Design decisions**: D13
   **Dependencies**: 2.14c
+- [ ] 5.4b Write a test asserting the shipped units contain no literal secret and never invoke a delete operation (XS)
+  **Spec scenarios**: backup-and-restore.7 (No unattended deletion path exists), database-provider.1 (Backup retention cleanup)
+  **Design decisions**: D10, D13
+  **Dependencies**: 5.4
 - [ ] 5.5 Checkpoint: run tests, review diff, verify scope
 - [ ] 5.6 Write the gx-10 multi-store restore runbook, leading with decryption-identity recovery (M)
   **Spec scenarios**: backup-and-restore.9 (Restore is possible for each backed-up store)
   **Design decisions**: D4
   **Dependencies**: 4.10
-- [ ] 5.7 Document the `age` key-escrow procedure and the lost-key consequence (S)
-  **Design decisions**: D4
+- [ ] 5.7 Document the `age` key-escrow procedure, the lost-key consequence, and the issuance of the two separate target credentials — gx-10 write, app-tier manifest read-only (S)
+  **Design decisions**: D4, D11
   **Dependencies**: 5.6
 - [ ] 5.8 Update `docs/SYNC_DOWN.md` and `docs/SETUP.md` for the provider-neutral target (S)
   **Dependencies**: 4.3
-- [ ] 5.9 Record the three-point pg_cron backup failure in `docs/GOTCHAS.md` (XS)
+- [ ] 5.9 Record the three-point pg_cron backup failure in `docs/GOTCHAS.md`, and record that `railway_backup_schedule` and `railway_backup_retention_days` are inert (XS)
+  **Spec scenarios**: database-provider.1 (Backup settings configuration)
   **Design decisions**: D1
   **Dependencies**: None
 - [ ] 5.10 Checkpoint: run tests, review diff, verify scope
@@ -183,6 +244,10 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
   **Dependencies**: 6.1, 4.10
 - [ ] 6.3 Merge work-package branches and run the full suite (M)
   **Dependencies**: 6.2, 3.9, 5.8
+  **Scope note**: this is the integration task, so its diff spans every package's
+  files by construction. Package scope enforcement is satisfied by
+  `task_type: integrate` on `wp-integration`, not by that package's `write_allow`
+  globs; a merge must not be treated as a scope violation.
 - [ ] 6.4 Final checkpoint: full suite green, diff reviewed, every task's scope verified
 
 ## Note on task 2.4 sizing
@@ -209,6 +274,12 @@ rather than joining two outcomes:
 | 2.4 | Decomposition attempted and rejected; rationale recorded below. |
 | 2.11 | One outcome — the verify test — covering both branches of the same assertion. |
 | 2.13 | One outcome — the command's test suite. The JSON contract is a property of that command, not separate work. |
+| 5.4 | One outcome — the scheduling units. The clauses after "per design D13" enumerate the constraints the units must satisfy, not additional deliverables. |
+
+Plan iteration 1 added Phase 0 and eleven tasks (1.4b–1.4d, 2.9b, 2.9c, 3.3d,
+3.7b, 4.8b, 5.4b) to close settings gaps that structurally blocked downstream
+packages, to attach the six spec scenarios that had no owning task, and to bring
+the existing alert contract test inside the owning package's scope.
 
 Three titles that *did* join distinct outcomes were split: 2.2 → 2.2a/2.2b,
 2.14 → 2.14a/b/c, and 3.3 → 3.3a/b/c. In 3.3 the split matters beyond tidiness:
