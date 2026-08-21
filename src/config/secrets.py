@@ -28,6 +28,12 @@ SECRET_KEY_PATTERNS = [
     re.compile(r".*_PASSWORD$", re.IGNORECASE),
     re.compile(r".*_TOKEN$", re.IGNORECASE),
     re.compile(r".*_CREDENTIAL.*", re.IGNORECASE),
+    # Identifier-suffixed credentials. An S3 access key ID ends in `_ACCESS_KEY_ID`,
+    # so none of the suffix patterns above match it — which left AWS_ACCESS_KEY_ID,
+    # SUPABASE_ACCESS_KEY_ID and the new BACKUP_S3_ACCESS_KEY_ID unmasked in
+    # diagnostics. Deliberately anchored on `_KEY_ID` rather than a bare `.*_ID`:
+    # over-matching would mask NEON_PROJECT_ID and every other harmless identifier.
+    re.compile(r".*_KEY_ID$", re.IGNORECASE),
 ]
 
 # Pattern for detecting credentials in URLs

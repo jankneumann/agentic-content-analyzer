@@ -24,40 +24,40 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
 
 ## Phase 1 — Backup settings (wp-settings)
 
-- [ ] 1.1 Write tests for provider-neutral `backup_s3_*` settings resolution — presence, `SecretStr` typing, `backup_s3_prefix` default, R2 endpoint accepted unchanged (S)
+- [x] 1.1 Write tests for provider-neutral `backup_s3_*` settings resolution — presence, `SecretStr` typing, `backup_s3_prefix` default, R2 endpoint accepted unchanged (S)
   **Spec scenarios**: backup-and-restore.1 (Backup target settings are available; Cloudflare R2 endpoint requires no protocol change)
   **Design decisions**: D9
   **Dependencies**: None
-- [ ] 1.2 Add `backup_s3_*` fields to `Settings` with `SecretStr` credentials (S)
+- [x] 1.2 Add `backup_s3_*` fields to `Settings` with `SecretStr` credentials (S)
   **Dependencies**: 1.1
-- [ ] 1.3 Write tests for deprecation mapping — legacy-only maps forward, new wins when both set, exactly one warning logged (S)
+- [x] 1.3 Write tests for deprecation mapping — legacy-only maps forward, new wins when both set, exactly one warning logged (S)
   **Spec scenarios**: backup-and-restore.1 (Deprecated MinIO settings still resolve; New settings win over deprecated ones), database-provider.1 (Legacy MinIO settings map to the provider-neutral namespace)
   **Design decisions**: D9
   **Dependencies**: None
-- [ ] 1.4 Implement the `@model_validator(mode="after")` deprecation mapper mirroring `_apply_deprecated_neo4j_aliases` (S)
+- [x] 1.4 Implement the `@model_validator(mode="after")` deprecation mapper mirroring `_apply_deprecated_neo4j_aliases` (S)
   **Dependencies**: 1.3
-- [ ] 1.4b Write tests for the encryption and monitoring settings — presence, `backup_staleness_hours` default parity with the legacy setting, `railway_backup_enabled`/`railway_backup_staleness_hours` mapping forward through the same validator (S)
+- [x] 1.4b Write tests for the encryption and monitoring settings — presence, `backup_staleness_hours` default parity with the legacy setting, `railway_backup_enabled`/`railway_backup_staleness_hours` mapping forward through the same validator (S)
   **Spec scenarios**: backup-and-restore.1 (Encryption settings are declared in the same surface; Monitoring settings are provider-neutral; Legacy monitoring settings map forward)
   **Design decisions**: D9, D11
   **Dependencies**: 1.3
-- [ ] 1.4c Add `backup_age_recipient`, `backup_age_identity_path`, `backup_monitoring_enabled`, and `backup_staleness_hours` to `Settings`, and extend the deprecation mapper to cover the two legacy monitoring names (S)
+- [x] 1.4c Add `backup_age_recipient`, `backup_age_identity_path`, `backup_monitoring_enabled`, and `backup_staleness_hours` to `Settings`, and extend the deprecation mapper to cover the two legacy monitoring names (S)
   **Dependencies**: 1.4b, 1.4
-- [ ] 1.5 Checkpoint: run tests, review diff, verify scope
-- [ ] 1.6 Write tests for credential masking of identifier-suffixed names (`*_ACCESS_KEY_ID`) (XS)
+- [x] 1.5 Checkpoint: run tests, review diff, verify scope
+- [x] 1.6 Write tests for credential masking of identifier-suffixed names (`*_ACCESS_KEY_ID`) (XS)
   **Spec scenarios**: backup-and-restore.1 (Backup credentials are masked in diagnostics)
   **Design decisions**: D9
   **Dependencies**: None
-- [ ] 1.7 Extend `SECRET_KEY_PATTERNS` to cover identifier-suffixed credential names (XS)
+- [x] 1.7 Extend `SECRET_KEY_PATTERNS` to cover identifier-suffixed credential names (XS)
   **Dependencies**: 1.6
-- [ ] 1.8 Extend `scripts/check-profile-secrets.sh` to detect hardcoded S3-shaped credentials (XS)
+- [x] 1.8 Extend `scripts/check-profile-secrets.sh` to detect hardcoded S3-shaped credentials (XS)
   **Dependencies**: 1.6
-- [ ] 1.9 Declare backup settings in profile config, `.secrets.yaml.example`, and `StorageSettings` — one credential namespace, with the write/read-only split documented as a per-environment value difference per design D11, not as additional settings (S)
+- [x] 1.9 Declare backup settings in profile config, `.secrets.yaml.example`, and `StorageSettings` — one credential namespace, with the write/read-only split documented as a per-environment value difference per design D11, not as additional settings (S)
   **Design decisions**: D11
   **Dependencies**: 1.2, 1.4c
-- [ ] 1.9b Declare `boto3` as a runtime dependency in `pyproject.toml`, closing the existing lazy-import gap that the freshness reader would otherwise inherit (XS)
+- [x] 1.9b Declare `boto3` as a runtime dependency in `pyproject.toml`, closing the existing lazy-import gap that the freshness reader would otherwise inherit (XS)
   **Design decisions**: D14
   **Dependencies**: None
-- [ ] 1.10 Checkpoint: run tests, review diff, verify scope
+- [x] 1.10 Checkpoint: run tests, review diff, verify scope
 
 ## Phase 2 — Backup engine and CLI (wp-backup-cli)
 

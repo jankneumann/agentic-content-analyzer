@@ -104,6 +104,16 @@ dependencies = [
     # Vector Search
     "pgvector>=0.3.0",  # PostgreSQL pgvector Python bindings
 
+    # S3-compatible object access.
+    # Already imported lazily by src/storage/file_storage.py (S3 storage provider)
+    # while appearing in no dependency list — an undeclared runtime import that
+    # happened not to bite because the S3 provider is off by default. The backup
+    # freshness reader needs the same client to fetch one small manifest object on
+    # a path that runs in every environment, so the gap is closed rather than
+    # inherited. This does not put multi-GB dumps through the interpreter: the
+    # dumps go pg_dump | age | rclone and never enter Python.
+    "boto3>=1.34.0",
+
     # MCP Server
     # <2: mcp 2.0 renamed McpError -> MCPError in mcp.shared.exceptions, which
     # breaks src/mcp_tools/runtime.py at import. Lift once that migration lands.
