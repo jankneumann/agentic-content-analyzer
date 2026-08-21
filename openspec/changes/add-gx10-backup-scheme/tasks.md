@@ -224,6 +224,23 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
   **Dependencies**: 3.7e
 - [ ] 3.7g Run `alembic heads` and confirm a single head; add a merge revision if the migration introduced a second (XS)
   **Dependencies**: 3.7d
+- [ ] 3.7h Write tests that construct a real `WorkflowAlertEnvelopeV1` for a `system_check` alert and assert it survives `_validate_identity_and_collections` — never by asserting a regex in isolation (M)
+  **Design decisions**: A9
+  **Dependencies**: 3.6
+- [ ] 3.7i Add the `system_check` branch to `_validate_identity_and_collections`, asserting null `operation_id`, `attempt == 1`, the A2 event-key grammar, and a diagnostic path equal to the event id (M)
+  **Design decisions**: A9
+  **Dependencies**: 3.7h
+- [ ] 3.7j Widen `WorkflowAlertCounts` with the four backup tally fields — it is a StrictModel with `extra="forbid"`, so backup counts are rejected without this (S)
+  **Design decisions**: A9
+  **Dependencies**: 3.7h
+- [ ] 3.7k Write a mechanical schema-vs-model conformance test asserting the alert schema and `WorkflowAlertEnvelopeV1` agree field-for-field, and that `WorkflowAlertDiagnosticCode` admits exactly the schema's code enum (S)
+  **Design decisions**: A11, A12
+  **Dependencies**: 3.6
+- [ ] 3.7l Write tests for check-window key derivation — every evaluation inside one window derives the identical key, and one alert is emitted per staleness period during a sustained outage (S)
+  **Design decisions**: A10
+  **Dependencies**: 3.6
+- [ ] 3.7m Implement check-window truncation as a pure function of the window length (S)
+  **Dependencies**: 3.7l
 - [ ] 3.9b Write an end-to-end enqueue-and-drain test proving a `system_check` alert is persisted and delivered against a migrated database — envelope construction alone is not evidence of delivery (M)
   **Design decisions**: A1
   **Dependencies**: 3.9, 3.7f

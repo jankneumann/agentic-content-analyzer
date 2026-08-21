@@ -7,7 +7,7 @@
       "vendor": "claude_code",
       "agent_id": "claude_code",
       "success": true,
-      "findings_count": 26,
+      "findings_count": 12,
       "elapsed_seconds": 0.0,
       "error": null
     }
@@ -23,10 +23,10 @@
       "primary_finding_id": 1,
       "matched_findings": [],
       "match_score": 0.0,
-      "agreed_type": "spec_gap",
+      "agreed_type": "contract_mismatch",
       "agreed_criticality": "critical",
       "recommended_disposition": "accept",
-      "description": "Critical: D5/D6 cannot land as scoped. The durable alert path is anchored on the workflow_terminal_events table, which enforces three CHECK constraints that a system_check row violates: ck_workflow_terminal_events_source_kind (source_kind IN ('operation','reconciliation_action','reconciliation_failure')), ck_workflow_terminal_events_event_identity (an XOR over three exact event_key formulas), and ck_workflow_terminal_events_source_shape (per-kind nullability of operation_id/claim_generation/terminal_status). The same DDL is duplicated in src/queue/setup.py, and src/models/workflow_alert.py declares WorkflowTerminalSourceKind as a StrEnum. The proposal states 'this change adds no migration, deliberately', and wp-health-alerts' write_allow covers only health_routes.py, workflow_alert_models.py, worker.py and four test files. No package can write alembic/versions/**, src/models/workflow_alert.py, src/queue/setup.py, or src/services/workflow_terminal_event_service.py, so the alert can be constructed in Pydantic but never persisted or delivered."
+      "description": "Critical: the envelope's own identity validator is never named in the widening set, and its non-operation branch rejects every system_check alert at construction. Task 3.7 widens five elements (source kind, event-key grammar, workflow type, diagnostic-URL validator, diagnostic codes), and D5's table pins 'event_key grammar' to workflow_alert_models.py:141-176 -- that range is WorkflowTerminalEventV1.validate_source_identity (:152), a different class from the envelope. WorkflowAlertEnvelopeV1._validate_identity_and_collections (:296) is cited nowhere in design.md, tasks.md, or the amendments. Its else-branch (:322-323) raises 'reconciliation alerts must omit operation_id and use workflow type' unless workflow_type == 'content.reconciliation', then requires attempt == 1 and an event_key matching one of two reconciliation regexes. A system_check envelope carrying workflow_type 'system.backup_freshness' hits that branch and raises before any of the five widened elements matter. This is the same failure mode A2 corrected for the key grammar -- rejected at construction, so no alert is ever emitted -- surviving in a second location."
     },
     {
       "id": 2,
@@ -38,7 +38,7 @@
       "agreed_type": "contract_mismatch",
       "agreed_criticality": "critical",
       "recommended_disposition": "accept",
-      "description": "Critical: both proposed event_key grammars are rejected by the existing WorkflowEventKey type. src/contracts/workflow_alert_models.py constrains event_key to pattern ^[a-z0-9:_-]+$ (lowercase only, max 160). D6's key 'system_check:backup_stale:<manifest_completed_at>' and the contract schema's pattern ^system_check:backup_freshness:[0-9]{8}T[0-9]{6}Z$ both contain uppercase T and Z (and an ISO timestamp would add '.'), so every emitted alert fails validation at construction. The two grammars also disagree with each other on the middle segment (backup_stale vs backup_freshness), and the schema's fixed 15-character stamp cannot express D6's date-only backup_no_history key. On top of that, the DB constraint ck_workflow_terminal_events_event_identity admits only the three existing literal key formulas."
+      "description": "Critical: the alert JSON Schema omits four fields that WorkflowAlertEnvelopeV1 makes mandatory, and types a fifth as null where the model requires a positive int. The model declares attempt: Annotated[int, Field(ge=1, ...)] (:232) -- non-nullable and required -- plus resource_refs (:234), source_keys (:238) and counts (:239), none with defaults. The schema's required list is [schema_version, event_id, event_key, occurred_at, severity, outcome, source_kind, workflow_type, diagnostic_url, codes] and it declares attempt as {'type': 'null'}. A payload that satisfies the schema therefore fails model construction on four missing fields, and any payload the model accepts carries an attempt the schema forbids. D5 says operation_id and attempt must 'be made optional for the new kind', but task 3.7's element list does not include attempt, so the nullability change has no owning task. Task 3.7b's conformance assertion ('the event schema landed in 0.2 agrees with WorkflowAlertEnvelopeV1') fails by construction against the schema as written."
     },
     {
       "id": 3,
@@ -48,9 +48,9 @@
       "matched_findings": [],
       "match_score": 0.0,
       "agreed_type": "contract_mismatch",
-      "agreed_criticality": "critical",
+      "agreed_criticality": "high",
       "recommended_disposition": "accept",
-      "description": "Critical: the alert contract pins diagnostic_url to ^/api/v1/health/backup$, a route that does not exist and that no task creates. src/api/health_routes.py registers only GET /health and GET /ready, neither under /api/v1, and contracts/README.md states 'OpenAPI - No: No endpoint is added.' The existing validate_diagnostic_route allowlist accepts only /api/v1/operations/{digits} and /api/v1/workflow-terminal-events/{uuid}, and the model field is AnyUrl (absolute) whereas the schema types a relative path string. Spec scenario 'System-check alerts carry no operation identity' requires the diagnostic URL to 'resolve to a route that exists', so the conformance test in task 3.7b fails by construction and the alert cannot be built."
+      "description": "Critical: the alert schema declares two properties that do not exist on WorkflowAlertEnvelopeV1, and StrictModel forbids extras. The schema defines claim_generation and terminal_status (both 'type': 'null') with descriptions calling them 'absent for system checks'. Those fields exist on WorkflowTerminalEventV1 (:145-147), not on the envelope, whose field list ends at codes (:240). StrictModel sets model_config = ConfigDict(extra='forbid') (workflow_models.py:69-70), so an envelope payload carrying either key raises a validation error rather than ignoring it. Because the schema also omits additionalProperties: false, it is simultaneously more permissive than the model everywhere else -- it will not catch a genuinely misspelled field."
     },
     {
       "id": 4,
@@ -59,34 +59,34 @@
       "primary_finding_id": 4,
       "matched_findings": [],
       "match_score": 0.0,
-      "agreed_type": "spec_gap",
-      "agreed_criticality": "critical",
+      "agreed_type": "contract_mismatch",
+      "agreed_criticality": "high",
       "recommended_disposition": "accept",
-      "description": "Critical: the graph-database backup contradicts the change's own 'no production mutations' requirement and is not achievable in every supported configuration. 'neo4j-admin database dump' requires the database to be stopped on Community Edition and is impossible against AuraDB, where there is no filesystem access at all - yet settings.py declares graphdb_mode local|cloud|embedded and settings.py:1208 shows AuraDB is a live configuration. FalkorDB BGSAVE is a write command issued to the running server, which directly contradicts spec scenario 'Backup makes no production mutations' ('SHALL perform only read operations against source data stores'). The spec scenario 'Graph database is captured per configured provider' branches on graphdb_provider only and never on graphdb_mode."
+      "description": "Critical: the diagnostic_url pattern admits http://, which the model rejects and no producer emits. The schema pins diagnostic_url to '^https?://[^/]+/api/v1/workflow-terminal-events/<uuid>$'. The model field is WorkflowDiagnosticUrl = Annotated[AnyUrl, UrlConstraints(max_length=2048, allowed_schemes=['https'])] (:133-136) -- https only -- and the sole producer hardcodes the scheme: workflow_terminal_event_service.py:568 builds origin = f'https://{parsed.netloc}'. So the optional 's' describes a URL that is unreachable from the code and rejected at the boundary. A6 exists to close silent-success gaps; this is the inverse, a contract looser than the thing it documents, and it is exactly what task 3.7b's conformance test is meant to catch."
     },
     {
       "id": 5,
       "status": "unconfirmed",
       "primary_vendor": "claude_code",
-      "primary_finding_id": 6,
+      "primary_finding_id": 5,
       "matched_findings": [],
       "match_score": 0.0,
       "agreed_type": "correctness",
-      "agreed_criticality": "critical",
+      "agreed_criticality": "high",
       "recommended_disposition": "accept",
-      "description": "Critical: nothing in the plan requires per-stage exit-status checking in the 'pg_dump -Fc | age -r <recipient> | rclone rcat' pipeline. In a shell pipeline without pipefail, and in a naive subprocess.Popen chain, the exit code observed is the last stage's; pg_dump failing halfway (connection drop, out of disk, permission error) still yields a zero exit from rclone and uploads a truncated ciphertext that the manifest then records as 'succeeded'. Spec scenario 'A failing store does not silently pass' only covers a store that 'fails to produce an artifact', which a truncated-but-uploaded dump does not. This is the exact failure class the change exists to eliminate - a backup that reports success and is not restorable."
+      "description": "Critical: A2's event-key grammar contradicts D6's idempotency rationale, and D6 was not amended. D6 states under a bolded 'Definition of \"check window\"' that idempotency is 'keyed, not timed by wall clock', deriving the key from the observed manifest generation ('system_check:backup_stale:<manifest_completed_at>', with a UTC date for no_history) and drawing the consequence that 'while a backup stays stale the manifest timestamp does not move, so exactly one alert exists no matter how often maintenance runs'. A2 replaces this with 'system_check:backup_freshness:<epoch-seconds>' where the suffix is 'the check-window start' -- a wall-clock quantity -- and asserts 'idempotency-per-window is preserved'. Under A2 a persistently stale backup emits a new alert every window, which is the alert storm D6 was written to prevent; under D6 it emits one. A2's header says it supersedes 'D5's key sketch' only, so D6's text stands as normative and the two conflict. Compounding this, no artifact defines the window's duration: design.md:165/168, tasks.md:206 and spec.md:290/309 all say 'per check window' without ever fixing its length, so the alert volume for a sustained outage is unspecified."
     },
     {
       "id": 6,
       "status": "unconfirmed",
       "primary_vendor": "claude_code",
-      "primary_finding_id": 5,
+      "primary_finding_id": 6,
       "matched_findings": [],
       "match_score": 0.0,
-      "agreed_type": "spec_gap",
-      "agreed_criticality": "high",
+      "agreed_type": "contract_mismatch",
+      "agreed_criticality": "medium",
       "recommended_disposition": "accept",
-      "description": "Critical: the 7 daily / 4 weekly / 12 monthly retention requirement is not expressible as the bucket lifecycle rules D10 prescribes. S3 and R2 lifecycle rules expire objects by age under a prefix (S3 additionally by tag; R2 does not support tag filters), so a grandfather-father-son policy requires the backup run to write tier-distinguishing prefixes or tags. Nothing in 'Multi-Store Scheduled Backup' does: the only key requirement is that the artifact key embeds an ISO-8601 UTC timestamp under one flat prefix. Age-based expiry over that layout keeps everything for N days and then nothing - the 4 weekly and 12 monthly tiers cannot exist."
+      "description": "Nit: the diagnostic-code set still disagrees across three artifacts, and the gap widened rather than closed. Round-1 finding 15 flagged the alert schema listing four codes against D5's three. The schema now enumerates six -- backup_stale, backup_no_history, backup_partial, backup_verify_failed, backup_target_unreachable, backup_environment_mismatch -- while D5's widening table still reads 'add backup_stale, backup_no_history, backup_verify_failed'. A6 introduced backup_partial and backup_environment_mismatch without updating D5's table, and backup_target_unreachable appears in no design text at all. Task 3.7 says only 'diagnostic codes' without enumerating, so nothing reconciles them; WorkflowAlertDiagnosticCode is a closed Literal union, so any code missed at implementation raises at construction."
     },
     {
       "id": 7,
@@ -95,10 +95,10 @@
       "primary_finding_id": 7,
       "matched_findings": [],
       "match_score": 0.0,
-      "agreed_type": "contract_mismatch",
-      "agreed_criticality": "high",
+      "agreed_type": "architecture",
+      "agreed_criticality": "medium",
       "recommended_disposition": "accept",
-      "description": "Critical: the manifest's checksum and size fields are mandatory in the spec, optional in the contract, and have no specified means of computation. Spec scenario 'Manifest records the run' says it SHALL record 'per-store outcome, artifact key, byte size, and checksum', but backup-manifest.schema.json lists only ['store','outcome'] as required, so a manifest omitting both validates. Meanwhile Approach C and design D14 forbid streaming artifacts through Python, and no task states how a SHA-256 over a streamed multi-GB artifact is produced (tee to sha256sum, rclone's own hash, or a post-upload HEAD)."
+      "description": "Nit: wp-contracts still locks the alert schema at a path it will never write. Round-1 finding 14 was half-applied: scope.write_allow gained openspec/contracts/content-workflows/events/**, matching contracts/README.md:22 ('the alert schema lands in content-workflows, not in the new backup domain'), but locks.files still names openspec/contracts/backup/events/backup-freshness-alert.schema.json. The lock therefore guards an unwritten path while the real target is unguarded -- harmless for a single-package run, but the lock is the coordination boundary the package description leans on ('Runs first so downstream packages code against a fixed shape')."
     },
     {
       "id": 8,
@@ -107,10 +107,10 @@
       "primary_finding_id": 8,
       "matched_findings": [],
       "match_score": 0.0,
-      "agreed_type": "security",
-      "agreed_criticality": "high",
+      "agreed_type": "correctness",
+      "agreed_criticality": "medium",
       "recommended_disposition": "accept",
-      "description": "Critical: the credential-in-argv requirement exists only for the restore path, not for the new backup path. Spec scenario 'Credentials are not passed as process arguments' sits under the cli-interface Restore From Cloud Command requirement, while the backup path - which shells out to pg_dump, rclone, neo4j-admin/redis-cli and bao under a systemd timer - has no equivalent constraint. Hard Constraint 3 only forbids logging, committing, or emitting credentials in CLI output; it says nothing about the process argument list. A pg_dump invoked with a password-bearing URL, or rclone invoked with --s3-access-key-id, exposes the backup target's write credential and the database password to every local user via ps, on a host whose whole purpose is holding the only copy of production data."
+      "description": "Nit: A6 made the shared-bucket collision loud but left the collision itself, and the cheap structural fix was not taken. spec.md:19 still has backup_s3_prefix default to the shared constant 'aca', and spec.md:202 still requires the manifest at 'a stable, well-known key under the configured prefix'. Two environments on one bucket at the default prefix therefore still write the same object. A6's environment field converts the old silent failure (staging's fresh timestamp masking a dead production backup) into a detected one, which is the important half. What remains is that both environments then sit permanently in environment-mismatch: each run clobbers the other's manifest, so neither has a usable freshness signal and both alert continuously. Backup artifacts are unaffected -- they live under tier and timestamp keys -- so this costs monitoring, not recoverability."
     },
     {
       "id": 9,
@@ -119,10 +119,10 @@
       "primary_finding_id": 9,
       "matched_findings": [],
       "match_score": 0.0,
-      "agreed_type": "spec_gap",
-      "agreed_criticality": "high",
+      "agreed_type": "contract_mismatch",
+      "agreed_criticality": "low",
       "recommended_disposition": "accept",
-      "description": "Critical: the freshness check reproduces the exact failure mode D11 was written to avoid. D11 rejects reading freshness from a HEAD on the newest artifact because 'a partially-failed run would read as a healthy backup - the exact failure mode D7 exists to eliminate'. But spec scenario 'Freshness is derived from the manifest' derives status solely from the manifest's completion timestamp, and the manifest schema's overall_outcome enum explicitly admits 'partial'. A run in which the graph database or artifacts store failed writes a fresh manifest with overall_outcome='partial' and the check reports 'ok'."
+      "description": "Nit: the schema's UUID pattern is looser than the validator it documents, in two ways. diagnostic_url matches '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', which constrains neither the version nor the variant nibble, while _is_canonical_uuid (:436-441) requires parsed.version in {1,2,3,4,5} and str(parsed) == value. A UUIDv7 diagnostic URL -- a plausible choice for a new emitter -- validates against the schema and is rejected by the model. Separately, the model's non-operation branch requires path == f'/api/v1/workflow-terminal-events/{self.event_id}' (:325-327), tying the URL's UUID to the envelope's own event_id; the schema accepts any UUID in that position, so a payload whose diagnostic_url points at a different event validates."
     },
     {
       "id": 10,
@@ -131,10 +131,10 @@
       "primary_finding_id": 10,
       "matched_findings": [],
       "match_score": 0.0,
-      "agreed_type": "spec_gap",
-      "agreed_criticality": "high",
+      "agreed_type": "observability",
+      "agreed_criticality": "low",
       "recommended_disposition": "accept",
-      "description": "Critical: the binary-preflight mitigation never runs on the scheduled path. The Approach C risk 'Host binaries missing on gx-10' is mitigated by 'an explicit preflight check in aca backup verify that names each missing binary rather than failing mid-run', and spec scenario 'Preflight names missing prerequisites' attaches that preflight to verify only. D13 then states that verify is deliberately NOT wired to the timer, because it needs the identity key. The scheduled 'aca backup run' - the only path that ever executes unattended - therefore has no preflight, and a missing age or rclone binary is discovered after pg_dump has already run, or worse produces a partial upload."
+      "description": "Optional: backup_staleness_hours keeps the legacy 48-hour default (spec.md:58, 'SHALL default to the same value as the legacy staleness setting it replaces') against a daily schedule and D2's stated 24-hour RPO, so two consecutive failed runs elapse before anything is reported. Round-1 finding 23 raised this and the plan kept parity. The choice is defensible -- parity is what makes the railway_backup_staleness_hours forward-mapping in specs/database-provider/spec.md:29 a true no-op rename, and changing the default silently retunes existing deployments -- so this is flagged as a conscious trade-off rather than a defect."
     },
     {
       "id": 11,
@@ -143,10 +143,10 @@
       "primary_finding_id": 11,
       "matched_findings": [],
       "match_score": 0.0,
-      "agreed_type": "spec_gap",
-      "agreed_criticality": "high",
+      "agreed_type": "correctness",
+      "agreed_criticality": "low",
       "recommended_disposition": "accept",
-      "description": "Critical: the manifest key is fixed and the prefix defaults to a shared constant, so two environments pointed at one bucket silently corrupt each other's freshness signal. backup_s3_prefix defaults to 'aca' and the manifest lives at the stable key <prefix>/manifest/latest.json. A staging or developer run against the same bucket overwrites the production manifest with its own fresh timestamp - production backups can stop entirely while /ready keeps reporting 'ok' and no alert fires. Nothing in the specs requires the prefix to be environment-scoped or the manifest to identify the environment that wrote it."
+      "description": "The round-1 criticals were propagated into the downstream artifacts, not just appended as prose to design.md -- which is the usual failure mode for an amendment round. Spot-verified: the 'no migration' claim is retracted in proposal.md:159-173 rather than quietly edited; A1's migration has real tasks (3.7c-3.7g, including an alembic heads check) and wp-health-alerts' write scope actually gained alembic/versions/**, src/queue/setup.py, src/models/workflow_alert.py and src/services/workflow_terminal_event_service.py; A8's ownership move is reflected in work-packages.yaml as a wp-health-alerts -> wp-backup-cli dependency with the deny list narrowed to src/services/backup/manifest_reader.py; A4's (graphdb_provider, graphdb_mode) branch and A5's write-time retention tiers appear as spec scenarios (spec.md:89-105, :81-86)."
     },
     {
       "id": 12,
@@ -155,184 +155,16 @@
       "primary_finding_id": 12,
       "matched_findings": [],
       "match_score": 0.0,
-      "agreed_type": "architecture",
-      "agreed_criticality": "high",
-      "recommended_disposition": "accept",
-      "description": "Critical: D14's shared manifest reader has no legal home in the package decomposition. D14 requires that the worker's alert emission 'reads through the same helper' as the readiness check, so both src/api/health_routes.py (task 3.3b) and src/queue/worker.py (task 3.9) consume one cached reader. wp-health-alerts' write_allow contains no service module, and its deny list explicitly names src/services/backup/** - which belongs to wp-backup-cli, a package wp-health-alerts does not depend on. The only in-scope options are duplicating the reader in both files (two caches, two timeout policies) or importing an API module from the queue worker, which inverts the layering."
-    },
-    {
-      "id": 13,
-      "status": "unconfirmed",
-      "primary_vendor": "claude_code",
-      "primary_finding_id": 13,
-      "matched_findings": [],
-      "match_score": 0.0,
-      "agreed_type": "architecture",
-      "agreed_criticality": "medium",
-      "recommended_disposition": "accept",
-      "description": "Nit: the plan leaves three different S3 clients in the tree for one backup target and never reconciles them. The backup path uses rclone (Approach C), the freshness reader uses boto3 (D14), and the restore path keeps mc - src/cli/restore_commands.py:195-252 invokes 'mc alias set', 'mc ls' and 'mc cp', and task 4.3 only repoints it at the new settings without saying whether the client changes. The runbook's prerequisites become three tools with three credential-passing conventions, and the verify preflight (task 2.11) names only the binaries the backup path uses, so a missing mc is still discovered during a restore."
-    },
-    {
-      "id": 14,
-      "status": "unconfirmed",
-      "primary_vendor": "claude_code",
-      "primary_finding_id": 14,
-      "matched_findings": [],
-      "match_score": 0.0,
-      "agreed_type": "contract_mismatch",
-      "agreed_criticality": "medium",
-      "recommended_disposition": "accept",
-      "description": "Nit: wp-contracts declares a lock on openspec/contracts/backup/events/backup-freshness-alert.schema.json, but task 0.2 and contracts/README.md both state the alert schema lands in openspec/contracts/content-workflows/events/. The lock therefore protects a path nobody writes, and the path that is written (content-workflows/events/**) is covered by write_allow but by no lock key - so the coordination boundary the package exists to establish is not actually locked."
-    },
-    {
-      "id": 15,
-      "status": "unconfirmed",
-      "primary_vendor": "claude_code",
-      "primary_finding_id": 15,
-      "matched_findings": [],
-      "match_score": 0.0,
-      "agreed_type": "contract_mismatch",
-      "agreed_criticality": "medium",
-      "recommended_disposition": "accept",
-      "description": "Nit: the alert schema's codes enum lists four diagnostic codes - backup_stale, backup_no_history, backup_verify_failed, backup_target_unreachable - but design D5's widening table and task 3.7 name only the first three. Task 3.7b asserts the schema and WorkflowAlertDiagnosticCode agree, so the fourth code makes that conformance test fail unless it is added to the model as well. The unreachable case is also the one the freshness check reports as 'unknown', so it is probably the intended fourth code rather than an accident."
-    },
-    {
-      "id": 16,
-      "status": "unconfirmed",
-      "primary_vendor": "claude_code",
-      "primary_finding_id": 16,
-      "matched_findings": [],
-      "match_score": 0.0,
-      "agreed_type": "spec_gap",
-      "agreed_criticality": "medium",
-      "recommended_disposition": "accept",
-      "description": "Nit: specs/cli-interface/spec.md places 'Restore From Cloud Command' under '## MODIFIED Requirements', but no requirement by that name - or any requirement mentioning restore-from-cloud - exists in openspec/specs/cli-interface/spec.md or anywhere else in openspec/specs/. The behavior is implemented in src/cli/restore_commands.py but was never specced. 'openspec validate --strict' passes because it checks delta shape, not base-spec existence; archiving a MODIFIED requirement with no base counterpart is what actually breaks."
-    },
-    {
-      "id": 17,
-      "status": "unconfirmed",
-      "primary_vendor": "claude_code",
-      "primary_finding_id": 17,
-      "matched_findings": [],
-      "match_score": 0.0,
-      "agreed_type": "resilience",
-      "agreed_criticality": "medium",
-      "recommended_disposition": "accept",
-      "description": "Nit: nothing verifies that the artifacts the manifest names still exist. verify only decrypts the canary, and the freshness check only reads the manifest's timestamp. A lifecycle misconfiguration, an accidental bucket-wide delete, or an attacker holding the gx-10 write credential can empty the bucket while a fresh manifest keeps /ready green - and the manifest itself is the one plaintext, overwritable object (D11), so an attacker with that credential can also keep rewriting it. The plan's own risk table lists 'Backups run but never restore-tested' but the mitigation is a CI round trip against a container, not a check against the real target."
-    },
-    {
-      "id": 18,
-      "status": "unconfirmed",
-      "primary_vendor": "claude_code",
-      "primary_finding_id": 18,
-      "matched_findings": [],
-      "match_score": 0.0,
-      "agreed_type": "observability",
-      "agreed_criticality": "medium",
-      "recommended_disposition": "accept",
-      "description": "Nit: D6 defends worker-only alert emission with 'the dead-man's-switch consideration in D7 covers total host loss', but D7 contains no such consideration - it only argues that the manifest survives destruction of the source host. Nothing in the plan evaluates freshness from outside the gx-10 blast radius, so total host loss (the scenario backups exist for) produces silence rather than an alert: no worker, no emission, no signal. The dangling cross-reference makes an unaddressed failure mode look addressed."
-    },
-    {
-      "id": 19,
-      "status": "unconfirmed",
-      "primary_vendor": "claude_code",
-      "primary_finding_id": 19,
-      "matched_findings": [],
-      "match_score": 0.0,
-      "agreed_type": "spec_gap",
-      "agreed_criticality": "medium",
-      "recommended_disposition": "accept",
-      "description": "Nit: the artifact-directory requirement assumes local disk and has no scenario for the other storage providers. Spec scenario 'Artifact directories are captured wholesale' opens with 'GIVEN local artifact directories', but CLAUDE.md documents storage_provider as local|s3|supabase|railway. When artifacts live in an object store there is no directory to rclone, and the plan does not say whether that store is reported skipped (with a reason, as OpenBao is) or copied bucket-to-bucket. Silence here means an implementer picks one, and the wrong pick is a store that reports 'succeeded' while backing up an empty directory."
-    },
-    {
-      "id": 20,
-      "status": "unconfirmed",
-      "primary_vendor": "claude_code",
-      "primary_finding_id": 20,
-      "matched_findings": [],
-      "match_score": 0.0,
-      "agreed_type": "compatibility",
-      "agreed_criticality": "medium",
-      "recommended_disposition": "accept",
-      "description": "Nit: D5 widens WorkflowTerminalSourceKind at workflow_alert_models.py:32, but that alias is shared - WorkflowTerminalEventV1.source_kind (:145) uses the same type. Adding 'system_check' therefore also admits a system_check terminal event, a shape whose validators (:153-185) have no branch for it, so it falls through every check and validates as anything. The plan has no consumer-impact analysis either: alert sinks and any external receiver validating the previously-closed source_kind/workflow_type allowlist will reject system_check envelopes, and no envelope version bump or receiver note is planned."
-    },
-    {
-      "id": 21,
-      "status": "unconfirmed",
-      "primary_vendor": "claude_code",
-      "primary_finding_id": 21,
-      "matched_findings": [],
-      "match_score": 0.0,
-      "agreed_type": "spec_gap",
-      "agreed_criticality": "medium",
-      "recommended_disposition": "accept",
-      "description": "Nit: D13 specifies how the systemd unit gets its configuration but never says how the host gets the aca CLI or the native tools, on a deployment that is containerized (Dockerfile, docs/MOBILE_DEPLOYMENT.md). A non-login aca-backup user running 'aca backup run' implies a host-native Python install with the project's dependencies, alongside pg_dump, rclone, age, bao and neo4j-admin. Nothing states whether that is a venv on the host, a docker run of the app image, or docker exec into the running container - and each has different consequences for the EnvironmentFile, for PROFILE resolution, and for reaching the database and graph containers. Separately, pg_dump must be at least the server's major version (the target runs paradedb pg17), which is not stated anywhere."
-    },
-    {
-      "id": 22,
-      "status": "unconfirmed",
-      "primary_vendor": "claude_code",
-      "primary_finding_id": 22,
-      "matched_findings": [],
-      "match_score": 0.0,
-      "agreed_type": "performance",
-      "agreed_criticality": "low",
-      "recommended_disposition": "accept",
-      "description": "Optional: neither 'aca backup list' nor the generalized restore discovery has a bounded-listing requirement. After a year the target holds roughly 12 monthly plus 4 weekly plus 7 daily artifacts per store plus whatever the artifacts sync produced, and prefix-based discovery over an object store is an unbounded ListObjectsV2 walk. The existing restore implementation parses 'mc ls' output wholesale (restore_commands.py:45), so the generalization inherits that shape."
-    },
-    {
-      "id": 23,
-      "status": "unconfirmed",
-      "primary_vendor": "claude_code",
-      "primary_finding_id": 23,
-      "matched_findings": [],
-      "match_score": 0.0,
-      "agreed_type": "spec_gap",
-      "agreed_criticality": "low",
-      "recommended_disposition": "accept",
-      "description": "Optional: backup_staleness_hours inherits the legacy default of 48 hours (settings.py:490) while the schedule is daily and D2 targets a 24-hour RPO. Two consecutive failed runs therefore pass unnoticed, and the first alert arrives roughly 48 hours after the last good backup - twice the stated RPO. The parity requirement in spec scenario 'Monitoring settings are provider-neutral' is what pins the default there."
-    },
-    {
-      "id": 24,
-      "status": "unconfirmed",
-      "primary_vendor": "claude_code",
-      "primary_finding_id": 24,
-      "matched_findings": [],
-      "match_score": 0.0,
-      "agreed_type": "style",
-      "agreed_criticality": "low",
-      "recommended_disposition": "accept",
-      "description": "FYI: the closing note in tasks.md says 'Plan iteration 1 added Phase 0 and eleven tasks (1.4b-1.4d, 2.9b, 2.9c, 3.3d, 3.7b, 4.8b, 5.4b)'. There is no task 1.4d, and the list omits 1.9b and 3.3e, which iteration 1 did add. The enumerated set is nine-or-ten names for a claimed eleven."
-    },
-    {
-      "id": 25,
-      "status": "unconfirmed",
-      "primary_vendor": "claude_code",
-      "primary_finding_id": 25,
-      "matched_findings": [],
-      "match_score": 0.0,
       "agreed_type": "correctness",
       "agreed_criticality": "low",
       "recommended_disposition": "accept",
-      "description": "Every load-bearing claim in proposal.md's Why section verifies against the tree. health_routes.py:185 does gate the backup check on database_provider == 'railway' AND railway_backup_enabled; loop is bound at :124 inside the database try block and used at :188; the warning text at :193 does hardcode '2x schedule interval' while railway_backup_staleness_hours defaults independently at settings.py:490; restore_commands.py:110-120 does compare URLs by string equality; mc is invoked with credentials in argv at :195-206 and target_url is emitted unmasked at :287-296; boto3 appears nowhere in pyproject.toml. A plan whose diagnosis survives independent verification is worth naming, because the remaining findings are about the forward design rather than about the premise."
-    },
-    {
-      "id": 26,
-      "status": "unconfirmed",
-      "primary_vendor": "claude_code",
-      "primary_finding_id": 26,
-      "matched_findings": [],
-      "match_score": 0.0,
-      "agreed_type": "architecture",
-      "agreed_criticality": "low",
-      "recommended_disposition": "accept",
-      "description": "The design resolves several ambiguities that would otherwise have been guessed during implementation, and does so where a reviewer can see the reasoning: D11 names the one plaintext object and explains why the app tier must not hold the identity; D12 fixes the exact tuple the live-database guard compares and justifies each exclusion; D4's canary-provenance argument closes the 'who writes the canary' hole before it exists. The test-first task ordering, per-package deny lists, and the explicit scope note on the integrate task are all above the usual bar."
+      "description": "A6's four silent-success defences landed as observable spec scenarios rather than design prose, which is what makes them testable: per-stage exit status with an explicit prohibition on trusting the final stage (spec.md:134-139), a size read-back against the stored object (:144), the run path preflighting its binaries (:154) rather than leaving that on verify where D13 never wires it to the timer, and fresh-but-partial explicitly not reporting healthy (:234-238). A7's decision to tee into sha256sum inside the same pipeline is the right call for a change whose core property is that multi-GB dumps never enter the interpreter."
     }
   ],
   "summary": {
-    "total_unique_findings": 26,
+    "total_unique_findings": 12,
     "confirmed_count": 0,
-    "unconfirmed_count": 26,
+    "unconfirmed_count": 12,
     "disagreement_count": 0,
     "blocking_count": 0
   }
