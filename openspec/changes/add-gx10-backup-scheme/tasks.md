@@ -263,38 +263,38 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
 
 ## Phase 4 — Restore path (wp-restore-cli)
 
-- [ ] 4.1 Replace the `MagicMock` settings fixture with an explicit fake exposing only declared fields (S)
+- [x] 4.1 Replace the `MagicMock` settings fixture with an explicit fake exposing only declared fields (S)
   **Design decisions**: D9 (see design § Testing Notes)
   **Dependencies**: None
-- [ ] 4.1b Rewrite positional `call_args_list[N]` assertions to match on invoked argv, and remove the skipped round-trip placeholder now owned by the integration package (S)
+- [x] 4.1b Rewrite positional `call_args_list[N]` assertions to match on invoked argv, and remove the skipped round-trip placeholder now owned by the integration package (S)
   **Design decisions**: D9 (see design § Testing Notes)
   **Dependencies**: None
-- [ ] 4.2 Write tests for endpoint-agnostic restore and prefix-based artifact discovery independent of the `railway-` filename prefix (M)
+- [x] 4.2 Write tests for endpoint-agnostic restore and prefix-based artifact discovery independent of the `railway-` filename prefix (M)
   **Spec scenarios**: cli-interface.2 (Restore works against any S3-compatible target; Backup artifacts are discovered independently of legacy naming)
   **Dependencies**: 4.1, 1.2
-- [ ] 4.3 Repoint the restore command at the provider-neutral settings and generalize artifact discovery (M)
+- [x] 4.3 Repoint the restore command at the provider-neutral settings and generalize artifact discovery (M)
   **Dependencies**: 4.2
-- [ ] 4.4 Checkpoint: run tests, review diff, verify scope
-- [ ] 4.5 Write tests for the three security fixes — no credentials in subprocess argv, masked target database in JSON output, live-database guard resisting URL variation (M)
+- [x] 4.4 Checkpoint: run tests, review diff, verify scope
+- [x] 4.5 Write tests for the three security fixes — no credentials in subprocess argv, masked target database in JSON output, live-database guard resisting URL variation (M)
   **Spec scenarios**: cli-interface.2 (Credentials are not passed as process arguments; Command output masks the target database credentials; Live database safeguard resists URL variation)
   **Dependencies**: 4.1
-- [ ] 4.6 Pass storage credentials via environment rather than argv (S)
+- [x] 4.6 Pass storage credentials via environment rather than argv (S)
   **Dependencies**: 4.5
-- [ ] 4.7 Mask credentials in the emitted target database value (S)
+- [x] 4.7 Mask credentials in the emitted target database value (S)
   **Dependencies**: 4.5
-- [ ] 4.8 Compare databases by the normalized `(host, effective port, database name)` identity defined in design D12 rather than raw string equality in the live-database guard (S)
+- [x] 4.8 Compare databases by the normalized `(host, effective port, database name)` identity defined in design D12 rather than raw string equality in the live-database guard (S)
   **Design decisions**: D12
   **Dependencies**: 4.5
-- [ ] 4.8b Write a regression test proving the existing destructive-restore confirmation safeguard survives the rewrite (S)
+- [x] 4.8b Write a regression test proving the existing destructive-restore confirmation safeguard survives the rewrite (S)
   **Spec scenarios**: cli-interface.2 (Destructive restore safeguards are retained)
   **Dependencies**: 4.1
-- [ ] 4.9 Write tests for restore-side decryption, including the missing-identity abort (S)
+- [x] 4.9 Write tests for restore-side decryption, including the missing-identity abort (S)
   **Spec scenarios**: cli-interface.2 (Encrypted artifacts are decrypted during restore)
   **Design decisions**: D4
   **Dependencies**: 4.1
-- [ ] 4.10 Implement `age` decryption in the restore pipeline (S)
+- [x] 4.10 Implement `age` decryption in the restore pipeline (S)
   **Dependencies**: 4.9
-- [ ] 4.11 Checkpoint: run tests, review diff, verify scope
+- [x] 4.11 Checkpoint: run tests, review diff, verify scope
 
 ## Phase 5 — Deployment assets, retention, documentation (wp-deploy-assets)
 
