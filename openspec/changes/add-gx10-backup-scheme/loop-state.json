@@ -1,0 +1,54 @@
+{
+  "blocking_findings": [],
+  "change_id": "add-gx10-backup-scheme",
+  "cli_review_enabled": true,
+  "current_phase": "PLAN",
+  "error": null,
+  "escalation_reason": null,
+  "findings_trend": [],
+  "force": false,
+  "gate_signals": {
+    "external_dep_count": 0,
+    "has_broad_write_scope": false,
+    "has_db_migration": false,
+    "has_proposal": false,
+    "has_security_signal": false,
+    "has_specs": false,
+    "has_tasks": false,
+    "has_work_packages": false,
+    "package_count": 0,
+    "total_loc_estimate": null
+  },
+  "gate_verdict": null,
+  "handoff_ids": [
+    "gatekeeper-1"
+  ],
+  "implementation_strategy": {},
+  "iteration": 0,
+  "last_handoff_id": "gatekeeper-1",
+  "max_phase_iterations": 3,
+  "memory_ids": [],
+  "package_authors": {},
+  "packages_status": {},
+  "phase_archetype": "architect",
+  "phase_history": [
+    {
+      "at": "2026-08-21T09:50:01.055881+00:00",
+      "outcome": "escalate",
+      "phase": "GATEKEEPER"
+    },
+    {
+      "at": "2026-08-21T11:46:25.179276+00:00",
+      "note": "Operator continued. Resolution per GATEKEEPER recommendation: run PLAN to produce proposal/specs/tasks, then re-run GATEKEEPER against real artifacts before IMPLEMENT.",
+      "outcome": "resolved",
+      "phase": "ESCALATE"
+    }
+  ],
+  "phase_started_at": "",
+  "previous_phase": "GATEKEEPER",
+  "schema_version": 4,
+  "started_at": "",
+  "total_iterations": 0,
+  "val_review_enabled": false,
+  "vendor_availability": {}
+}
