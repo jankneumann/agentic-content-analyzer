@@ -29,6 +29,7 @@ from typer.core import TyperGroup
 
 from src.cli.agent_commands import app as agent_app
 from src.cli.auth_commands import app as auth_app
+from src.cli.backup_commands import app as backup_app
 from src.cli.batch_commands import app as batch_app
 from src.cli.curate_commands import app as curate_app
 from src.cli.deploy_commands import app as deploy_app
@@ -132,6 +133,7 @@ app.add_typer(kb_app, name="kb")
 app.add_typer(auth_app, name="auth")
 app.add_typer(curate_app, name="curate")
 app.add_typer(deploy_app, name="deploy")
+app.add_typer(backup_app, name="backup")
 app.command("capabilities")(capabilities)
 app.command("configured-sources")(configured_sources)
 
