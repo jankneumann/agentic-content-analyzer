@@ -332,19 +332,19 @@ Size key: XS ≤30min · S 30min–2hr · M 2hr–1day · L 1–3 days.
 
 ## Phase 6 — Round-trip verification (wp-integration)
 
-- [ ] 6.1 Provision a containerized S3-compatible backup target fixture in the compose stack (M)
+- [x] 6.1 Provision a containerized S3-compatible backup target fixture in the compose stack (M)
   **Spec scenarios**: backup-and-restore.9 (Round-trip restore is verified by test)
   **Dependencies**: 2.14c
-- [ ] 6.2 Implement the round-trip integration test in the integration suite — seed → backup → encrypt → upload → download → decrypt → restore → compare — replacing the placeholder removed in 4.1b (M)
+- [x] 6.2 Implement the round-trip integration test in the integration suite — seed → backup → encrypt → upload → download → decrypt → restore → compare — replacing the placeholder removed in 4.1b (M)
   **Spec scenarios**: backup-and-restore.9 (Round-trip restore is verified by test)
   **Dependencies**: 6.1, 4.10
-- [ ] 6.3 Merge work-package branches and run the full suite (M)
+- [x] 6.3 Merge work-package branches and run the full suite (M)
   **Dependencies**: 6.2, 3.9, 5.8
   **Scope note**: this is the integration task, so its diff spans every package's
   files by construction. Package scope enforcement is satisfied by
   `task_type: integrate` on `wp-integration`, not by that package's `write_allow`
   globs; a merge must not be treated as a scope violation.
-- [ ] 6.4 Final checkpoint: full suite green, diff reviewed, every task's scope verified
+- [x] 6.4 Final checkpoint: full suite green, diff reviewed, every task's scope verified
 
 ## Note on task 2.4 sizing
 
