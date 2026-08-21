@@ -131,6 +131,14 @@ def run_pipeline(
     processes are peers of the pipeline, not stages of it: if either fails, the
     result carries no digest and the caller treats the store as failed rather than
     recording an artifact it cannot verify.
+
+    **The digest and byte count describe the CIPHERTEXT, not the source data.**
+    ``tee`` sits immediately before the upload, so it measures exactly the bytes
+    the uploader writes. That is deliberate and load-bearing: the size read-back
+    compares this count against the stored object's size, and a digest of the
+    plaintext could not be checked against anything the target can report. Do not
+    "fix" this by moving ``tee`` earlier — it would make the read-back compare two
+    different quantities and always fail.
     """
     if not stages:
         raise ValueError("a pipeline needs at least one stage")
