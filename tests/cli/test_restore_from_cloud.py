@@ -32,6 +32,8 @@ from src.cli.restore_commands import (
     DatabaseIdentity,
     _addresses_same_database,
     mask_database_url,
+    mask_text,
+    split_database_credentials,
 )
 
 runner = CliRunner()
@@ -240,12 +242,62 @@ class TestCredentialsNeverReachArgv:
         assert ls is not None
         assert ls["env"]["RCLONE_CONFIG_BACKUP_SECRET_ACCESS_KEY"] == "r2-secret-key"
 
-    def test_the_database_password_never_reaches_a_listing_or_copy_invocation(self) -> None:
+    def test_the_database_password_never_reaches_any_invocation_at_all(self) -> None:
+        """Including `pg_restore`, which this test used to exempt.
+
+        The exemption was the leak: `--dbname <url-with-password>` is argv, and argv
+        is world-readable in /proc — the exact defect the `mc alias set` fix removed
+        one subprocess earlier in the same command. libpq reads PGPASSWORD from the
+        environment instead, which only the process owner can read.
+        """
         _, runs = invoke(["manage", "restore-from-cloud", "--yes"])
-        for call in runs.calls:
-            if call["argv"][0] == "pg_restore":
-                continue  # --dbname must carry the URL; nothing else may
-            assert "localpass" not in " ".join(map(str, call["argv"]))
+        assert "localpass" not in runs.all_argv_text()
+
+    def test_pg_restore_still_receives_the_target_database(self) -> None:
+        """Moving the password out must not move the TARGET out with it."""
+        _, runs = invoke(["manage", "restore-from-cloud", "--yes"])
+        restore = runs.invocation("pg_restore")
+        assert restore is not None
+        argv = " ".join(map(str, restore["argv"]))
+        assert "postgresql://aca@localhost:5432/newsletters_scratch" in argv
+        assert "--clean" in argv and "--if-exists" in argv
+
+    def test_the_database_password_travels_by_environment(self) -> None:
+        _, runs = invoke(["manage", "restore-from-cloud", "--yes"])
+        restore = runs.invocation("pg_restore")
+        assert restore is not None
+        assert restore["env"]["PGPASSWORD"] == "localpass"
+
+    @pytest.mark.parametrize(
+        ("url", "expected_argv", "expected_env"),
+        [
+            (
+                "postgresql://u:p@h:5432/d",
+                "postgresql://u@h:5432/d",
+                {"PGPASSWORD": "p"},
+            ),
+            ("postgresql://u@h/d", "postgresql://u@h/d", {}),
+            ("postgresql://h/d", "postgresql://h/d", {}),
+            (
+                "postgresql://u:p%40ss@h/d?sslmode=require",
+                "postgresql://u@h/d?sslmode=require",
+                {"PGPASSWORD": "p@ss"},
+            ),
+        ],
+    )
+    def test_splitting_preserves_the_target_and_decodes_the_password(
+        self, url: str, expected_argv: str, expected_env: dict[str, str]
+    ) -> None:
+        """A percent-encoded password must reach libpq DECODED — passing the raw
+        `%40` form through PGPASSWORD would authenticate with the wrong string."""
+        assert split_database_credentials(url) == (expected_argv, expected_env)
+
+    def test_a_failure_message_cannot_echo_the_password_back(self) -> None:
+        """pg_restore quotes its connection string on failure; we quote pg_restore."""
+        assert (
+            mask_text("could not connect: localpass rejected", LOCAL_URL)
+            == "could not connect: *** rejected"
+        )
 
 
 class TestOutputMasksTheTargetDatabase:

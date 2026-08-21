@@ -9,6 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from src.contracts.workflow_alert_models import (
+    SYSTEM_CHECK_EVENT_KEY_PATTERN,
     WorkflowAlertSeverity,
     WorkflowTerminalOutcome,
     WorkflowTerminalSourceKind,
@@ -101,6 +102,14 @@ def _validate_event_key(event_key: str, source_kind: WorkflowTerminalSourceKind)
             r"reconciliation-failure:[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-"
             r"[89ab][a-f0-9]{3}-[a-f0-9]{12}:content:[1-9][0-9]*:reason:apply_failed"
         ),
+        # Yet another closed set on the emission path, and one of the quietest: a
+        # missing entry here makes `pattern is None` raise, and
+        # `process_pending_event` catches that into `emitted = False`. The alert is
+        # still delivered, but it produces no log line, no OTel counter, and never
+        # checkpoints `telemetry_emitted_at` — the backup monitor would be invisible
+        # in the one channel operators actually watch. The grammar is imported
+        # rather than restated so it cannot drift from the envelope's copy.
+        "system_check": SYSTEM_CHECK_EVENT_KEY_PATTERN,
     }
     pattern = patterns.get(source_kind)
     if pattern is None or re.fullmatch(pattern, event_key) is None:

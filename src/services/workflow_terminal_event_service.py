@@ -896,6 +896,15 @@ def _system_check_snapshot() -> PersistedTerminalSnapshot:
         outcome = "failed"
     elif freshness.status is BackupFreshnessStatus.PARTIAL:
         outcome = "partial"
+    elif not freshness.alertable:
+        # The condition resolved between emission and classification: a backup
+        # landed, or monitoring was turned off. `success` classifies to severity
+        # `info`, which is not externally routed, so the event is stored
+        # `telemetry_only` and no delivery is created. Mapping this to `unknown`
+        # instead would deliver a warning-severity alert carrying an EMPTY `codes`
+        # list — an alert asserting a problem it cannot name, about a backup that
+        # is fine. A monitor that cries wolf is a monitor operators mute.
+        outcome = "success"
     else:
         outcome = "unknown"
     return PersistedTerminalSnapshot(

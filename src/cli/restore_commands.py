@@ -41,6 +41,7 @@ Usage::
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -73,6 +74,49 @@ def _error(msg: str, *, code: int = 1) -> None:
     else:
         typer.echo(typer.style(f"Error: {msg}", fg=typer.colors.RED), err=True)
     raise typer.Exit(code)
+
+
+def mask_text(text: str, *urls: str) -> str:
+    """Redact any password from `urls` wherever it appears in `text`.
+
+    Subprocess stderr is quoted back to the operator because a restore failure is
+    useless without it. This makes quoting it safe regardless of what the tool
+    chose to echo.
+    """
+    redacted = text
+    for url in urls:
+        try:
+            password = urlsplit(url).password
+        except ValueError:
+            continue
+        for secret in {password, unquote(password)} if password else set():
+            if secret:
+                redacted = redacted.replace(secret, "***")
+    return redacted
+
+
+def split_database_credentials(url: str) -> tuple[str, dict[str, str]]:
+    """Split a Postgres URL into an argv-safe URL and the env that carries the password.
+
+    `pg_restore --dbname <url>` puts the whole URL in argv, and argv is world
+    readable in /proc for the life of the process — the very leak this module's
+    `mc alias set` fix removed, reproduced one subprocess later. libpq reads
+    `PGPASSWORD` from the environment, which is readable only by the process owner,
+    so the password travels there and the URL that reaches argv carries none.
+
+    Returns the URL unchanged with an empty env when there is no password to move.
+    """
+    parts = urlsplit(url)
+    if not parts.password:
+        return url, {}
+    host = parts.hostname or ""
+    if parts.port:
+        host = f"{host}:{parts.port}"
+    userinfo = f"{parts.username}@" if parts.username else ""
+    stripped = f"{parts.scheme}://{userinfo}{host}{parts.path}" + (
+        f"?{parts.query}" if parts.query else ""
+    )
+    return stripped, {"PGPASSWORD": unquote(parts.password)}
 
 
 def mask_database_url(url: str) -> str:
@@ -380,6 +424,10 @@ def restore_from_cloud(
     # restore into a database holding stale objects produces a silently mixed
     # state, which is worse than a loud one. The guards above are what make it
     # safe, not its absence.
+    # The password is moved out of argv and into PGPASSWORD. `--clean --if-exists`
+    # is retained deliberately (see above); what changes here is only WHERE the
+    # credential travels.
+    argv_url, pg_env = split_database_credentials(target_url)
     pg_result = subprocess.run(
         [  # ruff: ignore[start-process-with-partial-path] — `pg_restore` resolved from operator PATH
             "pg_restore",
@@ -389,18 +437,20 @@ def restore_from_cloud(
             "--no-privileges",
             "--format=custom",
             "--dbname",
-            target_url,
+            argv_url,
             restore_path,
         ],
         capture_output=True,
         text=True,
+        env={**os.environ, **pg_env} if pg_env else None,
         check=False,
     )
     if pg_result.returncode != 0:
-        _error(
-            f"pg_restore failed (exit {pg_result.returncode}): "
-            f"{pg_result.stderr.strip() or pg_result.stdout.strip()}"
-        )
+        # pg_restore echoes the connection string it was given on failure. That
+        # string no longer carries a password, but it is masked anyway rather than
+        # relying on that remaining true.
+        detail = pg_result.stderr.strip() or pg_result.stdout.strip()
+        _error(f"pg_restore failed (exit {pg_result.returncode}): {mask_text(detail, target_url)}")
         return
 
     # --- 8. Summary ----------------------------------------------------------

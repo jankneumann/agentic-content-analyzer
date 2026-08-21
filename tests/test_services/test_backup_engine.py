@@ -13,14 +13,17 @@ assertions are mostly about the paths where something goes wrong quietly.
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 from datetime import UTC, date, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
 import pytest
 
-from src.services.backup import engine as engine_module
+from src.services.backup import engine as engine_module, target as target_module
 from src.services.backup.engine import BackupEngine, BackupPreflightError
 from src.services.backup.executor import CommandResult, PipelineResult
 from src.services.backup.models import (
@@ -590,3 +593,109 @@ class TestManifestReaderEnvironmentCheck:
 
         assert manifest_key("aca", "production") == "aca/manifests/production/latest.json"
         assert manifest_key("aca", "staging") != manifest_key("aca", "production")
+
+
+# ------------------------------------------------------------------- verify
+
+AGE_AVAILABLE = shutil.which("age") is not None and shutil.which("age-keygen") is not None
+
+
+def _which(name: str) -> str:
+    resolved = shutil.which(name)
+    if resolved is None:  # pragma: no cover - guarded by skipif
+        raise RuntimeError(f"required test binary not found: {name}")
+    return resolved
+
+
+@pytest.mark.skipif(not AGE_AVAILABLE, reason="requires the real `age` and `age-keygen`")
+class TestVerifyAgainstRealCiphertext:
+    """`verify` is the only command that claims a backup can be RESTORED.
+
+    So it is tested against ciphertext a real `age` actually produced. The first
+    implementation read the canary through `run_command`'s text path, which decodes
+    stdout as strict UTF-8 — age writes raw binary, so the happy path raised
+    `UnicodeDecodeError`, and any ciphertext that did decode would not survive being
+    re-encoded on the way into `age --decrypt`. Every mock-only test passed. The one
+    command whose job is to prove restorability failed on restorable backups.
+    """
+
+    @staticmethod
+    def _keypair(directory: Path) -> tuple[Path, str]:
+        directory.mkdir(parents=True, exist_ok=True)
+        identity = directory / "identity.txt"
+        generated = subprocess.run(
+            [_which("age-keygen"), "-o", str(identity)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        recipient = ""
+        for line in (generated.stderr + generated.stdout).splitlines():
+            if "age1" in line:
+                recipient = line.split()[-1].strip()
+                break
+        assert recipient.startswith("age1")
+        return identity, recipient
+
+    @staticmethod
+    def _encrypt(recipient: str, plaintext: str) -> bytes:
+        return subprocess.run(
+            [_which("age"), "--encrypt", "--recipient", recipient],
+            input=plaintext.encode(),
+            capture_output=True,
+            check=True,
+        ).stdout
+
+    def _verify_with(self, ciphertext: bytes, identity: Path) -> Any:
+        from src.services.backup.executor import run_command as real_run_command
+
+        def fake_run_command(argv: Any, **kwargs: Any) -> CommandResult:
+            argv = list(argv)
+            if argv[:2] == ["rclone", "cat"]:
+                # The ONLY stub. `age --decrypt` below runs for real, against these
+                # exact bytes, which is the whole point of this test.
+                return CommandResult(tuple(argv), 0, stdout_bytes=ciphertext)
+            return real_run_command(argv, **kwargs)
+
+        listing = json.dumps(
+            [
+                {"Name": "canary.txt.age", "Path": "canary.txt.age"},
+                {"Name": "latest.json", "Path": "latest.json"},
+            ]
+        )
+
+        def fake_target_command(argv: Any, **_kwargs: Any) -> CommandResult:
+            return CommandResult(tuple(argv), 0, stdout=listing)
+
+        settings = make_settings(backup_age_identity_path=str(identity))
+        with (
+            patch.object(engine_module, "run_command", fake_run_command),
+            patch("src.services.backup.target.run_command", fake_target_command),
+            patch.object(engine_module, "check_run_prerequisites", _preflight_ok),
+        ):
+            return BackupEngine(settings).verify()
+
+    def test_a_real_canary_decrypts(self, tmp_path: Path) -> None:
+        identity, recipient = self._keypair(tmp_path / "mine")
+        ciphertext = self._encrypt(recipient, target_module.CANARY_PLAINTEXT)
+        result = self._verify_with(ciphertext, identity)
+        assert result.canary_present is True
+        assert result.canary_decrypted is True
+        assert result.ok is True
+
+    def test_a_canary_encrypted_to_another_key_is_reported_as_undecryptable(
+        self, tmp_path: Path
+    ) -> None:
+        """A wrong identity must be a clean `False`, not a crash and not a `True`."""
+        identity, _ = self._keypair(tmp_path / "mine")
+        _, stranger = self._keypair(tmp_path / "other")
+        ciphertext = self._encrypt(stranger, target_module.CANARY_PLAINTEXT)
+        result = self._verify_with(ciphertext, identity)
+        assert result.canary_decrypted is False
+        assert result.ok is False
+
+    def test_a_canary_holding_the_wrong_plaintext_does_not_pass(self, tmp_path: Path) -> None:
+        identity, recipient = self._keypair(tmp_path / "mine")
+        ciphertext = self._encrypt(recipient, "not-the-canary")
+        result = self._verify_with(ciphertext, identity)
+        assert result.canary_decrypted is False
