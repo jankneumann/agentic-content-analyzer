@@ -63,6 +63,13 @@ services:
           - gmail
           - status
           - youtube
+      - name: backup
+        description: 'Off-site backup: run, verify prerequisites, list artifacts.'
+        tags: [coverage:plumbing]
+        subcommands:
+          - list
+          - run
+          - verify
       - name: batch
         description: 'Gemini batch execution status'
         tags: [coverage:plumbing]

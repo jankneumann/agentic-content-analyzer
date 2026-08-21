@@ -61,6 +61,13 @@ PLUMBING_ONLY_REASONS: dict[str, str] = {
         "Interactive OAuth flows for Gmail and YouTube. `status` reads local credential "
         "files that no automated environment has."
     ),
+    "backup": (
+        "`run` reads every configured data store and writes to an object-storage "
+        "target; `verify` needs the age decryption identity, which is escrowed "
+        "off-host by design and must never be present in an automated environment. "
+        "`list` would report an empty target. The round trip is proven instead by "
+        "tests/integration/test_backup_round_trip.py against local containers."
+    ),
     "batch": (
         "Gemini batch execution is disabled by default (GEMINI_BATCH_ENABLED), so "
         "`status` has nothing to report and no fixture exists to give it something."
