@@ -558,3 +558,95 @@ already owns that tree and already needs a client to write the manifest.
 `wp-health-alerts` gains a dependency on `wp-backup-cli` and read-only access to
 it, narrowing its deny list. The serialization cost is accepted: one owner for one
 cache is worth more than the lost parallelism.
+
+---
+
+# Amendments from PLAN_REVIEW (round 2)
+
+Findings 26 → 12, criticals 12 → 5. All round-1 criticals verified resolved
+against the artifacts that had to change, not against the prose claiming they
+changed. The remaining five were one surface: the alert contract still did not
+match the model.
+
+### A9 — The envelope has six widening points, not five (supersedes D5's table)
+
+**Finding.** A2 fixed the `event_key` grammar in one location. The same class of
+defect survived in a second: `_validate_identity_and_collections`
+(`workflow_alert_models.py:295`) branches on `source_kind == "operation"` and
+falls through to `if self.operation_id is not None or self.workflow_type !=
+"content.reconciliation": raise` (`:321-323`). A `system_check` alert with
+`workflow_type = "system.backup_freshness"` raises there **after** all five
+previously-named elements are widened. D5's table pointed "event_key grammar" at
+`:141-176`, which belongs to `WorkflowTerminalEventV1` — a different class
+entirely.
+
+**Amendment.** The widening has six points, and reading the model rather than the
+table produced a **seventh** the review did not catch:
+
+| # | Element | Location |
+|---|---|---|
+| 1 | `source_kind` literal | `workflow_alert_models.py:32` |
+| 2 | `workflow_type` literal | `:51` |
+| 3 | `diagnostic_url` validator | `:253-276` |
+| 4 | `WorkflowAlertDiagnosticCode` | code enum |
+| 5 | `WorkflowEventKey` grammar | `:48` |
+| 6 | **`_validate_identity_and_collections` needs a `system_check` branch** | **`:295-323`** |
+| 7 | **`WorkflowAlertCounts` needs the four backup tally fields** | **`:194-201`** |
+
+Point 7 was found by reading the model, not from the review. `WorkflowAlertCounts`
+is itself a `StrictModel` with `extra="forbid"` and seven closed fields, none
+backup-related — so `counts.manifest_age_seconds` and the per-store tallies are
+rejected at construction unless that model is widened too. This is the third time
+the same lesson has appeared: **the closed model is authoritative, the table
+describing it is not.** Every widening point is now pinned by a test that
+constructs a real envelope, never by asserting a regex in isolation.
+
+The `system_check` branch must assert what the other branches assert for their
+kinds: `operation_id is None`, `attempt == 1`, `event_key` matching the A2
+grammar, and `diagnostic_url` path equal to
+`/api/v1/workflow-terminal-events/{event_id}`.
+
+### A10 — "Check window" defined; D6's keying rationale reconciled
+
+**Finding.** A2's epoch-seconds suffix contradicted D6's stated "keyed, not timed
+by wall clock" rationale, D6 was left standing as normative, and "check window"
+was defined in no artifact — leaving alert volume during a sustained outage
+unspecified.
+
+**Amendment.** D6's rationale is upheld and A2's key is corrected in meaning, not
+in form. The suffix is **not** a wall-clock read at emission time. It is the start
+of the fixed-length window containing the evaluation, computed by truncating the
+evaluation time to a multiple of the window length — a pure function of the
+window, so every evaluation inside one window derives the identical key regardless
+of when the worker happens to run.
+
+The window length equals the configured staleness threshold. Consequence, stated
+so it is not discovered in production: during a sustained outage exactly one alert
+is emitted per staleness period — not one per worker tick, and not one only.
+Re-alerting is what distinguishes an ongoing outage from a transient blip, and the
+identical-key property is what makes the durable path deduplicate within a window.
+
+### A11 — The alert schema is authoritative for the diagnostic-code set
+
+The code set drifted across two rounds and *widened* each time (3 → 4 → 6) because
+it was enumerated in the design, the contract, and the task list independently.
+Patching the count a third time would repeat the failure.
+
+`contracts/events/backup-freshness-alert.schema.json` is now the single source of
+truth. Design prose and tasks reference it; they do not restate it. The conformance
+test asserts `WorkflowAlertDiagnosticCode` admits exactly the schema's enum — so
+the two cannot drift again without a test failing.
+
+### A12 — Schema now mirrors the model field-for-field
+
+Four further mismatches, each of which would have failed the conformance test by
+construction: the schema omitted `attempt`, `resource_refs`, `source_keys` and
+`counts` (all required by the model); typed `attempt` as `null` where the model
+requires `int >= 1`; declared `claim_generation` and `terminal_status`, which are
+not envelope fields at all and are rejected by `extra="forbid"`; and admitted
+`http://` where the model is https-only and the producer hardcodes https
+(`workflow_terminal_event_service.py:568`).
+
+The schema is now checked field-for-field against the model: no missing fields, no
+invented fields, identical required sets. That check is mechanical and belongs in
+CI, not in a reviewer's attention — task 3.7b asserts it.

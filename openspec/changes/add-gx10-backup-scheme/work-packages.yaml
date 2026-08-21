@@ -329,7 +329,7 @@ packages:
     name: wp-health-alerts
     mode: isolated
   metadata:
-    loc_estimate: 1400
+    loc_estimate: 1700
     complexity: high
     package_kind: migration
   inputs:
@@ -353,6 +353,12 @@ packages:
     - 3.7e
     - 3.7f
     - 3.7g
+    - 3.7h
+    - 3.7i
+    - 3.7j
+    - 3.7k
+    - 3.7l
+    - 3.7m
     - 3.9b
     - 3.9c
     - 3.9d

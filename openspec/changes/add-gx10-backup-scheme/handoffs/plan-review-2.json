@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-08-21T00:00:00+00:00",
+  "coordinator_error": null,
+  "payload": {
+    "agent_name": "reviewer",
+    "session_id": null,
+    "summary": "Round-2 plan review of add-gx10-backup-scheme. Single-vendor again (codex has no API key and was dropped from this round per loop state), so the synthesizer again reports quorum NOT met and blocking_count 0 \u2014 a quorum artifact, not a clean result. Findings fell 26 -> 12 and criticals 12 -> 5. The round-1 work is genuinely done: all twelve round-1 criticals were verified resolved against the tree, and critically the amendments were propagated into the downstream artifacts rather than only appended as prose to design.md \u2014 the proposal's 'no migration' claim is retracted, A1's migration has real tasks (3.7c-3.7g) and real write scope, A8's manifest_reader ownership move is reflected in work-packages.yaml, and A4/A5/A6 all appear as spec scenarios. The phase does not converge because the remaining five criticals cluster in one place: the alert contract still does not match WorkflowAlertEnvelopeV1. A2 fixed the event_key grammar but the same class of defect survives in four other spots on the same model. The load-bearing one is that WorkflowAlertEnvelopeV1._validate_identity_and_collections (workflow_alert_models.py:296) is named nowhere in the plan \u2014 D5's table points 'event_key grammar' at :141-176, which is a different class (WorkflowTerminalEventV1) \u2014 and its else-branch rejects any envelope whose workflow_type is not 'content.reconciliation'. A system_check alert therefore still raises at construction after all five widened elements land, which is exactly the failure A2 corrected once already. Three further findings are drift between the hand-maintained alert JSON Schema and the model it documents: the schema omits four fields the model requires (attempt, resource_refs, source_keys, counts) and types attempt as null where the model wants int>=1; it declares claim_generation and terminal_status, which are not envelope fields at all and are rejected by extra='forbid'; and it admits http:// where the model allows https only and the producer hardcodes https. Each of these fails task 3.7b's own conformance test by construction. The fifth critical is a design contradiction A2 introduced and did not clean up: its wall-clock epoch key contradicts D6's explicit 'keyed, not timed by wall clock' rationale, D6 was left standing as normative, and the check window's duration is defined in no artifact \u2014 so alert volume during a sustained outage is unspecified. All five are cheap to fix and localized to design.md D5/D6, tasks.md 3.7, and the alert schema; none reopens an architectural question.",
+    "completed_work": [
+      "Re-read all plan artifacts at their round-2 state: proposal.md, design.md (D1-D14 plus amendments A1-A8), tasks.md, three spec deltas, both contract schemas, contracts/README.md, and work-packages.yaml (6 packages).",
+      "Verified each of the twelve round-1 criticals against the tree and the amended artifacts. All twelve are addressed; findings 11 and 12 (in this round's numbering, 8 and the A8 ownership move) are the only ones with residue.",
+      "Confirmed amendment propagation rather than trusting the amendment text: proposal.md:159-173 retracts 'no migration'; tasks 3.7c-3.7g add the migration, the mirrored DDL, the StrEnum, the service insert path and an alembic-heads check; wp-health-alerts write_allow gained alembic/versions/**, src/queue/setup.py, src/models/workflow_alert.py and src/services/workflow_terminal_event_service.py; wp-health-alerts now depends_on wp-backup-cli with deny narrowed to src/services/backup/manifest_reader.py; A4's graphdb_mode branch and A5's write-time tiers are spec scenarios.",
+      "Diffed contracts/events/backup-freshness-alert.schema.json field-by-field against WorkflowAlertEnvelopeV1 (src/contracts/workflow_alert_models.py:218-340) and StrictModel (src/contracts/workflow_models.py:69-70) \u2014 found four distinct schema-vs-model mismatches, three of them blocking.",
+      "Traced the diagnostic_url contract to its producer, src/services/workflow_terminal_event_service.py:568, confirming the scheme is hardcoded https and that the schema's 'https?' admits a URL nothing emits and the model rejects.",
+      "Checked D6 against A2 for the idempotency semantics, and grepped design.md, tasks.md, specs/ and contracts/ for a definition of 'check window' \u2014 none exists in any artifact.",
+      "Wrote 12 findings to review-findings-plan.json; validated against openspec/schemas/review-findings.schema.json (Valid), with severity-prefix, axis-spread and severity/disposition coherence checks all passing.",
+      "Skipped vendor dispatch \u2014 loop state records codex as auth_required and dropped from subsequent rounds; no other vendor CLI is configured. Synthesized consensus at reviews/consensus-plan.json (12 findings, 0 confirmed, quorum not met 1/1)."
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Outcome is not_converged despite the synthesizer again reporting blocking_count 0",
+        "rationale": "Identical quorum artifact to round 1: the synthesizer promotes a finding to blocking only on two-vendor confirmation, and no second vendor was dispatchable, so every finding is 'unconfirmed' by construction. Five findings carry severity 'critical'. Four of them make a system_check alert fail at construction or fail task 3.7b's conformance assertion, which means the change's central alerting capability cannot be built as planned. Convergence must be judged on the findings, not on a counter that a missing vendor pinned to zero.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Round-1 criticals are treated as genuinely resolved, not re-litigated",
+        "rationale": "The incoming handoff asked this round to verify the round-1 criticals were really fixed rather than fixed in prose. Each was checked against the artifact that would have to change, not against the amendment claiming it changed. Only two carry residue, and both are downgraded to nit because the amendment addressed the severe half: the shared-prefix collision (round-1 finding 11) is now loud rather than silent, costing monitoring but not recoverability, and the wp-contracts lock path (round-1 finding 14) had its write_allow corrected while the lock string was missed.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "The four contract findings are reported separately rather than merged into one 'schema drift' item",
+        "rationale": "They share a symptom but not a fix: one needs a model-validator branch added to a task list, one needs fields added to the schema's required list, one needs phantom fields deleted plus additionalProperties:false, one needs a single character removed from a regex. Merging them would let three be closed by fixing the fourth, which is how the round-1 code-set drift (finding 6 here) survived into round 2 and widened from 4-vs-3 to 6-vs-3.",
+        "capability": null,
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Fix findings 1-4 together in one pass over the alert contract \u2014 they are one surface, WorkflowAlertEnvelopeV1, seen from four angles. Add _validate_identity_and_collections (:296-340) to D5's widening table and task 3.7's element list as a third source_kind branch; add 'attempt' to that same element list; then regenerate contracts/events/backup-freshness-alert.schema.json against the widened model so required, attempt's type, the phantom claim_generation/terminal_status properties, additionalProperties and the https-only scheme all follow from the model rather than being maintained by hand.",
+      "Resolve finding 5 by amending D6 explicitly instead of leaving it standing against A2, and by fixing the check window's duration as a number in the spec requirement that tasks.md:206 tests against. State whether a sustained stale backup should produce one alert or one per window \u2014 the current artifacts support both readings.",
+      "Close finding 6 by making the alert schema the single source of truth for the diagnostic-code set and pointing D5's table and task 3.7 at it. This drift has now survived two rounds and widened each time; enumerating the codes in three places is what keeps reopening it.",
+      "Apply findings 7, 8 and 9 as mechanical edits \u2014 the wp-contracts lock path, the environment segment in the manifest key, and the UUID version/variant nibbles in the diagnostic_url pattern.",
+      "Treat finding 10 (the 48-hour staleness default against a 24-hour RPO) as an operator decision rather than a defect; it needs a one-line note in D2 either way.",
+      "Re-run PLAN_REVIEW after the fixes. Note that a second vendor still cannot be dispatched, so the next round will again report blocking_count 0 and must again be judged on severity rather than on the quorum counter."
+    ],
+    "relevant_files": [
+      "openspec/changes/add-gx10-backup-scheme/review-findings-plan.json",
+      "openspec/changes/add-gx10-backup-scheme/reviews/consensus-plan.json",
+      "openspec/changes/add-gx10-backup-scheme/design.md",
+      "openspec/changes/add-gx10-backup-scheme/tasks.md",
+      "openspec/changes/add-gx10-backup-scheme/contracts/events/backup-freshness-alert.schema.json",
+      "openspec/changes/add-gx10-backup-scheme/work-packages.yaml",
+      "openspec/changes/add-gx10-backup-scheme/specs/backup-and-restore/spec.md",
+      "src/contracts/workflow_alert_models.py",
+      "src/contracts/workflow_models.py",
+      "src/services/workflow_terminal_event_service.py"
+    ]
+  }
+}
