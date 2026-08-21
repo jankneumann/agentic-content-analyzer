@@ -75,10 +75,21 @@ not repurposed as the backup. See `design.md` D8.
 
 ## What Changes
 
-- **Provider-neutral backup target settings** (`BACKUP_S3_*`) read by both the
-  backup and restore paths, working against Cloudflare R2, AWS S3, or MinIO
-  unchanged. The `railway_minio_*` names keep working via the repo's established
-  deprecation-mapping pattern (`settings.py:1554-1588`).
+- **Provider-neutral backup settings**, in three groups, all declared together in
+  one package so no downstream package needs to reach into `src/config/`:
+  - *Target* (`BACKUP_S3_ENDPOINT|BUCKET|REGION|ACCESS_KEY_ID|SECRET_ACCESS_KEY|PREFIX`)
+    read by both the backup and restore paths, working against Cloudflare R2, AWS
+    S3, or MinIO unchanged. The `railway_minio_*` and `railway_backup_bucket` names
+    keep working via the repo's established deprecation-mapping pattern
+    (`settings.py:1554-1588`).
+  - *Encryption* (`BACKUP_AGE_RECIPIENT`, `BACKUP_AGE_IDENTITY_PATH`) — the public
+    recipient used by the backup path, and the identity used by `verify` and by
+    restore. No new deprecation mapping; these have no legacy predecessor.
+  - *Monitoring* (`BACKUP_MONITORING_ENABLED`, `BACKUP_STALENESS_HOURS`) — the
+    provider-neutral successors to `railway_backup_enabled` and
+    `railway_backup_staleness_hours`, mapped forward by the same validator. A
+    freshness check that no longer depends on Railway must not keep reading a
+    setting named `railway_*`.
 - **A new `aca backup` CLI group** (`run`, `verify`, `list`) that orchestrates
   per-store backup, encryption, upload, and manifest writing.
 - **A host-level systemd timer + service** on gx-10 invoking `aca backup run`,
@@ -118,6 +129,34 @@ not repurposed as the backup. See `design.md` D8.
   makes no live calls to production data stores (see Hard Constraints).
 - **WAL archiving / PITR.** Deferred with the RPO trade-off recorded in
   `design.md` D2.
+
+## Impact
+
+### Affected specs
+
+| Capability | Delta | What changes |
+|---|---|---|
+| `backup-and-restore` | ADDED (new capability) | Backup target/encryption/monitoring settings, multi-store backup run, client-side encryption, run manifest, freshness monitoring, durable freshness alerting, provider-side retention, host scheduling, multi-store restore |
+| `cli-interface` | ADDED + MODIFIED | ADDED: `aca backup` command group. MODIFIED: `Restore From Cloud Command` — provider-neutral target, prefix-based discovery, decryption, three credential-safety fixes |
+| `database-provider` | MODIFIED | `Railway Backup Strategy` narrowed to a legacy configuration surface; the operative backup and its freshness check move to `backup-and-restore` |
+
+### Affected code
+
+| Area | Files | Owning package |
+|---|---|---|
+| Contracts | `openspec/contracts/backup/**`, `openspec/contracts/content-workflows/events/**`, `openspec/contracts/README.md` | wp-contracts |
+| Settings & secret hygiene | `src/config/settings.py`, `src/config/secrets.py`, `src/config/profiles.py`, `profiles/*.yaml`, `pyproject.toml`, `scripts/check-profile-secrets.sh` | wp-settings |
+| Backup engine & CLI | `src/services/backup/**`, `src/cli/backup_commands.py`, `src/cli/app.py` | wp-backup-cli |
+| Health & alerting | `src/api/health_routes.py`, `src/contracts/workflow_alert_models.py`, `src/queue/worker.py` | wp-health-alerts |
+| Restore | `src/cli/restore_commands.py` | wp-restore-cli |
+| Deployment & docs | `deploy/backup/**`, `scripts/backup_retention.py`, `docs/BACKUP_RESTORE.md`, `docs/SYNC_DOWN.md`, `docs/SETUP.md`, `docs/GOTCHAS.md` | wp-deploy-assets |
+| Round-trip verification | `docker-compose.yml`, `tests/integration/test_backup_round_trip.py` | wp-integration |
+
+### Not affected
+
+`railway/postgres/**` (see D1), `src/sync/**` (see D3), and the database schema —
+this change adds no migration, deliberately, because backup state lives in the
+backup target so it survives loss of the database (D7).
 
 ## Hard Constraints
 
@@ -190,8 +229,8 @@ and reports outcomes. A systemd timer invokes that one command.
   proven pattern rather than a new one.
 - Reuses `Settings`, profile resolution, OpenBao, and secret masking; backup
   config cannot drift from application config.
-- Native tools do the heavy lifting, so no `boto3` requirement and no
-  multi-GB stream through the interpreter.
+- Native tools do the heavy lifting, so no multi-GB stream through the
+  interpreter — dumps go `pg_dump | age | rclone`, never through Python.
 - One command is the single entry point for the timer, for a manual run, and for
   the integration test — the scheduled path and the tested path are identical.
 
@@ -199,6 +238,13 @@ and reports outcomes. A systemd timer invokes that one command.
 - Requires host binaries on gx-10 (`rclone`, `age`, `pg_dump`, `bao`). Mitigated
   by an explicit preflight check in `aca backup verify` that names each missing
   binary rather than failing mid-run.
+- The *reader* side still needs an in-process S3 client for the one small manifest
+  object the freshness check retrieves, so `boto3` is declared as a dependency
+  (design D14). This does not reintroduce Approach B's cost — that objection was
+  about streaming multi-GB dumps through the interpreter, which this change still
+  does not do — and it closes an existing latent defect, since `boto3` is already
+  imported lazily by the S3 storage provider while appearing nowhere in
+  `pyproject.toml`.
 - Subprocess orchestration must handle partial failure per store; a single
   store's failure must not silently pass the whole run.
 
@@ -209,7 +255,7 @@ and reports outcomes. A systemd timer invokes that one command.
 **Approach C — Python-orchestrated, native-tool execution.** Confirmed at Gate 1
 with no modifications.
 
-**Approach C.** The deciding factor is Hard Constraint 1. Approach A cannot
+The deciding factor is Hard Constraint 1. Approach A cannot
 satisfy it — shell scripts resist unit testing, and shipping unverified
 destructive paths is precisely the risk the gatekeeper flagged. Approach B
 satisfies it but pays for that with dependency weight and by reimplementing

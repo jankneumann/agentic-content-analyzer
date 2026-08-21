@@ -41,6 +41,8 @@ packages:
   scope:
     write_allow:
     - openspec/contracts/backup/**
+    - openspec/contracts/content-workflows/events/**
+    - openspec/contracts/README.md
     - tests/contract/test_backup_contracts.py
     read_allow:
     - src/**
@@ -54,11 +56,15 @@ packages:
     name: wp-contracts
     mode: isolated
   metadata:
-    loc_estimate: 200
+    loc_estimate: 300
     complexity: low
     package_kind: data_model
   inputs:
-    tasks: []
+    tasks:
+    - '0.1'
+    - '0.2'
+    - '0.3'
+    - '0.4'
   verification:
     tier_required: C
     steps:
@@ -107,6 +113,7 @@ packages:
     - profiles/base.yaml
     - profiles/local.yaml
     - .secrets.yaml.example
+    - pyproject.toml
     - scripts/check-profile-secrets.sh
     - tests/config/**
     - tests/test_config/**
@@ -124,7 +131,7 @@ packages:
     name: wp-settings
     mode: isolated
   metadata:
-    loc_estimate: 450
+    loc_estimate: 560
     complexity: medium
     package_kind: config
   inputs:
@@ -133,11 +140,14 @@ packages:
     - '1.2'
     - '1.3'
     - '1.4'
+    - 1.4b
+    - 1.4c
     - '1.5'
     - '1.6'
     - '1.7'
     - '1.8'
     - '1.9'
+    - 1.9b
     - '1.10'
   verification:
     tier_required: B
@@ -208,7 +218,7 @@ packages:
     name: wp-backup-cli
     mode: isolated
   metadata:
-    loc_estimate: 1100
+    loc_estimate: 1220
     complexity: high
     package_kind: algorithm
   inputs:
@@ -223,6 +233,8 @@ packages:
     - '2.7'
     - '2.8'
     - '2.9'
+    - 2.9b
+    - 2.9c
     - '2.10'
     - '2.11'
     - '2.12'
@@ -280,6 +292,7 @@ packages:
     - tests/api/test_health_routes.py
     - tests/unit/test_workflow_alert_models.py
     - tests/unit/test_backup_freshness_alert.py
+    - tests/contract/test_workflow_alert_contracts.py
     read_allow:
     - src/**
     - tests/**
@@ -292,7 +305,7 @@ packages:
     name: wp-health-alerts
     mode: isolated
   metadata:
-    loc_estimate: 800
+    loc_estimate: 920
     complexity: high
     package_kind: integration
   inputs:
@@ -302,10 +315,13 @@ packages:
     - 3.3a
     - 3.3b
     - 3.3c
+    - 3.3d
+    - 3.3e
     - '3.4'
     - '3.5'
     - '3.6'
     - '3.7'
+    - 3.7b
     - '3.8'
     - '3.9'
     - '3.10'
@@ -316,6 +332,15 @@ packages:
       kind: command
       command: pytest tests/api/test_health_routes.py tests/unit/test_workflow_alert_models.py tests/unit/test_backup_freshness_alert.py
         -v
+      expect_exit_code: 0
+      evidence:
+        artifacts: []
+        result_keys:
+        - test_count
+        - pass_count
+    - name: alert-contract-regression
+      kind: command
+      command: pytest tests/contract/test_workflow_alert_contracts.py -m contract -v --no-cov
       expect_exit_code: 0
       evidence:
         artifacts: []
@@ -374,7 +399,7 @@ packages:
     name: wp-restore-cli
     mode: isolated
   metadata:
-    loc_estimate: 600
+    loc_estimate: 660
     complexity: medium
     package_kind: algorithm
   inputs:
@@ -388,6 +413,7 @@ packages:
     - '4.6'
     - '4.7'
     - '4.8'
+    - 4.8b
     - '4.9'
     - '4.10'
     - '4.11'
@@ -436,7 +462,7 @@ packages:
     write_allow:
     - deploy/backup/**
     - scripts/backup_retention.py
-    - tests/test_scripts/test_backup_retention.py
+    - tests/test_scripts/**
     - docs/BACKUP_RESTORE.md
     - docs/SYNC_DOWN.md
     - docs/SETUP.md
@@ -454,7 +480,7 @@ packages:
     name: wp-deploy-assets
     mode: isolated
   metadata:
-    loc_estimate: 700
+    loc_estimate: 780
     complexity: medium
     package_kind: config
   inputs:
@@ -463,6 +489,7 @@ packages:
     - '5.2'
     - '5.3'
     - '5.4'
+    - 5.4b
     - '5.5'
     - '5.6'
     - '5.7'
@@ -472,9 +499,9 @@ packages:
   verification:
     tier_required: B
     steps:
-    - name: retention-tests
+    - name: retention-and-unit-tests
       kind: command
-      command: pytest tests/test_scripts/test_backup_retention.py -v
+      command: pytest tests/test_scripts -v
       expect_exit_code: 0
       evidence:
         artifacts: []
