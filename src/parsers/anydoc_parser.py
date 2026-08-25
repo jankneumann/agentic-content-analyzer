@@ -236,7 +236,7 @@ class AnydocParser(DocumentParser):
         """Convert document bytes to markdown (runs in a worker thread)."""
         import anydoc
 
-        return anydoc.to_markdown_bytes(data, anydoc_format)
+        return anydoc.to_markdown_bytes(data, anydoc_format)  # type: ignore[no-any-return]
 
     def _detect_format(self, source: str | Path | BinaryIO | bytes) -> str:
         """Detect document format from source.
