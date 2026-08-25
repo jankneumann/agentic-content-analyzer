@@ -666,12 +666,12 @@ class Settings(BaseSettings):
     # Podcast Ingestion Configuration
     podcast_stt_provider: str = "openai"  # STT provider: "openai" or "local_whisper"
     podcast_max_duration_minutes: int = 120  # Max episode duration to transcribe
-    podcast_temp_dir: str = "/tmp/podcast_downloads"  # Temp dir for audio downloads  # ruff: ignore[hardcoded-temp-file]
+    podcast_temp_dir: str = "/tmp/podcast_downloads"  # Temp dir for audio downloads  # noqa: S108
 
     # YouTube Keyframe Extraction (optional feature)
     youtube_keyframe_extraction: bool = False  # Enable/disable keyframe extraction
     youtube_temp_dir: str = (
-        "/tmp/youtube_downloads"  # Temp storage for video downloads  # ruff: ignore[hardcoded-temp-file]
+        "/tmp/youtube_downloads"  # Temp storage for video downloads  # noqa: S108
     )
     youtube_scene_threshold: float = (
         0.3  # Scene detection sensitivity (0-1, lower = more sensitive)
@@ -687,7 +687,7 @@ class Settings(BaseSettings):
     docling_enable_ocr: bool = False  # Enable OCR for scanned documents (requires docling[ocr])
     docling_max_file_size_mb: int = 100  # Maximum file size for Docling processing
     docling_timeout_seconds: int = 300  # Processing timeout for large documents
-    docling_cache_dir: str = "/tmp/docling"  # Cache directory for Docling models  # ruff: ignore[hardcoded-temp-file]
+    docling_cache_dir: str = "/tmp/docling"  # Cache directory for Docling models  # noqa: S108
 
     # Kreuzberg Parser Configuration
     enable_kreuzberg: bool = False  # Enable Kreuzberg parser (requires kreuzberg extra)

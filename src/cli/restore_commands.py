@@ -274,7 +274,7 @@ def restore_from_cloud(
         help="Target DB URL for pg_restore. Defaults to DATABASE_URL from the active profile.",
     ),
     dump_dir: str = typer.Option(
-        "/tmp",  # ruff: ignore[hardcoded-temp-file] — user-overridable staging dir; operator-initiated CLI, not multi-tenant service
+        "/tmp",  # noqa: S108 — user-overridable staging dir; operator-initiated CLI, not multi-tenant service
         "--dump-dir",
         help="Local directory to stage the downloaded dump file.",
     ),
@@ -337,7 +337,7 @@ def restore_from_cloud(
 
     # --- 3. List backups -----------------------------------------------------
     ls_result = subprocess.run(
-        ["rclone", "lsjson", "--recursive", config.remote_path(config.prefix)],  # ruff: ignore[start-process-with-partial-path]
+        ["rclone", "lsjson", "--recursive", config.remote_path(config.prefix)],  # noqa: S607
         capture_output=True,
         text=True,
         env=rclone_env,
@@ -375,7 +375,7 @@ def restore_from_cloud(
 
     # --- 5. Download ---------------------------------------------------------
     cp_result = subprocess.run(
-        ["rclone", "copyto", config.remote_path(artifact_key), staged_path],  # ruff: ignore[start-process-with-partial-path]
+        ["rclone", "copyto", config.remote_path(artifact_key), staged_path],  # noqa: S607
         capture_output=True,
         text=True,
         env=rclone_env,
@@ -399,7 +399,7 @@ def restore_from_cloud(
             )
             return
         age_result = subprocess.run(
-            [  # ruff: ignore[start-process-with-partial-path] — `age` resolved from operator PATH
+            [  # noqa: S607 — `age` resolved from operator PATH
                 "age",
                 "--decrypt",
                 "--identity",
@@ -429,7 +429,7 @@ def restore_from_cloud(
     # credential travels.
     argv_url, pg_env = split_database_credentials(target_url)
     pg_result = subprocess.run(
-        [  # ruff: ignore[start-process-with-partial-path] — `pg_restore` resolved from operator PATH
+        [  # noqa: S607 — `pg_restore` resolved from operator PATH
             "pg_restore",
             "--clean",
             "--if-exists",
