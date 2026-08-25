@@ -24,7 +24,7 @@ from __future__ import annotations
 # name (they are resolved from the operator's PATH, exactly as in production) and
 # builds SQL for throwaway databases whose names it generates itself. Both are the
 # point of the test rather than an oversight.
-# ruff: file-ignore[start-process-with-partial-path, hardcoded-sql-expression]
+# ruff: noqa: S607, S608 -- integration test drives rclone/age/pg_restore from PATH and builds table-name SQL from test constants
 import json
 import os
 import shutil
@@ -58,7 +58,7 @@ def _reachable(endpoint: str) -> bool:
     import urllib.request
 
     try:
-        urllib.request.urlopen(f"{endpoint}/minio/health/live", timeout=3)  # ruff: ignore[suspicious-url-open-usage]
+        urllib.request.urlopen(f"{endpoint}/minio/health/live", timeout=3)  # noqa: S310
     except urllib.error.HTTPError:
         return True  # responded, which is all we need to know
     except Exception:
@@ -238,9 +238,7 @@ class TestBackupRoundTrip:
 
         result = BackupEngine(settings).run()
 
-        assert result.succeeded, [
-            (str(s.store), str(s.outcome), s.reason) for s in result.stores
-        ]
+        assert result.succeeded, [(str(s.store), str(s.outcome), s.reason) for s in result.stores]
         postgres = next(s for s in result.stores if str(s.store) == "postgres")
         assert postgres.artifact_key is not None
         assert postgres.bytes and postgres.bytes > 0
@@ -441,9 +439,7 @@ class TestBackupRoundTrip:
         BackupEngine(settings).run()
 
         wrong_identity = tmp_path / "wrong-identity.txt"
-        subprocess.run(
-            ["age-keygen", "-o", str(wrong_identity)], check=True, capture_output=True
-        )
+        subprocess.run(["age-keygen", "-o", str(wrong_identity)], check=True, capture_output=True)
         verified = BackupEngine(
             _settings(
                 backup_settings_base,
@@ -456,9 +452,7 @@ class TestBackupRoundTrip:
         assert verified.canary_decrypted is False
         assert verified.ok is False
 
-    def test_no_production_system_is_contacted(
-        self, backup_settings_base: dict[str, Any]
-    ) -> None:
+    def test_no_production_system_is_contacted(self, backup_settings_base: dict[str, Any]) -> None:
         """Hard Constraint 1, asserted rather than assumed."""
         endpoint = str(backup_settings_base["backup_s3_endpoint"])
         assert "localhost" in endpoint or "127.0.0.1" in endpoint

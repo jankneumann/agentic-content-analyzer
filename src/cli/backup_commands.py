@@ -81,8 +81,7 @@ def run() -> None:
             }[str(store.outcome)]
             detail = store.reason or f"{store.bytes} bytes"
             typer.echo(
-                f"  {typer.style(str(store.outcome).upper(), fg=colour)}"
-                f"  {store.store}: {detail}"
+                f"  {typer.style(str(store.outcome).upper(), fg=colour)}  {store.store}: {detail}"
             )
         if not result.succeeded:
             typer.echo(

@@ -894,7 +894,7 @@ async def list_jobs(
         # Get total count
         # Note: where_clause is built from controlled inputs (status/entrypoint enum values)
         # not user input, so this is safe from SQL injection
-        count_query = f"SELECT COUNT(*) FROM pgqueuer_jobs WHERE {where_clause}"  # ruff: ignore[hardcoded-sql-expression]
+        count_query = f"SELECT COUNT(*) FROM pgqueuer_jobs WHERE {where_clause}"  # noqa: S608
         total = await conn.fetchval(count_query, *params)
 
         # Get jobs
@@ -914,7 +914,7 @@ async def list_jobs(
             WHERE {where_clause}
             ORDER BY created_at DESC
             LIMIT ${param_idx} OFFSET ${param_idx + 1}
-        """  # ruff: ignore[hardcoded-sql-expression]
+        """  # noqa: S608
 
         rows = await conn.fetch(query, *params)
 
@@ -1733,7 +1733,7 @@ async def list_job_history(
         # Note: where_clause is built from controlled inputs, not user input
         count_query = f"""
             SELECT COUNT(*) FROM pgqueuer_jobs j WHERE {where_clause}
-        """  # ruff: ignore[hardcoded-sql-expression]
+        """  # noqa: S608
         total = await conn.fetchval(count_query, *params)
 
         params.extend([limit, offset])
@@ -1749,7 +1749,7 @@ async def list_job_history(
             WHERE {where_clause}
             ORDER BY j.created_at DESC
             LIMIT ${param_idx} OFFSET ${param_idx + 1}
-        """  # ruff: ignore[hardcoded-sql-expression]
+        """  # noqa: S608
 
         rows = await conn.fetch(query, *params)
 
