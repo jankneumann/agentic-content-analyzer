@@ -29,8 +29,6 @@ established CLI output contract.
 - **WHEN** it completes
 - **THEN** it SHALL perform only read operations against the backup target
 
-## MODIFIED Requirements
-
 ### Requirement: Restore From Cloud Command
 
 The CLI SHALL provide `aca manage restore-from-cloud` to retrieve a backup from

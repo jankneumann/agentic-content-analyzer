@@ -220,3 +220,79 @@ Six findings addressed, two critical, both of the same shape as A6 and A13: a de
 ### Context
 Second review pass over the store adapters, preflight, worker wiring and deploy units. One finding above threshold: `plan_artifacts` carried an `existing=` seam that no production caller ever passed, so the CONFIGURED artifact directories were tarred unconditionally. `tar` exits non-zero on a path that is not there, which made the artifacts store fail on every run on any host that had not yet produced a podcast or an audio digest — exiting non-zero AND marking the run partial, which is alertable. The first working backup this project has had would have raised a freshness alert every night on a fresh gx-10 install. Directories are now filtered by a read-only stat with an injectable predicate.
 
+
+---
+
+## Phase: Cleanup (2026-08-27)
+
+**Agent**: claude-opus-5 | **Session**: merge-pull-requests → cleanup-feature --post-merge --defer-commit
+
+### Decisions
+
+1. **Rebase-merge, preserving all 28 commits** — the branch history is the
+   plan → review → fix → implement sequence (PLAN_ITERATE, PLAN_FIX rounds 1-3,
+   six work packages, then three refinement commits). Squashing would collapse the
+   record of *why* the alert contract was realigned twice into a single opaque
+   diff. No `wip:` commits were present, so rebase carried no bisect risk.
+
+2. **Refreshed the branch before merging rather than trusting a green CI run** —
+   CI was green but against a base 10 commits stale. `pyproject.toml` and
+   `src/config/settings.py` were touched by both this change and #491 (anydoc
+   parser) which landed in between. The hunks were independent on inspection, but
+   `MERGEABLE/CLEAN` only proves textual mergeability; the 19 checks had never run
+   against the combined tree. `refresh-branch` produced a true signal (19 pass,
+   0 behind) before the merge.
+
+3. **No task migration** — all 112 tasks in `tasks.md` are checked; nothing was
+   dropped, so no coordinator issues or follow-up proposal were created.
+
+4. **No staged rollout recorded, because there is no traffic surface to stage** —
+   this change ships a CLI group (`aca backup run|verify|list`), a systemd timer,
+   and settings that all default to unset. Per the change's own settings comment,
+   "every field defaults to unset so that adding this surface changes behavior for
+   no existing deployment." There is no feature flag and no request path to split.
+   Activation is an operator action (populating `BACKUP_S3_*` and enabling the
+   timer), which is the effective kill-switch: leave it unset and no backup code
+   runs. Recording this explicitly rather than claiming rollout stages that did
+   not occur.
+
+### Alternatives Considered
+
+- **Squash-merge**: rejected — see decision 1. The repo default is rebase for every
+  origin precisely so this history survives.
+- **Merging on the stale-but-green signal**: rejected — see decision 2. The cost was
+  ~20 minutes against a 98-file, +13,366-line disaster-recovery change.
+- **Local rebase instead of `refresh-branch`**: rejected — no code change was needed
+  here, so the Update Branch API was the lighter operation and left no force-push in
+  the branch's history.
+
+### Trade-offs
+
+- Accepted a temporary merge commit on the PR branch (discarded at rebase-merge time)
+  in exchange for a CI signal computed against the real combined tree.
+- Accepted `degraded` context-refresh status over blocking cleanup, because the
+  degradation is a missing Makefile target, not a real drift (see Open Questions).
+
+### Open Questions
+
+- [ ] `make architecture-refresh` and `make decisions` **do not exist** in the
+      Makefile (99 targets, neither present). Step 4 and Step 6 of this skill both
+      require them. `make decisions` was substituted with its named implementation,
+      `.claude/skills/explore-feature/scripts/archive_index.py --emit-decisions`;
+      the architecture refresh could not run at all. This is why every
+      main-convergence pass in this session reported `refresh_status: degraded`
+      with "staged architecture refresh failed (exit 2)". Needs wiring at the
+      `project-context-refresh` layer.
+- [ ] No `validate-decision-index` job exists in `.github/workflows/`, so the CI
+      breakage this skill warns about is not currently armed in this repo. The index
+      was regenerated and staged anyway, to keep it consistent with the archive.
+
+### Context
+
+`/merge-pull-requests` merged PR #506 into `main` at 2026-08-27T19:14:51Z via rebase
+after refreshing the branch onto current main, carrying all 28 commits. This cleanup
+ran in `--defer-commit` mode from the sync-point checkout: it archived the change,
+merged the spec deltas, regenerated the decision index, and staged the result without
+committing. The single convergence commit is produced by the sync point (Step 11.6),
+so that one commit carries this cleanup's output together with the deterministic
+context-refresh output.

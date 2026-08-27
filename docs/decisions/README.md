@@ -23,9 +23,12 @@ CI verifies the index is fresh by re-running `make decisions` and failing on any
 ## Active capabilities in this index
 
 - [agentic-operations](./agentic-operations.md)
+- [backup-and-restore](./backup-and-restore.md)
+- [cli-interface](./cli-interface.md)
 - [content-provenance](./content-provenance.md)
 - [frontend-release-delivery](./frontend-release-delivery.md)
 - [gemini-batch-execution](./gemini-batch-execution.md)
 - [job-management](./job-management.md)
+- [observability](./observability.md)
 - [openspec-inventory-governance](./openspec-inventory-governance.md)
 - [source-capability-registry](./source-capability-registry.md)
