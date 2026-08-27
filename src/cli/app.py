@@ -24,7 +24,18 @@ import importlib.metadata
 from typing import Annotated, ClassVar
 
 import typer
-from click import Command, Context
+
+# typer 0.20 vendors click as `typer._click`, so TyperGroup.get_command is
+# annotated against typer._click.core.Command/Context there while older typer
+# lines annotate against click's. CanonicalCommandGroup.get_command below
+# overrides that method, so it has to name whichever flavour the installed
+# typer was built against -- naming the wrong one is an [override] error, which
+# is what kept the typer cap pinned below 0.20.
+try:  # typer >= 0.20
+    from typer._click.core import Command, Context
+except ImportError:  # pragma: no cover - typer < 0.20 uses click directly
+    from click.core import Command, Context  # type: ignore[assignment]
+
 from typer.core import TyperGroup
 
 from src.cli.agent_commands import app as agent_app

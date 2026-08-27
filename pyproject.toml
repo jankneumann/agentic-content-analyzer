@@ -94,10 +94,13 @@ dependencies = [
     "langfuse>=4.3.0",
 
     # CLI
-    # <0.20: typer 0.20 vendors click as `typer._click`, so TyperGroup.get_command
-    # is typed against `typer._click.core.Command` while src/cli/app.py overrides it
-    # with `click.core.Command` — mypy rejects the override. Lift once app.py is
-    # migrated to the vendored types.
+    # <0.20 is required by DOCLING, not by our own code: docling declares
+    # typer<0.20.0 and docling-core declares typer<0.22.0, so a typer 0.20+
+    # resolution is unsatisfiable. The src/cli/app.py typing blocker that also
+    # held this cap (typer 0.20 vendors click as `typer._click`) is fixed and
+    # verified against typer 0.27.1. Newer docling drops the constraint, so the
+    # path to lifting this is a docling refresh. See
+    # tests/config/test_cli_runtime_hygiene.py.
     "typer>=0.9.0,<0.20",
     "rich>=13.0.0",
 
