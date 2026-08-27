@@ -8,10 +8,6 @@ Tests cover:
 - is_dynamic_routing_enabled logic
 """
 
-import os
-
-import pytest
-
 from src.config.models import (
     ModelConfig,
     ModelStep,

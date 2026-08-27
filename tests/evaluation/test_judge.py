@@ -9,7 +9,7 @@ Tests cover:
 """
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -19,17 +19,16 @@ from src.evaluation.criteria import (
     StepCriteria,
 )
 from src.evaluation.judge import (
-    DimensionCritique,
     LLMJudge,
     _map_preference,
     _parse_judge_response,
     build_judge_prompt,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def sample_criteria():
@@ -77,6 +76,7 @@ def judge(mock_router, eval_config):
 # build_judge_prompt
 # ---------------------------------------------------------------------------
 
+
 class TestBuildJudgePrompt:
     def test_includes_step_name(self, sample_criteria):
         prompt = build_judge_prompt("summarization", sample_criteria, "out A", "out B")
@@ -90,7 +90,9 @@ class TestBuildJudgePrompt:
         assert "Misrepresents facts" in prompt
 
     def test_includes_both_outputs(self, sample_criteria):
-        prompt = build_judge_prompt("summarization", sample_criteria, "OUTPUT_A_TEXT", "OUTPUT_B_TEXT")
+        prompt = build_judge_prompt(
+            "summarization", sample_criteria, "OUTPUT_A_TEXT", "OUTPUT_B_TEXT"
+        )
         assert "OUTPUT_A_TEXT" in prompt
         assert "OUTPUT_B_TEXT" in prompt
 
@@ -115,16 +117,19 @@ class TestBuildJudgePrompt:
 # _parse_judge_response
 # ---------------------------------------------------------------------------
 
+
 class TestParseJudgeResponse:
     def test_valid_response(self, sample_criteria):
-        response = json.dumps({
-            "preference": "A_wins",
-            "critiques": {
-                "accuracy": {"verdict": "pass", "explanation": "Both accurate"},
-                "completeness": {"verdict": "fail", "explanation": "Missing key point"},
-            },
-            "reasoning": "A is better overall",
-        })
+        response = json.dumps(
+            {
+                "preference": "A_wins",
+                "critiques": {
+                    "accuracy": {"verdict": "pass", "explanation": "Both accurate"},
+                    "completeness": {"verdict": "fail", "explanation": "Missing key point"},
+                },
+                "reasoning": "A is better overall",
+            }
+        )
         pref, critiques, reasoning = _parse_judge_response(response, sample_criteria)
         assert pref == "A_wins"
         assert len(critiques) == 2
@@ -134,26 +139,34 @@ class TestParseJudgeResponse:
         assert reasoning == "A is better overall"
 
     def test_strips_markdown_fences(self, sample_criteria):
-        response = "```json\n" + json.dumps({
-            "preference": "tie",
-            "critiques": {
-                "accuracy": {"verdict": "pass", "explanation": "ok"},
-                "completeness": {"verdict": "pass", "explanation": "ok"},
-            },
-            "reasoning": "Equal",
-        }) + "\n```"
+        response = (
+            "```json\n"
+            + json.dumps(
+                {
+                    "preference": "tie",
+                    "critiques": {
+                        "accuracy": {"verdict": "pass", "explanation": "ok"},
+                        "completeness": {"verdict": "pass", "explanation": "ok"},
+                    },
+                    "reasoning": "Equal",
+                }
+            )
+            + "\n```"
+        )
         pref, _, _ = _parse_judge_response(response, sample_criteria)
         assert pref == "tie"
 
     def test_missing_dimension_defaults_to_pass(self, sample_criteria):
-        response = json.dumps({
-            "preference": "B_wins",
-            "critiques": {
-                "accuracy": {"verdict": "pass", "explanation": "ok"},
-                # completeness is missing
-            },
-            "reasoning": "B wins",
-        })
+        response = json.dumps(
+            {
+                "preference": "B_wins",
+                "critiques": {
+                    "accuracy": {"verdict": "pass", "explanation": "ok"},
+                    # completeness is missing
+                },
+                "reasoning": "B wins",
+            }
+        )
         _, critiques, _ = _parse_judge_response(response, sample_criteria)
         assert len(critiques) == 2
         comp = [c for c in critiques if c.dimension == "completeness"][0]
@@ -165,23 +178,27 @@ class TestParseJudgeResponse:
             _parse_judge_response("not json at all", sample_criteria)
 
     def test_invalid_preference_raises(self, sample_criteria):
-        response = json.dumps({
-            "preference": "invalid_value",
-            "critiques": {},
-            "reasoning": "",
-        })
+        response = json.dumps(
+            {
+                "preference": "invalid_value",
+                "critiques": {},
+                "reasoning": "",
+            }
+        )
         with pytest.raises(ValueError, match="Invalid preference"):
             _parse_judge_response(response, sample_criteria)
 
     def test_malformed_verdict_defaults_to_pass(self, sample_criteria):
-        response = json.dumps({
-            "preference": "A_wins",
-            "critiques": {
-                "accuracy": {"verdict": "maybe", "explanation": "unclear"},
-                "completeness": {"verdict": "pass", "explanation": "ok"},
-            },
-            "reasoning": "A wins",
-        })
+        response = json.dumps(
+            {
+                "preference": "A_wins",
+                "critiques": {
+                    "accuracy": {"verdict": "maybe", "explanation": "unclear"},
+                    "completeness": {"verdict": "pass", "explanation": "ok"},
+                },
+                "reasoning": "A wins",
+            }
+        )
         _, critiques, _ = _parse_judge_response(response, sample_criteria)
         assert critiques[0].verdict == "pass"  # Defaults to pass
 
@@ -189,6 +206,7 @@ class TestParseJudgeResponse:
 # ---------------------------------------------------------------------------
 # _map_preference
 # ---------------------------------------------------------------------------
+
 
 class TestMapPreference:
     def test_tie_always_tie(self):
@@ -212,18 +230,21 @@ class TestMapPreference:
 # LLMJudge.evaluate_pair
 # ---------------------------------------------------------------------------
 
+
 class TestLLMJudgeEvaluatePair:
     @pytest.mark.asyncio
     async def test_successful_evaluation(self, judge, mock_router):
         mock_response = MagicMock()
-        mock_response.text = json.dumps({
-            "preference": "A_wins",
-            "critiques": {
-                "accuracy": {"verdict": "pass", "explanation": "Both accurate"},
-                "completeness": {"verdict": "pass", "explanation": "Both complete"},
-            },
-            "reasoning": "A is slightly better",
-        })
+        mock_response.text = json.dumps(
+            {
+                "preference": "A_wins",
+                "critiques": {
+                    "accuracy": {"verdict": "pass", "explanation": "Both accurate"},
+                    "completeness": {"verdict": "pass", "explanation": "Both complete"},
+                },
+                "reasoning": "A is slightly better",
+            }
+        )
         mock_router.generate.return_value = mock_response
 
         result = await judge.evaluate_pair(
@@ -245,14 +266,16 @@ class TestLLMJudgeEvaluatePair:
         bad_response = MagicMock()
         bad_response.text = "Not JSON"
         good_response = MagicMock()
-        good_response.text = json.dumps({
-            "preference": "tie",
-            "critiques": {
-                "accuracy": {"verdict": "pass", "explanation": "ok"},
-                "completeness": {"verdict": "pass", "explanation": "ok"},
-            },
-            "reasoning": "Equal quality",
-        })
+        good_response.text = json.dumps(
+            {
+                "preference": "tie",
+                "critiques": {
+                    "accuracy": {"verdict": "pass", "explanation": "ok"},
+                    "completeness": {"verdict": "pass", "explanation": "ok"},
+                },
+                "reasoning": "Equal quality",
+            }
+        )
         mock_router.generate.side_effect = [bad_response, good_response]
 
         result = await judge.evaluate_pair(
@@ -282,14 +305,16 @@ class TestLLMJudgeEvaluatePair:
     async def test_position_randomization(self, judge, mock_router):
         """Run multiple evaluations and verify both positions occur."""
         mock_response = MagicMock()
-        mock_response.text = json.dumps({
-            "preference": "tie",
-            "critiques": {
-                "accuracy": {"verdict": "pass", "explanation": "ok"},
-                "completeness": {"verdict": "pass", "explanation": "ok"},
-            },
-            "reasoning": "Equal",
-        })
+        mock_response.text = json.dumps(
+            {
+                "preference": "tie",
+                "critiques": {
+                    "accuracy": {"verdict": "pass", "explanation": "ok"},
+                    "completeness": {"verdict": "pass", "explanation": "ok"},
+                },
+                "reasoning": "Equal",
+            }
+        )
         mock_router.generate.return_value = mock_response
 
         positions = set()
@@ -309,14 +334,16 @@ class TestLLMJudgeEvaluatePair:
     @pytest.mark.asyncio
     async def test_low_temperature_for_evaluation(self, judge, mock_router):
         mock_response = MagicMock()
-        mock_response.text = json.dumps({
-            "preference": "tie",
-            "critiques": {
-                "accuracy": {"verdict": "pass", "explanation": "ok"},
-                "completeness": {"verdict": "pass", "explanation": "ok"},
-            },
-            "reasoning": "Equal",
-        })
+        mock_response.text = json.dumps(
+            {
+                "preference": "tie",
+                "critiques": {
+                    "accuracy": {"verdict": "pass", "explanation": "ok"},
+                    "completeness": {"verdict": "pass", "explanation": "ok"},
+                },
+                "reasoning": "Equal",
+            }
+        )
         mock_router.generate.return_value = mock_response
 
         await judge.evaluate_pair("summarization", "prompt", "strong", "weak")
@@ -329,14 +356,16 @@ class TestLLMJudgeEvaluatePair:
     async def test_uses_step_criteria(self, judge, mock_router):
         """Verify the judge prompt includes step-specific criteria."""
         mock_response = MagicMock()
-        mock_response.text = json.dumps({
-            "preference": "tie",
-            "critiques": {
-                "accuracy": {"verdict": "pass", "explanation": "ok"},
-                "completeness": {"verdict": "pass", "explanation": "ok"},
-            },
-            "reasoning": "Equal",
-        })
+        mock_response.text = json.dumps(
+            {
+                "preference": "tie",
+                "critiques": {
+                    "accuracy": {"verdict": "pass", "explanation": "ok"},
+                    "completeness": {"verdict": "pass", "explanation": "ok"},
+                },
+                "reasoning": "Equal",
+            }
+        )
         mock_router.generate.return_value = mock_response
 
         await judge.evaluate_pair("summarization", "prompt", "strong", "weak")
@@ -350,14 +379,16 @@ class TestLLMJudgeEvaluatePair:
     @pytest.mark.asyncio
     async def test_critiques_as_dict(self, judge, mock_router):
         mock_response = MagicMock()
-        mock_response.text = json.dumps({
-            "preference": "A_wins",
-            "critiques": {
-                "accuracy": {"verdict": "pass", "explanation": "good"},
-                "completeness": {"verdict": "fail", "explanation": "missing"},
-            },
-            "reasoning": "A better",
-        })
+        mock_response.text = json.dumps(
+            {
+                "preference": "A_wins",
+                "critiques": {
+                    "accuracy": {"verdict": "pass", "explanation": "good"},
+                    "completeness": {"verdict": "fail", "explanation": "missing"},
+                },
+                "reasoning": "A better",
+            }
+        )
         mock_router.generate.return_value = mock_response
 
         result = await judge.evaluate_pair("summarization", "prompt", "strong", "weak")

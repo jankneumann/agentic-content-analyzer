@@ -2,10 +2,9 @@
 
 import pytest
 import yaml
-from pathlib import Path
+
 from src.evaluation.criteria import (
     EvaluationConfig,
-    JudgeConfig,
     QualityDimension,
     StepCriteria,
     get_criteria_for_step,
@@ -58,26 +57,30 @@ class TestLoadEvaluationConfig:
 
     def test_load_custom_yaml(self, tmp_path):
         custom = tmp_path / "eval.yaml"
-        custom.write_text(yaml.dump({
-            "evaluation": {
-                "judges": [{"model": "test-model", "weight": 0.5}],
-                "human_review_weight": 3.0,
-                "criteria": {
-                    "_default": {
-                        "accuracy": {
-                            "description": "Test accuracy",
-                            "fail_when": "Test fail",
-                        }
-                    },
-                    "summarization": {
-                        "clarity": {
-                            "description": "Test clarity",
-                            "fail_when": "Test clarity fail",
-                        }
-                    },
-                },
-            }
-        }))
+        custom.write_text(
+            yaml.dump(
+                {
+                    "evaluation": {
+                        "judges": [{"model": "test-model", "weight": 0.5}],
+                        "human_review_weight": 3.0,
+                        "criteria": {
+                            "_default": {
+                                "accuracy": {
+                                    "description": "Test accuracy",
+                                    "fail_when": "Test fail",
+                                }
+                            },
+                            "summarization": {
+                                "clarity": {
+                                    "description": "Test clarity",
+                                    "fail_when": "Test clarity fail",
+                                }
+                            },
+                        },
+                    }
+                }
+            )
+        )
         config = load_evaluation_config(custom)
         assert len(config.judges) == 1
         assert config.judges[0].model == "test-model"
@@ -132,8 +135,6 @@ class TestGetCriteriaForStep:
         assert criteria.step == "_default"
 
     def test_no_default_raises(self):
-        config = EvaluationConfig(criteria={
-            "summarization": StepCriteria(step="summarization")
-        })
+        config = EvaluationConfig(criteria={"summarization": StepCriteria(step="summarization")})
         with pytest.raises(ValueError, match="No criteria found"):
             get_criteria_for_step(config, "unknown_step")

@@ -226,6 +226,18 @@ def get_parser_router() -> ParserRouter:
         except ImportError:
             logger.warning("Kreuzberg not available, install with: uv sync --extra kreuzberg")
 
+    anydoc = None
+    if settings.enable_anydoc:
+        try:
+            from src.parsers.anydoc_parser import AnydocParser
+
+            anydoc = AnydocParser(
+                max_file_size_mb=settings.anydoc_max_file_size_mb,
+                timeout_seconds=settings.anydoc_timeout_seconds,
+            )
+        except ImportError:
+            logger.warning("Anydoc not available, install with: uv sync --extra anydoc")
+
     kreuzberg_preferred = (
         {f.strip() for f in settings.kreuzberg_preferred_formats.split(",") if f.strip()}
         if settings.kreuzberg_preferred_formats
@@ -238,6 +250,18 @@ def get_parser_router() -> ParserRouter:
         else None
     )
 
+    anydoc_preferred = (
+        {f.strip() for f in settings.anydoc_preferred_formats.split(",") if f.strip()}
+        if settings.anydoc_preferred_formats
+        else None
+    )
+
+    anydoc_shadow = (
+        {f.strip() for f in settings.anydoc_shadow_formats.split(",") if f.strip()}
+        if settings.anydoc_shadow_formats
+        else None
+    )
+
     return ParserRouter(
         markitdown_parser=markitdown,
         docling_parser=docling,
@@ -245,6 +269,9 @@ def get_parser_router() -> ParserRouter:
         kreuzberg_parser=kreuzberg,
         kreuzberg_preferred_formats=kreuzberg_preferred,
         kreuzberg_shadow_formats=kreuzberg_shadow,
+        anydoc_parser=anydoc,
+        anydoc_preferred_formats=anydoc_preferred,
+        anydoc_shadow_formats=anydoc_shadow,
     )
 
 

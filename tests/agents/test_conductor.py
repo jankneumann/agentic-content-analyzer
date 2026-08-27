@@ -3,16 +3,16 @@
 All external dependencies (specialists, memory, approval, persona) are mocked.
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-from src.agents.conductor import Conductor, ConductorResult, MAX_RETRIES
+import pytest
+
+from src.agents.conductor import MAX_RETRIES, Conductor, ConductorResult
 from src.agents.memory.models import MemoryEntry, MemoryType
 from src.agents.persona.models import PersonaConfig
 from src.agents.specialists.base import SpecialistResult, SpecialistTask
 from src.models.agent_task import AgentTaskStatus
 from src.models.approval_request import RiskLevel
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

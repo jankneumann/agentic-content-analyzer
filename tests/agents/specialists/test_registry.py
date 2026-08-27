@@ -3,11 +3,8 @@
 from dataclasses import dataclass
 from typing import Any
 
-import pytest
-
 from src.agents.registry import SpecialistRegistry
 from src.agents.specialists.base import BaseSpecialist, SpecialistResult, SpecialistTask
-
 
 # -- Lightweight tool stand-in (avoids heavy src.services import chain) --
 

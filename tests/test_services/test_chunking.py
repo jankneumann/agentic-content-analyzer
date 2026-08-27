@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
+from src.models.chunk import ChunkType, DocumentChunk
 from src.services.chunking import (
     PARSER_TO_STRATEGY,
     STRATEGY_REGISTRY,
@@ -18,7 +19,6 @@ from src.services.chunking import (
     _thin_chunks,
     get_chunking_strategy,
 )
-from src.models.chunk import ChunkType, DocumentChunk
 
 # --- Helper function tests ---
 
@@ -194,14 +194,14 @@ class TestGeminiSummaryStrategy:
 
 def _default_mock_settings(**overrides):
     """Create a MagicMock settings with all required chunking fields."""
-    defaults = dict(
-        chunk_size_tokens=512,
-        chunk_overlap_tokens=64,
-        min_node_tokens=0,
-        tree_index_min_tokens=999999,
-        tree_index_min_heading_depth=99,
-        tree_max_depth=10,
-    )
+    defaults = {
+        "chunk_size_tokens": 512,
+        "chunk_overlap_tokens": 64,
+        "min_node_tokens": 0,
+        "tree_index_min_tokens": 999999,
+        "tree_index_min_heading_depth": 99,
+        "tree_max_depth": 10,
+    }
     defaults.update(overrides)
     return MagicMock(**defaults)
 

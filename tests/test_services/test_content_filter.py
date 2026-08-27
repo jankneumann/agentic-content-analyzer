@@ -12,10 +12,8 @@ import pytest
 
 from src.services.content_filter import (
     ContentRelevanceFilter,
-    FilterResult,
     create_content_filter,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

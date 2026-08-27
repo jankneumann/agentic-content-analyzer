@@ -20,43 +20,44 @@ from src.services.model_pricing_extractor import (
     fetch_pricing_page,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
-SAMPLE_LLM_RESPONSE = json.dumps([
-    {
-        "model_id": "claude-haiku-4-5",
-        "provider_model_id": "claude-haiku-4-5-20251001",
-        "cost_per_mtok_input": 1.00,
-        "cost_per_mtok_output": 5.00,  # Changed from 3.00 to 5.00
-        "context_window": 200000,
-        "max_output_tokens": 64000,
-        "tier": "standard",
-        "notes": "",
-    },
-    {
-        "model_id": "claude-sonnet-4-5",
-        "provider_model_id": "claude-sonnet-4-5-20250929",
-        "cost_per_mtok_input": 3.00,
-        "cost_per_mtok_output": 15.00,
-        "context_window": 200000,
-        "max_output_tokens": 64000,
-        "tier": "standard",
-        "notes": "",
-    },
-    {
-        "model_id": "claude-4-6-sonnet",
-        "provider_model_id": "claude-4-6-sonnet-20260301",
-        "cost_per_mtok_input": 3.50,
-        "cost_per_mtok_output": 17.50,
-        "context_window": 200000,
-        "max_output_tokens": 64000,
-        "tier": "standard",
-        "notes": "new model",
-    },
-])
+SAMPLE_LLM_RESPONSE = json.dumps(
+    [
+        {
+            "model_id": "claude-haiku-4-5",
+            "provider_model_id": "claude-haiku-4-5-20251001",
+            "cost_per_mtok_input": 1.00,
+            "cost_per_mtok_output": 5.00,  # Changed from 3.00 to 5.00
+            "context_window": 200000,
+            "max_output_tokens": 64000,
+            "tier": "standard",
+            "notes": "",
+        },
+        {
+            "model_id": "claude-sonnet-4-5",
+            "provider_model_id": "claude-sonnet-4-5-20250929",
+            "cost_per_mtok_input": 3.00,
+            "cost_per_mtok_output": 15.00,
+            "context_window": 200000,
+            "max_output_tokens": 64000,
+            "tier": "standard",
+            "notes": "",
+        },
+        {
+            "model_id": "claude-4-6-sonnet",
+            "provider_model_id": "claude-4-6-sonnet-20260301",
+            "cost_per_mtok_input": 3.50,
+            "cost_per_mtok_output": 17.50,
+            "context_window": 200000,
+            "max_output_tokens": 64000,
+            "tier": "standard",
+            "notes": "new model",
+        },
+    ]
+)
 
 
 SAMPLE_HTML = """\
@@ -134,9 +135,7 @@ class TestExtractWithLLM:
         mock_llm_response = MagicMock()
         mock_llm_response.text = SAMPLE_LLM_RESPONSE
 
-        with patch.object(
-            ModelPricingExtractor, "__init__", lambda self, **kw: None
-        ):
+        with patch.object(ModelPricingExtractor, "__init__", lambda self, **kw: None):
             extractor = ModelPricingExtractor()
             extractor.router = MagicMock()
             extractor.router.generate = AsyncMock(return_value=mock_llm_response)
@@ -154,9 +153,7 @@ class TestExtractWithLLM:
         mock_llm_response = MagicMock()
         mock_llm_response.text = wrapped
 
-        with patch.object(
-            ModelPricingExtractor, "__init__", lambda self, **kw: None
-        ):
+        with patch.object(ModelPricingExtractor, "__init__", lambda self, **kw: None):
             extractor = ModelPricingExtractor()
             extractor.router = MagicMock()
             extractor.router.generate = AsyncMock(return_value=mock_llm_response)
@@ -171,9 +168,7 @@ class TestExtractWithLLM:
         mock_llm_response = MagicMock()
         mock_llm_response.text = "I can't extract pricing from this page."
 
-        with patch.object(
-            ModelPricingExtractor, "__init__", lambda self, **kw: None
-        ):
+        with patch.object(ModelPricingExtractor, "__init__", lambda self, **kw: None):
             extractor = ModelPricingExtractor()
             extractor.router = MagicMock()
             extractor.router.generate = AsyncMock(return_value=mock_llm_response)
@@ -210,9 +205,7 @@ class TestDiffProvider:
         """Should detect when extracted price differs from registry."""
         from src.config.models import Provider
 
-        registry_configs = {
-            ("claude-haiku-4-5", Provider.ANTHROPIC): self._make_config()
-        }
+        registry_configs = {("claude-haiku-4-5", Provider.ANTHROPIC): self._make_config()}
         extracted = [
             ExtractedModel(
                 model_id="claude-haiku-4-5",
@@ -225,9 +218,7 @@ class TestDiffProvider:
         ]
         report = PricingReport()
 
-        with patch.object(
-            ModelPricingExtractor, "__init__", lambda self, **kw: None
-        ):
+        with patch.object(ModelPricingExtractor, "__init__", lambda self, **kw: None):
             extractor = ModelPricingExtractor()
             extractor._diff_provider("anthropic", extracted, registry_configs, report)
 
@@ -240,9 +231,7 @@ class TestDiffProvider:
         """Should flag models not in the registry."""
         from src.config.models import Provider
 
-        registry_configs = {
-            ("claude-haiku-4-5", Provider.ANTHROPIC): self._make_config()
-        }
+        registry_configs = {("claude-haiku-4-5", Provider.ANTHROPIC): self._make_config()}
         extracted = [
             ExtractedModel(
                 model_id="claude-4-6-sonnet",
@@ -255,9 +244,7 @@ class TestDiffProvider:
         ]
         report = PricingReport()
 
-        with patch.object(
-            ModelPricingExtractor, "__init__", lambda self, **kw: None
-        ):
+        with patch.object(ModelPricingExtractor, "__init__", lambda self, **kw: None):
             extractor = ModelPricingExtractor()
             extractor._diff_provider("anthropic", extracted, registry_configs, report)
 
@@ -268,9 +255,7 @@ class TestDiffProvider:
         """Should produce no diffs when extracted matches current."""
         from src.config.models import Provider
 
-        registry_configs = {
-            ("claude-haiku-4-5", Provider.ANTHROPIC): self._make_config()
-        }
+        registry_configs = {("claude-haiku-4-5", Provider.ANTHROPIC): self._make_config()}
         extracted = [
             ExtractedModel(
                 model_id="claude-haiku-4-5",
@@ -283,9 +268,7 @@ class TestDiffProvider:
         ]
         report = PricingReport()
 
-        with patch.object(
-            ModelPricingExtractor, "__init__", lambda self, **kw: None
-        ):
+        with patch.object(ModelPricingExtractor, "__init__", lambda self, **kw: None):
             extractor = ModelPricingExtractor()
             extractor._diff_provider("anthropic", extracted, registry_configs, report)
 
@@ -296,9 +279,7 @@ class TestDiffProvider:
         """Should skip fields with -1 sentinel (could not extract)."""
         from src.config.models import Provider
 
-        registry_configs = {
-            ("claude-haiku-4-5", Provider.ANTHROPIC): self._make_config()
-        }
+        registry_configs = {("claude-haiku-4-5", Provider.ANTHROPIC): self._make_config()}
         extracted = [
             ExtractedModel(
                 model_id="claude-haiku-4-5",
@@ -311,9 +292,7 @@ class TestDiffProvider:
         ]
         report = PricingReport()
 
-        with patch.object(
-            ModelPricingExtractor, "__init__", lambda self, **kw: None
-        ):
+        with patch.object(ModelPricingExtractor, "__init__", lambda self, **kw: None):
             extractor = ModelPricingExtractor()
             extractor._diff_provider("anthropic", extracted, registry_configs, report)
 
@@ -356,10 +335,9 @@ class TestApplyToYaml:
             ]
         )
 
-        with patch.object(
-            ModelPricingExtractor, "__init__", lambda self, **kw: None
-        ), patch.object(
-            ModelPricingExtractor, "_find_models_yaml", return_value=yaml_file
+        with (
+            patch.object(ModelPricingExtractor, "__init__", lambda self, **kw: None),
+            patch.object(ModelPricingExtractor, "_find_models_yaml", return_value=yaml_file),
         ):
             extractor = ModelPricingExtractor()
             extractor._apply_to_yaml(report)
@@ -397,10 +375,9 @@ class TestApplyToYaml:
             ]
         )
 
-        with patch.object(
-            ModelPricingExtractor, "__init__", lambda self, **kw: None
-        ), patch.object(
-            ModelPricingExtractor, "_find_models_yaml", return_value=yaml_file
+        with (
+            patch.object(ModelPricingExtractor, "__init__", lambda self, **kw: None),
+            patch.object(ModelPricingExtractor, "_find_models_yaml", return_value=yaml_file),
         ):
             extractor = ModelPricingExtractor()
             extractor._apply_to_yaml(report)
@@ -420,9 +397,9 @@ class TestPricingReport:
         assert report.has_changes is True
 
     def test_has_changes_with_new_models(self):
-        report = PricingReport(new_models=[
-            ExtractedModel("new-model", "new-model-v1", 1.0, 2.0, 100000, 8192)
-        ])
+        report = PricingReport(
+            new_models=[ExtractedModel("new-model", "new-model-v1", 1.0, 2.0, 100000, 8192)]
+        )
         assert report.has_changes is True
 
     def test_no_changes_when_empty(self):

@@ -56,6 +56,9 @@ class ParserRouter:
         kreuzberg_parser: Optional["DocumentParser"] = None,
         kreuzberg_preferred_formats: set[str] | None = None,
         kreuzberg_shadow_formats: set[str] | None = None,
+        anydoc_parser: Optional["DocumentParser"] = None,
+        anydoc_preferred_formats: set[str] | None = None,
+        anydoc_shadow_formats: set[str] | None = None,
         default_parser: str = "markitdown",
     ):
         """Initialize the parser router.
@@ -67,6 +70,10 @@ class ParserRouter:
             kreuzberg_parser: Optional Kreuzberg parser for document extraction
             kreuzberg_preferred_formats: Formats that should prefer Kreuzberg
             kreuzberg_shadow_formats: Formats for shadow comparison evaluation
+            anydoc_parser: Optional Anydoc parser for fast office conversion
+            anydoc_preferred_formats: Formats that should prefer Anydoc
+                (Kreuzberg preference wins if a format appears in both)
+            anydoc_shadow_formats: Formats for Anydoc shadow comparison
             default_parser: Parser to use for unknown formats
         """
         self.parsers: dict[str, DocumentParser] = {
@@ -78,6 +85,8 @@ class ParserRouter:
             self.parsers["youtube"] = youtube_parser
         if kreuzberg_parser:
             self.parsers["kreuzberg"] = kreuzberg_parser
+        if anydoc_parser:
+            self.parsers["anydoc"] = anydoc_parser
 
         self.default_parser = default_parser
         self._has_docling = docling_parser is not None
@@ -85,6 +94,9 @@ class ParserRouter:
         self._has_kreuzberg = kreuzberg_parser is not None
         self._kreuzberg_preferred: set[str] = kreuzberg_preferred_formats or set()
         self._kreuzberg_shadow: set[str] = kreuzberg_shadow_formats or set()
+        self._has_anydoc = anydoc_parser is not None
+        self._anydoc_preferred: set[str] = anydoc_preferred_formats or set()
+        self._anydoc_shadow: set[str] = anydoc_shadow_formats or set()
 
     def route(
         self,
@@ -122,6 +134,11 @@ class ParserRouter:
             logger.debug(f"Routing {source} to kreuzberg (format preferred)")
             return self.parsers["kreuzberg"]
 
+        # Anydoc preference (if available and format is preferred)
+        if self._has_anydoc and detected_format in self._anydoc_preferred:
+            logger.debug(f"Routing {source} to anydoc (format preferred)")
+            return self.parsers["anydoc"]
+
         # Use routing table
         parser_name = self.ROUTING_TABLE.get(detected_format, self.default_parser)
 
@@ -134,6 +151,9 @@ class ParserRouter:
             parser_name = "markitdown"
         elif parser_name == "kreuzberg" and not self._has_kreuzberg:
             logger.debug(f"Routing {source} to markitdown (kreuzberg not available)")
+            parser_name = "markitdown"
+        elif parser_name == "anydoc" and not self._has_anydoc:
+            logger.debug(f"Routing {source} to markitdown (anydoc not available)")
             parser_name = "markitdown"
         else:
             logger.debug(f"Routing {source} to {parser_name}")
@@ -171,21 +191,28 @@ class ParserRouter:
 
         result = await parser.parse(source, format_hint=format_hint)
 
-        # Shadow evaluation: fire-and-forget Kreuzberg comparison
-        if self._has_kreuzberg and self._kreuzberg_shadow:
+        # Shadow evaluation: fire-and-forget secondary-parser comparisons
+        shadow_configs = [
+            ("kreuzberg", self._has_kreuzberg, self._kreuzberg_shadow),
+            ("anydoc", self._has_anydoc, self._anydoc_shadow),
+        ]
+        if any(available and formats for _, available, formats in shadow_configs):
             detected_format = format_hint or (
                 self._detect_format(source) if not isinstance(source, bytes) else "unknown"
             )
             from src.parsers.shadow import maybe_shadow_parse
 
-            maybe_shadow_parse(
-                shadow_parser=self.parsers.get("kreuzberg"),
-                shadow_formats=self._kreuzberg_shadow,
-                detected_format=detected_format,
-                canonical_result=result,
-                source=source,
-                format_hint=format_hint,
-            )
+            for parser_name, available, shadow_formats in shadow_configs:
+                if not (available and shadow_formats):
+                    continue
+                maybe_shadow_parse(
+                    shadow_parser=self.parsers.get(parser_name),
+                    shadow_formats=shadow_formats,
+                    detected_format=detected_format,
+                    canonical_result=result,
+                    source=source,
+                    format_hint=format_hint,
+                )
 
         return result
 
@@ -239,3 +266,8 @@ class ParserRouter:
     def has_kreuzberg(self) -> bool:
         """Whether Kreuzberg parser is available."""
         return self._has_kreuzberg
+
+    @property
+    def has_anydoc(self) -> bool:
+        """Whether Anydoc parser is available."""
+        return self._has_anydoc

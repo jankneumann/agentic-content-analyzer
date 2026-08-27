@@ -4,9 +4,7 @@ Covers: build_frontmatter(), slugify_filename(), compute_content_hash(),
 sanitize_tag().
 """
 
-from datetime import datetime, timezone
-
-import pytest
+from datetime import UTC, datetime
 
 from src.sync.obsidian_frontmatter import (
     build_frontmatter,
@@ -54,7 +52,7 @@ class TestBuildFrontmatter:
         assert "aca_type: digest" in result
 
     def test_with_date_datetime(self) -> None:
-        dt = datetime(2026, 4, 3, 10, 0, tzinfo=timezone.utc)
+        dt = datetime(2026, 4, 3, 10, 0, tzinfo=UTC)
         result = build_frontmatter(aca_id="d-1", aca_type="digest", date=dt)
         assert "date: 2026-04-03" in result
 
@@ -97,7 +95,7 @@ class TestSlugifyFilename:
     """Filename generation with date prefix and slugification."""
 
     def test_basic_slug(self) -> None:
-        dt = datetime(2026, 4, 3, tzinfo=timezone.utc)
+        dt = datetime(2026, 4, 3, tzinfo=UTC)
         result = slugify_filename("Daily AI Digest", dt)
         assert result == "2026-04-03-daily-ai-digest.md"
 
@@ -118,7 +116,7 @@ class TestSlugifyFilename:
         assert result == "Transformer Architecture.md"
 
     def test_special_characters_removed(self) -> None:
-        dt = datetime(2026, 4, 3, tzinfo=timezone.utc)
+        dt = datetime(2026, 4, 3, tzinfo=UTC)
         result = slugify_filename("AI & ML: What's Next?", dt)
         assert ":" not in result
         assert "&" not in result

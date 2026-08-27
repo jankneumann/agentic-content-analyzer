@@ -4,10 +4,12 @@ These tests verify that internal error details are not leaked
 through error responses or database status updates.
 """
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock
 
 from src.queue.worker import _handlers, register_all_handlers
+
 
 class TestAgentTaskErrorLeakage:
     """Test that agent task failure handling doesn't leak sensitive error details."""
@@ -30,11 +32,14 @@ class TestAgentTaskErrorLeakage:
 
         # We need to mock Conductor.execute_task to raise our exception
         # and AgentTaskService.update_task_status to capture what is saved
-        with patch("src.storage.database.get_db"), \
-             patch("src.services.agent_service.AgentTaskService") as mock_svc_cls, \
-             patch("src.agents.approval.gates.ApprovalGate"), \
-             patch("src.agents.conductor.Conductor.execute_task", new_callable=AsyncMock) as mock_execute:
-
+        with (
+            patch("src.storage.database.get_db"),
+            patch("src.services.agent_service.AgentTaskService") as mock_svc_cls,
+            patch("src.agents.approval.gates.ApprovalGate"),
+            patch(
+                "src.agents.conductor.Conductor.execute_task", new_callable=AsyncMock
+            ) as mock_execute,
+        ):
             mock_execute.side_effect = RuntimeError(f"Connection failed: {sensitive_data}")
 
             mock_svc_instance = mock_svc_cls.return_value
@@ -43,7 +48,7 @@ class TestAgentTaskErrorLeakage:
                 "task_id": "test-task-123",
                 "task_type": "research",
                 "persona": "default",
-                "prompt": "test prompt"
+                "prompt": "test prompt",
             }
 
             # The handler will raise the exception after updating the status

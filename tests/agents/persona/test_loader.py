@@ -8,7 +8,6 @@ import pytest
 from src.agents.persona.loader import PersonaLoader
 from src.agents.persona.models import PersonaConfig
 
-
 # ---------------------------------------------------------------------------
 # Fixtures: mock YAML data
 # ---------------------------------------------------------------------------
