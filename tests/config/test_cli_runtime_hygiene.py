@@ -49,11 +49,27 @@ def test_mcp_is_capped_below_the_mcperror_rename() -> None:
 
 
 def test_typer_is_capped_below_the_vendored_click_move() -> None:
-    """typer 0.20 vendors click as `typer._click`, breaking src/cli/app.py typing.
+    """typer is capped below 0.20 because `docling` requires it, not because of typing.
 
-    `TyperGroup.get_command` is then annotated against `typer._click.core.Command`,
-    while src/cli/app.py:88 overrides it returning `click.core.Command` — mypy
-    rejects the override, failing the required `typecheck` job.
+    This cap originally had two independent causes. Only one is still live:
+
+    RESOLVED -- src/cli/app.py typing. typer 0.20 vendors click as `typer._click`,
+    so `TyperGroup.get_command` is annotated against `typer._click.core.Command`
+    while app.py overrode it against `click.core.Command`; mypy rejected the
+    override. app.py now imports whichever flavour the installed typer was built
+    against, and `mypy src/ --ignore-missing-imports` is clean under BOTH typer
+    0.19.2 and 0.27.1. This is no longer a reason to hold the cap.
+
+    LIVE -- the transitive `docling` constraint. `docling` 2.70.0 declares
+    `typer<0.20.0` and `docling-core` declares `typer<0.22.0`, so a typer 0.20+
+    resolution is simply unsatisfiable:
+
+        docling 2.70.0 requires typer<0.20.0, but you have typer 0.27.1
+
+    Newer docling has dropped the constraint entirely (2.123.0 declares no typer
+    requirement), so the path to lifting this cap is a docling refresh, which
+    needs its own parser validation and is not a typer bump. Until then
+    Dependabot's typer PRs cannot be merged regardless of the typing fix.
     """
     project = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
     dependencies = project["project"]["dependencies"]
@@ -61,8 +77,10 @@ def test_typer_is_capped_below_the_vendored_click_move() -> None:
 
     assert Version("0.19.2") in typer.specifier, "the known-good line must stay installable"
     assert Version("0.20") not in typer.specifier, (
-        "typer 0.20 vendors click as typer._click; migrate src/cli/app.py's "
-        "get_command override to the vendored types before lifting this cap"
+        "docling requires typer<0.20.0 (docling-core: <0.22.0), so typer 0.20+ is "
+        "unsatisfiable. The src/cli/app.py typing blocker that also held this cap "
+        "is already fixed and verified against typer 0.27.1 — refresh docling, "
+        "then lift this cap."
     )
 
     lock = tomllib.loads((REPO_ROOT / "uv.lock").read_text())
