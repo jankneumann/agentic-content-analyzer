@@ -82,7 +82,7 @@ class DoclingParser(DocumentParser):
         """Initialize the Docling parser.
 
         Args:
-            enable_ocr: Enable OCR for scanned documents (requires docling[ocr])
+            enable_ocr: Enable OCR for scanned documents (requires the `ocr` extra: docling[rapidocr])
             max_file_size_mb: Maximum file size to process
             timeout_seconds: Processing timeout for large documents
         """
@@ -263,7 +263,9 @@ class DoclingParser(DocumentParser):
                 # Extract table as markdown for fallback
                 table_md = ""
                 if hasattr(table, "export_to_markdown"):
-                    table_md = table.export_to_markdown()
+                    # docling-core >= 2.9x resolves cell references through the
+                    # parent document; calling without `doc` is deprecated.
+                    table_md = table.export_to_markdown(doc=doc)
 
                 # Try to extract structured data
                 headers: list[str] = []

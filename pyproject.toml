@@ -73,7 +73,7 @@ dependencies = [
 
     # Document Parsing
     "markitdown>=0.1.0",  # Microsoft's document to markdown converter
-    "docling>=2.60.0",  # IBM's advanced document parser with table extraction
+    "docling>=2.123.0",  # IBM's advanced document parser with table extraction; >=2.123 drops the typer<0.20 cap
 
     # HTML to Markdown Conversion
     "trafilatura>=2.0.0",  # Academic-quality web content extraction
@@ -94,14 +94,11 @@ dependencies = [
     "langfuse>=4.3.0",
 
     # CLI
-    # <0.20 is required by DOCLING, not by our own code: docling declares
-    # typer<0.20.0 and docling-core declares typer<0.22.0, so a typer 0.20+
-    # resolution is unsatisfiable. The src/cli/app.py typing blocker that also
-    # held this cap (typer 0.20 vendors click as `typer._click`) is fixed and
-    # verified against typer 0.27.1. Newer docling drops the constraint, so the
-    # path to lifting this is a docling refresh. See
-    # tests/config/test_cli_runtime_hygiene.py.
-    "typer>=0.9.0,<0.20",
+    # <0.27 is docling's cap, not ours: docling-slim[standard] declares
+    # typer<0.27.0. (docling <2.123 capped at <0.20, which is why this sat at
+    # <0.20 for so long.) src/cli/app.py already handles typer's vendored click
+    # on 0.20+. See tests/config/test_cli_runtime_hygiene.py.
+    "typer>=0.9.0,<0.27",
     "rich>=13.0.0",
 
     # Vector Search
@@ -157,7 +154,10 @@ gen-eval = [
     "jsonschema[format]>=4.23.0",
 ]
 ocr = [
-    "docling[ocr]>=2.60.0",  # OCR support for scanned documents
+    # docling 2.123+ bundles rapidocr in its standard install; this extra adds the
+    # onnxruntime-backed engine. (The old `docling[ocr]` extra never existed
+    # upstream and installed nothing.)
+    "docling[rapidocr]>=2.123.0",
 ]
 braintrust = [
     "braintrust>=0.0.160",  # Braintrust SDK for LLM observability
