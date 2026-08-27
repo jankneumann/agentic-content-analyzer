@@ -3,13 +3,19 @@
 **Capability**: `agentic-analysis` (delta)
 **Scope**: Tool functions available to specialist agents within their reasoning loops
 
-## Overview
+## Purpose
 
 Defines the contracts for each tool function that specialist agents can invoke during their LLM-driven reasoning loops via `LLMRouter.generate_with_tools()`. Each tool is a standalone async function that wraps an existing service or performs a bounded operation. All tools follow a uniform error-handling convention: exceptions are caught internally and returned as descriptive error strings so the LLM can reason about failures without the tool loop aborting.
 
-## Tool Conventions
+## Requirements
 
-#### spec-tools.1 -- Error handling convention
+### Requirement: Tool Conventions
+
+Every specialist tool SHALL follow the shared error-handling, return-type, and
+async conventions defined here.
+
+
+#### Scenario: Error handling convention
 
 All specialist tools SHALL catch exceptions internally and return a string describing the error. No tool SHALL allow an exception to propagate to the LLM tool-calling loop.
 
@@ -17,19 +23,21 @@ The error return format SHALL be: `"Error: <tool_name> failed: <exception messag
 
 This ensures the LLM receives actionable feedback and can decide whether to retry, try an alternative tool, or return partial results (per agentic-analysis.25).
 
-#### spec-tools.2 -- Return type convention
+#### Scenario: Return type convention
 
 All tools SHALL return `str`. Structured data (lists, dicts) SHALL be serialized to a human-readable string format suitable for LLM consumption (not raw JSON unless the data is inherently tabular).
 
-#### spec-tools.3 -- Async convention
+#### Scenario: Async convention
 
 All tools SHALL be `async def` functions. Tools that wrap synchronous services SHALL use `asyncio.to_thread()` for blocking I/O to avoid starving the event loop.
 
-## Research Specialist Tools
 
-### search_web
+### Requirement: Research Specialist Tool — `search_web`
 
-#### spec-tools.4 -- search_web signature and behavior
+The `search_web` tool SHALL behave as specified in the scenarios below.
+
+
+#### Scenario: search_web signature and behavior
 
 ```python
 async def search_web(query: str, max_results: int = 5) -> str
@@ -42,7 +50,7 @@ The `search_web` tool SHALL:
 - Return results formatted as a numbered list with title, URL, and snippet for each result
 - If no results are found, return `"No results found for: <query>"`
 
-#### spec-tools.5 -- search_web result format
+#### Scenario: search_web result format
 
 The return string SHALL be formatted as:
 ```
@@ -57,9 +65,12 @@ Web search results for "<query>":
    <snippet text>
 ```
 
-### fetch_url
+### Requirement: Research Specialist Tool — `fetch_url`
 
-#### spec-tools.6 -- fetch_url signature and behavior
+The `fetch_url` tool SHALL behave as specified in the scenarios below.
+
+
+#### Scenario: fetch_url signature and behavior
 
 ```python
 async def fetch_url(url: str) -> str
@@ -72,7 +83,7 @@ The `fetch_url` tool SHALL:
 - Append `"\n\n[Truncated — original was N characters]"` when truncation occurs
 - Return the extracted text content
 
-#### spec-tools.7 -- fetch_url error cases
+#### Scenario: fetch_url error cases
 
 The tool SHALL handle the following error cases:
 - `httpx.TimeoutException`: return `"Error: fetch_url failed: Request timed out after 30 seconds"`
@@ -80,9 +91,12 @@ The tool SHALL handle the following error cases:
 - Non-HTML content types (e.g., PDF, image): return the first 5000 characters of the raw response body with a note `"[Non-HTML content: <content-type>]"`
 - Connection errors: return `"Error: fetch_url failed: Could not connect to <host>"`
 
-### search_content
+### Requirement: Research Specialist Tool — `search_content`
 
-#### spec-tools.8 -- search_content signature and behavior
+The `search_content` tool SHALL behave as specified in the scenarios below.
+
+
+#### Scenario: search_content signature and behavior
 
 ```python
 async def search_content(query: str, limit: int = 10, source_types: list[str] | None = None) -> str
@@ -94,7 +108,7 @@ The `search_content` tool SHALL:
 - Pass `source_types` filter when provided to restrict results to specific content sources
 - Return results formatted with title, source, date, relevance score, and a content snippet (first 200 characters of matched text)
 
-#### spec-tools.9 -- search_content result format
+#### Scenario: search_content result format
 
 The return string SHALL be formatted as:
 ```
@@ -109,9 +123,12 @@ Found <N> results for "<query>":
 
 When no results are found, return `"No content found matching: <query>"`.
 
-### query_knowledge_graph
+### Requirement: Research Specialist Tool — `query_knowledge_graph`
 
-#### spec-tools.10 -- query_knowledge_graph signature and behavior
+The `query_knowledge_graph` tool SHALL behave as specified in the scenarios below.
+
+
+#### Scenario: query_knowledge_graph signature and behavior
 
 ```python
 async def query_knowledge_graph(query: str, limit: int = 10) -> str
@@ -123,17 +140,19 @@ The `query_knowledge_graph` tool SHALL:
 - Return entity nodes and their relationships relevant to the query
 - Include entity names, types, and relationship descriptions in the output
 
-#### spec-tools.11 -- query_knowledge_graph unavailability
+#### Scenario: query_knowledge_graph unavailability
 
 When Neo4j is unavailable (connection refused, timeout), the tool SHALL return `"Error: query_knowledge_graph failed: Knowledge graph is currently unavailable"` rather than raising an exception.
 
 This aligns with agentic-analysis.26 (memory backend unavailability) -- the specialist's LLM can then decide to rely on other tools instead.
 
-## Analysis Specialist Tools
 
-### detect_anomalies
+### Requirement: Analysis Specialist Tool — `detect_anomalies`
 
-#### spec-tools.12 -- detect_anomalies signature and behavior
+The `detect_anomalies` tool SHALL behave as specified in the scenarios below.
+
+
+#### Scenario: detect_anomalies signature and behavior
 
 ```python
 async def detect_anomalies(topic: str, days: int = 7, threshold: float = 2.0) -> str
@@ -145,7 +164,7 @@ The `detect_anomalies` tool SHALL:
 - Identify days where content volume exceeds `baseline * threshold` as anomalous
 - Return a summary including: baseline rate, anomalous dates, volume on those dates, and representative content titles
 
-#### spec-tools.13 -- detect_anomalies result format
+#### Scenario: detect_anomalies result format
 
 The return string SHALL be formatted as:
 ```
@@ -166,9 +185,12 @@ Anomalies found: <count>
 
 When no anomalies are detected, return `"No anomalies detected for '<topic>' in the last <days> days (threshold: <threshold>x, baseline: <N>/day)"`.
 
-### compare_periods
+### Requirement: Analysis Specialist Tool — `compare_periods`
 
-#### spec-tools.14 -- compare_periods signature and behavior
+The `compare_periods` tool SHALL behave as specified in the scenarios below.
+
+
+#### Scenario: compare_periods signature and behavior
 
 ```python
 async def compare_periods(topic: str, period_a: str, period_b: str) -> str
@@ -182,7 +204,7 @@ The `compare_periods` tool SHALL:
 - Compare: total content count, unique sources, top themes (extracted from tags)
 - Calculate percentage change in volume between periods
 
-#### spec-tools.15 -- compare_periods period parsing
+#### Scenario: compare_periods period parsing
 
 The period parser SHALL:
 - Accept `"Nd"` where N is a positive integer representing days (e.g., `"7d"` = 7 days)
@@ -190,7 +212,7 @@ The period parser SHALL:
 - Reject invalid formats with: `"Error: compare_periods failed: Invalid period format '<input>'. Use Nd (days) or Nw (weeks), e.g., '7d' or '2w'"`
 - `period_a` and `period_b` need not be the same duration
 
-#### spec-tools.16 -- compare_periods result format
+#### Scenario: compare_periods result format
 
 The return string SHALL be formatted as:
 ```
@@ -207,9 +229,13 @@ New themes in Period B: <theme_x>, <theme_y>
 Themes dropped from Period A: <theme_z>
 ```
 
-## Tool Registration
+### Requirement: Tool Registration
 
-#### spec-tools.17 -- Tool definition schema
+Tools SHALL be declared against a common definition schema, mapped to the
+specialists permitted to call them, and filterable per persona.
+
+
+#### Scenario: Tool definition schema
 
 Each tool SHALL be registered with the specialist via a `ToolDefinition` that includes:
 - `name: str` -- the function name used in LLM tool calls
@@ -219,7 +245,7 @@ Each tool SHALL be registered with the specialist via a `ToolDefinition` that in
 
 The `parameters` schema SHALL use standard JSON Schema types and mark required parameters accordingly. Default values SHALL be specified in the schema so the LLM can omit optional parameters.
 
-#### spec-tools.18 -- Tool-to-specialist mapping
+#### Scenario: Tool-to-specialist mapping
 
 Tools SHALL be assigned to specialists as follows:
 
@@ -234,15 +260,19 @@ Tools SHALL be assigned to specialists as follows:
 
 The SynthesisSpecialist and IngestionSpecialist have their own tools (`create_report`, `generate_insight`, `draft_digest`, `create_briefing`, `ingest_source`, `scan_sources`, `ingest_url`) which are defined in separate specialist-specific specs.
 
-#### spec-tools.19 -- Persona tool filtering
+#### Scenario: Persona tool filtering
 
 When a persona configuration includes `restricted_tools`, the specialist's tool set SHALL be filtered before the reasoning loop begins. A restricted tool SHALL NOT appear in the LLM's available tools list and SHALL NOT be callable.
 
 If a specialist has zero available tools after filtering, the specialist SHALL return an error result: `"No tools available under persona '<name>' restrictions"` and the Conductor SHALL re-plan using a different specialist or approach.
 
-## Dependency Injection
+### Requirement: Dependency Injection
 
-#### spec-tools.20 -- Service dependencies
+Tools SHALL receive their service dependencies by injection, and SHALL scope any
+database session to the tool invocation.
+
+
+#### Scenario: Service dependencies
 
 Tools that depend on existing services SHALL receive them via constructor injection on the specialist, NOT by importing and instantiating services directly. This enables testing with mocks.
 
@@ -254,7 +284,7 @@ Required service dependencies:
 - `compare_periods` requires `Session` (database session)
 - `fetch_url` has no service dependency (uses `httpx.AsyncClient` directly)
 
-#### spec-tools.21 -- Database session lifecycle
+#### Scenario: Database session lifecycle
 
 Tools that require a database `Session` (`detect_anomalies`, `compare_periods`) SHALL receive the session from the specialist's execution context. The session lifecycle is managed by the Conductor (via `get_db()` context manager), NOT by individual tools.
 
