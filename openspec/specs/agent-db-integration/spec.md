@@ -3,15 +3,19 @@
 **Capability**: `agentic-analysis` (delta)
 **Scope**: Database services, queue integration, API routes, CLI commands, SSE streaming
 
-## Overview
+## Purpose
 
 Defines the data-access layer contracts for the agentic analysis agent: service classes that persist and query agent tasks, insights, and approval requests; the queue entrypoint that bridges PGQueuer to the Conductor lifecycle; the REST API surface; and the CLI commands.
 
-## Service Contracts
+## Requirements
 
-### AgentTaskService
+### Requirement: AgentTaskService
 
-#### agent-db.1 -- create_task
+`AgentTaskService` SHALL provide the persistence contract for agent tasks:
+creation, retrieval, listing, cancellation, and status transitions.
+
+
+#### Scenario: create_task
 
 The `create_task` method SHALL accept the following parameters:
 - `db: Session` -- SQLAlchemy session
@@ -30,13 +34,13 @@ It SHALL return an `AgentTask` ORM instance with:
 
 It SHALL call `db.add()` and `db.flush()` to make the row visible within the same transaction.
 
-#### agent-db.2 -- get_task
+#### Scenario: get_task
 
 The `get_task` method SHALL accept `db: Session` and `task_id: str` (UUID).
 
 It SHALL return `AgentTask | None`. When the task exists, the returned object SHALL include all columns including `result` (JSON) and `metadata` (JSON). When no task matches, it SHALL return `None` (not raise an exception).
 
-#### agent-db.3 -- list_tasks
+#### Scenario: list_tasks
 
 The `list_tasks` method SHALL accept:
 - `db: Session`
@@ -51,7 +55,7 @@ It SHALL return `list[AgentTask]` ordered by `created_at` descending.
 
 All filter parameters are optional and additive (AND logic).
 
-#### agent-db.4 -- cancel_task
+#### Scenario: cancel_task
 
 The `cancel_task` method SHALL accept `db: Session` and `task_id: str`.
 
@@ -61,7 +65,7 @@ If the task is already in a terminal state (`completed`, `failed`, `cancelled`),
 
 It SHALL return the updated `AgentTask`.
 
-#### agent-db.5 -- update_task_status
+#### Scenario: update_task_status
 
 The `update_task_status` method SHALL accept:
 - `db: Session`
@@ -86,9 +90,13 @@ When transitioning to `completed` or `failed`, it SHALL set `completed_at`.
 
 When `metadata_update` is provided, it SHALL merge (not replace) into the existing `metadata` JSON column.
 
-### AgentInsightService
+### Requirement: AgentInsightService
 
-#### agent-db.6 -- create_insight
+`AgentInsightService` SHALL provide the persistence contract for agent-generated
+insights: creation, retrieval, and listing.
+
+
+#### Scenario: create_insight
 
 The `create_insight` method SHALL accept:
 - `db: Session`
@@ -104,13 +112,13 @@ It SHALL return an `AgentInsight` ORM instance with a generated UUID `id`.
 
 Insights with `confidence < 0.3` SHALL have `"speculative"` appended to `tags` automatically (per agentic-analysis.20).
 
-#### agent-db.7 -- get_insight
+#### Scenario: get_insight
 
 The `get_insight` method SHALL accept `db: Session` and `insight_id: str`.
 
 It SHALL return `AgentInsight | None`. When the insight exists, the returned object SHALL include the `persona_name` field populated via the JOIN to the parent `AgentTask` if `persona_name` is not stored directly on the insight.
 
-#### agent-db.8 -- list_insights
+#### Scenario: list_insights
 
 The `list_insights` method SHALL accept:
 - `db: Session`
@@ -126,15 +134,19 @@ It SHALL return `list[AgentInsight]` ordered by `created_at` descending.
 
 When `persona_name` is provided, the query SHALL JOIN to `agent_tasks` on `task_id` to filter by the task's persona (or use the insight's own `persona_name` column if denormalized).
 
-### ApprovalService
+### Requirement: ApprovalService
 
-#### agent-db.9 -- get_request
+`ApprovalService` SHALL provide the persistence contract for approval requests:
+retrieval, decision recording, and listing of pending requests.
+
+
+#### Scenario: get_request
 
 The `get_request` method SHALL accept `db: Session` and `request_id: str`.
 
 It SHALL return `ApprovalRequest | None`.
 
-#### agent-db.10 -- decide_request
+#### Scenario: decide_request
 
 The `decide_request` method SHALL accept:
 - `db: Session`
@@ -154,7 +166,7 @@ On denial:
 
 It SHALL return the updated `ApprovalRequest`.
 
-#### agent-db.11 -- list_pending
+#### Scenario: list_pending
 
 The `list_pending` method SHALL accept:
 - `db: Session`
@@ -164,9 +176,13 @@ It SHALL return `list[ApprovalRequest]` filtered to `status = 'pending'`, ordere
 
 It SHALL NOT return expired, approved, or denied requests.
 
-## Queue Integration
+### Requirement: Queue Integration
 
-#### agent-db.12 -- execute_agent_task entrypoint
+The durable job queue SHALL expose an `execute_agent_task` entrypoint and SHALL
+bridge conductor lifecycle events onto the task record.
+
+
+#### Scenario: execute_agent_task entrypoint
 
 The `execute_agent_task` function SHALL be registered as a PGQueuer job handler with job type `"agent_task"`.
 
@@ -188,7 +204,7 @@ The handler SHALL:
 5. On unhandled exception: set task status to `failed` with the exception message
 6. NOT interfere with existing job types (`extract_url_content`, `process_content`, `scan_newsletters`, `summarize_content`, `ingest_content`)
 
-#### agent-db.13 -- Conductor lifecycle bridge
+#### Scenario: Conductor lifecycle bridge
 
 The queue handler SHALL bridge the Conductor's async execution to the PGQueuer worker's event loop.
 
@@ -200,11 +216,15 @@ If the Conductor raises `TaskTimeoutError`, the handler SHALL set status to `fai
 
 For all other exceptions, standard PGQueuer retry policy applies.
 
-## API Routes
+### Requirement: API Routes
+
+The API SHALL expose agent task submission and tracking, insights, approvals,
+schedules, personas, and an SSE event stream under `/api/v1/agent/`.
+
 
 All endpoints are mounted under `/api/v1/agent` and require authentication via `AuthMiddleware` (session cookie or `X-Admin-Key` header).
 
-#### agent-db.14 -- POST /api/v1/agent/task
+#### Scenario: POST /api/v1/agent/task
 
 Request body:
 ```json
@@ -228,13 +248,13 @@ Response (201):
 
 SHALL enqueue an `agent_task` job into PGQueuer after creating the DB record.
 
-#### agent-db.15 -- GET /api/v1/agent/task/{id}
+#### Scenario: GET /api/v1/agent/task/{id}
 
 Response (200): Full `AgentTask` serialized as JSON including `result`, `metadata`, `persona_name`.
 
 Response (404): `{"detail": "Task not found"}` when no task matches.
 
-#### agent-db.16 -- GET /api/v1/agent/tasks
+#### Scenario: GET /api/v1/agent/tasks
 
 Query parameters: `status`, `source`, `persona`, `since` (ISO 8601), `limit`, `offset`.
 
@@ -248,11 +268,11 @@ Response (200):
 }
 ```
 
-#### agent-db.17 -- DELETE /api/v1/agent/task/{id}
+#### Scenario: DELETE /api/v1/agent/task/{id}
 
 Calls `AgentTaskService.cancel_task()`. Returns 200 on success, 404 if not found, 409 if task is in a terminal state.
 
-#### agent-db.18 -- GET /api/v1/agent/insights
+#### Scenario: GET /api/v1/agent/insights
 
 Query parameters: `type`, `persona`, `since`, `min_confidence`, `tags` (comma-separated), `limit`, `offset`.
 
@@ -266,13 +286,13 @@ Response (200):
 }
 ```
 
-#### agent-db.19 -- GET /api/v1/agent/insights/{id}
+#### Scenario: GET /api/v1/agent/insights/{id}
 
 Response (200): Full `AgentInsight` serialized as JSON.
 
 Response (404): `{"detail": "Insight not found"}`.
 
-#### agent-db.20 -- POST /api/v1/agent/approval/{id}
+#### Scenario: POST /api/v1/agent/approval/{id}
 
 Request body:
 ```json
@@ -288,7 +308,7 @@ Response (404): When request not found.
 
 Response (409): When request is not in `pending` status.
 
-#### agent-db.21 -- GET /api/v1/agent/approvals
+#### Scenario: GET /api/v1/agent/approvals
 
 Returns pending approval requests via `ApprovalService.list_pending()`.
 
@@ -300,7 +320,7 @@ Response (200):
 }
 ```
 
-#### agent-db.22 -- GET /api/v1/agent/schedules
+#### Scenario: GET /api/v1/agent/schedules
 
 Returns schedule definitions and their status (last run, next run, active persona).
 
@@ -322,7 +342,7 @@ Response (200):
 }
 ```
 
-#### agent-db.23 -- GET /api/v1/agent/personas
+#### Scenario: GET /api/v1/agent/personas
 
 Returns available personas with summary from `PersonaLoader`.
 
@@ -339,7 +359,7 @@ Response (200):
 }
 ```
 
-#### agent-db.24 -- GET /api/v1/agent/task/{id}/events (SSE)
+#### Scenario: GET /api/v1/agent/task/{id}/events (SSE)
 
 Returns a `text/event-stream` response. The endpoint SHALL:
 - Poll the `agent_tasks` row for status changes at 2-second intervals
@@ -358,11 +378,15 @@ event: complete
 data: {"task_id": "uuid", "status": "completed", "result": {...}}
 ```
 
-## CLI Commands
+### Requirement: CLI Commands
+
+The CLI SHALL expose the same agent surface as the API under the `aca agent`
+command group.
+
 
 All commands are registered under the `aca agent` subcommand group in `src/cli/agent_commands.py`.
 
-#### agent-db.25 -- aca agent task
+#### Scenario: aca agent task
 
 ```
 aca agent task "prompt text" [--persona NAME] [--output FORMAT] [--sources SRC,SRC] [--wait]
@@ -373,7 +397,7 @@ aca agent task "prompt text" [--persona NAME] [--output FORMAT] [--sources SRC,S
 - Without `--wait`: print task ID and exit immediately
 - SHALL respect `is_json_mode()` for structured output
 
-#### agent-db.26 -- aca agent status
+#### Scenario: aca agent status
 
 ```
 aca agent status <task-id>
@@ -382,7 +406,7 @@ aca agent status <task-id>
 - Displays task status, current phase, persona, elapsed time, and result summary if completed
 - SHALL respect `is_json_mode()` for structured output
 
-#### agent-db.27 -- aca agent insights
+#### Scenario: aca agent insights
 
 ```
 aca agent insights [--type TYPE] [--since DATE] [--persona NAME] [--min-confidence FLOAT]
@@ -392,7 +416,7 @@ aca agent insights [--type TYPE] [--since DATE] [--persona NAME] [--min-confiden
 - Displays title, type, confidence, tags, and creation date in tabular format
 - SHALL respect `is_json_mode()` for structured output
 
-#### agent-db.28 -- aca agent personas
+#### Scenario: aca agent personas
 
 ```
 aca agent personas
@@ -402,7 +426,7 @@ aca agent personas
 - Displays name, role, and domain focus for each
 - SHALL respect `is_json_mode()` for structured output
 
-#### agent-db.29 -- aca agent schedule
+#### Scenario: aca agent schedule
 
 ```
 aca agent schedule [--enable SCHEDULE_ID] [--disable SCHEDULE_ID]
@@ -412,7 +436,7 @@ aca agent schedule [--enable SCHEDULE_ID] [--disable SCHEDULE_ID]
 - With `--enable`/`--disable`: toggle the specified schedule
 - SHALL respect `is_json_mode()` for structured output
 
-#### agent-db.30 -- aca agent approve
+#### Scenario: aca agent approve
 
 ```
 aca agent approve <request-id>
@@ -422,7 +446,7 @@ aca agent approve <request-id>
 - Prints confirmation with the action that was approved
 - SHALL guard `typer.echo()` calls with `not is_json_mode()`
 
-#### agent-db.31 -- aca agent deny
+#### Scenario: aca agent deny
 
 ```
 aca agent deny <request-id> --reason "explanation"
