@@ -1,6 +1,6 @@
 # Makefile for common development tasks
 
-.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format workflow-contracts workflow-contracts-check db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai falkordb-up falkordb-down test-e2e-live tauri-setup tauri-dev tauri-build tauri-icons test-tauri mcp-install mcp-install-claude mcp-install-codex mcp-install-desktop mcp-install-claude-desktop mcp-install-codex-desktop mcp-uninstall mcp-uninstall-desktop mcp-uninstall-claude-desktop mcp-uninstall-codex-desktop
+.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format workflow-contracts workflow-contracts-check db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai falkordb-up falkordb-down test-e2e-live tauri-setup tauri-dev tauri-build tauri-icons test-tauri mcp-install mcp-install-claude mcp-install-codex mcp-install-desktop mcp-install-claude-desktop mcp-install-codex-desktop mcp-uninstall mcp-uninstall-desktop mcp-uninstall-claude-desktop mcp-uninstall-codex-desktop architecture-refresh architecture-check context-drift-gate context-refresh decisions decisions-check
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -955,4 +955,61 @@ mcp-uninstall-codex-desktop:  ## Remove MCP server from Codex Desktop app
 		fi; \
 	else \
 		echo "  (Codex Desktop config not found)"; \
+	fi
+
+# ---------------------------------------------------------------------------
+# Project context: derived-artifact refresh and drift gate
+#
+# These three targets are the names the agent skills call by. They are thin
+# wrappers over the skill scripts that own the work -- the skills are the
+# implementation, the Makefile is the stable interface:
+#
+#   architecture-refresh   refresh-architecture      (run_architecture.py --staged)
+#   context-drift-gate     project-context-refresh   (cli.py gate)
+#   decisions              explore-feature           (archive_index.py --emit-decisions)
+#
+# Callers that depend on these exact names:
+#   merge-pull-requests/scripts/main_convergence.py -- ARCHITECTURE_COMMAND and
+#     DRIFT_GATE_COMMAND are literally ("make", "architecture-refresh") and
+#     ("make", "context-drift-gate"). Renaming a target here breaks Step 11.6.
+#   cleanup-feature SKILL.md Step 6 -- requires `make decisions` in the same
+#     commit as an OpenSpec archive move.
+# ---------------------------------------------------------------------------
+
+SKILLS_DIR ?= .claude/skills
+PYTHON ?= python3
+
+architecture-refresh:  ## Refresh architecture artifacts via the STAGED, provenance-writing path
+	@# --staged, never the bare generation path: only the staged path writes
+	@# architecture.provenance.json, and the deterministic producer routes
+	@# missing provenance to drift rather than to "not-configured". Regenerating
+	@# every artifact without provenance leaves context-drift-gate red.
+	@$(PYTHON) $(SKILLS_DIR)/refresh-architecture/scripts/run_architecture.py --staged
+
+architecture-check:  ## Read-only architecture freshness check (writes nothing; exit 0 only when fresh)
+	@$(PYTHON) $(SKILLS_DIR)/refresh-architecture/scripts/run_architecture.py --check
+
+context-drift-gate:  ## Read-only deterministic drift gate (0 = fresh, 2 = blocking drift, 1 = apparatus failure)
+	@# Read-only by contract: this must never mutate the tree, because
+	@# main_convergence.py runs it in --dry-run mode, and a dry run that
+	@# dirties main is not a dry run.
+	@$(PYTHON) $(SKILLS_DIR)/project-context-refresh/scripts/cli.py gate
+
+context-refresh:  ## Regenerate every deterministic context producer and emit the manifest
+	@$(PYTHON) $(SKILLS_DIR)/project-context-refresh/scripts/cli.py refresh
+
+decisions:  ## Regenerate docs/decisions/ from the OpenSpec archive
+	@# MUST be staged into the SAME commit as any archive move: docs/decisions/
+	@# is derived from openspec/changes/archive/, so archiving stales the
+	@# committed index immediately.
+	$(PYTHON) $(SKILLS_DIR)/explore-feature/scripts/archive_index.py --emit-decisions
+
+decisions-check:  ## Fail if docs/decisions/ is out of date with the OpenSpec archive
+	@$(MAKE) --no-print-directory decisions
+	@if git diff --quiet -- docs/decisions/ && [ -z "$$(git ls-files --others --exclude-standard -- docs/decisions/)" ]; then \
+		echo "✓ docs/decisions/ is current"; \
+	else \
+		echo "✗ docs/decisions/ is stale — run 'make decisions' and stage the result"; \
+		git status --short -- docs/decisions/; \
+		exit 1; \
 	fi
