@@ -980,6 +980,10 @@ SKILLS_DIR ?= .claude/skills
 PYTHON ?= python3
 
 architecture-refresh:  ## Refresh architecture artifacts via the STAGED, provenance-writing path
+	@# NOTE: unlike the other targets here, this one's stdout is NOT pure JSON --
+	@# the underlying pipeline streams [INFO] progress and ends with a JSON
+	@# summary. main_convergence.py reads its EXIT CODE, not its stdout. Use
+	@# `make architecture-check` when you want a parseable report.
 	@# --staged, never the bare generation path: only the staged path writes
 	@# architecture.provenance.json, and the deterministic producer routes
 	@# missing provenance to drift rather than to "not-configured". Regenerating
@@ -993,6 +997,7 @@ context-drift-gate:  ## Read-only deterministic drift gate (0 = fresh, 2 = block
 	@# Read-only by contract: this must never mutate the tree, because
 	@# main_convergence.py runs it in --dry-run mode, and a dry run that
 	@# dirties main is not a dry run.
+	@# stdout is a single JSON document -- callers parse it. Keep it that way.
 	@$(PYTHON) $(SKILLS_DIR)/project-context-refresh/scripts/cli.py gate
 
 context-refresh:  ## Regenerate every deterministic context producer and emit the manifest
