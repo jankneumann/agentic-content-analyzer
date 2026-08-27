@@ -1,6 +1,16 @@
 # Spec: Graph Database Provider Abstraction
 
-## ADDED Requirements
+## Purpose
+
+Defines the `GraphDBProvider` protocol that decouples every graph consumer —
+GraphitiClient, reference-graph sync, export/import, and the graph and sync
+CLI commands — from the concrete graph backend. Specifies the Neo4j and
+FalkorDB implementations behind that protocol, the `graphdb_provider` and
+`graphdb_mode` settings that select between them, and the infrastructure and
+`graphiti-core` version constraints each backend requires, so that swapping
+backends is a configuration change rather than a code change.
+
+## Requirements
 
 ### Requirement: GraphDB Provider Protocol
 
@@ -258,8 +268,6 @@ WHEN the FalkorDB Docker service is defined in docker-compose.yml
 THEN the image SHALL be pinned to a specific tested version (not `latest`).
 
 ---
-
-## MODIFIED Requirements
 
 ### Requirement: graphiti-core Version
 

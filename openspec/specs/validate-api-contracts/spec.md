@@ -1,4 +1,14 @@
-## ADDED Requirements
+# Spec: API Contract Validation
+
+## Purpose
+
+Defines how this project establishes and then enforces API contracts: first
+an inventory of the FastAPI OpenAPI schema coverage for critical endpoints,
+then schema-driven fuzz testing against that schema, and finally the contract
+broker workflow that gates changes to the published surface. Enforcement is
+staged deliberately — coverage is documented before it is required.
+
+## Requirements
 ### Requirement: OpenAPI contract inventory
 The system SHALL document the FastAPI OpenAPI schema coverage for critical API endpoints before contract enforcement begins.
 

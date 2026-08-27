@@ -1,6 +1,15 @@
 # Content Ingestion: Grok X Search
 
-## ADDED Requirements
+## Purpose
+
+Defines the web-search ingestion sources that discover AI-relevant content
+outside the feed-based adapters: X (Twitter) posts retrieved through the xAI
+Grok API's `x_search` tool, and Perplexity Sonar results. Covers the search
+prompt configuration, per-run cost controls, the formatting applied before
+posts are persisted as `Content`, and how these sources are exposed through
+the CLI and the durable pipeline.
+
+## Requirements
 
 ### Requirement: X Post Ingestion via Grok API
 
