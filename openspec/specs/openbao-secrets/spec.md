@@ -1,12 +1,18 @@
 # Spec: OpenBao Secrets Management
 
-## Overview
+## Purpose
 
 Integrates OpenBao as a centralized secrets provider for the newsletter aggregator, using a Pydantic Settings Source that slots into the existing resolution chain.
 
-## Scenarios
+## Requirements
 
-### openbao-secrets.1 — Graceful degradation when OpenBao is unconfigured
+### Requirement: Optional, Non-Fatal Integration
+
+The OpenBao integration SHALL be entirely optional: when `BAO_ADDR` is unset the
+settings source SHALL return an empty dict silently, and the existing resolution
+chain SHALL behave identically to a build without OpenBao.
+
+#### Scenario: Graceful degradation when OpenBao is unconfigured
 
 **Given** `BAO_ADDR` is not set in the environment
 **When** the application starts and loads Settings
@@ -14,7 +20,12 @@ Integrates OpenBao as a centralized secrets provider for the newsletter aggregat
 **And** SHALL NOT emit any log messages (complete silence when unconfigured)
 **And** the existing resolution chain (env_settings → profile_settings → dotenv_settings → defaults) SHALL function identically to before.
 
-### openbao-secrets.2 — Secret resolution from OpenBao KV v2
+### Requirement: Secret Resolution and Precedence
+
+The system SHALL resolve secrets from the OpenBao KV v2 store, and environment
+variables SHALL always take precedence over values held in the vault.
+
+#### Scenario: Secret resolution from OpenBao KV v2
 
 **Given** `BAO_ADDR` is set and OpenBao is reachable
 **And** secrets are seeded at `secret/newsletter/` with key `ANTHROPIC_API_KEY=sk-ant-test`
@@ -22,14 +33,20 @@ Integrates OpenBao as a centralized secrets provider for the newsletter aggregat
 **And** `ANTHROPIC_API_KEY` is NOT set as an environment variable
 **Then** the function SHALL return `sk-ant-test` from OpenBao.
 
-### openbao-secrets.3 — Environment variables override OpenBao
+#### Scenario: Environment variables override OpenBao
 
 **Given** `BAO_ADDR` is set and OpenBao contains `ANTHROPIC_API_KEY=sk-from-vault`
 **And** the environment variable `ANTHROPIC_API_KEY=sk-from-env` is set
 **When** `resolve_secret("ANTHROPIC_API_KEY")` is called
 **Then** the function SHALL return `sk-from-env` (environment variables always win).
 
-### openbao-secrets.4 — AppRole authentication
+### Requirement: Authentication and Token Lifecycle
+
+The system SHALL authenticate to OpenBao via AppRole when role credentials are
+present, SHALL fall back to direct token authentication for development, and
+SHALL refresh time-limited tokens for long-running processes.
+
+#### Scenario: AppRole authentication
 
 **Given** `BAO_ADDR`, `BAO_ROLE_ID`, and `BAO_SECRET_ID` are set
 **When** the `BaoSettingsSource` initializes
@@ -37,13 +54,13 @@ Integrates OpenBao as a centralized secrets provider for the newsletter aggregat
 **And** obtain a time-limited token
 **And** use that token for subsequent KV v2 reads.
 
-### openbao-secrets.5 — Token authentication fallback (dev mode)
+#### Scenario: Token authentication fallback (dev mode)
 
 **Given** `BAO_ADDR` and `BAO_TOKEN` are set (but not `BAO_ROLE_ID`)
 **When** the `BaoSettingsSource` initializes
 **Then** it SHALL use the provided token directly for authentication.
 
-### openbao-secrets.6 — Token refresh for long-running processes
+#### Scenario: Token refresh for long-running processes
 
 **Given** the application is running as an API server (long-lived process)
 **And** the AppRole token has a TTL of N seconds
@@ -54,7 +71,12 @@ Integrates OpenBao as a centralized secrets provider for the newsletter aggregat
 **And** schedule the next refresh at 75% of the new token's TTL
 **And** log a structured INFO-level audit event for the refresh.
 
-### openbao-secrets.7 — Connection failure handling
+### Requirement: Failure Isolation
+
+A failure to reach OpenBao, or an absent `hvac` dependency, SHALL degrade to the
+remaining resolution sources rather than failing application startup.
+
+#### Scenario: Connection failure handling
 
 **Given** `BAO_ADDR` is set but OpenBao is unreachable
 **When** the `BaoSettingsSource` attempts to load secrets
@@ -62,21 +84,27 @@ Integrates OpenBao as a centralized secrets provider for the newsletter aggregat
 **And** return an empty dict (falling through to profile_settings → dotenv_settings chain)
 **And** NOT raise an exception that would prevent application startup.
 
-### openbao-secrets.8 — hvac not installed
+#### Scenario: hvac not installed
 
 **Given** `BAO_ADDR` is set but the `hvac` package is not installed
 **When** the `BaoSettingsSource` attempts to load secrets
 **Then** it SHALL log a DEBUG-level message: "hvac not installed — install with: pip install '.[vault]'"
 **And** return an empty dict.
 
-### openbao-secrets.9 — Seeding from .secrets.yaml
+### Requirement: Seeding From Local Configuration
+
+The system SHALL provide seeding that populates OpenBao from `.secrets.yaml`,
+including shared keys, AppRole creation, and dynamic database credentials, and
+SHALL support a dry-run mode that writes nothing.
+
+#### Scenario: Seeding from .secrets.yaml
 
 **Given** a `.secrets.yaml` file exists with N secret key-value pairs
 **When** `scripts/bao_seed_newsletter.py` is run with valid `BAO_ADDR` and `BAO_TOKEN`
 **Then** it SHALL write all N secrets to `secret/newsletter/` in OpenBao KV v2
 **And** print the count and key names (not values) to stdout.
 
-### openbao-secrets.10 — Shared key seeding
+#### Scenario: Shared key seeding
 
 **Given** `.secrets.yaml` contains `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`
 **When** `bao_seed_newsletter.py --shared-keys ANTHROPIC_API_KEY,OPENAI_API_KEY` is run
@@ -85,7 +113,7 @@ Integrates OpenBao as a centralized secrets provider for the newsletter aggregat
 **And** SHALL merge newsletter keys into the existing data (newsletter values win for duplicate keys; keys from other projects are preserved)
 **And** SHALL write the merged result back to `secret/shared/`.
 
-### openbao-secrets.11 — AppRole creation
+#### Scenario: AppRole creation
 
 **Given** valid admin credentials (`BAO_TOKEN`)
 **When** `bao_seed_newsletter.py --with-approle` is run
@@ -93,7 +121,7 @@ Integrates OpenBao as a centralized secrets provider for the newsletter aggregat
 **And** create a `newsletter-app` AppRole bound to that policy
 **And** print the role_id and instructions for generating a secret_id.
 
-### openbao-secrets.12 — Dynamic database credentials
+#### Scenario: Dynamic database credentials
 
 **Given** `POSTGRES_DSN` is set and the database secrets engine is available
 **When** `bao_seed_newsletter.py --with-db-engine` is run
@@ -101,14 +129,19 @@ Integrates OpenBao as a centralized secrets provider for the newsletter aggregat
 **And** create a `newsletter-app` role that generates PostgreSQL credentials with default TTL of 1 hour and max TTL of 24 hours
 **And** the generated credentials SHALL have SELECT, INSERT, UPDATE, DELETE on all tables in the public schema.
 
-### openbao-secrets.13 — Dry run mode
+#### Scenario: Dry run mode
 
 **Given** the `--dry-run` flag is passed to `bao_seed_newsletter.py`
 **When** the script executes
 **Then** it SHALL print all actions it would take (with key names, counts, policy names)
 **And** SHALL NOT write anything to OpenBao.
 
-### openbao-secrets.14 — Audit logging
+### Requirement: Audit Logging
+
+Secret access SHALL be auditable through structured events that never contain
+secret values.
+
+#### Scenario: Audit logging
 
 **Given** OpenBao is configured and secrets are loaded
 **When** any of the following events occur:
@@ -121,7 +154,13 @@ Integrates OpenBao as a centralized secrets provider for the newsletter aggregat
 **And** the log event SHALL include: event name, timestamp, secret count (for loads), error details (for failures)
 **And** SHALL NOT include secret values in any log output.
 
-### openbao-secrets.15 — Pydantic Settings chain integration
+### Requirement: Pydantic Settings Chain Integration
+
+`BaoSettingsSource` SHALL slot into the Pydantic Settings resolution chain,
+SHALL expose cache isolation for testing, and SHALL map UPPER_CASE vault keys
+onto lower_case settings fields.
+
+#### Scenario: Pydantic Settings chain integration
 
 **Given** `BAO_ADDR` is configured
 **When** `Settings()` is instantiated
@@ -133,21 +172,27 @@ Integrates OpenBao as a centralized secrets provider for the newsletter aggregat
 5. dotenv_settings (.env file)
 6. file_secret_settings
 
-### openbao-secrets.16 — Cache isolation for testing
+#### Scenario: Cache isolation for testing
 
 **Given** test code calls `clear_bao_cache()`
 **When** `BaoSettingsSource` or `resolve_secret()` is subsequently called
 **Then** it SHALL re-fetch secrets from OpenBao (or skip if unconfigured)
 **And** NOT return stale cached values.
 
-### openbao-secrets.17 — UPPER_CASE to lower_case key mapping
+#### Scenario: UPPER_CASE to lower_case key mapping
 
 **Given** OpenBao stores secrets as `ANTHROPIC_API_KEY` (UPPER_CASE, matching env var convention)
 **And** Pydantic Settings fields are `anthropic_api_key` (lower_case)
 **When** `BaoSettingsSource` resolves field values
 **Then** it SHALL map UPPER_CASE vault keys to lower_case field names.
 
-### openbao-secrets.18 — Concurrent access thread safety
+### Requirement: Concurrency and Vault Response Handling
+
+Secret loading SHALL be thread-safe under concurrent access, and SHALL handle
+partial, empty, and special-character vault responses without corrupting or
+truncating values.
+
+#### Scenario: Concurrent access thread safety
 
 **Given** the application runs as a multi-threaded FastAPI server
 **And** `BAO_ADDR` is configured
@@ -156,7 +201,7 @@ Integrates OpenBao as a centralized secrets provider for the newsletter aggregat
 **And** other threads SHALL block until the cache is populated
 **And** all threads SHALL receive the same cached dict reference.
 
-### openbao-secrets.19 — Partial vault response
+#### Scenario: Partial vault response
 
 **Given** `BAO_ADDR` is configured and OpenBao is reachable
 **And** `secret/newsletter/` contains only 10 of the expected 30 keys
@@ -165,13 +210,13 @@ Integrates OpenBao as a centralized secrets provider for the newsletter aggregat
 **And** the 20 missing keys SHALL fall through to the next resolution source (profile_settings, dotenv_settings)
 **And** it SHALL NOT log a warning for missing keys (the vault stores what was seeded).
 
-### openbao-secrets.20 — Special characters in secret values
+#### Scenario: Special characters in secret values
 
 **Given** OpenBao stores a secret with value containing `$`, `{`, `}`, newlines, or Unicode characters
 **When** `get_bao_secret()` or `BaoSettingsSource` retrieves the value
 **Then** it SHALL return the value exactly as stored — no interpolation, escaping, or truncation.
 
-### openbao-secrets.21 — Empty vault path
+#### Scenario: Empty vault path
 
 **Given** `BAO_ADDR` is configured and OpenBao is reachable
 **And** `secret/newsletter/` exists but contains zero keys
@@ -180,7 +225,13 @@ Integrates OpenBao as a centralized secrets provider for the newsletter aggregat
 **And** return no values (falling through to profile_settings)
 **And** log an INFO-level `bao.secrets_loaded` event with secret count 0.
 
-### openbao-secrets.22 — Token manager shutdown
+### Requirement: Lifecycle and Exception Isolation
+
+The token manager SHALL shut down cleanly, and any unexpected exception inside
+the settings source SHALL be contained so that `Settings()` instantiation never
+fails because of OpenBao.
+
+#### Scenario: Token manager shutdown
 
 **Given** the `_BaoTokenManager` is running with a scheduled refresh timer
 **When** `_BaoTokenManager.stop()` is called (e.g., during process shutdown)
@@ -188,7 +239,7 @@ Integrates OpenBao as a centralized secrets provider for the newsletter aggregat
 **And** log a DEBUG-level `bao.token_manager_stopped` event
 **And** NOT attempt any further OpenBao operations.
 
-### openbao-secrets.23 — BaoSettingsSource exception isolation
+#### Scenario: BaoSettingsSource exception isolation
 
 **Given** `BAO_ADDR` is configured
 **And** an unexpected exception occurs during `BaoSettingsSource.__call__()` or `get_field_value()`
