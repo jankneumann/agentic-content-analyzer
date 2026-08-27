@@ -233,12 +233,29 @@ echo ""
 info "--- [1.2] Postgres Analyzer ---"
 info "Migrations: ${MIGRATIONS_DIR}"
 
-if [ ! -d "${MIGRATIONS_DIR}" ]; then
-    error "Migrations directory not found: ${MIGRATIONS_DIR}"
-    fail "postgres_analyzer"
-elif [ ! -f "${SCRIPTS_DIR}/analyze_postgres.py" ]; then
-    warn "Postgres analyzer script not found: ${SCRIPTS_DIR}/analyze_postgres.py"
-    fail "postgres_analyzer"
+if [ ! -f "${SCRIPTS_DIR}/analyze_postgres.py" ]; then
+    warn "Postgres analyzer script not found: ${SCRIPTS_DIR}/analyze_postgres.py — skipping"
+    skip "postgres_analyzer"
+elif [ ! -d "${MIGRATIONS_DIR}" ]; then
+    # Inapplicable input is not a pipeline error -- same reasoning as the
+    # TypeScript analyzer below. A repository whose migrations live somewhere
+    # other than ${MIGRATIONS_DIR} has nothing for the SQL schema layer to
+    # parse; recording that as an ERROR blocks promotion in --staged mode, so
+    # architecture provenance is never written and `make context-drift-gate`
+    # reports blocking drift forever, with no step anywhere able to clear it.
+    warn "MIGRATIONS_DIR does not exist: ${MIGRATIONS_DIR} — skipping Postgres analyzer"
+    warn "Set MIGRATIONS_DIR to this repository's SQL migration root, or leave it unset if there is none."
+    warn "NOT writing an empty ${PG_ANALYSIS}: a missing directory is not an empty schema."
+    skip "postgres_analyzer"
+elif ! ls "${MIGRATIONS_DIR}"/*.sql >/dev/null 2>&1; then
+    # The analyzer globs *.sql and exits 1 when it finds none. Repositories
+    # using a non-SQL migration tool (Alembic .py revisions, for example) hit
+    # that path on every run. Same verdict as above: nothing to parse is a
+    # skip, not a failure.
+    warn "No .sql migrations under ${MIGRATIONS_DIR} — skipping Postgres analyzer"
+    warn "This repository appears to use a non-SQL migration tool (e.g. Alembic .py revisions)."
+    warn "NOT writing an empty ${PG_ANALYSIS}: zero tables from zero .sql files would misreport as analysis."
+    skip "postgres_analyzer"
 else
     if ${PYTHON} "${SCRIPTS_DIR}/analyze_postgres.py" \
         "${MIGRATIONS_DIR}" \
