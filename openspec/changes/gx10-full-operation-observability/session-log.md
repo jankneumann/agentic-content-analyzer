@@ -43,3 +43,35 @@
 
 ### Context
 Planned a contract-first correlation spine for every meaningful backend operation and a production GX-10 runtime sized for a 1 TB disk. PostgreSQL remains the bounded durable operation index while Langfuse holds masked detailed traces; Railway data cutover remains a separate change.
+
+---
+
+## Phase: Plan Iteration 1 (2026-08-28)
+
+**Agent**: architect | **Session**: N/A
+
+### Decisions
+1. **Cutover-ready scope** — Production data migration, public traffic switching, and mutation-owner activation remain in a separately approved change.
+2. **One shared fence authority** — Any future coexistence handoff must use one authoritative PostgreSQL fingerprint and epoch; independent local epochs are rejected.
+3. **Portable GX-10 baseline** — Compose V2 under systemd, Caddy, OpenBao, and a dedicated managed filesystem match repository patterns and are testable.
+4. **Bounded dual-layer evidence** — PostgreSQL stores one bounded attempt summary and process health while Langfuse retains detailed stage history.
+
+### Alternatives Considered
+- Include production migration and cutover now: rejected because Contradicts the approved non-goal and materially expands operational risk.
+- Persist a PostgreSQL stage-event ledger: rejected because Duplicates high-volume telemetry and risks a second execution-state model.
+- Rely on process-local health only: rejected because Cannot represent worker, scheduler, or short-lived process delivery state deployment-wide.
+
+### Trade-offs
+- Accepted A six-hour capacity soak before acceptance over A cheaper smoke-only gate because The 1 TB retention claim needs measurable evidence.
+- Accepted Logical/native-service quotas as the portable baseline over Mandatory filesystem project quotas because Host filesystem support varies; project quotas remain defense in depth.
+
+### Completed Work
+- Aligned explicit-null OperationContext and completed generated review stubs.
+- Added cursor-paginated attempt history and aggregate process health contracts.
+- Completed SQL boundaries for queue context, attempts, health, audit, terminal events, and inactive ownership.
+- Defined measurable telemetry, storage, backup, and soak thresholds.
+- Reconciled cutover-ready scope and shared-authority fencing.
+- Corrected task dependencies, real file scopes, evidence commands, and integration ownership.
+
+### Context
+Consolidated two independent reviews and resolved all high/medium plan findings. The revision now freezes complete correlation, pagination, process-health, persistence, security, runtime, retention, backup, coexistence, validation, and package-scope contracts while preserving a cutover-ready-only boundary.

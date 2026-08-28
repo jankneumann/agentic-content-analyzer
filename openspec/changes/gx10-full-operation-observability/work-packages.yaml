@@ -3,12 +3,12 @@ schema_version: 1
 feature:
   id: "gx10-full-operation-observability"
   title: "GX-10 full operation observability"
-  plan_revision: 1
+  plan_revision: 2
   created_by: "codex"
   created_at: "2026-08-28T12:00:00Z"
 
 contracts:
-  revision: 1
+  revision: 2
   openapi:
     primary: "openspec/changes/gx10-full-operation-observability/contracts/openapi/v1.yaml"
     files:
@@ -36,7 +36,9 @@ packages:
     locks:
       files:
         - "openspec/changes/gx10-full-operation-observability/contracts/openapi/v1.yaml"
+        - "openspec/contracts/content-workflows/openapi/v1.yaml"
         - "src/contracts/workflow_models.py"
+        - "web/src/generated/workflow-contracts.ts"
       keys:
         - "contract:gx10-operation-observability-v1"
       ttl_minutes: 120
@@ -44,8 +46,13 @@ packages:
     scope:
       write_allow:
         - "openspec/changes/gx10-full-operation-observability/contracts/**"
+        - "openspec/contracts/content-workflows/openapi/v1.yaml"
+        - "openspec/contracts/content-workflows/db/schema.sql"
+        - "openspec/contracts/content-workflows/events/**"
+        - "openspec/contracts/content-workflows/generated/**"
         - "src/contracts/workflow_models.py"
-        - "tests/contracts/operation_observability/**"
+        - "web/src/generated/workflow-contracts.ts"
+        - "tests/contract/**"
       read_allow:
         - "openspec/**"
         - "src/contracts/**"
@@ -63,11 +70,11 @@ packages:
       steps:
         - name: "contract-validation"
           kind: "command"
-          command: "openspec validate gx10-full-operation-observability --strict"
+          command: "make workflow-contracts-check && uv run pytest tests/contract -q --junitxml=artifacts/wp-contracts/pytest.xml && openspec validate gx10-full-operation-observability --strict"
           expect_exit_code: 0
           evidence:
             artifacts:
-              - "artifacts/wp-contracts/validation.txt"
+              - "artifacts/wp-contracts/pytest.xml"
             result_keys:
               - "openspec_valid"
               - "contract_drift_clean"
@@ -79,7 +86,7 @@ packages:
   - package_id: "wp-db-projection"
     title: "Persist attempt correlation"
     task_type: "implement"
-    description: "Implement the additive queue correlation schema, attempt repository, fencing, terminal linkage, retention, and PostgreSQL tests."
+    description: "Implement the additive queue/context, attempt, process-health, audit/terminal correlation, inactive ownership, fencing, retention, and PostgreSQL contracts."
     role: "database-engineer"
     priority: 2
     depends_on: ["wp-contracts"]
@@ -96,6 +103,7 @@ packages:
         - "alembic/versions/**"
         - "src/queue/setup.py"
         - "src/repositories/operation_observation_attempts.py"
+        - "src/repositories/telemetry_process_health.py"
         - "tests/queue/test_operation_observation_attempts.py"
         - "tests/integration/test_operation_observation_attempts.py"
       read_allow:
@@ -115,7 +123,7 @@ packages:
       steps:
         - name: "postgres-attempt-tests"
           kind: "command"
-          command: "uv run pytest tests/queue/test_operation_observation_attempts.py tests/integration/test_operation_observation_attempts.py -q"
+          command: "uv run pytest tests/queue/test_operation_observation_attempts.py tests/integration/test_operation_observation_attempts.py -q --junitxml=artifacts/wp-db-projection/pytest.xml"
           expect_exit_code: 0
           evidence:
             artifacts: ["artifacts/wp-db-projection/pytest.xml"]
@@ -146,7 +154,7 @@ packages:
         - "src/telemetry/**"
         - "src/contracts/operation_context.py"
         - "tests/telemetry/**"
-        - "tests/contracts/test_operation_context.py"
+        - "tests/contract/test_operation_context.py"
       read_allow:
         - "src/**"
         - "tests/**"
@@ -164,7 +172,7 @@ packages:
       steps:
         - name: "telemetry-safety-tests"
           kind: "command"
-          command: "uv run pytest tests/telemetry tests/contracts/test_operation_context.py -q"
+          command: "uv run pytest tests/telemetry tests/contract/test_operation_context.py -q --junitxml=artifacts/wp-telemetry-context/pytest.xml"
           expect_exit_code: 0
           evidence:
             artifacts: ["artifacts/wp-telemetry-context/pytest.xml"]
@@ -198,6 +206,9 @@ packages:
         - "src/queue/workflow_handlers.py"
         - "src/worker.py"
         - "src/cli/worker_commands.py"
+        - "src/api/app.py"
+        - "src/config/settings.py"
+        - "tests/api/test_observability_lifecycle.py"
         - "tests/services/test_operation_observability.py"
         - "tests/queue/test_trace_propagation.py"
         - "tests/integration/test_queue_trace_propagation.py"
@@ -218,7 +229,7 @@ packages:
       steps:
         - name: "queue-propagation-tests"
           kind: "command"
-          command: "uv run pytest tests/queue/test_trace_propagation.py tests/integration/test_queue_trace_propagation.py tests/services/test_operation_observability.py -q"
+          command: "uv run pytest tests/queue/test_trace_propagation.py tests/integration/test_queue_trace_propagation.py tests/services/test_operation_observability.py tests/api/test_observability_lifecycle.py -q --junitxml=artifacts/wp-queue-core/pytest.xml"
           expect_exit_code: 0
           evidence:
             artifacts: ["artifacts/wp-queue-core/pytest.xml"]
@@ -248,7 +259,8 @@ packages:
       write_allow:
         - "src/api/**"
         - "src/services/workflow_terminal_event_service.py"
-        - "src/models/audit.py"
+        - "src/api/middleware/audit.py"
+        - "src/models/workflow_alert.py"
         - "tests/api/**"
         - "tests/services/test_workflow_terminal_event_observability.py"
       read_allow:
@@ -268,7 +280,7 @@ packages:
       steps:
         - name: "api-observability-tests"
           kind: "command"
-          command: "uv run pytest tests/api tests/services/test_workflow_terminal_event_observability.py -q"
+          command: "uv run pytest tests/api tests/services/test_workflow_terminal_event_observability.py -q --junitxml=artifacts/wp-api-audit/pytest.xml"
           expect_exit_code: 0
           evidence:
             artifacts: ["artifacts/wp-api-audit/pytest.xml"]
@@ -300,6 +312,12 @@ packages:
         - "src/processors/**"
         - "src/pipeline/**"
         - "src/delivery/**"
+        - "src/workflows/**"
+        - "src/services/llm_router.py"
+        - "src/services/indexing.py"
+        - "src/services/file_storage.py"
+        - "src/services/cloud_stt/**"
+        - "src/storage/**"
         - "tests/ingestion/**"
         - "tests/parsers/**"
         - "tests/processors/**"
@@ -323,7 +341,7 @@ packages:
       steps:
         - name: "ingestion-truth-tests"
           kind: "command"
-          command: "uv run pytest tests/ingestion tests/parsers tests/processors tests/pipeline tests/delivery -q"
+          command: "uv run pytest tests/ingestion tests/parsers tests/processors tests/pipeline tests/delivery tests/workflows tests/storage -q --junitxml=artifacts/wp-ingestion-coverage/pytest.xml"
           expect_exit_code: 0
           evidence:
             artifacts: ["artifacts/wp-ingestion-coverage/pytest.xml"]
@@ -354,6 +372,13 @@ packages:
         - "src/tasks/**"
         - "src/services/backup/**"
         - "src/release_smoke/**"
+        - "src/cli/agent_commands.py"
+        - "src/cli/backup_commands.py"
+        - "src/mcp_server.py"
+        - "src/services/alert_sinks.py"
+        - "src/services/backup_freshness_alert.py"
+        - "src/services/notification_cleanup.py"
+        - "src/services/workflow_alert_delivery.py"
         - "tests/agents/**"
         - "tests/mcp_tools/**"
         - "tests/tasks/**"
@@ -377,7 +402,7 @@ packages:
       steps:
         - name: "operational-trace-tests"
           kind: "command"
-          command: "uv run pytest tests/agents tests/mcp_tools tests/tasks tests/services/backup -q"
+          command: "uv run pytest tests/agents tests/mcp_tools tests/tasks tests/services/backup tests/cli -q --junitxml=artifacts/wp-operational-coverage/pytest.xml"
           expect_exit_code: 0
           evidence:
             artifacts: ["artifacts/wp-operational-coverage/pytest.xml"]
@@ -431,7 +456,7 @@ packages:
       steps:
         - name: "gx10-policy-tests"
           kind: "command"
-          command: "uv run pytest tests/config tests/deployment/gx10 -q"
+          command: "uv run pytest tests/config tests/deployment/gx10 -q --junitxml=artifacts/wp-gx10-runtime/pytest.xml"
           expect_exit_code: 0
           evidence:
             artifacts: ["artifacts/wp-gx10-runtime/pytest.xml"]
@@ -484,7 +509,7 @@ packages:
       steps:
         - name: "storage-recovery-tests"
           kind: "command"
-          command: "uv run pytest tests/services/test_storage_governance.py tests/services/backup/test_gx10.py tests/deployment/gx10/test_storage_policy.py -q"
+          command: "uv run pytest tests/services/test_storage_governance.py tests/services/backup/test_gx10.py tests/deployment/gx10/test_storage_policy.py -q --junitxml=artifacts/wp-storage-recovery/pytest.xml"
           expect_exit_code: 0
           evidence:
             artifacts: ["artifacts/wp-storage-recovery/pytest.xml"]
@@ -507,6 +532,7 @@ packages:
       keys:
         - "flag:environment/ownership"
         - "db:schema:environment_ownership"
+        - "db:migration-slot"
       ttl_minutes: 180
       reason: "Own dual-environment mutation fencing"
     scope:
@@ -537,7 +563,7 @@ packages:
       steps:
         - name: "ownership-fence-tests"
           kind: "command"
-          command: "uv run pytest tests/services/test_environment_ownership.py tests/api/test_environment_ownership.py tests/queue/test_environment_ownership.py -q"
+          command: "uv run pytest tests/services/test_environment_ownership.py tests/api/test_environment_ownership.py tests/queue/test_environment_ownership.py -q --junitxml=artifacts/wp-coexistence/pytest.xml"
           expect_exit_code: 0
           evidence:
             artifacts: ["artifacts/wp-coexistence/pytest.xml"]
@@ -587,7 +613,7 @@ packages:
       steps:
         - name: "gx10-observability-e2e"
           kind: "command"
-          command: "uv run pytest tests/e2e/test_operation_observability.py -q"
+          command: "uv run pytest tests/e2e/test_operation_observability.py -q --junitxml=artifacts/wp-e2e-handoff/pytest.xml"
           expect_exit_code: 0
           evidence:
             artifacts:
@@ -595,7 +621,7 @@ packages:
               - "artifacts/wp-e2e-handoff/soak.json"
             result_keys: ["test_count", "postgres_trace_join", "langfuse_trace_join", "canaries_absent", "soak_baseline"]
     inputs:
-      task_ids: ["9.3", "9.4", "10.1", "10.2", "10.3"]
+      task_ids: ["9.3", "9.4", "9.5", "10.1", "10.2", "10.3"]
     outputs:
       result_keys: ["files_modified", "test_count", "soak_baseline", "runbook", "cutover_change"]
 
@@ -613,7 +639,80 @@ packages:
       ttl_minutes: 240
       reason: "Final integration owns the union of landed package scopes"
     scope:
-      write_allow: ["**"]
+      write_allow:
+        - "openspec/changes/gx10-full-operation-observability/**"
+        - "openspec/changes/railway-to-gx10-data-cutover/**"
+        - "openspec/contracts/content-workflows/**"
+        - "alembic/versions/**"
+        - "src/contracts/workflow_models.py"
+        - "src/contracts/operation_context.py"
+        - "src/telemetry/**"
+        - "src/queue/setup.py"
+        - "src/queue/worker.py"
+        - "src/queue/execution_claim.py"
+        - "src/queue/workflow_handlers.py"
+        - "src/repositories/operation_observation_attempts.py"
+        - "src/repositories/telemetry_process_health.py"
+        - "src/services/operation_service.py"
+        - "src/services/workflow_terminal_event_service.py"
+        - "src/services/storage_governance.py"
+        - "src/services/environment_ownership.py"
+        - "src/services/backup/**"
+        - "src/services/llm_router.py"
+        - "src/services/indexing.py"
+        - "src/services/file_storage.py"
+        - "src/services/cloud_stt/**"
+        - "src/services/alert_sinks.py"
+        - "src/services/backup_freshness_alert.py"
+        - "src/services/notification_cleanup.py"
+        - "src/services/workflow_alert_delivery.py"
+        - "src/worker.py"
+        - "src/cli/worker_commands.py"
+        - "src/cli/agent_commands.py"
+        - "src/cli/backup_commands.py"
+        - "src/mcp_server.py"
+        - "src/api/**"
+        - "src/api/middleware/audit.py"
+        - "src/ingestion/**"
+        - "src/parsers/**"
+        - "src/processors/**"
+        - "src/pipeline/**"
+        - "src/delivery/**"
+        - "src/workflows/**"
+        - "src/storage/**"
+        - "src/agents/**"
+        - "src/mcp_tools/**"
+        - "src/tasks/**"
+        - "src/release_smoke/**"
+        - "src/config/**"
+        - "profiles/**"
+        - "docker-compose.gx10.yml"
+        - "docker-compose.langfuse.yml"
+        - "deploy/gx10/**"
+        - "scripts/gx10/**"
+        - "docs/runbooks/gx10-observability.md"
+        - "docs/observability/**"
+        - "web/src/generated/workflow-contracts.ts"
+        - "tests/contract/**"
+        - "tests/telemetry/**"
+        - "tests/queue/**"
+        - "tests/integration/**"
+        - "tests/services/**"
+        - "tests/api/**"
+        - "tests/ingestion/**"
+        - "tests/parsers/**"
+        - "tests/processors/**"
+        - "tests/pipeline/**"
+        - "tests/delivery/**"
+        - "tests/workflows/**"
+        - "tests/storage/**"
+        - "tests/cli/**"
+        - "tests/agents/**"
+        - "tests/mcp_tools/**"
+        - "tests/tasks/**"
+        - "tests/config/**"
+        - "tests/deployment/gx10/**"
+        - "tests/e2e/**"
       read_allow: ["**"]
     worktree:
       name: "wp-integration"
@@ -624,16 +723,35 @@ packages:
     verification:
       tier_required: "A"
       steps:
-        - name: "full-quality-gate"
+        - name: "python-tests"
           kind: "command"
-          command: "uv run pytest --tb=short"
+          command: "uv run pytest --tb=short --junitxml=artifacts/wp-integration/pytest.xml"
           expect_exit_code: 0
           evidence:
-            artifacts:
-              - "artifacts/wp-integration/pytest.xml"
-              - "artifacts/wp-integration/acceptance.json"
-            result_keys: ["test_count", "ruff_passed", "mypy_passed", "openspec_valid", "e2e_passed"]
+            artifacts: ["artifacts/wp-integration/pytest.xml"]
+            result_keys: ["test_count"]
+        - name: "static-quality"
+          kind: "command"
+          command: "uv run ruff check . && uv run mypy src"
+          expect_exit_code: 0
+          evidence:
+            artifacts: ["artifacts/wp-integration/static-quality.txt"]
+            result_keys: ["ruff_passed", "mypy_passed"]
+        - name: "contract-and-plan"
+          kind: "command"
+          command: "make workflow-contracts-check && openspec validate gx10-full-operation-observability --strict"
+          expect_exit_code: 0
+          evidence:
+            artifacts: ["artifacts/wp-integration/contracts.txt"]
+            result_keys: ["openspec_valid", "contract_drift_clean"]
+        - name: "acceptance-evidence"
+          kind: "command"
+          command: "uv run python scripts/gx10/validate_acceptance.py artifacts/wp-e2e-handoff/soak.json --output artifacts/wp-integration/acceptance.json"
+          expect_exit_code: 0
+          evidence:
+            artifacts: ["artifacts/wp-integration/acceptance.json"]
+            result_keys: ["e2e_passed", "redaction_passed", "deployment_security_passed", "soak_passed"]
     inputs:
-      task_ids: ["9.5"]
+      task_ids: ["11.1"]
     outputs:
       result_keys: ["merge_commit", "test_count", "acceptance_evidence"]

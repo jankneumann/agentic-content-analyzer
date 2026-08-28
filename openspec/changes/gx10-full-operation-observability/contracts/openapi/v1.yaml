@@ -6,6 +6,7 @@ info:
     Additive exact-operation attempt diagnostics and telemetry health contract.
     Implementation merges these schemas into the canonical workflow API.
 security:
+  - SessionCookie: []
   - AdminKey: []
 paths:
   /api/v1/operations/{operation_id}/attempts:
@@ -14,6 +15,8 @@ paths:
       summary: Return bounded observability attempts for one operation
       parameters:
         - $ref: "#/components/parameters/OperationId"
+        - $ref: "#/components/parameters/PageLimit"
+        - $ref: "#/components/parameters/AttemptCursor"
       responses:
         "200":
           description: Ordered attempt evidence
@@ -37,13 +40,17 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ObservabilityHealth"
+                $ref: "#/components/schemas/ObservabilityHealthPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "503":
           description: Required observability is degraded
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ObservabilityHealth"
+                $ref: "#/components/schemas/ObservabilityHealthPage"
   /api/v1/operations/{operation_id}:
     get:
       operationId: getOperationWithObservability
@@ -65,15 +72,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OperationObservabilityExtension"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
 components:
   securitySchemes:
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
     AdminKey:
       type: apiKey
       in: header
       name: X-Admin-Key
   parameters:
+    PageLimit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    AttemptCursor:
+      name: after_claim_generation
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
     OperationId:
       name: operation_id
       in: path
@@ -163,7 +194,9 @@ components:
         - schema_version
         - operation_id
         - root_operation_id
+        - parent_operation_id
         - traceparent
+        - tracestate
         - trace_id
         - span_id
         - claim_generation
@@ -173,6 +206,9 @@ components:
         - service_instance_id
         - environment
         - release_revision
+        - stage
+        - resource_kind
+        - resource_key
       properties:
         schema_version:
           type: integer
@@ -201,11 +237,13 @@ components:
         claim_generation:
           type: integer
           minimum: 0
-          maximum: 2147483647
+          maximum: 9223372036854775807
         attempt_number:
-          type: integer
+          type:
+            - integer
+            - "null"
           minimum: 0
-          maximum: 2147483647
+          maximum: 9223372036854775807
         entrypoint:
           type: string
           minLength: 1
@@ -363,6 +401,7 @@ components:
         - root_operation_id
         - attempts
         - attempts_omitted
+        - next_after_claim_generation
       properties:
         schema_version:
           type: integer
@@ -379,7 +418,12 @@ components:
         attempts_omitted:
           type: integer
           minimum: 0
-    ObservabilityHealth:
+        next_after_claim_generation:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+    ProcessObservabilityHealth:
       type: object
       additionalProperties: false
       required:
@@ -388,8 +432,15 @@ components:
         - initialized
         - status
         - service_name
+        - service_instance_id
+        - environment
+        - release_revision
         - export_target
+        - last_heartbeat_at
+        - last_success_age_seconds
+        - last_error_age_seconds
         - buffered_count
+        - buffer_capacity
         - dropped_count
       properties:
         schema_version:
@@ -405,9 +456,19 @@ components:
             - healthy
             - degraded
             - disabled
+            - stale
         service_name:
           type: string
           maxLength: 100
+        service_instance_id:
+          type: string
+          maxLength: 128
+        environment:
+          type: string
+          maxLength: 32
+        release_revision:
+          type: string
+          maxLength: 64
         export_target:
           type: string
           enum:
@@ -415,11 +476,29 @@ components:
             - remote_langfuse
             - other_otlp
             - none
+        last_heartbeat_at:
+          type: string
+          format: date-time
         last_success_at:
           type:
             - string
             - "null"
           format: date-time
+        last_success_age_seconds:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        last_error_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        last_error_age_seconds:
+          type:
+            - integer
+            - "null"
+          minimum: 0
         last_error_code:
           type:
             - string
@@ -428,13 +507,48 @@ components:
         buffered_count:
           type: integer
           minimum: 0
+        buffer_capacity:
+          type: integer
+          minimum: 1
         dropped_count:
           type: integer
           minimum: 0
+        last_flush_at:
+          type:
+            - string
+            - "null"
+          format: date-time
         last_flush_succeeded:
           type:
             - boolean
             - "null"
+    ObservabilityHealthPage:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - status
+        - generated_at
+        - stale_after_seconds
+        - processes
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+        status:
+          type: string
+          enum: [healthy, degraded]
+        generated_at:
+          type: string
+          format: date-time
+        stale_after_seconds:
+          type: integer
+          minimum: 1
+        processes:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/ProcessObservabilityHealth"
     Problem:
       type: object
       additionalProperties: true

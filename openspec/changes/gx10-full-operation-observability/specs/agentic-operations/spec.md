@@ -25,3 +25,15 @@ Every terminal result, problem, and alert event SHALL retain operation ID and cl
 - **WHEN** an operation terminates with a domain or infrastructure problem
 - **THEN** its exact handle exposes bounded problem and attempt codes
 - **AND** an authorized operator can use its trace ID to locate detailed evidence
+
+#### Scenario: [OPS-004] Successful terminal evidence identifies its claim
+
+- **WHEN** an operation completes successfully after a worker claim
+- **THEN** its terminal event retains the operation ID, current claim generation, and trace ID
+- **AND** the exact handle resolves the matching bounded attempt summary
+
+#### Scenario: [OPS-005] Retry preserves earlier terminal evidence
+
+- **WHEN** a failed claim is retried and a later claim terminates
+- **THEN** each claim retains its own terminal evidence and correlation
+- **AND** the later claim does not replace the earlier attempt summary

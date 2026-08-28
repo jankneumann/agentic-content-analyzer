@@ -25,3 +25,9 @@ Retention SHALL preserve parent/child operation graphs and their bounded attempt
 - **WHEN** a failed operation exceeds successful-operation retention but not failed-operation retention
 - **THEN** its bounded attempt evidence and correlation identifiers remain queryable
 - **AND** unrelated successful detail may be removed
+
+#### Scenario: [JOB-004] Cleanup preserves correlation integrity
+
+- **WHEN** supported retention cleanup removes expired successful attempt evidence
+- **THEN** parent/child operation rows, retained attempts, terminal events, and audit references remain valid
+- **AND** cleanup does not delete database-owned files or bypass application transactions

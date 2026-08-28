@@ -24,7 +24,7 @@ The production GX-10 deployment SHALL run the API, worker pools, scheduler, main
 
 The deployment SHALL define configurable filesystem quotas and high/critical watermarks that fit within a 1 TB disk. The initial allocation SHALL reserve at least 13 percent free space and budget no more than 22 percent for application PostgreSQL, 12 percent for Neo4j, 28 percent for ClickHouse, 8 percent for MinIO, 15 percent for backups, and 2 percent for Redis and local service logs.
 
-The system SHALL default to 30-day detailed retention for successful/partial traces and 90-day retention for failed traces and failed PostgreSQL attempt evidence. Where the installed Langfuse edition cannot enforce outcome-specific retention through supported interfaces, the controller SHALL retain all detailed traces for up to 90 days, report the capability gap, and continue enforcing watermarks without directly modifying Langfuse-owned schemas.
+The system SHALL default to 30-day detailed retention for successful/partial traces and 90-day retention for failed traces and failed PostgreSQL attempt evidence. At 80 percent usage it SHALL enter high state, halve scheduled-ingestion concurrency to a minimum of one, suppress optional successful excerpts, and run supported cleanup; it SHALL return to normal only after 15 minutes at or below 75 percent. At 90 percent it SHALL enter critical state and pause new scheduled/nonessential ingestion; it SHALL return to high only after 15 minutes at or below 85 percent. Where the installed Langfuse edition cannot enforce outcome-specific retention through supported interfaces, the controller SHALL retain all detailed traces for up to 90 days while budgets permit and pause nonessential ingestion before deleting failure evidence or modifying Langfuse-owned schemas.
 
 #### Scenario: [GX10-003] Disk reaches high watermark
 
@@ -40,9 +40,15 @@ The system SHALL default to 30-day detailed retention for successful/partial tra
 - **AND** the operator receives an alert correlated to a durable maintenance operation
 - **AND** no database-owned files are deleted directly
 
+#### Scenario: [GX10-013] Cleanup fails while disk remains high
+
+- **WHEN** supported retention or backup cleanup times out or fails above a watermark
+- **THEN** the controller remains in its current high or critical state and emits a correlated alert
+- **AND** recovery requires successful cleanup or sustained usage below the matching hysteresis threshold
+
 ### Requirement: Production secrets and network boundaries
 
-Secrets SHALL be supplied by the repository's supported secret manager or protected environment files, SHALL never be committed, and SHALL be rotated independently. Stateful services SHALL not be publicly exposed. Langfuse SHALL require authentication, and service-to-service networks SHALL expose only required ports.
+Secrets SHALL be supplied from OpenBao into runtime-only protected environment files, SHALL never be committed, and SHALL be rotated independently while preserving prior backup decryption recipients for the documented restore window. Stateful services SHALL not be publicly exposed. Langfuse SHALL require authentication, and service-to-service networks SHALL expose only required ports.
 
 External model, transcription, feed, page, video, email, and notification APIs MAY remain reachable through explicit egress policy with timeouts, redacted telemetry, and provider-specific rate limits.
 
@@ -58,9 +64,15 @@ External model, transcription, feed, page, video, email, and notification APIs M
 - **THEN** PostgreSQL, Redis, Neo4j, ClickHouse, and MinIO data ports are reachable only from approved host or container networks
 - **AND** any unexpected public binding fails validation
 
+#### Scenario: [GX10-014] Production secret rotates
+
+- **WHEN** an operator rotates a service credential or backup recipient in OpenBao
+- **THEN** affected services reload or restart with the new reference without writing the secret to repository or logs
+- **AND** prior backup recipients remain available only for the documented restore window
+
 ### Requirement: Backup and restore are operational capabilities
 
-PostgreSQL, Neo4j, ClickHouse, MinIO, and configuration metadata SHALL have scheduled, bounded, correlated backup operations. Backups SHALL be encrypted where supported, checksummed, included in the storage budget, and periodically restored into an isolated validation target.
+PostgreSQL, Neo4j, ClickHouse, MinIO, and configuration metadata SHALL have scheduled, bounded, correlated backup operations. Backups SHALL be encrypted with an OpenBao-managed age recipient before leaving component-local storage, checksummed, included in the storage budget, and periodically restored into an isolated validation target. Missing encryption material SHALL fail backup activation and SHALL never produce a plaintext artifact.
 
 #### Scenario: [GX10-007] Scheduled backup completes
 
@@ -74,21 +86,27 @@ PostgreSQL, Neo4j, ClickHouse, MinIO, and configuration metadata SHALL have sche
 - **THEN** the drill fails with component-specific diagnostics
 - **AND** the source production volumes remain untouched
 
-### Requirement: GX-10 primary with bounded coexistence
+#### Scenario: [GX10-015] Backup encryption key is unavailable
 
-The GX-10 SHALL be the primary target for internal services after validation. Railway MAY remain as a time-bounded rollback environment, but only one environment SHALL own scheduled mutations and ingestion leases at a time. Environment identity SHALL be present in every operation and trace.
+- **WHEN** the OpenBao-managed age recipient is missing, invalid, or unreadable
+- **THEN** backup activation fails before an artifact leaves component-local storage
+- **AND** no plaintext fallback artifact is retained
 
-#### Scenario: [GX10-009] Rollback environment is passive
+### Requirement: GX-10 cutover readiness with one ownership authority
 
-- **WHEN** GX-10 is the active primary
-- **THEN** Railway schedulers and mutation workers are disabled
-- **AND** Railway health checks cannot claim GX-10 work
+The GX-10 SHALL become cutover-ready without receiving production traffic or mutation ownership in this change. Railway and GX-10 MAY coexist for validation, but any later handoff SHALL use one authoritative queue/control PostgreSQL database, a stored ownership epoch, and an authority fingerprint. A process whose configured authority fingerprint or epoch is stale SHALL NOT schedule or claim mutation work. Environment identity, authority fingerprint, and epoch SHALL be present in every operation and trace.
 
-#### Scenario: [GX10-010] Controlled rollback occurs
+#### Scenario: [GX10-009] GX-10 candidate remains passive
 
-- **WHEN** an operator activates the rollback procedure
-- **THEN** mutation ownership is fenced before Railway workers start
-- **AND** the transition and verification are recorded as correlated durable operations
+- **WHEN** the GX-10 stack starts before the separate cutover change advances ownership
+- **THEN** its schedulers and mutation workers remain passive
+- **AND** synthetic verification can run without claiming production work
+
+#### Scenario: [GX10-010] Cutover or rollback authority is invalid
+
+- **WHEN** an operator dry-runs handoff or rollback with independent databases, a stale epoch, or a mismatched authority fingerprint
+- **THEN** mutation activation is refused before workers start
+- **AND** the refusal and verification are recorded as correlated durable operations
 
 ### Requirement: Production observability startup gate
 

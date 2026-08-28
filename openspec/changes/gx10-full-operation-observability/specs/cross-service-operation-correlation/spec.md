@@ -6,9 +6,9 @@ Provide one attempt-aware, privacy-safe correlation contract that makes every me
 
 ### Requirement: Canonical operation context envelope
 
-The system SHALL represent execution context with a versioned envelope containing operation ID, root operation ID, optional parent operation ID, traceparent, optional tracestate, trace ID, the current span ID, claim generation, attempt number, entrypoint, service name, service instance ID, release revision, and optional bounded stage, resource kind, and opaque resource key.
+The system SHALL represent execution context with a versioned envelope containing operation ID, root operation ID, optional parent operation ID, traceparent, optional tracestate, trace ID, the current span ID, claim generation, nullable attempt number, entrypoint, service name, service instance ID, release revision, and optional bounded stage, resource kind, and opaque resource key.
 
-The envelope SHALL use W3C Trace Context encodings, SHALL reject malformed or oversized untrusted values at ingress, and SHALL never contain credentials, raw source URLs, unrestricted prompts, unrestricted source content, or exception text.
+Every nullable envelope key SHALL be present with an explicit null value when absent. Before a claim, attempt number SHALL be null; after a claim it SHALL equal claim generation plus one. Claim generation SHALL retain the existing 64-bit database width. The envelope SHALL use W3C Trace Context encodings, SHALL reject malformed or oversized untrusted values at ingress, and SHALL never contain credentials, raw source URLs, unrestricted prompts, unrestricted source content, or exception text.
 
 #### Scenario: [CORR-001] Valid context crosses an asynchronous boundary
 
@@ -60,7 +60,7 @@ Each queue claim SHALL create exactly one attempt root span beneath the stored s
 
 ### Requirement: PostgreSQL correlation and attempt evidence
 
-PostgreSQL SHALL remain authoritative for durable operation state. It SHALL persist indexed correlation fields on the operation record and append bounded attempt/stage evidence without duplicating full telemetry payloads or introducing a second workflow state machine.
+PostgreSQL SHALL remain authoritative for durable operation state. It SHALL persist indexed correlation fields on the operation record and append one bounded summary per claim attempt without duplicating full stage history, full telemetry payloads, or a second workflow state machine. Detailed stage history SHALL remain in Langfuse; the attempt summary SHALL retain only its current or terminal stage plus bounded diagnostic codes and omitted-detail counts.
 
 Attempt evidence SHALL include operation ID, claim generation, trace ID, root span/observation identifier when available, service identity, release, start/end timestamps, outcome, current/terminal stage, diagnostic codes, retryability, and omitted-detail counts. Stack traces, unrestricted input/output, and secrets SHALL NOT be stored in these fields.
 
@@ -98,7 +98,7 @@ Exceptions SHALL NOT be translated into a successful skip unless a domain rule e
 
 ### Requirement: Safe exact-operation diagnostics
 
-The exact-operation surface SHALL expose a bounded observability summary containing trace ID, root operation ID, ordered attempts, stage/outcome codes, telemetry-delivery state, and a server-generated Langfuse lookup URL only to authorized callers. Collection/list responses SHALL remain bounded summaries and SHALL not expose detailed attempts or unrestricted diagnostic messages.
+The exact-operation surface SHALL expose a bounded observability summary containing trace ID, root operation ID, latest attempt, stage/outcome codes, telemetry-delivery state, and a server-generated Langfuse lookup URL only to authorized callers. A separate authorized attempt endpoint SHALL return all attempts through stable cursor pagination ordered by ascending claim generation, with a default page size of 50 and a maximum of 100. Collection/list responses SHALL remain bounded summaries and SHALL not expose detailed attempts or unrestricted diagnostic messages.
 
 #### Scenario: [CORR-011] Authorized operator follows a trace
 
@@ -112,9 +112,15 @@ The exact-operation surface SHALL expose a bounded observability summary contain
 - **THEN** each row contains at most a trace ID and bounded outcome/error codes
 - **AND** no stack, excerpt, internal host, or secret-bearing link is included
 
+#### Scenario: [CORR-015] Attempt history exceeds one page
+
+- **WHEN** an authorized operator requests an operation with more attempts than the selected page limit
+- **THEN** the endpoint returns attempts in ascending claim-generation order and a cursor for the next page
+- **AND** following the cursor returns the remaining attempts without duplicates or gaps
+
 ### Requirement: Correlated telemetry delivery health
 
-Each emitting process SHALL expose whether required telemetry was initialized, whether recent exports succeeded, the age of the last successful export, buffered/dropped counts, and shutdown flush outcome. Readiness policy SHALL be configurable, but silent disablement while observability is required SHALL be prohibited.
+Each emitting process SHALL heartbeat bounded health keyed by environment, service, and instance: required/initialized state, release, export target, last heartbeat, last successful and failed export timestamps and ages in seconds, last error code, buffered count and capacity, dropped count, and final flush timestamp/outcome. Long-running process rows SHALL become stale after the configured freshness bound; short-lived processes SHALL persist final flush evidence. The authenticated observability health API SHALL aggregate all nonexpired deployment rows rather than presenting one API process as deployment health. Readiness policy SHALL be configurable, but silent disablement while observability is required SHALL be prohibited.
 
 #### Scenario: [CORR-013] Missing endpoint is visible
 

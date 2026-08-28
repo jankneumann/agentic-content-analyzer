@@ -4,6 +4,12 @@
 
 The durable PipelineWorkflow SHALL be the root operation for one trace topology. Each source operation and downstream summarization, graph, theme, digest, and delivery operation SHALL preserve root/parent operation identities and create nested or linked attempt observations.
 
+#### Scenario: [PIPE-003] Complete pipeline retains one topology
+
+- **WHEN** every eligible source and downstream stage succeeds
+- **THEN** the pipeline trace contains the source and downstream operation hierarchy under one root identity
+- **AND** the terminal pipeline result references the completed child operations
+
 #### Scenario: [PIPE-001] Partial source failure remains visible
 
 - **WHEN** one source fails while other source operations and later eligible stages continue

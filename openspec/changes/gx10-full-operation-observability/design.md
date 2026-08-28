@@ -26,12 +26,14 @@ The target is a production GX-10 with a 1 TB local disk. All internal services m
 - Forking or directly mutating Langfuse-owned PostgreSQL or ClickHouse schemas.
 - Air-gapping the GX-10 from approved external providers.
 - Building a general-purpose metrics warehouse or log-search product.
+- Building a new frontend observability UI; the existing CLI may consume additive exact-operation fields.
+- Activating GX-10 mutation ownership, migrating data, or switching public production traffic before the separate cutover change is approved.
 
 ## Decisions
 
 ### D1. One versioned OperationContext envelope
 
-Create a typed, immutable context envelope in the telemetry/domain boundary. Version 1 carries operation, root/parent, W3C trace, attempt/claim, entrypoint, service instance, environment, release, stage, and opaque resource identity. Values have fixed bounds and validators. Context enters process-local context variables only after validation.
+Create a typed, immutable context envelope in the telemetry/domain boundary. Version 1 carries operation, root/parent, W3C trace, claim generation, nullable attempt number, entrypoint, service instance, environment, release, stage, and opaque resource identity. All nullable wire keys are required and encoded as explicit null so JSON Schema, OpenAPI, Python, and TypeScript accept the same objects. Before a claim, attempt number is null; after a claim, it equals claim generation plus one, matching the existing terminal-alert convention. Claim generations use the existing 64-bit database width. Values have fixed bounds and validators. Context enters process-local context variables only after validation.
 
 External W3C context is accepted at trusted protocol boundaries, but ACA operation fields are created or resolved server-side. Invalid external context is discarded and reported by code, never reflected.
 
@@ -47,9 +49,9 @@ Why: this preserves a navigable trace while making failures, retries, stale clai
 
 ### D3. PostgreSQL stores correlation, not telemetry payloads
 
-Add nullable correlation columns to pgqueuer_jobs and a normalized operation_observation_attempts projection keyed by operation ID plus claim generation. The queue row owns current/root correlation; the attempt table owns immutable-per-attempt start identity and bounded mutable completion evidence.
+Add nullable correlation columns plus a bounded, versioned context member to pgqueuer_jobs and a normalized operation_observation_attempts projection keyed by operation ID plus claim generation. The queue row owns submission/root correlation; the attempt table owns immutable-per-attempt start identity and bounded mutable completion evidence. Context and operation rows are written in the same transaction before queue visibility.
 
-Attempt fields are limited to identifiers, timestamps, service/release, stage/outcome/error codes, retryability, telemetry-delivery state, and omitted-detail counters. PostgreSQL constraints validate hex widths and enumerations; indexes support operation, root operation, trace, and terminal-failure queries.
+PostgreSQL retains one summary per claim attempt, not an intermediate-stage ledger. Attempt fields are limited to identifiers, timestamps, service/release, current or terminal stage/outcome/error codes, retryability, telemetry-delivery state, and omitted-detail counters. Detailed stage spans and timings remain in Langfuse. PostgreSQL constraints validate 64-bit claim generations, hex widths, diagnostic string type/pattern/byte bounds, enumerations, and serialized diagnostic size; indexes support operation, root operation, trace, and terminal-failure queries. Cleanup retains root/parent tombstones until the longest-lived child or failed attempt expires, so deleting successful detail cannot break retained correlation.
 
 The attempt projection is not a workflow state machine: it cannot enqueue, claim, cancel, retry, or determine canonical operation status.
 
@@ -67,7 +69,7 @@ Why: dashboards and SQL diagnostics need stable values, while code/message detai
 
 Use the current supported Langfuse/OpenTelemetry ingestion path and keep SDK versions compatible with the deployed Langfuse version. Domain operations use descriptive spans; LLM calls use generation observations with model, tokens, latency, cost, prompt version when safe, and provider response metadata. Database/graph lookups use suitable span or retriever observations; writes remain spans.
 
-Instrumentation explicitly sets bounded inputs and outputs. Automatic arbitrary-argument capture is disabled. A shared export-time masker covers Langfuse-native and third-party OTel spans, removing secrets, auth data, sensitive query parameters, PII canaries, and disallowed content. Full exception stacks are allowed only after masking and only in Langfuse.
+Instrumentation explicitly sets bounded inputs and outputs: each selected excerpt is at most 4 KiB after UTF-8 encoding, each masked exception stack is at most 64 KiB, each span has at most 128 attributes, and one trace exports at most 2 MiB before provider framing. Automatic arbitrary-argument capture is disabled. A shared export-time masker covers Langfuse-native and third-party OTel spans, removing secrets, auth data, sensitive query parameters, PII canaries, and disallowed content. Full exception stacks are allowed only after masking, truncation, and only in Langfuse. Export buffers are bounded to 10,000 spans or 256 MiB per process; overflow increments durable drop counters and degrades readiness.
 
 Production starts at 100 percent meaningful-operation trace coverage. Sampling may be introduced only after measured volume tests and must preserve failures and durable evidence.
 
@@ -77,7 +79,7 @@ Why: the current Langfuse SDK is OTel-native and export-time masking covers thir
 
 A shared lifecycle initializes configuration and telemetry before instrumented clients for API, deployment worker, CLI worker, scheduler, agent, backup, and maintenance entrypoints. It exposes initialized state, exporter endpoint class, last success/error age, buffered/dropped counts, and flush result.
 
-Required-observability production profiles fail activation for missing configuration and degrade readiness for sustained delivery failure. Domain operations continue or stop according to their own safety policy; an exporter outage never rewrites workflow outcome.
+Required-observability production profiles fail activation for missing configuration and degrade readiness for sustained delivery failure. Long-running processes heartbeat bounded initialization/export/buffer/drop state to a PostgreSQL process-health projection keyed by environment, service, and instance with freshness expiry; short-lived processes persist their final flush evidence. The observability health API aggregates those rows and never implies that one API process represents the deployment. Domain operations continue or stop according to their own safety policy; an exporter outage never rewrites workflow outcome.
 
 Why: visibility must not fail silently, but telemetry availability must not create a second business-state authority.
 
@@ -91,33 +93,33 @@ Why: operators need one-click navigation while list APIs remain safe and inexpen
 
 ### D8. GX-10 is a production topology, not a development Compose file
 
-Create a production overlay/profile with pinned images, non-default secrets, private service networks, persistent named/bind volumes, dependency health checks, restart/backoff policy, CPU/memory reservations, and distinct API/worker/scheduler/maintenance service names. Only authenticated TLS ingress and explicitly approved operator surfaces leave the host.
+Use Docker Compose V2 for service topology, supervised by systemd units for boot order and bounded restart/backoff. Caddy owns authenticated TLS ingress and certificate renewal. OpenBao is the authoritative production secret source; generated protected environment files are runtime-only and mode 0600. Private Compose networks plus host firewall rules deny public stateful ports and restrict egress to configured HTTPS provider destinations. Distinct API/worker/scheduler/maintenance service identities are mandatory.
 
-The deployment validates stateful port exposure and keeps approved external HTTPS egress for model, transcription, feed, page, video, email, and notification providers.
+State lives under a dedicated `/srv/aca` filesystem. The application storage controller enforces logical component budgets and watermarks using supported service retention APIs; deployment validation fails if the filesystem capacity cannot satisfy the configured budgets and reserve. OS project quotas are optional defense in depth, not a portability prerequisite.
 
-Why: the existing Langfuse Compose is development-grade and the local profile does not fully activate infrastructure telemetry.
+Why: these choices match the repository's Compose, systemd backup, and OpenBao operating patterns while making ingress, supervision, secrets, networks, and storage ownership testable.
 
 ### D9. Disk policy reserves failure evidence and host headroom
 
 Initial logical budgets on a 1 TB disk are: application PostgreSQL 22 percent, Neo4j 12 percent, ClickHouse 28 percent, MinIO 8 percent, backups 15 percent, Redis/local logs 2 percent, and at least 13 percent reserve. Operators may lower component budgets, but configured maxima plus reserve cannot exceed the managed filesystem.
 
-High and critical watermarks default to 80 and 90 percent. At high watermark, reduce concurrency/detail and run supported cleanup. At critical, pause nonessential ingestion and alert. Never remove database files from the filesystem.
+High and critical watermarks default to 80 and 90 percent. High state halves scheduled ingestion concurrency (minimum one), suppresses optional excerpts for successful work, and runs supported cleanup; it returns to normal only after usage stays at or below 75 percent for 15 minutes. Critical state pauses new scheduled/nonessential ingestion and remains until usage stays at or below 85 percent for 15 minutes, then degrades to high. Cleanup timeout or failure preserves the current state and emits a correlated alert. Active safety, cleanup, alert, and restore work remain allowed. Database-owned files are never removed directly.
 
-Target retention is 30 days for successful/partial detailed traces and 90 days for failed detailed traces and failed PostgreSQL attempt evidence. Native Langfuse retention is capability-detected. When outcome-specific supported deletion is unavailable, retain all traces up to 90 days and make the increased usage visible. No direct Langfuse schema changes are allowed.
+Target retention is 30 days for successful/partial detailed traces and 90 days for failed detailed traces and failed PostgreSQL attempt evidence. Native Langfuse retention is capability-detected. When outcome-specific supported deletion is unavailable, retain all traces up to 90 days while budgets permit; if the high watermark persists, pause nonessential ingestion rather than silently deleting failure evidence or modifying Langfuse schemas.
 
 Why: failure evidence is most valuable, but a storage-saving policy must not corrupt ClickHouse or MinIO.
 
 ### D10. Backups and restores are first-class operations
 
-Scheduled backups create durable maintenance operations and component stage spans for application PostgreSQL, Neo4j, Langfuse PostgreSQL, ClickHouse, MinIO, and non-secret configuration. Artifacts are encrypted where available, checksummed, quota-accounted, and retained by policy. Restore drills target isolated volumes and validate application operation rows plus Langfuse trace metadata.
+Scheduled backups create durable maintenance operations and component stage spans for application PostgreSQL, Neo4j, Langfuse PostgreSQL, ClickHouse, MinIO, and non-secret configuration. Every artifact SHALL be encrypted with an OpenBao-managed age recipient before it leaves component-local storage, checksummed, quota-accounted, and retained by policy; a missing or invalid encryption key fails backup activation rather than producing plaintext. Rotation keeps old recipients available for the documented restore window. Restore drills target isolated volumes and validate application operation rows plus Langfuse trace metadata.
 
 Why: observability that disappears during host recovery is not production observability.
 
-### D11. Environment ownership uses a fence
+### D11. Environment ownership is cutover-gated by one authority
 
-GX-10 and Railway may coexist during rollout, but a stored environment ownership epoch gates schedulers and mutation claims. Only the active environment may schedule ingestion or claim mutation work. Every trace records environment and release. Rollback first fences GX-10, then validates the passive target, then enables target mutations.
+This change implements and tests an environment-ownership epoch, authority fingerprint, scheduler gate, and claim-time compare-and-swap, but it does not activate GX-10 as mutation owner. A candidate whose configured authority fingerprint does not match the authoritative queue database SHALL remain passive. The separate cutover change MUST select one PostgreSQL authority reachable by both environments during the handoff, migrate/verify data as needed, and only then advance the epoch. Independent database-local epochs are explicitly insufficient. Every trace records environment, release, authority fingerprint, and epoch.
 
-Why: DNS or configuration toggles alone cannot prevent duplicate scheduled work.
+Rollback ordering is fixed: fence the current owner in the shared authority, verify the passive target against that authority, then enable target mutations. DNS or configuration changes alone never transfer ownership.
 
 ### D12. Contract-first TDD and staged rollout
 
@@ -170,6 +172,7 @@ Rollback before cutover disables new correlation writes/exports while additive c
 - Telemetry tests with an in-memory exporter and local Langfuse verifier for hierarchy, generations, flush, and secret canaries.
 - GX-10 tests for health dependency order, restart recovery, private ports, watermarks, retention capability modes, backups, and isolated restore.
 - End-to-end synthetic operation joining API response header, PostgreSQL operation/attempt rows, structured logs, and Langfuse trace.
+- A six-hour soak at 50 submitted operations per minute (or the measured production peak if higher) with p95 trace arrival under 5 seconds, exporter drops below 0.1 percent, zero missing failed/partial trace roots, and 90-day projected storage within component budgets with 20 percent headroom.
 
 ## References
 
