@@ -1,0 +1,456 @@
+openapi: 3.1.0
+info:
+  title: ACA operation observability delta
+  version: 0.1.0
+  description: >-
+    Additive exact-operation attempt diagnostics and telemetry health contract.
+    Implementation merges these schemas into the canonical workflow API.
+security:
+  - AdminKey: []
+paths:
+  /api/v1/operations/{operation_id}/attempts:
+    get:
+      operationId: listOperationAttempts
+      summary: Return bounded observability attempts for one operation
+      parameters:
+        - $ref: "#/components/parameters/OperationId"
+      responses:
+        "200":
+          description: Ordered attempt evidence
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationAttemptPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/status/observability:
+    get:
+      operationId: getObservabilityHealth
+      summary: Return bounded telemetry initialization and delivery health
+      responses:
+        "200":
+          description: Telemetry is initialized and within delivery policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObservabilityHealth"
+        "503":
+          description: Required observability is degraded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObservabilityHealth"
+  /api/v1/operations/{operation_id}:
+    get:
+      operationId: getOperationWithObservability
+      summary: Existing exact operation response with additive observability summary
+      parameters:
+        - $ref: "#/components/parameters/OperationId"
+        - name: wait_seconds
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 30
+            default: 0
+      responses:
+        "200":
+          description: Exact operation with optional observability fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationObservabilityExtension"
+        "404":
+          $ref: "#/components/responses/NotFound"
+components:
+  securitySchemes:
+    AdminKey:
+      type: apiKey
+      in: header
+      name: X-Admin-Key
+  parameters:
+    OperationId:
+      name: operation_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[1-9][0-9]*$"
+        maxLength: 19
+  responses:
+    Unauthorized:
+      description: Authentication is required
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Forbidden:
+      description: Caller is not authorized
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: Operation was not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+  schemas:
+    TraceId:
+      type: string
+      pattern: "^[0-9a-f]{32}$"
+    SpanId:
+      type: string
+      pattern: "^[0-9a-f]{16}$"
+    OperationId:
+      type: string
+      pattern: "^[1-9][0-9]*$"
+      maxLength: 19
+    OperationStage:
+      type: string
+      enum:
+        - submit
+        - queue_wait
+        - claim
+        - fetch
+        - discover
+        - metadata
+        - transcript
+        - extract
+        - parse
+        - filter
+        - deduplicate
+        - model
+        - fallback
+        - persist
+        - index
+        - graph
+        - deliver
+        - backup
+        - restore
+        - alert
+        - cleanup
+        - flush
+    OperationOutcome:
+      type: string
+      enum:
+        - succeeded
+        - partial
+        - skipped_policy
+        - skipped_duplicate
+        - filtered
+        - retryable_failure
+        - permanent_failure
+        - cancelled
+    TelemetryDeliveryState:
+      type: string
+      enum:
+        - pending
+        - delivered
+        - degraded
+        - dropped
+        - disabled
+    OperationContextEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - operation_id
+        - root_operation_id
+        - traceparent
+        - trace_id
+        - span_id
+        - claim_generation
+        - attempt_number
+        - entrypoint
+        - service_name
+        - service_instance_id
+        - environment
+        - release_revision
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+        operation_id:
+          $ref: "#/components/schemas/OperationId"
+        root_operation_id:
+          $ref: "#/components/schemas/OperationId"
+        parent_operation_id:
+          oneOf:
+            - $ref: "#/components/schemas/OperationId"
+            - type: "null"
+        traceparent:
+          type: string
+          minLength: 55
+          maxLength: 512
+        tracestate:
+          type:
+            - string
+            - "null"
+          maxLength: 512
+        trace_id:
+          $ref: "#/components/schemas/TraceId"
+        span_id:
+          $ref: "#/components/schemas/SpanId"
+        claim_generation:
+          type: integer
+          minimum: 0
+          maximum: 2147483647
+        attempt_number:
+          type: integer
+          minimum: 0
+          maximum: 2147483647
+        entrypoint:
+          type: string
+          minLength: 1
+          maxLength: 160
+        service_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        service_instance_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        environment:
+          type: string
+          minLength: 1
+          maxLength: 32
+        release_revision:
+          type: string
+          minLength: 1
+          maxLength: 64
+        stage:
+          oneOf:
+            - $ref: "#/components/schemas/OperationStage"
+            - type: "null"
+        resource_kind:
+          type:
+            - string
+            - "null"
+          maxLength: 64
+        resource_key:
+          type:
+            - string
+            - "null"
+          maxLength: 128
+    OperationAttemptSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - claim_generation
+        - attempt_number
+        - trace_id
+        - root_span_id
+        - service_name
+        - service_instance_id
+        - environment
+        - release_revision
+        - started_at
+        - telemetry_delivery_state
+        - diagnostic_codes
+        - diagnostics_omitted
+      properties:
+        claim_generation:
+          type: integer
+          minimum: 0
+        attempt_number:
+          type: integer
+          minimum: 0
+        trace_id:
+          $ref: "#/components/schemas/TraceId"
+        root_span_id:
+          $ref: "#/components/schemas/SpanId"
+        langfuse_observation_id:
+          type:
+            - string
+            - "null"
+          maxLength: 64
+        service_name:
+          type: string
+          maxLength: 100
+        service_instance_id:
+          type: string
+          maxLength: 128
+        environment:
+          type: string
+          maxLength: 32
+        release_revision:
+          type: string
+          maxLength: 64
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        terminal_stage:
+          oneOf:
+            - $ref: "#/components/schemas/OperationStage"
+            - type: "null"
+        outcome:
+          oneOf:
+            - $ref: "#/components/schemas/OperationOutcome"
+            - type: "null"
+        retryable:
+          type:
+            - boolean
+            - "null"
+        telemetry_delivery_state:
+          $ref: "#/components/schemas/TelemetryDeliveryState"
+        diagnostic_codes:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            pattern: "^[a-z][a-z0-9_.-]{0,99}$"
+        diagnostics_omitted:
+          type: integer
+          minimum: 0
+    OperationObservabilitySummary:
+      type: object
+      additionalProperties: false
+      required:
+        - root_operation_id
+        - trace_id
+        - attempt_count
+        - telemetry_delivery_state
+      properties:
+        root_operation_id:
+          $ref: "#/components/schemas/OperationId"
+        trace_id:
+          $ref: "#/components/schemas/TraceId"
+        attempt_count:
+          type: integer
+          minimum: 0
+        latest_attempt:
+          oneOf:
+            - $ref: "#/components/schemas/OperationAttemptSummary"
+            - type: "null"
+        telemetry_delivery_state:
+          $ref: "#/components/schemas/TelemetryDeliveryState"
+        langfuse_url:
+          type:
+            - string
+            - "null"
+          format: uri
+          maxLength: 2048
+    OperationObservabilityExtension:
+      type: object
+      additionalProperties: true
+      description: >-
+        Existing OperationHandle fields remain required by the canonical API.
+        This delta freezes only the additive observability member.
+      properties:
+        observability:
+          oneOf:
+            - $ref: "#/components/schemas/OperationObservabilitySummary"
+            - type: "null"
+    OperationAttemptPage:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - operation_id
+        - root_operation_id
+        - attempts
+        - attempts_omitted
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+        operation_id:
+          $ref: "#/components/schemas/OperationId"
+        root_operation_id:
+          $ref: "#/components/schemas/OperationId"
+        attempts:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/OperationAttemptSummary"
+        attempts_omitted:
+          type: integer
+          minimum: 0
+    ObservabilityHealth:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - required
+        - initialized
+        - status
+        - service_name
+        - export_target
+        - buffered_count
+        - dropped_count
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+        required:
+          type: boolean
+        initialized:
+          type: boolean
+        status:
+          type: string
+          enum:
+            - healthy
+            - degraded
+            - disabled
+        service_name:
+          type: string
+          maxLength: 100
+        export_target:
+          type: string
+          enum:
+            - local_langfuse
+            - remote_langfuse
+            - other_otlp
+            - none
+        last_success_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        last_error_code:
+          type:
+            - string
+            - "null"
+          maxLength: 100
+        buffered_count:
+          type: integer
+          minimum: 0
+        dropped_count:
+          type: integer
+          minimum: 0
+        last_flush_succeeded:
+          type:
+            - boolean
+            - "null"
+    Problem:
+      type: object
+      additionalProperties: true
+      required:
+        - title
+        - status
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        code:
+          type:
+            - string
+            - "null"
+          maxLength: 100

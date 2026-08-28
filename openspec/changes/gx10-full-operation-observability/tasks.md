@@ -1,0 +1,79 @@
+## 1. Contract Freeze
+
+- [ ] 1.1 [XS] Add CI validation for the OpenAPI, SQL contract, event JSON Schemas, and generated stub drift. References: CORR-001, CORR-009, contracts/openapi/v1.yaml, contracts/sql/001_operation_observability.sql, contracts/events/*.schema.json, D1, D4, D12.
+- [ ] 1.2 [S] Regenerate canonical Python and TypeScript observability models from the frozen contracts, then reconcile them with existing workflow models without breaking legacy fields. Depends on 1.1. References: OPS-002, contracts/generated/python/operation_observability.py, contracts/generated/typescript/operation-observability.ts, D7, D12.
+
+## 2. PostgreSQL Correlation Projection
+
+- [ ] 2.1 [S] Write failing migration and repository tests for nullable legacy rows, constraints, exact trace lookup, attempt ordering, cascade behavior, and failure-biased cleanup. References: CORR-007, CORR-008, JOB-001, JOB-002, JOB-003, contracts/sql/001_operation_observability.sql, D3, D9.
+- [ ] 2.2 [M] Implement the additive Alembic migration, queue-bootstrap compatibility checks, indexes, and typed attempt repository. Depends on 2.1. References: CORR-007, JOB-001, contracts/sql/001_operation_observability.sql, D3.
+- [ ] 2.3 [S] Write failing fencing tests that prove a stale claim cannot overwrite a newer attempt or canonical operation state. References: CORR-005, JOB-002, contracts/events/operation-attempt-v1.schema.json, D2, D3.
+- [ ] 2.4 [M] Integrate fenced attempt start/completion writes with existing claim-generation transactions and terminal-event correlation. Depends on 2.2, 2.3. References: CORR-005, OPS-003, JOB-001, JOB-002, D2, D3.
+- [ ] 2.5 [XS] Checkpoint: run migration upgrade/downgrade, legacy-row, queue-fencing, SQL lint, and focused PostgreSQL integration suites; record evidence before propagation work.
+
+## 3. Shared Context and Telemetry Safety
+
+- [ ] 3.1 [S] Write failing unit/property tests for envelope bounds, invalid W3C isolation, context-variable nesting, stage/outcome enums, and serialization round trips. References: CORR-001, CORR-002, CORR-009, CORR-010, contracts/events/operation-context-v1.schema.json, D1, D4.
+- [ ] 3.2 [M] Implement the immutable OperationContext envelope, W3C inject/extract helpers, context binding, and generated stage/outcome vocabulary. Depends on 1.2, 3.1. References: CORR-001, CORR-002, contracts/events/*.schema.json, D1, D4.
+- [ ] 3.3 [S] Write failing canary tests for explicit trace input/output selection, export-time masking, exception-stack masking, third-party span masking, and metric-label cardinality. References: OBS-001, OBS-002, GX10-005, contracts/openapi/v1.yaml, D5.
+- [ ] 3.4 [M] Implement shared Langfuse/OTel span helpers, generation metadata, bounded excerpts, export-time masking, and safe log enrichment. Depends on 3.2, 3.3. References: OBS-001, OBS-002, CORR-003, D5.
+- [ ] 3.5 [XS] Checkpoint: run context, telemetry, redaction, static typing, and lint suites; inspect representative in-memory trace trees and canary output.
+
+## 4. Queue Propagation and Process Lifecycle
+
+- [ ] 4.1 [M] Write failing API-to-queue integration tests for atomic context storage, child operations, retry attempts, worker restart, queue-wait reconstruction, and stale-claim isolation. References: CORR-001, CORR-003, CORR-005, CORR-006, OPS-001, PIPE-002, contracts/events/operation-context-v1.schema.json, D2.
+- [ ] 4.2 [L] Implement submission/child propagation, claim extraction, attempt root spans, stage nesting, retry links, and fenced attempt persistence across the core queue path. Depends on 2.4, 3.4, 4.1. References: CORR-001, CORR-003, CORR-005, CORR-006, JOB-001, JOB-002, D2, D3.
+- [ ] 4.3 [S] Write failing entrypoint tests for API, deployment worker, CLI worker, scheduler, agent, backup, and maintenance telemetry initialization plus bounded shutdown flush. References: CORR-004, CORR-013, CORR-014, OBS-003, contracts/openapi/v1.yaml, D6.
+- [ ] 4.4 [M] Unify process telemetry lifecycle, exporter health tracking, required-observability readiness, and shutdown flush behavior. Depends on 4.3. References: CORR-004, CORR-013, CORR-014, OBS-003, D6.
+- [ ] 4.5 [XS] Checkpoint: run process-start, restart, retry, child-operation, exporter-outage, and flush integration suites; archive one trace-tree fixture.
+
+## 5. Operator and Audit Surfaces
+
+- [ ] 5.1 [S] Write failing contract/API tests for optional exact-handle observability, bounded attempt pages, authorized Langfuse URLs, summary-only lists, legacy rows, and observability health status. References: CORR-007, CORR-011, CORR-012, OPS-002, contracts/openapi/v1.yaml, D7.
+- [ ] 5.2 [M] Implement OperationHandle observability, the admin attempt endpoint, trusted Langfuse deep links, SSE snapshot correlation, and observability health responses. Depends on 2.4, 4.4, 5.1. References: CORR-011, CORR-012, OPS-002, contracts/openapi/v1.yaml, D7.
+- [ ] 5.3 [S] Write failing audit/terminal-event tests that distinguish request ID from trace/span IDs and join submissions to operation/claim evidence. References: AUDIT-001, AUDIT-002, OPS-003, contracts/openapi/v1.yaml, D7.
+- [ ] 5.4 [M] Persist actual audit trace/span fields, submitted operation IDs, and terminal-event trace correlation with bounded serialization. Depends on 5.3. References: AUDIT-001, AUDIT-002, OPS-003, D7.
+- [ ] 5.5 [XS] Checkpoint: run API schema, authorization, list-bounds, SSE, audit-retention, and terminal-event suites; confirm no internal Langfuse host leaks to unauthorized responses.
+
+## 6. Ingestion Failure Truthfulness
+
+- [ ] 6.1 [S] Write failing YouTube tests for transcript, metadata, download, keyframe, model, and persistence exceptions; assert continued batches and correct failed/skip/filter counts. References: CORR-009, CORR-010, YT-001, YT-002, YT-003, contracts/events/operation-attempt-v1.schema.json, D4.
+- [ ] 6.2 [M] Replace boolean YouTube item results with typed correlated outcomes and emit masked stage exception evidence. Depends on 3.4, 4.2, 6.1. References: YT-001, YT-002, YT-003, D4, D5.
+- [ ] 6.3 [S] Write failing blog tests for discovery failure, preferred-extractor fallback, terminal extraction failure, filtering, deduplication, and persistence failure. References: BLOG-001, BLOG-002, BLOG-003, contracts/events/operation-attempt-v1.schema.json, D4.
+- [ ] 6.4 [M] Instrument blog source/item stages and persist shared bounded outcome/error codes while preserving source isolation. Depends on 3.4, 4.2, 6.3. References: BLOG-001, BLOG-002, BLOG-003, D4, D5.
+- [ ] 6.5 [XS] Checkpoint: run YouTube/blog unit and integration suites with forced failures; compare aggregate results to emitted attempt/stage evidence.
+
+## 7. Remaining Operation Coverage
+
+- [ ] 7.1 [M] Write failing trace-topology tests for parsers, summarization, model routing/fallback, PostgreSQL, graph, indexing, storage, delivery, and parent/child pipeline outcomes. References: CORR-003, OBS-001, PIPE-001, PIPE-002, GX10-005, contracts/events/*.schema.json, D2, D4, D5.
+- [ ] 7.2 [M] Instrument the parser router, model/providers, persistence, graph, index, storage, delivery, and pipeline orchestration with shared stage helpers. Depends on 4.2, 7.1. References: CORR-003, OBS-001, PIPE-001, PIPE-002, D4, D5.
+- [ ] 7.3 [S] Write failing trace tests for MCP, schedulers, agents, maintenance, cleanup, backups, restores, alerts, and approved external API retries/timeouts. References: CORR-004, CORR-014, GX10-005, GX10-007, contracts/events/*.schema.json, D6, D10.
+- [ ] 7.4 [M] Instrument non-HTTP entrypoints and external provider boundaries with durable root operations, safe metadata, timeouts, rate limits, and flush evidence. Depends on 4.4, 7.3. References: CORR-004, CORR-014, GX10-005, GX10-007, D6, D10.
+- [ ] 7.5 [XS] Checkpoint: run trace-coverage inventory and fail CI for unallowlisted meaningful entrypoints without context; validate pipeline partial/retry trace fixtures.
+
+## 8. GX-10 Production Runtime
+
+- [ ] 8.1 [S] Write failing profile tests for required local endpoints, unique service identities, external secret references, masking policy, retention, watermarks, egress allowlist, and incomplete-observability rejection. References: CORR-013, PROFILE-001, PROFILE-002, contracts/openapi/v1.yaml, D6, D8, D9.
+- [ ] 8.2 [M] Add the GX-10 production profile, settings validation, secret references, service identities, and readiness policy. Depends on 4.4, 8.1. References: PROFILE-001, PROFILE-002, GX10-005, D6, D8.
+- [ ] 8.3 [S] Write failing deployment-policy tests for pinned services, private stateful ports, persistent volumes, health dependency order, restart/backoff, quotas, and cold restart. References: GX10-001, GX10-002, GX10-006, D8, D9.
+- [ ] 8.4 [M] Build the production GX-10 Compose/system-service overlay with hardened Langfuse, ClickHouse, MinIO, PostgreSQL, Redis, Neo4j, and application services. Depends on 8.2, 8.3. References: GX10-001, GX10-002, GX10-006, D8.
+- [ ] 8.5 [XS] Checkpoint: validate rendered deployment configuration, secret absence, image pins, private bindings, health order, persistent mounts, and restart behavior on a clean local stack.
+- [ ] 8.6 [S] Write failing storage-controller tests for allocation totals, 80/90 percent watermarks, 30/90-day capability modes, failure-evidence priority, and no direct database-file deletion. References: GX10-003, GX10-004, JOB-003, D9.
+- [ ] 8.7 [M] Implement correlated disk monitoring, capability-aware retention, ingestion throttling/pause policy, and storage alerts. Depends on 7.4, 8.6. References: GX10-003, GX10-004, JOB-003, D9.
+- [ ] 8.8 [S] Write failing backup/restore tests for component outcomes, encryption/checksums, quota accounting, isolated targets, and source-volume protection. References: GX10-007, GX10-008, contracts/events/operation-attempt-v1.schema.json, D10.
+- [ ] 8.9 [M] Implement scheduled component backups, retention, correlated manifests, and isolated restore drills. Depends on 7.4, 8.4, 8.8. References: GX10-007, GX10-008, D10.
+- [ ] 8.10 [XS] Checkpoint: execute high/critical watermark simulations plus backup/restore drills; retain manifests, checksums, disk metrics, and trace IDs as evidence.
+
+## 9. Coexistence and End-to-End Acceptance
+
+- [ ] 9.1 [S] Write failing environment-fence tests for exactly one mutation owner, passive Railway startup, claim-time epoch rejection, and controlled rollback ordering. References: GX10-009, GX10-010, MOBILE-001, MOBILE-002, D11.
+- [ ] 9.2 [M] Implement the environment ownership epoch, scheduler/claim gates, passive status surface, and rollback verification command. Depends on 4.2, 8.2, 9.1. References: GX10-009, GX10-010, MOBILE-001, MOBILE-002, D11.
+- [ ] 9.3 [M] Write the backend-neutral end-to-end verifier before its support code, covering API response header, queued worker hop, PostgreSQL attempt rows, logs, Langfuse hierarchy, generation metadata, retry, restart, and secret canaries. References: CORR-003, CORR-006, OBS-002, GX10-011, GX10-012, contracts/openapi/v1.yaml, D12.
+- [ ] 9.4 [M] Implement verifier support, deterministic synthetic operations, trace-arrival polling, bounded failure reports, and GX-10 smoke orchestration. Depends on 5.2, 7.2, 8.4, 9.3. References: GX10-011, GX10-012, D12.
+- [ ] 9.5 [XS] Checkpoint: run strict OpenSpec validation, unit/integration/E2E suites, ruff, mypy, contract drift, redaction scan, deployment security checks, measured ingestion soak, and full restart smoke.
+
+## 10. Operations Handoff
+
+- [ ] 10.1 [S] Document the trace lookup workflow, stage/error catalog, exporter troubleshooting, disk/retention policy, backup/restore procedure, environment fencing, rollback boundaries, and known Langfuse edition capabilities. References: CORR-011, GX10-003, GX10-007, GX10-010, D5, D9, D10, D11.
+- [ ] 10.2 [S] Record baseline trace volume, disk growth, exporter latency/drop rate, model cost, ingestion failure taxonomy, restore time, and alert thresholds from the GX-10 soak. References: OBS-003, GX10-003, GX10-011, D9, D12.
+- [ ] 10.3 [XS] Open a separate approved change for Railway data migration and traffic cutover using the verified environment fence; do not perform the cutover in this implementation. References: GX10-009, GX10-010, D11.

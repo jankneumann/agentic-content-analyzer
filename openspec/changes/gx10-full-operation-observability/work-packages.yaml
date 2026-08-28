@@ -1,0 +1,639 @@
+schema_version: 1
+
+feature:
+  id: "gx10-full-operation-observability"
+  title: "GX-10 full operation observability"
+  plan_revision: 1
+  created_by: "codex"
+  created_at: "2026-08-28T12:00:00Z"
+
+contracts:
+  revision: 1
+  openapi:
+    primary: "openspec/changes/gx10-full-operation-observability/contracts/openapi/v1.yaml"
+    files:
+      - "openspec/changes/gx10-full-operation-observability/contracts/openapi/v1.yaml"
+  generated:
+    pydantic_dir: "openspec/changes/gx10-full-operation-observability/contracts/generated/python"
+    typescript_dir: "openspec/changes/gx10-full-operation-observability/contracts/generated/typescript"
+
+defaults:
+  priority: 5
+  lock_ttl_minutes: 120
+  timeout_minutes: 90
+  retry_budget: 1
+  verification_tier_required: "A"
+  min_trust_level: 2
+
+packages:
+  - package_id: "wp-contracts"
+    title: "Freeze observability contracts"
+    task_type: "contracts"
+    description: "Validate the additive OpenAPI, SQL, event schemas, generated types, and workflow-model compatibility before implementation."
+    role: "contract-engineer"
+    priority: 1
+    depends_on: []
+    locks:
+      files:
+        - "openspec/changes/gx10-full-operation-observability/contracts/openapi/v1.yaml"
+        - "src/contracts/workflow_models.py"
+      keys:
+        - "contract:gx10-operation-observability-v1"
+      ttl_minutes: 120
+      reason: "Freeze shared wire and type contracts"
+    scope:
+      write_allow:
+        - "openspec/changes/gx10-full-operation-observability/contracts/**"
+        - "src/contracts/workflow_models.py"
+        - "tests/contracts/operation_observability/**"
+      read_allow:
+        - "openspec/**"
+        - "src/contracts/**"
+        - "tests/**"
+      deny:
+        - "src/frontend/**"
+    worktree:
+      name: "wp-contracts"
+      mode: "isolated"
+    timeout_minutes: 60
+    retry_budget: 1
+    min_trust_level: 2
+    verification:
+      tier_required: "C"
+      steps:
+        - name: "contract-validation"
+          kind: "command"
+          command: "openspec validate gx10-full-operation-observability --strict"
+          expect_exit_code: 0
+          evidence:
+            artifacts:
+              - "artifacts/wp-contracts/validation.txt"
+            result_keys:
+              - "openspec_valid"
+              - "contract_drift_clean"
+    inputs:
+      task_ids: ["1.1", "1.2"]
+    outputs:
+      result_keys: ["files_modified", "contract_tests", "generated_types"]
+
+  - package_id: "wp-db-projection"
+    title: "Persist attempt correlation"
+    task_type: "implement"
+    description: "Implement the additive queue correlation schema, attempt repository, fencing, terminal linkage, retention, and PostgreSQL tests."
+    role: "database-engineer"
+    priority: 2
+    depends_on: ["wp-contracts"]
+    locks:
+      files:
+        - "src/queue/setup.py"
+      keys:
+        - "db:migration-slot"
+        - "db:schema:operation_observation_attempts"
+      ttl_minutes: 180
+      reason: "Own additive operation observability schema"
+    scope:
+      write_allow:
+        - "alembic/versions/**"
+        - "src/queue/setup.py"
+        - "src/repositories/operation_observation_attempts.py"
+        - "tests/queue/test_operation_observation_attempts.py"
+        - "tests/integration/test_operation_observation_attempts.py"
+      read_allow:
+        - "src/**"
+        - "tests/**"
+        - "openspec/changes/gx10-full-operation-observability/contracts/**"
+      deny:
+        - "src/frontend/**"
+    worktree:
+      name: "wp-db-projection"
+      mode: "isolated"
+    timeout_minutes: 120
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: "A"
+      steps:
+        - name: "postgres-attempt-tests"
+          kind: "command"
+          command: "uv run pytest tests/queue/test_operation_observation_attempts.py tests/integration/test_operation_observation_attempts.py -q"
+          expect_exit_code: 0
+          evidence:
+            artifacts: ["artifacts/wp-db-projection/pytest.xml"]
+            result_keys: ["test_count", "migration_roundtrip", "fencing_passed"]
+    inputs:
+      task_ids: ["2.1", "2.2", "2.3", "2.4", "2.5"]
+    outputs:
+      result_keys: ["files_modified", "test_count", "migration_revision"]
+
+  - package_id: "wp-telemetry-context"
+    title: "Build safe telemetry context"
+    task_type: "implement"
+    description: "Implement the typed context, vocabulary, W3C helpers, Langfuse/OTel observations, masking, log enrichment, and canary tests."
+    role: "observability-engineer"
+    priority: 2
+    depends_on: ["wp-contracts"]
+    locks:
+      files:
+        - "src/telemetry/__init__.py"
+        - "src/telemetry/providers/langfuse.py"
+      keys:
+        - "event:operation.attempt"
+        - "flag:observability/correlation"
+      ttl_minutes: 180
+      reason: "Own the shared operation context and masking boundary"
+    scope:
+      write_allow:
+        - "src/telemetry/**"
+        - "src/contracts/operation_context.py"
+        - "tests/telemetry/**"
+        - "tests/contracts/test_operation_context.py"
+      read_allow:
+        - "src/**"
+        - "tests/**"
+        - "openspec/changes/gx10-full-operation-observability/contracts/**"
+      deny:
+        - "src/frontend/**"
+    worktree:
+      name: "wp-telemetry-context"
+      mode: "isolated"
+    timeout_minutes: 120
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: "A"
+      steps:
+        - name: "telemetry-safety-tests"
+          kind: "command"
+          command: "uv run pytest tests/telemetry tests/contracts/test_operation_context.py -q"
+          expect_exit_code: 0
+          evidence:
+            artifacts: ["artifacts/wp-telemetry-context/pytest.xml"]
+            result_keys: ["test_count", "canaries_absent", "trace_tree_valid"]
+    inputs:
+      task_ids: ["3.1", "3.2", "3.3", "3.4", "3.5"]
+    outputs:
+      result_keys: ["files_modified", "test_count", "masking_evidence"]
+
+  - package_id: "wp-queue-core"
+    title: "Connect queue trace propagation"
+    task_type: "implement"
+    description: "Serialize the highly coupled operation submission, claim, retry, worker lifecycle, and attempt-span integration."
+    role: "backend-engineer"
+    priority: 3
+    depends_on: ["wp-db-projection", "wp-telemetry-context"]
+    locks:
+      files:
+        - "src/services/operation_service.py"
+        - "src/queue/worker.py"
+        - "src/queue/execution_claim.py"
+      keys:
+        - "feature:gx10-full-operation-observability:core"
+      ttl_minutes: 240
+      reason: "Own the serialized API-to-worker propagation spine"
+    scope:
+      write_allow:
+        - "src/services/operation_service.py"
+        - "src/queue/worker.py"
+        - "src/queue/execution_claim.py"
+        - "src/queue/workflow_handlers.py"
+        - "src/worker.py"
+        - "src/cli/worker_commands.py"
+        - "tests/services/test_operation_observability.py"
+        - "tests/queue/test_trace_propagation.py"
+        - "tests/integration/test_queue_trace_propagation.py"
+      read_allow:
+        - "src/**"
+        - "tests/**"
+        - "openspec/changes/gx10-full-operation-observability/contracts/**"
+      deny:
+        - "src/frontend/**"
+    worktree:
+      name: "wp-queue-core"
+      mode: "isolated"
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: "A"
+      steps:
+        - name: "queue-propagation-tests"
+          kind: "command"
+          command: "uv run pytest tests/queue/test_trace_propagation.py tests/integration/test_queue_trace_propagation.py tests/services/test_operation_observability.py -q"
+          expect_exit_code: 0
+          evidence:
+            artifacts: ["artifacts/wp-queue-core/pytest.xml"]
+            result_keys: ["test_count", "restart_passed", "retry_passed", "flush_passed"]
+    inputs:
+      task_ids: ["4.1", "4.2", "4.3", "4.4", "4.5"]
+    outputs:
+      result_keys: ["files_modified", "test_count", "trace_fixture"]
+
+  - package_id: "wp-api-audit"
+    title: "Expose safe operation diagnostics"
+    task_type: "implement"
+    description: "Add exact-operation attempt and health APIs, real audit trace fields, terminal correlation, authorization, and bounded response tests."
+    role: "api-engineer"
+    priority: 4
+    depends_on: ["wp-queue-core"]
+    locks:
+      files:
+        - "src/api/operation_routes.py"
+        - "src/api/middleware/audit.py"
+      keys:
+        - "api:GET /api/v1/operations/{operation_id}/attempts"
+        - "api:GET /api/v1/status/observability"
+      ttl_minutes: 180
+      reason: "Own operator-facing observability and audit surfaces"
+    scope:
+      write_allow:
+        - "src/api/**"
+        - "src/services/workflow_terminal_event_service.py"
+        - "src/models/audit.py"
+        - "tests/api/**"
+        - "tests/services/test_workflow_terminal_event_observability.py"
+      read_allow:
+        - "src/**"
+        - "tests/**"
+        - "openspec/changes/gx10-full-operation-observability/contracts/**"
+      deny:
+        - "src/frontend/**"
+    worktree:
+      name: "wp-api-audit"
+      mode: "isolated"
+    timeout_minutes: 120
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: "A"
+      steps:
+        - name: "api-observability-tests"
+          kind: "command"
+          command: "uv run pytest tests/api tests/services/test_workflow_terminal_event_observability.py -q"
+          expect_exit_code: 0
+          evidence:
+            artifacts: ["artifacts/wp-api-audit/pytest.xml"]
+            result_keys: ["test_count", "authz_passed", "bounded_response_passed"]
+    inputs:
+      task_ids: ["5.1", "5.2", "5.3", "5.4", "5.5"]
+    outputs:
+      result_keys: ["files_modified", "test_count", "openapi_conformant"]
+
+  - package_id: "wp-ingestion-coverage"
+    title: "Make ingestion traces truthful"
+    task_type: "implement"
+    description: "Correct YouTube/blog outcomes and instrument parser, pipeline, model, persistence, graph, index, storage, and delivery stages."
+    role: "ingestion-engineer"
+    priority: 4
+    depends_on: ["wp-queue-core"]
+    locks:
+      files:
+        - "src/ingestion/youtube.py"
+        - "src/ingestion/blog_scraper.py"
+      keys:
+        - "event:operation.ingestion"
+      ttl_minutes: 240
+      reason: "Own ingestion and pipeline stage instrumentation"
+    scope:
+      write_allow:
+        - "src/ingestion/**"
+        - "src/parsers/**"
+        - "src/processors/**"
+        - "src/pipeline/**"
+        - "src/delivery/**"
+        - "tests/ingestion/**"
+        - "tests/parsers/**"
+        - "tests/processors/**"
+        - "tests/pipeline/**"
+        - "tests/delivery/**"
+      read_allow:
+        - "src/**"
+        - "tests/**"
+        - "openspec/changes/gx10-full-operation-observability/contracts/**"
+      deny:
+        - "src/api/**"
+        - "src/frontend/**"
+    worktree:
+      name: "wp-ingestion-coverage"
+      mode: "isolated"
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: "A"
+      steps:
+        - name: "ingestion-truth-tests"
+          kind: "command"
+          command: "uv run pytest tests/ingestion tests/parsers tests/processors tests/pipeline tests/delivery -q"
+          expect_exit_code: 0
+          evidence:
+            artifacts: ["artifacts/wp-ingestion-coverage/pytest.xml"]
+            result_keys: ["test_count", "youtube_failures_truthful", "blog_stages_correlated"]
+    inputs:
+      task_ids: ["6.1", "6.2", "6.3", "6.4", "6.5", "7.1", "7.2"]
+    outputs:
+      result_keys: ["files_modified", "test_count", "coverage_inventory"]
+
+  - package_id: "wp-operational-coverage"
+    title: "Trace operational entrypoints"
+    task_type: "implement"
+    description: "Instrument MCP, agents, schedulers, maintenance, backups, restores, alerts, and external provider boundaries."
+    role: "platform-engineer"
+    priority: 4
+    depends_on: ["wp-queue-core"]
+    locks:
+      files:
+        - "src/services/backup"
+      keys:
+        - "event:operation.maintenance"
+      ttl_minutes: 180
+      reason: "Own non-HTTP operation coverage"
+    scope:
+      write_allow:
+        - "src/agents/**"
+        - "src/mcp_tools/**"
+        - "src/tasks/**"
+        - "src/services/backup/**"
+        - "src/release_smoke/**"
+        - "tests/agents/**"
+        - "tests/mcp_tools/**"
+        - "tests/tasks/**"
+        - "tests/services/backup/**"
+      read_allow:
+        - "src/**"
+        - "tests/**"
+        - "openspec/changes/gx10-full-operation-observability/contracts/**"
+      deny:
+        - "src/api/**"
+        - "src/ingestion/**"
+        - "src/frontend/**"
+    worktree:
+      name: "wp-operational-coverage"
+      mode: "isolated"
+    timeout_minutes: 150
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: "A"
+      steps:
+        - name: "operational-trace-tests"
+          kind: "command"
+          command: "uv run pytest tests/agents tests/mcp_tools tests/tasks tests/services/backup -q"
+          expect_exit_code: 0
+          evidence:
+            artifacts: ["artifacts/wp-operational-coverage/pytest.xml"]
+            result_keys: ["test_count", "entrypoint_inventory", "flush_passed"]
+    inputs:
+      task_ids: ["7.3", "7.4", "7.5"]
+    outputs:
+      result_keys: ["files_modified", "test_count", "entrypoint_inventory"]
+
+  - package_id: "wp-gx10-runtime"
+    title: "Harden the GX-10 runtime"
+    task_type: "infrastructure"
+    description: "Create the production profile and local topology with private networks, persistent volumes, health order, pinned images, quotas, and readiness."
+    role: "deployment-engineer"
+    priority: 4
+    depends_on: ["wp-queue-core"]
+    locks:
+      files:
+        - "profiles/gx10.yaml"
+        - "docker-compose.gx10.yml"
+      keys:
+        - "env:gx10"
+      ttl_minutes: 240
+      reason: "Own GX-10 production profile and topology"
+    scope:
+      write_allow:
+        - "profiles/**"
+        - "docker-compose.gx10.yml"
+        - "docker-compose.langfuse.yml"
+        - "deploy/gx10/**"
+        - "scripts/gx10/**"
+        - "src/config/**"
+        - "tests/config/**"
+        - "tests/deployment/gx10/**"
+      read_allow:
+        - "src/**"
+        - "tests/**"
+        - "docs/**"
+        - "docker-compose*.yml"
+        - "openspec/changes/gx10-full-operation-observability/**"
+      deny:
+        - "src/frontend/**"
+    worktree:
+      name: "wp-gx10-runtime"
+      mode: "isolated"
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: "A"
+      steps:
+        - name: "gx10-policy-tests"
+          kind: "command"
+          command: "uv run pytest tests/config tests/deployment/gx10 -q"
+          expect_exit_code: 0
+          evidence:
+            artifacts: ["artifacts/wp-gx10-runtime/pytest.xml"]
+            result_keys: ["test_count", "compose_valid", "private_ports_passed", "cold_restart_passed"]
+    inputs:
+      task_ids: ["8.1", "8.2", "8.3", "8.4", "8.5"]
+    outputs:
+      result_keys: ["files_modified", "test_count", "rendered_topology"]
+
+  - package_id: "wp-storage-recovery"
+    title: "Govern storage and recovery"
+    task_type: "infrastructure"
+    description: "Implement disk watermarks, capability-aware retention, throttling, alerts, component backups, and isolated restore drills."
+    role: "site-reliability-engineer"
+    priority: 5
+    depends_on: ["wp-gx10-runtime", "wp-operational-coverage"]
+    locks:
+      files:
+        - "src/services/storage_governance.py"
+      keys:
+        - "flag:observability/retention"
+        - "event:operation.backup"
+      ttl_minutes: 240
+      reason: "Own disk, retention, backup, and restore policy"
+    scope:
+      write_allow:
+        - "src/services/storage_governance.py"
+        - "src/services/backup/gx10.py"
+        - "scripts/gx10/storage/**"
+        - "scripts/gx10/backup/**"
+        - "tests/services/test_storage_governance.py"
+        - "tests/services/backup/test_gx10.py"
+        - "tests/deployment/gx10/test_storage_policy.py"
+      read_allow:
+        - "src/**"
+        - "tests/**"
+        - "deploy/gx10/**"
+        - "scripts/gx10/**"
+        - "openspec/changes/gx10-full-operation-observability/**"
+      deny:
+        - "src/frontend/**"
+    worktree:
+      name: "wp-storage-recovery"
+      mode: "isolated"
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: "A"
+      steps:
+        - name: "storage-recovery-tests"
+          kind: "command"
+          command: "uv run pytest tests/services/test_storage_governance.py tests/services/backup/test_gx10.py tests/deployment/gx10/test_storage_policy.py -q"
+          expect_exit_code: 0
+          evidence:
+            artifacts: ["artifacts/wp-storage-recovery/pytest.xml"]
+            result_keys: ["test_count", "watermark_passed", "restore_passed", "source_untouched"]
+    inputs:
+      task_ids: ["8.6", "8.7", "8.8", "8.9", "8.10"]
+    outputs:
+      result_keys: ["files_modified", "test_count", "restore_manifest"]
+
+  - package_id: "wp-coexistence"
+    title: "Fence environment ownership"
+    task_type: "implement"
+    description: "Implement the mutation-owner epoch, scheduler and claim gates, passive status, mobile GX-10 routing compatibility, and rollback verifier."
+    role: "distributed-systems-engineer"
+    priority: 5
+    depends_on: ["wp-api-audit", "wp-gx10-runtime", "wp-operational-coverage"]
+    locks:
+      files:
+        - "src/services/environment_ownership.py"
+      keys:
+        - "flag:environment/ownership"
+        - "db:schema:environment_ownership"
+      ttl_minutes: 180
+      reason: "Own dual-environment mutation fencing"
+    scope:
+      write_allow:
+        - "alembic/versions/**"
+        - "src/services/environment_ownership.py"
+        - "src/api/status_routes.py"
+        - "src/tasks/scheduler.py"
+        - "src/queue/execution_claim.py"
+        - "tests/services/test_environment_ownership.py"
+        - "tests/api/test_environment_ownership.py"
+        - "tests/queue/test_environment_ownership.py"
+      read_allow:
+        - "src/**"
+        - "tests/**"
+        - "profiles/**"
+        - "openspec/changes/gx10-full-operation-observability/**"
+      deny:
+        - "src/frontend/**"
+    worktree:
+      name: "wp-coexistence"
+      mode: "isolated"
+    timeout_minutes: 150
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: "A"
+      steps:
+        - name: "ownership-fence-tests"
+          kind: "command"
+          command: "uv run pytest tests/services/test_environment_ownership.py tests/api/test_environment_ownership.py tests/queue/test_environment_ownership.py -q"
+          expect_exit_code: 0
+          evidence:
+            artifacts: ["artifacts/wp-coexistence/pytest.xml"]
+            result_keys: ["test_count", "single_owner_passed", "rollback_order_passed"]
+    inputs:
+      task_ids: ["9.1", "9.2"]
+    outputs:
+      result_keys: ["files_modified", "test_count", "fence_migration_revision"]
+
+  - package_id: "wp-e2e-handoff"
+    title: "Verify and document operations"
+    task_type: "validate"
+    description: "Build the backend-neutral trace verifier, run GX-10 acceptance and soak checks, write runbooks, and create the separate cutover proposal."
+    role: "validation-engineer"
+    priority: 6
+    depends_on:
+      - "wp-api-audit"
+      - "wp-ingestion-coverage"
+      - "wp-storage-recovery"
+      - "wp-coexistence"
+    locks:
+      files:
+        - "tests/e2e/test_operation_observability.py"
+      keys:
+        - "feature:gx10-full-operation-observability:verification"
+      ttl_minutes: 240
+      reason: "Own end-to-end verification and operational handoff"
+    scope:
+      write_allow:
+        - "tests/e2e/**"
+        - "scripts/gx10/verify_observability.py"
+        - "docs/runbooks/gx10-observability.md"
+        - "docs/observability/**"
+        - "openspec/changes/railway-to-gx10-data-cutover/**"
+      read_allow:
+        - "**"
+      deny:
+        - "src/frontend/**"
+    worktree:
+      name: "wp-e2e-handoff"
+      mode: "isolated"
+    timeout_minutes: 240
+    retry_budget: 1
+    min_trust_level: 3
+    verification:
+      tier_required: "A"
+      steps:
+        - name: "gx10-observability-e2e"
+          kind: "command"
+          command: "uv run pytest tests/e2e/test_operation_observability.py -q"
+          expect_exit_code: 0
+          evidence:
+            artifacts:
+              - "artifacts/wp-e2e-handoff/pytest.xml"
+              - "artifacts/wp-e2e-handoff/soak.json"
+            result_keys: ["test_count", "postgres_trace_join", "langfuse_trace_join", "canaries_absent", "soak_baseline"]
+    inputs:
+      task_ids: ["9.3", "9.4", "10.1", "10.2", "10.3"]
+    outputs:
+      result_keys: ["files_modified", "test_count", "soak_baseline", "runbook", "cutover_change"]
+
+  - package_id: "wp-integration"
+    title: "Integrate full observability"
+    task_type: "integrate"
+    description: "Merge package worktrees, resolve contract drift, run the full quality and security gates, and produce final acceptance evidence."
+    role: "integration-engineer"
+    priority: 9
+    depends_on:
+      - "wp-e2e-handoff"
+    locks:
+      files: []
+      keys: []
+      ttl_minutes: 240
+      reason: "Final integration owns the union of landed package scopes"
+    scope:
+      write_allow: ["**"]
+      read_allow: ["**"]
+    worktree:
+      name: "wp-integration"
+      mode: "shared"
+    timeout_minutes: 300
+    retry_budget: 0
+    min_trust_level: 3
+    verification:
+      tier_required: "A"
+      steps:
+        - name: "full-quality-gate"
+          kind: "command"
+          command: "uv run pytest --tb=short"
+          expect_exit_code: 0
+          evidence:
+            artifacts:
+              - "artifacts/wp-integration/pytest.xml"
+              - "artifacts/wp-integration/acceptance.json"
+            result_keys: ["test_count", "ruff_passed", "mypy_passed", "openspec_valid", "e2e_passed"]
+    inputs:
+      task_ids: ["9.5"]
+    outputs:
+      result_keys: ["merge_commit", "test_count", "acceptance_evidence"]
