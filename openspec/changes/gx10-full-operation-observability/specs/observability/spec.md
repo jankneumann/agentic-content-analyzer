@@ -34,7 +34,7 @@ Detailed traces SHALL include full exception stack evidence, retry/fallback deci
 
 ### Requirement: Required trace retention and delivery policy
 
-Production SHALL initially retain complete meaningful-operation traces without sampling while validating the 1 TB storage budget. Any later sampling policy SHALL preserve every failed, partial, security, backup, and telemetry-health operation and SHALL retain durable attempt evidence for unsampled successful work.
+Production SHALL initially retain complete meaningful-operation traces without sampling while validating the 1 TB storage budget. Each observation SHALL be limited to 128 attributes and 128 KiB serialized payload; each process-local attempt SHALL be limited to 256 observations or 16 MiB, with 64 observations and 4 MiB reserved for terminal, failure, security, backup, restore, and telemetry-health evidence. Budget exhaustion SHALL omit successful excerpts and optional successful metadata before topology or reserved evidence and SHALL increment durable omitted counters. Any later sampling policy SHALL preserve every failed, partial, security, backup, and telemetry-health operation and SHALL retain durable attempt evidence for unsampled successful work.
 
 Each process SHALL initialize telemetry before instrumented clients, report exporter health, and perform bounded shutdown flush.
 

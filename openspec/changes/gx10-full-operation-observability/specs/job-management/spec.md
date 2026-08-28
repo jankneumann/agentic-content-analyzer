@@ -2,7 +2,7 @@
 
 ### Requirement: Queue records persist trace context and attempts
 
-Queue storage SHALL add nullable, backward-compatible root operation and W3C submission-context fields to canonical job records and SHALL maintain an append-only bounded attempt evidence projection keyed by operation ID and claim generation. Indexes SHALL support exact trace lookup and ordered attempt lookup without placing trace identifiers into metric labels.
+Queue storage SHALL add nullable, backward-compatible root operation and W3C submission-context fields to canonical job records. Any duplicated indexed row/root/trace/carrier fields SHALL be constrained equal to the canonical context envelope. Queue storage SHALL maintain an append-only bounded attempt evidence projection keyed by operation ID and claim generation. Indexes SHALL support exact trace lookup and ordered attempt lookup without placing trace identifiers into metric labels.
 
 #### Scenario: [JOB-001] Claim atomically starts attempt evidence
 

@@ -50,7 +50,7 @@ The system SHALL default to 30-day detailed retention for successful/partial tra
 
 Secrets SHALL be supplied from OpenBao into runtime-only protected environment files, SHALL never be committed, and SHALL be rotated independently while preserving prior backup decryption recipients for the documented restore window. Stateful services SHALL not be publicly exposed. Langfuse SHALL require authentication, and service-to-service networks SHALL expose only required ports.
 
-External model, transcription, feed, page, video, email, and notification APIs MAY remain reachable through explicit egress policy with timeouts, redacted telemetry, and provider-specific rate limits.
+External model, transcription, feed, page, video, email, and notification APIs MAY remain reachable through a dedicated Squid 6.13 (`ubuntu/squid:6.13-25.10_beta`) CONNECT proxy whose rendered image SHALL be pinned by immutable digest, with OpenBao credentials, read-only syntax-validated `dstdomain`/CONNECT-port policy, masked host/port/status/timing logs, bounded readiness probes, and DNS-aware hostname/port policy, timeouts, redacted telemetry, and provider-specific rate limits. Application networks SHALL have no direct Internet route; unknown destinations, stale policy, and proxy failure SHALL fail closed. DNS, NTP, certificate-bootstrap, and proxy-health exceptions SHALL be explicit and bounded. Invalid policy/reload, DNS failure, credential failure, proxy outage, and direct-route attempts from every application network SHALL fail closed.
 
 #### Scenario: [GX10-005] External provider call is traced safely
 
@@ -72,7 +72,7 @@ External model, transcription, feed, page, video, email, and notification APIs M
 
 ### Requirement: Backup and restore are operational capabilities
 
-PostgreSQL, Neo4j, ClickHouse, MinIO, and configuration metadata SHALL have scheduled, bounded, correlated backup operations. Backups SHALL be encrypted with an OpenBao-managed age recipient before leaving component-local storage, checksummed, included in the storage budget, and periodically restored into an isolated validation target. Missing encryption material SHALL fail backup activation and SHALL never produce a plaintext artifact.
+PostgreSQL, Neo4j, ClickHouse, MinIO, and configuration metadata SHALL have scheduled, bounded, correlated backup operations. Backups SHALL be encrypted with an OpenBao-managed age recipient before leaving component-local storage, checksummed, included in the storage budget, and periodically restored into an isolated validation target. Missing encryption material SHALL fail backup activation and SHALL never produce a plaintext artifact. Production acceptance SHALL require application PostgreSQL/queue RPO of at most 24 hours, each component restore RTO of at most 2 hours, and full-stack RTO of at most 4 hours, measured from the declared failure or restore start until a correlated synthetic operation passes.
 
 #### Scenario: [GX10-007] Scheduled backup completes
 
@@ -85,6 +85,11 @@ PostgreSQL, Neo4j, ClickHouse, MinIO, and configuration metadata SHALL have sche
 - **WHEN** an isolated restore drill cannot validate application and trace metadata
 - **THEN** the drill fails with component-specific diagnostics
 - **AND** the source production volumes remain untouched
+
+#### Scenario: [GX10-016] Recovery objectives are exceeded
+
+- **WHEN** an isolated restore drill exceeds the 24-hour application RPO, 2-hour component RTO, or 4-hour full-stack RTO
+- **THEN** production recovery acceptance fails with the measured component and full-stack values
 
 #### Scenario: [GX10-015] Backup encryption key is unavailable
 

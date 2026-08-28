@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "review_type": "plan",
+  "target": "gx10-full-operation-observability",
+  "reviewers": [
+    {
+      "vendor": "codex",
+      "agent_id": "codex",
+      "success": true,
+      "findings_count": 6,
+      "elapsed_seconds": 0.0,
+      "error": null
+    }
+  ],
+  "quorum_met": false,
+  "quorum_requested": 1,
+  "quorum_received": 1,
+  "consensus_findings": [
+    {
+      "id": 1,
+      "status": "unconfirmed",
+      "primary_vendor": "codex",
+      "primary_finding_id": 1,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "contract_mismatch",
+      "agreed_criticality": "critical",
+      "recommended_disposition": "accept",
+      "description": "Critical: telemetry_process_health declares checks and an index over lifecycle_kind and expires_at, but neither column exists in the table definition, so the contract DDL cannot execute and the promised 24-hour/7-day retention classes cannot be persisted."
+    },
+    {
+      "id": 2,
+      "status": "unconfirmed",
+      "primary_vendor": "codex",
+      "primary_finding_id": 2,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "contract_mismatch",
+      "agreed_criticality": "critical",
+      "recommended_disposition": "accept",
+      "description": "Critical: ck_pgqueuer_jobs_context_identity still permits missing duplicated correlation fields because PostgreSQL CHECK accepts UNKNOWN: root_job_id/submission_traceparent/trace_id/submission_span_id use nullable '=' comparisons, so a non-null submission_context plus null indexed columns passes instead of proving equality."
+    },
+    {
+      "id": 3,
+      "status": "unconfirmed",
+      "primary_vendor": "codex",
+      "primary_finding_id": 3,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "contract_mismatch",
+      "agreed_criticality": "critical",
+      "recommended_disposition": "accept",
+      "description": "Critical: the checked-in generated Python model still diverges from OpenAPI's signed-BIGINT bounds: OperationAttemptPage.root_operation_id and next_after_claim_generation and both ownership epoch fields accept 9999999999999999999. The cursor is also modeled as a general non-negative int64 in OpenAPI even though it represents a claim generation capped at 9223372036854775806."
+    },
+    {
+      "id": 4,
+      "status": "unconfirmed",
+      "primary_vendor": "codex",
+      "primary_finding_id": 4,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "security",
+      "agreed_criticality": "critical",
+      "recommended_disposition": "accept",
+      "description": "Critical: untrusted traceparent is constrained only by length in JSON Schema, OpenAPI, and the generated Pydantic model, and no contract validator requires its embedded trace/span identifiers to match trace_id/span_id. A 55-character non-W3C string or a syntactically valid carrier for a different trace is therefore admitted, enabling trace-correlation spoofing and split audit evidence."
+    },
+    {
+      "id": 5,
+      "status": "unconfirmed",
+      "primary_vendor": "codex",
+      "primary_finding_id": 5,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "correctness",
+      "agreed_criticality": "medium",
+      "recommended_disposition": "accept",
+      "description": "Nit: the SQL attempt table documents claim-generation headroom but ck_operation_attempt_claim_generation checks only >=0; generation 9223372036854775807 is rejected indirectly by overflow while evaluating claim_generation + 1 rather than by the declared bound."
+    },
+    {
+      "id": 6,
+      "status": "unconfirmed",
+      "primary_vendor": "codex",
+      "primary_finding_id": 6,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "architecture",
+      "agreed_criticality": "low",
+      "recommended_disposition": "accept",
+      "description": "The revision now has a valid acyclic package DAG, repaired coverage and integration write scopes, a concrete resumable six-hour soak, an enforceable process-local telemetry budget, explicit bootstrap inventory, and a materially specified fail-closed Squid egress topology."
+    }
+  ],
+  "summary": {
+    "total_unique_findings": 6,
+    "confirmed_count": 0,
+    "unconfirmed_count": 6,
+    "disagreement_count": 0,
+    "blocking_count": 0
+  }
+}

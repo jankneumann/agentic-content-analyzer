@@ -8,7 +8,7 @@ Provide one attempt-aware, privacy-safe correlation contract that makes every me
 
 The system SHALL represent execution context with a versioned envelope containing operation ID, root operation ID, optional parent operation ID, traceparent, optional tracestate, trace ID, the current span ID, claim generation, nullable attempt number, entrypoint, service name, service instance ID, release revision, and optional bounded stage, resource kind, and opaque resource key.
 
-Every nullable envelope key SHALL be present with an explicit null value when absent. Before a claim, attempt number SHALL be null; after a claim it SHALL equal claim generation plus one. Claim generation SHALL retain the existing 64-bit database width. The envelope SHALL use W3C Trace Context encodings, SHALL reject malformed or oversized untrusted values at ingress, and SHALL never contain credentials, raw source URLs, unrestricted prompts, unrestricted source content, or exception text.
+Every nullable envelope key SHALL be present with an explicit null value when absent. Before a claim, attempt number SHALL be null; after a claim it SHALL equal claim generation plus one. Operation IDs, epochs, claim generations, attempt numbers, and cursors SHALL remain within signed 64-bit database bounds and SHALL be encoded as canonical decimal strings at JSON and JavaScript boundaries. Claimed generation SHALL NOT exceed 9223372036854775806 so `attempt_number = claim_generation + 1` cannot overflow. The envelope SHALL use W3C Trace Context encodings, SHALL reject malformed or oversized untrusted values at ingress, and SHALL never contain credentials, raw source URLs, unrestricted prompts, unrestricted source content, or exception text.
 
 #### Scenario: [CORR-001] Valid context crosses an asynchronous boundary
 
@@ -98,13 +98,19 @@ Exceptions SHALL NOT be translated into a successful skip unless a domain rule e
 
 ### Requirement: Safe exact-operation diagnostics
 
-The exact-operation surface SHALL expose a bounded observability summary containing trace ID, root operation ID, latest attempt, stage/outcome codes, telemetry-delivery state, and a server-generated Langfuse lookup URL only to authorized callers. A separate authorized attempt endpoint SHALL return all attempts through stable cursor pagination ordered by ascending claim generation, with a default page size of 50 and a maximum of 100. Collection/list responses SHALL remain bounded summaries and SHALL not expose detailed attempts or unrestricted diagnostic messages.
+The exact-operation surface SHALL expose a bounded observability summary containing trace ID, root operation ID, latest attempt, stage/outcome codes, telemetry-delivery state, and a server-generated Langfuse lookup URL only to callers holding the distinct operator capability. Existing exact-operation authentication SHALL remain backward-compatible; non-operator callers SHALL receive null privileged links and SHALL NOT access attempt history or deployment-wide health. A separate authorized attempt endpoint SHALL return all attempts through stable cursor pagination ordered by ascending claim generation, with a default page size of 50 and a maximum of 100. Collection/list responses SHALL remain bounded summaries and SHALL not expose detailed attempts or unrestricted diagnostic messages.
 
 #### Scenario: [CORR-011] Authorized operator follows a trace
 
 - **WHEN** an authorized operator requests one operation
 - **THEN** the response includes safe correlation and attempt summaries
 - **AND** any Langfuse link is generated from trusted configuration and opaque identifiers
+
+#### Scenario: [CORR-016] Normal authenticated caller requests privileged diagnostics
+
+- **WHEN** a caller with a valid normal session but without the operator capability requests attempt history or deployment-wide observability health
+- **THEN** the request is denied with a bounded authorization problem
+- **AND** exact-operation status remains available under its existing policy with privileged links set to null
 
 #### Scenario: [CORR-012] Lists remain low-volume and safe
 
@@ -120,7 +126,13 @@ The exact-operation surface SHALL expose a bounded observability summary contain
 
 ### Requirement: Correlated telemetry delivery health
 
-Each emitting process SHALL heartbeat bounded health keyed by environment, service, and instance: required/initialized state, release, export target, last heartbeat, last successful and failed export timestamps and ages in seconds, last error code, buffered count and capacity, dropped count, and final flush timestamp/outcome. Long-running process rows SHALL become stale after the configured freshness bound; short-lived processes SHALL persist final flush evidence. The authenticated observability health API SHALL aggregate all nonexpired deployment rows rather than presenting one API process as deployment health. Readiness policy SHALL be configurable, but silent disablement while observability is required SHALL be prohibited.
+Each emitting process SHALL heartbeat bounded health keyed by environment, service, and instance: required/initialized state, release, export target, last heartbeat, last successful and failed export timestamps and ages in seconds, last error code, buffered count and capacity, dropped count, and final flush timestamp/outcome. Each process row SHALL persist constrained lifecycle kind and expiry. Long-running process rows SHALL become stale after the configured freshness bound and expire 24 hours after their last heartbeat; short-lived final-flush rows SHALL expire after 7 days. Cleanup SHALL remove expired rows only. Aggregation SHALL use deterministic newest-first ordering, return at most 1,000 nonexpired rows per environment, and report the number omitted without deleting current rows to meet the response cap. The operator-authorized observability health API SHALL aggregate all nonexpired deployment rows rather than presenting one API process as deployment health. Readiness policy SHALL be configurable, but silent disablement while observability is required SHALL be prohibited.
+
+#### Scenario: [CORR-017] Restart churn is cleaned deterministically
+
+- **WHEN** process restarts create more than 1,000 instance rows or rows exceed their 24-hour/7-day retention class
+- **THEN** cleanup removes expired rows and aggregation returns the newest 1,000 rows deterministically
+- **AND** the bounded query meets its latency budget without deleting current healthy instances
 
 #### Scenario: [CORR-013] Missing endpoint is visible
 

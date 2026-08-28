@@ -1,0 +1,96 @@
+schema_version: 1
+policy: >-
+  Every meaningful backend entrypoint and provider boundary is covered by a
+  shared operation-context lifecycle or an explicit domain-stage wrapper.
+  Unlisted operation-producing entrypoints fail the coverage gate.
+
+shared_boundaries:
+  http: ["src/api/app.py", "src/api/**"]
+  queue: ["src/services/operation_service.py", "src/queue/**", "src/worker.py"]
+  cli: ["src/cli/app.py", "src/cli/main.py", "src/cli/__main__.py", "src/cli/*_commands.py"]
+  mcp: ["src/mcp_server.py", "src/mcp_tools/**"]
+  agents: ["src/agents/**"]
+  scheduled: ["src/tasks/**", "src/agents/scheduler/**"]
+
+domain_operations:
+  - "src/ingestion/**"
+  - "src/parsers/**"
+  - "src/processors/**"
+  - "src/pipeline/**"
+  - "src/workflows/**"
+  - "src/delivery/**"
+  - "src/services/llm_router.py"
+  - "src/services/indexing.py"
+  - "src/services/file_storage.py"
+  - "src/services/cloud_stt/**"
+  - "src/storage/**"
+
+operational_services:
+  - "src/services/backup/**"
+  - "src/services/alert_sinks.py"
+  - "src/services/backup_freshness_alert.py"
+  - "src/services/notification_cleanup.py"
+  - "src/services/workflow_alert_delivery.py"
+  - "src/release_smoke/**"
+
+operational_scripts:
+  - "scripts/analyze_themes.py"
+  - "scripts/backup_retention.py"
+  - "scripts/extract_entities.py"
+  - "scripts/generate_daily_digest.py"
+  - "scripts/generate_podcast.py"
+  - "scripts/generate_weekly_digest.py"
+  - "scripts/query_knowledge_graph.py"
+  - "scripts/review_digest.py"
+  - "scripts/run_release_smoke.py"
+  - "scripts/send_test_trace.py"
+  - "scripts/verify_workflow_alerting.py"
+  - "scripts/run_gen_eval_gate.py"
+  - "scripts/validate_docling.py"
+
+bootstrap_operations:
+  evidence_policy: >-
+    Commands that run before PostgreSQL is available write masked, hash-chained
+    JSONL evidence to /srv/aca/bootstrap-audit with mode 0600. The first healthy
+    maintenance process imports it as correlated bootstrap operations and marks
+    records imported; missing or corrupt spool evidence fails production readiness.
+  paths:
+    - "scripts/bao_seed_newsletter.py"
+    - "scripts/bootstrap-cloud.sh"
+    - "scripts/check-profile-secrets.sh"
+    - "scripts/railway_env_sync.py"
+    - "scripts/setup_gmail.py"
+    - "scripts/setup_test_db.py"
+    - "scripts/stamp_release_revision.py"
+    - "scripts/verify_setup.py"
+
+provider_boundaries:
+  - "src/clients/**"
+  - "src/telemetry/providers/**"
+  - "src/storage/providers/**"
+
+explicit_exclusions:
+  - pattern: "/health|/ready|/metrics"
+    reason: "low-level probe with no domain operation"
+  - pattern: "static assets"
+    reason: "no backend operation"
+  - pattern: "scripts/__init__.py"
+    reason: "module marker; not executable"
+  - pattern: "scripts/check_alembic_heads.py"
+    reason: "pure deterministic schema check with no external or domain side effect"
+  - pattern: "scripts/generate_gen_eval_contract_schemas.py"
+    reason: "pure contract generator owned by the contract drift gate"
+  - pattern: "scripts/generate_workflow_contracts.py"
+    reason: "pure contract generator owned and validated by wp-contracts"
+  - pattern: "scripts/minimize_gen_eval_report.py"
+    reason: "pure local report transformation"
+  - pattern: "scripts/validate_frontend_deployment_evidence.py"
+    reason: "pure bounded evidence validator"
+  - pattern: "scripts/validate_gen_eval_contract.py"
+    reason: "pure bounded contract validator"
+  - pattern: "scripts/validate_gen_eval_report.py"
+    reason: "pure bounded evidence validator"
+  - pattern: "scripts/validate_openspec_inventory.py"
+    reason: "pure repository inventory validator"
+  - pattern: "scripts/validate_release_smoke_evidence.py"
+    reason: "pure bounded evidence validator"

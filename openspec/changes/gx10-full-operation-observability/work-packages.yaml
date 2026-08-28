@@ -3,12 +3,12 @@ schema_version: 1
 feature:
   id: "gx10-full-operation-observability"
   title: "GX-10 full operation observability"
-  plan_revision: 2
+  plan_revision: 3
   created_by: "codex"
   created_at: "2026-08-28T12:00:00Z"
 
 contracts:
-  revision: 2
+  revision: 3
   openapi:
     primary: "openspec/changes/gx10-full-operation-observability/contracts/openapi/v1.yaml"
     files:
@@ -29,7 +29,7 @@ packages:
   - package_id: "wp-contracts"
     title: "Freeze observability contracts"
     task_type: "contracts"
-    description: "Validate the additive OpenAPI, SQL, event schemas, generated types, and workflow-model compatibility before implementation."
+    description: "Freeze the all-operation entrypoint/provider inventory and validate the additive OpenAPI, SQL, event schemas, generated types, and workflow-model compatibility before implementation."
     role: "contract-engineer"
     priority: 1
     depends_on: []
@@ -37,6 +37,9 @@ packages:
       files:
         - "openspec/changes/gx10-full-operation-observability/contracts/openapi/v1.yaml"
         - "openspec/contracts/content-workflows/openapi/v1.yaml"
+        - "Makefile"
+        - ".github/workflows/ci.yml"
+        - "scripts/generate_workflow_contracts.py"
         - "src/contracts/workflow_models.py"
         - "web/src/generated/workflow-contracts.ts"
       keys:
@@ -52,6 +55,9 @@ packages:
         - "openspec/contracts/content-workflows/generated/**"
         - "src/contracts/workflow_models.py"
         - "web/src/generated/workflow-contracts.ts"
+        - "Makefile"
+        - "scripts/generate_workflow_contracts.py"
+        - ".github/workflows/ci.yml"
         - "tests/contract/**"
       read_allow:
         - "openspec/**"
@@ -250,15 +256,19 @@ packages:
       files:
         - "src/api/operation_routes.py"
         - "src/api/middleware/audit.py"
+        - "src/config/settings.py"
       keys:
         - "api:GET /api/v1/operations/{operation_id}/attempts"
         - "api:GET /api/v1/status/observability"
+        - "env:gx10-operator-capability"
       ttl_minutes: 180
       reason: "Own operator-facing observability and audit surfaces"
     scope:
       write_allow:
         - "src/api/**"
+        - "src/config/settings.py"
         - "src/services/workflow_terminal_event_service.py"
+        - "src/models/workflow_alert.py"
         - "src/api/middleware/audit.py"
         - "src/models/workflow_alert.py"
         - "tests/api/**"
@@ -323,6 +333,8 @@ packages:
         - "tests/processors/**"
         - "tests/pipeline/**"
         - "tests/delivery/**"
+        - "tests/workflows/**"
+        - "tests/storage/**"
       read_allow:
         - "src/**"
         - "tests/**"
@@ -354,7 +366,7 @@ packages:
   - package_id: "wp-operational-coverage"
     title: "Trace operational entrypoints"
     task_type: "implement"
-    description: "Instrument MCP, agents, schedulers, maintenance, backups, restores, alerts, and external provider boundaries."
+    description: "Instrument every entrypoint assigned by the frozen inventory: MCP, all CLI commands through the shared lifecycle, agents, schedulers, maintenance, backups, restores, alerts, operational scripts, and client boundaries."
     role: "platform-engineer"
     priority: 4
     depends_on: ["wp-queue-core"]
@@ -372,17 +384,41 @@ packages:
         - "src/tasks/**"
         - "src/services/backup/**"
         - "src/release_smoke/**"
-        - "src/cli/agent_commands.py"
-        - "src/cli/backup_commands.py"
+        - "src/cli/**"
         - "src/mcp_server.py"
         - "src/services/alert_sinks.py"
         - "src/services/backup_freshness_alert.py"
         - "src/services/notification_cleanup.py"
         - "src/services/workflow_alert_delivery.py"
+        - "src/clients/**"
+        - "scripts/analyze_themes.py"
+        - "scripts/backup_retention.py"
+        - "scripts/extract_entities.py"
+        - "scripts/generate_daily_digest.py"
+        - "scripts/generate_podcast.py"
+        - "scripts/generate_weekly_digest.py"
+        - "scripts/query_knowledge_graph.py"
+        - "scripts/review_digest.py"
+        - "scripts/run_release_smoke.py"
+        - "scripts/send_test_trace.py"
+        - "scripts/verify_workflow_alerting.py"
+        - "scripts/run_gen_eval_gate.py"
+        - "scripts/validate_docling.py"
+        - "scripts/bao_seed_newsletter.py"
+        - "scripts/bootstrap-cloud.sh"
+        - "scripts/check-profile-secrets.sh"
+        - "scripts/railway_env_sync.py"
+        - "scripts/setup_gmail.py"
+        - "scripts/setup_test_db.py"
+        - "scripts/stamp_release_revision.py"
+        - "scripts/verify_setup.py"
         - "tests/agents/**"
         - "tests/mcp_tools/**"
         - "tests/tasks/**"
         - "tests/services/backup/**"
+        - "tests/cli/**"
+        - "tests/clients/**"
+        - "tests/scripts/**"
       read_allow:
         - "src/**"
         - "tests/**"
@@ -402,7 +438,7 @@ packages:
       steps:
         - name: "operational-trace-tests"
           kind: "command"
-          command: "uv run pytest tests/agents tests/mcp_tools tests/tasks tests/services/backup tests/cli -q --junitxml=artifacts/wp-operational-coverage/pytest.xml"
+          command: "uv run pytest tests/agents tests/mcp_tools tests/tasks tests/services/backup tests/cli tests/clients tests/scripts -q --junitxml=artifacts/wp-operational-coverage/pytest.xml"
           expect_exit_code: 0
           evidence:
             artifacts: ["artifacts/wp-operational-coverage/pytest.xml"]
@@ -418,7 +454,7 @@ packages:
     description: "Create the production profile and local topology with private networks, persistent volumes, health order, pinned images, quotas, and readiness."
     role: "deployment-engineer"
     priority: 4
-    depends_on: ["wp-queue-core"]
+    depends_on: ["wp-api-audit"]
     locks:
       files:
         - "profiles/gx10.yaml"
@@ -589,12 +625,15 @@ packages:
         - "tests/e2e/test_operation_observability.py"
       keys:
         - "feature:gx10-full-operation-observability:verification"
-      ttl_minutes: 240
-      reason: "Own end-to-end verification and operational handoff"
+      ttl_minutes: 480
+      reason: "Own resumable six-hour end-to-end verification and operational handoff"
     scope:
       write_allow:
         - "tests/e2e/**"
+        - "tests/scripts/test_gx10_acceptance.py"
         - "scripts/gx10/verify_observability.py"
+        - "scripts/gx10/run_observability_soak.py"
+        - "scripts/gx10/validate_acceptance.py"
         - "docs/runbooks/gx10-observability.md"
         - "docs/observability/**"
         - "openspec/changes/railway-to-gx10-data-cutover/**"
@@ -605,7 +644,7 @@ packages:
     worktree:
       name: "wp-e2e-handoff"
       mode: "isolated"
-    timeout_minutes: 240
+    timeout_minutes: 480
     retry_budget: 1
     min_trust_level: 3
     verification:
@@ -613,12 +652,13 @@ packages:
       steps:
         - name: "gx10-observability-e2e"
           kind: "command"
-          command: "uv run pytest tests/e2e/test_operation_observability.py -q --junitxml=artifacts/wp-e2e-handoff/pytest.xml"
+          command: "uv run pytest tests/e2e/test_operation_observability.py tests/scripts/test_gx10_acceptance.py -q --junitxml=artifacts/wp-e2e-handoff/pytest.xml && uv run python scripts/gx10/run_observability_soak.py --duration-hours 6 --resume artifacts/wp-e2e-handoff/soak.checkpoint.json --output artifacts/wp-e2e-handoff/soak.json && uv run python scripts/gx10/validate_acceptance.py artifacts/wp-e2e-handoff/soak.json --output artifacts/wp-e2e-handoff/acceptance.json"
           expect_exit_code: 0
           evidence:
             artifacts:
               - "artifacts/wp-e2e-handoff/pytest.xml"
               - "artifacts/wp-e2e-handoff/soak.json"
+              - "artifacts/wp-e2e-handoff/acceptance.json"
             result_keys: ["test_count", "postgres_trace_join", "langfuse_trace_join", "canaries_absent", "soak_baseline"]
     inputs:
       task_ids: ["9.3", "9.4", "9.5", "10.1", "10.2", "10.3"]
@@ -641,64 +681,56 @@ packages:
     scope:
       write_allow:
         - "openspec/changes/gx10-full-operation-observability/**"
-        - "openspec/changes/railway-to-gx10-data-cutover/**"
-        - "openspec/contracts/content-workflows/**"
-        - "alembic/versions/**"
+        - "openspec/changes/gx10-full-operation-observability/contracts/**"
+        - "openspec/contracts/content-workflows/openapi/v1.yaml"
+        - "openspec/contracts/content-workflows/db/schema.sql"
+        - "openspec/contracts/content-workflows/events/**"
+        - "openspec/contracts/content-workflows/generated/**"
         - "src/contracts/workflow_models.py"
-        - "src/contracts/operation_context.py"
-        - "src/telemetry/**"
+        - "web/src/generated/workflow-contracts.ts"
+        - "Makefile"
+        - "scripts/generate_workflow_contracts.py"
+        - ".github/workflows/ci.yml"
+        - "tests/contract/**"
+        - "alembic/versions/**"
         - "src/queue/setup.py"
+        - "src/repositories/operation_observation_attempts.py"
+        - "src/repositories/telemetry_process_health.py"
+        - "tests/queue/test_operation_observation_attempts.py"
+        - "tests/integration/test_operation_observation_attempts.py"
+        - "src/telemetry/**"
+        - "src/contracts/operation_context.py"
+        - "tests/telemetry/**"
+        - "tests/contract/test_operation_context.py"
+        - "src/services/operation_service.py"
         - "src/queue/worker.py"
         - "src/queue/execution_claim.py"
         - "src/queue/workflow_handlers.py"
-        - "src/repositories/operation_observation_attempts.py"
-        - "src/repositories/telemetry_process_health.py"
-        - "src/services/operation_service.py"
-        - "src/services/workflow_terminal_event_service.py"
-        - "src/services/storage_governance.py"
-        - "src/services/environment_ownership.py"
-        - "src/services/backup/**"
-        - "src/services/llm_router.py"
-        - "src/services/indexing.py"
-        - "src/services/file_storage.py"
-        - "src/services/cloud_stt/**"
-        - "src/services/alert_sinks.py"
-        - "src/services/backup_freshness_alert.py"
-        - "src/services/notification_cleanup.py"
-        - "src/services/workflow_alert_delivery.py"
         - "src/worker.py"
         - "src/cli/worker_commands.py"
-        - "src/cli/agent_commands.py"
-        - "src/cli/backup_commands.py"
-        - "src/mcp_server.py"
+        - "src/api/app.py"
+        - "src/config/settings.py"
+        - "tests/api/test_observability_lifecycle.py"
+        - "tests/services/test_operation_observability.py"
+        - "tests/queue/test_trace_propagation.py"
+        - "tests/integration/test_queue_trace_propagation.py"
         - "src/api/**"
+        - "src/services/workflow_terminal_event_service.py"
+        - "src/models/workflow_alert.py"
         - "src/api/middleware/audit.py"
+        - "tests/api/**"
+        - "tests/services/test_workflow_terminal_event_observability.py"
         - "src/ingestion/**"
         - "src/parsers/**"
         - "src/processors/**"
         - "src/pipeline/**"
         - "src/delivery/**"
         - "src/workflows/**"
+        - "src/services/llm_router.py"
+        - "src/services/indexing.py"
+        - "src/services/file_storage.py"
+        - "src/services/cloud_stt/**"
         - "src/storage/**"
-        - "src/agents/**"
-        - "src/mcp_tools/**"
-        - "src/tasks/**"
-        - "src/release_smoke/**"
-        - "src/config/**"
-        - "profiles/**"
-        - "docker-compose.gx10.yml"
-        - "docker-compose.langfuse.yml"
-        - "deploy/gx10/**"
-        - "scripts/gx10/**"
-        - "docs/runbooks/gx10-observability.md"
-        - "docs/observability/**"
-        - "web/src/generated/workflow-contracts.ts"
-        - "tests/contract/**"
-        - "tests/telemetry/**"
-        - "tests/queue/**"
-        - "tests/integration/**"
-        - "tests/services/**"
-        - "tests/api/**"
         - "tests/ingestion/**"
         - "tests/parsers/**"
         - "tests/processors/**"
@@ -706,13 +738,75 @@ packages:
         - "tests/delivery/**"
         - "tests/workflows/**"
         - "tests/storage/**"
-        - "tests/cli/**"
+        - "src/agents/**"
+        - "src/mcp_tools/**"
+        - "src/tasks/**"
+        - "src/services/backup/**"
+        - "src/release_smoke/**"
+        - "src/cli/**"
+        - "src/mcp_server.py"
+        - "src/services/alert_sinks.py"
+        - "src/services/backup_freshness_alert.py"
+        - "src/services/notification_cleanup.py"
+        - "src/services/workflow_alert_delivery.py"
+        - "src/clients/**"
+        - "scripts/analyze_themes.py"
+        - "scripts/backup_retention.py"
+        - "scripts/extract_entities.py"
+        - "scripts/generate_daily_digest.py"
+        - "scripts/generate_podcast.py"
+        - "scripts/generate_weekly_digest.py"
+        - "scripts/query_knowledge_graph.py"
+        - "scripts/review_digest.py"
+        - "scripts/run_release_smoke.py"
+        - "scripts/send_test_trace.py"
+        - "scripts/verify_workflow_alerting.py"
+        - "scripts/run_gen_eval_gate.py"
+        - "scripts/validate_docling.py"
+        - "scripts/bao_seed_newsletter.py"
+        - "scripts/bootstrap-cloud.sh"
+        - "scripts/check-profile-secrets.sh"
+        - "scripts/railway_env_sync.py"
+        - "scripts/setup_gmail.py"
+        - "scripts/setup_test_db.py"
+        - "scripts/stamp_release_revision.py"
+        - "scripts/verify_setup.py"
         - "tests/agents/**"
         - "tests/mcp_tools/**"
         - "tests/tasks/**"
+        - "tests/services/backup/**"
+        - "tests/cli/**"
+        - "tests/clients/**"
+        - "tests/scripts/**"
+        - "profiles/**"
+        - "docker-compose.gx10.yml"
+        - "docker-compose.langfuse.yml"
+        - "deploy/gx10/**"
+        - "scripts/gx10/**"
+        - "src/config/**"
         - "tests/config/**"
         - "tests/deployment/gx10/**"
+        - "src/services/storage_governance.py"
+        - "src/services/backup/gx10.py"
+        - "scripts/gx10/storage/**"
+        - "scripts/gx10/backup/**"
+        - "tests/services/test_storage_governance.py"
+        - "tests/services/backup/test_gx10.py"
+        - "tests/deployment/gx10/test_storage_policy.py"
+        - "src/services/environment_ownership.py"
+        - "src/api/status_routes.py"
+        - "src/tasks/scheduler.py"
+        - "tests/services/test_environment_ownership.py"
+        - "tests/api/test_environment_ownership.py"
+        - "tests/queue/test_environment_ownership.py"
         - "tests/e2e/**"
+        - "tests/scripts/test_gx10_acceptance.py"
+        - "scripts/gx10/verify_observability.py"
+        - "scripts/gx10/run_observability_soak.py"
+        - "scripts/gx10/validate_acceptance.py"
+        - "docs/runbooks/gx10-observability.md"
+        - "docs/observability/**"
+        - "openspec/changes/railway-to-gx10-data-cutover/**"
       read_allow: ["**"]
     worktree:
       name: "wp-integration"
@@ -732,14 +826,14 @@ packages:
             result_keys: ["test_count"]
         - name: "static-quality"
           kind: "command"
-          command: "uv run ruff check . && uv run mypy src"
+          command: "bash -o pipefail -c 'mkdir -p artifacts/wp-integration && uv run ruff check . 2>&1 | tee artifacts/wp-integration/static-quality.txt && uv run mypy src 2>&1 | tee -a artifacts/wp-integration/static-quality.txt'"
           expect_exit_code: 0
           evidence:
             artifacts: ["artifacts/wp-integration/static-quality.txt"]
             result_keys: ["ruff_passed", "mypy_passed"]
         - name: "contract-and-plan"
           kind: "command"
-          command: "make workflow-contracts-check && openspec validate gx10-full-operation-observability --strict"
+          command: "bash -o pipefail -c 'mkdir -p artifacts/wp-integration && make workflow-contracts-check 2>&1 | tee artifacts/wp-integration/contracts.txt && openspec validate gx10-full-operation-observability --strict 2>&1 | tee -a artifacts/wp-integration/contracts.txt'"
           expect_exit_code: 0
           evidence:
             artifacts: ["artifacts/wp-integration/contracts.txt"]

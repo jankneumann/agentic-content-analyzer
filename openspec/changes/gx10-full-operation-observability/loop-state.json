@@ -1,0 +1,78 @@
+{
+  "schema_version": 4,
+  "change_id": "gx10-full-operation-observability",
+  "current_phase": "ESCALATE",
+  "iteration": 3,
+  "total_iterations": 9,
+  "max_phase_iterations": 3,
+  "findings_trend": [
+    0,
+    0,
+    0
+  ],
+  "blocking_findings": [
+    "plan-review-3"
+  ],
+  "vendor_availability": {},
+  "packages_status": {},
+  "package_authors": {},
+  "implementation_strategy": {},
+  "memory_ids": [],
+  "handoff_ids": [
+    "gatekeeper:gx10-full-operation-observability:review-required",
+    "plan-iteration-1-1",
+    "plan-review-1",
+    "plan-review-2",
+    "plan-review-3"
+  ],
+  "phase_history": [
+    {
+      "at": "2026-08-28T21:23:06.732339+00:00",
+      "outcome": "proceed_with_review",
+      "phase": "GATEKEEPER"
+    },
+    {
+      "at": "2026-08-28T21:46:40.006119+00:00",
+      "outcome": "complete",
+      "phase": "PLAN_ITERATE"
+    },
+    {
+      "at": "2026-08-28T21:56:26.005982+00:00",
+      "outcome": "not_converged",
+      "phase": "PLAN_REVIEW"
+    },
+    {
+      "at": "2026-08-28T22:16:45.797794+00:00",
+      "outcome": "not_converged",
+      "phase": "PLAN_REVIEW"
+    },
+    {
+      "at": "2026-08-28T22:31:48.101538+00:00",
+      "outcome": "max_iter",
+      "phase": "PLAN_REVIEW"
+    }
+  ],
+  "last_handoff_id": "plan-review-3",
+  "started_at": "2026-08-28T21:20:27.347960+00:00",
+  "phase_started_at": "2026-08-28T22:32:15.529851+00:00",
+  "previous_phase": "PLAN_REVIEW",
+  "escalation_reason": "PLAN_REVIEW exhausted max_phase_iterations with four unresolved contract blockers",
+  "val_review_enabled": true,
+  "cli_review_enabled": true,
+  "error": null,
+  "phase_archetype": "reviewer",
+  "force": false,
+  "gate_signals": {
+    "external_dep_count": 0,
+    "has_broad_write_scope": false,
+    "has_db_migration": true,
+    "has_proposal": true,
+    "has_security_signal": true,
+    "has_specs": true,
+    "has_tasks": true,
+    "has_work_packages": true,
+    "package_count": 11,
+    "total_loc_estimate": null
+  },
+  "gate_verdict": "proceed_with_review"
+}

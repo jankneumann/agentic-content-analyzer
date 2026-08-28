@@ -1,0 +1,79 @@
+{
+  "review_type": "plan",
+  "target": "gx10-full-operation-observability",
+  "reviewer_vendor": "codex",
+  "findings": [
+    {
+      "id": 1,
+      "type": "contract_mismatch",
+      "criticality": "critical",
+      "description": "Critical: telemetry_process_health declares checks and an index over lifecycle_kind and expires_at, but neither column exists in the table definition, so the contract DDL cannot execute and the promised 24-hour/7-day retention classes cannot be persisted.",
+      "resolution": "Add constrained lifecycle_kind and expires_at columns before the constraints and index, and enforce the class-specific expiry rule (24 hours for long_running, 7 days for short_lived) rather than only the current generic <=7-day upper bound. Add migration parse/upgrade/downgrade and both lifecycle boundary tests.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/gx10-full-operation-observability/contracts/sql/001_operation_observability.sql",
+      "line_range": {"start": 111, "end": 154},
+      "axis": "correctness",
+      "severity": "critical"
+    },
+    {
+      "id": 2,
+      "type": "contract_mismatch",
+      "criticality": "critical",
+      "description": "Critical: ck_pgqueuer_jobs_context_identity still permits missing duplicated correlation fields because PostgreSQL CHECK accepts UNKNOWN: root_job_id/submission_traceparent/trace_id/submission_span_id use nullable '=' comparisons, so a non-null submission_context plus null indexed columns passes instead of proving equality.",
+      "resolution": "For rows with submission_context, require every non-null canonical duplicate to be present and compare with IS NOT DISTINCT FROM (including the root identifier after explicitly defining root self-reference semantics). Add negative tests for each null duplicate and each mismatched value, while continuing to allow legacy rows only when submission_context itself is null.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/gx10-full-operation-observability/contracts/sql/001_operation_observability.sql",
+      "line_range": {"start": 34, "end": 42},
+      "axis": "correctness",
+      "severity": "critical"
+    },
+    {
+      "id": 3,
+      "type": "contract_mismatch",
+      "criticality": "critical",
+      "description": "Critical: the checked-in generated Python model still diverges from OpenAPI's signed-BIGINT bounds: OperationAttemptPage.root_operation_id and next_after_claim_generation and both ownership epoch fields accept 9999999999999999999. The cursor is also modeled as a general non-negative int64 in OpenAPI even though it represents a claim generation capped at 9223372036854775806.",
+      "resolution": "Regenerate every Python field from the shared OperationId, ClaimGenerationString, and Int64NonNegativeString definitions; use ClaimGenerationString for request/response attempt cursors; and make the drift gate instantiate max, max+1, and cursor/epoch boundary cases across JSON Schema, OpenAPI-derived validation, Python, and TypeScript consumers.",
+      "disposition": "regenerate",
+      "file_path": "openspec/changes/gx10-full-operation-observability/contracts/generated/python/operation_observability.py",
+      "line_range": {"start": 115, "end": 180},
+      "axis": "architecture",
+      "severity": "critical"
+    },
+    {
+      "id": 4,
+      "type": "security",
+      "criticality": "critical",
+      "description": "Critical: untrusted traceparent is constrained only by length in JSON Schema, OpenAPI, and the generated Pydantic model, and no contract validator requires its embedded trace/span identifiers to match trace_id/span_id. A 55-character non-W3C string or a syntactically valid carrier for a different trace is therefore admitted, enabling trace-correlation spoofing and split audit evidence.",
+      "resolution": "Specify and generate W3C Trace Context syntax plus non-zero identifier validation, add a model-level semantic validator that the carrier trace ID and parent ID match the explicit canonical fields under the chosen span semantics, validate tracestate syntax, and add malformed/mismatched ingress tests in every generated/runtime contract surface.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/gx10-full-operation-observability/contracts/events/operation-context-v1.schema.json",
+      "line_range": {"start": 47, "end": 67},
+      "axis": "security",
+      "severity": "critical"
+    },
+    {
+      "id": 5,
+      "type": "correctness",
+      "criticality": "medium",
+      "description": "Nit: the SQL attempt table documents claim-generation headroom but ck_operation_attempt_claim_generation checks only >=0; generation 9223372036854775807 is rejected indirectly by overflow while evaluating claim_generation + 1 rather than by the declared bound.",
+      "resolution": "Add claim_generation <= 9223372036854775806 to the named constraint so the database contract states the accepted range directly and boundary failures are deterministic.",
+      "disposition": "fix",
+      "file_path": "openspec/changes/gx10-full-operation-observability/contracts/sql/001_operation_observability.sql",
+      "line_range": {"start": 53, "end": 75},
+      "axis": "correctness",
+      "severity": "nit"
+    },
+    {
+      "id": 6,
+      "type": "architecture",
+      "criticality": "low",
+      "description": "The revision now has a valid acyclic package DAG, repaired coverage and integration write scopes, a concrete resumable six-hour soak, an enforceable process-local telemetry budget, explicit bootstrap inventory, and a materially specified fail-closed Squid egress topology.",
+      "resolution": "Retain these corrections while fixing the remaining executable SQL and cross-contract validation blockers.",
+      "disposition": "accept",
+      "file_path": "openspec/changes/gx10-full-operation-observability/work-packages.yaml",
+      "line_range": {"start": 29, "end": 851},
+      "axis": "architecture",
+      "severity": "none"
+    }
+  ]
+}
