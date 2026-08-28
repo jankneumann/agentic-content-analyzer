@@ -684,7 +684,9 @@ class Settings(BaseSettings):
 
     # Document Parser Configuration
     enable_docling: bool = True  # Enable Docling parser for advanced PDF/OCR
-    docling_enable_ocr: bool = False  # Enable OCR for scanned documents (requires the `ocr` extra: docling[rapidocr])
+    docling_enable_ocr: bool = (
+        False  # Enable OCR for scanned documents (requires the `ocr` extra: docling[rapidocr])
+    )
     docling_max_file_size_mb: int = 100  # Maximum file size for Docling processing
     docling_timeout_seconds: int = 300  # Processing timeout for large documents
     docling_cache_dir: str = "/tmp/docling"  # Cache directory for Docling models  # noqa: S108
