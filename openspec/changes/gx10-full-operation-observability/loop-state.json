@@ -1,18 +1,16 @@
 {
   "schema_version": 4,
   "change_id": "gx10-full-operation-observability",
-  "current_phase": "ESCALATE",
+  "current_phase": "PLAN_REVIEW",
   "iteration": 3,
   "total_iterations": 9,
-  "max_phase_iterations": 3,
+  "max_phase_iterations": 6,
   "findings_trend": [
     0,
     0,
     0
   ],
-  "blocking_findings": [
-    "plan-review-3"
-  ],
+  "blocking_findings": [],
   "vendor_availability": {},
   "packages_status": {},
   "package_authors": {},
@@ -50,13 +48,18 @@
       "at": "2026-08-28T22:31:48.101538+00:00",
       "outcome": "max_iter",
       "phase": "PLAN_REVIEW"
+    },
+    {
+      "at": "2026-08-29T01:47:12.697392+00:00",
+      "outcome": "budget_reset_after_issue_514",
+      "phase": "ESCALATE"
     }
   ],
   "last_handoff_id": "plan-review-3",
   "started_at": "2026-08-28T21:20:27.347960+00:00",
-  "phase_started_at": "2026-08-28T22:32:15.529851+00:00",
-  "previous_phase": "PLAN_REVIEW",
-  "escalation_reason": "PLAN_REVIEW exhausted max_phase_iterations with four unresolved contract blockers",
+  "phase_started_at": "2026-08-29T01:47:12.697401+00:00",
+  "previous_phase": null,
+  "escalation_reason": null,
   "val_review_enabled": true,
   "cli_review_enabled": true,
   "error": null,

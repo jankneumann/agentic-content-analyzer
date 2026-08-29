@@ -28,17 +28,31 @@ ALTER TABLE pgqueuer_jobs
             AND octet_length(submission_context::text) <= 4096
         )),
     ADD CONSTRAINT ck_pgqueuer_jobs_trace_id
-        CHECK (trace_id IS NULL OR trace_id ~ '^[0-9a-f]{32}$'),
+        CHECK (trace_id IS NULL OR (
+            trace_id ~ '^[0-9a-f]{32}$'
+            AND trace_id <> repeat('0', 32)
+        )),
     ADD CONSTRAINT ck_pgqueuer_jobs_submission_span_id
-        CHECK (submission_span_id IS NULL OR submission_span_id ~ '^[0-9a-f]{16}$'),
+        CHECK (submission_span_id IS NULL OR (
+            submission_span_id ~ '^[0-9a-f]{16}$'
+            AND submission_span_id <> repeat('0', 16)
+        )),
+    ADD CONSTRAINT ck_pgqueuer_jobs_submission_traceparent
+        CHECK (submission_traceparent IS NULL OR (
+            submission_traceparent ~ '^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$'
+            AND substring(submission_traceparent FROM 4 FOR 32) = trace_id
+            AND substring(submission_traceparent FROM 37 FOR 16) = submission_span_id
+        )),
     ADD CONSTRAINT ck_pgqueuer_jobs_context_identity
+        -- Root operations store root_job_id = id; children store the allocated
+        -- root id. Legacy rows are allowed only when submission_context is NULL.
         CHECK (submission_context IS NULL OR (
-            id = (submission_context->>'operation_id')::BIGINT
-            AND root_job_id = (submission_context->>'root_operation_id')::BIGINT
-            AND submission_traceparent = submission_context->>'traceparent'
+            id IS NOT DISTINCT FROM (submission_context->>'operation_id')::BIGINT
+            AND root_job_id IS NOT DISTINCT FROM (submission_context->>'root_operation_id')::BIGINT
+            AND submission_traceparent IS NOT DISTINCT FROM submission_context->>'traceparent'
             AND submission_tracestate IS NOT DISTINCT FROM submission_context->>'tracestate'
-            AND trace_id = submission_context->>'trace_id'
-            AND submission_span_id = submission_context->>'span_id'
+            AND trace_id IS NOT DISTINCT FROM submission_context->>'trace_id'
+            AND submission_span_id IS NOT DISTINCT FROM submission_context->>'span_id'
         ));
 
 CREATE INDEX IF NOT EXISTS idx_pgqueuer_jobs_root_job_id
@@ -70,11 +84,17 @@ CREATE TABLE IF NOT EXISTS operation_observation_attempts (
     diagnostic_codes operation_diagnostic_code[] NOT NULL DEFAULT ARRAY[]::operation_diagnostic_code[],
     diagnostics_omitted INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (operation_id, claim_generation),
-    CONSTRAINT ck_operation_attempt_claim_generation CHECK (claim_generation >= 0),
+    CONSTRAINT ck_operation_attempt_claim_generation
+        CHECK (claim_generation BETWEEN 0 AND 9223372036854775806),
     CONSTRAINT ck_operation_attempt_number CHECK (attempt_number = claim_generation + 1),
-    CONSTRAINT ck_operation_attempt_trace_id CHECK (trace_id ~ '^[0-9a-f]{32}$'),
+    CONSTRAINT ck_operation_attempt_trace_id CHECK (
+        trace_id ~ '^[0-9a-f]{32}$' AND trace_id <> repeat('0', 32)
+    ),
     CONSTRAINT ck_operation_attempt_root_span_id
-        CHECK (root_span_id IS NULL OR root_span_id ~ '^[0-9a-f]{16}$'),
+        CHECK (root_span_id IS NULL OR (
+            root_span_id ~ '^[0-9a-f]{16}$'
+            AND root_span_id <> repeat('0', 16)
+        )),
     CONSTRAINT ck_operation_attempt_completed_after_started
         CHECK (completed_at IS NULL OR completed_at >= started_at),
     CONSTRAINT ck_operation_attempt_outcome CHECK (
@@ -114,6 +134,8 @@ CREATE TABLE IF NOT EXISTS telemetry_process_health (
     service_name VARCHAR(100) NOT NULL,
     service_instance_id VARCHAR(128) NOT NULL,
     release_revision VARCHAR(64) NOT NULL,
+    lifecycle_kind VARCHAR(16) NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
     required_observability BOOLEAN NOT NULL,
     initialized BOOLEAN NOT NULL,
     status VARCHAR(16) NOT NULL,
@@ -131,8 +153,13 @@ CREATE TABLE IF NOT EXISTS telemetry_process_health (
     CONSTRAINT ck_telemetry_process_lifecycle
         CHECK (lifecycle_kind IN ('long_running', 'short_lived')),
     CONSTRAINT ck_telemetry_process_expiry
-        CHECK (expires_at > last_heartbeat_at
-               AND expires_at <= last_heartbeat_at + INTERVAL '7 days'),
+        CHECK (
+            (lifecycle_kind = 'long_running'
+             AND expires_at = last_heartbeat_at + INTERVAL '24 hours')
+            OR
+            (lifecycle_kind = 'short_lived'
+             AND expires_at = last_heartbeat_at + INTERVAL '7 days')
+        ),
     CONSTRAINT ck_telemetry_process_status
         CHECK (status IN ('healthy', 'degraded', 'disabled', 'stale')),
     CONSTRAINT ck_telemetry_process_export_target

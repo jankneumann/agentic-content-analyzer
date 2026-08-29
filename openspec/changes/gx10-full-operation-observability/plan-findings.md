@@ -75,3 +75,16 @@ PLAN_REVIEW round 2 identified ten final blockers; all were fixed inline before 
 - Static/contract integration steps create their declared evidence files while preserving pipeline exit status.
 
 Validation: strict OpenSpec passes; all work-package schema/reference/DAG/lock/scope checks pass; JSON Schema metaschema checks pass; all current scripts are classified; integration covers the complete predecessor union; and generated signed-BIGINT boundary tests pass.
+
+
+## Iteration 4
+
+Issue #514's five reproduced contract findings were resolved before resetting the exhausted PLAN_REVIEW budget.
+
+- `telemetry_process_health` now declares `lifecycle_kind` and `expires_at` and enforces exact 24-hour long-running and 7-day short-lived expiry. The database package explicitly owns executable DDL parse, upgrade/downgrade, and both lifecycle boundary tests.
+- Queue identity duplicates use null-safe `IS NOT DISTINCT FROM`; root self-reference is defined, every duplicate is required when canonical context exists, and only rows with null canonical context retain legacy compatibility.
+- JSON Schema, OpenAPI, Python, and TypeScript artifacts use the exact signed-BIGINT boundaries; claim-generation request/response cursors reserve `+1` headroom; runtime checks exercise max and max+1 for operation, cursor, and ownership fields.
+- Canonical version-00 traceparent syntax, non-zero trace/span identifiers, carrier-to-envelope identifier equality, and bounded tracestate validation are frozen across contracts. SQL independently rejects zero and mismatched stored carrier identifiers.
+- The named PostgreSQL claim-generation constraint explicitly caps values at `9223372036854775806`.
+
+Validation: strict OpenSpec passes; all work-package schema/reference/DAG/lock/scope checks pass; JSON Schema metaschema, OpenAPI parsing, Python model validation, TypeScript runtime guards, SQL contract assertions, signed-BIGINT max/max+1 cases, W3C malformed/zero/mismatch cases, and `git diff --check` pass.

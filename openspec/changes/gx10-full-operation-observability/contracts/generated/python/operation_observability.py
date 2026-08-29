@@ -2,11 +2,29 @@
 
 from __future__ import annotations
 
+import re
+
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+
+
+TRACEPARENT_PATTERN = re.compile(r"^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$")
+TRACESTATE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_*/-]{0,255}=(?:[!-+\--<>-~]|[!-+\--<>-~][ -+\--<>-~]{0,254}[!-+\--<>-~])(,[a-z0-9][a-z0-9_*/-]{0,255}=(?:[!-+\--<>-~]|[!-+\--<>-~][ -+\--<>-~]{0,254}[!-+\--<>-~])){0,31}$")
+
+def _reject_zero_identifier(value: str) -> str:
+    if not value.strip("0"):
+        raise ValueError("W3C trace and span identifiers must be non-zero")
+    return value
+
+OperationIdString = Annotated[str, Field(pattern=r"^([1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$", max_length=19)]
+PositiveInt64String = OperationIdString
+ClaimGenerationString = Annotated[str, Field(pattern=r"^(0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6])$", max_length=19)]
+NonNegativeInt64String = Annotated[str, Field(pattern=r"^(0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$", max_length=19)]
+TraceIdString = Annotated[str, Field(pattern=r"^[0-9a-f]{32}$"), AfterValidator(_reject_zero_identifier)]
+SpanIdString = Annotated[str, Field(pattern=r"^[0-9a-f]{16}$"), AfterValidator(_reject_zero_identifier)]
 
 
 class StrictModel(BaseModel):
@@ -59,15 +77,15 @@ class TelemetryDeliveryState(StrEnum):
 
 class OperationContextEnvelope(StrictModel):
     schema_version: Literal[1]
-    operation_id: str = Field(pattern=r"^([1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$", max_length=19)
-    root_operation_id: str = Field(pattern=r"^([1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$", max_length=19)
-    parent_operation_id: str | None = Field(pattern=r"^([1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$", max_length=19)
-    traceparent: str = Field(min_length=55, max_length=512)
+    operation_id: OperationIdString
+    root_operation_id: OperationIdString
+    parent_operation_id: OperationIdString | None
+    traceparent: str = Field(pattern=r"^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$", min_length=55, max_length=55)
     tracestate: str | None = Field(max_length=512)
-    trace_id: str = Field(pattern=r"^[0-9a-f]{32}$")
-    span_id: str = Field(pattern=r"^[0-9a-f]{16}$")
-    claim_generation: str = Field(pattern=r"^(0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6])$", max_length=19)
-    attempt_number: str | None = Field(pattern=r"^([1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$", max_length=19)
+    trace_id: TraceIdString
+    span_id: SpanIdString
+    claim_generation: ClaimGenerationString
+    attempt_number: PositiveInt64String | None
     entrypoint: str = Field(min_length=1, max_length=160)
     service_name: str = Field(min_length=1, max_length=100)
     service_instance_id: str = Field(min_length=1, max_length=128)
@@ -77,12 +95,26 @@ class OperationContextEnvelope(StrictModel):
     resource_kind: str | None = Field(max_length=64)
     resource_key: str | None = Field(max_length=128)
 
+    @model_validator(mode="after")
+    def validate_semantic_context(self) -> "OperationContextEnvelope":
+        match = TRACEPARENT_PATTERN.fullmatch(self.traceparent)
+        if match is None:
+            raise ValueError("traceparent must be canonical W3C version 00")
+        _, carrier_trace_id, carrier_parent_id, _ = self.traceparent.split("-")
+        if carrier_trace_id != self.trace_id or carrier_parent_id != self.span_id:
+            raise ValueError("traceparent identifiers must match trace_id and span_id")
+        if self.tracestate is not None and TRACESTATE_PATTERN.fullmatch(self.tracestate) is None:
+            raise ValueError("tracestate must use the bounded W3C simple-key subset")
+        if self.attempt_number is not None and int(self.attempt_number) != int(self.claim_generation) + 1:
+            raise ValueError("attempt_number must equal claim_generation + 1")
+        return self
+
 
 class OperationAttemptSummary(StrictModel):
-    claim_generation: str = Field(pattern=r"^(0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6])$", max_length=19)
-    attempt_number: str = Field(pattern=r"^([1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$", max_length=19)
-    trace_id: str = Field(pattern=r"^[0-9a-f]{32}$")
-    root_span_id: str | None = Field(pattern=r"^[0-9a-f]{16}$")
+    claim_generation: ClaimGenerationString
+    attempt_number: PositiveInt64String
+    trace_id: TraceIdString
+    root_span_id: SpanIdString | None
     langfuse_observation_id: str | None = Field(max_length=64)
     service_name: str = Field(max_length=100)
     service_instance_id: str = Field(max_length=128)
@@ -97,10 +129,16 @@ class OperationAttemptSummary(StrictModel):
     diagnostic_codes: list[str] = Field(max_length=20)
     diagnostics_omitted: int = Field(ge=0)
 
+    @model_validator(mode="after")
+    def validate_attempt_number(self) -> "OperationAttemptSummary":
+        if int(self.attempt_number) != int(self.claim_generation) + 1:
+            raise ValueError("attempt_number must equal claim_generation + 1")
+        return self
+
 
 class OperationObservabilitySummary(StrictModel):
-    root_operation_id: str = Field(pattern=r"^([1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$", max_length=19)
-    trace_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    root_operation_id: OperationIdString
+    trace_id: TraceIdString
     attempt_count: int = Field(ge=0)
     latest_attempt: OperationAttemptSummary | None
     telemetry_delivery_state: TelemetryDeliveryState
@@ -114,11 +152,11 @@ class OperationObservabilityExtension(BaseModel):
 
 class OperationAttemptPage(StrictModel):
     schema_version: Literal[1]
-    operation_id: str = Field(pattern=r"^([1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$", max_length=19)
-    root_operation_id: str = Field(pattern=r"^[1-9][0-9]*$", max_length=19)
+    operation_id: OperationIdString
+    root_operation_id: OperationIdString
     attempts: list[OperationAttemptSummary] = Field(max_length=100)
     attempts_omitted: int = Field(ge=0)
-    next_after_claim_generation: str | None = Field(pattern=r"^(0|[1-9][0-9]{0,18})$", max_length=19)
+    next_after_claim_generation: ClaimGenerationString | None
 
 
 class ProcessObservabilityHealth(StrictModel):
@@ -165,7 +203,7 @@ class Problem(BaseModel):
 class OwnershipDryRun(StrictModel):
     target_environment: str = Field(min_length=1, max_length=32)
     allowed: bool
-    next_epoch: str | None = Field(pattern=r"^(0|[1-9][0-9]{0,18})$", max_length=19)
+    next_epoch: NonNegativeInt64String | None
     checks: list[str] = Field(max_length=20)
 
 
@@ -176,6 +214,6 @@ class EnvironmentOwnershipStatus(StrictModel):
     mode: Literal["active", "passive", "conflict"]
     authority_matches: bool
     authority_fingerprint_prefix: str = Field(pattern=r"^[0-9a-f]{12}$")
-    epoch: str = Field(pattern=r"^(0|[1-9][0-9]{0,18})$", max_length=19)
+    epoch: NonNegativeInt64String
     passive_reasons: list[str] = Field(max_length=20)
     dry_run: OwnershipDryRun | None

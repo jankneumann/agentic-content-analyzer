@@ -48,23 +48,27 @@
     },
     "traceparent": {
       "type": "string",
+      "pattern": "^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
       "minLength": 55,
-      "maxLength": 512
+      "maxLength": 55,
+      "description": "Canonical W3C version-00 carrier; embedded trace/parent IDs must equal trace_id/span_id."
     },
     "tracestate": {
       "type": [
         "string",
         "null"
       ],
-      "maxLength": 512
+      "maxLength": 512,
+      "pattern": "^[a-z0-9][a-z0-9_*/-]{0,255}=(?:[!-+\\--<>-~]|[!-+\\--<>-~][ -+\\--<>-~]{0,254}[!-+\\--<>-~])(,[a-z0-9][a-z0-9_*/-]{0,255}=(?:[!-+\\--<>-~]|[!-+\\--<>-~][ -+\\--<>-~]{0,254}[!-+\\--<>-~])){0,31}$",
+      "description": "Optional comma-separated safe W3C simple-key tracestate subset; at most 32 members and 512 bytes."
     },
     "trace_id": {
       "type": "string",
-      "pattern": "^[0-9a-f]{32}$"
+      "pattern": "^(?!0{32}$)[0-9a-f]{32}$"
     },
     "span_id": {
       "type": "string",
-      "pattern": "^[0-9a-f]{16}$"
+      "pattern": "^(?!0{16}$)[0-9a-f]{16}$"
     },
     "claim_generation": {
       "type": "string",
