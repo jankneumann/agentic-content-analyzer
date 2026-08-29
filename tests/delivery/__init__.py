@@ -1,0 +1,1 @@
+"""Scoped delivery observability tests."""
