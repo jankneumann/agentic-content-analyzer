@@ -1,16 +1,23 @@
 """Tests for the AgentScheduler and cron matching logic."""
 
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import yaml
 
+import src.agents.scheduler.scheduler as scheduler_module
 from src.agents.scheduler.scheduler import (
     AgentScheduler,
     ScheduleEntry,
     cron_matches,
+)
+from src.services.environment_ownership import (
+    EnvironmentOwnershipUnavailable,
+    OwnershipFenceRejected,
 )
 
 # ============================================================================
@@ -297,6 +304,44 @@ class TestAgentScheduler:
         assert call_args["persona"] == "ai-ml-technology"
         assert call_args["source"] == "schedule"
         assert call_args["schedule_id"] == "morning_scan"
+
+    @pytest.mark.parametrize(
+        "fence_error",
+        [
+            OwnershipFenceRejected("environment.passive"),
+            EnvironmentOwnershipUnavailable("authority unavailable"),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_tick_gx10_fails_closed_before_enqueue(
+        self,
+        schedule_yaml: Path,
+        monkeypatch,
+        fence_error: RuntimeError,
+    ) -> None:
+        enqueue_fn = AsyncMock(return_value="task-must-not-exist")
+        scheduler = AgentScheduler(schedule_path=str(schedule_yaml), enqueue_fn=enqueue_fn)
+        scheduler.start()
+
+        @contextmanager
+        def database_session():
+            yield MagicMock()
+
+        ownership_gate = MagicMock(side_effect=fence_error)
+        monkeypatch.setattr(
+            scheduler_module,
+            "get_settings",
+            lambda: SimpleNamespace(gx10_runtime_enabled=True),
+            raising=False,
+        )
+        monkeypatch.setattr(scheduler_module, "get_db", database_session, raising=False)
+        monkeypatch.setattr(
+            scheduler_module, "require_scheduler_ownership", ownership_gate, raising=False
+        )
+
+        assert await scheduler.tick(datetime(2025, 6, 16, 9, 0)) == []
+        ownership_gate.assert_called_once()
+        enqueue_fn.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_tick_no_enqueue_fn(self, schedule_yaml: Path):
