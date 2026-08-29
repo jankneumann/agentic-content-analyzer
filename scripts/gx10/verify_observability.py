@@ -109,6 +109,7 @@ class SubmissionIdentity:
         trace_id = _safe_identifier(value.get("trace_id"), 32)
         if not operation_id or not root_operation_id or not _is_trace_id(trace_id):
             raise AdapterCommandError("adapter_submit_invalid")
+        assert trace_id is not None
         return cls(operation_id, root_operation_id, trace_id)
 
     def to_mapping(self) -> dict[str, str]:
