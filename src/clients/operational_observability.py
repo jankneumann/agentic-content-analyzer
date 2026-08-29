@@ -9,6 +9,7 @@ operator-script roots useful without turning telemetry into a credential sink.
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import hashlib
 import inspect
 import json
@@ -42,8 +43,10 @@ _Outcome = Literal["succeeded", "partial", "permanent_failure"]
 _DEFAULT_BOOTSTRAP_DIRECTORY = Path("/srv/aca/bootstrap-audit")
 _SPOOL_NAME = "events.jsonl"
 _CHECKPOINT_NAME = "events.imported"
+_LOCK_NAME = "events.lock"
 _GENESIS = b"aca-bootstrap-audit-v1"
 _ASYNCIO_TO_THREAD = asyncio.to_thread
+_BOOTSTRAP_IMPORT_ADVISORY_LOCK = 2_104_711_918
 _ACTIVE_PROCESS_SCOPE: ContextVar[OperationalScope | None] = ContextVar(
     "operational_process_scope", default=None
 )
@@ -647,6 +650,20 @@ class BootstrapAuditSpool:
         self.directory = Path(directory)
         self.path = self.directory / _SPOOL_NAME
         self.checkpoint_path = self.directory / _CHECKPOINT_NAME
+        self.lock_path = self.directory / _LOCK_NAME
+
+    @contextmanager
+    def _locked(self, *, exclusive: bool) -> Iterator[None]:
+        self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(self.directory, 0o700)
+        descriptor = os.open(self.lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            os.fchmod(descriptor, 0o600)
+            fcntl.flock(descriptor, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+            yield
+        finally:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+            os.close(descriptor)
 
     def append(
         self,
@@ -656,9 +673,23 @@ class BootstrapAuditSpool:
         diagnostic_code: str | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-        os.chmod(self.directory, 0o700)
-        records = self.verify(required=False)
+        with self._locked(exclusive=True):
+            return self._append_unlocked(
+                entrypoint=entrypoint,
+                outcome=outcome,
+                diagnostic_code=diagnostic_code,
+                metadata=metadata,
+            )
+
+    def _append_unlocked(
+        self,
+        *,
+        entrypoint: str,
+        outcome: _Outcome,
+        diagnostic_code: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        records = self._verify_unlocked(required=False)
         previous_hash = records[-1]["record_hash"] if records else None
         safe_metadata = TelemetryMasker.from_environment().mask(dict(metadata or {}))
         body: dict[str, Any] = {
@@ -688,6 +719,10 @@ class BootstrapAuditSpool:
         return body
 
     def verify(self, *, required: bool) -> list[dict[str, Any]]:
+        with self._locked(exclusive=False):
+            return self._verify_unlocked(required=required)
+
+    def _verify_unlocked(self, *, required: bool) -> list[dict[str, Any]]:
         if not self.path.exists():
             if required:
                 raise FileNotFoundError(self.path)
@@ -714,7 +749,11 @@ class BootstrapAuditSpool:
         return records
 
     def import_records(self, persist: Callable[[dict[str, Any]], Any]) -> int:
-        records = self.verify(required=True)
+        with self._locked(exclusive=True):
+            return self._import_records_unlocked(persist)
+
+    def _import_records_unlocked(self, persist: Callable[[dict[str, Any]], Any]) -> int:
+        records = self._verify_unlocked(required=True)
         checkpoint = self._read_checkpoint()
         start = 0
         if checkpoint is not None:
@@ -730,6 +769,32 @@ class BootstrapAuditSpool:
         if pending:
             self._write_checkpoint(str(pending[-1]["record_hash"]))
         return len(pending)
+
+    def pending_records(self, *, required: bool) -> list[dict[str, Any]]:
+        with self._locked(exclusive=False):
+            records = self._verify_unlocked(required=required)
+            checkpoint = self._read_checkpoint()
+            if checkpoint is None:
+                return records
+            hashes = [str(record["record_hash"]) for record in records]
+            if checkpoint not in hashes:
+                raise BootstrapAuditCorruptionError(
+                    "bootstrap import checkpoint is not in the chain"
+                )
+            return records[hashes.index(checkpoint) + 1 :]
+
+    def mark_imported(self, record_hash: str) -> None:
+        with self._locked(exclusive=True):
+            records = self._verify_unlocked(required=True)
+            hashes = [str(record["record_hash"]) for record in records]
+            if record_hash not in hashes:
+                raise BootstrapAuditCorruptionError(
+                    "bootstrap import checkpoint is not in the chain"
+                )
+            current = self._read_checkpoint()
+            if current is not None and hashes.index(record_hash) < hashes.index(current):
+                return
+            self._write_checkpoint(record_hash)
 
     def readiness(self, *, required: bool) -> BootstrapReadiness:
         try:
@@ -775,6 +840,158 @@ def _record_hash(record: Mapping[str, Any]) -> str:
 def _bootstrap_directory() -> Path:
     configured = os.environ.get("ACA_BOOTSTRAP_AUDIT_DIR")
     return Path(configured) if configured else _DEFAULT_BOOTSTRAP_DIRECTORY
+
+
+@dataclass(frozen=True, slots=True)
+class BootstrapMaintenanceResult:
+    readiness: BootstrapReadiness
+    imported_count: int
+
+
+async def _persist_bootstrap_record(
+    connection: Any,
+    *,
+    record: Mapping[str, Any],
+    parent_context: OperationContext | None,
+    lifecycle: TelemetryLifecycle,
+) -> bool:
+    record_hash = str(record["record_hash"])
+    existing = await connection.fetchval(
+        """
+        SELECT id FROM pgqueuer_jobs
+        WHERE entrypoint = $1 AND idempotency_key = $2
+        ORDER BY id LIMIT 1
+        """,
+        str(record["entrypoint"]),
+        record_hash,
+    )
+    if existing is not None:
+        return False
+
+    trace_id = parent_context.trace_id if parent_context is not None else secrets.token_hex(16)
+    span_id = secrets.token_hex(8)
+    parent_id = int(parent_context.operation_id) if parent_context is not None else None
+    root_id = int(parent_context.root_operation_id) if parent_context is not None else None
+    traceparent = f"00-{trace_id}-{span_id}-01"
+    payload = json.dumps(
+        {
+            "schema_version": 1,
+            "kind": "bootstrap_audit",
+            "record_hash": record_hash,
+        },
+        separators=(",", ":"),
+    )
+    operation_id = await connection.fetchval(
+        """
+        INSERT INTO pgqueuer_jobs (
+            entrypoint, payload, status, created_at, execute_after, started_at,
+            completed_at, heartbeat_at, parent_job_id, root_job_id,
+            claim_generation, claim_protocol_version, idempotency_key,
+            submission_traceparent, trace_id, submission_span_id
+        )
+        VALUES (
+            $1, $2::jsonb, 'completed', NOW(), NOW(), NOW(), NOW(), NOW(),
+            $3, $4, 0, 2, $5, $6, $7, $8
+        )
+        RETURNING id
+        """,
+        str(record["entrypoint"]),
+        payload,
+        parent_id,
+        root_id,
+        record_hash,
+        traceparent,
+        trace_id,
+        span_id,
+    )
+    if operation_id is None:
+        raise RuntimeError("unable to persist bootstrap operation")
+    canonical_root = root_id or int(operation_id)
+    await connection.execute(
+        "UPDATE pgqueuer_jobs SET root_job_id = $2 WHERE id = $1",
+        int(operation_id),
+        canonical_root,
+    )
+    await connection.execute(
+        """
+        INSERT INTO operation_observation_attempts (
+            operation_id, claim_generation, attempt_number, trace_id,
+            root_span_id, service_name, service_instance_id, environment,
+            release_revision, started_at, completed_at, terminal_stage,
+            outcome, retryable, telemetry_delivery_state, diagnostic_codes
+        )
+        VALUES (
+            $1, 0, 1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), 'persist',
+            $8, FALSE, 'delivered', '{}'::operation_diagnostic_code[]
+        )
+        """,
+        int(operation_id),
+        trace_id,
+        span_id,
+        lifecycle.service_name,
+        lifecycle.service_instance_id,
+        str(lifecycle.settings.environment),
+        lifecycle.release_revision,
+        str(record["outcome"]),
+    )
+    return True
+
+
+async def reconcile_bootstrap_audit(
+    settings: Any,
+    *,
+    maintenance_connection: Any,
+) -> BootstrapMaintenanceResult:
+    """Import pre-database evidence once and project production readiness."""
+    required = str(getattr(settings, "environment", "development")) == "production"
+    spool = BootstrapAuditSpool(_bootstrap_directory())
+    readiness = spool.readiness(required=required)
+    lifecycle = TelemetryLifecycle(
+        settings=settings,
+        service_name="aca-bootstrap-maintenance",
+        lifecycle_kind="short_lived",
+        service_instance_id="bootstrap-audit",
+    )
+    lifecycle.initialized = True
+    lifecycle.required = required
+    pending: list[dict[str, Any]] = []
+    if readiness.ready:
+        pending = spool.pending_records(required=required)
+        lifecycle.record_export_success()
+    else:
+        lifecycle.record_export_failure(readiness.diagnostic_code or "bootstrap.spool_unavailable")
+
+    imported = 0
+    parent_context = get_current_operation_context()
+    try:
+        from src.queue.setup import _queue_connection
+
+        async with _queue_connection() as connection, connection.transaction():
+            await connection.fetchval(
+                "SELECT pg_advisory_xact_lock($1::bigint)",
+                _BOOTSTRAP_IMPORT_ADVISORY_LOCK,
+            )
+            for record in pending:
+                imported += int(
+                    await _persist_bootstrap_record(
+                        connection,
+                        record=record,
+                        parent_context=parent_context,
+                        lifecycle=lifecycle,
+                    )
+                )
+            await lifecycle.heartbeat(connection)
+    except Exception:
+        lifecycle.record_export_failure("bootstrap.maintenance_write_failed")
+        try:
+            await lifecycle.heartbeat(maintenance_connection)
+        except Exception:
+            pass
+        return BootstrapMaintenanceResult(readiness, 0)
+
+    if pending:
+        spool.mark_imported(str(pending[-1]["record_hash"]))
+    return BootstrapMaintenanceResult(readiness, imported)
 
 
 def bootstrap_entrypoint(entrypoint: str) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]:

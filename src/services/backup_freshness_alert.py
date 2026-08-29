@@ -24,7 +24,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from src.clients.operational_observability import operational_entrypoint
+from src.clients.operational_observability import (
+    operational_entrypoint,
+    reconcile_bootstrap_audit,
+)
 from src.services.backup.manifest_reader import BackupFreshness, read_freshness
 from src.utils.logging import get_logger
 
@@ -85,6 +88,9 @@ async def emit_backup_freshness_alert(
     when this window's alert already exists, which is the normal steady state
     during an ongoing outage.
     """
+    if callable(getattr(conn, "transaction", None)):
+        await reconcile_bootstrap_audit(settings, maintenance_connection=conn)
+
     if not getattr(settings, "backup_monitoring_enabled", True):
         return None
 
