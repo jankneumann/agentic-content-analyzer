@@ -8,9 +8,9 @@ from uuid import UUID
 import pytest
 
 from src.services.workflow_terminal_event_service import (
-    WorkflowTerminalEventService,
     _CLASSIFICATION_UPDATE_QUERY,
     _EVENT_QUERY,
+    WorkflowTerminalEventService,
     _event_from_row,
 )
 

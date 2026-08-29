@@ -60,6 +60,7 @@ class TerminalEventEvidence:
     source_kind: WorkflowTerminalSourceKind
     operation_id: int | None
     claim_generation: int | None
+    trace_id: str | None
     terminal_status: str | None
     reconciliation_action_id: int | None
     reconciliation_run_id: UUID | None
@@ -177,6 +178,7 @@ class WorkflowTerminalEventService:
                 event_id,
                 classification_status="rejected",
                 envelope=None,
+                trace_id=row.get("trace_id"),
             )
             if not updated:
                 return None
@@ -191,6 +193,7 @@ class WorkflowTerminalEventService:
             event.event_id,
             classification_status=status,
             envelope=envelope,
+            trace_id=event.trace_id,
         )
         if not updated:
             return None
@@ -307,6 +310,7 @@ class WorkflowTerminalEventService:
         *,
         classification_status: Literal["ready", "telemetry_only", "rejected"],
         envelope: WorkflowAlertEnvelopeV1 | None,
+        trace_id: str | None,
     ) -> bool:
         serialized = (
             json.dumps(envelope.model_dump(mode="json"), separators=(",", ":"))
@@ -318,16 +322,22 @@ class WorkflowTerminalEventService:
             event_id,
             classification_status,
             serialized,
+            trace_id,
         )
         return row is not None
 
 
 _EVENT_QUERY = """
-SELECT id, event_key, source_kind, operation_id, claim_generation,
-       terminal_status, reconciliation_action_id, reconciliation_run_id,
-       reconciliation_content_id, classification_status, occurred_at
-FROM workflow_terminal_events
-WHERE id = $1
+SELECT event.id, event.event_key, event.source_kind, event.operation_id,
+       event.claim_generation, COALESCE(event.trace_id, attempt.trace_id) AS trace_id,
+       event.terminal_status, event.reconciliation_action_id,
+       event.reconciliation_run_id, event.reconciliation_content_id,
+       event.classification_status, event.occurred_at
+FROM workflow_terminal_events AS event
+LEFT JOIN operation_observation_attempts AS attempt
+  ON attempt.operation_id = event.operation_id
+ AND attempt.claim_generation = event.claim_generation
+WHERE event.id = $1
 """
 
 _DIAGNOSTIC_QUERY = """
@@ -427,8 +437,11 @@ ORDER BY event.created_at, event.id
 _CLASSIFICATION_UPDATE_QUERY = """
 UPDATE workflow_terminal_events
 SET classification_status = $2,
-    envelope = $3::jsonb
-WHERE id = $1 AND classification_status = 'pending'
+    envelope = $3::jsonb,
+    trace_id = COALESCE(trace_id, $4)
+WHERE id = $1
+  AND classification_status = 'pending'
+  AND (trace_id IS NULL OR trace_id IS NOT DISTINCT FROM $4)
 RETURNING id
 """
 
@@ -471,6 +484,7 @@ def _event_from_row(row: Any) -> TerminalEventEvidence:
         source_kind=cast(WorkflowTerminalSourceKind, source_kind),
         operation_id=row["operation_id"],
         claim_generation=row["claim_generation"],
+        trace_id=row.get("trace_id"),
         terminal_status=row["terminal_status"],
         reconciliation_action_id=row["reconciliation_action_id"],
         reconciliation_run_id=(

@@ -9,6 +9,7 @@ Spec: audit-log §"Audit middleware observability attributes" (D10):
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -20,15 +21,17 @@ from src.api.middleware.audit import AuditMiddleware, audited
 
 
 class _RecordingWriter:
-    def __init__(self) -> None:
+    def __init__(self, *, return_id: int | None = None) -> None:
         self.rows: list[dict[str, Any]] = []
         self.raise_on_next = False
+        self.return_id = return_id
 
-    def __call__(self, **kwargs: Any) -> None:
+    def __call__(self, **kwargs: Any) -> int | None:
         if self.raise_on_next:
             self.raise_on_next = False
             raise RuntimeError("simulated")
         self.rows.append(kwargs)
+        return self.return_id
 
 
 class _RecordingSpan:
@@ -102,7 +105,6 @@ def test_request_state_request_id_flows_to_audit_row(audited_app):
     app, writer = audited_app
 
     from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-    from starlette.requests import Request
 
     class _InjectRequestId(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
@@ -142,7 +144,7 @@ class _CorrelatedSpan(_RecordingSpan):
 
 
 def test_audit_persists_request_trace_span_and_submitted_operation_separately() -> None:
-    writer = _RecordingWriter()
+    writer = _RecordingWriter(return_id=73)
     app = FastAPI()
 
     @app.post("/api/v1/submit")
@@ -152,9 +154,17 @@ def test_audit_persists_request_trace_span_and_submitted_operation_separately() 
         return {"operation_id": "42"}
 
     app.add_middleware(AuditMiddleware, writer=writer)
-    with patch("src.api.middleware.audit.trace.get_current_span", return_value=_CorrelatedSpan()):
-        with TestClient(app) as client:
-            response = client.post("/api/v1/submit")
+    span = _CorrelatedSpan()
+    with (
+        patch("src.api.middleware.audit.trace.get_current_span", return_value=span),
+        patch(
+            "src.api.middleware.audit.get_settings",
+            return_value=SimpleNamespace(otel_service_name="api-test"),
+        ),
+        patch("src.api.middleware.audit.release_identity", return_value=("rev-123", "test")),
+        TestClient(app) as client,
+    ):
+        response = client.post("/api/v1/submit")
 
     assert response.status_code == 200
     row = writer.rows[-1]
@@ -162,7 +172,10 @@ def test_audit_persists_request_trace_span_and_submitted_operation_separately() 
     assert row["trace_id"] == "1234567890abcdef1234567890abcdef"
     assert row["request_span_id"] == "1234567890abcdef"
     assert row["submitted_operation_id"] == 42
+    assert row["service_name"] == "api-test"
+    assert row["release_revision"] == "rev-123"
     assert row["request_id"] != row["trace_id"]
+    assert span.attrs["audit.record_id"] == "73"
 
 
 def test_audit_uses_synthetic_request_trace_without_fabricating_request_id() -> None:
