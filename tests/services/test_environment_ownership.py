@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import socket
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -173,6 +176,7 @@ class _OwnershipSession:
         authority: str = AUTHORITY,
         active_environment: str = "railway",
         epoch: int = 7,
+        endpoint: str = "postgresql://owner@shared-primary:5432/newsletters",
     ) -> None:
         self.row = {
             "authority_fingerprint": authority,
@@ -180,10 +184,14 @@ class _OwnershipSession:
             "epoch": epoch,
         }
         self.statements: list[str] = []
+        self.endpoint = endpoint
 
     def execute(self, statement: object, *_args: object, **_kwargs: object) -> _OwnershipResult:
         self.statements.append(str(statement))
         return _OwnershipResult(self.row)
+
+    def get_bind(self) -> SimpleNamespace:
+        return SimpleNamespace(url=make_url(self.endpoint))
 
 
 def test_unit_ownership_policy_covers_passive_conflict_cutover_and_atomic_lock() -> None:
@@ -232,3 +240,31 @@ def test_unit_ownership_policy_covers_passive_conflict_cutover_and_atomic_lock()
             active_session,  # type: ignore[arg-type]
             OwnershipIdentity("gx10", AUTHORITY, expected_epoch=7),
         )
+
+
+def test_same_ownership_row_on_independent_database_authority_is_refused() -> None:
+    primary_endpoint = "postgresql://owner@shared-primary:5432/newsletters"
+    clone_endpoint = "postgresql://owner@independent-clone:5432/newsletters"
+    primary_url = make_url(primary_endpoint)
+    stored_authority = hashlib.sha256(
+        (f"{primary_url.host}:{primary_url.port or 5432}/{primary_url.database}").encode()
+    ).hexdigest()
+    identity = OwnershipIdentity("gx10", stored_authority, expected_epoch=12)
+
+    primary = _OwnershipSession(
+        authority=stored_authority,
+        active_environment="gx10",
+        epoch=12,
+        endpoint=primary_endpoint,
+    )
+    assert evaluate_environment_ownership(primary, identity).mode == "active"  # type: ignore[arg-type]
+
+    independent_clone = _OwnershipSession(
+        authority=stored_authority,
+        active_environment="gx10",
+        epoch=12,
+        endpoint=clone_endpoint,
+    )
+    clone_status = evaluate_environment_ownership(independent_clone, identity)  # type: ignore[arg-type]
+    assert clone_status.mode == "conflict"
+    assert clone_status.passive_reasons == ["authority.database_mismatch"]
