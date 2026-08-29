@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+import runpy
 import subprocess
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -14,8 +16,8 @@ DEPLOY = ROOT / "deploy/gx10"
 SCRIPTS = ROOT / "scripts/gx10"
 
 
-def _compose() -> dict[str, object]:
-    return yaml.safe_load((ROOT / "docker-compose.gx10.yml").read_text())
+def _compose() -> dict[str, Any]:
+    return cast(dict[str, Any], yaml.safe_load((ROOT / "docker-compose.gx10.yml").read_text()))
 
 
 def test_dependency_recovery_covers_every_runtime_dependency_and_real_worker_health() -> None:
@@ -47,6 +49,13 @@ def test_dependency_recovery_covers_every_runtime_dependency_and_real_worker_hea
     health = " ".join(worker["healthcheck"]["test"])
     assert "http://127.0.0.1:3030/api/health" in health
     assert "process.exit(0)" not in health
+
+    readiness = runpy.run_path(str(SCRIPTS / "check_role_readiness.py"))
+    role_dependencies = readiness["ROLE_DEPENDENCIES"]
+    for role in ("api", "worker", "scheduler", "maintenance"):
+        assert {host for host, _port in role_dependencies[role]} == set(
+            services[role]["depends_on"]
+        )
 
 
 def test_every_srv_bind_and_native_datastore_record_is_verified_across_restart(

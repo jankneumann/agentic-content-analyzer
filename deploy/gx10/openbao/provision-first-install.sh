@@ -15,9 +15,64 @@ trap 'rm -rf -- "$WORK_DIR"' EXIT
 
 [[ -s "$SEED_FILE" ]] || { echo "gx10 OpenBao seed credential missing" >&2; exit 1; }
 jq -e '
-  (.runtime | type == "object") and
-  (.operator | type == "object") and
-  (.proxy | type == "object")
+  def safe_string:
+    type == "string" and length > 0 and (test("[\\r\\n]") | not);
+  def has_safe_fields($object; $fields):
+    ($object | type == "object") and
+    ($fields | all(. as $field | $object[$field] | safe_string));
+  .runtime as $runtime |
+  .operator as $operator |
+  .proxy as $proxy |
+  has_safe_fields($runtime; [
+    "database_url",
+    "app_secret_key",
+    "configured_source_key_secret",
+    "operation_cursor_signing_key",
+    "admin_api_key",
+    "langfuse_public_key",
+    "langfuse_secret_key",
+    "neo4j_password",
+    "release_revision",
+    "authority_fingerprint",
+    "app_postgres_password",
+    "langfuse_postgres_password",
+    "redis_password",
+    "clickhouse_password",
+    "minio_root_user",
+    "minio_root_password",
+    "langfuse_nextauth_secret",
+    "langfuse_salt",
+    "langfuse_encryption_key",
+    "caddy_username",
+    "caddy_password_hash"
+  ]) and
+  has_safe_fields($operator; ["operator_api_key", "rotation_generation"]) and
+  has_safe_fields($proxy; ["username", "password", "rotation_generation"]) and
+  ($runtime.database_url | startswith("postgresql://")) and
+  ($runtime.release_revision | test("^[0-9a-f]{40}$")) and
+  ($runtime.authority_fingerprint | test("^[0-9a-f]{64}$")) and
+  ($runtime.langfuse_encryption_key | test("^[0-9a-f]{64}$")) and
+  ([
+    $runtime.app_secret_key,
+    $runtime.configured_source_key_secret,
+    $runtime.operation_cursor_signing_key,
+    $runtime.admin_api_key,
+    $runtime.langfuse_secret_key,
+    $runtime.neo4j_password,
+    $runtime.app_postgres_password,
+    $runtime.langfuse_postgres_password,
+    $runtime.redis_password,
+    $runtime.clickhouse_password,
+    $runtime.minio_root_password,
+    $runtime.langfuse_nextauth_secret,
+    $runtime.langfuse_salt,
+    $operator.operator_api_key,
+    $proxy.password
+  ] | all(length >= 32)) and
+  ($runtime.minio_root_user | test("^[A-Za-z0-9._~-]+$")) and
+  ($proxy.username | test("^[A-Za-z0-9._~-]+$")) and
+  ($operator.rotation_generation | test("^[1-9][0-9]*$")) and
+  ($proxy.rotation_generation | test("^[1-9][0-9]*$"))
 ' "$SEED_FILE" >/dev/null || { echo "gx10 OpenBao seed credential is invalid" >&2; exit 1; }
 install -d -m 0700 "$OPERATOR_DIR"
 

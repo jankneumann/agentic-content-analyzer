@@ -7,22 +7,34 @@ PERSIST_ROOT="${GX10_PERSIST_ROOT:-/srv/aca}"
 RUNTIME_DIR="${GX10_RUNTIME_DIR:-/run/aca/gx10}"
 MANIFEST="$RUNTIME_DIR/persistence-sentinels.manifest"
 declare -A COMPONENT_PATHS=(
+  [application]="application"
   [app-postgres]="postgres"
   [langfuse-postgres]="langfuse-postgres"
   [redis]="redis"
   [neo4j]="neo4j"
+  [neo4j-logs]="neo4j-logs"
   [clickhouse]="clickhouse"
+  [clickhouse-logs]="clickhouse-logs"
   [minio]="minio"
   [openbao]="openbao"
+  [squid-logs]="squid-logs"
+  [caddy-data]="caddy-data"
+  [caddy-config]="caddy-config"
 )
 declare -a COMPONENTS=(
+  application
   app-postgres
   langfuse-postgres
   redis
   neo4j
+  neo4j-logs
   clickhouse
+  clickhouse-logs
   minio
   openbao
+  squid-logs
+  caddy-data
+  caddy-config
 )
 
 if [[ "$PERSIST_ROOT" == "/srv/aca" && "$EUID" -ne 0 ]]; then

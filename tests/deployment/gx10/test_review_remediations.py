@@ -148,6 +148,8 @@ def test_rendered_validator_rejects_sentinel_or_unverified_digests(tmp_path: Pat
             service["image"] = "example/aca:review@sha256:" + "0" * 64
         elif "${GX10_SQUID_DIGEST" in image:
             service["image"] = "ubuntu/squid:6.13-25.10_beta@sha256:" + "0" * 64
+        elif "${GX10_LANGFUSE_WORKER_DIGEST" in image:
+            service["image"] = "langfuse/langfuse-worker:3@sha256:" + "0" * 64
     rendered = tmp_path / "rendered.yml"
     rendered.write_text(yaml.safe_dump(compose), encoding="utf-8")
     result = subprocess.run(
