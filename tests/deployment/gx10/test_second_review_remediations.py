@@ -95,7 +95,7 @@ def test_clean_stack_exercises_dependency_loss_diagnostics_and_recovery() -> Non
     for token in (
         'compose stop "$dependency"',
         'gx10-role-ready --role "$role"',
-        'diagnostics dependency_loss',
+        "diagnostics dependency_loss",
         'compose start "$dependency"',
         'compose up -d --wait "$role"',
     ):
