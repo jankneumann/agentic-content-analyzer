@@ -1,0 +1,142 @@
+{
+  "backup": {
+    "checksums": {
+      "application_postgresql": "711a2cc5e3310292229019c9196a438c3429f045a5626b4ce133c6e5fe35c62a",
+      "clickhouse": "f0143f3292fc39e9dbb36b9ea6a4120d490f01c6d0c97bbe59d573296744808e",
+      "configuration_metadata": "b520a13d79aa8ceb2584e33b1e0784b7262bdbfadcdfb3d579a68c1500a60c37",
+      "langfuse_postgresql": "1cea34f4f8534a573179990108b867e1a55465391d23642a5239e51676276795",
+      "minio": "504ec6ce098ddca41c97b1604a67c5bcd1ab6cf42eddfd349b9f70c92e030017",
+      "neo4j": "dfff1f6acf8265ab62af6fd3ebf60cba216d4d56af7c2b3ff9e4ba3c6ad07f51"
+    },
+    "manifest": {
+      "completed_at": "2026-08-29T12:05:00Z",
+      "components": [
+        {
+          "artifact_name": "application_postgresql-20260829T120000Z.age",
+          "bytes": 54,
+          "checksum_sha256": "711a2cc5e3310292229019c9196a438c3429f045a5626b4ce133c6e5fe35c62a",
+          "component": "application_postgresql",
+          "diagnostic_code": null,
+          "encryption_recipient": "age1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "operation_id": "gx10-checkpoint",
+          "outcome": "succeeded",
+          "stage": "backup",
+          "trace_id": "cccccccccccccccccccccccccccccccc"
+        },
+        {
+          "artifact_name": "neo4j-20260829T120000Z.age",
+          "bytes": 54,
+          "checksum_sha256": "dfff1f6acf8265ab62af6fd3ebf60cba216d4d56af7c2b3ff9e4ba3c6ad07f51",
+          "component": "neo4j",
+          "diagnostic_code": null,
+          "encryption_recipient": "age1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "operation_id": "gx10-checkpoint",
+          "outcome": "succeeded",
+          "stage": "backup",
+          "trace_id": "cccccccccccccccccccccccccccccccc"
+        },
+        {
+          "artifact_name": "langfuse_postgresql-20260829T120000Z.age",
+          "bytes": 54,
+          "checksum_sha256": "1cea34f4f8534a573179990108b867e1a55465391d23642a5239e51676276795",
+          "component": "langfuse_postgresql",
+          "diagnostic_code": null,
+          "encryption_recipient": "age1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "operation_id": "gx10-checkpoint",
+          "outcome": "succeeded",
+          "stage": "backup",
+          "trace_id": "cccccccccccccccccccccccccccccccc"
+        },
+        {
+          "artifact_name": "clickhouse-20260829T120000Z.age",
+          "bytes": 54,
+          "checksum_sha256": "f0143f3292fc39e9dbb36b9ea6a4120d490f01c6d0c97bbe59d573296744808e",
+          "component": "clickhouse",
+          "diagnostic_code": null,
+          "encryption_recipient": "age1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "operation_id": "gx10-checkpoint",
+          "outcome": "succeeded",
+          "stage": "backup",
+          "trace_id": "cccccccccccccccccccccccccccccccc"
+        },
+        {
+          "artifact_name": "minio-20260829T120000Z.age",
+          "bytes": 54,
+          "checksum_sha256": "504ec6ce098ddca41c97b1604a67c5bcd1ab6cf42eddfd349b9f70c92e030017",
+          "component": "minio",
+          "diagnostic_code": null,
+          "encryption_recipient": "age1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "operation_id": "gx10-checkpoint",
+          "outcome": "succeeded",
+          "stage": "backup",
+          "trace_id": "cccccccccccccccccccccccccccccccc"
+        },
+        {
+          "artifact_name": "configuration_metadata-20260829T120000Z.age",
+          "bytes": 54,
+          "checksum_sha256": "b520a13d79aa8ceb2584e33b1e0784b7262bdbfadcdfb3d579a68c1500a60c37",
+          "component": "configuration_metadata",
+          "diagnostic_code": null,
+          "encryption_recipient": "age1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "operation_id": "gx10-checkpoint",
+          "outcome": "succeeded",
+          "stage": "backup",
+          "trace_id": "cccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "operation_id": "gx10-checkpoint",
+      "outcome": "succeeded",
+      "schema_version": 1,
+      "started_at": "2026-08-29T12:00:00Z",
+      "trace_id": "cccccccccccccccccccccccccccccccc"
+    },
+    "trace_id": "cccccccccccccccccccccccccccccccc"
+  },
+  "checkpoint_mode": "synthetic",
+  "evidence_status": "partial",
+  "native_age_drill": {
+    "reason": "age_cli_absent",
+    "status": "unavailable"
+  },
+  "restore": {
+    "measured_rpo_rto": {
+      "accepted": true,
+      "application_rpo_seconds": 3300,
+      "breaches": [],
+      "component_rto_seconds": 360,
+      "full_stack_rto_seconds": 3600
+    },
+    "metadata_validation": {
+      "application_operation_rows": true,
+      "langfuse_trace_metadata": true
+    },
+    "outcome": "succeeded",
+    "source_untouched": true,
+    "trace_id": "cccccccccccccccccccccccccccccccc"
+  },
+  "schema_version": 1,
+  "storage": {
+    "cleanup_failure": {
+      "diagnostic_code": "supported_cleanup_failed",
+      "operation_id": "gx10-checkpoint",
+      "outcome": "retryable_failure",
+      "stage": "alert",
+      "trace_id": "cccccccccccccccccccccccccccccccc"
+    },
+    "disk_metrics_percent": [
+      80,
+      90,
+      85,
+      85
+    ],
+    "states": [
+      "high",
+      "critical",
+      "high"
+    ]
+  },
+  "task_8_10": {
+    "reason": "native_age_and_component_clis_unavailable",
+    "status": "incomplete"
+  }
+}
