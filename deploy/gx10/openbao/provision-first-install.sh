@@ -10,6 +10,7 @@ UNSEAL_KEY_FILE="$OPERATOR_DIR/bao-unseal-key"
 RUNTIME_ENDPOINT="/secret/data/newsletter/gx10/runtime"
 OPERATOR_ENDPOINT="/secret/data/newsletter/gx10/operator"
 PROXY_ENDPOINT="/secret/data/newsletter/gx10/proxy"
+BACKUP_ENDPOINT="/secret/data/newsletter/gx10/backup"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf -- "$WORK_DIR"' EXIT
 
@@ -23,6 +24,7 @@ jq -e '
   .runtime as $runtime |
   .operator as $operator |
   .proxy as $proxy |
+  .backup as $backup |
   has_safe_fields($runtime; [
     "database_url",
     "app_secret_key",
@@ -48,6 +50,11 @@ jq -e '
   ]) and
   has_safe_fields($operator; ["operator_api_key", "rotation_generation"]) and
   has_safe_fields($proxy; ["username", "password", "rotation_generation"]) and
+  has_safe_fields($backup; ["backup_age_recipient"]) and
+  ($backup.backup_age_recipient | test("^age1[0-9a-z]{20,100}$")) and
+  ($backup.backup_age_retained_recipients | type == "array" and all(type == "string" and test("^age1[0-9a-z]{20,100}$"))) and
+  ($backup.backup_age_identities | type == "object") and
+  ([ $backup.backup_age_recipient ] + $backup.backup_age_retained_recipients | all(. as $r | $backup.backup_age_identities[$r] | type == "string" and startswith("AGE-SECRET-KEY-"))) and
   ($runtime.database_url | startswith("postgresql://")) and
   ($runtime.release_revision | test("^[0-9a-f]{40}$")) and
   ($runtime.authority_fingerprint | test("^[0-9a-f]{64}$")) and
@@ -151,6 +158,10 @@ jq -n --rawfile policy "$(dirname "$0")/aca-gx10.hcl" '{policy:$policy}' >"$WORK
 printf '{"token_policies":["aca-gx10"],"token_ttl":"15m","token_max_ttl":"1h","secret_id_ttl":"24h"}\n' >"$WORK_DIR/role.json"
 curl -fsS --config "$curl_config" -X PUT --data-binary "@$WORK_DIR/policy.json" "$BAO_ADDR/sys/policies/acl/aca-gx10" >/dev/null
 curl -fsS --config "$curl_config" -X POST --data-binary "@$WORK_DIR/role.json" "$BAO_ADDR/auth/approle/role/aca-gx10" >/dev/null
+jq -n --rawfile policy "$(dirname "$0")/aca-gx10-backup.hcl" '{policy:$policy}' >"$WORK_DIR/backup-policy.json"
+printf '{"token_policies":["aca-gx10-backup"],"token_ttl":"15m","token_max_ttl":"1h","secret_id_ttl":"24h"}\n' >"$WORK_DIR/backup-role.json"
+curl -fsS --config "$curl_config" -X PUT --data-binary "@$WORK_DIR/backup-policy.json" "$BAO_ADDR/sys/policies/acl/aca-gx10-backup" >/dev/null
+curl -fsS --config "$curl_config" -X POST --data-binary "@$WORK_DIR/backup-role.json" "$BAO_ADDR/auth/approle/role/aca-gx10-backup" >/dev/null
 
 seed_path() {
   local key="$1" endpoint="$2" payload="$WORK_DIR/seed-$1.json"
@@ -160,6 +171,7 @@ seed_path() {
 seed_path runtime "$RUNTIME_ENDPOINT"
 seed_path operator "$OPERATOR_ENDPOINT"
 seed_path proxy "$PROXY_ENDPOINT"
+seed_path backup "$BACKUP_ENDPOINT"
 
 printf 'provisioned_at=%(%s)T\n' -1 | install -m 0600 /dev/stdin "$OPERATOR_DIR/openbao-provisioned.ready.new"
 mv -f "$OPERATOR_DIR/openbao-provisioned.ready.new" "$OPERATOR_DIR/openbao-provisioned.ready"

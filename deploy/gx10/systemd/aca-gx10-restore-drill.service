@@ -1,0 +1,25 @@
+[Unit]
+Description=GX-10 isolated full-stack restore drill
+Requires=aca-gx10.service aca-gx10-backup-secrets.service
+After=aca-gx10.service aca-gx10-backup.service aca-gx10-backup-secrets.service
+OnFailure=aca-gx10-maintenance-alert@%n.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/aca
+RuntimeDirectory=aca/gx10/restore-drill
+RuntimeDirectoryMode=0700
+StateDirectory=aca/gx10/restore-evidence
+StateDirectoryMode=0700
+ExecStart=/opt/aca/.venv/bin/python -m scripts.gx10.backup restore --plan /etc/aca/gx10/restore-plan.json --manifest /var/lib/aca/gx10/backups/manifest.json --artifacts /var/lib/aca/gx10/backups --isolated-root /run/aca/gx10/restore-drill --age-material-file /run/aca/gx10/backup/restore-age.json
+StandardOutput=append:/var/lib/aca/gx10/restore-evidence/drills.jsonl
+TimeoutStartSec=14400
+UMask=0077
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadOnlyPaths=/run/aca/gx10/backup/restore-age.json /var/lib/aca/gx10/backups
+ReadWritePaths=/run/aca/gx10/restore-drill /var/lib/aca/gx10/restore-evidence
+RestrictSUIDSGID=yes
+LockPersonality=yes

@@ -1,3 +1,3 @@
-from .runtime import main
+from .runtime import scheduled_main
 
-raise SystemExit(main())
+raise SystemExit(scheduled_main())

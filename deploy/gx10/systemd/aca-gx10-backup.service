@@ -1,0 +1,22 @@
+[Unit]
+Description=GX-10 complete encrypted daily backup
+Requires=aca-gx10.service aca-gx10-backup-secrets.service
+After=aca-gx10.service aca-gx10-backup-secrets.service
+OnFailure=aca-gx10-maintenance-alert@%n.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/aca
+StateDirectory=aca/gx10/backups
+StateDirectoryMode=0700
+ExecStart=/opt/aca/.venv/bin/python -m scripts.gx10.backup backup --plan /etc/aca/gx10/backup-plan.json --output /var/lib/aca/gx10/backups --quota-bytes 1099511627776 --age-material-file /run/aca/gx10/backup/backup-age.json
+TimeoutStartSec=7200
+UMask=0077
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadOnlyPaths=/run/aca/gx10/backup/backup-age.json
+ReadWritePaths=/var/lib/aca/gx10/backups
+RestrictSUIDSGID=yes
+LockPersonality=yes

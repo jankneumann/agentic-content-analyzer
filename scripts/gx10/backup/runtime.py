@@ -7,23 +7,27 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import subprocess
+import sys
 import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from scripts.gx10.storage.runtime import StorageRuntime
-from src.clients.operational_observability import operational_stage
+from src.clients.operational_observability import operational_entrypoint, operational_stage
+from src.contracts.operation_context import get_current_operation_context
 from src.services.backup.gx10 import (
     AgeRecipientCatalog,
     BackupComponent,
     BackupManifest,
     BackupQuota,
     EncryptedArtifact,
+    EncryptionMaterialError,
     GX10BackupController,
     GX10RestoreDrill,
     MaintenanceCorrelation,
@@ -75,6 +79,69 @@ def _component_commands(
 
 def _openbao_age_adapter() -> OpenBaoAgeAdapter:
     return OpenBaoAgeAdapter(material=OpenBaoAgeMaterialProvider())
+
+
+def age_adapter_from_material_file(
+    path: Path,
+    *,
+    require_identities: bool,
+) -> OpenBaoAgeAdapter:
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("age material must be a protected regular file")
+    metadata = path.stat()
+    if stat.S_IMODE(metadata.st_mode) != 0o600 or metadata.st_size > 65536:
+        raise ValueError("age material must be mode 0600 and bounded")
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict) or set(value) != {
+        "active_recipient",
+        "retained_recipients",
+        "identities",
+    }:
+        raise ValueError("age material has an invalid schema")
+    active = value["active_recipient"]
+    retained = value["retained_recipients"]
+    identities = value["identities"]
+    if (
+        not isinstance(active, str)
+        or not isinstance(retained, list)
+        or not all(isinstance(item, str) for item in retained)
+        or not isinstance(identities, dict)
+        or not all(
+            isinstance(key, str) and isinstance(secret, str) for key, secret in identities.items()
+        )
+    ):
+        raise ValueError("age material has invalid values")
+    catalog = AgeRecipientCatalog(active=active, retained=tuple(retained))
+    try:
+        catalog.validated_active()
+    except EncryptionMaterialError as exc:
+        raise ValueError("active age recipient is invalid") from exc
+    if require_identities and any(recipient not in identities for recipient in (active, *retained)):
+        raise ValueError("age identity is unavailable for an active or retained recipient")
+    secrets = {
+        "GX10_AGE_RECIPIENT": active,
+        "GX10_AGE_RETAINED_RECIPIENTS": json.dumps(retained),
+        "GX10_AGE_IDENTITIES": json.dumps(identities),
+    }
+    return OpenBaoAgeAdapter(material=OpenBaoAgeMaterialProvider(read_secret=secrets.get))
+
+
+def _maintenance_correlation(
+    operation_id: str | None,
+    trace_id: str | None,
+) -> MaintenanceCorrelation:
+    if (operation_id is None) != (trace_id is None):
+        raise ValueError("operation-id and trace-id must be supplied together")
+    if operation_id is not None and trace_id is not None:
+        return MaintenanceCorrelation(operation_id=operation_id, trace_id=trace_id)
+    context = get_current_operation_context()
+    if context is None:
+        raise RuntimeError("scheduled backup operation requires a durable operation root")
+    return MaintenanceCorrelation(operation_id=context.operation_id, trace_id=context.trace_id)
+
+
+def _command_outcome(result: int) -> Literal["succeeded", "permanent_failure"]:
+    return "succeeded" if result == 0 else "permanent_failure"
 
 
 def _producer(argv: tuple[str, ...]) -> Callable[[], bytes]:
@@ -449,17 +516,19 @@ def _parser() -> argparse.ArgumentParser:
     for command in (backup, scheduled):
         command.add_argument("--plan", type=Path, required=True)
         command.add_argument("--output", type=Path, required=True)
-        command.add_argument("--operation-id", required=True)
-        command.add_argument("--trace-id", required=True)
+        command.add_argument("--operation-id")
+        command.add_argument("--trace-id")
         command.add_argument("--quota-bytes", type=int, required=True)
+        command.add_argument("--age-material-file", type=Path, required=True)
     scheduled.add_argument("--max-runs", type=int, default=0)
     restore = subparsers.add_parser("restore")
     restore.add_argument("--plan", type=Path, required=True)
     restore.add_argument("--manifest", type=Path, required=True)
     restore.add_argument("--artifacts", type=Path, required=True)
     restore.add_argument("--isolated-root", type=Path, required=True)
-    restore.add_argument("--operation-id", required=True)
-    restore.add_argument("--trace-id", required=True)
+    restore.add_argument("--operation-id")
+    restore.add_argument("--trace-id")
+    restore.add_argument("--age-material-file", type=Path, required=True)
     return parser
 
 
@@ -468,11 +537,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "checkpoint":
         print(json.dumps(run_synthetic_checkpoint(args.output), sort_keys=True))
         return 0
-    correlation = MaintenanceCorrelation(
-        operation_id=args.operation_id,
-        trace_id=args.trace_id,
-    )
+    correlation = _maintenance_correlation(args.operation_id, args.trace_id)
     if args.command in {"backup", "schedule"}:
+        age = age_adapter_from_material_file(args.age_material_file, require_identities=False)
 
         def run_once() -> int:
             manifest = run_scheduled_backup(
@@ -480,6 +547,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 output_dir=args.output,
                 correlation=correlation,
                 quota=BackupQuota(limit_bytes=args.quota_bytes, used_bytes=0),
+                age=age,
             )
             print(manifest.to_json())
             return 0 if manifest.outcome == "succeeded" else 1
@@ -496,6 +564,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         artifact_dir=args.artifacts,
         isolated_root=args.isolated_root,
         correlation=correlation,
+        age=age_adapter_from_material_file(args.age_material_file, require_identities=True),
     )
     print(
         json.dumps(
@@ -509,3 +578,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     )
     return 0 if result.outcome == "succeeded" else 1
+
+
+@operational_entrypoint(
+    "gx10.backup.scheduled",
+    stage="backup",
+    service_name="aca-gx10-backup",
+    result_outcome=_command_outcome,
+)
+def _scheduled_backup(argv: Sequence[str] | None = None) -> int:
+    return main(argv)
+
+
+@operational_entrypoint(
+    "gx10.restore_drill.scheduled",
+    stage="restore",
+    service_name="aca-gx10-restore",
+    result_outcome=_command_outcome,
+)
+def _scheduled_restore(argv: Sequence[str] | None = None) -> int:
+    return main(argv)
+
+
+def scheduled_main(argv: Sequence[str] | None = None) -> int:
+    command_args = list(sys.argv[1:] if argv is None else argv)
+    if any(argument in {"-h", "--help"} for argument in command_args):
+        return main(command_args)
+    if command_args and command_args[0] == "restore":
+        return _scheduled_restore(command_args)
+    return _scheduled_backup(command_args)

@@ -1,0 +1,21 @@
+[Unit]
+Description=GX-10 bounded persistent storage monitor
+Requires=aca-gx10.service
+After=aca-gx10.service
+OnFailure=aca-gx10-maintenance-alert@%n.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/aca
+StateDirectory=aca/gx10
+StateDirectoryMode=0700
+ExecStart=/opt/aca/.venv/bin/python -m scripts.gx10.storage --filesystem /srv/aca --concurrency 8 --actions /etc/aca/gx10/storage-actions.json --state-file /var/lib/aca/gx10/storage-controller.json --max-cycles 1
+TimeoutStartSec=50
+UMask=0077
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/aca/gx10
+RestrictSUIDSGID=yes
+LockPersonality=yes

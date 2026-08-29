@@ -210,6 +210,14 @@ def _valid_first_install_seed() -> dict[str, Any]:
             "password": "p" * 48,
             "rotation_generation": "1",
         },
+        "backup": {
+            "backup_age_recipient": "age1" + "a" * 58,
+            "backup_age_retained_recipients": ["age1" + "b" * 58],
+            "backup_age_identities": {
+                "age1" + "a" * 58: "AGE-SECRET-KEY-ACTIVE",
+                "age1" + "b" * 58: "AGE-SECRET-KEY-RETAINED",
+            },
+        },
     }
 
 

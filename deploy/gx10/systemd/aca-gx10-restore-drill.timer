@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the GX-10 isolated restore drill weekly
+
+[Timer]
+OnCalendar=weekly
+RandomizedDelaySec=30m
+Persistent=true
+Unit=aca-gx10-restore-drill.service
+
+[Install]
+WantedBy=timers.target

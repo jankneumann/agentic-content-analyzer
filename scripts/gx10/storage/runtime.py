@@ -8,15 +8,17 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from src.clients.operational_observability import operational_stage
+from src.clients.operational_observability import operational_entrypoint, operational_stage
+from src.contracts.operation_context import get_current_operation_context
 from src.services.storage_governance import (
     CleanupResult,
     RetentionCapabilities,
@@ -199,12 +201,30 @@ def _load_commands(path: Path) -> dict[str, tuple[str, ...]]:
     return commands
 
 
+def _runtime_identity(
+    operation_id: str | None,
+    trace_id: str | None,
+) -> tuple[str, str]:
+    if (operation_id is None) != (trace_id is None):
+        raise ValueError("operation-id and trace-id must be supplied together")
+    if operation_id is not None and trace_id is not None:
+        return operation_id, trace_id
+    context = get_current_operation_context()
+    if context is None:
+        raise RuntimeError("scheduled storage monitor requires a durable operation root")
+    return context.operation_id, context.trace_id
+
+
+def _command_outcome(result: int) -> Literal["succeeded", "permanent_failure"]:
+    return "succeeded" if result == 0 else "permanent_failure"
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gx10-storage")
     parser.add_argument("--filesystem", type=Path, default=Path("/"))
     parser.add_argument("--concurrency", type=int, required=True)
-    parser.add_argument("--operation-id", required=True)
-    parser.add_argument("--trace-id", required=True)
+    parser.add_argument("--operation-id")
+    parser.add_argument("--trace-id")
     parser.add_argument("--actions", type=Path, required=True)
     parser.add_argument(
         "--state-file",
@@ -241,6 +261,7 @@ def run_monitor_schedule(
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    operation_id, trace_id = _runtime_identity(args.operation_id, args.trace_id)
     runtime = StorageRuntime(
         invoke=CommandInvoker(_load_commands(args.actions)),
         state_file=args.state_file,
@@ -250,7 +271,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         disk = shutil.disk_usage(args.filesystem)
         usage_percent = int((disk.used * 100) / disk.total)
         attributes: dict[str, Any] = {
-            "storage.operation_id": args.operation_id,
+            "storage.operation_id": operation_id,
             "storage.filesystem": str(args.filesystem),
             "storage.substage": "monitor",
         }
@@ -263,8 +284,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 usage_percent=usage_percent,
                 scheduled_ingestion_concurrency=args.concurrency,
                 now=datetime.now(UTC),
-                operation_id=args.operation_id,
-                trace_id=args.trace_id,
+                operation_id=operation_id,
+                trace_id=trace_id,
                 outcome_specific_retention=args.outcome_specific_retention,
             )
         print(
@@ -273,7 +294,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "usage_percent": usage_percent,
                     "state": str(decision.state),
                     "scheduled_ingestion_concurrency": (decision.scheduled_ingestion_concurrency),
-                    "trace_id": args.trace_id,
+                    "trace_id": trace_id,
                     "action_failures": list(runtime.action_failures),
                 },
                 sort_keys=True,
@@ -286,3 +307,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         interval_seconds=args.interval_seconds,
         max_cycles=None if args.max_cycles == 0 else args.max_cycles,
     )
+
+
+@operational_entrypoint(
+    "gx10.storage.monitor",
+    stage="cleanup",
+    service_name="aca-gx10-storage",
+    result_outcome=_command_outcome,
+)
+def _scheduled_monitor(argv: Sequence[str] | None = None) -> int:
+    return main(argv)
+
+
+def scheduled_main(argv: Sequence[str] | None = None) -> int:
+    command_args = list(sys.argv[1:] if argv is None else argv)
+    if any(argument in {"-h", "--help"} for argument in command_args):
+        return main(command_args)
+    return _scheduled_monitor(command_args)

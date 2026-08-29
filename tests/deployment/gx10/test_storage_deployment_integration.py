@@ -250,7 +250,7 @@ def test_scheduled_entrypoints_derive_one_identity_from_durable_roots(
         operation_id="701",
         trace_id="a" * 32,
     )
-    assert storage_runtime.scheduled_main.__aca_operational_entrypoint__ == (
+    assert storage_runtime._scheduled_monitor.__aca_operational_entrypoint__ == (
         "gx10.storage.monitor",
         "cleanup",
         "aca-gx10-storage",
