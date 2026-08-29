@@ -17,13 +17,38 @@ from scripts.verify_workflow_alerting import (
     validate_evidence,
     verify_workflow_alerting,
 )
+from src.contracts.operation_context import OperationContext, bind_operation_context
 from tests.fixtures.workflow_alert_receiver.app import _redaction_assertions, create_app
 
 EVENT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 REVISION = "a" * 40
 ADMIN_KEY = "admin-secret-value"
 RECEIVER_TOKEN = "receiver-secret-value"
+
 SIGNING_SECRET = "receiver-signing-secret-at-least-32-bytes"
+
+
+def _script_unit_context() -> OperationContext:
+    return OperationContext(
+        schema_version=1,
+        operation_id="9003",
+        root_operation_id="9003",
+        parent_operation_id=None,
+        traceparent="00-11111111111111111111111111111111-2222222222222222-01",
+        tracestate=None,
+        trace_id="11111111111111111111111111111111",
+        span_id="2222222222222222",
+        claim_generation="0",
+        attempt_number="1",
+        entrypoint="test.script",
+        service_name="aca-test",
+        service_instance_id="test-1",
+        environment="test",
+        release_revision="test",
+        stage="alert",
+        resource_kind=None,
+        resource_key=None,
+    )
 
 
 def test_receiver_dockerfile_uses_railway_dynamic_port() -> None:
@@ -677,7 +702,8 @@ def test_cli_converts_unexpected_errors_to_safe_output(
         ["verify_workflow_alerting.py", "--output", str(tmp_path / "evidence.json")],
     )
 
-    assert verifier.main() == 1
+    with bind_operation_context(_script_unit_context()):
+        assert verifier.main() == 1
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == "workflow alert staging verification: FAILED (unexpected_error)\n"
