@@ -1,0 +1,102 @@
+name: gx10
+extends: base
+description: Production GX-10 runtime; passive until the separate cutover change
+
+providers:
+  database: local
+  graphdb: neo4j
+  neo4j: local
+  storage: local
+  observability: langfuse
+
+settings:
+  environment: production
+  log_level: INFO
+  allowed_origins: "${GX10_PUBLIC_ORIGIN:-https://gx10.local}"
+
+  database:
+    database_url: "${GX10_APP_DATABASE_URL}"
+
+  graphdb:
+    graphdb_mode: local
+
+  neo4j:
+    neo4j_uri: "bolt://neo4j:7687"
+    neo4j_user: neo4j
+    neo4j_password: "${GX10_NEO4J_PASSWORD}"
+    semaphore_limit: 1
+
+  storage:
+    storage_provider: local
+    image_storage_provider: local
+    image_storage_path: "/srv/aca/application-data/images"
+
+  observability:
+    observability_required: true
+    otel_enabled: true
+    otel_service_name: aca-gx10-api
+    telemetry_service_instance_id: aca-gx10-api-1
+    telemetry_release_revision: "${GX10_RELEASE_REVISION}"
+    otel_exporter_otlp_endpoint: "http://langfuse-web:3000/api/public/otel"
+    otel_log_prompts: false
+    otel_traces_sampler: always_on
+    otel_traces_sampler_arg: 1.0
+    langfuse_public_key: "${GX10_LANGFUSE_PUBLIC_KEY}"
+    langfuse_secret_key: "${GX10_LANGFUSE_SECRET_KEY}"
+    langfuse_base_url: "http://langfuse-web:3000"
+    langfuse_public_url: "${GX10_PUBLIC_LANGFUSE_URL:-https://gx10.local/langfuse}"
+    langfuse_sample_rate: 1.0
+    langfuse_environment: production
+
+  api_keys:
+    anthropic_api_key: "${ANTHROPIC_API_KEY:-}"
+    openai_api_key: "${OPENAI_API_KEY:-}"
+    google_api_key: "${GOOGLE_API_KEY:-}"
+    admin_api_key: "${GX10_ADMIN_API_KEY}"
+    operator_api_key: "${GX10_OPERATOR_API_KEY}"
+    app_secret_key: "${GX10_APP_SECRET_KEY}"
+    configured_source_key_secret: "${GX10_CONFIGURED_SOURCE_KEY_SECRET}"
+    operation_cursor_signing_key: "${GX10_OPERATION_CURSOR_SIGNING_KEY}"
+
+  gx10:
+    runtime_enabled: true
+    service_identities:
+      api: aca-gx10-api
+      worker: aca-gx10-worker
+      scheduler: aca-gx10-scheduler
+      maintenance: aca-gx10-maintenance
+    masking_policy: gx10-export-mask-v1
+    authority_fingerprint: "${GX10_AUTHORITY_FINGERPRINT}"
+    proxy_url: "http://squid:3128"
+    proxy_username: "${GX10_PROXY_USERNAME}"
+    proxy_password: "${GX10_PROXY_PASSWORD}"
+    rotation_generation: "${GX10_ROTATION_GENERATION:-1}"
+    proxy_policy_max_age_seconds: 300
+    proxy_allowed_domains:
+      - .anthropic.com
+      - .openai.com
+      - .googleapis.com
+      - .youtube.com
+      - .youtube-nocookie.com
+      - .youtu.be
+      - .sendgrid.com
+      - .substack.com
+    local_diagnostic_paths:
+      - /health
+      - /ready
+      - /api/v1/status/observability
+    successful_trace_retention_days: 30
+    failed_trace_retention_days: 90
+    high_watermark_percent: 80
+    high_clear_percent: 75
+    critical_watermark_percent: 90
+    critical_clear_percent: 85
+    hysteresis_minutes: 15
+    reserve_percent: 13
+    component_budgets_percent:
+      application_postgresql: 22
+      neo4j: 12
+      clickhouse: 28
+      minio: 8
+      backups: 15
+      redis_and_logs: 2
