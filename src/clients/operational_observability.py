@@ -250,11 +250,7 @@ class PostgresDurableOperationStore:
                   AND completed_at IS NULL
                 """,
                 int(context.operation_id),
-                (
-                    context.stage.value
-                    if isinstance(context.stage, OperationStage)
-                    else context.stage
-                ),
+                str(context.stage),
                 outcome,
                 telemetry_delivery_state,
                 list(diagnostic_codes),
@@ -1276,9 +1272,7 @@ def validate_frozen_entrypoint_inventory(
                     missing.append(pattern)
                 files.extend(pattern_files)
             declared_files.update(path.relative_to(root).as_posix() for path in files)
-            if files and not any(
-                _path_is_structurally_instrumented(path) for path in files
-            ):
+            if files and not any(_path_is_structurally_instrumented(path) for path in files):
                 uninstrumented.extend(patterns)
 
     candidates: set[str] = set()
