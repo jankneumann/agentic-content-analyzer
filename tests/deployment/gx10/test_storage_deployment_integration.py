@@ -257,3 +257,103 @@ def test_scheduled_entrypoints_derive_one_identity_from_durable_roots(
     )
     assert backup_runtime._scheduled_backup.__aca_operational_entrypoint__[1] == "backup"
     assert backup_runtime._scheduled_restore.__aca_operational_entrypoint__[1] == "restore"
+
+
+def test_reviewed_maintenance_plans_are_complete_and_absolute() -> None:
+    maintenance = DEPLOY / "maintenance"
+    storage = json.loads((maintenance / "storage-actions.json").read_text())
+    backup = json.loads((maintenance / "backup-plan.json").read_text())
+    restore = json.loads((maintenance / "restore-plan.json").read_text())
+    components = {
+        "application_postgresql",
+        "neo4j",
+        "langfuse_postgresql",
+        "clickhouse",
+        "minio",
+        "configuration_metadata",
+    }
+
+    assert set(storage) == {"throttle", "cleanup", "alert"}
+    assert set(backup) == {"producers"}
+    assert set(backup["producers"]) == components
+    assert set(restore) == {"restore", "validate", "production_sources", "metadata_probe"}
+    assert set(restore["restore"]) == components
+    assert set(restore["validate"]) == components
+    assert set(restore["production_sources"]) == components
+    assert set(restore["metadata_probe"]) == {
+        "application_operation_rows",
+        "langfuse_trace_metadata",
+    }
+    for inventory in (storage, backup["producers"], restore["restore"], restore["validate"]):
+        for argv in inventory.values():
+            assert argv and Path(argv[0]).is_absolute()
+    assert set(restore["production_sources"].values()) == {
+        "/srv/aca/postgres",
+        "/srv/aca/neo4j",
+        "/srv/aca/langfuse-postgres",
+        "/srv/aca/clickhouse",
+        "/srv/aca/minio",
+        "/opt/aca/deploy/gx10",
+    }
+
+
+def test_maintenance_plan_installer_is_idempotent_and_protects_files(tmp_path: Path) -> None:
+    installer = DEPLOY / "install-maintenance-plans.sh"
+    destination = tmp_path / "etc"
+    environment = os.environ | {
+        "GX10_MAINTENANCE_SOURCE_DIR": str(DEPLOY / "maintenance"),
+        "GX10_MAINTENANCE_CONFIG_DIR": str(destination),
+    }
+    for _attempt in range(2):
+        completed = subprocess.run(
+            [installer],
+            env=environment,
+            capture_output=True,
+            text=True,
+        )
+        assert completed.returncode == 0, completed.stderr
+    assert {path.name for path in destination.iterdir()} == {
+        "storage-actions.json",
+        "backup-plan.json",
+        "restore-plan.json",
+    }
+    assert all(stat.S_IMODE(path.stat().st_mode) == 0o600 for path in destination.iterdir())
+
+
+def test_maintenance_services_require_validated_installed_plans() -> None:
+    plan_unit = (DEPLOY / "systemd/aca-gx10-maintenance-plans.service").read_text()
+    assert "install-maintenance-plans.sh" in plan_unit
+    assert "Before=aca-gx10-storage.service aca-gx10-backup.service" in plan_unit
+    assert "aca-gx10-restore-drill.service" in plan_unit
+    for unit in (
+        "aca-gx10-storage.service",
+        "aca-gx10-backup.service",
+        "aca-gx10-restore-drill.service",
+    ):
+        source = (DEPLOY / "systemd" / unit).read_text()
+        assert "Requires=aca-gx10-maintenance-plans.service" in source
+        assert "After=aca-gx10-maintenance-plans.service" in source
+
+
+def test_explicit_maintenance_identity_must_be_canonical_and_match_bound_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scripts.gx10.backup import runtime as backup_runtime
+    from scripts.gx10.storage import runtime as storage_runtime
+
+    context = SimpleNamespace(operation_id="701", trace_id="a" * 32)
+    monkeypatch.setattr(storage_runtime, "get_current_operation_context", lambda: context)
+    monkeypatch.setattr(backup_runtime, "get_current_operation_context", lambda: context)
+    with pytest.raises(ValueError, match="bound durable operation root"):
+        storage_runtime._runtime_identity("702", "b" * 32)
+    with pytest.raises(ValueError, match="bound durable operation root"):
+        backup_runtime._maintenance_correlation("702", "b" * 32)
+    assert storage_runtime._runtime_identity("701", "a" * 32) == ("701", "a" * 32)
+
+    monkeypatch.setattr(storage_runtime, "get_current_operation_context", lambda: None)
+    monkeypatch.setattr(backup_runtime, "get_current_operation_context", lambda: None)
+    for operation_id, trace_id in (("not-canonical", "b" * 32), ("702", "0" * 32)):
+        with pytest.raises(ValueError):
+            storage_runtime._runtime_identity(operation_id, trace_id)
+        with pytest.raises(ValueError):
+            backup_runtime._maintenance_correlation(operation_id, trace_id)
