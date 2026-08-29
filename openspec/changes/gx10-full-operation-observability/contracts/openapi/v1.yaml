@@ -113,6 +113,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "503":
+          description: Shared ownership authority is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
 components:
   securitySchemes:
     SessionCookie:
@@ -262,6 +268,8 @@ components:
         - service_instance_id
         - environment
         - release_revision
+        - authority_fingerprint
+        - ownership_epoch
         - stage
         - resource_kind
         - resource_key
@@ -320,6 +328,16 @@ components:
           type: string
           minLength: 1
           maxLength: 64
+        authority_fingerprint:
+          type:
+            - string
+            - "null"
+          pattern: "^[0-9a-f]{64}$"
+          maxLength: 64
+        ownership_epoch:
+          oneOf:
+            - $ref: "#/components/schemas/Int64NonNegativeString"
+            - type: "null"
         stage:
           oneOf:
             - $ref: "#/components/schemas/OperationStage"

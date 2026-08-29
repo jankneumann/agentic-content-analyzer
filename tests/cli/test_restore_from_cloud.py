@@ -565,6 +565,8 @@ def _restore_context() -> OperationContext:
         service_instance_id="cli-1",
         environment="test",
         release_revision="revision",
+        authority_fingerprint=None,
+        ownership_epoch=None,
         stage="restore",
         resource_kind=None,
         resource_key=None,

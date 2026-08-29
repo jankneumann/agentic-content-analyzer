@@ -313,6 +313,8 @@ def _operation_context() -> OperationContext:
         service_instance_id="worker-1",
         environment="test",
         release_revision="revision",
+        authority_fingerprint=None,
+        ownership_epoch=None,
         stage="model",
         resource_kind=None,
         resource_key=None,

@@ -43,6 +43,8 @@ def valid_context() -> dict[str, Any]:
         "service_instance_id": "instance-1",
         "environment": "test",
         "release_revision": "a" * 40,
+        "authority_fingerprint": None,
+        "ownership_epoch": None,
         "stage": "submit",
         "resource_kind": None,
         "resource_key": "😀" * 128,
@@ -137,13 +139,38 @@ def test_runtime_context_is_immutable_and_json_round_trips() -> None:
 
 def test_stage_and_outcome_vocabularies_round_trip() -> None:
     assert [item.value for item in OperationStage] == [
-        "submit", "queue_wait", "claim", "fetch", "discover", "metadata", "transcript",
-        "extract", "parse", "filter", "deduplicate", "model", "fallback", "persist",
-        "index", "graph", "deliver", "backup", "restore", "alert", "cleanup", "flush",
+        "submit",
+        "queue_wait",
+        "claim",
+        "fetch",
+        "discover",
+        "metadata",
+        "transcript",
+        "extract",
+        "parse",
+        "filter",
+        "deduplicate",
+        "model",
+        "fallback",
+        "persist",
+        "index",
+        "graph",
+        "deliver",
+        "backup",
+        "restore",
+        "alert",
+        "cleanup",
+        "flush",
     ]
     assert [item.value for item in OperationOutcome] == [
-        "succeeded", "partial", "skipped_policy", "skipped_duplicate", "filtered",
-        "retryable_failure", "permanent_failure", "cancelled",
+        "succeeded",
+        "partial",
+        "skipped_policy",
+        "skipped_duplicate",
+        "filtered",
+        "retryable_failure",
+        "permanent_failure",
+        "cancelled",
     ]
     for value in [*OperationStage, *OperationOutcome]:
         assert type(value)(json.loads(json.dumps(value))) is value

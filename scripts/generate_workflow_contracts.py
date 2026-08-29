@@ -197,6 +197,7 @@ export const CLAIM_GENERATION_MAX = 9223372036854775806n;
 const CANONICAL_DECIMAL = /^(0|[1-9][0-9]*)$/;
 const TRACE_ID = /^[0-9a-f]{{32}}$/;
 const SPAN_ID = /^[0-9a-f]{{16}}$/;
+const AUTHORITY_FINGERPRINT = /^[0-9a-f]{{64}}$/;
 const TRACEPARENT = /^00-([0-9a-f]{{32}})-([0-9a-f]{{16}})-[0-9a-f]{{2}}$/;
 const TRACESTATE_KEY = /^[a-z0-9][a-z0-9_*/-]{{0,255}}$/;
 const OPERATION_STAGES = new Set<string>([{rendered_stages}]);
@@ -204,7 +205,8 @@ const CONTEXT_KEYS = new Set([
   "schema_version", "operation_id", "root_operation_id", "parent_operation_id",
   "traceparent", "tracestate", "trace_id", "span_id", "claim_generation",
   "attempt_number", "entrypoint", "service_name", "service_instance_id",
-  "environment", "release_revision", "stage", "resource_kind", "resource_key",
+  "environment", "release_revision", "authority_fingerprint", "ownership_epoch",
+  "stage", "resource_kind", "resource_key",
 ]);
 const codePointLength = (value: string): number => Array.from(value).length;
 
@@ -221,6 +223,9 @@ export function isClaimGenerationString(value: string): value is ClaimGeneration
 }}
 export function isInt64PositiveString(value: string): value is Int64PositiveString {{
   return isBoundedDecimal(value, 1n, SIGNED_BIGINT_MAX);
+}}
+export function isInt64NonNegativeString(value: string): value is Int64NonNegativeString {{
+  return isBoundedDecimal(value, 0n, SIGNED_BIGINT_MAX);
 }}
 export function isTraceId(value: string): value is TraceId {{
   return TRACE_ID.test(value) && value !== "0".repeat(32);
@@ -282,6 +287,8 @@ export function parseOperationContextEnvelope(value: unknown): OperationContextE
   boundedString("service_instance_id", 1, 128);
   boundedString("environment", 1, 32);
   boundedString("release_revision", 1, 64);
+  if (context.authority_fingerprint !== null && (typeof context.authority_fingerprint !== "string" || !AUTHORITY_FINGERPRINT.test(context.authority_fingerprint))) throw new TypeError("invalid authority_fingerprint");
+  if (context.ownership_epoch !== null && (typeof context.ownership_epoch !== "string" || !isInt64NonNegativeString(context.ownership_epoch))) throw new TypeError("invalid ownership_epoch");
   if (context.stage !== null && (typeof context.stage !== "string" || !OPERATION_STAGES.has(context.stage))) throw new TypeError("invalid stage");
   if (context.resource_kind !== null && (typeof context.resource_kind !== "string" || codePointLength(context.resource_kind) > 64)) throw new TypeError("invalid resource_kind");
   if (context.resource_key !== null && (typeof context.resource_key !== "string" || codePointLength(context.resource_key) > 128)) throw new TypeError("invalid resource_key");
@@ -353,7 +360,6 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
         "from __future__ import annotations",
         "",
         "import re",
-        "",
         "from datetime import datetime",
         "from typing import Annotated, Any, Literal",
         "from uuid import UUID",
@@ -443,7 +449,7 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
                 [
                     "",
                     '    @model_validator(mode="after")',
-                    '    def validate_semantic_context(self) -> "OperationContextEnvelope":',
+                    '    def validate_semantic_context(self) -> OperationContextEnvelope:',
                     "        match = TRACEPARENT_PATTERN.fullmatch(self.traceparent)",
                     "        if match is None:",
                     '            raise ValueError("traceparent must be canonical W3C version 00")',
@@ -462,7 +468,7 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
                 [
                     "",
                     '    @model_validator(mode="after")',
-                    '    def validate_attempt_number(self) -> "OperationAttemptSummary":',
+                    '    def validate_attempt_number(self) -> OperationAttemptSummary:',
                     "        if int(self.attempt_number) != int(self.claim_generation) + 1:",
                     '            raise ValueError("attempt_number must equal claim_generation + 1")',
                     "        return self",
@@ -663,6 +669,8 @@ def _validated_contract() -> dict[str, Any]:
         "parent_operation_id",
         "tracestate",
         "attempt_number",
+        "authority_fingerprint",
+        "ownership_epoch",
         "stage",
         "resource_kind",
         "resource_key",

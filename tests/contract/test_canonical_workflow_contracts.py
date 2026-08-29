@@ -784,9 +784,7 @@ def test_operation_observability_contract_is_in_the_durable_registry() -> None:
     assert "/api/v1/operations/{operation_id}/attempts" in document["paths"]
     assert "/api/v1/status/observability" in document["paths"]
     assert "/api/v1/status/environment-ownership" in document["paths"]
-    assert document["components"]["securitySchemes"]["OperatorKey"]["name"] == (
-        "X-Operator-Key"
-    )
+    assert document["components"]["securitySchemes"]["OperatorKey"]["name"] == ("X-Operator-Key")
     assert schemas["OperationHandle"]["properties"]["observability"] == {
         "oneOf": [
             {"$ref": "#/components/schemas/OperationObservabilitySummary"},
@@ -799,12 +797,8 @@ def test_operation_observability_contract_is_in_the_durable_registry() -> None:
 
 
 def test_operation_context_event_and_openapi_nullability_match() -> None:
-    context_schema = json.loads(
-        (CONTRACTS / "events/operation-context-v1.schema.json").read_text()
-    )
-    attempt_schema = json.loads(
-        (CONTRACTS / "events/operation-attempt-v1.schema.json").read_text()
-    )
+    context_schema = json.loads((CONTRACTS / "events/operation-context-v1.schema.json").read_text())
+    attempt_schema = json.loads((CONTRACTS / "events/operation-attempt-v1.schema.json").read_text())
     openapi_context = _openapi()["components"]["schemas"]["OperationContextEnvelope"]
 
     for schema in (context_schema, attempt_schema):
@@ -815,6 +809,8 @@ def test_operation_context_event_and_openapi_nullability_match() -> None:
         "parent_operation_id",
         "tracestate",
         "attempt_number",
+        "authority_fingerprint",
+        "ownership_epoch",
         "stage",
         "resource_kind",
         "resource_key",
@@ -822,9 +818,11 @@ def test_operation_context_event_and_openapi_nullability_match() -> None:
 
     def permits_null(schema: dict[str, Any]) -> bool:
         schema_type = schema.get("type")
-        return schema_type == "null" or (
-            isinstance(schema_type, list) and "null" in schema_type
-        ) or any(permits_null(part) for part in schema.get("oneOf", []))
+        return (
+            schema_type == "null"
+            or (isinstance(schema_type, list) and "null" in schema_type)
+            or any(permits_null(part) for part in schema.get("oneOf", []))
+        )
 
     for field in context_schema["properties"]:
         assert permits_null(context_schema["properties"][field]) == (field in nullable)
@@ -894,6 +892,8 @@ def _valid_operation_context() -> dict[str, Any]:
         "service_instance_id": "instance-1",
         "environment": "test",
         "release_revision": "a" * 40,
+        "authority_fingerprint": None,
+        "ownership_epoch": None,
         "stage": "submit",
         "resource_kind": None,
         "resource_key": "😀" * 128,
@@ -931,12 +931,12 @@ def test_generated_typescript_contract_has_brands_and_mandatory_context_parser()
     runtime = (ROOT / "web/src/generated/workflow-contracts.ts").read_text()
 
     for generated in (source, runtime):
-        assert 'type Brand<Value, Name extends string>' in generated
+        assert "type Brand<Value, Name extends string>" in generated
         assert 'export type OperationId = Brand<string, "OperationId">;' in generated
         assert 'export type TraceId = Brand<string, "TraceId">;' in generated
-        assert 'export function parseOperationContextEnvelope(' in generated
-        assert 'BigInt(context.attempt_number)' in generated
-        assert 'Array.from(value).length' in generated
+        assert "export function parseOperationContextEnvelope(" in generated
+        assert "BigInt(context.attempt_number)" in generated
+        assert "Array.from(value).length" in generated
 
 
 def test_generated_contract_files_have_no_drift() -> None:
@@ -989,16 +989,14 @@ def test_generated_typescript_declares_named_unions_and_type_checks() -> None:
 
 
 def test_ownership_trace_identity_is_canonical_and_change_copy_parity() -> None:
-    durable_event = json.loads(
-        (CONTRACTS / "events/operation-context-v1.schema.json").read_text()
-    )
+    durable_event = json.loads((CONTRACTS / "events/operation-context-v1.schema.json").read_text())
     change_event = json.loads(
         (GX10_CONTRACTS / "events/operation-context-v1.schema.json").read_text()
     )
     durable_openapi = _openapi()["components"]["schemas"]["OperationContextEnvelope"]
-    change_openapi = yaml.safe_load(
-        (GX10_CONTRACTS / "openapi/v1.yaml").read_text()
-    )["components"]["schemas"]["OperationContextEnvelope"]
+    change_openapi = yaml.safe_load((GX10_CONTRACTS / "openapi/v1.yaml").read_text())["components"][
+        "schemas"
+    ]["OperationContextEnvelope"]
 
     for schema in (durable_event, change_event, durable_openapi, change_openapi):
         assert {"authority_fingerprint", "ownership_epoch"} <= set(schema["required"])
