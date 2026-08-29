@@ -24,12 +24,16 @@ STATEFUL_SERVICES = {
     "minio",
     "openbao",
 }
-REQUIRED_SERVICES = STATEFUL_SERVICES | APPLICATION_SERVICES | {
-    "langfuse-web",
-    "langfuse-worker",
-    "squid",
-    "caddy",
-}
+REQUIRED_SERVICES = (
+    STATEFUL_SERVICES
+    | APPLICATION_SERVICES
+    | {
+        "langfuse-web",
+        "langfuse-worker",
+        "squid",
+        "caddy",
+    }
+)
 
 
 def _compose() -> dict[str, object]:
@@ -129,9 +133,7 @@ def test_proxy_policy_is_read_only_authenticated_masked_and_fail_closed() -> Non
 
 
 def test_egress_exceptions_and_failure_matrix_are_explicit_and_bounded() -> None:
-    policy = yaml.safe_load(
-        (ROOT / "deploy/gx10/egress-policy.yaml").read_text(encoding="utf-8")
-    )
+    policy = yaml.safe_load((ROOT / "deploy/gx10/egress-policy.yaml").read_text(encoding="utf-8"))
     assert policy["default"] == "deny"
     assert policy["application_direct_route"] == "deny"
     assert set(policy["bounded_exceptions"]) == {
@@ -140,7 +142,10 @@ def test_egress_exceptions_and_failure_matrix_are_explicit_and_bounded() -> None
         "certificate_bootstrap",
         "proxy_health",
     }
-    assert all(entry["targets"] and entry["timeout_seconds"] <= 30 for entry in policy["bounded_exceptions"].values())
+    assert all(
+        entry["targets"] and entry["timeout_seconds"] <= 30
+        for entry in policy["bounded_exceptions"].values()
+    )
 
     failures = policy["fail_closed"]
     assert set(failures) == {
@@ -175,8 +180,14 @@ def test_health_order_persistence_restart_backoff_and_quotas_are_bounded() -> No
         assert depends["langfuse-web"]["condition"] == "service_healthy"
 
     unit = (ROOT / "deploy/gx10/systemd/aca-gx10.service").read_text(encoding="utf-8")
-    assert "Requires=aca-gx10-secrets.service aca-gx10-proxy-policy.service aca-gx10-firewall.service" in unit
-    assert "After=aca-gx10-secrets.service aca-gx10-proxy-policy.service aca-gx10-firewall.service" in unit
+    assert (
+        "Requires=aca-gx10-secrets.service aca-gx10-proxy-policy.service aca-gx10-firewall.service"
+        in unit
+    )
+    assert (
+        "After=aca-gx10-secrets.service aca-gx10-proxy-policy.service aca-gx10-firewall.service"
+        in unit
+    )
     assert "Restart=on-failure" in unit
     assert "RestartSec=15s" in unit
     assert "StartLimitBurst=5" in unit
