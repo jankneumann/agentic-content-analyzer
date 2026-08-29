@@ -61,11 +61,11 @@ class GmailDeliveryService:
         message["Subject"] = subject or digest.title or ""
         message.attach(MIMEText(html_content, "html"))
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
-        sent_message = (
+        (
             self.gmail_client.service.users()  # type: ignore[attr-defined]
             .messages()
             .send(userId="me", body={"raw": raw_message})
             .execute()
         )
-        logger.info("Successfully delivered digest", extra={"message_id": sent_message["id"]})
+        logger.info("Successfully delivered digest")
         return True

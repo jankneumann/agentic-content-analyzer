@@ -16,12 +16,19 @@ from src.contracts.operation_context import OperationStage
 from src.models.base import Base
 from src.storage.providers import get_provider
 from src.utils.logging import get_logger
-from src.workflows.stage_observability import operation_stage
 
 if TYPE_CHECKING:
     from src.storage.providers.base import DatabaseProvider
 
 logger = get_logger(__name__)
+
+
+def operation_stage(name: str, stage: OperationStage) -> Any:
+    """Load the shared helper lazily to keep foundational storage imports acyclic."""
+    from src.workflows.stage_observability import operation_stage as shared_operation_stage
+
+    return shared_operation_stage(name, stage)
+
 
 # Global provider and engine instances
 _provider: "DatabaseProvider | None" = None
