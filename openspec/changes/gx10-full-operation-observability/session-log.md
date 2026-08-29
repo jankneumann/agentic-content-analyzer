@@ -232,3 +232,32 @@ Completed and integrated wp-queue-core. API and child submissions now persist va
 
 ### Context
 Integrated and verified wp-api-audit and wp-ingestion-coverage on the feature branch. The API exact suite and post-rebase API/topology gates are clean. The sole remaining gate is the exact ingestion PostgreSQL suite: local PostgreSQL is unavailable, and execution policy requires explicit end-user authorization before repository migrations and fixtures may run against an external temporary database. The honest exact-run JUnit records 450 collected, 427 passed, 23 PostgreSQL setup-only errors, and 0 test failures.
+
+---
+
+## Phase: Implementation (2026-08-29)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Preserve the blocked handoff as immutable audit evidence** `architectural: operation-observability-safety` — The authorization failure remains historically accurate; a new handoff records the later approved execution and passing result.
+2. **Retain the dedicated test-database safety guard** `architectural: operation-observability-safety` — The exact suite ran only after the database name was constrained to test_gx10_observability, preventing accidental use of a non-test database.
+
+### Completed Work
+- Ran the exact ingestion package gate with 450 collected, 450 passed, 0 failures, 0 errors, and 0 skips.
+- Updated artifacts/wp-ingestion-coverage/pytest.xml with the passing exact-run evidence.
+- Deleted the protected temporary credential file; the isolated database remains temporary and expires on 2026-09-01.
+- Cleared the sole implementation-5 blocker while preserving that handoff unchanged.
+
+### Next Steps
+- Implement wp-operational-coverage tasks 7.3-7.5 in its isolated worktree.
+- Implement wp-gx10-runtime tasks 8.1-8.5 in its isolated worktree.
+- Preserve all semantic context rules, direct-SQL negative fixtures, generated validator parity, safety guards, and the mandatory six-hour GX-10 acceptance gate.
+
+### Relevant Files
+- `artifacts/wp-ingestion-coverage/pytest.xml` — Passing exact 450-test ingestion package evidence.
+- `openspec/changes/gx10-full-operation-observability/handoffs/implementation-5.json` — Immutable record of the earlier authorization-blocked state.
+- `openspec/changes/gx10-full-operation-observability/work-packages.yaml` — Approved DAG for the next operational and runtime packages.
+
+### Context
+Resolved the implementation-5 authorization blocker without rewriting its audit history. The exact ingestion package gate ran against an isolated test-named PostgreSQL database with the safety guard preserved and passed all 450 tests; protected credentials were deleted. Operational coverage and GX-10 runtime are now the dependency-ready implementation packages.
