@@ -63,9 +63,7 @@ def test_sync_operational_entrypoint_binds_valid_root_and_flushes(operational_ru
     module, lifecycles, provider = operational_runtime
     observed = None
 
-    @module.operational_entrypoint(
-        "backup.run", stage="backup", service_name="aca-test"
-    )
+    @module.operational_entrypoint("backup.run", stage="backup", service_name="aca-test")
     def execute(secret: str) -> str:
         nonlocal observed
         observed = get_current_operation_context()
@@ -89,9 +87,7 @@ async def test_async_operational_entrypoint_preserves_failure_and_flushes(
 ) -> None:
     module, lifecycles, provider = operational_runtime
 
-    @module.operational_entrypoint(
-        "mcp.search", stage="fetch", service_name="aca-test"
-    )
+    @module.operational_entrypoint("mcp.search", stage="fetch", service_name="aca-test")
     async def execute() -> None:
         assert get_current_operation_context() is not None
         raise RuntimeError("provider failed")
