@@ -76,7 +76,7 @@ async def _run_worker(concurrency: int) -> None:
     signal.signal(signal.SIGINT, signal_handler)
 
     telemetry_lifecycle = create_telemetry_lifecycle(
-        service_name="aca-cli-worker", lifecycle_kind="short_lived"
+        service_name="aca-cli-worker", lifecycle_kind="long_running"
     )
     telemetry_lifecycle.initialize(app=None)
     telemetry_health_task = asyncio.create_task(run_telemetry_heartbeat(telemetry_lifecycle))

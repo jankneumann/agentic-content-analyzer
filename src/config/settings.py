@@ -803,7 +803,8 @@ class Settings(BaseSettings):
     observability_provider: ObservabilityProviderType = "noop"
     observability_required: bool = False
     telemetry_heartbeat_interval_seconds: int = Field(default=30, ge=5, le=300)
-    telemetry_buffer_capacity: int = Field(default=2048, ge=1, le=1_000_000)
+    telemetry_buffer_capacity: int = Field(default=10_000, ge=1, le=10_000)
+    telemetry_buffer_capacity_bytes: int = Field(default=268_435_456, ge=1, le=268_435_456)
     telemetry_flush_timeout_seconds: float = Field(default=5.0, ge=0.05, le=30.0)
     telemetry_service_instance_id: str | None = Field(default=None, min_length=1, max_length=128)
     telemetry_release_revision: str = Field(default="unknown", min_length=1, max_length=64)

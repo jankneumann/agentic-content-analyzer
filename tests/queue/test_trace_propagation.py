@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
@@ -171,3 +172,29 @@ async def test_stale_claim_records_only_its_attempt_diagnostic(monkeypatch) -> N
     assert await worker._record_stale_attempt(object(), context) is True
     assert recorded == [(41, 1)]
     assert issubclass(ClaimSuperseded, RuntimeError)
+
+
+def test_actual_attempt_context_preserves_unsampled_trace_flags() -> None:
+    stored = _submission_context()
+    context = worker._attempt_context_from_job(
+        {
+            "id": 41,
+            "entrypoint": "pipeline.run",
+            "claim_generation": 0,
+            "submission_context": stored,
+            "submission_traceparent": stored["traceparent"],
+            "submission_tracestate": None,
+            "trace_id": stored["trace_id"],
+            "root_operation_id": 41,
+        }
+    )
+    span_context = SimpleNamespace(
+        is_valid=True,
+        trace_id=int(str(stored["trace_id"]), 16),
+        span_id=int("3333333333333333", 16),
+        trace_flags=0,
+    )
+    actual = worker._actual_attempt_context(
+        context, SimpleNamespace(get_span_context=lambda: span_context)
+    )
+    assert actual.traceparent == ("00-11111111111111111111111111111111-3333333333333333-00")

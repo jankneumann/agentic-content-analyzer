@@ -9,6 +9,35 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter, Sp
 
 from src.queue import worker
 
+TRACE_TREE_FIXTURE = {
+    "trace_id": "11111111111111111111111111111111",
+    "operation_id": "41",
+    "observations": [
+        {"name": "operation.pipeline.run.submit", "span_id": "2222222222222222", "parent": None},
+        {
+            "name": "operation.pipeline.run.attempt",
+            "span_id": "3333333333333333",
+            "parent": "2222222222222222",
+            "claim_generation": "0",
+        },
+        {
+            "name": "operation.pipeline.run.attempt",
+            "span_id": "4444444444444444",
+            "parent": "2222222222222222",
+            "claim_generation": "1",
+            "retry_from_claim_generation": "0",
+        },
+    ],
+}
+
+
+def test_representative_trace_tree_fixture_preserves_attempt_siblings() -> None:
+    observations = TRACE_TREE_FIXTURE["observations"]
+    attempts = [item for item in observations if item["name"].endswith(".attempt")]
+    assert [item["claim_generation"] for item in attempts] == ["0", "1"]
+    assert {item["parent"] for item in attempts} == {"2222222222222222"}
+    assert attempts[1]["retry_from_claim_generation"] == attempts[0]["claim_generation"]
+
 
 class _Capture(SpanExporter):
     def __init__(self) -> None:

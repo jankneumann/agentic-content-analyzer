@@ -63,7 +63,14 @@ class TelemetryLifecycle:
         self.last_error_at: datetime | None = None
         self.last_error_code: str | None = None
         self.buffered_count = 0
-        self.buffer_capacity = int(getattr(settings, "telemetry_buffer_capacity", 2048))
+        self.buffered_bytes = 0
+        self.buffer_capacity = min(
+            int(getattr(settings, "telemetry_buffer_capacity", 10_000)), 10_000
+        )
+        self.buffer_capacity_bytes = min(
+            int(getattr(settings, "telemetry_buffer_capacity_bytes", 268_435_456)),
+            268_435_456,
+        )
         self.dropped_count = 0
         self.last_flush_at: datetime | None = None
         self.last_flush_succeeded: bool | None = None
@@ -104,22 +111,28 @@ class TelemetryLifecycle:
         self.initialized = True
         self.status = "disabled" if self.export_target == "none" else "healthy"
 
-    def record_buffered(self, count: int) -> None:
+    def record_buffered(self, count: int, *, buffered_bytes: int = 0) -> None:
         """Apply the bounded process buffer and expose deterministic overflow."""
 
-        if count < 0:
-            raise ValueError("buffered count must be non-negative")
+        if count < 0 or buffered_bytes < 0:
+            raise ValueError("buffered count and bytes must be non-negative")
         accepted = min(count, self.buffer_capacity)
+        accepted_bytes = min(buffered_bytes, self.buffer_capacity_bytes)
         self.buffered_count = accepted
+        self.buffered_bytes = accepted_bytes
         overflow = count - accepted
+        byte_overflow = buffered_bytes - accepted_bytes
+        if byte_overflow and not overflow:
+            overflow = 1
         if overflow:
             self.dropped_count += overflow
             self.status = "degraded"
             self.last_error_at = datetime.now(UTC)
             self.last_error_code = "telemetry.buffer_overflow"
 
-    def record_export_success(self, *, buffered_count: int = 0) -> None:
+    def record_export_success(self, *, buffered_count: int = 0, buffered_bytes: int = 0) -> None:
         self.buffered_count = min(max(buffered_count, 0), self.buffer_capacity)
+        self.buffered_bytes = min(max(buffered_bytes, 0), self.buffer_capacity_bytes)
         self.last_success_at = datetime.now(UTC)
         self.last_error_code = None
         self.status = "healthy"
@@ -558,7 +571,7 @@ def _attempt_context_from_job(job: dict[str, Any]):
     )
     values = submission.model_dump(mode="python")
     values.update(
-        traceparent=f"00-{submission.trace_id}-{span_id}-01",
+        traceparent=f"00-{submission.trace_id}-{span_id}-{submission.traceparent[-2:]}",
         span_id=span_id,
         claim_generation=str(claim_generation),
         attempt_number=str(claim_generation + 1),
@@ -610,13 +623,14 @@ def _actual_attempt_context(context: Any, span: Any) -> Any:
             return context
         trace_id = format(span_context.trace_id, "032x")
         span_id = format(span_context.span_id, "016x")
+        trace_flags = format(int(span_context.trace_flags), "02x")
     except (AttributeError, TypeError, ValueError):
         return context
     values = context.model_dump(mode="python")
     values.update(
         trace_id=trace_id,
         span_id=span_id,
-        traceparent=f"00-{trace_id}-{span_id}-01",
+        traceparent=f"00-{trace_id}-{span_id}-{trace_flags}",
     )
     return type(context).model_validate(values)
 

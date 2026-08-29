@@ -21,10 +21,18 @@ def _settings(**overrides: Any) -> SimpleNamespace:
         "otel_exporter_otlp_endpoint": "http://otel:4318",
         "observability_provider": "otel",
         "telemetry_buffer_capacity": 2,
+        "telemetry_buffer_capacity_bytes": 4,
         "telemetry_flush_timeout_seconds": 0.05,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
+
+
+def test_frozen_buffer_defaults_are_ten_thousand_items_and_256_mib() -> None:
+    from src.config.settings import Settings
+
+    assert Settings.model_fields["telemetry_buffer_capacity"].default == 10_000
+    assert Settings.model_fields["telemetry_buffer_capacity_bytes"].default == 268_435_456
 
 
 def test_required_observability_rejects_missing_export_target() -> None:
@@ -42,14 +50,45 @@ def test_buffer_overflow_is_visible_and_export_recovery_clears_degradation() -> 
         settings=_settings(), service_name="aca-worker", lifecycle_kind="long_running"
     )
     lifecycle.initialize(setup=lambda _app: None)
+    lifecycle.record_buffered(2, buffered_bytes=5)
+    assert lifecycle.buffered_count == 2
+    assert lifecycle.buffered_bytes == 4
+    assert lifecycle.dropped_count == 1
+    assert lifecycle.last_error_code == "telemetry.buffer_overflow"
+    lifecycle.record_export_success(buffered_count=0, buffered_bytes=0)
     lifecycle.record_buffered(3)
     assert lifecycle.buffered_count == 2
-    assert lifecycle.dropped_count == 1
+    assert lifecycle.dropped_count == 2
     assert lifecycle.status == "degraded"
     lifecycle.record_export_success(buffered_count=0)
     assert lifecycle.buffered_count == 0
     assert lifecycle.status == "healthy"
     assert lifecycle.last_success_at is not None
+    assert lifecycle.buffered_bytes == 0
+
+
+@pytest.mark.asyncio
+async def test_outage_recovery_changes_persisted_heartbeat_fields(monkeypatch) -> None:
+    rows: list[Any] = []
+
+    async def upsert(_conn: object, heartbeat: Any) -> Any:
+        rows.append(heartbeat)
+        return heartbeat
+
+    monkeypatch.setattr("src.repositories.telemetry_process_health.upsert_process_health", upsert)
+    lifecycle = worker.TelemetryLifecycle(
+        settings=_settings(), service_name="aca-worker", lifecycle_kind="long_running"
+    )
+    lifecycle.initialize(setup=lambda _app: None)
+    lifecycle.record_export_failure("telemetry.export_failed")
+    await lifecycle.heartbeat(object())
+    lifecycle.record_export_success(buffered_count=0, buffered_bytes=0)
+    await lifecycle.heartbeat(object())
+    assert rows[0].status == "degraded"
+    assert rows[0].last_error_code == "telemetry.export_failed"
+    assert rows[1].status == "healthy"
+    assert rows[1].last_error_code is None
+    assert rows[1].last_success_at is not None
 
 
 @pytest.mark.asyncio

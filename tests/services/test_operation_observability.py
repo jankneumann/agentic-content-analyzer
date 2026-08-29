@@ -151,4 +151,34 @@ async def test_submit_child_preserves_root_trace_and_parent_identity(monkeypatch
     child = captured["submission_context"]
     assert child.operation_id == "42" and child.root_operation_id == "41"
     assert child.parent_operation_id == "41" and child.trace_id == parent.trace_id
-    assert child.span_id != parent.span_id
+    assert child.span_id == parent.span_id
+    assert child.traceparent == parent.traceparent
+
+
+def test_root_submission_uses_active_api_span_identity() -> None:
+    from opentelemetry.sdk.trace import TracerProvider
+
+    tracer = TracerProvider().get_tracer(__name__)
+    with tracer.start_as_current_span("POST /api/v1/pipelines") as span:
+        context = OperationService._new_submission_context(
+            operation_id=51,
+            entrypoint="pipeline.run",
+            parent_context=None,
+            parent_job_id=None,
+        )
+        active = span.get_span_context()
+    assert context.trace_id == format(active.trace_id, "032x")
+    assert context.span_id == format(active.span_id, "016x")
+
+
+def test_child_submission_carrier_is_the_active_attempt_span() -> None:
+    parent = _context()
+    child = OperationService._new_submission_context(
+        operation_id=42,
+        entrypoint="summarization.run",
+        parent_context=parent,
+        parent_job_id=41,
+    )
+    assert child.trace_id == parent.trace_id
+    assert child.span_id == parent.span_id
+    assert child.traceparent == parent.traceparent

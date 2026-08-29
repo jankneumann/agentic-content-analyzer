@@ -414,8 +414,34 @@ class OperationService:
         settings = get_settings()
         operation = str(operation_id)
         parent = str(parent_job_id) if parent_job_id is not None else None
-        trace_id = parent_context.trace_id if parent_context is not None else secrets.token_hex(16)
-        span_id = secrets.token_hex(8)
+        trace_id: str | None = None
+        span_id: str | None = None
+        trace_flags = "01"
+        if parent_context is not None:
+            trace_id = parent_context.trace_id
+            span_id = parent_context.span_id
+            trace_flags = parent_context.traceparent[-2:]
+        else:
+            try:
+                from opentelemetry import trace
+
+                active = trace.get_current_span().get_span_context()
+                if active.is_valid:
+                    trace_id = format(active.trace_id, "032x")
+                    span_id = format(active.span_id, "016x")
+                    trace_flags = format(int(active.trace_flags), "02x")
+                else:
+                    tracer = trace.get_tracer(__name__)
+                    with tracer.start_as_current_span(f"operation.{entrypoint}.submit") as span:
+                        local = span.get_span_context()
+                        if local.is_valid:
+                            trace_id = format(local.trace_id, "032x")
+                            span_id = format(local.span_id, "016x")
+                            trace_flags = format(int(local.trace_flags), "02x")
+            except Exception:
+                pass
+        trace_id = trace_id or secrets.token_hex(16)
+        span_id = span_id or secrets.token_hex(8)
         root = parent_context.root_operation_id if parent_context is not None else operation
         tracestate = parent_context.tracestate if parent_context is not None else None
         service_name = settings.otel_service_name[:100] or "newsletter-aggregator"
@@ -430,7 +456,7 @@ class OperationService:
             operation_id=operation,
             root_operation_id=root,
             parent_operation_id=parent,
-            traceparent=f"00-{trace_id}-{span_id}-01",
+            traceparent=f"00-{trace_id}-{span_id}-{trace_flags}",
             tracestate=tracestate,
             trace_id=trace_id,
             span_id=span_id,
