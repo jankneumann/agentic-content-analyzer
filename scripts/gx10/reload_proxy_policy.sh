@@ -27,5 +27,6 @@ fi
 
 "${COMPOSE[@]}" exec -T squid squid -k parse -f /etc/squid/squid.conf
 "${COMPOSE[@]}" exec -T squid squid -k reconfigure
+"${COMPOSE[@]}" exec -T squid /usr/local/bin/gx10-proxy-ready --probe-only
 install -m 0600 /dev/null "$READY"
 printf 'validated_at=%(%s)T\n' -1 >"$READY"

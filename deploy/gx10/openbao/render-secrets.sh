@@ -1,133 +1,79 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-# Runtime files are intentionally outside the repository and are atomically
-# replaced with owner-only permissions after every independent secret rotation.
 umask 077
 
 RUNTIME_DIR="${GX10_RUNTIME_DIR:-/run/aca/gx10}"
 RUNTIME_PATH="${GX10_BAO_RUNTIME_PATH:-secret/newsletter/gx10/runtime}"
 OPERATOR_PATH="${GX10_BAO_OPERATOR_PATH:-secret/newsletter/gx10/operator}"
 PROXY_PATH="${GX10_BAO_PROXY_PATH:-secret/newsletter/gx10/proxy}"
+BAO_ADDR="${GX10_BAO_ADDR:-http://127.0.0.1:18200/v1}"
+BAO_TOKEN_FILE="${GX10_BAO_TOKEN_FILE:-$RUNTIME_DIR/openbao-token}"
 
+[[ -s "$BAO_TOKEN_FILE" ]] || { echo "gx10 OpenBao token is unavailable" >&2; exit 1; }
 install -d -m 0700 "$RUNTIME_DIR" "$RUNTIME_DIR/proxy"
-APP_TMP="$(mktemp "$RUNTIME_DIR/application.env.XXXXXX")"
-PROXY_TMP="$(mktemp "$RUNTIME_DIR/proxy.env.XXXXXX")"
-STATEFUL_TMP="$(mktemp "$RUNTIME_DIR/stateful.env.XXXXXX")"
-LANGFUSE_TMP="$(mktemp "$RUNTIME_DIR/langfuse.env.XXXXXX")"
-CADDY_TMP="$(mktemp "$RUNTIME_DIR/caddy.env.XXXXXX")"
-PASSWD_TMP="$(mktemp "$RUNTIME_DIR/proxy/squid.passwd.XXXXXX")"
+CURL_CONFIG="$(mktemp "$RUNTIME_DIR/bao-curl.XXXXXX")"
+printf 'header = "X-Vault-Token: %s"\n' "$(<"$BAO_TOKEN_FILE")" >"$CURL_CONFIG"
+chmod 0600 "$CURL_CONFIG"
 
-cleanup() {
-  rm -f -- "$APP_TMP" "$PROXY_TMP" "$STATEFUL_TMP" "$LANGFUSE_TMP" "$CADDY_TMP" "$PASSWD_TMP"
-}
+declare -a TEMPS=()
+new_env() { local name="$1"; local path; path="$(mktemp "$RUNTIME_DIR/$name.XXXXXX")"; TEMPS+=("$path"); printf '%s' "$path"; }
+COMMON_TMP="$(new_env common.env)"; API_TMP="$(new_env api.env)"; WORKER_TMP="$(new_env worker.env)"
+SCHEDULER_TMP="$(new_env scheduler.env)"; MAINTENANCE_TMP="$(new_env maintenance.env)"
+PROXY_TMP="$(new_env proxy.env)"; APP_POSTGRES_TMP="$(new_env app-postgres.env)"
+LANGFUSE_POSTGRES_TMP="$(new_env langfuse-postgres.env)"; REDIS_TMP="$(new_env redis.env)"
+NEO4J_TMP="$(new_env neo4j.env)"; CLICKHOUSE_TMP="$(new_env clickhouse.env)"
+MINIO_TMP="$(new_env minio.env)"; LANGFUSE_TMP="$(new_env langfuse.env)"; CADDY_TMP="$(new_env caddy.env)"
+PASSWD_TMP="$(mktemp "$RUNTIME_DIR/proxy/squid.passwd.XXXXXX")"; TEMPS+=("$PASSWD_TMP")
+cleanup() { rm -f -- "$CURL_CONFIG" "${TEMPS[@]}"; }
 trap cleanup EXIT
 
+kv_endpoint() { printf '%s/%s' "${BAO_ADDR%/}" "${1/secret\//secret/data/}"; }
 fetch() {
-  local path="$1"
-  local field="$2"
-  bao kv get -field="$field" "$path"
-}
-
-fetch_safe() {
-  local path="$1"
-  local field="$2"
-  local value
-  value="$(fetch "$path" "$field")"
-  if [[ -z "$value" || "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
-    echo "gx10 secret field is missing or not env-file safe: $field" >&2
-    exit 1
-  fi
+  local path="$1" field="$2" value
+  value="$(curl --silent --show-error --fail --config "$CURL_CONFIG" "$(kv_endpoint "$path")" | jq -er --arg field "$field" '.data.data[$field]')"
+  [[ -n "$value" && "$value" != *$'\n'* && "$value" != *$'\r'* ]] || { echo "gx10 secret field is missing or unsafe: $field" >&2; exit 1; }
   printf '%s' "$value"
 }
+emit() { printf '%s=%s\n' "$2" "$(fetch "$3" "$4")" >>"$1"; }
 
-emit() {
-  local target="$1"
-  local key="$2"
-  local path="$3"
-  local field="$4"
-  printf '%s=%s\n' "$key" "$(fetch_safe "$path" "$field")" >>"$target"
-}
+emit "$COMMON_TMP" GX10_APP_DATABASE_URL "$RUNTIME_PATH" database_url
+emit "$COMMON_TMP" GX10_APP_SECRET_KEY "$RUNTIME_PATH" app_secret_key
+emit "$COMMON_TMP" GX10_CONFIGURED_SOURCE_KEY_SECRET "$RUNTIME_PATH" configured_source_key_secret
+emit "$COMMON_TMP" GX10_OPERATION_CURSOR_SIGNING_KEY "$RUNTIME_PATH" operation_cursor_signing_key
+emit "$COMMON_TMP" GX10_LANGFUSE_PUBLIC_KEY "$RUNTIME_PATH" langfuse_public_key
+emit "$COMMON_TMP" GX10_LANGFUSE_SECRET_KEY "$RUNTIME_PATH" langfuse_secret_key
+emit "$COMMON_TMP" GX10_NEO4J_PASSWORD "$RUNTIME_PATH" neo4j_password
+emit "$COMMON_TMP" GX10_RELEASE_REVISION "$RUNTIME_PATH" release_revision
+emit "$COMMON_TMP" GX10_AUTHORITY_FINGERPRINT "$RUNTIME_PATH" authority_fingerprint
+emit "$API_TMP" GX10_ADMIN_API_KEY "$RUNTIME_PATH" admin_api_key
+emit "$API_TMP" GX10_OPERATOR_API_KEY "$OPERATOR_PATH" operator_api_key
 
-emit "$APP_TMP" DATABASE_URL "$RUNTIME_PATH" database_url
-emit "$APP_TMP" APP_SECRET_KEY "$RUNTIME_PATH" app_secret_key
-emit "$APP_TMP" CONFIGURED_SOURCE_KEY_SECRET "$RUNTIME_PATH" configured_source_key_secret
-emit "$APP_TMP" OPERATION_CURSOR_SIGNING_KEY "$RUNTIME_PATH" operation_cursor_signing_key
-emit "$APP_TMP" ADMIN_API_KEY "$RUNTIME_PATH" admin_api_key
-emit "$APP_TMP" LANGFUSE_PUBLIC_KEY "$RUNTIME_PATH" langfuse_public_key
-emit "$APP_TMP" LANGFUSE_SECRET_KEY "$RUNTIME_PATH" langfuse_secret_key
-emit "$APP_TMP" NEO4J_PASSWORD "$RUNTIME_PATH" neo4j_password
-emit "$APP_TMP" TELEMETRY_RELEASE_REVISION "$RUNTIME_PATH" release_revision
-emit "$APP_TMP" GX10_AUTHORITY_FINGERPRINT "$RUNTIME_PATH" authority_fingerprint
-emit "$APP_TMP" OPERATOR_API_KEY "$OPERATOR_PATH" operator_api_key
+OPERATOR_GENERATION="$(fetch "$OPERATOR_PATH" rotation_generation)"; PROXY_GENERATION="$(fetch "$PROXY_PATH" rotation_generation)"
+for generation in "$OPERATOR_GENERATION" "$PROXY_GENERATION"; do [[ "$generation" =~ ^[1-9][0-9]*$ ]] || { echo "gx10 rotation generation invalid" >&2; exit 1; }; done
+printf 'GX10_OPERATOR_ROTATION_GENERATION=%s\nGX10_PROCESS_ROLE=api\nOTEL_SERVICE_NAME=aca-gx10-api\nTELEMETRY_SERVICE_INSTANCE_ID=aca-gx10-api\n' "$OPERATOR_GENERATION" >>"$API_TMP"
+printf 'GX10_PROCESS_ROLE=worker\nOTEL_SERVICE_NAME=aca-gx10-worker\nTELEMETRY_SERVICE_INSTANCE_ID=aca-gx10-worker\n' >>"$WORKER_TMP"
+printf 'GX10_PROCESS_ROLE=scheduler\nOTEL_SERVICE_NAME=aca-gx10-scheduler\nTELEMETRY_SERVICE_INSTANCE_ID=aca-gx10-scheduler\n' >>"$SCHEDULER_TMP"
+printf 'GX10_PROCESS_ROLE=maintenance\nOTEL_SERVICE_NAME=aca-gx10-maintenance\nTELEMETRY_SERVICE_INSTANCE_ID=aca-gx10-maintenance\n' >>"$MAINTENANCE_TMP"
+printf 'GX10_ROTATION_GENERATION=%s\n' "$PROXY_GENERATION" >>"$COMMON_TMP"
 
-OPERATOR_ROTATION_GENERATION="$(fetch_safe "$OPERATOR_PATH" rotation_generation)"
-PROXY_ROTATION_GENERATION="$(fetch_safe "$PROXY_PATH" rotation_generation)"
-for generation in "$OPERATOR_ROTATION_GENERATION" "$PROXY_ROTATION_GENERATION"; do
-  [[ "$generation" =~ ^[1-9][0-9]*$ ]] || {
-    echo "gx10 operator or proxy ROTATION_GENERATION is invalid" >&2
-    exit 1
-  }
-done
-printf 'GX10_OPERATOR_ROTATION_GENERATION=%s\n' "$OPERATOR_ROTATION_GENERATION" >>"$APP_TMP"
-printf 'GX10_ROTATION_GENERATION=%s\n' "$PROXY_ROTATION_GENERATION" >>"$APP_TMP"
-
-PROXY_USERNAME="$(fetch_safe "$PROXY_PATH" username)"
-PROXY_PASSWORD="$(fetch_safe "$PROXY_PATH" password)"
-if [[ ! "$PROXY_USERNAME" =~ ^[A-Za-z0-9._~-]+$ || ! "$PROXY_PASSWORD" =~ ^[A-Za-z0-9._~-]{32,}$ ]]; then
-  echo "gx10 proxy credentials are not URL-safe or sufficiently long" >&2
-  exit 1
-fi
+PROXY_USERNAME="$(fetch "$PROXY_PATH" username)"; PROXY_PASSWORD="$(fetch "$PROXY_PATH" password)"
+[[ "$PROXY_USERNAME" =~ ^[A-Za-z0-9._~-]+$ && "$PROXY_PASSWORD" =~ ^[A-Za-z0-9._~-]{32,}$ ]] || { echo "gx10 proxy credentials invalid" >&2; exit 1; }
 printf 'GX10_PROXY_USERNAME=%s\nGX10_PROXY_PASSWORD=%s\n' "$PROXY_USERNAME" "$PROXY_PASSWORD" >>"$PROXY_TMP"
-printf 'HTTP_PROXY=http://%s:%s@squid:3128\n' "$PROXY_USERNAME" "$PROXY_PASSWORD" >>"$PROXY_TMP"
-printf 'HTTPS_PROXY=http://%s:%s@squid:3128\n' "$PROXY_USERNAME" "$PROXY_PASSWORD" >>"$PROXY_TMP"
-printf 'ALL_PROXY=http://%s:%s@squid:3128\n' "$PROXY_USERNAME" "$PROXY_PASSWORD" >>"$PROXY_TMP"
-printf '%s:%s\n' "$PROXY_USERNAME" "$(openssl passwd -apr1 "$PROXY_PASSWORD")" >"$PASSWD_TMP"
+printf 'HTTP_PROXY=http://%s:%s@squid:3128\nHTTPS_PROXY=http://%s:%s@squid:3128\nALL_PROXY=http://%s:%s@squid:3128\n' "$PROXY_USERNAME" "$PROXY_PASSWORD" "$PROXY_USERNAME" "$PROXY_PASSWORD" "$PROXY_USERNAME" "$PROXY_PASSWORD" >>"$PROXY_TMP"
+PROXY_HASH="$(printf '%s\n' "$PROXY_PASSWORD" | openssl passwd -apr1 -stdin)"
+printf '%s:%s\n' "$PROXY_USERNAME" "$PROXY_HASH" >"$PASSWD_TMP"
 
-APP_POSTGRES_PASSWORD="$(fetch_safe "$RUNTIME_PATH" app_postgres_password)"
-LANGFUSE_POSTGRES_PASSWORD="$(fetch_safe "$RUNTIME_PATH" langfuse_postgres_password)"
-REDIS_PASSWORD="$(fetch_safe "$RUNTIME_PATH" redis_password)"
-NEO4J_PASSWORD="$(fetch_safe "$RUNTIME_PATH" neo4j_password)"
-CLICKHOUSE_PASSWORD="$(fetch_safe "$RUNTIME_PATH" clickhouse_password)"
-MINIO_ROOT_USER="$(fetch_safe "$RUNTIME_PATH" minio_root_user)"
-MINIO_ROOT_PASSWORD="$(fetch_safe "$RUNTIME_PATH" minio_root_password)"
-printf 'POSTGRES_PASSWORD=%s\n' "$APP_POSTGRES_PASSWORD" >>"$STATEFUL_TMP"
-printf 'LANGFUSE_POSTGRES_PASSWORD=%s\n' "$LANGFUSE_POSTGRES_PASSWORD" >>"$STATEFUL_TMP"
-printf 'REDIS_PASSWORD=%s\n' "$REDIS_PASSWORD" >>"$STATEFUL_TMP"
-printf 'NEO4J_AUTH=neo4j/%s\n' "$NEO4J_PASSWORD" >>"$STATEFUL_TMP"
-printf 'CLICKHOUSE_PASSWORD=%s\n' "$CLICKHOUSE_PASSWORD" >>"$STATEFUL_TMP"
-printf 'MINIO_ROOT_USER=%s\nMINIO_ROOT_PASSWORD=%s\n' "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >>"$STATEFUL_TMP"
+APP_DB="$(fetch "$RUNTIME_PATH" app_postgres_password)"; LF_DB="$(fetch "$RUNTIME_PATH" langfuse_postgres_password)"
+REDIS="$(fetch "$RUNTIME_PATH" redis_password)"; NEO4J="$(fetch "$RUNTIME_PATH" neo4j_password)"
+CLICKHOUSE="$(fetch "$RUNTIME_PATH" clickhouse_password)"; MINIO_USER="$(fetch "$RUNTIME_PATH" minio_root_user)"; MINIO_PASSWORD="$(fetch "$RUNTIME_PATH" minio_root_password)"
+printf 'POSTGRES_PASSWORD=%s\n' "$APP_DB" >"$APP_POSTGRES_TMP"; printf 'POSTGRES_PASSWORD=%s\n' "$LF_DB" >"$LANGFUSE_POSTGRES_TMP"
+printf 'REDIS_PASSWORD=%s\n' "$REDIS" >"$REDIS_TMP"; printf 'NEO4J_AUTH=neo4j/%s\n' "$NEO4J" >"$NEO4J_TMP"
+printf 'CLICKHOUSE_PASSWORD=%s\n' "$CLICKHOUSE" >"$CLICKHOUSE_TMP"; printf 'MINIO_ROOT_USER=%s\nMINIO_ROOT_PASSWORD=%s\n' "$MINIO_USER" "$MINIO_PASSWORD" >"$MINIO_TMP"
+printf 'DATABASE_URL=postgresql://langfuse:%s@langfuse-postgres:5432/langfuse\nNEXTAUTH_URL=https://gx10.local/langfuse\n' "$LF_DB" >"$LANGFUSE_TMP"
+emit "$LANGFUSE_TMP" NEXTAUTH_SECRET "$RUNTIME_PATH" langfuse_nextauth_secret; emit "$LANGFUSE_TMP" SALT "$RUNTIME_PATH" langfuse_salt; emit "$LANGFUSE_TMP" ENCRYPTION_KEY "$RUNTIME_PATH" langfuse_encryption_key
+printf 'CLICKHOUSE_URL=http://clickhouse:8123\nCLICKHOUSE_MIGRATION_URL=clickhouse://clickhouse:9000\nCLICKHOUSE_USER=langfuse\nCLICKHOUSE_PASSWORD=%s\nREDIS_HOST=redis\nREDIS_PORT=6379\nREDIS_AUTH=%s\nLANGFUSE_S3_EVENT_UPLOAD_ENABLED=true\nLANGFUSE_S3_EVENT_UPLOAD_ENDPOINT=http://minio:9000\nLANGFUSE_S3_EVENT_UPLOAD_BUCKET=langfuse-events\nLANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID=%s\nLANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY=%s\nLANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE=true\nLANGFUSE_S3_EVENT_UPLOAD_REGION=us-east-1\n' "$CLICKHOUSE" "$REDIS" "$MINIO_USER" "$MINIO_PASSWORD" >>"$LANGFUSE_TMP"
+emit "$CADDY_TMP" CADDY_USERNAME "$RUNTIME_PATH" caddy_username; emit "$CADDY_TMP" CADDY_PASSWORD_HASH "$RUNTIME_PATH" caddy_password_hash
 
-# Langfuse receives no checked-in credentials; every secret is rendered here.
-printf 'DATABASE_URL=postgresql://langfuse:%s@langfuse-postgres:5432/langfuse\n' "$LANGFUSE_POSTGRES_PASSWORD" >>"$LANGFUSE_TMP"
-printf 'NEXTAUTH_URL=https://gx10.local/observability\n' >>"$LANGFUSE_TMP"
-emit "$LANGFUSE_TMP" NEXTAUTH_SECRET "$RUNTIME_PATH" langfuse_nextauth_secret
-emit "$LANGFUSE_TMP" SALT "$RUNTIME_PATH" langfuse_salt
-emit "$LANGFUSE_TMP" ENCRYPTION_KEY "$RUNTIME_PATH" langfuse_encryption_key
-printf 'CLICKHOUSE_URL=http://clickhouse:8123\nCLICKHOUSE_MIGRATION_URL=clickhouse://clickhouse:9000\n' >>"$LANGFUSE_TMP"
-printf 'CLICKHOUSE_USER=langfuse\nCLICKHOUSE_PASSWORD=%s\n' "$CLICKHOUSE_PASSWORD" >>"$LANGFUSE_TMP"
-printf 'REDIS_HOST=redis\nREDIS_PORT=6379\nREDIS_AUTH=%s\n' "$REDIS_PASSWORD" >>"$LANGFUSE_TMP"
-printf 'LANGFUSE_S3_EVENT_UPLOAD_ENABLED=true\nLANGFUSE_S3_EVENT_UPLOAD_ENDPOINT=http://minio:9000\n' >>"$LANGFUSE_TMP"
-printf 'LANGFUSE_S3_EVENT_UPLOAD_BUCKET=langfuse-events\nLANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID=%s\n' "$MINIO_ROOT_USER" >>"$LANGFUSE_TMP"
-printf 'LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY=%s\nLANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE=true\n' "$MINIO_ROOT_PASSWORD" >>"$LANGFUSE_TMP"
-printf 'LANGFUSE_S3_EVENT_UPLOAD_REGION=us-east-1\n' >>"$LANGFUSE_TMP"
-
-emit "$CADDY_TMP" CADDY_USERNAME "$RUNTIME_PATH" caddy_username
-emit "$CADDY_TMP" CADDY_PASSWORD_HASH "$RUNTIME_PATH" caddy_password_hash
-
-for pair in \
-  "$APP_TMP:application.env" \
-  "$PROXY_TMP:proxy.env" \
-  "$STATEFUL_TMP:stateful.env" \
-  "$LANGFUSE_TMP:langfuse.env" \
-  "$CADDY_TMP:caddy.env"; do
-  source_file="${pair%%:*}"
-  destination="${pair#*:}"
-  install -m 0600 "$source_file" "$RUNTIME_DIR/$destination.new"
-  mv -f "$RUNTIME_DIR/$destination.new" "$RUNTIME_DIR/$destination"
-done
-install -m 0600 "$PASSWD_TMP" "$RUNTIME_DIR/proxy/squid.passwd.new"
-mv -f "$RUNTIME_DIR/proxy/squid.passwd.new" "$RUNTIME_DIR/proxy/squid.passwd"
-
-# Only independent, non-secret rotation metadata is logged.
-echo "gx10 runtime secrets rotated operator_generation=$OPERATOR_ROTATION_GENERATION proxy_generation=$PROXY_ROTATION_GENERATION" >&2
+for pair in "$COMMON_TMP:common.env" "$API_TMP:api.env" "$WORKER_TMP:worker.env" "$SCHEDULER_TMP:scheduler.env" "$MAINTENANCE_TMP:maintenance.env" "$PROXY_TMP:proxy.env" "$APP_POSTGRES_TMP:app-postgres.env" "$LANGFUSE_POSTGRES_TMP:langfuse-postgres.env" "$REDIS_TMP:redis.env" "$NEO4J_TMP:neo4j.env" "$CLICKHOUSE_TMP:clickhouse.env" "$MINIO_TMP:minio.env" "$LANGFUSE_TMP:langfuse.env" "$CADDY_TMP:caddy.env"; do source_file="${pair%%:*}"; destination="${pair#*:}"; install -m 0600 "$source_file" "$RUNTIME_DIR/$destination.new"; mv -f "$RUNTIME_DIR/$destination.new" "$RUNTIME_DIR/$destination"; done
+install -m 0600 "$PASSWD_TMP" "$RUNTIME_DIR/proxy/squid.passwd.new"; mv -f "$RUNTIME_DIR/proxy/squid.passwd.new" "$RUNTIME_DIR/proxy/squid.passwd"
+echo "gx10 secrets rotated operator_generation=$OPERATOR_GENERATION proxy_generation=$PROXY_GENERATION" >&2

@@ -1,42 +1,46 @@
 name: aca-gx10
-
-x-defaults: &defaults
-  restart: "on-failure:5"
+x-defaults:
+  restart: on-failure:5
   read_only: true
-  security_opt:
-    - no-new-privileges:true
-  cap_drop:
-    - ALL
-  deploy:
+  security_opt: &id001
+  - no-new-privileges:true
+  cap_drop: &id002
+  - ALL
+  deploy: &id003
     resources:
       limits:
-        cpus: "1.00"
+        cpus: '1.00'
         memory: 1G
-
-x-stateful: &stateful
-  <<: *defaults
+x-stateful:
+  restart: on-failure:5
   read_only: false
-  networks:
-    - stateful
-  tmpfs:
-    - /tmp:rw,noexec,nosuid,size=128m
-
-x-application: &application
-  <<: *defaults
-  image: "${GX10_APP_IMAGE:?set a reviewed application tag@sha256 digest}"
+  security_opt: *id001
+  cap_drop: *id002
+  deploy: *id003
+  networks: &id004
+  - stateful
+  tmpfs: &id005
+  - /tmp:rw,noexec,nosuid,size=128m
+x-application:
+  restart: on-failure:5
+  read_only: true
+  security_opt: *id001
+  cap_drop: *id002
+  deploy: *id003
+  image: ${GX10_APP_IMAGE:?set a reviewed application tag@sha256 digest}
   env_file:
-    - path: /run/aca/gx10/application.env
-      required: true
-    - path: /run/aca/gx10/proxy.env
-      required: true
+  - path: /run/aca/gx10/common.env
+    required: true
+  - path: /run/aca/gx10/proxy.env
+    required: true
   environment:
     PROFILE: gx10
-    GX10_RUNTIME_ENABLED: "true"
-    NO_PROXY: "localhost,127.0.0.1,.gx10.internal"
-  networks:
-    - application
-    - stateful
-  depends_on: &application-dependencies
+    GX10_RUNTIME_ENABLED: 'true'
+    NO_PROXY: localhost,127.0.0.1,.gx10.internal
+  networks: &id010
+  - application
+  - stateful
+  depends_on: &id011
     app-postgres:
       condition: service_healthy
     redis:
@@ -50,287 +54,500 @@ x-application: &application
     langfuse-web:
       condition: service_healthy
   volumes:
-    - /srv/aca/application:/srv/aca:rw
-  tmpfs:
-    - /tmp:rw,noexec,nosuid,size=256m
+  - /srv/aca/application:/srv/aca:rw
+  - ./scripts/gx10/check_role_readiness.py:/usr/local/bin/gx10-role-ready:ro
+  tmpfs: &id012
+  - /tmp:rw,noexec,nosuid,size=256m
   stop_grace_period: 45s
-
 services:
   app-postgres:
-    <<: *stateful
+    restart: on-failure:5
+    read_only: false
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    networks: *id004
+    tmpfs: *id005
     image: postgres:17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
     env_file:
-      - path: /run/aca/gx10/stateful.env
-        required: true
+    - path: /run/aca/gx10/app-postgres.env
+      required: true
     environment:
       POSTGRES_DB: newsletters
       POSTGRES_USER: newsletter_user
     volumes:
-      - /srv/aca/postgres:/var/lib/postgresql/data:rw
+    - /srv/aca/postgres:/var/lib/postgresql/data:rw
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U newsletter_user -d newsletters"]
+      test:
+      - CMD-SHELL
+      - pg_isready -U newsletter_user -d newsletters
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 30s
-
   langfuse-postgres:
-    <<: *stateful
+    restart: on-failure:5
+    read_only: false
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    networks: *id004
+    tmpfs: *id005
     image: postgres:17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
     env_file:
-      - path: /run/aca/gx10/stateful.env
-        required: true
+    - path: /run/aca/gx10/langfuse-postgres.env
+      required: true
     environment:
       POSTGRES_DB: langfuse
       POSTGRES_USER: langfuse
     volumes:
-      - /srv/aca/langfuse-postgres:/var/lib/postgresql/data:rw
+    - /srv/aca/langfuse-postgres:/var/lib/postgresql/data:rw
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      test:
+      - CMD-SHELL
+      - pg_isready -U langfuse -d langfuse
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 30s
-
   redis:
-    <<: *stateful
+    restart: on-failure:5
+    read_only: false
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    networks: *id004
+    tmpfs: *id005
     image: redis:7.4-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
     env_file:
-      - path: /run/aca/gx10/stateful.env
-        required: true
-    command: ["sh", "-ec", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    - path: /run/aca/gx10/redis.env
+      required: true
+    command:
+    - sh
+    - -ec
+    - exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
     volumes:
-      - /srv/aca/redis:/data:rw
+    - /srv/aca/redis:/data:rw
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -qx PONG"]
+      test:
+      - CMD-SHELL
+      - redis-cli -a "$$REDIS_PASSWORD" ping | grep -qx PONG
       interval: 10s
       timeout: 5s
       retries: 12
-
   neo4j:
-    <<: *stateful
+    restart: on-failure:5
+    read_only: false
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    networks: *id004
+    tmpfs: *id005
     image: neo4j:5.26-community@sha256:037cf5756f0135cbfd66b739b6df7c7c4bb100f9ce11602f6f9538e17e02c74d
     env_file:
-      - path: /run/aca/gx10/stateful.env
-        required: true
+    - path: /run/aca/gx10/neo4j.env
+      required: true
     environment:
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_dbms_security_procedures_unrestricted: apoc.*
     volumes:
-      - /srv/aca/neo4j:/data:rw
-      - /srv/aca/neo4j-logs:/logs:rw
+    - /srv/aca/neo4j:/data:rw
+    - /srv/aca/neo4j-logs:/logs:rw
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:7474 || exit 1"]
+      test:
+      - CMD-SHELL
+      - wget -q -O /dev/null http://127.0.0.1:7474 || exit 1
       interval: 10s
       timeout: 5s
       retries: 18
       start_period: 45s
-
   clickhouse:
-    <<: *stateful
+    restart: on-failure:5
+    read_only: false
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    networks: *id004
+    tmpfs: *id005
     image: clickhouse/clickhouse-server:25.3.6.56-alpine@sha256:157423fca52f596b62a1bf301b037b9f74bfca38089aa57d1bd36c9025f7ecef
     env_file:
-      - path: /run/aca/gx10/stateful.env
-        required: true
+    - path: /run/aca/gx10/clickhouse.env
+      required: true
     environment:
       CLICKHOUSE_DB: langfuse
       CLICKHOUSE_USER: langfuse
     volumes:
-      - /srv/aca/clickhouse:/var/lib/clickhouse:rw
-      - /srv/aca/clickhouse-logs:/var/log/clickhouse-server:rw
+    - /srv/aca/clickhouse:/var/lib/clickhouse:rw
+    - /srv/aca/clickhouse-logs:/var/log/clickhouse-server:rw
     ulimits:
       nofile:
         soft: 262144
         hard: 262144
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:8123/ping"]
+      test:
+      - CMD-SHELL
+      - wget --spider -q http://127.0.0.1:8123/ping
       interval: 10s
       timeout: 5s
       retries: 18
       start_period: 45s
-
   minio:
-    <<: *stateful
+    restart: on-failure:5
+    read_only: false
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    networks: *id004
+    tmpfs: *id005
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
     env_file:
-      - path: /run/aca/gx10/stateful.env
-        required: true
-    command: ["server", "--console-address", ":9090", "/data"]
+    - path: /run/aca/gx10/minio.env
+      required: true
+    command:
+    - server
+    - --console-address
+    - :9090
+    - /data
     volumes:
-      - /srv/aca/minio:/data:rw
+    - /srv/aca/minio:/data:rw
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test:
+      - CMD
+      - mc
+      - ready
+      - local
       interval: 10s
       timeout: 5s
       retries: 12
-
   openbao:
-    <<: *stateful
+    restart: on-failure:5
+    read_only: false
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    networks: *id004
+    tmpfs: *id005
     image: quay.io/openbao/openbao:2.2@sha256:d5d098f98f5ca7cae2e33d1e6dd9e2bea332275ad6bb7ff09032b48af3e1141e
-    command: ["server", "-config=/openbao/config/openbao.hcl"]
+    command:
+    - server
+    - -config=/openbao/config/openbao.hcl
     cap_add:
-      - IPC_LOCK
+    - IPC_LOCK
     volumes:
-      - /srv/aca/openbao:/openbao/data:rw
-      - ./deploy/gx10/openbao/openbao.hcl:/openbao/config/openbao.hcl:ro
+    - /srv/aca/openbao:/openbao/data:rw
+    - ./deploy/gx10/openbao/openbao.hcl:/openbao/config/openbao.hcl:ro
     healthcheck:
-      test: ["CMD-SHELL", "bao status -address=http://127.0.0.1:8200 >/dev/null 2>&1; test $$? -le 2"]
+      test:
+      - CMD-SHELL
+      - bao status -address=http://127.0.0.1:8200 >/dev/null 2>&1; test $$? -eq 0
       interval: 10s
       timeout: 5s
       retries: 18
       start_period: 30s
-
+    ports:
+    - 127.0.0.1:18200:8200
   langfuse-web:
-    <<: *defaults
+    restart: on-failure:5
+    read_only: true
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
     image: langfuse/langfuse:3@sha256:a921990b3cf6f62e9452eaf8ab9bea045852375a6883abd1fdbe63afa08defa0
     env_file:
-      - path: /run/aca/gx10/langfuse.env
-        required: true
+    - path: /run/aca/gx10/langfuse.env
+      required: true
     networks:
-      - application
-      - stateful
-    depends_on: &langfuse-dependencies
-      langfuse-postgres:
+    - application
+    - stateful
+    depends_on:
+      langfuse-postgres: &id006
         condition: service_healthy
-      clickhouse:
+      clickhouse: &id007
         condition: service_healthy
-      redis:
+      redis: &id008
         condition: service_healthy
-      minio:
+      minio: &id009
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:3000/api/public/health"]
+      test:
+      - CMD-SHELL
+      - wget --spider -q http://127.0.0.1:3000/api/public/health
       interval: 10s
       timeout: 5s
       retries: 24
       start_period: 60s
     tmpfs:
-      - /tmp:rw,noexec,nosuid,size=256m
-
+    - /tmp:rw,noexec,nosuid,size=256m
   langfuse-worker:
-    <<: *defaults
+    restart: on-failure:5
+    read_only: true
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
     image: langfuse/langfuse:3@sha256:a921990b3cf6f62e9452eaf8ab9bea045852375a6883abd1fdbe63afa08defa0
     env_file:
-      - path: /run/aca/gx10/langfuse.env
-        required: true
+    - path: /run/aca/gx10/langfuse.env
+      required: true
     networks:
-      - stateful
+    - stateful
     depends_on:
-      <<: *langfuse-dependencies
+      langfuse-postgres: *id006
+      clickhouse: *id007
+      redis: *id008
+      minio: *id009
       langfuse-web:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "node -e 'process.exit(0)'"]
+      test:
+      - CMD-SHELL
+      - node -e 'process.exit(0)'
       interval: 15s
       timeout: 5s
       retries: 12
-
   squid:
-    <<: *defaults
-    image: "ubuntu/squid:6.13-25.10_beta@sha256:${GX10_SQUID_DIGEST:?set the reviewed published manifest digest}"
+    restart: on-failure:5
+    read_only: true
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    image: ubuntu/squid:6.13-25.10_beta@sha256:${GX10_SQUID_DIGEST:?set the reviewed
+      published manifest digest}
     networks:
-      - application
-      - egress
+    - application
+    - egress
     volumes:
-      - ./deploy/gx10/squid/squid.conf:/etc/squid/squid.conf:ro
-      - ./deploy/gx10/squid/allowed-domains.txt:/etc/squid/allowed-domains.txt:ro
-      - /run/aca/gx10/proxy:/run/aca/gx10/proxy:ro
-      - /srv/aca/squid-logs:/var/log/squid:rw
+    - ./deploy/gx10/squid/squid.conf:/etc/squid/squid.conf:ro
+    - ./deploy/gx10/squid/allowed-domains.txt:/etc/squid/allowed-domains.txt:ro
+    - /run/aca/gx10/proxy:/run/aca/gx10/proxy:ro
+    - /srv/aca/squid-logs:/var/log/squid:rw
+    - ./scripts/gx10/check_proxy_ready.sh:/usr/local/bin/gx10-proxy-ready:ro
     healthcheck:
-      test: ["CMD-SHELL", "/usr/sbin/squid -k parse -f /etc/squid/squid.conf >/dev/null 2>&1 && test -f /run/aca/gx10/proxy/policy.ready"]
+      test:
+      - CMD
+      - /usr/local/bin/gx10-proxy-ready
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 20s
-
+    env_file:
+    - path: /run/aca/gx10/proxy.env
+      required: true
   api:
-    <<: *application
-    command: ["uvicorn", "src.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+    restart: on-failure:5
+    read_only: true
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    image: ${GX10_APP_IMAGE:?set a reviewed application tag@sha256 digest}
+    env_file:
+    - path: /run/aca/gx10/common.env
+      required: true
+    - path: /run/aca/gx10/api.env
+      required: true
+    - path: /run/aca/gx10/proxy.env
+      required: true
     environment:
       PROFILE: gx10
-      GX10_RUNTIME_ENABLED: "true"
-      NO_PROXY: "localhost,127.0.0.1,.gx10.internal"
+      GX10_RUNTIME_ENABLED: 'true'
+      NO_PROXY: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,neo4j,openbao,squid,langfuse-web,clickhouse,minio
       TELEMETRY_SERVICE_INSTANCE_ID: aca-gx10-api
-      WORKER_ENABLED: "false"
+      WORKER_ENABLED: 'false'
+      GX10_PROCESS_ROLE: api
+      OTEL_SERVICE_NAME: aca-gx10-api
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:3000/api/public/otel
+      no_proxy: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,neo4j,openbao,squid,langfuse-web,clickhouse,minio
+    networks: *id010
+    depends_on: *id011
+    volumes:
+    - /srv/aca/application:/srv/aca:rw
+    - ./scripts/gx10/check_role_readiness.py:/usr/local/bin/gx10-role-ready:ro
+    tmpfs: *id012
+    stop_grace_period: 45s
+    command:
+    - uvicorn
+    - src.api.app:app
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8000'
+    - --proxy-headers
     healthcheck:
-      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/ready\", timeout=3)'"]
+      test:
+      - CMD
+      - python
+      - /usr/local/bin/gx10-role-ready
+      - --role
+      - api
       interval: 10s
       timeout: 5s
       retries: 18
       start_period: 30s
-
   worker:
-    <<: *application
-    command: ["python", "-m", "src.worker"]
+    restart: on-failure:5
+    read_only: true
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    image: ${GX10_APP_IMAGE:?set a reviewed application tag@sha256 digest}
+    env_file:
+    - path: /run/aca/gx10/common.env
+      required: true
+    - path: /run/aca/gx10/worker.env
+      required: true
+    - path: /run/aca/gx10/proxy.env
+      required: true
     environment:
       PROFILE: gx10
-      GX10_RUNTIME_ENABLED: "true"
-      NO_PROXY: "localhost,127.0.0.1,.gx10.internal"
+      GX10_RUNTIME_ENABLED: 'true'
+      NO_PROXY: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,neo4j,openbao,squid,langfuse-web,clickhouse,minio
       TELEMETRY_SERVICE_INSTANCE_ID: aca-gx10-worker
-      WORKER_CONCURRENCY: "5"
+      WORKER_CONCURRENCY: '5'
+      GX10_PROCESS_ROLE: worker
+      OTEL_SERVICE_NAME: aca-gx10-worker
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:3000/api/public/otel
+      no_proxy: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,neo4j,openbao,squid,langfuse-web,clickhouse,minio
+    networks: *id010
+    depends_on: *id011
+    volumes:
+    - /srv/aca/application:/srv/aca:rw
+    - ./scripts/gx10/check_role_readiness.py:/usr/local/bin/gx10-role-ready:ro
+    tmpfs: *id012
+    stop_grace_period: 45s
+    command:
+    - python
+    - -m
+    - src.worker
     healthcheck:
-      test: ["CMD-SHELL", "python -c 'import os; os.kill(1, 0)'"]
+      test:
+      - CMD
+      - python
+      - /usr/local/bin/gx10-role-ready
+      - --role
+      - worker
       interval: 15s
       timeout: 5s
       retries: 12
-
   scheduler:
-    <<: *application
-    command: ["python", "-m", "src.worker"]
+    restart: on-failure:5
+    read_only: true
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    image: ${GX10_APP_IMAGE:?set a reviewed application tag@sha256 digest}
+    env_file:
+    - path: /run/aca/gx10/common.env
+      required: true
+    - path: /run/aca/gx10/scheduler.env
+      required: true
+    - path: /run/aca/gx10/proxy.env
+      required: true
     environment:
       PROFILE: gx10
-      GX10_RUNTIME_ENABLED: "true"
-      NO_PROXY: "localhost,127.0.0.1,.gx10.internal"
+      GX10_RUNTIME_ENABLED: 'true'
+      NO_PROXY: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,neo4j,openbao,squid,langfuse-web,clickhouse,minio
       TELEMETRY_SERVICE_INSTANCE_ID: aca-gx10-scheduler
-      WORKER_CONCURRENCY: "1"
+      WORKER_CONCURRENCY: '1'
       GX10_PROCESS_ROLE: scheduler
+      OTEL_SERVICE_NAME: aca-gx10-scheduler
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:3000/api/public/otel
+      no_proxy: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,neo4j,openbao,squid,langfuse-web,clickhouse,minio
+    networks: *id010
+    depends_on: *id011
+    volumes:
+    - /srv/aca/application:/srv/aca:rw
+    - ./scripts/gx10/check_role_readiness.py:/usr/local/bin/gx10-role-ready:ro
+    tmpfs: *id012
+    stop_grace_period: 45s
+    command:
+    - python
+    - -m
+    - src.worker
     healthcheck:
-      test: ["CMD-SHELL", "python -c 'import os; os.kill(1, 0)'"]
+      test:
+      - CMD
+      - python
+      - /usr/local/bin/gx10-role-ready
+      - --role
+      - scheduler
       interval: 15s
       timeout: 5s
       retries: 12
-
   maintenance:
-    <<: *application
-    command: ["python", "-m", "src.worker"]
+    restart: on-failure:5
+    read_only: true
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    image: ${GX10_APP_IMAGE:?set a reviewed application tag@sha256 digest}
+    env_file:
+    - path: /run/aca/gx10/common.env
+      required: true
+    - path: /run/aca/gx10/maintenance.env
+      required: true
+    - path: /run/aca/gx10/proxy.env
+      required: true
     environment:
       PROFILE: gx10
-      GX10_RUNTIME_ENABLED: "true"
-      NO_PROXY: "localhost,127.0.0.1,.gx10.internal"
+      GX10_RUNTIME_ENABLED: 'true'
+      NO_PROXY: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,neo4j,openbao,squid,langfuse-web,clickhouse,minio
       TELEMETRY_SERVICE_INSTANCE_ID: aca-gx10-maintenance
-      WORKER_CONCURRENCY: "1"
+      WORKER_CONCURRENCY: '1'
       GX10_PROCESS_ROLE: maintenance
+      OTEL_SERVICE_NAME: aca-gx10-maintenance
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:3000/api/public/otel
+      no_proxy: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,neo4j,openbao,squid,langfuse-web,clickhouse,minio
+    networks: *id010
+    depends_on: *id011
+    volumes:
+    - /srv/aca/application:/srv/aca:rw
+    - ./scripts/gx10/check_role_readiness.py:/usr/local/bin/gx10-role-ready:ro
+    tmpfs: *id012
+    stop_grace_period: 45s
+    command:
+    - python
+    - -m
+    - src.worker
     healthcheck:
-      test: ["CMD-SHELL", "python -c 'import os; os.kill(1, 0)'"]
+      test:
+      - CMD
+      - python
+      - /usr/local/bin/gx10-role-ready
+      - --role
+      - maintenance
       interval: 15s
       timeout: 5s
       retries: 12
-
   caddy:
-    <<: *defaults
+    restart: on-failure:5
+    read_only: true
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
     image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
     env_file:
-      - path: /run/aca/gx10/caddy.env
-        required: true
+    - path: /run/aca/gx10/caddy.env
+      required: true
     ports:
-      - "127.0.0.1:8443:443"
+    - 127.0.0.1:8443:443
     networks:
-      - application
+    - application
     depends_on:
       api:
         condition: service_healthy
       langfuse-web:
         condition: service_healthy
     volumes:
-      - ./deploy/gx10/Caddyfile:/etc/caddy/Caddyfile:ro
-      - /srv/aca/caddy-data:/data:rw
-      - /srv/aca/caddy-config:/config:rw
+    - ./deploy/gx10/Caddyfile:/etc/caddy/Caddyfile:ro
+    - /srv/aca/caddy-data:/data:rw
+    - /srv/aca/caddy-config:/config:rw
     healthcheck:
-      test: ["CMD", "caddy", "version"]
+      test:
+      - CMD
+      - caddy
+      - version
       interval: 15s
       timeout: 5s
       retries: 12
-
 networks:
   application:
     internal: true

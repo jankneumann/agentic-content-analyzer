@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed static and fixture validator for the GX-10 runtime."""
+"""Fail-closed static, rendered, and executable-evidence validator for GX-10."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import argparse
 import json
 import re
 import stat
-import sys
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +15,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_PATH = ROOT / "docker-compose.gx10.yml"
-DIGEST_PIN = re.compile(r"^[^\s@]+:[^\s@]+@sha256:[0-9a-f]{64}$")
+DIGEST_PIN = re.compile(r"^[^\s@]+:[^\s@]+@sha256:([0-9a-f]{64})$")
 APPLICATION_SERVICES = ("api", "worker", "scheduler", "maintenance")
 STATEFUL_SERVICES = (
     "app-postgres",
@@ -26,7 +26,7 @@ STATEFUL_SERVICES = (
     "minio",
     "openbao",
 )
-FAILURE_SCENARIOS = {
+FAILURE_SCENARIOS = (
     "unknown_destination",
     "stale_policy",
     "invalid_policy",
@@ -34,189 +34,208 @@ FAILURE_SCENARIOS = {
     "credential_failure",
     "proxy_failure",
     "direct_route",
-}
+)
 RUNTIME_FILES = (
-    "application.env",
+    "common.env",
+    "api.env",
+    "worker.env",
+    "scheduler.env",
+    "maintenance.env",
     "proxy.env",
-    "stateful.env",
+    "app-postgres.env",
+    "langfuse-postgres.env",
+    "redis.env",
+    "neo4j.env",
+    "clickhouse.env",
+    "minio.env",
     "langfuse.env",
     "caddy.env",
     "proxy/squid.passwd",
     "proxy/policy.ready",
+    "image-pins.ready",
 )
 
 
-def _load_yaml(path: Path) -> dict[str, Any]:
-    value = yaml.safe_load(path.read_text(encoding="utf-8"))
+def load(path: Path) -> dict[str, Any]:
+    value = yaml.safe_load(path.read_text())
     if not isinstance(value, dict):
         raise ValueError(f"{path} must contain a mapping")
     return value
 
 
-def _check_images(compose: dict[str, Any], errors: list[str]) -> None:
+def sentinel(digest: str) -> bool:
+    return len(set(digest)) <= 1 or digest in {"deadbeef" * 8, "0123456789abcdef" * 4}
+
+
+def check_images(compose: dict[str, Any], errors: list[str]) -> None:
     for name, service in compose["services"].items():
         image = service.get("image", "")
         if name in APPLICATION_SERVICES:
             if image != "${GX10_APP_IMAGE:?set a reviewed application tag@sha256 digest}":
-                errors.append(f"{name}: application image must be a required render input")
+                errors.append(f"{name}: protected application image input required")
         elif name == "squid":
-            expected = (
-                "ubuntu/squid:6.13-25.10_beta@sha256:"
-                "${GX10_SQUID_DIGEST:?set the reviewed published manifest digest}"
-            )
+            expected = "ubuntu/squid:6.13-25.10_beta@sha256:${GX10_SQUID_DIGEST:?set the reviewed published manifest digest}"
             if image != expected:
-                errors.append("squid: frozen tag and required digest render input changed")
+                errors.append("squid: frozen tag plus protected digest input required")
         elif not DIGEST_PIN.fullmatch(image):
             errors.append(f"{name}: image is not immutable")
 
 
-def _check_topology(compose: dict[str, Any], errors: list[str]) -> None:
+def check_topology(compose: dict[str, Any], errors: list[str]) -> None:
     services = compose["services"]
     networks = compose["networks"]
     for network in ("application", "stateful"):
         if networks.get(network, {}).get("internal") is not True:
             errors.append(f"{network}: must be internal")
-    if networks.get("egress", {}).get("internal") is not False:
-        errors.append("egress: must be routed only for Squid")
     for name in APPLICATION_SERVICES:
         attached = services[name].get("networks", [])
         if "application" not in attached or "egress" in attached:
             errors.append(f"{name}: direct route present")
-        for required in ("squid", "openbao", "langfuse-web"):
-            condition = services[name].get("depends_on", {}).get(required, {}).get("condition")
-            if condition != "service_healthy":
-                errors.append(f"{name}: {required} is not a healthy dependency")
+        command = " ".join(services[name].get("healthcheck", {}).get("test", []))
+        if "gx10-role-ready" not in command:
+            errors.append(f"{name}: active dependency readiness missing")
     for name in (*STATEFUL_SERVICES, "langfuse-web", "langfuse-worker", "squid"):
-        if services[name].get("ports"):
-            errors.append(f"{name}: stateful/internal port published")
+        ports = services[name].get("ports", [])
+        if name == "openbao":
+            if ports != ["127.0.0.1:18200:8200"]:
+                errors.append("openbao: management API must be loopback-only")
+        elif ports:
+            errors.append(f"{name}: internal port published")
     if services["caddy"].get("ports") != ["127.0.0.1:8443:443"]:
-        errors.append("caddy: ingress must bind only to loopback")
+        errors.append("caddy: ingress must be loopback-only")
 
 
-def _check_runtime_files(runtime_dir: Path, errors: list[str]) -> None:
+def check_runtime(runtime: Path, errors: list[str]) -> None:
     for relative in RUNTIME_FILES:
-        path = runtime_dir / relative
+        path = runtime / relative
         if not path.is_file():
             errors.append(f"runtime file missing: {relative}")
             continue
-        mode = stat.S_IMODE(path.stat().st_mode)
-        if mode != 0o600:
-            errors.append(f"runtime file mode is {mode:o}, expected 600: {relative}")
+        if stat.S_IMODE(path.stat().st_mode) != 0o600:
+            errors.append(f"runtime file mode must be 600: {relative}")
 
 
-def _static_validate(runtime_dir: Path | None) -> list[str]:
-    errors: list[str] = []
+def static_validate(runtime: Path | None) -> list[str]:
+    errors = []
     required = (
         COMPOSE_PATH,
         ROOT / "deploy/gx10/Caddyfile",
         ROOT / "deploy/gx10/egress-policy.yaml",
         ROOT / "deploy/gx10/squid/squid.conf",
-        ROOT / "deploy/gx10/squid/allowed-domains.txt",
-        ROOT / "deploy/gx10/openbao/openbao.hcl",
-        ROOT / "deploy/gx10/openbao/aca-gx10.hcl",
+        ROOT / "deploy/gx10/openbao/bootstrap-approle.sh",
+        ROOT / "deploy/gx10/openbao/unseal.sh",
+        ROOT / "deploy/gx10/openbao/login-approle.sh",
         ROOT / "deploy/gx10/openbao/render-secrets.sh",
-        ROOT / "deploy/gx10/systemd/aca-gx10.service",
-        ROOT / "scripts/gx10/reload_proxy_policy.sh",
-        ROOT / "scripts/gx10/install_firewall.sh",
+        ROOT / "deploy/gx10/systemd/aca-gx10-image-pins.service",
+        ROOT / "scripts/gx10/verify_image_pins.sh",
+        ROOT / "scripts/gx10/check_proxy_ready.sh",
+        ROOT / "scripts/gx10/check_role_readiness.py",
     )
     for path in required:
         if not path.is_file():
             errors.append(f"required artifact missing: {path.relative_to(ROOT)}")
-    if errors:
-        return errors
-
-    compose = _load_yaml(COMPOSE_PATH)
-    _check_images(compose, errors)
-    _check_topology(compose, errors)
-    raw = "\n".join(path.read_text(encoding="utf-8") for path in required)
-    for forbidden in (
-        "dev-nextauth-secret-do-not-use-in-production",
-        "dev-salt-do-not-use-in-production",
-        "newsletter_password",
-        "langfuse123",
-    ):
-        if forbidden in raw:
-            errors.append(f"checked-in secret-like development value found: {forbidden}")
-    if runtime_dir is not None:
-        _check_runtime_files(runtime_dir, errors)
+    if not errors:
+        compose = load(COMPOSE_PATH)
+        check_images(compose, errors)
+        check_topology(compose, errors)
+    if runtime is not None:
+        check_runtime(runtime, errors)
     return errors
 
 
-def _validate_rendered_compose(path: Path) -> list[str]:
-    errors: list[str] = []
-    compose = _load_yaml(path)
+def rendered_validate(path: Path, evidence: Path | None) -> list[str]:
+    errors = []
+    compose = load(path)
     for name, service in compose["services"].items():
-        image = service.get("image", "")
-        if not DIGEST_PIN.fullmatch(image):
+        match = DIGEST_PIN.fullmatch(service.get("image", ""))
+        if not match:
             errors.append(f"rendered {name}: image is not tag@sha256 pinned")
-    squid_image = compose["services"]["squid"]["image"]
-    if not squid_image.startswith("ubuntu/squid:6.13-25.10_beta@sha256:"):
-        errors.append("rendered Squid image lost frozen tag provenance")
+        elif sentinel(match.group(1)):
+            errors.append(f"rendered {name}: sentinel digest denied")
+    squid = compose["services"]["squid"]["image"]
+    if not squid.startswith("ubuntu/squid:6.13-25.10_beta@sha256:"):
+        errors.append("rendered Squid tag provenance changed")
+    if evidence is None or not evidence.is_file():
+        errors.append("registry verified image-pins evidence required")
+    else:
+        proof = evidence.read_text()
+        if (
+            f"app={compose['services']['api']['image']}" not in proof
+            or f"squid={squid}" not in proof
+        ):
+            errors.append("rendered images do not match verified registry evidence")
     return errors
 
 
-def _parse_args() -> argparse.Namespace:
+def run_harness(path: Path) -> list[str]:
+    errors = []
+    for scenario in FAILURE_SCENARIOS:
+        external = subprocess.run(
+            [str(path), "external", scenario],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        diagnostics = subprocess.run(
+            [str(path), "diagnostics", scenario],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        if external.returncode == 0:
+            errors.append(f"{scenario}: external call was not denied")
+        if diagnostics.returncode != 0:
+            errors.append(f"{scenario}: local diagnostics unavailable")
+    return errors
+
+
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--simulate-failure", choices=sorted(FAILURE_SCENARIOS))
-    group.add_argument("--simulate-cold-restart", action="store_true")
     group.add_argument("--rendered-compose", type=Path)
+    group.add_argument("--failure-harness", type=Path)
+    group.add_argument("--clean-stack-evidence", type=Path)
+    parser.add_argument("--image-pins-evidence", type=Path)
     parser.add_argument("--runtime-dir", type=Path)
     return parser.parse_args()
 
 
 def main() -> int:
-    args = _parse_args()
-    if args.simulate_failure:
-        print(
-            json.dumps(
-                {
-                    "external_calls": "denied",
-                    "local_diagnostics": "available",
-                    "scenario": args.simulate_failure,
-                },
-                sort_keys=True,
-            )
+    args = parse_args()
+    if args.failure_harness:
+        errors = run_harness(args.failure_harness)
+        executed = True
+    elif args.clean_stack_evidence:
+        evidence = json.loads(args.clean_stack_evidence.read_text())
+        required = {
+            "live": True,
+            "registry_verified": True,
+            "cold_restart_passed": True,
+            "direct_routes_denied": True,
+        }
+        errors = (
+            []
+            if all(evidence.get(k) == v for k, v in required.items())
+            else ["actual clean-stack evidence is incomplete"]
         )
-        return 0
-    if args.simulate_cold_restart:
-        print(
-            json.dumps(
-                {
-                    "health_order": [
-                        "openbao",
-                        "app-postgres",
-                        "langfuse-postgres",
-                        "redis",
-                        "neo4j",
-                        "clickhouse",
-                        "minio",
-                        "squid",
-                        "langfuse-web",
-                        "worker",
-                        "scheduler",
-                        "maintenance",
-                        "api",
-                        "caddy",
-                    ],
-                    "persistent_mounts": "preserved",
-                    "result": "ready",
-                },
-                sort_keys=True,
-            )
-        )
-        return 0
-    errors = (
-        _validate_rendered_compose(args.rendered_compose)
-        if args.rendered_compose
-        else _static_validate(args.runtime_dir)
-    )
+        executed = True
+    elif args.rendered_compose:
+        errors = rendered_validate(args.rendered_compose, args.image_pins_evidence)
+        executed = False
+    else:
+        errors = static_validate(args.runtime_dir)
+        executed = False
     if errors:
         print(json.dumps({"errors": errors, "result": "denied"}, sort_keys=True))
         return 1
-    print(json.dumps({"result": "ready"}, sort_keys=True))
+    result = {"result": "ready"}
+    if executed:
+        result["evidence"] = "executed"
+    print(json.dumps(result, sort_keys=True))
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

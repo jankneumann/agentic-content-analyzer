@@ -5,6 +5,7 @@ After=aca-gx10-secrets.service
 Before=aca-gx10-firewall.service aca-gx10.service
 
 [Service]
+EnvironmentFile=/etc/aca/gx10-images.env
 Type=oneshot
 WorkingDirectory=/opt/aca
 Environment=GX10_ROOT_DIR=/opt/aca

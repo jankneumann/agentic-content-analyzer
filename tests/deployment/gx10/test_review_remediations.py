@@ -196,7 +196,6 @@ def test_internal_hosts_bypass_proxy_and_roles_have_distinct_exporters() -> None
         assert "gx10-role-ready" in " ".join(service["healthcheck"]["test"])
 
 
-
 @pytest.mark.parametrize(
     ("role", "lost_host"),
     [
@@ -219,7 +218,7 @@ def test_role_readiness_fails_after_mapped_dependency_loss(
     assert lost_host in mapped_hosts
 
     class Connection:
-        def __enter__(self) -> "Connection":
+        def __enter__(self) -> Connection:
             return self
 
         def __exit__(self, *_args: object) -> None:

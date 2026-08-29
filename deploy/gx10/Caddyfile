@@ -12,9 +12,9 @@ https://gx10.local {
   basic_auth {
     {$CADDY_USERNAME} {$CADDY_PASSWORD_HASH}
   }
-  @langfuse path /observability/*
+  @langfuse path /langfuse/*
   handle @langfuse {
-    uri strip_prefix /observability
+    uri strip_prefix /langfuse
     reverse_proxy langfuse-web:3000
   }
   handle {
