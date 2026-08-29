@@ -517,3 +517,197 @@ def test_retention_expires_old_success_only_when_a_newer_success_exists() -> Non
     )
 
     assert expired == (old,)
+
+
+def test_backup_activation_rejects_empty_or_incomplete_component_inventory() -> None:
+    backup = _backup()
+
+    with pytest.raises(backup.ComponentInventoryError, match="complete"):
+        backup.GX10BackupController(
+            producers={},
+            encrypt=_encrypt,
+            store=lambda _name, _payload: None,
+        )
+    with pytest.raises(backup.ComponentInventoryError, match="complete"):
+        backup.GX10BackupController(
+            producers={backup.BackupComponent.NEO4J: lambda: b"neo4j"},
+            encrypt=_encrypt,
+            store=lambda _name, _payload: None,
+        )
+
+
+def test_restore_activation_requires_complete_restore_and_validation_inventories() -> None:
+    backup = _backup()
+    complete_restore = {
+        component: (lambda _payload, _path: None) for component in backup.BackupComponent
+    }
+    incomplete_validate = {backup.BackupComponent.NEO4J: lambda _path: True}
+
+    with pytest.raises(backup.ComponentInventoryError, match="complete"):
+        backup.GX10RestoreDrill(
+            decrypt=lambda payload, _recipient: payload,
+            restore=complete_restore,
+            validate=incomplete_validate,
+        )
+
+
+def test_age_adapter_rejects_identity_or_non_age_ciphertext() -> None:
+    backup = _backup()
+
+    identity = backup.AgeCommandAdapter(
+        run=lambda _request: backup.AgeCommandResult(returncode=0, stdout=b"plain")
+    )
+    with pytest.raises(backup.EncryptionMaterialError, match="age envelope"):
+        identity.encrypt(b"plain", ACTIVE_RECIPIENT)
+
+
+def test_age_decrypt_identity_is_never_placed_in_argv_or_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import subprocess
+
+    backup = _backup()
+    captured: dict[str, object] = {}
+
+    def completed(argv, **kwargs):
+        captured["argv"] = tuple(argv)
+        captured["env"] = kwargs.get("env", {})
+        captured["pass_fds"] = kwargs.get("pass_fds", ())
+        return subprocess.CompletedProcess(argv, 0, stdout=b"restored", stderr=b"")
+
+    monkeypatch.setattr(subprocess, "run", completed)
+    secret_identity = "AGE-SECRET-KEY-1QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ"
+    adapter = backup.AgeCommandAdapter()
+
+    assert adapter.decrypt(b"age-encryption.org/v1\nbody", secret_identity) == b"restored"
+    assert secret_identity not in repr(captured["argv"])
+    assert secret_identity not in repr(captured["env"])
+    assert captured["pass_fds"]
+
+
+def test_openbao_material_provider_requires_active_and_retains_rotated_identity() -> None:
+    import json
+
+    backup = _backup()
+    secrets = {
+        "GX10_AGE_RECIPIENT": ACTIVE_RECIPIENT,
+        "GX10_AGE_RETAINED_RECIPIENTS": json.dumps([OLD_RECIPIENT]),
+        "GX10_AGE_IDENTITIES": json.dumps({OLD_RECIPIENT: "AGE-SECRET-KEY-OLD"}),
+    }
+    provider = backup.OpenBaoAgeMaterialProvider(read_secret=secrets.get)
+
+    assert provider.catalog() == backup.AgeRecipientCatalog(
+        active=ACTIVE_RECIPIENT,
+        retained=(OLD_RECIPIENT,),
+    )
+    assert provider.identity_for(OLD_RECIPIENT) == "AGE-SECRET-KEY-OLD"
+
+
+def test_restore_drill_integrates_metadata_and_measured_objectives(
+    tmp_path: Path,
+) -> None:
+    backup = _backup()
+    start = datetime(2026, 8, 30, 12, tzinfo=UTC)
+    timestamps = iter(
+        [
+            start,
+            *(start + timedelta(minutes=10 * (index + 1)) for index in range(6)),
+            start + timedelta(hours=3),
+        ]
+    )
+    artifacts = {
+        component: backup.EncryptedArtifact(
+            component=component,
+            name=f"{component}.age",
+            payload=b"age-encryption.org/v1\nbody",
+            checksum_sha256=hashlib.sha256(b"age-encryption.org/v1\nbody").hexdigest(),
+            encryption_recipient=ACTIVE_RECIPIENT,
+            completed_at=start - timedelta(hours=23),
+        )
+        for component in backup.BackupComponent
+    }
+    drill = backup.GX10RestoreDrill(
+        decrypt=lambda _payload, _recipient: b"restored",
+        restore={
+            component: (lambda _payload, path: path.mkdir(parents=True))
+            for component in backup.BackupComponent
+        },
+        validate={component: (lambda path: path.is_dir()) for component in backup.BackupComponent},
+        clock=lambda: next(timestamps),
+    )
+
+    result = drill.run_drill(
+        artifacts=artifacts,
+        targets={
+            component: tmp_path / "isolated" / str(component)
+            for component in backup.BackupComponent
+        },
+        isolated_root=tmp_path / "isolated",
+        production_sources=(),
+        available_recipients=(ACTIVE_RECIPIENT,),
+        correlation=_context(backup),
+        metadata_probe=lambda: backup.RestoreValidation(
+            application_operation_rows=True,
+            langfuse_trace_metadata=True,
+        ),
+    )
+
+    assert result.outcome == "succeeded"
+    assert result.validation.application_operation_rows is True
+    assert result.validation.langfuse_trace_metadata is True
+    assert result.objectives.application_rpo_seconds == 23 * 60 * 60
+    assert result.objectives.component_rto_seconds == 60 * 60
+    assert result.objectives.full_stack_rto_seconds == 3 * 60 * 60
+    assert result.objectives.accepted is True
+    assert {component.trace_id for component in result.components} == {"5" * 32}
+
+
+def test_restore_drill_rejects_missing_operation_rows_or_trace_metadata(
+    tmp_path: Path,
+) -> None:
+    backup = _backup()
+    start = datetime(2026, 8, 30, 12, tzinfo=UTC)
+    times = iter([start, *(start for _ in backup.BackupComponent), start])
+    payload = b"age-encryption.org/v1\nbody"
+    artifacts = {
+        component: backup.EncryptedArtifact(
+            component=component,
+            name=f"{component}.age",
+            payload=payload,
+            checksum_sha256=hashlib.sha256(payload).hexdigest(),
+            encryption_recipient=ACTIVE_RECIPIENT,
+            completed_at=start - timedelta(hours=1),
+        )
+        for component in backup.BackupComponent
+    }
+    drill = backup.GX10RestoreDrill(
+        decrypt=lambda _payload, _recipient: b"restored",
+        restore={
+            component: (lambda _payload, path: path.mkdir(parents=True))
+            for component in backup.BackupComponent
+        },
+        validate={component: (lambda path: path.is_dir()) for component in backup.BackupComponent},
+        clock=lambda: next(times),
+    )
+
+    result = drill.run_drill(
+        artifacts=artifacts,
+        targets={
+            component: tmp_path / "isolated" / str(component)
+            for component in backup.BackupComponent
+        },
+        isolated_root=tmp_path / "isolated",
+        production_sources=(),
+        available_recipients=(ACTIVE_RECIPIENT,),
+        correlation=_context(backup),
+        metadata_probe=lambda: backup.RestoreValidation(
+            application_operation_rows=False,
+            langfuse_trace_metadata=False,
+        ),
+    )
+
+    assert result.outcome == "permanent_failure"
+    assert result.diagnostic_codes == (
+        "application_operation_rows_missing",
+        "langfuse_trace_metadata_missing",
+    )
