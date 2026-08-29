@@ -15,6 +15,11 @@ from src.agents.scheduler.scheduler import (
     ScheduleEntry,
     cron_matches,
 )
+from src.contracts.operation_context import (
+    OperationContext,
+    bind_operation_context,
+    get_current_operation_context,
+)
 from src.services.environment_ownership import (
     EnvironmentOwnershipUnavailable,
     OwnershipFenceRejected,
@@ -342,6 +347,61 @@ class TestAgentScheduler:
         assert await scheduler.tick(datetime(2025, 6, 16, 9, 0)) == []
         ownership_gate.assert_called_once()
         enqueue_fn.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_tick_enqueue_observes_bound_ownership_context(
+        self, schedule_yaml: Path, monkeypatch
+    ) -> None:
+        observed = []
+
+        async def enqueue(_payload):
+            observed.append(get_current_operation_context())
+            return "task-context"
+
+        scheduler = AgentScheduler(schedule_path=str(schedule_yaml), enqueue_fn=enqueue)
+        scheduler.start()
+
+        @contextmanager
+        def database_session():
+            yield MagicMock()
+
+        monkeypatch.setattr(
+            scheduler_module,
+            "get_settings",
+            lambda: SimpleNamespace(gx10_runtime_enabled=True),
+        )
+        monkeypatch.setattr(scheduler_module, "get_db", database_session)
+        monkeypatch.setattr(scheduler_module, "require_scheduler_ownership", MagicMock())
+        parent = OperationContext(
+            schema_version=1,
+            operation_id="41",
+            root_operation_id="41",
+            parent_operation_id=None,
+            traceparent="00-11111111111111111111111111111111-2222222222222222-01",
+            tracestate=None,
+            trace_id="11111111111111111111111111111111",
+            span_id="2222222222222222",
+            claim_generation="0",
+            attempt_number="1",
+            entrypoint="scheduler.process",
+            service_name="aca-gx10-scheduler",
+            service_instance_id="scheduler-1",
+            environment="production",
+            release_revision="b" * 40,
+            authority_fingerprint="a" * 64,
+            ownership_epoch="17",
+            stage="submit",
+            resource_kind=None,
+            resource_key=None,
+        )
+
+        with bind_operation_context(parent):
+            assert await scheduler.tick(datetime(2025, 6, 16, 9, 0)) == ["task-context"]
+
+        assert len(observed) == 1
+        assert observed[0] is not None
+        assert observed[0].authority_fingerprint == "a" * 64
+        assert observed[0].ownership_epoch == "17"
 
     @pytest.mark.asyncio
     async def test_tick_no_enqueue_fn(self, schedule_yaml: Path):
