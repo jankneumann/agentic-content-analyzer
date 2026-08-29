@@ -379,20 +379,19 @@ def verify_snapshot(
     )
     generation_metadata = any(_has_generation_metadata(item) for item in worker_children)
 
+    latest_attempt = matching_attempts[-1] if matching_attempts else {}
+    latest_is_persisted_success = bool(
+        latest_attempt.get("outcome") == "succeeded"
+        and _safe_identifier(latest_attempt.get("carrier_source"), 64) in _PERSISTED_CARRIER_SOURCES
+    )
     retry_continuity = bool(
         len(matching_attempts) >= 2
         and len(ordered_generations) >= 2
         and all(later > earlier for earlier, later in itertools.pairwise(ordered_generations))
-        and any(
-            earlier.get("outcome") == "retryable_failure" and later.get("outcome") == "succeeded"
-            for earlier_index, earlier in enumerate(matching_attempts[:-1])
-            for later in matching_attempts[earlier_index + 1 :]
-        )
+        and latest_is_persisted_success
+        and any(item.get("outcome") == "retryable_failure" for item in matching_attempts[:-1])
     )
-    restart_continuity = any(
-        _safe_identifier(item.get("carrier_source"), 64) in _PERSISTED_CARRIER_SOURCES
-        for item in matching_attempts[1:]
-    )
+    restart_continuity = retry_continuity and latest_is_persisted_success
     nonempty_canaries = tuple(canary for canary in canaries if canary)
     searchable = snapshot.searchable_json()
     secret_canaries_absent = not any(canary in searchable for canary in nonempty_canaries)
