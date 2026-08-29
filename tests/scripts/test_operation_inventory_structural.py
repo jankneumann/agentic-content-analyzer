@@ -63,6 +63,28 @@ def test_inventory_rejects_uninstrumented_declared_file_even_when_peer_is_covere
     assert report.uninstrumented == ("src/workflows/uncovered.py",)
 
 
+def test_inventory_rejects_uninstrumented_expanded_file_in_agents_glob(
+    tmp_path: Path,
+) -> None:
+    agents = tmp_path / "src/agents"
+    agents.mkdir(parents=True)
+    (agents / "good.py").write_text(
+        "from src.clients.operational_observability import operational_entrypoint\n"
+        "@operational_entrypoint('agent.good', stage='model')\n"
+        "def run(): pass\n"
+    )
+    bad = agents / "bad.py"
+    bad.write_text("def run(): pass\n")
+    inventory = tmp_path / "inventory.yaml"
+    inventory.write_text(
+        yaml.safe_dump(_minimal_inventory(shared_boundaries={"agents": ["src/agents/**"]}))
+    )
+
+    report = validate_frozen_entrypoint_inventory(tmp_path, inventory)
+
+    assert "src/agents/bad.py" in report.uninstrumented
+
+
 @pytest.mark.parametrize(
     "pattern",
     ["src/services/cloud_stt/**", "src/storage/providers/**"],
