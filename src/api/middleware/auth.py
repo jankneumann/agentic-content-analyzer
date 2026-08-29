@@ -67,9 +67,7 @@ def _is_operator_only_path(path: str) -> bool:
     return path in {
         "/api/v1/status/observability",
         "/api/v1/status/environment-ownership",
-    } or (
-        path.startswith("/api/v1/operations/") and path.endswith("/attempts")
-    )
+    } or (path.startswith("/api/v1/operations/") and path.endswith("/attempts"))
 
 
 def _is_local_client(request: Request) -> bool:

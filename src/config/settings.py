@@ -828,9 +828,7 @@ class Settings(BaseSettings):
     gx10_process_role: Literal["api", "worker", "scheduler", "maintenance"] | None = None
     gx10_masking_policy: str | None = Field(default=None, min_length=1, max_length=100)
     gx10_authority_fingerprint: str | None = None
-    gx10_ownership_epoch: int | None = Field(
-        default=None, ge=0, le=9_223_372_036_854_775_807
-    )
+    gx10_ownership_epoch: int | None = Field(default=None, ge=0, le=9_223_372_036_854_775_807)
     gx10_proxy_username: str | None = Field(default=None, min_length=1, max_length=128)
     gx10_proxy_password: SecretStr | None = Field(default=None, min_length=32)
     gx10_rotation_generation: int = Field(default=1, ge=1)
