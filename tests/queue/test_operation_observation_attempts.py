@@ -15,6 +15,7 @@ from src.repositories.operation_observation_attempts import (
     complete_attempt,
     find_attempts_by_trace,
     list_attempts,
+    record_stale_claim_diagnostic,
     start_attempt,
 )
 from src.repositories.telemetry_process_health import (
@@ -93,6 +94,23 @@ async def test_stale_attempt_start_and_completion_report_false() -> None:
     )
     assert not await start_attempt(conn, _attempt_start(generation=6))
     assert not await complete_attempt(conn, 41, 6, completion)
+
+
+@pytest.mark.asyncio
+async def test_stale_claim_diagnostic_is_bounded_to_its_own_attempt() -> None:
+    conn = AsyncMock()
+    conn.fetchval.return_value = 41
+
+    assert await record_stale_claim_diagnostic(conn, 41, 6)
+
+    query = conn.fetchval.await_args.args[0]
+    assert "UPDATE operation_observation_attempts AS attempt" in query
+    assert "attempt.claim_generation = $2" in query
+    assert "job.claim_generation > $2" in query
+    assert "queue.stale_claim" in query
+    assert "cardinality(attempt.diagnostic_codes) < 20" in query
+    assert "diagnostics_omitted" in query
+    assert "UPDATE pgqueuer_jobs" not in query
 
 
 @pytest.mark.asyncio

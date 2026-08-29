@@ -20,6 +20,7 @@ from src.repositories.operation_observation_attempts import (
     AttemptStart,
     complete_attempt,
     list_attempts,
+    record_stale_claim_diagnostic,
     start_attempt,
 )
 from src.repositories.telemetry_process_health import (
@@ -262,6 +263,77 @@ async def test_attempt_repository_ordering_and_fencing(pg_conn) -> None:
     attempts = await list_attempts(pg_conn, BASE_ID)
     assert [item.claim_generation for item in attempts] == [1, 2]
     assert all(item.trace_id == TRACE_ID for item in attempts)
+
+
+@pytest.mark.asyncio
+async def test_stale_claim_only_marks_its_own_bounded_evidence(pg_conn) -> None:
+    await _insert_job(pg_conn, BASE_ID, status="in_progress")
+    attempt = AttemptStart(
+        operation_id=BASE_ID,
+        claim_generation=0,
+        trace_id=TRACE_ID,
+        root_span_id=SPAN_ID,
+        langfuse_observation_id="stale",
+        service_name="worker",
+        service_instance_id="one",
+        environment="test",
+        release_revision="rev",
+        started_at=datetime.now(UTC),
+    )
+    assert await start_attempt(pg_conn, attempt)
+    await pg_conn.execute(
+        "UPDATE pgqueuer_jobs SET claim_generation=1 WHERE id=$1", BASE_ID
+    )
+    current = AttemptStart(
+        operation_id=BASE_ID,
+        claim_generation=1,
+        trace_id="3" * 32,
+        root_span_id="4" * 16,
+        langfuse_observation_id="current",
+        service_name="worker",
+        service_instance_id="two",
+        environment="test",
+        release_revision="rev",
+        started_at=datetime.now(UTC),
+    )
+    assert await start_attempt(pg_conn, current)
+
+    assert await record_stale_claim_diagnostic(pg_conn, BASE_ID, 0)
+    assert await record_stale_claim_diagnostic(pg_conn, BASE_ID, 0)
+    job = await pg_conn.fetchrow(
+        "SELECT status, claim_generation FROM pgqueuer_jobs WHERE id=$1", BASE_ID
+    )
+    rows = await pg_conn.fetch(
+        """SELECT claim_generation, completed_at, diagnostic_codes, diagnostics_omitted
+        FROM operation_observation_attempts WHERE operation_id=$1
+        ORDER BY claim_generation""",
+        BASE_ID,
+    )
+    assert dict(job) == {"status": "in_progress", "claim_generation": 1}
+    assert list(rows[0]["diagnostic_codes"]) == ["queue.stale_claim"]
+    assert rows[0]["completed_at"] is None
+    assert list(rows[1]["diagnostic_codes"]) == []
+    assert rows[1]["diagnostics_omitted"] == 0
+
+    full_codes = [f"test.code_{index:02d}" for index in range(20)]
+    await pg_conn.execute(
+        """UPDATE operation_observation_attempts
+        SET diagnostic_codes=$3::operation_diagnostic_code[], diagnostics_omitted=3
+        WHERE operation_id=$1 AND claim_generation=$2""",
+        BASE_ID,
+        0,
+        full_codes,
+    )
+    assert await record_stale_claim_diagnostic(pg_conn, BASE_ID, 0)
+    bounded = await pg_conn.fetchrow(
+        """SELECT diagnostic_codes, diagnostics_omitted
+        FROM operation_observation_attempts
+        WHERE operation_id=$1 AND claim_generation=$2""",
+        BASE_ID,
+        0,
+    )
+    assert list(bounded["diagnostic_codes"]) == full_codes
+    assert bounded["diagnostics_omitted"] == 4
 
 
 @pytest.mark.asyncio
