@@ -199,9 +199,7 @@ def test_readiness_requires_bounded_valid_export_health_proof(
     missing_health = _snapshot()
     missing_health["export_health"] = export_health
 
-    report = verify_snapshot(
-        EvidenceSnapshot.from_mapping(missing_health), canaries=(CANARY,)
-    )
+    report = verify_snapshot(EvidenceSnapshot.from_mapping(missing_health), canaries=(CANARY,))
 
     assert report.ready is False
     assert report.checks["export_health_proof"] is False

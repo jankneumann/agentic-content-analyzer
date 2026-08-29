@@ -16,33 +16,50 @@ import subprocess
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
 DEFAULT_MAX_REPORT_BYTES = 16 * 1024
 DEFAULT_MAX_ADAPTER_BYTES = 1024 * 1024
 _PERSISTED_CARRIER_SOURCES = frozenset({"persisted_queue_envelope", "postgresql"})
+_CANONICAL_ATTEMPT_OUTCOMES = frozenset(
+    {
+        "succeeded",
+        "partial",
+        "skipped_policy",
+        "skipped_duplicate",
+        "filtered",
+        "retryable_failure",
+        "permanent_failure",
+        "cancelled",
+    }
+)
 _CHECK_ORDER = (
     "api_response_header",
     "queued_worker_hop",
     "postgres_attempt_rows",
+    "attempt_outcomes_valid",
     "correlated_logs",
     "langfuse_hierarchy",
     "generation_metadata",
     "retry_continuity",
     "restart_continuity",
     "secret_canaries_absent",
+    "export_health_proof",
 )
 _FAILURE_BY_CHECK = {
     "api_response_header": "api_trace_header_mismatch",
     "queued_worker_hop": "queued_worker_hop_missing",
     "postgres_attempt_rows": "postgres_attempt_evidence_missing",
+    "attempt_outcomes_valid": "attempt_outcome_invalid",
     "correlated_logs": "correlated_logs_missing",
     "langfuse_hierarchy": "langfuse_hierarchy_missing",
     "generation_metadata": "generation_metadata_missing",
     "retry_continuity": "retry_generation_missing",
     "restart_continuity": "restart_context_not_persisted",
     "secret_canaries_absent": "secret_canary_exposed",
+    "export_health_proof": "export_health_missing",
 }
 
 
@@ -309,6 +326,17 @@ def verify_snapshot(
         and ordered_generations == tuple(sorted(set(ordered_generations)))
         and all(_safe_identifier(item.get("service_name"), 128) for item in matching_attempts)
     )
+    attempt_outcomes_valid = bool(
+        matching_attempts
+        and all(
+            item.get("outcome") is None
+            or (
+                isinstance(item.get("outcome"), str)
+                and item.get("outcome") in _CANONICAL_ATTEMPT_OUTCOMES
+            )
+            for item in matching_attempts
+        )
+    )
     queued_worker_hop = any(
         _safe_identifier(attempt.get("service_name"), 128) == "aca-worker"
         and _safe_identifier(attempt.get("carrier_source"), 64)
@@ -355,6 +383,11 @@ def verify_snapshot(
         len(matching_attempts) >= 2
         and len(ordered_generations) >= 2
         and all(later > earlier for earlier, later in itertools.pairwise(ordered_generations))
+        and any(
+            earlier.get("outcome") == "retryable_failure" and later.get("outcome") == "succeeded"
+            for earlier_index, earlier in enumerate(matching_attempts[:-1])
+            for later in matching_attempts[earlier_index + 1 :]
+        )
     )
     restart_continuity = any(
         _safe_identifier(item.get("carrier_source"), 64) in _PERSISTED_CARRIER_SOURCES
@@ -363,23 +396,28 @@ def verify_snapshot(
     nonempty_canaries = tuple(canary for canary in canaries if canary)
     searchable = snapshot.searchable_json()
     secret_canaries_absent = not any(canary in searchable for canary in nonempty_canaries)
+    health = snapshot.export_health
+    last_successful_export_at = _safe_timestamp(health.get("last_successful_export_at"))
+    affected_service = _safe_service(health.get("affected_service"))
+    export_health_proof = bool(last_successful_export_at and affected_service)
 
     checks = {
         "api_response_header": api_response_header,
         "queued_worker_hop": queued_worker_hop,
         "postgres_attempt_rows": postgres_attempt_rows,
+        "attempt_outcomes_valid": attempt_outcomes_valid,
         "correlated_logs": correlated_logs,
         "langfuse_hierarchy": langfuse_hierarchy,
         "generation_metadata": generation_metadata,
         "retry_continuity": retry_continuity,
         "restart_continuity": restart_continuity,
         "secret_canaries_absent": secret_canaries_absent,
+        "export_health_proof": export_health_proof,
     }
     ordered_checks = {name: bool(checks[name]) for name in _CHECK_ORDER}
     failure_codes = tuple(
         _FAILURE_BY_CHECK[name] for name in _CHECK_ORDER if not ordered_checks[name]
     )
-    health = snapshot.export_health
     return VerificationReport(
         schema_version=1,
         mode=mode,
@@ -388,8 +426,8 @@ def verify_snapshot(
         trace_id=trace_id,
         checks=ordered_checks,
         failure_codes=failure_codes,
-        last_successful_export_at=_safe_timestamp(health.get("last_successful_export_at")),
-        affected_service=_safe_service(health.get("affected_service")),
+        last_successful_export_at=last_successful_export_at,
+        affected_service=affected_service,
         max_report_bytes=max_report_bytes,
     )
 
@@ -605,8 +643,13 @@ def _safe_identifier(value: object, max_length: int) -> str | None:
 
 
 def _safe_timestamp(value: object) -> str | None:
-    candidate = _safe_identifier(value, 64)
-    return candidate if candidate and "T" in candidate else None
+    if not isinstance(value, str) or not value or len(value) > 64:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return value if parsed.tzinfo is not None else None
 
 
 def _safe_service(value: object) -> str | None:
