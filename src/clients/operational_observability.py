@@ -16,11 +16,12 @@ import os
 import secrets
 from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from contextlib import ExitStack, contextmanager
+from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import wraps
 from pathlib import Path
-from typing import Any, Literal, ParamSpec, TypeVar, cast
+from typing import Any, Literal, ParamSpec, Protocol, TypeVar, cast
 
 import yaml
 
@@ -43,6 +44,9 @@ _SPOOL_NAME = "events.jsonl"
 _CHECKPOINT_NAME = "events.imported"
 _GENESIS = b"aca-bootstrap-audit-v1"
 _ASYNCIO_TO_THREAD = asyncio.to_thread
+_ACTIVE_PROCESS_SCOPE: ContextVar[OperationalScope | None] = ContextVar(
+    "operational_process_scope", default=None
+)
 
 
 def _bounded_identifier(value: str, *, maximum: int, field: str) -> str:
@@ -63,30 +67,31 @@ def _plain_lifecycle_value(value: Any, *, fallback: str, maximum: int) -> str:
 
 def _context_for(
     *,
+    operation_id: int,
     entrypoint: str,
     stage: OperationStage,
     lifecycle: TelemetryLifecycle,
+    parent_context: OperationContext | None,
 ) -> OperationContext:
-    current = get_current_operation_context()
-    if current is not None:
-        values = current.model_dump(mode="python")
-        values["stage"] = stage
-        return OperationContext.model_validate(values)
-
-    operation_id = str(secrets.randbelow(9_223_372_036_854_775_807) + 1)
     trace_id = secrets.token_hex(16)
     span_id = secrets.token_hex(8)
+    if parent_context is not None:
+        trace_id = parent_context.trace_id
+        span_id = parent_context.span_id
+    operation = str(operation_id)
     return OperationContext(
         schema_version=1,
-        operation_id=operation_id,
-        root_operation_id=operation_id,
-        parent_operation_id=None,
+        operation_id=operation,
+        root_operation_id=(
+            parent_context.root_operation_id if parent_context is not None else operation
+        ),
+        parent_operation_id=(parent_context.operation_id if parent_context is not None else None),
         traceparent=f"00-{trace_id}-{span_id}-01",
-        tracestate=None,
+        tracestate=parent_context.tracestate if parent_context is not None else None,
         trace_id=trace_id,
         span_id=span_id,
         claim_generation="0",
-        attempt_number=None,
+        attempt_number="1",
         entrypoint=entrypoint,
         service_name=lifecycle.service_name,
         service_instance_id=_plain_lifecycle_value(
@@ -110,6 +115,187 @@ def _context_for(
     )
 
 
+def _context_with_provider_identity(context: OperationContext, span: Any) -> OperationContext:
+    try:
+        actual = span.get_span_context()
+        if not actual.is_valid:
+            return context
+        trace_id = format(actual.trace_id, "032x")
+        span_id = format(actual.span_id, "016x")
+        trace_flags = format(int(actual.trace_flags), "02x")
+    except (AttributeError, TypeError, ValueError):
+        return context
+    values = context.model_dump(mode="python")
+    values.update(
+        trace_id=trace_id,
+        span_id=span_id,
+        traceparent=f"00-{trace_id}-{span_id}-{trace_flags}",
+    )
+    return OperationContext.model_validate(values)
+
+
+class DurableOperationStore(Protocol):
+    async def reserve(self, *, entrypoint: str, parent_context: OperationContext | None) -> int: ...
+
+    async def activate(self, context: OperationContext) -> None: ...
+
+    async def finish(
+        self,
+        context: OperationContext,
+        *,
+        outcome: _Outcome,
+        telemetry_delivery_state: str,
+        diagnostic_codes: tuple[str, ...],
+    ) -> None: ...
+
+
+class PostgresDurableOperationStore:
+    """Canonical queue/attempt projection for directly executed operational work."""
+
+    async def reserve(self, *, entrypoint: str, parent_context: OperationContext | None) -> int:
+        from src.queue.setup import _queue_connection
+
+        parent_id = int(parent_context.operation_id) if parent_context is not None else None
+        async with _queue_connection() as connection:
+            operation_id = await connection.fetchval(
+                """
+                INSERT INTO pgqueuer_jobs (
+                    entrypoint, payload, status, created_at, execute_after,
+                    started_at, heartbeat_at, parent_job_id, claim_generation,
+                    claim_protocol_version
+                )
+                VALUES (
+                    $1, '{"schema_version":1,"kind":"operational"}'::jsonb,
+                    'in_progress', NOW(), NOW(), NOW(), NOW(), $2, 0, 2
+                )
+                RETURNING id
+                """,
+                entrypoint,
+                parent_id,
+            )
+        if operation_id is None:
+            raise RuntimeError("unable to reserve durable operational root")
+        return int(operation_id)
+
+    async def activate(self, context: OperationContext) -> None:
+        from src.queue.setup import _queue_connection
+
+        serialized = json.dumps(context.model_dump(mode="json"), separators=(",", ":"))
+        async with _queue_connection() as connection, connection.transaction():
+            updated = await connection.execute(
+                """
+                UPDATE pgqueuer_jobs
+                SET root_job_id = $2,
+                    submission_context = $3::jsonb,
+                    submission_traceparent = $4,
+                    submission_tracestate = $5,
+                    trace_id = $6,
+                    submission_span_id = $7
+                WHERE id = $1 AND status = 'in_progress'
+                """,
+                int(context.operation_id),
+                int(context.root_operation_id),
+                serialized,
+                context.traceparent,
+                context.tracestate,
+                context.trace_id,
+                context.span_id,
+            )
+            inserted = await connection.fetchval(
+                """
+                INSERT INTO operation_observation_attempts (
+                    operation_id, claim_generation, attempt_number, trace_id,
+                    root_span_id, langfuse_observation_id, service_name,
+                    service_instance_id, environment, release_revision, started_at
+                )
+                VALUES ($1, 0, 1, $2, $3, NULL, $4, $5, $6, $7, NOW())
+                ON CONFLICT (operation_id, claim_generation) DO NOTHING
+                RETURNING operation_id
+                """,
+                int(context.operation_id),
+                context.trace_id,
+                context.span_id,
+                context.service_name,
+                context.service_instance_id,
+                context.environment,
+                context.release_revision,
+            )
+        if not updated.endswith(" 1") or inserted is None:
+            raise RuntimeError("unable to activate durable operational evidence")
+
+    async def finish(
+        self,
+        context: OperationContext,
+        *,
+        outcome: _Outcome,
+        telemetry_delivery_state: str,
+        diagnostic_codes: tuple[str, ...],
+    ) -> None:
+        from src.queue.setup import _queue_connection
+
+        status = "failed" if outcome == "permanent_failure" else "completed"
+        async with _queue_connection() as connection, connection.transaction():
+            attempt = await connection.execute(
+                """
+                UPDATE operation_observation_attempts
+                SET completed_at = NOW(), terminal_stage = $2, outcome = $3,
+                    retryable = FALSE, telemetry_delivery_state = $4,
+                    diagnostic_codes = $5::operation_diagnostic_code[]
+                WHERE operation_id = $1 AND claim_generation = 0
+                  AND completed_at IS NULL
+                """,
+                int(context.operation_id),
+                (
+                    context.stage.value
+                    if isinstance(context.stage, OperationStage)
+                    else context.stage
+                ),
+                outcome,
+                telemetry_delivery_state,
+                list(diagnostic_codes),
+            )
+            job = await connection.execute(
+                """
+                UPDATE pgqueuer_jobs
+                SET status = $2, completed_at = NOW(), heartbeat_at = NOW(),
+                    error = CASE WHEN $2 = 'failed' THEN 'operational.entrypoint_failed' ELSE NULL END
+                WHERE id = $1 AND status = 'in_progress'
+                """,
+                int(context.operation_id),
+                status,
+            )
+        if not attempt.endswith(" 1") or not job.endswith(" 1"):
+            raise RuntimeError("unable to persist terminal operational evidence")
+
+    async def lookup(self, operation_id: int) -> dict[str, Any] | None:
+        from src.queue.setup import _queue_connection
+
+        async with _queue_connection() as connection:
+            row = await connection.fetchrow(
+                """
+                SELECT job.id AS operation_id, job.status, job.entrypoint,
+                       job.root_job_id AS root_operation_id, job.parent_job_id,
+                       attempt.trace_id, attempt.root_span_id,
+                       attempt.outcome, attempt.telemetry_delivery_state,
+                       attempt.diagnostic_codes
+                FROM pgqueuer_jobs AS job
+                JOIN operation_observation_attempts AS attempt
+                  ON attempt.operation_id = job.id AND attempt.claim_generation = 0
+                WHERE job.id = $1
+                """,
+                operation_id,
+            )
+        return dict(row) if row is not None else None
+
+
+def create_durable_operation_store() -> DurableOperationStore:
+    return PostgresDurableOperationStore()
+
+
+class OperationalFlushError(RuntimeError):
+    """A successful command could not durably flush its telemetry evidence."""
+
+
 async def shutdown_process_telemetry(lifecycle: TelemetryLifecycle) -> bool:
     """Flush with a stable thread bridge, then persist terminal health evidence."""
 
@@ -128,7 +314,7 @@ async def shutdown_process_telemetry(lifecycle: TelemetryLifecycle) -> bool:
 
 
 class OperationalScope:
-    """One root span plus one shared telemetry lifecycle and terminal flush."""
+    """One durable operation while process telemetry is owned only at the outer edge."""
 
     def __init__(
         self,
@@ -140,28 +326,38 @@ class OperationalScope:
     ) -> None:
         self.entrypoint = _bounded_identifier(entrypoint, maximum=160, field="entrypoint")
         self.stage = OperationStage(stage)
-        self.lifecycle = create_telemetry_lifecycle(
-            service_name=_bounded_identifier(service_name, maximum=100, field="service_name"),
-            lifecycle_kind=lifecycle_kind,
-        )
-        configured_required = getattr(self.lifecycle.settings, "observability_required", False)
-        if not isinstance(configured_required, bool):
-            self.lifecycle.required = False
-
+        self.lifecycle: TelemetryLifecycle | None
+        self._parent_context = get_current_operation_context()
+        self._process_owner = _ACTIVE_PROCESS_SCOPE.get()
+        self._borrowed_context = self._parent_context is not None and self._process_owner is None
+        self._owns_process = self._parent_context is None and self._process_owner is None
+        if self._process_owner is not None:
+            self.lifecycle = self._process_owner.lifecycle
+        elif self._borrowed_context:
+            self.lifecycle = None
+        else:
+            self.lifecycle = create_telemetry_lifecycle(
+                service_name=_bounded_identifier(service_name, maximum=100, field="service_name"),
+                lifecycle_kind=lifecycle_kind,
+            )
+            configured_required = getattr(self.lifecycle.settings, "observability_required", False)
+            if not isinstance(configured_required, bool):
+                self.lifecycle.required = False
+        self._store = create_durable_operation_store()
         self._stack: ExitStack | None = None
+        self._process_token: Token[OperationalScope | None] | None = None
+        self.context: OperationContext | None = None
 
     def open(self) -> OperationContext:
-        """Initialize telemetry before clients, then bind a validated root context."""
+        """Reserve durable identity, start the provider span, then allow side effects."""
         if self._stack is not None:
             raise RuntimeError("operational scope is already open")
-        self.lifecycle.initialize(app=None)
-        context = _context_for(
-            entrypoint=self.entrypoint,
-            stage=self.stage,
-            lifecycle=self.lifecycle,
-        )
-        stack = ExitStack()
-        try:
+        if self._borrowed_context:
+            assert self._parent_context is not None
+            values = self._parent_context.model_dump(mode="python")
+            values["stage"] = self.stage
+            context = OperationContext.model_validate(values)
+            stack = ExitStack()
             stack.enter_context(bind_operation_context(context))
             stack.enter_context(
                 operation_span(
@@ -172,16 +368,72 @@ class OperationalScope:
                     attributes={"entrypoint": self.entrypoint},
                 )
             )
+            self.context = context
+            self._stack = stack
+            return context
+
+        assert self.lifecycle is not None
+        if self._owns_process:
+            self.lifecycle.initialize(app=None)
+        operation_id = _run_awaitable_sync(
+            self._store.reserve(
+                entrypoint=self.entrypoint,
+                parent_context=self._parent_context,
+            )
+        )
+        context = _context_for(
+            operation_id=operation_id,
+            entrypoint=self.entrypoint,
+            stage=self.stage,
+            lifecycle=self.lifecycle,
+            parent_context=self._parent_context,
+        )
+        stack = ExitStack()
+        try:
+            span = stack.enter_context(
+                operation_span(
+                    get_provider(),
+                    f"operation.{self.entrypoint}",
+                    context=context,
+                    stage=self.stage,
+                    attributes={"entrypoint": self.entrypoint},
+                )
+            )
+            context = _context_with_provider_identity(context, span)
+            _run_awaitable_sync(self._store.activate(context))
+            stack.enter_context(bind_operation_context(context))
         except BaseException:
             stack.close()
             raise
+        if self._owns_process:
+            self._process_token = _ACTIVE_PROCESS_SCOPE.set(self)
+        self.context = context
         self._stack = stack
         return context
 
-    async def aclose(self) -> bool:
-        """Close the root span, then perform the bounded durable final flush."""
+    async def aclose(self, *, outcome: _Outcome = "succeeded") -> bool:
+        """Close one operation and flush only when this scope owns the process."""
         self._close_stack()
-        return await shutdown_process_telemetry(self.lifecycle)
+        return await self._finish(outcome=outcome)
+
+    async def _finish(self, *, outcome: _Outcome) -> bool:
+        if self._borrowed_context:
+            return True
+        assert self.context is not None
+        flush_succeeded = True
+        try:
+            if self._owns_process:
+                assert self.lifecycle is not None
+                flush_succeeded = await shutdown_process_telemetry(self.lifecycle)
+            await self._store.finish(
+                self.context,
+                outcome=outcome,
+                telemetry_delivery_state=("delivered" if flush_succeeded else "degraded"),
+                diagnostic_codes=(() if flush_succeeded else ("telemetry.flush_failed",)),
+            )
+            return flush_succeeded
+        finally:
+            self._reset_process_scope()
 
     def _close_stack(self) -> None:
         """Exit context bindings in the context that created their tokens."""
@@ -189,9 +441,15 @@ class OperationalScope:
         if stack is not None:
             stack.close()
 
-    def close(self) -> bool:
+    def _reset_process_scope(self) -> None:
+        token, self._process_token = self._process_token, None
+        if token is not None:
+            _ACTIVE_PROCESS_SCOPE.reset(token)
+
+    def close(self, *, outcome: _Outcome = "succeeded") -> bool:
         self._close_stack()
-        return _run_awaitable_sync(shutdown_process_telemetry(self.lifecycle))
+        self._reset_process_scope()
+        return _run_awaitable_sync(self._finish(outcome=outcome))
 
 
 def _run_awaitable_sync[T](awaitable: Awaitable[T]) -> T:
@@ -244,9 +502,17 @@ def operational_entrypoint(
                 )
                 scope.open()
                 try:
-                    return await cast(Callable[_P, Awaitable[Any]], function)(*args, **kwargs)
-                finally:
-                    await scope.aclose()
+                    result = await cast(Callable[_P, Awaitable[Any]], function)(*args, **kwargs)
+                except BaseException:
+                    try:
+                        await scope.aclose(outcome="permanent_failure")
+                    except BaseException:
+                        pass
+                    raise
+                flush_succeeded = await scope.aclose(outcome="succeeded")
+                if not flush_succeeded:
+                    raise OperationalFlushError(f"telemetry flush failed for {entrypoint}")
+                return result
 
             cast(Any, async_guarded).__aca_operational_entrypoint__ = (
                 entrypoint,
@@ -264,9 +530,17 @@ def operational_entrypoint(
             )
             scope.open()
             try:
-                return function(*args, **kwargs)
-            finally:
-                scope.close()
+                result = function(*args, **kwargs)
+            except BaseException:
+                try:
+                    scope.close(outcome="permanent_failure")
+                except BaseException:
+                    pass
+                raise
+            flush_succeeded = scope.close(outcome="succeeded")
+            if not flush_succeeded:
+                raise OperationalFlushError(f"telemetry flush failed for {entrypoint}")
+            return result
 
         cast(Any, guarded).__aca_operational_entrypoint__ = (
             entrypoint,
