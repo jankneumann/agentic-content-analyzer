@@ -11,6 +11,7 @@ progress tracking and batch reconciliation.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import os
 import secrets
@@ -682,6 +683,10 @@ async def _start_attempt_evidence(conn: asyncpg.Connection, context: Any) -> boo
     )
 
 
+class _AttemptFinalizationError(RuntimeError):
+    """Abort a canonical transition when matching attempt evidence cannot be fenced."""
+
+
 async def _complete_attempt_evidence(
     conn: asyncpg.Connection,
     context: Any,
@@ -690,22 +695,128 @@ async def _complete_attempt_evidence(
     retryable: bool,
     diagnostic_codes: tuple[str, ...] = (),
 ) -> bool:
-    from src.repositories.operation_observation_attempts import AttemptCompletion, complete_attempt
+    """Complete evidence only when the same claim is canonically terminal."""
 
-    return await complete_attempt(
-        conn,
+    completed_id = await conn.fetchval(
+        """
+        WITH canonical_terminal AS (
+            SELECT id, claim_generation, status
+            FROM pgqueuer_jobs
+            WHERE id = $1
+              AND claim_generation = $2::bigint
+              AND status IN ('completed', 'failed', 'cancelled')
+            FOR UPDATE
+        )
+        UPDATE operation_observation_attempts AS attempt
+        SET completed_at = $3,
+            terminal_stage = 'claim',
+            outcome = $4,
+            retryable = $5,
+            telemetry_delivery_state = 'delivered',
+            diagnostic_codes = $6::operation_diagnostic_code[],
+            diagnostics_omitted = 0
+        FROM canonical_terminal AS job
+        WHERE attempt.operation_id = $1
+          AND attempt.claim_generation = $2
+          AND job.id = attempt.operation_id
+          AND job.status::text = CASE $4::text
+              WHEN 'succeeded' THEN 'completed'
+              WHEN 'permanent_failure' THEN 'failed'
+              WHEN 'cancelled' THEN 'cancelled'
+              ELSE ''
+          END
+        RETURNING attempt.operation_id
+        """,
         int(context.operation_id),
         int(context.claim_generation),
-        AttemptCompletion(
-            completed_at=datetime.now(UTC),
-            terminal_stage="claim",
-            outcome=outcome,
-            retryable=retryable,
-            telemetry_delivery_state="delivered",
-            diagnostic_codes=diagnostic_codes,
-            diagnostics_omitted=0,
-        ),
+        datetime.now(UTC),
+        outcome,
+        retryable,
+        list(diagnostic_codes),
     )
+    return completed_id is not None
+
+
+async def _terminal_job_status(
+    conn: asyncpg.Connection,
+    job_id: int,
+    claim_generation: int,
+) -> Literal["completed", "failed", "cancelled"] | None:
+    status = await conn.fetchval(
+        """
+        SELECT status::text
+        FROM pgqueuer_jobs
+        WHERE id = $1
+          AND claim_generation = $2
+          AND status IN ('completed', 'failed', 'cancelled')
+        FOR UPDATE
+        """,
+        job_id,
+        claim_generation,
+    )
+    if status in {"completed", "failed", "cancelled"}:
+        return status
+    return None
+
+
+async def _finalize_attempt_transition(
+    conn: asyncpg.Connection,
+    context: Any,
+    *,
+    target_status: Literal["completed", "failed", "cancelled"],
+    error: str | None = None,
+    diagnostic_codes: tuple[str, ...] = (),
+) -> tuple[Literal["completed", "failed", "cancelled"] | None, bool]:
+    """Atomically resolve canonical state and matching fenced attempt evidence."""
+
+    job_id = int(context.operation_id)
+    claim_generation = int(context.claim_generation)
+    transitioned = False
+    terminal_status: Literal["completed", "failed", "cancelled"] | None = None
+    transaction: Any = conn.transaction()
+    if inspect.isawaitable(transaction):
+        transaction = await transaction
+    async with transaction:
+        if target_status == "completed":
+            transitioned = await _complete_job(conn, job_id, claim_generation)
+        elif target_status == "failed":
+            if error is None:
+                raise ValueError("failed terminal transition requires an error")
+            transitioned = await _fail_job(conn, job_id, claim_generation, error)
+        else:
+            transitioned = await _checkpoint_job_cancellation(conn, job_id, claim_generation)
+
+        if transitioned:
+            terminal_status = target_status
+        elif target_status != "cancelled" and await _checkpoint_job_cancellation(
+            conn, job_id, claim_generation
+        ):
+            terminal_status = "cancelled"
+            transitioned = True
+        else:
+            terminal_status = await _terminal_job_status(conn, job_id, claim_generation)
+
+        if terminal_status is None:
+            return None, False
+
+        outcomes = {
+            "completed": "succeeded",
+            "failed": "permanent_failure",
+            "cancelled": "cancelled",
+        }
+        completed = await _complete_attempt_evidence(
+            conn,
+            context,
+            outcome=outcomes[terminal_status],
+            retryable=False,
+            diagnostic_codes=(diagnostic_codes if terminal_status == target_status else ()),
+        )
+        if not completed:
+            raise _AttemptFinalizationError(
+                f"Attempt evidence for operation {job_id} generation "
+                f"{claim_generation} did not match canonical {terminal_status}"
+            )
+    return terminal_status, transitioned
 
 
 async def _record_stale_attempt(conn: asyncpg.Connection, context: Any) -> bool:
@@ -763,26 +874,32 @@ async def _process_job(
 
         handler = _handlers.get(entrypoint)
         if handler is None:
-            logger.warning(f"No handler for entrypoint '{entrypoint}', failing job {job_id}")
-            await _complete_attempt_evidence(
-                conn,
-                attempt_context,
-                outcome="permanent_failure",
-                retryable=False,
-                diagnostic_codes=("workflow.unknown_entrypoint",),
-            )
-            if await _fail_job(
-                conn,
-                job_id,
-                claim_generation,
-                f"Unknown entrypoint: {entrypoint}",
-            ):
+            logger.warning(f"No handler for entrypoint {entrypoint!r}, failing job {job_id}")
+            try:
+                status, transitioned = await _finalize_attempt_transition(
+                    conn,
+                    attempt_context,
+                    target_status="failed",
+                    error=f"Unknown entrypoint: {entrypoint}",
+                    diagnostic_codes=("workflow.unknown_entrypoint",),
+                )
+            except _AttemptFinalizationError:
+                logger.error(
+                    "Job %s (%s) terminal evidence could not be finalized",
+                    job_id,
+                    entrypoint,
+                    exc_info=True,
+                )
+                return
+            if status == "failed" and transitioned:
                 await _emit_job_notification(
                     job_id,
                     entrypoint,
                     payload,
                     error=f"Unknown entrypoint: {entrypoint}",
                 )
+            elif status == "cancelled":
+                logger.info(f"Job {job_id} ({entrypoint}) cancelled before failure")
             return
 
         async def _heartbeat_loop() -> None:
@@ -797,24 +914,38 @@ async def _process_job(
         heartbeat_task = asyncio.create_task(_heartbeat_loop())
         try:
             await handler(job_id, payload)
-            await _complete_attempt_evidence(
-                conn, attempt_context, outcome="succeeded", retryable=False
+            status, transitioned = await _finalize_attempt_transition(
+                conn,
+                attempt_context,
+                target_status="completed",
             )
-            if await _complete_job(conn, job_id, claim_generation):
+            if status == "completed" and transitioned:
                 logger.info(f"Job {job_id} ({entrypoint}) completed")
                 await _emit_job_notification(job_id, entrypoint, payload)
-            elif await _checkpoint_job_cancellation(conn, job_id, claim_generation):
+            elif status == "cancelled":
                 logger.info(f"Job {job_id} ({entrypoint}) cancelled before completion")
+            elif status is not None:
+                logger.info(f"Job {job_id} ({entrypoint}) reached {status} in its handler")
             else:
-                logger.info(f"Job {job_id} ({entrypoint}) reached a terminal state in its handler")
+                logger.info(f"Job {job_id} ({entrypoint}) lost its completion claim")
         except Exception as e:
             from src.queue.execution_claim import ClaimCancelled, ClaimSuperseded
 
-            if isinstance(e, ClaimCancelled):
-                await _complete_attempt_evidence(
-                    conn, attempt_context, outcome="cancelled", retryable=False
+            if isinstance(e, _AttemptFinalizationError):
+                logger.error(
+                    "Job %s (%s) terminal evidence could not be finalized",
+                    job_id,
+                    entrypoint,
+                    exc_info=True,
                 )
-                if await _checkpoint_job_cancellation(conn, job_id, claim_generation):
+                return
+            if isinstance(e, ClaimCancelled):
+                status, _transitioned = await _finalize_attempt_transition(
+                    conn,
+                    attempt_context,
+                    target_status="cancelled",
+                )
+                if status == "cancelled":
                     logger.info(f"Job {job_id} ({entrypoint}) cancelled at domain commit")
                 else:
                     logger.info(f"Job {job_id} ({entrypoint}) lost cancellation claim")
@@ -824,13 +955,6 @@ async def _process_job(
                 logger.info(f"Job {job_id} ({entrypoint}) dropped superseded domain result")
                 return
             logger.error(f"Job {job_id} ({entrypoint}) failed: {e}", exc_info=True)
-            await _complete_attempt_evidence(
-                conn,
-                attempt_context,
-                outcome="permanent_failure",
-                retryable=False,
-                diagnostic_codes=("workflow.internal_error",),
-            )
             from src.queue.workflow_handlers import WorkflowHandlerError
 
             persisted_error = (
@@ -838,15 +962,24 @@ async def _process_job(
                 if isinstance(e, WorkflowHandlerError)
                 else "Job failed due to an internal error"
             )
-            if await _fail_job(conn, job_id, claim_generation, persisted_error):
+            status, transitioned = await _finalize_attempt_transition(
+                conn,
+                attempt_context,
+                target_status="failed",
+                error=persisted_error,
+                diagnostic_codes=("workflow.internal_error",),
+            )
+            if status == "failed" and transitioned:
                 await _emit_job_notification(
                     job_id,
                     entrypoint,
                     payload,
                     error=persisted_error,
                 )
-            elif await _checkpoint_job_cancellation(conn, job_id, claim_generation):
+            elif status == "cancelled":
                 logger.info(f"Job {job_id} ({entrypoint}) cancelled after handler failure")
+            elif status is not None:
+                logger.info(f"Job {job_id} ({entrypoint}) reached {status} in its handler")
         finally:
             heartbeat_task.cancel()
             await asyncio.gather(heartbeat_task, return_exceptions=True)

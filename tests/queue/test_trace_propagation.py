@@ -68,6 +68,15 @@ async def test_handler_receives_bound_attempt_context(monkeypatch) -> None:
         return True
 
     class _Connection:
+        def transaction(self):
+            return self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, _exc_type, _exc, _tb):
+            return None
+
         async def fetchval(self, *_args: object) -> object:
             return None
 
@@ -198,3 +207,111 @@ def test_actual_attempt_context_preserves_unsampled_trace_flags() -> None:
         context, SimpleNamespace(get_span_context=lambda: span_context)
     )
     assert actual.traceparent == ("00-11111111111111111111111111111111-3333333333333333-00")
+
+
+@pytest.mark.asyncio
+async def test_terminal_transition_and_attempt_evidence_commit_as_one_fenced_unit(
+    monkeypatch,
+) -> None:
+    state = SimpleNamespace(status="in_progress", evidence=None, in_transaction=False)
+    visible: list[tuple[str, str]] = []
+
+    class Transaction:
+        async def __aenter__(self) -> None:
+            state.in_transaction = True
+
+        async def __aexit__(self, exc_type, _exc, _tb) -> None:
+            state.in_transaction = False
+            if exc_type is None:
+                visible.append((state.status, state.evidence))
+
+    class Connection:
+        def transaction(self) -> Transaction:
+            return Transaction()
+
+    async def complete_job(_conn, _job_id, _generation) -> bool:
+        assert state.in_transaction is True
+        state.status = "completed"
+        return True
+
+    async def complete_evidence(_conn, _context, *, outcome, retryable, diagnostic_codes=()):
+        assert state.in_transaction is True
+        assert state.status == "completed"
+        state.evidence = outcome
+        return True
+
+    monkeypatch.setattr(worker, "_complete_job", complete_job)
+    monkeypatch.setattr(worker, "_complete_attempt_evidence", complete_evidence)
+    context = worker._attempt_context_from_job(
+        {
+            "id": 41,
+            "entrypoint": "pipeline.run",
+            "claim_generation": 0,
+            "submission_context": _submission_context(),
+            "submission_traceparent": _submission_context()["traceparent"],
+            "submission_tracestate": None,
+            "trace_id": _submission_context()["trace_id"],
+            "root_operation_id": 41,
+        }
+    )
+
+    resolution = await worker._finalize_attempt_transition(
+        Connection(),
+        context,
+        target_status="completed",
+    )
+
+    assert resolution == ("completed", True)
+    assert visible == [("completed", "succeeded")]
+
+
+@pytest.mark.asyncio
+async def test_handler_owned_terminal_state_drives_attempt_evidence(monkeypatch) -> None:
+    state = SimpleNamespace(evidence=None)
+
+    class Transaction:
+        async def __aenter__(self) -> None:
+            return None
+
+        async def __aexit__(self, _exc_type, _exc, _tb) -> None:
+            return None
+
+    class Connection:
+        def transaction(self) -> Transaction:
+            return Transaction()
+
+    async def no_transition(*_args, **_kwargs) -> bool:
+        return False
+
+    async def terminal_status(*_args, **_kwargs) -> str:
+        return "failed"
+
+    async def complete_evidence(_conn, _context, *, outcome, retryable, diagnostic_codes=()):
+        state.evidence = (outcome, retryable, diagnostic_codes)
+        return True
+
+    monkeypatch.setattr(worker, "_complete_job", no_transition)
+    monkeypatch.setattr(worker, "_checkpoint_job_cancellation", no_transition)
+    monkeypatch.setattr(worker, "_terminal_job_status", terminal_status)
+    monkeypatch.setattr(worker, "_complete_attempt_evidence", complete_evidence)
+    context = worker._attempt_context_from_job(
+        {
+            "id": 41,
+            "entrypoint": "pipeline.run",
+            "claim_generation": 0,
+            "submission_context": _submission_context(),
+            "submission_traceparent": _submission_context()["traceparent"],
+            "submission_tracestate": None,
+            "trace_id": _submission_context()["trace_id"],
+            "root_operation_id": 41,
+        }
+    )
+
+    resolution = await worker._finalize_attempt_transition(
+        Connection(),
+        context,
+        target_status="completed",
+    )
+
+    assert resolution == ("failed", False)
+    assert state.evidence == ("permanent_failure", False, ())
