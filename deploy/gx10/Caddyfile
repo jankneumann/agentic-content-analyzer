@@ -6,7 +6,7 @@
   }
 }
 
-https://gx10.local {
+{$GX10_PUBLIC_ORIGIN:https://gx10.local} {
   tls internal
   encode zstd gzip
   basic_auth {

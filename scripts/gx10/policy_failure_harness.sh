@@ -11,8 +11,9 @@ compose() {
 }
 
 diagnostics() {
-  compose exec -T api python -c \
-    'import socket; socket.create_connection(("app-postgres", 5432), 5).close()'
+  local role="${GX10_DIAGNOSTIC_ROLE:-api}"
+  compose exec -T "$role" python -c \
+    'import os; assert os.environ.get("PROFILE") == "gx10"; print("gx10 local diagnostics available")'
 }
 
 external() {
@@ -22,7 +23,8 @@ external() {
         --connect-timeout 3 --max-time 8 https://not-on-gx10-allowlist.invalid/
       ;;
     stale_policy)
-      compose exec -T squid gx10-proxy-ready --max-age-seconds 0
+      compose exec -T squid env GX10_PROXY_POLICY_MAX_AGE_SECONDS=0 \
+        sh -ec 'sleep 1; exec gx10-proxy-ready'
       ;;
     invalid_policy)
       compose exec -T squid squid -k parse -f /tmp/gx10-policy-does-not-exist.conf

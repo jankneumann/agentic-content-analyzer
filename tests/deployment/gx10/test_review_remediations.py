@@ -255,7 +255,9 @@ def test_public_langfuse_path_and_generated_trace_url_are_aligned(
     renderer = (RUNTIME / "openbao/render-secrets.sh").read_text()
     assert "path /langfuse/*" in caddy
     assert "strip_prefix /langfuse" in caddy
-    assert "NEXTAUTH_URL=https://gx10.local/langfuse" in renderer
+    assert "{$GX10_PUBLIC_ORIGIN:https://gx10.local}" in caddy
+    assert 'NEXTAUTH_URL=%s' in renderer
+    assert '"$PUBLIC_LANGFUSE_URL"' in renderer
 
     from src.api import operation_routes
 
