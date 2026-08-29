@@ -55,11 +55,22 @@ def test_all_runtime_images_are_immutable_and_squid_uses_reviewed_release() -> N
         assert isinstance(value, dict)
         image = value.get("image")
         assert isinstance(image, str), f"{name} must declare a rendered image"
-        assert DIGEST_PIN.fullmatch(image), f"{name} image must include tag and immutable digest"
+        if name not in APPLICATION_SERVICES | {"squid"}:
+            assert DIGEST_PIN.fullmatch(image), (
+                f"{name} image must include tag and immutable digest"
+            )
+
+    for name in APPLICATION_SERVICES:
+        assert _service(compose, name)["image"] == (
+            "${GX10_APP_IMAGE:?set a reviewed application tag@sha256 digest}"
+        )
 
     squid_image = _service(compose, "squid")["image"]
     assert isinstance(squid_image, str)
-    assert squid_image.startswith("ubuntu/squid:6.13-25.10_beta@sha256:")
+    assert squid_image == (
+        "ubuntu/squid:6.13-25.10_beta@sha256:"
+        "${GX10_SQUID_DIGEST:?set the reviewed published manifest digest}"
+    )
 
 
 def test_stateful_ports_are_private_and_ingress_is_loopback_bound() -> None:
@@ -84,10 +95,16 @@ def test_application_namespaces_have_no_direct_internet_route() -> None:
         service_networks = _service(compose, name)["networks"]
         assert "application" in service_networks
         assert "egress" not in service_networks
-        environment = _service(compose, name)["environment"]
-        assert environment["HTTPS_PROXY"] == "http://squid:3128"
-        assert environment["HTTP_PROXY"] == "http://squid:3128"
+        service = _service(compose, name)
+        environment = service["environment"]
+        assert "HTTPS_PROXY" not in environment
+        assert "HTTP_PROXY" not in environment
         assert environment["NO_PROXY"] == "localhost,127.0.0.1,.gx10.internal"
+        env_files = service["env_file"]
+        assert {
+            "/run/aca/gx10/application.env",
+            "/run/aca/gx10/proxy.env",
+        } == {entry["path"] for entry in env_files if entry["required"] is True}
 
     assert {"application", "egress"} <= set(_service(compose, "squid")["networks"])
 

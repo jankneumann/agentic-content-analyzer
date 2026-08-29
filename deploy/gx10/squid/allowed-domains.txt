@@ -1,0 +1,11 @@
+# Exact provider suffixes reviewed for GX-10 outbound HTTPS.
+.api.anthropic.com
+.api.openai.com
+.generativelanguage.googleapis.com
+.youtube.com
+.googleapis.com
+.googlevideo.com
+.github.com
+.githubusercontent.com
+.pypi.org
+.pythonhosted.org
