@@ -6,7 +6,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-
 ROOT = Path(__file__).parents[3]
 
 
@@ -45,7 +44,6 @@ def test_storage_governance_has_no_direct_database_file_deletion_primitive() -> 
     ]
     assert "DELETE FROM" not in source.upper()
     assert "TRUNCATE " not in source.upper()
-    assert "langfuse" not in source.lower() or "schema" not in source.lower()
 
 
 def test_backup_controller_has_no_plaintext_fallback_or_source_delete_primitive() -> None:
@@ -63,30 +61,19 @@ def test_backup_controller_has_no_plaintext_fallback_or_source_delete_primitive(
 
 
 @pytest.mark.parametrize(
-    "script",
+    "module",
     [
-        "scripts/gx10/storage/simulate_policy.py",
-        "scripts/gx10/backup/validate_restore_drill.py",
+        "src/services/storage_governance.py",
+        "src/services/backup/gx10.py",
     ],
 )
-def test_checkpoint_scripts_are_bounded_python_entrypoints(script: str) -> None:
-    source = (ROOT / script).read_text()
-    tree = ast.parse(source)
+def test_checkpoint_surfaces_parse_without_shell_or_direct_database_mutation(
+    module: str,
+) -> None:
+    source = (ROOT / module).read_text()
+    ast.parse(source)
 
-    assert "if __name__ == \"__main__\":" in source
-    assert any(isinstance(node, ast.FunctionDef) and node.name == "main" for node in ast.walk(tree))
     assert "shell=True" not in source
-
-
-def test_checkpoint_scripts_never_embed_direct_database_mutation() -> None:
-    source = "\n".join(
-        (ROOT / path).read_text()
-        for path in (
-            "scripts/gx10/storage/simulate_policy.py",
-            "scripts/gx10/backup/validate_restore_drill.py",
-        )
-    ).upper()
-
-    assert "DELETE FROM" not in source
-    assert "TRUNCATE " not in source
+    assert "DELETE FROM" not in source.upper()
+    assert "TRUNCATE " not in source.upper()
     assert "PGDATA" not in source

@@ -229,7 +229,11 @@ def test_restore_accepts_rotated_recipient_retained_for_restore_window(tmp_path:
     source_sentinel.write_text("production")
     drill = backup.GX10RestoreDrill(
         decrypt=lambda payload, _recipient: b"plain:" + payload,
-        restore={backup.BackupComponent.APPLICATION_POSTGRESQL: lambda _payload, path: path.mkdir(parents=True)},
+        restore={
+            backup.BackupComponent.APPLICATION_POSTGRESQL: lambda _payload, path: path.mkdir(
+                parents=True
+            )
+        },
         validate={backup.BackupComponent.APPLICATION_POSTGRESQL: lambda _path: True},
     )
 
@@ -353,7 +357,9 @@ def test_restore_validation_failure_is_component_specific_and_source_untouched(
     )
     drill = backup.GX10RestoreDrill(
         decrypt=lambda payload, _recipient: payload,
-        restore={backup.BackupComponent.CLICKHOUSE: lambda _payload, path: path.mkdir(parents=True)},
+        restore={
+            backup.BackupComponent.CLICKHOUSE: lambda _payload, path: path.mkdir(parents=True)
+        },
         validate={backup.BackupComponent.CLICKHOUSE: lambda _path: False},
     )
 
@@ -446,3 +452,68 @@ def test_application_restore_requires_operation_rows_and_trace_metadata(tmp_path
         langfuse_trace_metadata=True,
     )
     assert backup.required_restore_metadata_valid(metadata) is True
+
+
+def test_daily_schedule_is_due_at_the_24_hour_rpo_boundary_not_before() -> None:
+    backup = _backup()
+    last_completed = datetime(2026, 8, 28, 3, tzinfo=UTC)
+
+    assert (
+        backup.BackupSchedule().is_due(
+            last_completed_at=last_completed,
+            now=last_completed + timedelta(hours=23, minutes=59),
+        )
+        is False
+    )
+    assert (
+        backup.BackupSchedule().is_due(
+            last_completed_at=last_completed,
+            now=last_completed + timedelta(hours=24),
+        )
+        is True
+    )
+    assert backup.BackupSchedule().is_due(last_completed_at=None, now=last_completed) is True
+
+
+def test_retention_never_expires_the_only_successful_component_backup() -> None:
+    backup = _backup()
+    now = datetime(2026, 8, 29, tzinfo=UTC)
+    only = backup.RetainedBackupArtifact(
+        component=backup.BackupComponent.NEO4J,
+        name="only.age",
+        completed_at=now - timedelta(days=40),
+        outcome="succeeded",
+    )
+
+    assert backup.select_expired_backups((only,), now=now, retention_days=30) == ()
+
+
+def test_retention_expires_old_success_only_when_a_newer_success_exists() -> None:
+    backup = _backup()
+    now = datetime(2026, 8, 29, tzinfo=UTC)
+    old = backup.RetainedBackupArtifact(
+        component=backup.BackupComponent.MINIO,
+        name="old.age",
+        completed_at=now - timedelta(days=31),
+        outcome="succeeded",
+    )
+    current = backup.RetainedBackupArtifact(
+        component=backup.BackupComponent.MINIO,
+        name="current.age",
+        completed_at=now - timedelta(days=1),
+        outcome="succeeded",
+    )
+    failed = backup.RetainedBackupArtifact(
+        component=backup.BackupComponent.MINIO,
+        name="failure-evidence.age",
+        completed_at=now - timedelta(days=40),
+        outcome="permanent_failure",
+    )
+
+    expired = backup.select_expired_backups(
+        (old, current, failed),
+        now=now,
+        retention_days=30,
+    )
+
+    assert expired == (old,)
