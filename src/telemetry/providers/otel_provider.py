@@ -103,10 +103,13 @@ class OTelProvider:
             if not endpoint.endswith("/v1/traces"):
                 endpoint = f"{endpoint.rstrip('/')}/v1/traces"
 
-            exporter = OTLPSpanExporter(
+            raw_exporter = OTLPSpanExporter(
                 endpoint=endpoint,
                 headers=self._parse_headers(),
             )
+            from src.telemetry.safety import MaskingSpanExporter
+
+            exporter = MaskingSpanExporter(raw_exporter)
             self._tracer_provider.add_span_processor(BatchSpanProcessor(exporter))
             trace.set_tracer_provider(self._tracer_provider)
 
@@ -160,10 +163,6 @@ class OTelProvider:
 
             if max_tokens is not None:
                 span.set_attribute(GEN_AI_REQUEST_MAX_TOKENS, max_tokens)
-
-            if self._log_prompts:
-                span.set_attribute(GEN_AI_PROMPT, user_prompt[:1000])
-                span.set_attribute(GEN_AI_COMPLETION, response_text[:1000])
 
             if metadata:
                 for key, value in metadata.items():
