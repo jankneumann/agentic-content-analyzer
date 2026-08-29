@@ -177,3 +177,19 @@ def test_gx10_activation_rejects_sampling_or_authority_drift() -> None:
             _env_file=None,
             **{**common, "gx10_authority_fingerprint": "not-a-fingerprint"},
         )
+
+
+def test_gx10_ownership_epoch_is_optional_and_bounded() -> None:
+    common = _valid_gx10_settings()
+
+    passive = Settings(_env_file=None, **common)
+    assert passive.gx10_ownership_epoch is None
+
+    active = Settings(_env_file=None, **{**common, "gx10_ownership_epoch": 17})
+    assert active.gx10_ownership_epoch == 17
+
+    with pytest.raises(ValidationError, match="GX10_OWNERSHIP_EPOCH"):
+        Settings(
+            _env_file=None,
+            **{**common, "gx10_ownership_epoch": -1},
+        )
