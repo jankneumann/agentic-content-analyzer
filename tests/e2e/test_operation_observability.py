@@ -34,7 +34,7 @@ def _snapshot(*, include_retry: bool = True, include_restart: bool = True) -> di
             "claim_generation": 1,
             "service_name": "aca-worker",
             "carrier_source": "queue_envelope",
-            "outcome": "failed" if include_retry else "succeeded",
+            "outcome": "retryable_failure" if include_retry else "succeeded",
             "telemetry_delivery_state": "delivered",
         }
     ]
@@ -136,6 +136,8 @@ def test_complete_snapshot_joins_api_queue_postgres_logs_and_langfuse() -> None:
         "retry_continuity": True,
         "restart_continuity": True,
         "secret_canaries_absent": True,
+        "attempt_outcomes_valid": True,
+        "export_health_proof": True,
     }
     assert report.failure_codes == ()
 
@@ -152,6 +154,70 @@ def test_retry_and_restart_fixtures_require_monotonic_persisted_generations() ->
     assert "restart_context_not_persisted" in missing_restart.failure_codes
     assert missing_retry.ready is False
     assert "retry_generation_missing" in missing_retry.failure_codes
+
+
+@pytest.mark.parametrize("first_outcome", ["succeeded", None])
+def test_retry_continuity_rejects_monotonic_generations_without_truthful_failure_transition(
+    first_outcome: str | None,
+) -> None:
+    misleading = _snapshot()
+    misleading["attempts"][0]["outcome"] = first_outcome  # type: ignore[index]
+
+    report = verify_snapshot(EvidenceSnapshot.from_mapping(misleading), canaries=(CANARY,))
+
+    assert report.ready is False
+    assert report.checks["attempt_outcomes_valid"] is True
+    assert report.checks["retry_continuity"] is False
+    assert "retry_generation_missing" in report.failure_codes
+
+
+def test_invalid_attempt_outcome_is_rejected() -> None:
+    invalid = _snapshot()
+    invalid["attempts"][0]["outcome"] = "failed"  # type: ignore[index]
+
+    report = verify_snapshot(EvidenceSnapshot.from_mapping(invalid), canaries=(CANARY,))
+
+    assert report.ready is False
+    assert report.checks["attempt_outcomes_valid"] is False
+    assert "attempt_outcome_invalid" in report.failure_codes
+
+
+@pytest.mark.parametrize(
+    "export_health",
+    [
+        {},
+        {"last_successful_export_at": "not-a-timestamp", "affected_service": "aca-worker"},
+        {
+            "last_successful_export_at": "2026-08-29T18:00:00Z",
+            "affected_service": "invalid service with spaces",
+        },
+    ],
+)
+def test_readiness_requires_bounded_valid_export_health_proof(
+    export_health: dict[str, str],
+) -> None:
+    missing_health = _snapshot()
+    missing_health["export_health"] = export_health
+
+    report = verify_snapshot(
+        EvidenceSnapshot.from_mapping(missing_health), canaries=(CANARY,)
+    )
+
+    assert report.ready is False
+    assert report.checks["export_health_proof"] is False
+    assert "export_health_missing" in report.failure_codes
+    assert set(report.to_mapping()) == {
+        "schema_version",
+        "mode",
+        "ready",
+        "operation_id",
+        "trace_id",
+        "checks",
+        "failure_codes",
+        "last_successful_export_at",
+        "affected_service",
+        "timed_out",
+    }
 
 
 def test_secret_canary_failure_is_redacted_from_report() -> None:
