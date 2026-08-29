@@ -52,6 +52,33 @@ _BOOTSTRAP_IMPORT_ADVISORY_LOCK = 2_104_711_918
 _ACTIVE_PROCESS_SCOPE: ContextVar[OperationalScope | None] = ContextVar(
     "operational_process_scope", default=None
 )
+_INVENTORY_FILE_OWNERSHIP: dict[str, str] = {
+    "src/cli/__main__.py": "forwards execution to the instrumented src.cli.app callback",
+    "src/cli/main.py": "forwards the legacy executable to the instrumented src.cli.app callback",
+    "src/services/operation_service.py": (
+        "queue submission is owned by the instrumented src.queue worker lifecycle"
+    ),
+    "src/services/cloud_stt/__init__.py": "module facade owned by instrumented workflow stages",
+    "src/services/cloud_stt/deepgram_provider.py": "provider called only from instrumented workflow stages",
+    "src/services/cloud_stt/gemini_provider.py": "provider called only from instrumented workflow stages",
+    "src/services/cloud_stt/models.py": "data contract owned by instrumented workflow stages",
+    "src/services/cloud_stt/prompts.py": "prompt data owned by instrumented workflow stages",
+    "src/services/cloud_stt/provider.py": "provider contract owned by instrumented workflow stages",
+    "src/services/cloud_stt/service.py": "service called only from instrumented workflow stages",
+    "src/services/cloud_stt/whisper_provider.py": "provider called only from instrumented workflow stages",
+    "src/storage/providers/__init__.py": "module facade owned by instrumented storage operations",
+    "src/storage/providers/base.py": "provider contract owned by instrumented storage operations",
+    "src/storage/providers/factory.py": "factory called only from instrumented storage operations",
+    "src/storage/providers/local.py": "provider called only from instrumented storage operations",
+    "src/storage/providers/neon.py": "provider called only from instrumented storage operations",
+    "src/storage/providers/neon_branch.py": "provider called only from instrumented storage operations",
+    "src/storage/providers/railway.py": "provider called only from instrumented storage operations",
+    "src/storage/providers/supabase.py": "provider called only from instrumented storage operations",
+}
+_INVENTORY_EXHAUSTIVE_OWNERSHIP_PREFIXES = (
+    "src/services/cloud_stt/",
+    "src/storage/providers/",
+)
 
 
 def _bounded_identifier(value: str, *, maximum: int, field: str) -> str:
@@ -307,11 +334,13 @@ async def shutdown_process_telemetry(lifecycle: TelemetryLifecycle) -> bool:
 
     from src.queue.setup import _queue_connection
 
+    flush_succeeded = await lifecycle.shutdown(None, flush=flush)
     try:
         async with _queue_connection() as connection:
-            return await lifecycle.shutdown(connection, flush=flush)
+            await lifecycle.heartbeat(connection)
     except Exception:
-        return await lifecycle.shutdown(None, flush=flush)
+        lifecycle.record_export_failure("telemetry.health_write_failed")
+    return flush_succeeded
 
 
 class OperationalScope:
@@ -1265,15 +1294,32 @@ def validate_frozen_entrypoint_inventory(
     declared_files: set[str] = set()
     if require_declared_paths:
         for _section, patterns in groups:
-            files: list[Path] = []
             for pattern in patterns:
                 pattern_files = _pattern_files(root, pattern)
                 if not pattern_files:
                     missing.append(pattern)
-                files.extend(pattern_files)
-            declared_files.update(path.relative_to(root).as_posix() for path in files)
-            if files and not any(_path_is_structurally_instrumented(path) for path in files):
-                uninstrumented.extend(patterns)
+                declared_files.update(path.relative_to(root).as_posix() for path in pattern_files)
+                source_files = tuple(
+                    path for path in pattern_files if path.suffix in {".py", ".sh"}
+                )
+                exhaustive = any(
+                    pattern.startswith(prefix.rstrip("/"))
+                    for prefix in _INVENTORY_EXHAUSTIVE_OWNERSHIP_PREFIXES
+                )
+                if exhaustive:
+                    for path in source_files:
+                        relative = path.relative_to(root).as_posix()
+                        ownership_reason = _INVENTORY_FILE_OWNERSHIP.get(relative, "").strip()
+                        if not _path_is_structurally_instrumented(path) and not ownership_reason:
+                            uninstrumented.append(relative)
+                elif source_files and not any(
+                    _path_is_structurally_instrumented(path)
+                    or bool(
+                        _INVENTORY_FILE_OWNERSHIP.get(path.relative_to(root).as_posix(), "").strip()
+                    )
+                    for path in source_files
+                ):
+                    uninstrumented.append(pattern)
 
     candidates: set[str] = set()
     scripts = root / "scripts"

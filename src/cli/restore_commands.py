@@ -273,7 +273,19 @@ def _run_restore_phase(
         stage="restore",
         attributes={"restore.phase": phase},
     ):
-        result = subprocess.run(argv, **kwargs)
+        try:
+            result = subprocess.run(argv, **kwargs)
+        except BaseException:
+            with operational_stage(
+                f"restore.{phase}.outcome",
+                stage="restore",
+                attributes={
+                    "restore.phase": phase,
+                    "operation.outcome": "permanent_failure",
+                },
+            ):
+                pass
+            raise
         with operational_stage(
             f"restore.{phase}.outcome",
             stage="restore",

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 
 import pytest
-
 from typer.testing import CliRunner
 
 from src.cli.app import app
@@ -16,7 +15,7 @@ from src.cli.output import (
     is_remote_db,
     output_result,
 )
-from tests.fixtures.operational_runtime import install_operational_runtime
+from tests.clients.operational_runtime import install_operational_runtime
 
 runner = CliRunner()
 
