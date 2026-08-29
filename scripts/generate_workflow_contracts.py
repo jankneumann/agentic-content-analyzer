@@ -449,7 +449,7 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
                 [
                     "",
                     '    @model_validator(mode="after")',
-                    '    def validate_semantic_context(self) -> OperationContextEnvelope:',
+                    "    def validate_semantic_context(self) -> OperationContextEnvelope:",
                     "        match = TRACEPARENT_PATTERN.fullmatch(self.traceparent)",
                     "        if match is None:",
                     '            raise ValueError("traceparent must be canonical W3C version 00")',
@@ -468,7 +468,7 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
                 [
                     "",
                     '    @model_validator(mode="after")',
-                    '    def validate_attempt_number(self) -> OperationAttemptSummary:',
+                    "    def validate_attempt_number(self) -> OperationAttemptSummary:",
                     "        if int(self.attempt_number) != int(self.claim_generation) + 1:",
                     '            raise ValueError("attempt_number must equal claim_generation + 1")',
                     "        return self",
