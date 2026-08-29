@@ -34,6 +34,35 @@ def test_inventory_discovers_meaningful_scripts_recursively(tmp_path: Path) -> N
     assert report.unlisted == ("scripts/nested/run.py",)
 
 
+def test_inventory_rejects_uninstrumented_declared_file_even_when_peer_is_covered(
+    tmp_path: Path,
+) -> None:
+    covered = tmp_path / "src/workflows/covered.py"
+    uncovered = tmp_path / "src/workflows/uncovered.py"
+    covered.parent.mkdir(parents=True)
+    covered.write_text(
+        "from src.clients.operational_observability import operational_entrypoint\n"
+        "@operational_entrypoint('covered.run', stage='submit')\n"
+        "def run(): pass\n"
+    )
+    uncovered.write_text("def run(): pass\n")
+    inventory = tmp_path / "inventory.yaml"
+    inventory.write_text(
+        yaml.safe_dump(
+            _minimal_inventory(
+                domain_operations=[
+                    "src/workflows/covered.py",
+                    "src/workflows/uncovered.py",
+                ]
+            )
+        )
+    )
+
+    report = validate_frozen_entrypoint_inventory(tmp_path, inventory)
+
+    assert report.uninstrumented == ("src/workflows/uncovered.py",)
+
+
 @pytest.mark.parametrize(
     ("section", "relative_path"),
     [

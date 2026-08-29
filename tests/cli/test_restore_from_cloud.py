@@ -26,6 +26,8 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+
+from src.cli import restore_commands
 from typer.testing import CliRunner
 
 from src.cli.app import app
@@ -612,3 +614,30 @@ def test_restore_real_phases_emit_masked_nested_topology(
     assert "localpass" not in attributes
     assert "r2-secret-key" not in attributes
     assert "/etc/aca/identity.txt" not in attributes
+
+
+def test_restore_tool_exception_emits_terminal_phase_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = _TraceProvider()
+    secret = "postgresql://admin:do-not-record@example.test/private"
+    monkeypatch.setattr(operational_observability, "get_provider", lambda: provider)
+    monkeypatch.setattr(
+        restore_commands.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(FileNotFoundError(secret)),
+    )
+
+    with bind_operation_context(_restore_context()), pytest.raises(
+        FileNotFoundError, match="do-not-record"
+    ):
+        restore_commands._run_restore_phase("download", ["rclone", "copyto"])
+
+    phase, outcome = provider.spans
+    assert [span.name for span in provider.spans] == [
+        "restore.download",
+        "restore.download.outcome",
+    ]
+    assert outcome.parent == phase.span_id
+    assert outcome.attributes["operation.outcome"] == "permanent_failure"
+    assert secret not in repr([span.attributes for span in provider.spans])

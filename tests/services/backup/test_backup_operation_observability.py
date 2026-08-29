@@ -129,6 +129,39 @@ def test_backup_component_emits_real_nested_outcome_topology(
     assert outcome.attributes.get("backup.checksum_sha256") == expected_checksum
 
 
+def test_backup_component_exception_emits_terminal_failure_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = _Provider()
+    secret = "postgresql://admin:do-not-record@example.test/private"
+    monkeypatch.setattr(operational_observability, "get_provider", lambda: provider)
+    monkeypatch.setattr(
+        BackupEngine,
+        "_execute_store",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError(secret)),
+    )
+    plan = StorePlan(StoreName.POSTGRES, "postgres.dump", stage=Stage("pg_dump", ("pg_dump",)))
+    config = TargetConfig(None, "bucket", "auto", "aca", None, None)
+
+    with bind_operation_context(_context()), pytest.raises(OSError, match="do-not-record"):
+        BackupEngine(_Settings())._run_store(
+            plan,
+            config=config,
+            recipient="age1recipient",
+            tier="daily",
+            stamp="2026-08-29T000000Z",
+        )
+
+    assert [span.name for span in provider.spans] == [
+        "backup.component",
+        "backup.component.outcome",
+    ]
+    component, outcome = provider.spans
+    assert outcome.parent == component.span_id
+    assert outcome.attributes["operation.outcome"] == "permanent_failure"
+    assert secret not in repr([span.attributes for span in provider.spans])
+
+
 def test_backup_aggregate_persists_partial_not_success(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

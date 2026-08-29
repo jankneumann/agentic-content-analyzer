@@ -13,6 +13,7 @@ from src.agents.persona.models import PersonaConfig
 from src.agents.specialists.base import SpecialistResult, SpecialistTask
 from src.models.agent_task import AgentTaskStatus
 from src.models.approval_request import RiskLevel
+from tests.fixtures.operational_runtime import install_operational_runtime
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -116,6 +117,22 @@ class TestExecuteTaskLifecycle:
         assert result.task_id == "task-1"
         assert result.status == AgentTaskStatus.COMPLETED
         assert result.error is None
+
+    @pytest.mark.asyncio
+    async def test_real_agent_entrypoint_reserves_and_finalizes_durable_root(
+        self, conductor, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        runtime = install_operational_runtime(monkeypatch)
+
+        result = await conductor.execute_task(
+            task_id="task-durable",
+            task_type="research",
+            prompt="verify lifecycle",
+        )
+
+        assert result.status == AgentTaskStatus.COMPLETED
+        assert runtime.events == ["reserve", "activate", "finish"]
+        assert runtime.entrypoints == ["agent.execute_task"]
 
     @pytest.mark.asyncio
     async def test_result_is_conductor_result(self, conductor):
