@@ -100,9 +100,7 @@ def test_renderer_outputs_profile_compatible_least_privilege_role_envs(tmp_path:
 
     assert _read_env(runtime / "app-postgres.env").keys() == {"POSTGRES_PASSWORD"}
     assert _read_env(runtime / "langfuse-postgres.env").keys() == {"POSTGRES_PASSWORD"}
-    assert _read_env(runtime / "app-postgres.env") != _read_env(
-        runtime / "langfuse-postgres.env"
-    )
+    assert _read_env(runtime / "app-postgres.env") != _read_env(runtime / "langfuse-postgres.env")
 
     args = (tmp_path / "openssl.args").read_text()
     stdin = (tmp_path / "openssl.stdin").read_text()
@@ -166,9 +164,17 @@ def test_openbao_lifecycle_is_reachable_authenticated_initialized_and_unsealed()
     assert "sys/policies/acl/aca-gx10" in bootstrap
     assert "auth/approle/role/aca-gx10" in bootstrap
     assert "CREDENTIALS_DIRECTORY" in bootstrap
+    unseal = (RUNTIME / "openbao/unseal.sh").read_text()
+    assert "CREDENTIALS_DIRECTORY" in unseal
+    assert "/sys/unseal" in unseal
+    assert ".initialized == true and .sealed == false" in unseal
     login = (RUNTIME / "openbao/login-approle.sh").read_text()
     assert "initialized" in login and "sealed" in login
     assert "auth/approle/login" in login
+    unit = (RUNTIME / "systemd/aca-gx10-secrets.service").read_text()
+    assert "LoadCredential=bao-unseal-key:" in unit
+    assert "ExecStartPre=/opt/aca/deploy/gx10/openbao/unseal.sh" in unit
+    assert "up -d --wait" not in unit
 
 
 def test_internal_hosts_bypass_proxy_and_roles_have_distinct_exporters() -> None:
@@ -195,7 +201,9 @@ def test_proxy_readiness_requires_fresh_marker_and_authenticated_connect_probe()
     assert "https://api.github.com/" in probe
 
 
-def test_public_langfuse_path_and_generated_trace_url_are_aligned(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_public_langfuse_path_and_generated_trace_url_are_aligned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     profile = yaml.safe_load((ROOT / "profiles/gx10.yaml").read_text())
     assert profile["settings"]["observability"]["langfuse_public_url"].endswith("/langfuse}")
     caddy = (RUNTIME / "Caddyfile").read_text()
@@ -240,9 +248,7 @@ raise SystemExit(23 if sys.argv[1] == 'external' else 0)
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "executed" in result.stdout
-    assert "--simulate-cold-restart" not in (
-        ROOT / "scripts/gx10/validate_runtime.py"
-    ).read_text()
+    assert "--simulate-cold-restart" not in (ROOT / "scripts/gx10/validate_runtime.py").read_text()
 
 
 def test_real_clean_stack_gate_is_executable_and_evidence_stays_incomplete() -> None:
