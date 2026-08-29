@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
+import asyncpg
 from fastapi import (
     APIRouter,
     Depends,
@@ -104,46 +105,50 @@ async def _observability_summary(
     *,
     include_privileged_link: bool,
 ) -> OperationObservabilitySummary | None:
-    async with queue_setup._queue_connection() as connection:
-        row = await connection.fetchrow(
-            "SELECT root_operation_id, trace_id FROM pgqueuer_jobs WHERE id = $1",
-            operation_id,
-        )
-        if row is None or row["trace_id"] is None:
-            return None
-        trace_id = str(row["trace_id"])
-        root_operation_id = int(row["root_operation_id"] or operation_id)
-        attempt_count = int(
-            await connection.fetchval(
-                "SELECT COUNT(*) FROM operation_observation_attempts WHERE operation_id = $1",
+    try:
+        async with queue_setup._queue_connection() as connection:
+            row = await connection.fetchrow(
+                "SELECT root_operation_id, trace_id FROM pgqueuer_jobs WHERE id = $1",
                 operation_id,
             )
-            or 0
-        )
-        latest = None
-        if attempt_count:
-            latest_generation = await connection.fetchval(
-                "SELECT MAX(claim_generation) FROM operation_observation_attempts "
-                "WHERE operation_id = $1",
-                operation_id,
+            if row is None or row["trace_id"] is None:
+                return None
+            trace_id = str(row["trace_id"])
+            root_operation_id = int(row["root_operation_id"] or operation_id)
+            attempt_count = int(
+                await connection.fetchval(
+                    "SELECT COUNT(*) FROM operation_observation_attempts WHERE operation_id = $1",
+                    operation_id,
+                )
+                or 0
             )
-            latest_rows = await list_attempts(
-                connection,
-                operation_id,
-                after_claim_generation=int(latest_generation) - 1,
-                limit=1,
+            latest = None
+            if attempt_count:
+                latest_generation = await connection.fetchval(
+                    "SELECT MAX(claim_generation) FROM operation_observation_attempts "
+                    "WHERE operation_id = $1",
+                    operation_id,
+                )
+                latest_rows = await list_attempts(
+                    connection,
+                    operation_id,
+                    after_claim_generation=int(latest_generation) - 1,
+                    limit=1,
+                )
+                if latest_rows:
+                    latest = _attempt_summary(latest_rows[0])
+            delivery = latest.telemetry_delivery_state if latest is not None else "pending"
+            return OperationObservabilitySummary(
+                root_operation_id=str(root_operation_id),
+                trace_id=trace_id,
+                attempt_count=attempt_count,
+                latest_attempt=latest,
+                telemetry_delivery_state=delivery,
+                langfuse_url=_langfuse_url(trace_id, authorized=include_privileged_link),
             )
-            if latest_rows:
-                latest = _attempt_summary(latest_rows[0])
-        delivery = latest.telemetry_delivery_state if latest is not None else "pending"
-        return OperationObservabilitySummary(
-            root_operation_id=str(root_operation_id),
-            trace_id=trace_id,
-            attempt_count=attempt_count,
-            latest_attempt=latest,
-            telemetry_delivery_state=delivery,
-            langfuse_url=_langfuse_url(trace_id, authorized=include_privileged_link),
-        )
+    except (asyncpg.PostgresError, ConnectionError, OSError):
+        # Optional enrichment must never break the legacy exact-handle/SSE surface.
+        return None
 
 
 async def _enrich_operation_handle(
