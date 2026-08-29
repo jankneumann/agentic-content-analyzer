@@ -17,6 +17,14 @@ import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field
 
 from src.clients.operational_observability import operational_entrypoint
+from src.config.settings import get_settings
+from src.services.environment_ownership import (
+    EnvironmentOwnershipUnavailable,
+    OwnershipFenceRejected,
+    configured_ownership_identity,
+)
+from src.storage.database import get_db
+from src.tasks.scheduler import require_scheduler_ownership
 
 logger = logging.getLogger(__name__)
 
@@ -266,6 +274,14 @@ class AgentScheduler:
         due = self.get_due_schedules(now)
         if not due:
             return []
+
+        if get_settings().gx10_runtime_enabled:
+            try:
+                with get_db() as session:
+                    require_scheduler_ownership(session, configured_ownership_identity())
+            except (OwnershipFenceRejected, EnvironmentOwnershipUnavailable):
+                logger.warning("GX-10 scheduler ownership fence closed")
+                return []
 
         enqueued: list[str] = []
 
