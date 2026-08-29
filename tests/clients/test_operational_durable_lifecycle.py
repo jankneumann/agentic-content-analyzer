@@ -120,7 +120,7 @@ def durable_runtime(monkeypatch: pytest.MonkeyPatch):
     store = _DurableStore()
 
     def create_lifecycle(*, service_name: str, lifecycle_kind: str) -> _Lifecycle:
-        assert service_name in {"aca-test", "aca-cli"}
+        assert service_name in {"aca-test", "aca-cli", "aca-agent", "aca-script"}
         assert lifecycle_kind == "short_lived"
         lifecycle = _Lifecycle()
         lifecycles.append(lifecycle)
@@ -182,6 +182,32 @@ def test_production_cli_adapter_reserves_durable_root_before_command_body(
     assert store.events == ["reserve", "activate"]
     assert context.close_callback is not None
     context.close_callback()
+    assert store.events == ["reserve", "activate", "finish"]
+    assert len(lifecycles) == 1
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "stage", "service_name"),
+    [
+        ("agent.execute_task", "model", "aca-agent"),
+        ("script.verify_workflow_alerting", "alert", "aca-script"),
+    ],
+)
+def test_production_agent_and_script_roots_are_durable_before_body(
+    durable_runtime,
+    entrypoint: str,
+    stage: str,
+    service_name: str,
+) -> None:
+    module, lifecycles, _provider, store = durable_runtime
+
+    @module.operational_entrypoint(entrypoint, stage=stage, service_name=service_name)
+    def execute() -> None:
+        assert store.events == ["reserve", "activate"]
+        assert get_current_operation_context() is not None
+
+    execute()
+
     assert store.events == ["reserve", "activate", "finish"]
     assert len(lifecycles) == 1
 
