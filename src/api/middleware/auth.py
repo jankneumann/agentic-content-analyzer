@@ -64,7 +64,10 @@ def _is_exempt(path: str) -> bool:
 
 
 def _is_operator_only_path(path: str) -> bool:
-    return path == "/api/v1/status/observability" or (
+    return path in {
+        "/api/v1/status/observability",
+        "/api/v1/status/environment-ownership",
+    } or (
         path.startswith("/api/v1/operations/") and path.endswith("/attempts")
     )
 
@@ -123,7 +126,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if _is_exempt(request.url.path):
             return await call_next(request)
 
-        # The distinct operator key authenticates only the two privileged
+        # The distinct operator key authenticates only the privileged
         # diagnostics surfaces. It never grants access to unrelated owner APIs.
         if _is_operator_only_path(request.url.path):
             operator_key = request.headers.get("X-Operator-Key")

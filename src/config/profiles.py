@@ -284,6 +284,7 @@ class Gx10Settings(BaseModel):
     service_identities: dict[str, str] = Field(default_factory=dict)
     masking_policy: str | None = None
     authority_fingerprint: str | None = None
+    ownership_epoch: int | None = Field(default=None, ge=0, le=9_223_372_036_854_775_807)
     proxy_username: str | None = None
     proxy_url: str = "http://squid:3128"
     proxy_policy_max_age_seconds: int = Field(default=300, ge=30, le=3600)

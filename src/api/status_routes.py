@@ -12,6 +12,7 @@ from src.api.dependencies import verify_admin_key, verify_operator_key
 from src.contracts.workflow_models import EnvironmentOwnershipStatus, Problem
 from src.services.connection_checker import check_all_connections
 from src.services.environment_ownership import (
+    EnvironmentOwnershipUnavailable,
     configured_ownership_identity,
     evaluate_environment_ownership,
 )
@@ -75,7 +76,11 @@ def environment_ownership_status(
         status.HTTP_409_CONFLICT: {
             "description": "Ownership dry-run conflicts with current authority",
             "content": {"application/problem+json": {"schema": Problem.model_json_schema()}},
-        }
+        },
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "description": "Shared ownership authority is unavailable",
+            "content": {"application/problem+json": {"schema": Problem.model_json_schema()}},
+        },
     },
 )
 async def get_environment_ownership_status(
@@ -83,7 +88,21 @@ async def get_environment_ownership_status(
 ) -> EnvironmentOwnershipStatus | JSONResponse:
     """Return passive/active state and a non-mutating cutover-order check."""
 
-    ownership_status = environment_ownership_status(dry_run_target)
+    try:
+        ownership_status = environment_ownership_status(dry_run_target)
+    except EnvironmentOwnershipUnavailable:
+        problem = Problem(
+            type="urn:aca:problem:environment-ownership-unavailable",
+            title="Environment ownership unavailable",
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The shared ownership authority could not be verified",
+            code="environment_ownership_unavailable",
+        )
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=problem.model_dump(mode="json", exclude_none=True),
+            media_type="application/problem+json",
+        )
     if ownership_status.dry_run is not None and not ownership_status.dry_run.allowed:
         problem = Problem(
             type="urn:aca:problem:environment-ownership-conflict",

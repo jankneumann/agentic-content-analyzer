@@ -63,7 +63,7 @@ def configured_ownership_identity() -> OwnershipIdentity:
     return OwnershipIdentity(
         configured_environment="gx10" if settings.gx10_runtime_enabled else settings.environment,
         authority_fingerprint=(settings.gx10_authority_fingerprint or _UNCONFIGURED_FINGERPRINT),
-        expected_epoch=None,
+        expected_epoch=settings.gx10_ownership_epoch,
     )
 
 
