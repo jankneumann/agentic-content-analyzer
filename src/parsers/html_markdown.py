@@ -549,7 +549,21 @@ class HtmlMarkdownConverter:
         return await asyncio.gather(*[process_one(item) for item in items])
 
 
-# Convenience function for simple sync usage
+# Convenience functions for simple sync usage
+def convert_html_with_result(
+    html: str | None = None,
+    url: str | None = None,
+) -> ConversionResult:
+    """Synchronously convert HTML while retaining extractor/fallback evidence."""
+    converter = HtmlMarkdownConverter()
+    try:
+        return asyncio.get_event_loop().run_until_complete(
+            converter.convert(url=url, html=html)
+        )
+    except RuntimeError:
+        return asyncio.run(converter.convert(url=url, html=html))
+
+
 def convert_html_to_markdown(
     html: str | None = None,
     url: str | None = None,
@@ -565,12 +579,4 @@ def convert_html_to_markdown(
     Returns:
         Markdown string (empty string on failure)
     """
-    converter = HtmlMarkdownConverter()
-
-    try:
-        result = asyncio.get_event_loop().run_until_complete(converter.convert(url=url, html=html))
-        return result.markdown or ""
-    except RuntimeError:
-        # No event loop running, create a new one
-        result = asyncio.run(converter.convert(url=url, html=html))
-        return result.markdown or ""
+    return convert_html_with_result(html=html, url=url).markdown or ""
