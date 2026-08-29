@@ -171,6 +171,55 @@ def test_retry_continuity_rejects_monotonic_generations_without_truthful_failure
     assert "retry_generation_missing" in report.failure_codes
 
 
+def test_retry_success_must_be_the_attempt_that_uses_persisted_context() -> None:
+    split_proof = _snapshot()
+    split_proof["attempts"][1]["carrier_source"] = "queue_envelope"  # type: ignore[index]
+    split_proof["attempts"].append(  # type: ignore[union-attr]
+        {
+            "operation_id": ROOT_OPERATION_ID,
+            "root_operation_id": ROOT_OPERATION_ID,
+            "trace_id": TRACE_ID,
+            "claim_generation": 3,
+            "service_name": "aca-worker",
+            "carrier_source": "persisted_queue_envelope",
+            "outcome": "partial",
+            "telemetry_delivery_state": "delivered",
+        }
+    )
+
+    report = verify_snapshot(EvidenceSnapshot.from_mapping(split_proof), canaries=(CANARY,))
+
+    assert report.ready is False
+    assert report.checks["retry_continuity"] is False
+    assert report.checks["restart_continuity"] is False
+    assert "retry_generation_missing" in report.failure_codes
+    assert "restart_context_not_persisted" in report.failure_codes
+
+
+def test_latest_generation_must_be_terminally_succeeded() -> None:
+    pending_latest = _snapshot()
+    pending_latest["attempts"].append(  # type: ignore[union-attr]
+        {
+            "operation_id": ROOT_OPERATION_ID,
+            "root_operation_id": ROOT_OPERATION_ID,
+            "trace_id": TRACE_ID,
+            "claim_generation": 3,
+            "service_name": "aca-worker",
+            "carrier_source": "persisted_queue_envelope",
+            "outcome": None,
+            "telemetry_delivery_state": "pending",
+        }
+    )
+
+    report = verify_snapshot(EvidenceSnapshot.from_mapping(pending_latest), canaries=(CANARY,))
+
+    assert report.ready is False
+    assert report.checks["attempt_outcomes_valid"] is True
+    assert report.checks["retry_continuity"] is False
+    assert report.checks["restart_continuity"] is False
+    assert "retry_generation_missing" in report.failure_codes
+
+
 def test_invalid_attempt_outcome_is_rejected() -> None:
     invalid = _snapshot()
     invalid["attempts"][0]["outcome"] = "failed"  # type: ignore[index]
