@@ -12,6 +12,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import secrets
+import socket
 from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime, timedelta
 from time import monotonic
@@ -123,7 +126,9 @@ async def _claim_jobs(
             LIMIT $1
             FOR UPDATE SKIP LOCKED
         )
-        RETURNING id, entrypoint, payload, claim_generation, claim_protocol_version
+        RETURNING id, entrypoint, payload, claim_generation, claim_protocol_version,
+                  root_operation_id, submission_context, submission_traceparent,
+                  submission_tracestate, trace_id, created_at
         """,
         batch_size,
     )
@@ -286,6 +291,142 @@ async def _emit_job_notification(
         logger.debug("Failed to emit job notification", exc_info=True)
 
 
+def _queue_wait_milliseconds(job: dict[str, Any], *, now: datetime | None = None) -> int:
+    """Return a non-negative bounded queue-wait duration from durable timestamps."""
+
+    created_at = job.get("created_at")
+    if not isinstance(created_at, datetime):
+        return 0
+    elapsed = ((now or datetime.now(UTC)) - created_at).total_seconds() * 1000
+    return min(max(int(elapsed), 0), 2_147_483_647)
+
+
+def _attempt_context_from_job(job: dict[str, Any]):
+    """Reconstruct one claim attempt strictly from persisted queue context."""
+
+    from src.config.settings import get_settings
+    from src.contracts.operation_context import (
+        OperationContext,
+        OperationStage,
+        parse_operation_context,
+    )
+
+    raw = job.get("submission_context")
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+    settings = get_settings()
+    if raw is None:
+        trace_id = secrets.token_hex(16)
+        submission_span_id = secrets.token_hex(8)
+        operation_id = str(job["id"])
+        submission = OperationContext(
+            schema_version=1,
+            operation_id=operation_id,
+            root_operation_id=str(job.get("root_operation_id") or operation_id),
+            parent_operation_id=None,
+            traceparent=f"00-{trace_id}-{submission_span_id}-01",
+            tracestate=None,
+            trace_id=trace_id,
+            span_id=submission_span_id,
+            claim_generation="0",
+            attempt_number=None,
+            entrypoint=str(job["entrypoint"]),
+            service_name=settings.otel_service_name[:100] or "newsletter-aggregator",
+            service_instance_id="legacy-submission",
+            environment=settings.environment,
+            release_revision="legacy",
+            stage=OperationStage.SUBMIT,
+            resource_kind=None,
+            resource_key=None,
+        )
+    else:
+        submission = parse_operation_context(raw)
+        if (
+            submission.operation_id != str(job["id"])
+            or submission.root_operation_id != str(job["root_operation_id"])
+            or submission.traceparent != job["submission_traceparent"]
+            or submission.tracestate != job.get("submission_tracestate")
+            or submission.trace_id != job["trace_id"]
+        ):
+            raise ValueError("queue observation context fields do not match")
+
+    claim_generation = int(job["claim_generation"])
+    span_id = secrets.token_hex(8)
+    instance = os.environ.get("ACA_SERVICE_INSTANCE_ID", socket.gethostname())[:128] or "unknown"
+    release = os.environ.get(
+        "RELEASE_REVISION", os.environ.get("RAILWAY_GIT_COMMIT_SHA", "unknown")
+    )
+    values = submission.model_dump(mode="python")
+    values.update(
+        traceparent=f"00-{submission.trace_id}-{span_id}-01",
+        span_id=span_id,
+        claim_generation=str(claim_generation),
+        attempt_number=str(claim_generation + 1),
+        service_name=settings.otel_service_name[:100] or "newsletter-aggregator",
+        service_instance_id=instance,
+        environment=settings.environment,
+        release_revision=release[:64] or "unknown",
+        stage=OperationStage.CLAIM,
+    )
+    return OperationContext.model_validate(values)
+
+
+async def _start_attempt_evidence(conn: asyncpg.Connection, context: Any) -> bool:
+    """Fence and append the durable attempt row before handler side effects."""
+
+    from src.repositories.operation_observation_attempts import AttemptStart, start_attempt
+
+    return await start_attempt(
+        conn,
+        AttemptStart(
+            operation_id=int(context.operation_id),
+            claim_generation=int(context.claim_generation),
+            trace_id=context.trace_id,
+            root_span_id=context.span_id,
+            langfuse_observation_id=None,
+            service_name=context.service_name,
+            service_instance_id=context.service_instance_id,
+            environment=context.environment,
+            release_revision=context.release_revision,
+            started_at=datetime.now(UTC),
+        ),
+    )
+
+
+async def _complete_attempt_evidence(
+    conn: asyncpg.Connection,
+    context: Any,
+    *,
+    outcome: str,
+    retryable: bool,
+    diagnostic_codes: tuple[str, ...] = (),
+) -> bool:
+    from src.repositories.operation_observation_attempts import AttemptCompletion, complete_attempt
+
+    return await complete_attempt(
+        conn,
+        int(context.operation_id),
+        int(context.claim_generation),
+        AttemptCompletion(
+            completed_at=datetime.now(UTC),
+            terminal_stage="claim",
+            outcome=outcome,
+            retryable=retryable,
+            telemetry_delivery_state="delivered",
+            diagnostic_codes=diagnostic_codes,
+            diagnostics_omitted=0,
+        ),
+    )
+
+
+async def _record_stale_attempt(conn: asyncpg.Connection, context: Any) -> bool:
+    from src.repositories.operation_observation_attempts import record_stale_claim_diagnostic
+
+    return await record_stale_claim_diagnostic(
+        conn, int(context.operation_id), int(context.claim_generation)
+    )
+
+
 async def _process_job(
     conn: asyncpg.Connection,
     job: dict[str, Any],
@@ -299,6 +440,14 @@ async def _process_job(
     if isinstance(payload, str):
         payload = json.loads(payload)
 
+    try:
+        attempt_context = _attempt_context_from_job(job)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        logger.error("Job %s has invalid persisted observation context", job_id)
+        await _fail_job(conn, job_id, claim_generation, "Invalid operation observation context")
+        return
+
+    from src.contracts.operation_context import bind_operation_context
     from src.queue.execution_claim import ExecutionClaim, bind_execution_claim
     from src.queue.setup import touch_job_heartbeat
 
@@ -308,7 +457,7 @@ async def _process_job(
         claim_protocol_version=claim_protocol_version,
     )
 
-    with bind_execution_claim(claim):
+    with bind_execution_claim(claim), bind_operation_context(attempt_context):
         if await _checkpoint_job_cancellation(conn, job_id, claim_generation):
             logger.info(f"Job {job_id} ({entrypoint}) cancelled before handler invocation")
             return
@@ -320,9 +469,20 @@ async def _process_job(
             logger.info(f"Job {job_id} ({entrypoint}) lost its execution claim")
             return
 
+        if not await _start_attempt_evidence(conn, attempt_context):
+            logger.info(f"Job {job_id} ({entrypoint}) lost its attempt start fence")
+            return
+
         handler = _handlers.get(entrypoint)
         if handler is None:
             logger.warning(f"No handler for entrypoint '{entrypoint}', failing job {job_id}")
+            await _complete_attempt_evidence(
+                conn,
+                attempt_context,
+                outcome="permanent_failure",
+                retryable=False,
+                diagnostic_codes=("workflow.unknown_entrypoint",),
+            )
             if await _fail_job(
                 conn,
                 job_id,
@@ -348,7 +508,25 @@ async def _process_job(
 
         heartbeat_task = asyncio.create_task(_heartbeat_loop())
         try:
-            await handler(job_id, payload)
+            from src.telemetry import get_provider
+            from src.telemetry.operation_spans import operation_span
+
+            with operation_span(
+                get_provider(),
+                f"operation.{entrypoint}.attempt",
+                context=attempt_context,
+                attributes={
+                    "queue.retry": claim_generation > 0,
+                    "queue.retry_from_claim_generation": (
+                        claim_generation - 1 if claim_generation > 0 else None
+                    ),
+                    "queue.wait_ms": _queue_wait_milliseconds(job),
+                },
+            ):
+                await handler(job_id, payload)
+            await _complete_attempt_evidence(
+                conn, attempt_context, outcome="succeeded", retryable=False
+            )
             if await _complete_job(conn, job_id, claim_generation):
                 logger.info(f"Job {job_id} ({entrypoint}) completed")
                 await _emit_job_notification(job_id, entrypoint, payload)
@@ -360,15 +538,26 @@ async def _process_job(
             from src.queue.execution_claim import ClaimCancelled, ClaimSuperseded
 
             if isinstance(e, ClaimCancelled):
+                await _complete_attempt_evidence(
+                    conn, attempt_context, outcome="cancelled", retryable=False
+                )
                 if await _checkpoint_job_cancellation(conn, job_id, claim_generation):
                     logger.info(f"Job {job_id} ({entrypoint}) cancelled at domain commit")
                 else:
                     logger.info(f"Job {job_id} ({entrypoint}) lost cancellation claim")
                 return
             if isinstance(e, ClaimSuperseded):
+                await _record_stale_attempt(conn, attempt_context)
                 logger.info(f"Job {job_id} ({entrypoint}) dropped superseded domain result")
                 return
             logger.error(f"Job {job_id} ({entrypoint}) failed: {e}", exc_info=True)
+            await _complete_attempt_evidence(
+                conn,
+                attempt_context,
+                outcome="permanent_failure",
+                retryable=False,
+                diagnostic_codes=("workflow.internal_error",),
+            )
             from src.queue.workflow_handlers import WorkflowHandlerError
 
             persisted_error = (

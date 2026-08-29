@@ -10,7 +10,10 @@ import binascii
 import hashlib
 import hmac
 import json
+import os
 import re
+import secrets
+import socket
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -19,6 +22,11 @@ from typing import Any, cast
 
 import asyncpg
 
+from src.contracts.operation_context import (
+    OperationContext,
+    OperationStage,
+    get_current_operation_context,
+)
 from src.contracts.workflow_models import (
     ConfiguredSourceHistoryOutcome,
     IngestionHistoryItem,
@@ -273,13 +281,13 @@ class OperationService:
             operation_type,
             payload["input"],
         )
-        job_id, _created = await queue_setup.enqueue_queue_job(
-            operation_type.value,
-            payload,
+        job_id, _created = await self._enqueue_observed(
+            entrypoint=operation_type.value,
+            payload=payload,
             priority=priority,
             parent_job_id=parent_job_id,
-            conn=self._connection,
             idempotency_key=key,
+            parent_context=get_current_operation_context(),
         )
         return await self.get(str(job_id))
 
@@ -311,15 +319,132 @@ class OperationService:
             input=normalized_input,
             cancellable=cancellable,
         ).model_dump(mode="json")
-        job_id, _created = await queue_setup.enqueue_queue_job(
-            operation_type.value,
-            payload,
+        parent_context = get_current_operation_context()
+        if parent_context is not None and parent_context.operation_id != str(parent_job_id):
+            parent_context = None
+        job_id, _created = await self._enqueue_observed(
+            entrypoint=operation_type.value,
+            payload=payload,
             priority=priority,
             parent_job_id=parent_job_id,
-            conn=self._connection,
             idempotency_key=effective_key,
+            parent_context=parent_context,
         )
         return await self.get(job_id)
+
+    async def _enqueue_observed(
+        self,
+        *,
+        entrypoint: str,
+        payload: dict[str, Any],
+        priority: int,
+        parent_job_id: int | None,
+        idempotency_key: str,
+        parent_context: OperationContext | None,
+    ) -> tuple[int, bool]:
+        """Atomically enqueue and persist the validated submission envelope."""
+
+        async with queue_setup._queue_connection(self._connection) as conn, conn.transaction():
+            if parent_job_id is not None and parent_context is None:
+                raw_parent = await conn.fetchval(
+                    "SELECT submission_context FROM pgqueuer_jobs WHERE id = $1",
+                    parent_job_id,
+                )
+                if raw_parent is None:
+                    raise RuntimeError("Parent operation has no submission context")
+                if isinstance(raw_parent, str):
+                    raw_parent = json.loads(raw_parent)
+                from src.contracts.operation_context import parse_operation_context
+
+                parent_context = parse_operation_context(raw_parent)
+
+            job_id, created = await queue_setup.enqueue_queue_job(
+                entrypoint,
+                payload,
+                priority=priority,
+                parent_job_id=parent_job_id,
+                conn=conn,
+                idempotency_key=idempotency_key,
+            )
+            if not created:
+                return job_id, False
+
+            context = self._new_submission_context(
+                operation_id=job_id,
+                entrypoint=entrypoint,
+                parent_context=parent_context,
+                parent_job_id=parent_job_id,
+            )
+            serialized = json.dumps(context.model_dump(mode="json"), separators=(",", ":"))
+            result = await conn.execute(
+                """
+                UPDATE pgqueuer_jobs
+                SET root_operation_id = $2,
+                    submission_context = $3::jsonb,
+                    submission_traceparent = $4,
+                    submission_tracestate = $5,
+                    trace_id = $6
+                WHERE id = $1
+                  AND status = 'queued'
+                  AND submission_context IS NULL
+                """,
+                job_id,
+                int(context.root_operation_id),
+                serialized,
+                context.traceparent,
+                context.tracestate,
+                context.trace_id,
+            )
+            if not result.endswith(" 1"):
+                raise RuntimeError("Unable to atomically persist operation submission context")
+            return job_id, True
+
+    @staticmethod
+    def _new_submission_context(
+        *,
+        operation_id: int,
+        entrypoint: str,
+        parent_context: OperationContext | None,
+        parent_job_id: int | None,
+    ) -> OperationContext:
+        """Create a bounded root or child submission envelope."""
+
+        from src.config.settings import get_settings
+
+        settings = get_settings()
+        operation = str(operation_id)
+        parent = str(parent_job_id) if parent_job_id is not None else None
+        trace_id = parent_context.trace_id if parent_context is not None else secrets.token_hex(16)
+        span_id = secrets.token_hex(8)
+        root = parent_context.root_operation_id if parent_context is not None else operation
+        tracestate = parent_context.tracestate if parent_context is not None else None
+        service_name = settings.otel_service_name[:100] or "newsletter-aggregator"
+        instance = (
+            os.environ.get("ACA_SERVICE_INSTANCE_ID", socket.gethostname())[:128] or "unknown"
+        )
+        release = os.environ.get(
+            "RELEASE_REVISION", os.environ.get("RAILWAY_GIT_COMMIT_SHA", "unknown")
+        )
+        return OperationContext(
+            schema_version=1,
+            operation_id=operation,
+            root_operation_id=root,
+            parent_operation_id=parent,
+            traceparent=f"00-{trace_id}-{span_id}-01",
+            tracestate=tracestate,
+            trace_id=trace_id,
+            span_id=span_id,
+            claim_generation="0",
+            attempt_number=None,
+            entrypoint=entrypoint,
+            service_name=service_name,
+            service_instance_id=instance,
+            environment=settings.environment,
+            release_revision=release[:64] or "unknown",
+            stage=OperationStage.SUBMIT,
+            resource_kind=None,
+            resource_key=None,
+        )
 
     async def get(self, operation_id: str | int) -> OperationHandle:
         job_id = self._parse_operation_id(operation_id)
