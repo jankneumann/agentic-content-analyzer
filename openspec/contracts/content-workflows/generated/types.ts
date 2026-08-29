@@ -1,5 +1,5 @@
 // Generated from contracts/openapi/v1.yaml; do not edit.
-export const CONTRACT_SHA256 = "42c7725900d7c46933c6df9edb8f0e51c08325ba7102492cff1e3c7774ffe8fe" as const;
+export const CONTRACT_SHA256 = "56ef2c7a6099873c96edce7e400353a913d55e7f70aec84ab209e57b2bae1cec" as const;
 
 export type OperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 export type OperationType = "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
@@ -13,6 +13,15 @@ export type ContentReconciliationOperationStatus = "queued" | "in_progress" | "c
 export type ContentReconciliationPhase = "parsing" | "processing";
 export type ContentReconciliationAction = "none" | "retry_operation" | "project_completed" | "project_parsed" | "restore_parsed" | "restore_pending" | "cancel_restore_parsed" | "cancel_restore_pending";
 export type ContentReconciliationReason = "summary_exists" | "extraction_completed" | "completed_output_missing" | "output_owner_mismatch" | "active_operation" | "cancellation_pending" | "execution_locked" | "cancellation_requested" | "stale_operation" | "failed_operation" | "retry_budget_exhausted" | "forced_reprocessing" | "summarization_cancelled" | "extraction_cancelled" | "missing_operation" | "ownership_conflict" | "incompatible_worker" | "revalidation_conflict" | "apply_failed";
+export type TraceId = string;
+export type SpanId = string;
+export type OperationId = string;
+export type Int64NonNegativeString = string;
+export type ClaimGenerationString = string;
+export type Int64PositiveString = string;
+export type OperationStage = "submit" | "queue_wait" | "claim" | "fetch" | "discover" | "metadata" | "transcript" | "extract" | "parse" | "filter" | "deduplicate" | "model" | "fallback" | "persist" | "index" | "graph" | "deliver" | "backup" | "restore" | "alert" | "cleanup" | "flush";
+export type OperationOutcome = "succeeded" | "partial" | "skipped_policy" | "skipped_duplicate" | "filtered" | "retryable_failure" | "permanent_failure" | "cancelled";
+export type TelemetryDeliveryState = "pending" | "delivered" | "degraded" | "dropped" | "disabled";
 
 export interface Problem {
   type: string;
@@ -182,6 +191,7 @@ export interface OperationHandle {
   created_at: string;
   started_at?: string | null;
   completed_at?: string | null;
+  observability?: OperationObservabilitySummary | null;
 }
 
 export interface OperationPage {
@@ -564,6 +574,118 @@ export interface AudioDigestRequest {
   provider?: string;
   voice?: string;
   speed?: number;
+}
+
+export interface OperationContextEnvelope {
+  schema_version: 1;
+  operation_id: OperationId;
+  root_operation_id: OperationId;
+  parent_operation_id: OperationId | null;
+  traceparent: string;
+  tracestate: string | null;
+  trace_id: TraceId;
+  span_id: SpanId;
+  claim_generation: ClaimGenerationString;
+  attempt_number: Int64PositiveString | null;
+  entrypoint: string;
+  service_name: string;
+  service_instance_id: string;
+  environment: string;
+  release_revision: string;
+  stage: OperationStage | null;
+  resource_kind: string | null;
+  resource_key: string | null;
+}
+
+export interface OperationAttemptSummary {
+  claim_generation: ClaimGenerationString;
+  attempt_number: Int64PositiveString;
+  trace_id: TraceId;
+  root_span_id: SpanId | null;
+  langfuse_observation_id: string | null;
+  service_name: string;
+  service_instance_id: string;
+  environment: string;
+  release_revision: string;
+  started_at: string;
+  completed_at: string | null;
+  terminal_stage: OperationStage | null;
+  outcome: OperationOutcome | null;
+  retryable: boolean | null;
+  telemetry_delivery_state: TelemetryDeliveryState;
+  diagnostic_codes: Array<string>;
+  diagnostics_omitted: number;
+}
+
+export interface OperationObservabilitySummary {
+  root_operation_id: OperationId;
+  trace_id: TraceId;
+  attempt_count: number;
+  latest_attempt: OperationAttemptSummary | null;
+  telemetry_delivery_state: TelemetryDeliveryState;
+  langfuse_url: string | null;
+}
+
+export interface OperationAttemptPage {
+  schema_version: 1;
+  operation_id: OperationId;
+  root_operation_id: OperationId;
+  attempts: Array<OperationAttemptSummary>;
+  attempts_omitted: number;
+  next_after_claim_generation: ClaimGenerationString | null;
+}
+
+export interface ProcessObservabilityHealth {
+  schema_version: 1;
+  required: boolean;
+  initialized: boolean;
+  status: "healthy" | "degraded" | "disabled" | "stale";
+  service_name: string;
+  service_instance_id: string;
+  environment: string;
+  release_revision: string;
+  lifecycle_kind: "long_running" | "short_lived";
+  expires_at: string;
+  export_target: "local_langfuse" | "remote_langfuse" | "other_otlp" | "none";
+  last_heartbeat_at: string;
+  last_success_at: string | null;
+  last_success_age_seconds: number | null;
+  last_error_at: string | null;
+  last_error_age_seconds: number | null;
+  last_error_code: string | null;
+  buffered_count: number;
+  buffer_capacity: number;
+  dropped_count: number;
+  last_flush_at: string | null;
+  last_flush_succeeded: boolean | null;
+}
+
+export interface ObservabilityHealthPage {
+  schema_version: 1;
+  status: "healthy" | "degraded";
+  generated_at: string;
+  stale_after_seconds: number;
+  processes_omitted: number;
+  processes: Array<ProcessObservabilityHealth>;
+}
+
+export interface EnvironmentOwnershipStatus {
+  schema_version: 1;
+  configured_environment: string;
+  active_environment: string;
+  mode: "active" | "passive" | "conflict";
+  authority_matches: boolean;
+  authority_fingerprint_prefix: string;
+  epoch: Int64NonNegativeString;
+  passive_reasons: Array<string>;
+  dry_run: OwnershipDryRun | null;
+}
+
+export interface OwnershipDryRun {
+  target_environment: string;
+  allowed: boolean;
+  next_epoch: Int64NonNegativeString | null;
+  checks: Array<string>;
 }
 
 export type IngestionResult = IngestionResultV1 | IngestionResultV2;

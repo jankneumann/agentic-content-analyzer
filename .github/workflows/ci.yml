@@ -257,6 +257,9 @@ jobs:
           # Keep the derandomized contract corpus aligned with uv.lock.
           uv pip install --system -e ".[dev]" hypothesis==6.151.9 schemathesis==4.10.2
 
+      - name: Validate durable workflow contracts
+        run: make workflow-contracts-check
+
       - name: Run database migrations
         env:
           DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters

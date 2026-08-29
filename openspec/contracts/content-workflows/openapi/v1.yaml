@@ -525,12 +525,97 @@ paths:
         "404": { $ref: "#/components/responses/NotFoundProblem" }
         "409": { $ref: "#/components/responses/ConflictProblem" }
 
+  /api/v1/operations/{operation_id}/attempts:
+    get:
+      operationId: listOperationAttempts
+      summary: Return bounded observability attempts for one operation
+      security:
+      - OperatorKey: []
+      parameters:
+      - $ref: '#/components/parameters/OperationId'
+      - $ref: '#/components/parameters/PageLimit'
+      - $ref: '#/components/parameters/AttemptCursor'
+      responses:
+        '200':
+          description: Ordered attempt evidence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationAttemptPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+  /api/v1/status/observability:
+    get:
+      operationId: getObservabilityHealth
+      summary: Return bounded telemetry initialization and delivery health
+      security:
+      - OperatorKey: []
+      responses:
+        '200':
+          description: Telemetry is initialized and within delivery policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservabilityHealthPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          description: Required observability is degraded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservabilityHealthPage'
+  /api/v1/status/environment-ownership:
+    get:
+      operationId: getEnvironmentOwnershipStatus
+      summary: Return the bounded passive/active ownership-fence status
+      security:
+      - OperatorKey: []
+      parameters:
+      - name: dry_run_target
+        in: query
+        required: false
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 32
+      responses:
+        '200':
+          description: Current ownership status and optional dry-run verdict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentOwnershipStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Authority fingerprint or epoch conflicts with the requested dry run
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
 components:
   securitySchemes:
     AdminKey:
       type: apiKey
       in: header
       name: X-Admin-Key
+
+    OperatorKey:
+      type: apiKey
+      in: header
+      name: X-Operator-Key
+      description: Distinct privileged capability for deployment-wide diagnostics. A normal authenticated
+        session or legacy admin-compatible session is insufficient.
 
   parameters:
     PageLimit:
@@ -553,8 +638,18 @@ components:
       name: operation_id
       in: path
       required: true
-      schema: { type: string, pattern: "^[0-9]+$" }
+      schema:
+        type: string
+        pattern: ^([1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$
+        maxLength: 19
       example: "8123"
+
+    AttemptCursor:
+      name: after_claim_generation
+      in: query
+      required: false
+      schema:
+        $ref: '#/components/schemas/ClaimGenerationString'
 
   responses:
     AcceptedOperation:
@@ -1061,6 +1156,11 @@ components:
         created_at: { type: string, format: date-time }
         started_at: { type: [string, "null"], format: date-time }
         completed_at: { type: [string, "null"], format: date-time }
+        observability:
+          oneOf:
+            - { $ref: "#/components/schemas/OperationObservabilitySummary" }
+            - { type: "null" }
+          default: null
 
     OperationPage:
       type: object
@@ -1892,3 +1992,528 @@ components:
         provider: { type: string, default: openai }
         voice: { type: string, default: nova }
         speed: { type: number, minimum: 0.5, maximum: 2.0, default: 1.0 }
+
+    TraceId:
+      type: string
+      pattern: ^(?!0{32}$)[0-9a-f]{32}$
+    SpanId:
+      type: string
+      pattern: ^(?!0{16}$)[0-9a-f]{16}$
+    OperationId:
+      type: string
+      pattern: ^([1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$
+      maxLength: 19
+    Int64NonNegativeString:
+      type: string
+      pattern: ^(0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$
+      maxLength: 19
+      description: Lossless signed-BIGINT non-negative value at JSON/JavaScript boundaries.
+    ClaimGenerationString:
+      type: string
+      pattern: ^(0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6])$
+      maxLength: 19
+      description: Signed BIGINT value with headroom for attempt_number = generation + 1.
+    Int64PositiveString:
+      type: string
+      pattern: ^([1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$
+      maxLength: 19
+    OperationStage:
+      type: string
+      enum:
+      - submit
+      - queue_wait
+      - claim
+      - fetch
+      - discover
+      - metadata
+      - transcript
+      - extract
+      - parse
+      - filter
+      - deduplicate
+      - model
+      - fallback
+      - persist
+      - index
+      - graph
+      - deliver
+      - backup
+      - restore
+      - alert
+      - cleanup
+      - flush
+    OperationOutcome:
+      type: string
+      enum:
+      - succeeded
+      - partial
+      - skipped_policy
+      - skipped_duplicate
+      - filtered
+      - retryable_failure
+      - permanent_failure
+      - cancelled
+    TelemetryDeliveryState:
+      type: string
+      enum:
+      - pending
+      - delivered
+      - degraded
+      - dropped
+      - disabled
+    OperationContextEnvelope:
+      description: Structural wire schema. Every ingress must additionally call the generated composite semantic
+        validator before accepting an envelope.
+      type: object
+      additionalProperties: false
+      required:
+      - schema_version
+      - operation_id
+      - root_operation_id
+      - parent_operation_id
+      - traceparent
+      - tracestate
+      - trace_id
+      - span_id
+      - claim_generation
+      - attempt_number
+      - entrypoint
+      - service_name
+      - service_instance_id
+      - environment
+      - release_revision
+      - stage
+      - resource_kind
+      - resource_key
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+        operation_id:
+          $ref: '#/components/schemas/OperationId'
+        root_operation_id:
+          $ref: '#/components/schemas/OperationId'
+        parent_operation_id:
+          oneOf:
+          - $ref: '#/components/schemas/OperationId'
+          - type: 'null'
+        traceparent:
+          type: string
+          pattern: ^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$
+          minLength: 55
+          maxLength: 55
+          description: Embedded trace and parent IDs must equal trace_id and span_id.
+        tracestate:
+          type:
+          - string
+          - 'null'
+          pattern: ^[a-z0-9][a-z0-9_*/-]{0,255}=(?:[!-+\--<>-~]|[!-+\--<>-~][ -+\--<>-~]{0,254}[!-+\--<>-~])(,[a-z0-9][a-z0-9_*/-]{0,255}=(?:[!-+\--<>-~]|[!-+\--<>-~][
+            -+\--<>-~]{0,254}[!-+\--<>-~])){0,31}$
+          maxLength: 512
+          description: Optional safe W3C simple-key subset, at most 32 members.
+        trace_id:
+          $ref: '#/components/schemas/TraceId'
+        span_id:
+          $ref: '#/components/schemas/SpanId'
+        claim_generation:
+          $ref: '#/components/schemas/ClaimGenerationString'
+        attempt_number:
+          oneOf:
+          - $ref: '#/components/schemas/Int64PositiveString'
+          - type: 'null'
+        entrypoint:
+          type: string
+          minLength: 1
+          maxLength: 160
+        service_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        service_instance_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        environment:
+          type: string
+          minLength: 1
+          maxLength: 32
+        release_revision:
+          type: string
+          minLength: 1
+          maxLength: 64
+        stage:
+          oneOf:
+          - $ref: '#/components/schemas/OperationStage'
+          - type: 'null'
+        resource_kind:
+          type:
+          - string
+          - 'null'
+          maxLength: 64
+        resource_key:
+          type:
+          - string
+          - 'null'
+          maxLength: 128
+    OperationAttemptSummary:
+      type: object
+      additionalProperties: false
+      required:
+      - claim_generation
+      - attempt_number
+      - trace_id
+      - root_span_id
+      - langfuse_observation_id
+      - service_name
+      - service_instance_id
+      - environment
+      - release_revision
+      - started_at
+      - completed_at
+      - terminal_stage
+      - outcome
+      - retryable
+      - telemetry_delivery_state
+      - diagnostic_codes
+      - diagnostics_omitted
+      properties:
+        claim_generation:
+          $ref: '#/components/schemas/ClaimGenerationString'
+        attempt_number:
+          $ref: '#/components/schemas/Int64PositiveString'
+        trace_id:
+          $ref: '#/components/schemas/TraceId'
+        root_span_id:
+          oneOf:
+          - $ref: '#/components/schemas/SpanId'
+          - type: 'null'
+        langfuse_observation_id:
+          type:
+          - string
+          - 'null'
+          maxLength: 64
+        service_name:
+          type: string
+          maxLength: 100
+        service_instance_id:
+          type: string
+          maxLength: 128
+        environment:
+          type: string
+          maxLength: 32
+        release_revision:
+          type: string
+          maxLength: 64
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        terminal_stage:
+          oneOf:
+          - $ref: '#/components/schemas/OperationStage'
+          - type: 'null'
+        outcome:
+          oneOf:
+          - $ref: '#/components/schemas/OperationOutcome'
+          - type: 'null'
+        retryable:
+          type:
+          - boolean
+          - 'null'
+        telemetry_delivery_state:
+          $ref: '#/components/schemas/TelemetryDeliveryState'
+        diagnostic_codes:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            pattern: ^[a-z][a-z0-9_.-]{0,99}$
+        diagnostics_omitted:
+          type: integer
+          minimum: 0
+    OperationObservabilitySummary:
+      type: object
+      additionalProperties: false
+      required:
+      - root_operation_id
+      - trace_id
+      - attempt_count
+      - telemetry_delivery_state
+      - latest_attempt
+      - langfuse_url
+      properties:
+        root_operation_id:
+          $ref: '#/components/schemas/OperationId'
+        trace_id:
+          $ref: '#/components/schemas/TraceId'
+        attempt_count:
+          type: integer
+          minimum: 0
+        latest_attempt:
+          oneOf:
+          - $ref: '#/components/schemas/OperationAttemptSummary'
+          - type: 'null'
+        telemetry_delivery_state:
+          $ref: '#/components/schemas/TelemetryDeliveryState'
+        langfuse_url:
+          type:
+          - string
+          - 'null'
+          format: uri
+          maxLength: 2048
+    OperationAttemptPage:
+      type: object
+      additionalProperties: false
+      required:
+      - schema_version
+      - operation_id
+      - root_operation_id
+      - attempts
+      - attempts_omitted
+      - next_after_claim_generation
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+        operation_id:
+          $ref: '#/components/schemas/OperationId'
+        root_operation_id:
+          $ref: '#/components/schemas/OperationId'
+        attempts:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/OperationAttemptSummary'
+        attempts_omitted:
+          type: integer
+          minimum: 0
+        next_after_claim_generation:
+          oneOf:
+          - $ref: '#/components/schemas/ClaimGenerationString'
+          - type: 'null'
+    ProcessObservabilityHealth:
+      type: object
+      additionalProperties: false
+      required:
+      - schema_version
+      - required
+      - initialized
+      - status
+      - service_name
+      - service_instance_id
+      - environment
+      - release_revision
+      - lifecycle_kind
+      - expires_at
+      - export_target
+      - last_heartbeat_at
+      - last_success_at
+      - last_success_age_seconds
+      - last_error_at
+      - last_error_age_seconds
+      - last_error_code
+      - buffered_count
+      - buffer_capacity
+      - dropped_count
+      - last_flush_at
+      - last_flush_succeeded
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+        required:
+          type: boolean
+        initialized:
+          type: boolean
+        status:
+          type: string
+          enum:
+          - healthy
+          - degraded
+          - disabled
+          - stale
+        service_name:
+          type: string
+          maxLength: 100
+        service_instance_id:
+          type: string
+          maxLength: 128
+        environment:
+          type: string
+          maxLength: 32
+        release_revision:
+          type: string
+          maxLength: 64
+        lifecycle_kind:
+          type: string
+          enum:
+          - long_running
+          - short_lived
+        expires_at:
+          type: string
+          format: date-time
+        export_target:
+          type: string
+          enum:
+          - local_langfuse
+          - remote_langfuse
+          - other_otlp
+          - none
+        last_heartbeat_at:
+          type: string
+          format: date-time
+        last_success_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        last_success_age_seconds:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+        last_error_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        last_error_age_seconds:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+        last_error_code:
+          type:
+          - string
+          - 'null'
+          maxLength: 100
+        buffered_count:
+          type: integer
+          minimum: 0
+        buffer_capacity:
+          type: integer
+          minimum: 1
+        dropped_count:
+          type: integer
+          minimum: 0
+        last_flush_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        last_flush_succeeded:
+          type:
+          - boolean
+          - 'null'
+    ObservabilityHealthPage:
+      type: object
+      additionalProperties: false
+      required:
+      - schema_version
+      - status
+      - generated_at
+      - stale_after_seconds
+      - processes
+      - processes_omitted
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+        status:
+          type: string
+          enum:
+          - healthy
+          - degraded
+        generated_at:
+          type: string
+          format: date-time
+        stale_after_seconds:
+          type: integer
+          minimum: 1
+        processes_omitted:
+          type: integer
+          minimum: 0
+          description: Nonexpired rows outside this deterministic newest-first page.
+        processes:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/ProcessObservabilityHealth'
+    EnvironmentOwnershipStatus:
+      type: object
+      additionalProperties: false
+      required:
+      - schema_version
+      - configured_environment
+      - active_environment
+      - mode
+      - authority_matches
+      - authority_fingerprint_prefix
+      - epoch
+      - passive_reasons
+      - dry_run
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+        configured_environment:
+          type: string
+          minLength: 1
+          maxLength: 32
+        active_environment:
+          type: string
+          minLength: 1
+          maxLength: 32
+        mode:
+          type: string
+          enum:
+          - active
+          - passive
+          - conflict
+        authority_matches:
+          type: boolean
+        authority_fingerprint_prefix:
+          type: string
+          pattern: ^[0-9a-f]{12}$
+          description: Redacted prefix only; the full authority fingerprint is never returned.
+        epoch:
+          $ref: '#/components/schemas/Int64NonNegativeString'
+        passive_reasons:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            pattern: ^[a-z][a-z0-9_.-]{0,99}$
+        dry_run:
+          oneOf:
+          - $ref: '#/components/schemas/OwnershipDryRun'
+          - type: 'null'
+    OwnershipDryRun:
+      type: object
+      additionalProperties: false
+      required:
+      - target_environment
+      - allowed
+      - next_epoch
+      - checks
+      properties:
+        target_environment:
+          type: string
+          minLength: 1
+          maxLength: 32
+        allowed:
+          type: boolean
+        next_epoch:
+          oneOf:
+          - $ref: '#/components/schemas/Int64NonNegativeString'
+          - type: 'null'
+        checks:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            pattern: ^[a-z][a-z0-9_.-]{0,99}$

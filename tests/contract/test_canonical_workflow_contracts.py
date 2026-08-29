@@ -18,6 +18,7 @@ ROOT = Path(__file__).parents[2]
 CONTRACTS = ROOT / "openspec/contracts/content-workflows"
 OPENAPI_PATH = CONTRACTS / "openapi/v1.yaml"
 GENERATOR = ROOT / "scripts/generate_workflow_contracts.py"
+GX10_CONTRACTS = ROOT / "openspec/changes/gx10-full-operation-observability/contracts"
 RECONCILIATION_SCHEMA_PATH = (
     ROOT
     / "openspec/changes/stuck-content-sweeper-and-requeue-cli/contracts/reconciliation-report.schema.json"
@@ -776,6 +777,74 @@ def test_progress_event_schema_is_valid() -> None:
     assert set(openapi_event["required"]) == set(schema["required"])
 
 
+def test_operation_observability_contract_is_in_the_durable_registry() -> None:
+    document = _openapi()
+    schemas = document["components"]["schemas"]
+
+    assert "/api/v1/operations/{operation_id}/attempts" in document["paths"]
+    assert "/api/v1/status/observability" in document["paths"]
+    assert "/api/v1/status/environment-ownership" in document["paths"]
+    assert document["components"]["securitySchemes"]["OperatorKey"]["name"] == (
+        "X-Operator-Key"
+    )
+    assert schemas["OperationHandle"]["properties"]["observability"] == {
+        "oneOf": [
+            {"$ref": "#/components/schemas/OperationObservabilitySummary"},
+            {"type": "null"},
+        ],
+        "default": None,
+    }
+    assert schemas["OperationAttemptPage"]["properties"]["attempts"]["maxItems"] == 100
+    assert schemas["ObservabilityHealthPage"]["properties"]["processes"]["maxItems"] == 1000
+
+
+def test_operation_context_event_and_openapi_nullability_match() -> None:
+    context_schema = json.loads(
+        (CONTRACTS / "events/operation-context-v1.schema.json").read_text()
+    )
+    attempt_schema = json.loads(
+        (CONTRACTS / "events/operation-attempt-v1.schema.json").read_text()
+    )
+    openapi_context = _openapi()["components"]["schemas"]["OperationContextEnvelope"]
+
+    for schema in (context_schema, attempt_schema):
+        validator_for(schema).check_schema(schema)
+    assert set(context_schema["required"]) == set(openapi_context["required"])
+
+    nullable = {
+        "parent_operation_id",
+        "tracestate",
+        "attempt_number",
+        "stage",
+        "resource_kind",
+        "resource_key",
+    }
+
+    def permits_null(schema: dict[str, Any]) -> bool:
+        schema_type = schema.get("type")
+        return schema_type == "null" or (
+            isinstance(schema_type, list) and "null" in schema_type
+        ) or any(permits_null(part) for part in schema.get("oneOf", []))
+
+    for field in context_schema["properties"]:
+        assert permits_null(context_schema["properties"][field]) == (field in nullable)
+        assert permits_null(openapi_context["properties"][field]) == (field in nullable)
+
+
+def test_operation_entrypoint_inventory_is_closed_and_reviewable() -> None:
+    inventory = cast(
+        dict[str, Any],
+        yaml.safe_load((GX10_CONTRACTS / "operation-entrypoints.yaml").read_text()),
+    )
+
+    assert inventory["schema_version"] == 1
+    assert inventory["policy"]
+    assert inventory["shared_boundaries"]
+    assert inventory["domain_operations"]
+    assert inventory["provider_boundaries"]
+    assert inventory["explicit_exclusions"]
+
+
 def test_database_contract_declares_provenance_and_queue_payload() -> None:
     schema = (CONTRACTS / "db/schema.sql").read_text()
     for fragment in (
@@ -795,6 +864,17 @@ def test_database_contract_declares_provenance_and_queue_payload() -> None:
 
     assert "ALTER COLUMN summary_ids SET DEFAULT '[]'::jsonb" in schema
     assert "ALTER COLUMN selection_policy SET DEFAULT" in schema
+
+    for fragment in (
+        "operation_observation_attempts",
+        "telemetry_process_health",
+        "submission_context",
+        "ck_pgqueuer_jobs_context_identity",
+        "ck_audit_log_trace_id",
+        "ck_workflow_terminal_events_trace_id",
+        "environment_ownership",
+    ):
+        assert fragment in schema
 
 
 def test_generated_contract_files_have_no_drift() -> None:

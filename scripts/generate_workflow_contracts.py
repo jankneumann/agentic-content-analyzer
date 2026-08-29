@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACTS = ROOT / "openspec/contracts/content-workflows"
 OPENAPI = CONTRACTS / "openapi/v1.yaml"
 EVENT_SCHEMA = CONTRACTS / "events/operation.progress.schema.json"
+EVENT_SCHEMAS = tuple(sorted((CONTRACTS / "events").glob("*.schema.json")))
+DATABASE_SCHEMA = CONTRACTS / "db/schema.sql"
 PYTHON_OUTPUT = CONTRACTS / "generated/models.py"
 RUNTIME_PYTHON_OUTPUT = ROOT / "src/contracts/workflow_models.py"
 TYPESCRIPT_OUTPUT = CONTRACTS / "generated/types.ts"
@@ -103,6 +105,33 @@ def _python_type(schema: dict[str, Any], *, field_name: str | None = None) -> st
     return "Any"
 
 
+def _python_scalar_alias(name: str, schema: dict[str, Any]) -> str:
+    if "enum" in schema:
+        return _literal(schema["enum"], language="python")
+    base = _python_type({key: value for key, value in schema.items() if key != "pattern"})
+    constraints: list[str] = []
+    for source, target in (
+        ("minimum", "ge"),
+        ("maximum", "le"),
+        ("minLength", "min_length"),
+        ("maxLength", "max_length"),
+    ):
+        if source in schema:
+            constraints.append(f"{target}={schema[source]!r}")
+    pattern = schema.get("pattern")
+    # Pydantic's Rust regex engine does not support JSON Schema look-arounds.
+    # Composite identifier checks are emitted by the semantic-validator phase.
+    if pattern and "(?" not in pattern:
+        constraints.append(f"pattern={pattern!r}")
+    return f"Annotated[{base}, Field({', '.join(constraints)})]" if constraints else base
+
+
+def _typescript_scalar_alias(schema: dict[str, Any]) -> str:
+    if "enum" in schema:
+        return _literal(schema["enum"], language="typescript")
+    return _typescript_type(schema)
+
+
 def _python_default(schema: dict[str, Any], *, required: bool) -> tuple[str, list[str]]:
     constraints: list[str] = []
     for source, target in (
@@ -155,9 +184,10 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
     scalar_aliases = [
         (name, schema)
         for name, schema in schemas.items()
-        if "enum" in schema
-        and not schema.get("properties")
+        if not schema.get("properties")
         and not schema.get("allOf")
+        and not schema.get("oneOf")
+        and ("type" in schema or "enum" in schema)
         and name not in {"OperationStatus", "OperationType"}
     ]
     lines = [
@@ -175,10 +205,7 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
         "",
         f"OperationStatus = {_literal(operation_statuses, language='python')}",
         f"OperationType = {_literal(operation_types, language='python')}",
-        *[
-            f"{name} = {_literal(schema['enum'], language='python')}"
-            for name, schema in scalar_aliases
-        ],
+        *[f"{name} = {_python_scalar_alias(name, schema)}" for name, schema in scalar_aliases],
         "",
         "",
         "class StrictModel(BaseModel):",
@@ -318,9 +345,10 @@ def _render_typescript(spec: dict[str, Any], digest: str) -> str:
     scalar_aliases = [
         (name, schema)
         for name, schema in schemas.items()
-        if "enum" in schema
-        and not schema.get("properties")
+        if not schema.get("properties")
         and not schema.get("allOf")
+        and not schema.get("oneOf")
+        and ("type" in schema or "enum" in schema)
         and name not in {"OperationStatus", "OperationType"}
     ]
     lines = [
@@ -330,7 +358,7 @@ def _render_typescript(spec: dict[str, Any], digest: str) -> str:
         f"export type OperationStatus = {_literal(operation_statuses, language='typescript')};",
         f"export type OperationType = {_literal(operation['operation_type']['enum'], language='typescript')};",
         *[
-            f"export type {name} = {_literal(schema['enum'], language='typescript')};"
+            f"export type {name} = {_typescript_scalar_alias(schema)};"
             for name, schema in scalar_aliases
         ],
     ]
@@ -397,8 +425,53 @@ def _validated_contract() -> dict[str, Any]:
             validator_for(schema).check_schema(schema)
         except Exception as exc:
             raise ValueError(f"invalid component schema {name}: {exc}") from exc
-    event_schema = json.loads(EVENT_SCHEMA.read_text())
-    validator_for(event_schema).check_schema(event_schema)
+    for event_path in EVENT_SCHEMAS:
+        event_schema = json.loads(event_path.read_text())
+        try:
+            validator_for(event_schema).check_schema(event_schema)
+        except Exception as exc:
+            raise ValueError(f"invalid event schema {event_path.name}: {exc}") from exc
+
+    context_event = json.loads((CONTRACTS / "events/operation-context-v1.schema.json").read_text())
+    context_openapi = schemas["OperationContextEnvelope"]
+    if set(context_event["required"]) != set(context_openapi["required"]):
+        raise ValueError("operation context required fields drift between OpenAPI and events")
+
+    nullable = {
+        "parent_operation_id",
+        "tracestate",
+        "attempt_number",
+        "stage",
+        "resource_kind",
+        "resource_key",
+    }
+
+    def permits_null(schema: dict[str, Any]) -> bool:
+        schema_type = schema.get("type")
+        return (
+            schema_type == "null"
+            or (isinstance(schema_type, list) and "null" in schema_type)
+            or any(permits_null(part) for part in schema.get("oneOf", []))
+        )
+
+    for field in context_event["properties"]:
+        event_nullable = permits_null(context_event["properties"][field])
+        openapi_nullable = permits_null(context_openapi["properties"][field])
+        if event_nullable != (field in nullable) or openapi_nullable != (field in nullable):
+            raise ValueError(f"operation context nullability drift for {field}")
+
+    sql = DATABASE_SCHEMA.read_text()
+    for required_fragment in (
+        "submission_context JSONB NULL",
+        "operation_observation_attempts",
+        "telemetry_process_health",
+        "ck_pgqueuer_jobs_context_identity",
+        "ck_audit_log_trace_id",
+        "ck_workflow_terminal_events_trace_id",
+        "environment_ownership",
+    ):
+        if required_fragment not in sql:
+            raise ValueError(f"database observability contract missing {required_fragment}")
     return spec
 
 

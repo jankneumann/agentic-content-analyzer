@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
-CONTRACT_SHA256 = "42c7725900d7c46933c6df9edb8f0e51c08325ba7102492cff1e3c7774ffe8fe"
+CONTRACT_SHA256 = "56ef2c7a6099873c96edce7e400353a913d55e7f70aec84ab209e57b2bae1cec"
 
 OperationStatus = Literal["queued", "in_progress", "completed", "failed", "cancelled"]
 OperationType = Literal[
@@ -64,6 +64,71 @@ ContentReconciliationReason = Literal[
     "revalidation_conflict",
     "apply_failed",
 ]
+TraceId = str
+SpanId = str
+OperationId = Annotated[
+    str,
+    Field(
+        max_length=19,
+        pattern="^([1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$",
+    ),
+]
+Int64NonNegativeString = Annotated[
+    str,
+    Field(
+        max_length=19,
+        pattern="^(0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$",
+    ),
+]
+ClaimGenerationString = Annotated[
+    str,
+    Field(
+        max_length=19,
+        pattern="^(0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6])$",
+    ),
+]
+Int64PositiveString = Annotated[
+    str,
+    Field(
+        max_length=19,
+        pattern="^([1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$",
+    ),
+]
+OperationStage = Literal[
+    "submit",
+    "queue_wait",
+    "claim",
+    "fetch",
+    "discover",
+    "metadata",
+    "transcript",
+    "extract",
+    "parse",
+    "filter",
+    "deduplicate",
+    "model",
+    "fallback",
+    "persist",
+    "index",
+    "graph",
+    "deliver",
+    "backup",
+    "restore",
+    "alert",
+    "cleanup",
+    "flush",
+]
+OperationOutcome = Literal[
+    "succeeded",
+    "partial",
+    "skipped_policy",
+    "skipped_duplicate",
+    "filtered",
+    "retryable_failure",
+    "permanent_failure",
+    "cancelled",
+]
+TelemetryDeliveryState = Literal["pending", "delivered", "degraded", "dropped", "disabled"]
 
 
 class StrictModel(BaseModel):
@@ -444,6 +509,7 @@ class OperationHandle(StrictModel):
     created_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    observability: OperationObservabilitySummary | None = None
 
 
 class OperationPage(StrictModel):
@@ -877,6 +943,127 @@ class AudioDigestRequest(StrictModel):
     provider: str = "openai"
     voice: str = "nova"
     speed: float = Field(1.0, ge=0.5, le=2.0)
+
+
+class OperationContextEnvelope(StrictModel):
+    schema_version: Literal[1] = 1
+    operation_id: OperationId
+    root_operation_id: OperationId
+    parent_operation_id: OperationId | None
+    traceparent: Annotated[
+        str,
+        Field(min_length=55, max_length=55, pattern="^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$"),
+    ]
+    tracestate: Annotated[
+        str | None,
+        Field(
+            max_length=512,
+            pattern="^[a-z0-9][a-z0-9_*/-]{0,255}=(?:[!-+\\--<>-~]|[!-+\\--<>-~][ -+\\--<>-~]{0,254}[!-+\\--<>-~])(,[a-z0-9][a-z0-9_*/-]{0,255}=(?:[!-+\\--<>-~]|[!-+\\--<>-~][ -+\\--<>-~]{0,254}[!-+\\--<>-~])){0,31}$",
+        ),
+    ]
+    trace_id: TraceId
+    span_id: SpanId
+    claim_generation: ClaimGenerationString
+    attempt_number: Int64PositiveString | None
+    entrypoint: Annotated[str, Field(min_length=1, max_length=160)]
+    service_name: Annotated[str, Field(min_length=1, max_length=100)]
+    service_instance_id: Annotated[str, Field(min_length=1, max_length=128)]
+    environment: Annotated[str, Field(min_length=1, max_length=32)]
+    release_revision: Annotated[str, Field(min_length=1, max_length=64)]
+    stage: OperationStage | None
+    resource_kind: Annotated[str | None, Field(max_length=64)]
+    resource_key: Annotated[str | None, Field(max_length=128)]
+
+
+class OperationAttemptSummary(StrictModel):
+    claim_generation: ClaimGenerationString
+    attempt_number: Int64PositiveString
+    trace_id: TraceId
+    root_span_id: SpanId | None
+    langfuse_observation_id: Annotated[str | None, Field(max_length=64)]
+    service_name: Annotated[str, Field(max_length=100)]
+    service_instance_id: Annotated[str, Field(max_length=128)]
+    environment: Annotated[str, Field(max_length=32)]
+    release_revision: Annotated[str, Field(max_length=64)]
+    started_at: datetime
+    completed_at: datetime | None
+    terminal_stage: OperationStage | None
+    outcome: OperationOutcome | None
+    retryable: bool | None
+    telemetry_delivery_state: TelemetryDeliveryState
+    diagnostic_codes: Annotated[list[str], Field(max_length=20)]
+    diagnostics_omitted: Annotated[int, Field(ge=0)]
+
+
+class OperationObservabilitySummary(StrictModel):
+    root_operation_id: OperationId
+    trace_id: TraceId
+    attempt_count: Annotated[int, Field(ge=0)]
+    latest_attempt: OperationAttemptSummary | None
+    telemetry_delivery_state: TelemetryDeliveryState
+    langfuse_url: Annotated[AnyUrl | None, Field(max_length=2048)]
+
+
+class OperationAttemptPage(StrictModel):
+    schema_version: Literal[1] = 1
+    operation_id: OperationId
+    root_operation_id: OperationId
+    attempts: Annotated[list[OperationAttemptSummary], Field(max_length=100)]
+    attempts_omitted: Annotated[int, Field(ge=0)]
+    next_after_claim_generation: ClaimGenerationString | None
+
+
+class ProcessObservabilityHealth(StrictModel):
+    schema_version: Literal[1] = 1
+    required: bool
+    initialized: bool
+    status: Literal["healthy", "degraded", "disabled", "stale"]
+    service_name: Annotated[str, Field(max_length=100)]
+    service_instance_id: Annotated[str, Field(max_length=128)]
+    environment: Annotated[str, Field(max_length=32)]
+    release_revision: Annotated[str, Field(max_length=64)]
+    lifecycle_kind: Literal["long_running", "short_lived"]
+    expires_at: datetime
+    export_target: Literal["local_langfuse", "remote_langfuse", "other_otlp", "none"]
+    last_heartbeat_at: datetime
+    last_success_at: datetime | None
+    last_success_age_seconds: Annotated[int | None, Field(ge=0)]
+    last_error_at: datetime | None
+    last_error_age_seconds: Annotated[int | None, Field(ge=0)]
+    last_error_code: Annotated[str | None, Field(max_length=100)]
+    buffered_count: Annotated[int, Field(ge=0)]
+    buffer_capacity: Annotated[int, Field(ge=1)]
+    dropped_count: Annotated[int, Field(ge=0)]
+    last_flush_at: datetime | None
+    last_flush_succeeded: bool | None
+
+
+class ObservabilityHealthPage(StrictModel):
+    schema_version: Literal[1] = 1
+    status: Literal["healthy", "degraded"]
+    generated_at: datetime
+    stale_after_seconds: Annotated[int, Field(ge=1)]
+    processes_omitted: Annotated[int, Field(ge=0)]
+    processes: Annotated[list[ProcessObservabilityHealth], Field(max_length=1000)]
+
+
+class EnvironmentOwnershipStatus(StrictModel):
+    schema_version: Literal[1] = 1
+    configured_environment: Annotated[str, Field(min_length=1, max_length=32)]
+    active_environment: Annotated[str, Field(min_length=1, max_length=32)]
+    mode: Literal["active", "passive", "conflict"]
+    authority_matches: bool
+    authority_fingerprint_prefix: Annotated[str, Field(pattern="^[0-9a-f]{12}$")]
+    epoch: Int64NonNegativeString
+    passive_reasons: Annotated[list[str], Field(max_length=20)]
+    dry_run: OwnershipDryRun | None
+
+
+class OwnershipDryRun(StrictModel):
+    target_environment: Annotated[str, Field(min_length=1, max_length=32)]
+    allowed: bool
+    next_epoch: Int64NonNegativeString | None
+    checks: Annotated[list[str], Field(max_length=20)]
 
 
 IngestionResult = IngestionResultV1 | IngestionResultV2
