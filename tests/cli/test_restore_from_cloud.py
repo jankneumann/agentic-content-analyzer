@@ -641,3 +641,27 @@ def test_restore_tool_exception_emits_terminal_phase_outcome(
     assert outcome.parent == phase.span_id
     assert outcome.attributes["operation.outcome"] == "permanent_failure"
     assert secret not in repr([span.attributes for span in provider.spans])
+
+
+def test_restore_outcome_telemetry_failure_does_not_mask_tool_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = FileNotFoundError("original restore failure")
+
+    @contextmanager
+    def failing_stage(name: str, **_kwargs: Any):
+        if name.endswith(".outcome"):
+            raise RuntimeError("telemetry failure")
+        yield None
+
+    monkeypatch.setattr(restore_commands, "operational_stage", failing_stage)
+    monkeypatch.setattr(
+        restore_commands.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(original),
+    )
+
+    with pytest.raises(FileNotFoundError, match="original restore failure") as raised:
+        restore_commands._run_restore_phase("download", ["rclone", "copyto"])
+
+    assert raised.value is original

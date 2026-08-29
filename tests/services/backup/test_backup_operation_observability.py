@@ -162,6 +162,37 @@ def test_backup_component_exception_emits_terminal_failure_outcome(
     assert secret not in repr([span.attributes for span in provider.spans])
 
 
+def test_backup_outcome_telemetry_failure_does_not_mask_component_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = OSError("original backup failure")
+
+    @contextmanager
+    def failing_stage(name: str, **_kwargs: Any):
+        if name.endswith(".outcome"):
+            raise RuntimeError("telemetry failure")
+        yield None
+
+    monkeypatch.setattr(engine_module, "operational_stage", failing_stage)
+    monkeypatch.setattr(
+        BackupEngine,
+        "_execute_store",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(original),
+    )
+    plan = StorePlan(StoreName.POSTGRES, "postgres.dump", stage=Stage("pg_dump", ("pg_dump",)))
+
+    with pytest.raises(OSError, match="original backup failure") as raised:
+        BackupEngine(_Settings())._run_store(
+            plan,
+            config=TargetConfig(None, "bucket", "auto", "aca", None, None),
+            recipient="age1recipient",
+            tier="daily",
+            stamp="2026-08-29T000000Z",
+        )
+
+    assert raised.value is original
+
+
 def test_backup_aggregate_persists_partial_not_success(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
