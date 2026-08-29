@@ -7,11 +7,14 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
+
 from scripts.gx10.verify_observability import (
     EvidenceSnapshot,
     PollPolicy,
     SubmissionIdentity,
     SubprocessLiveAdapter,
+    _write_private_report,
     poll_trace_arrival,
     run_live_smoke,
     verify_snapshot,
@@ -280,6 +283,17 @@ def test_subprocess_adapter_uses_no_shell_and_only_named_environment(
     evidence = adapter.collect(identity)
 
     assert evidence.submission["trace_id"] == TRACE_ID
+    assert json.loads(str(calls[0][1]["input"])) == {
+        "canaries": [CANARY],
+        "scenario": {
+            "force_first_attempt_failure": True,
+            "id": "gx10-observability-retry-restart-v1",
+            "operation_type": "summarization.run",
+            "persist_context_before_restart": True,
+            "restart_before_retry": True,
+        },
+        "schema_version": 1,
+    }
     assert calls[0][0] == [str(tmp_path / "submit-adapter")]
     assert calls[1][0] == [str(tmp_path / "collect-adapter")]
     for _command, kwargs in calls:
@@ -290,6 +304,56 @@ def test_subprocess_adapter_uses_no_shell_and_only_named_environment(
         }
         assert "operator-secret" not in str(kwargs["input"])
         assert "UNRELATED_SECRET" not in str(kwargs["env"])
+
+
+def test_live_smoke_rejects_snapshot_for_a_different_submission_identity() -> None:
+    wrong = _snapshot()
+    wrong_trace_id = "3" * 32
+    wrong["submission"].update(  # type: ignore[union-attr]
+        {
+            "operation_id": "43",
+            "root_operation_id": "43",
+            "trace_id": wrong_trace_id,
+            "response_headers": {"X-Trace-Id": wrong_trace_id},
+        }
+    )
+    for collection in ("attempts", "logs", "observations"):
+        for item in wrong[collection]:  # type: ignore[union-attr]
+            item.update(
+                operation_id="43", root_operation_id="43", trace_id=wrong_trace_id
+            )
+
+    class WrongOperationAdapter:
+        def submit(self, *, canaries: tuple[str, ...]) -> SubmissionIdentity:
+            return SubmissionIdentity(ROOT_OPERATION_ID, ROOT_OPERATION_ID, TRACE_ID)
+
+        def collect(self, identity: SubmissionIdentity) -> EvidenceSnapshot:
+            return EvidenceSnapshot.from_mapping(wrong)
+
+    report = run_live_smoke(
+        WrongOperationAdapter(),
+        canaries=(CANARY,),
+        policy=PollPolicy(timeout_seconds=1.0),
+    )
+
+    assert report.ready is False
+    assert report.failure_codes == ("submission_identity_mismatch",)
+    assert report.operation_id is None
+    assert report.trace_id is None
+    assert "43" not in report.to_json()
+    assert wrong_trace_id not in report.to_json()
+
+
+def test_private_report_writer_refuses_preexisting_temporary_symlink(tmp_path: Path) -> None:
+    output = tmp_path / "report.json"
+    protected = tmp_path / "protected.txt"
+    protected.write_text("unchanged", encoding="utf-8")
+    output.with_name(f".{output.name}.tmp").symlink_to(protected)
+
+    with pytest.raises(FileExistsError):
+        _write_private_report(output, '{"ready":false}')
+
+    assert protected.read_text(encoding="utf-8") == "unchanged"
 
 
 def _monotonic(values: list[float]) -> Callable[[], float]:
