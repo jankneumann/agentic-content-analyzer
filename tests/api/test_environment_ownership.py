@@ -2,9 +2,27 @@
 
 from __future__ import annotations
 
+import pytest
+from fastapi.testclient import TestClient
+
+from src.api.app import app
+from src.config.settings import get_settings
 from src.contracts.workflow_models import EnvironmentOwnershipStatus, OwnershipDryRun
 
 AUTHORITY_PREFIX = "d" * 12
+OPERATOR_KEY = "operator-test-key-0000000000000000"
+
+
+@pytest.fixture(autouse=True)
+def _operator_capability(monkeypatch) -> None:
+    monkeypatch.setenv("OPERATOR_API_KEY", OPERATOR_KEY)
+    get_settings.cache_clear()
+
+
+@pytest.fixture
+def client():
+    with TestClient(app, headers={"X-Admin-Key": "test-admin-key"}) as test_client:
+        yield test_client
 
 
 def _status(*, allowed: bool | None = None) -> EnvironmentOwnershipStatus:
@@ -37,9 +55,7 @@ def _status(*, allowed: bool | None = None) -> EnvironmentOwnershipStatus:
     )
 
 
-def test_operator_status_surface_returns_bounded_passive_identity(
-    client, monkeypatch
-) -> None:
+def test_operator_status_surface_returns_bounded_passive_identity(client, monkeypatch) -> None:
     monkeypatch.setattr(
         "src.api.status_routes.environment_ownership_status",
         lambda dry_run_target=None: _status(allowed=None),
@@ -47,7 +63,7 @@ def test_operator_status_surface_returns_bounded_passive_identity(
 
     response = client.get(
         "/api/v1/status/environment-ownership",
-        headers={"X-Operator-Key": "operator-test-key"},
+        headers={"X-Operator-Key": OPERATOR_KEY},
     )
 
     assert response.status_code == 200
@@ -74,7 +90,7 @@ def test_conflicting_dry_run_returns_problem_without_mutating_ownership(
 
     response = client.get(
         "/api/v1/status/environment-ownership?dry_run_target=gx10",
-        headers={"X-Operator-Key": "operator-test-key"},
+        headers={"X-Operator-Key": OPERATOR_KEY},
     )
 
     assert response.status_code == 409
@@ -90,7 +106,7 @@ def test_allowed_dry_run_reports_fence_verify_enable_order(client, monkeypatch) 
 
     response = client.get(
         "/api/v1/status/environment-ownership?dry_run_target=gx10",
-        headers={"X-Operator-Key": "operator-test-key"},
+        headers={"X-Operator-Key": OPERATOR_KEY},
     )
 
     assert response.status_code == 200
