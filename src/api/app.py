@@ -70,8 +70,12 @@ async def lifespan(app: FastAPI):
     """Application lifespan management."""
     import asyncio
 
-    from src.utils.logging import get_logger
+    from src.utils.logging import get_logger, setup_logging
 
+    # Must run before any application logger is used. Uvicorn does not
+    # configure the root logger; without this call, log_level, JSON
+    # formatting, noise suppression, and trace_id emission are all inert.
+    setup_logging()
     logger = get_logger(__name__)
 
     # Startup: Initialize ConfigRegistry with all settings domains

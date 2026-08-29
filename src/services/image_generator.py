@@ -47,6 +47,17 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+class ImageProviderError(RuntimeError):
+    """The image-generation or prompt-refinement provider call itself failed.
+
+    Raised only for failures originating inside ``provider.generate`` or the
+    LLM call in :meth:`ImageGenerator.refine_prompt`. Storage writes, DB
+    flushes, and prompt-registry lookups propagate unchanged so a caller
+    answering 502 on this type is making a claim about the upstream
+    provider that actually holds.
+    """
+
+
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
@@ -249,7 +260,7 @@ class ImageGenerator:
         from src.models.image import Image as ImageModel, ImageSource
 
         params = params or self._default_params()
-        image_bytes = await self.provider.generate(prompt, params)
+        image_bytes = await self.generate_image_bytes(prompt, params)
 
         filename = f"summary_{summary.id}_{uuid4().hex[:8]}.png"
         storage_path = await self.storage.save(image_bytes, filename, "image/png")
@@ -296,7 +307,7 @@ class ImageGenerator:
         from src.models.image import Image as ImageModel, ImageSource
 
         params = params or self._default_params()
-        image_bytes = await self.provider.generate(prompt, params)
+        image_bytes = await self.generate_image_bytes(prompt, params)
 
         filename = f"digest_{digest_id}_{uuid4().hex[:8]}.png"
         storage_path = await self.storage.save(image_bytes, filename, "image/png")
@@ -401,16 +412,34 @@ class ImageGenerator:
             size=size,
         )
 
-        response = await self.llm_router.generate(
-            model=model,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            temperature=0.5,
-        )
+        try:
+            response = await self.llm_router.generate(
+                model=model,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=0.5,
+            )
+        except ImageProviderError:
+            raise
+        except Exception as exc:
+            raise ImageProviderError(f"Image prompt refinement failed: {exc}") from exc
 
         return response.text.strip()
 
     # -- Helpers --
+
+    async def generate_image_bytes(self, prompt: str, params: GenerationParams) -> bytes:
+        """Call the image provider and attribute only that failure as provider.
+
+        Storage and DB work in the ``generate_for_*`` methods sits outside
+        this wrapper so those failures stay themselves.
+        """
+        try:
+            return await self.provider.generate(prompt, params)
+        except ImageProviderError:
+            raise
+        except Exception as exc:
+            raise ImageProviderError(f"Image generation failed: {exc}") from exc
 
     def _default_params(self) -> GenerationParams:
         """Load default generation params from settings."""

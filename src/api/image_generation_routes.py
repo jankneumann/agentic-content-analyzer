@@ -116,6 +116,7 @@ async def generate_image(request: GenerateRequest) -> GenerateResponse:
     from src.models.summary import Summary
     from src.services.image_generator import (
         GenerationParams,
+        ImageProviderError,
         get_image_generator,
     )
 
@@ -131,38 +132,37 @@ async def generate_image(request: GenerateRequest) -> GenerateResponse:
             style=request.style,
         )
 
-        prompt = request.prompt
-        if request.refine_prompt:
-            prompt = await generator.refine_prompt(
-                original_prompt=request.prompt,
-                style=request.style,
-                size=request.size,
-            )
+        try:
+            prompt = request.prompt
+            if request.refine_prompt:
+                prompt = await generator.refine_prompt(
+                    original_prompt=request.prompt,
+                    style=request.style,
+                    size=request.size,
+                )
 
-        if request.source_type == "summary":
-            summary = db.query(Summary).filter(Summary.id == request.source_id).first()
-            if not summary:
-                raise HTTPException(status_code=404, detail="Summary not found")
-            try:
+            if request.source_type == "summary":
+                summary = db.query(Summary).filter(Summary.id == request.source_id).first()
+                if not summary:
+                    raise HTTPException(status_code=404, detail="Summary not found")
                 image = await generator.generate_for_summary(summary, prompt, params)
-            except Exception:
-                logger.exception("Image generation failed for summary %d", request.source_id)
-                raise HTTPException(
-                    status_code=502,
-                    detail="Image generation failed. The provider may be unavailable.",
-                )
-        else:
-            digest = db.query(Digest).filter(Digest.id == request.source_id).first()
-            if not digest:
-                raise HTTPException(status_code=404, detail="Digest not found")
-            try:
+            else:
+                digest = db.query(Digest).filter(Digest.id == request.source_id).first()
+                if not digest:
+                    raise HTTPException(status_code=404, detail="Digest not found")
                 image = await generator.generate_for_digest(request.source_id, prompt, params)
-            except Exception:
-                logger.exception("Image generation failed for digest %d", request.source_id)
-                raise HTTPException(
-                    status_code=502,
-                    detail="Image generation failed. The provider may be unavailable.",
-                )
+        except HTTPException:
+            raise
+        except ImageProviderError:
+            logger.exception(
+                "Image generation provider failed for %s %d",
+                request.source_type,
+                request.source_id,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="Image generation failed. The provider may be unavailable.",
+            )
 
         db.commit()
 
@@ -233,7 +233,11 @@ async def regenerate_image(image_id: UUID, request: RegenerateRequest) -> Genera
     from uuid import uuid4
 
     from src.models.image import Image
-    from src.services.image_generator import GenerationParams, get_image_generator
+    from src.services.image_generator import (
+        GenerationParams,
+        ImageProviderError,
+        get_image_generator,
+    )
 
     with get_db() as db:
         existing = db.query(Image).filter(Image.id == image_id).first()
@@ -261,8 +265,8 @@ async def regenerate_image(image_id: UUID, request: RegenerateRequest) -> Genera
 
         # Generate new image bytes
         try:
-            image_bytes = await generator.provider.generate(prompt, params)
-        except Exception:
+            image_bytes = await generator.generate_image_bytes(prompt, params)
+        except ImageProviderError:
             logger.exception("Image regeneration failed for image %s", image_id)
             raise HTTPException(
                 status_code=502,

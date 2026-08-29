@@ -472,7 +472,7 @@ async def compile_kb() -> CompileResponse:
             logger.exception("KB compile failed")
             raise HTTPException(
                 status_code=500,
-                detail=f"KB compile failed: {exc}",
+                detail="KB compile failed.",
             ) from exc
 
         return CompileResponse(**summary.to_dict())

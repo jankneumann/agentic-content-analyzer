@@ -262,7 +262,8 @@ class TestGenerateEndpoint:
     def test_generate_returns_502_on_provider_failure(
         self, client, db_session, mock_image_generator
     ):
-        """Provider failures should return 502 with meaningful message."""
+        """A genuine provider failure is the one case that justifies 502."""
+        from src.services.image_generator import ImageProviderError
         from tests.factories.content import ContentFactory
         from tests.factories.summary import SummaryFactory
 
@@ -271,7 +272,7 @@ class TestGenerateEndpoint:
         db_session.flush()
 
         mock_image_generator.generate_for_summary = AsyncMock(
-            side_effect=RuntimeError("Provider API unavailable"),
+            side_effect=ImageProviderError("Provider API unavailable"),
         )
 
         with patch(
@@ -289,6 +290,76 @@ class TestGenerateEndpoint:
 
         assert response.status_code == 502
         assert "provider" in response.json()["detail"].lower()
+
+    def test_generate_storage_failure_is_not_reported_as_provider_outage(
+        self, client, db_session, mock_image_generator
+    ):
+        """Storage/DB errors after a successful provider call must not be 502.
+
+        generate_for_summary writes to object storage and flushes the DB after
+        the provider returns. Relabelling those as a provider outage points
+        triage at the wrong subsystem.
+        """
+        from tests.factories.content import ContentFactory
+        from tests.factories.summary import SummaryFactory
+
+        content = ContentFactory()
+        summary = SummaryFactory(content=content)
+        db_session.flush()
+
+        mock_image_generator.generate_for_summary = AsyncMock(
+            side_effect=OSError("disk full"),
+        )
+
+        with (
+            patch(
+                "src.services.image_generator.get_image_generator",
+                return_value=mock_image_generator,
+            ),
+            pytest.raises(OSError, match="disk full"),
+        ):
+            client.post(
+                "/api/v1/images/generate",
+                json={
+                    "prompt": "Test prompt for generation",
+                    "source_type": "summary",
+                    "source_id": summary.id,
+                },
+            )
+
+    def test_refine_prompt_provider_failure_returns_502(
+        self, client, db_session, mock_image_generator
+    ):
+        """refine_prompt is an LLM call; a provider outage there is also 502."""
+        from src.services.image_generator import ImageProviderError
+        from tests.factories.content import ContentFactory
+        from tests.factories.summary import SummaryFactory
+
+        content = ContentFactory()
+        summary = SummaryFactory(content=content)
+        db_session.flush()
+
+        mock_image_generator.refine_prompt = AsyncMock(
+            side_effect=ImageProviderError("LLM provider down"),
+        )
+
+        with patch(
+            "src.services.image_generator.get_image_generator",
+            return_value=mock_image_generator,
+        ):
+            response = client.post(
+                "/api/v1/images/generate",
+                json={
+                    "prompt": "a cat",
+                    "source_type": "summary",
+                    "source_id": summary.id,
+                    "refine_prompt": True,
+                },
+            )
+
+        assert response.status_code == 502
+        assert "provider" in response.json()["detail"].lower()
+        mock_image_generator.generate_for_summary.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

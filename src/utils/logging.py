@@ -115,12 +115,25 @@ class TraceContextFormatter(logging.Formatter):
         return result
 
 
+class _AppLogHandler(logging.StreamHandler):
+    """Stderr handler owned by :func:`setup_logging`.
+
+    Identity (not ``basicConfig``) makes setup idempotent. ``basicConfig`` is a
+    no-op once any root handler exists — pytest, a prior call, or a custom
+    uvicorn log config — which is exactly when we still need our formatter.
+    """
+
+
 def setup_logging() -> None:
     """Configure application logging with format selection.
 
     Selects formatter based on settings.log_format:
     - "json" (default): JSON Lines for structured log aggregation
     - "text": Human-readable with optional trace context suffix
+
+    Idempotent: a second call updates level/formatter on the existing app
+    handler rather than stacking another StreamHandler. Does not remove
+    other handlers (pytest caplog, OTel log bridge).
     """
     log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
 
@@ -130,13 +143,19 @@ def setup_logging() -> None:
     else:
         formatter = TraceContextFormatter()
 
-    # Configure root logger with selected formatter
-    handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(formatter)
-    logging.basicConfig(
-        level=log_level,
-        handlers=[handler],
-    )
+    root = logging.getLogger()
+    root.setLevel(log_level)
+
+    existing = [handler for handler in root.handlers if isinstance(handler, _AppLogHandler)]
+    if existing:
+        for handler in existing:
+            handler.setFormatter(formatter)
+            handler.setLevel(log_level)
+    else:
+        handler = _AppLogHandler(sys.stderr)
+        handler.setFormatter(formatter)
+        handler.setLevel(log_level)
+        root.addHandler(handler)
 
     # Set specific log levels for noisy libraries
     logging.getLogger("urllib3").setLevel(logging.WARNING)

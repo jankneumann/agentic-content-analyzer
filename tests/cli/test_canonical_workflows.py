@@ -334,16 +334,24 @@ def test_failed_graph_json_stdout_is_exactly_one_document(
 def test_cli_logging_handler_routes_diagnostics_to_stderr(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    configured: dict[str, Any] = {}
-    monkeypatch.setattr(logging, "basicConfig", lambda **kwargs: configured.update(kwargs))
+    from src.utils.logging import JsonFormatter, TraceContextFormatter, setup_logging
 
-    from src.utils.logging import setup_logging
-
-    setup_logging()
-
-    handler = configured["handlers"][0]
-    assert isinstance(handler, logging.StreamHandler)
-    assert handler.stream is sys.stderr
+    root = logging.getLogger()
+    previous_handlers = list(root.handlers)
+    previous_level = root.level
+    root.handlers.clear()
+    try:
+        setup_logging()
+        stderr_handlers = [
+            handler
+            for handler in root.handlers
+            if isinstance(handler, logging.StreamHandler) and handler.stream is sys.stderr
+        ]
+        assert stderr_handlers
+        assert isinstance(stderr_handlers[0].formatter, (JsonFormatter, TraceContextFormatter))
+    finally:
+        root.handlers[:] = previous_handlers
+        root.setLevel(previous_level)
 
 
 def test_ingestion_uses_underscore_discriminator_and_idempotency(

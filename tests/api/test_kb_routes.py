@@ -426,6 +426,28 @@ class TestCompile:
             resp = client.post("/api/v1/kb/compile")
         assert resp.status_code == 500
 
+    def test_compile_unexpected_failure_does_not_leak_exception_text(self, client):
+        """The 500 must not interpolate the exception into the response body.
+
+        KnowledgeBaseService.compile() sits over the database, prompt registry,
+        and LLM router. Exception text from that stack can carry table names,
+        SQL fragments, filesystem paths, and provider payloads. The global
+        catch-all already returns a fixed detail; this route must do the same.
+        """
+        fake_service = MagicMock()
+        fake_service.compile = AsyncMock(side_effect=RuntimeError("relation topics does not exist"))
+        with patch(
+            "src.api.kb_routes.KnowledgeBaseService",
+            return_value=fake_service,
+        ):
+            resp = client.post("/api/v1/kb/compile")
+
+        assert resp.status_code == 500
+        detail = resp.json()["detail"]
+        assert detail == "KB compile failed."
+        assert "relation topics" not in resp.text
+        assert "does not exist" not in resp.text
+
 
 # ---------------------------------------------------------------------- #
 # Index endpoint

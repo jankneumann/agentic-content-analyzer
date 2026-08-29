@@ -26,6 +26,7 @@ import pytest
 from src.services.image_generator import (
     GenerationParams,
     ImageGenerator,
+    ImageProviderError,
     MockImageGenerator,
 )
 
@@ -245,6 +246,120 @@ class TestGenerateForSummary:
 
         # Should have called without error (uses defaults)
         mock_db.flush.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Failure attribution: only the provider call is ImageProviderError
+# ---------------------------------------------------------------------------
+
+
+def _summary_generator(*, provider, storage=None, db=None) -> ImageGenerator:
+    mock_storage = storage if storage is not None else AsyncMock()
+    if storage is None:
+        mock_storage.save = AsyncMock(return_value="path.png")
+        mock_storage.provider_name = "local"
+    mock_db = db if db is not None else MagicMock()
+    return ImageGenerator(provider=provider, storage=mock_storage, db=mock_db)
+
+
+class TestImageGenerationFailureAttribution:
+    """Only the provider call may be reported as a provider failure.
+
+    ``POST /api/v1/images/generate`` answers 502 on :class:`ImageProviderError`.
+    That claim is only honest if the type is raised exclusively from
+    ``provider.generate`` / the refine-prompt LLM call — so the boundary is
+    asserted here, at the service, rather than trusted at the route.
+    """
+
+    @pytest.mark.asyncio
+    async def test_provider_generate_failure_is_image_provider_error(self):
+        mock_provider = MagicMock()
+        mock_provider.generate = AsyncMock(side_effect=RuntimeError("imagen down"))
+        mock_provider.model_name = "gemini/imagen"
+        generator = _summary_generator(provider=mock_provider)
+        mock_summary = MagicMock()
+        mock_summary.id = 1
+
+        with pytest.raises(ImageProviderError, match="imagen down"):
+            await generator.generate_for_summary(mock_summary, "a diagram")
+
+        generator.storage.save.assert_not_called()
+        generator.db.add.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_storage_failure_is_not_image_provider_error(self):
+        mock_storage = AsyncMock()
+        mock_storage.save = AsyncMock(side_effect=OSError("disk full"))
+        mock_storage.provider_name = "local"
+        generator = _summary_generator(provider=MockImageGenerator(), storage=mock_storage)
+        mock_summary = MagicMock()
+        mock_summary.id = 1
+
+        with pytest.raises(OSError, match="disk full"):
+            await generator.generate_for_summary(mock_summary, "a diagram")
+
+    @pytest.mark.asyncio
+    async def test_db_flush_failure_is_not_image_provider_error(self):
+        mock_db = MagicMock()
+        mock_db.flush.side_effect = RuntimeError("deadlock detected")
+        generator = _summary_generator(provider=MockImageGenerator(), db=mock_db)
+        mock_summary = MagicMock()
+        mock_summary.id = 1
+
+        with (
+            patch("src.models.image.Image"),
+            patch("src.models.image.ImageSource"),
+            pytest.raises(RuntimeError, match="deadlock detected"),
+        ):
+            await generator.generate_for_summary(mock_summary, "a diagram")
+
+    @pytest.mark.asyncio
+    async def test_refine_prompt_llm_failure_is_image_provider_error(self):
+        mock_prompt_service = MagicMock()
+        mock_prompt_service.get_pipeline_prompt.return_value = "system"
+        mock_prompt_service.render.return_value = "user"
+        mock_router = MagicMock()
+        mock_router.generate = AsyncMock(side_effect=RuntimeError("llm down"))
+
+        generator = ImageGenerator(
+            provider=MockImageGenerator(),
+            storage=MagicMock(),
+            db=MagicMock(),
+            prompt_service=mock_prompt_service,
+            llm_router=mock_router,
+        )
+
+        with (
+            patch("src.config.models.get_model_config") as mock_config,
+            pytest.raises(ImageProviderError, match="llm down"),
+        ):
+            mock_config.return_value.get_model_for_step.return_value = "claude-haiku-4-5"
+            await generator.refine_prompt("draw a cat")
+
+    @pytest.mark.asyncio
+    async def test_refine_prompt_template_failure_is_not_image_provider_error(self):
+        mock_prompt_service = MagicMock()
+        mock_prompt_service.get_pipeline_prompt.side_effect = KeyError(
+            "pipeline.image_generation.prompt_refinement_system"
+        )
+        mock_router = MagicMock()
+        mock_router.generate = AsyncMock()
+
+        generator = ImageGenerator(
+            provider=MockImageGenerator(),
+            storage=MagicMock(),
+            db=MagicMock(),
+            prompt_service=mock_prompt_service,
+            llm_router=mock_router,
+        )
+
+        with (
+            patch("src.config.models.get_model_config") as mock_config,
+            pytest.raises(KeyError),
+        ):
+            mock_config.return_value.get_model_for_step.return_value = "claude-haiku-4-5"
+            await generator.refine_prompt("draw a cat")
+        mock_router.generate.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
