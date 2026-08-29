@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass
+from time import monotonic
 from typing import Any
 
 import pytest
@@ -18,6 +19,7 @@ class _Lifecycle:
 
     def __init__(self, *, flush_succeeds: bool = True) -> None:
         self.flush_succeeds = flush_succeeds
+        self.settings = self._Settings()
 
     class _Settings:
         environment = "test"
@@ -192,3 +194,102 @@ def test_nested_mcp_tool_is_child_operation_with_one_process_lifecycle(durable_r
         "finish",
         "finish",
     ]
+
+
+def test_failed_flush_persists_degraded_terminal_exit_evidence(durable_runtime) -> None:
+    module, lifecycles, _provider, store = durable_runtime
+    operation_id = 0
+
+    @module.operational_entrypoint("backup.run", stage="backup", service_name="aca-test")
+    def execute() -> None:
+        nonlocal operation_id
+        context = get_current_operation_context()
+        assert context is not None
+        operation_id = int(context.operation_id)
+        lifecycles[0].flush_succeeds = False
+
+    with pytest.raises(module.OperationalFlushError, match="telemetry flush failed"):
+        execute()
+
+    durable = module._run_awaitable_sync(store.lookup(operation_id))
+    assert durable["status"] == "completed"
+    assert durable["outcome"] == "succeeded"
+    assert durable["telemetry_delivery_state"] == "degraded"
+    assert durable["diagnostic_codes"] == ("telemetry.flush_failed",)
+
+
+def test_domain_failure_is_preserved_and_secret_is_not_persisted(durable_runtime) -> None:
+    module, _lifecycles, _provider, store = durable_runtime
+    secret = "postgresql://admin:do-not-store@example.test/private"
+
+    @module.operational_entrypoint("restore.run", stage="restore", service_name="aca-test")
+    def execute() -> None:
+        raise ValueError(secret)
+
+    with pytest.raises(ValueError, match="do-not-store"):
+        execute()
+
+    durable = module._run_awaitable_sync(store.lookup(700))
+    assert durable["status"] == "failed"
+    assert durable["outcome"] == "permanent_failure"
+    assert secret not in repr(durable)
+
+
+def test_final_database_failure_uses_masked_mode_0600_fallback(
+    durable_runtime, monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    module, _lifecycles, _provider, store = durable_runtime
+    secret = "postgresql://admin:do-not-store@example.test/private"
+
+    async def unavailable_finish(*args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+        raise ConnectionError(secret)
+
+    monkeypatch.setattr(store, "finish", unavailable_finish)
+    monkeypatch.setenv("ACA_BOOTSTRAP_AUDIT_DIR", str(tmp_path))
+
+    @module.operational_entrypoint("backup.run", stage="backup", service_name="aca-test")
+    def execute() -> None:
+        return None
+
+    with pytest.raises(module.OperationalFlushError, match="terminal evidence"):
+        execute()
+
+    fallback = module.BootstrapAuditSpool(tmp_path)
+    records = fallback.verify(required=True)
+    assert records[-1]["diagnostic_code"] == "telemetry.database_unavailable"
+    assert records[-1]["outcome"] == "succeeded"
+    assert secret not in fallback.path.read_text(encoding="utf-8")
+    assert fallback.path.stat().st_mode & 0o077 == 0
+
+
+@pytest.mark.asyncio
+async def test_one_outer_deadline_covers_flush_and_final_evidence(
+    durable_runtime, monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    module, lifecycles, _provider, store = durable_runtime
+    original_finish = store.finish
+
+    async def slow_shutdown(lifecycle: _Lifecycle) -> bool:
+        await module.asyncio.sleep(0.04)
+        lifecycle.last_flush_succeeded = True
+        return True
+
+    async def slow_finish(*args: Any, **kwargs: Any) -> None:
+        await module.asyncio.sleep(0.04)
+        await original_finish(*args, **kwargs)
+
+    monkeypatch.setattr(module, "shutdown_process_telemetry", slow_shutdown)
+    monkeypatch.setattr(store, "finish", slow_finish)
+    monkeypatch.setenv("ACA_BOOTSTRAP_AUDIT_DIR", str(tmp_path))
+
+    @module.operational_entrypoint("backup.run", stage="backup", service_name="aca-test")
+    async def execute() -> None:
+        lifecycles[0].settings.telemetry_flush_timeout_seconds = 0.05
+
+    started = monotonic()
+    with pytest.raises(module.OperationalFlushError, match="deadline"):
+        await execute()
+    assert monotonic() - started < 0.075
+    records = module.BootstrapAuditSpool(tmp_path).verify(required=True)
+    assert records[-1]["diagnostic_code"] == "telemetry.exit_deadline_exceeded"
