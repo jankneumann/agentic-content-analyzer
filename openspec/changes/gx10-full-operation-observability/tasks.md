@@ -61,7 +61,7 @@
 - [x] 8.6 [S] Write failing storage-controller tests for allocation totals, 80/90 percent entry, 75/85 percent timed hysteresis, cleanup failure, 30/90-day capability modes, failure-evidence priority, and no direct database-file deletion. References: GX10-003, GX10-004, JOB-003, D9.
 - [x] 8.7 [M] Implement correlated disk monitoring, capability-aware retention, ingestion throttling/pause policy, and storage alerts. Depends on 7.4, 8.6. References: GX10-003, GX10-004, JOB-003, D9.
 - [x] 8.8 [S] Write failing backup/restore tests for component outcomes, mandatory age encryption, missing/rotated OpenBao recipients, checksums, quota exhaustion, isolated targets, source-volume protection, and measured RPO/RTO against the 24-hour application RPO, 2-hour component RTO, and 4-hour full-stack RTO objectives. References: GX10-007, GX10-008, contracts/events/operation-attempt-v1.schema.json, D10.
-- [ ] 8.9 [M] Implement scheduled component backups, retention, correlated manifests, and isolated restore drills. Depends on 7.4, 8.4, 8.8. References: GX10-007, GX10-008, D10.
+- [x] 8.9 [M] Implement scheduled component backups, retention, correlated manifests, and isolated restore drills. Depends on 7.4, 8.4, 8.8. References: GX10-007, GX10-008, D10.
 - [ ] 8.10 [XS] Checkpoint: execute high/critical/hysteresis/cleanup-failure simulations plus encrypted backup/restore drills; retain manifests, checksums, disk metrics, trace IDs, and pass/fail evidence for the 24-hour application RPO, 2-hour component RTO, and 4-hour full-stack RTO objectives. Depends on 8.7, 8.9. References: GX10-003, GX10-004, GX10-007, GX10-008, GX10-013, GX10-015, GX10-016, D9, D10.
 
 ## 9. Coexistence and End-to-End Acceptance
