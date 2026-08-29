@@ -281,9 +281,7 @@ async def test_stale_claim_only_marks_its_own_bounded_evidence(pg_conn) -> None:
         started_at=datetime.now(UTC),
     )
     assert await start_attempt(pg_conn, attempt)
-    await pg_conn.execute(
-        "UPDATE pgqueuer_jobs SET claim_generation=1 WHERE id=$1", BASE_ID
-    )
+    await pg_conn.execute("UPDATE pgqueuer_jobs SET claim_generation=1 WHERE id=$1", BASE_ID)
     current = AttemptStart(
         operation_id=BASE_ID,
         claim_generation=1,

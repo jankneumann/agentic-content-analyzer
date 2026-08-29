@@ -120,13 +120,21 @@ async def start_attempt(conn: asyncpg.Connection, attempt: AttemptStart) -> bool
 
     operation_id = await conn.fetchval(
         """
+        WITH canonical_claim AS (
+            SELECT id, claim_generation, status
+            FROM pgqueuer_jobs
+            WHERE id = $1
+              AND claim_generation = $2::bigint
+              AND status = 'in_progress'
+            FOR UPDATE
+        )
         INSERT INTO operation_observation_attempts (
             operation_id, claim_generation, attempt_number, trace_id, root_span_id,
             langfuse_observation_id, service_name, service_instance_id, environment,
             release_revision, started_at
         )
         SELECT job.id, $2::bigint, $2::bigint + 1, $3, $4, $5, $6, $7, $8, $9, $10
-        FROM pgqueuer_jobs AS job
+        FROM canonical_claim AS job
         WHERE job.id = $1
           AND job.claim_generation = $2::bigint
           AND job.status = 'in_progress'
@@ -157,6 +165,14 @@ async def complete_attempt(
 
     completed_id = await conn.fetchval(
         """
+        WITH canonical_claim AS (
+            SELECT id, claim_generation, status
+            FROM pgqueuer_jobs
+            WHERE id = $1
+              AND claim_generation = $2::bigint
+              AND status = 'in_progress'
+            FOR UPDATE
+        )
         UPDATE operation_observation_attempts AS attempt
         SET completed_at = $3,
             terminal_stage = $4,
@@ -165,7 +181,7 @@ async def complete_attempt(
             telemetry_delivery_state = $7,
             diagnostic_codes = $8::operation_diagnostic_code[],
             diagnostics_omitted = $9
-        FROM pgqueuer_jobs AS job
+        FROM canonical_claim AS job
         WHERE attempt.operation_id = $1
           AND attempt.claim_generation = $2
           AND job.id = attempt.operation_id
@@ -183,6 +199,70 @@ async def complete_attempt(
         completion.diagnostics_omitted,
     )
     return completed_id is not None
+
+
+async def record_stale_claim_diagnostic(
+    conn: asyncpg.Connection,
+    operation_id: int,
+    stale_claim_generation: int,
+) -> bool:
+    """Record only bounded evidence on an attempt superseded by a newer claim."""
+
+    updated_id = await conn.fetchval(
+        """
+        WITH newer_claim AS (
+            SELECT id
+            FROM pgqueuer_jobs AS job
+            WHERE job.id = $1
+              AND job.claim_generation > $2::bigint
+            FOR UPDATE
+        )
+        UPDATE operation_observation_attempts AS attempt
+        SET diagnostic_codes = CASE
+                WHEN 'queue.stale_claim'::operation_diagnostic_code =
+                     ANY(attempt.diagnostic_codes)
+                    THEN attempt.diagnostic_codes
+                WHEN cardinality(attempt.diagnostic_codes) < 20
+                 AND octet_length(array_to_string(
+                         array_append(
+                             attempt.diagnostic_codes,
+                             'queue.stale_claim'::operation_diagnostic_code
+                         ),
+                         ','
+                     )) <= 2048
+                    THEN array_append(
+                        attempt.diagnostic_codes,
+                        'queue.stale_claim'::operation_diagnostic_code
+                    )
+                ELSE attempt.diagnostic_codes
+            END,
+            diagnostics_omitted = CASE
+                WHEN 'queue.stale_claim'::operation_diagnostic_code =
+                     ANY(attempt.diagnostic_codes)
+                    THEN attempt.diagnostics_omitted
+                WHEN cardinality(attempt.diagnostic_codes) < 20
+                 AND octet_length(array_to_string(
+                         array_append(
+                             attempt.diagnostic_codes,
+                             'queue.stale_claim'::operation_diagnostic_code
+                         ),
+                         ','
+                     )) <= 2048
+                    THEN attempt.diagnostics_omitted
+                WHEN attempt.diagnostics_omitted < 2147483647
+                    THEN attempt.diagnostics_omitted + 1
+                ELSE attempt.diagnostics_omitted
+            END
+        FROM newer_claim AS job
+        WHERE attempt.operation_id = $1
+          AND attempt.claim_generation = $2::bigint
+          AND job.id = attempt.operation_id
+        RETURNING attempt.operation_id
+        """,
+        operation_id,
+        stale_claim_generation,
+    )
+    return updated_id is not None
 
 
 async def list_attempts(
