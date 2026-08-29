@@ -303,6 +303,7 @@ def test_maintenance_plan_installer_is_idempotent_and_protects_files(tmp_path: P
     environment = os.environ | {
         "GX10_MAINTENANCE_SOURCE_DIR": str(DEPLOY / "maintenance"),
         "GX10_MAINTENANCE_CONFIG_DIR": str(destination),
+        "GX10_INSTALL_ROOT": str(ROOT),
     }
     for _attempt in range(2):
         completed = subprocess.run(

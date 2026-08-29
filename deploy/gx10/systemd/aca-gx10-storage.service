@@ -1,7 +1,9 @@
 [Unit]
 Description=GX-10 bounded persistent storage monitor
 Requires=aca-gx10.service
+Requires=aca-gx10-maintenance-plans.service
 After=aca-gx10.service
+After=aca-gx10-maintenance-plans.service
 OnFailure=aca-gx10-maintenance-alert@%n.service
 
 [Service]

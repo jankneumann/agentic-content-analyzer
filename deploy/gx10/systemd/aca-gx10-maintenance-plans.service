@@ -1,0 +1,20 @@
+[Unit]
+Description=Install validated GX-10 maintenance action and recovery plans
+Before=aca-gx10-storage.service aca-gx10-backup.service aca-gx10-restore-drill.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/aca
+ExecStart=/opt/aca/deploy/gx10/install-maintenance-plans.sh
+ConfigurationDirectory=aca/gx10
+ConfigurationDirectoryMode=0700
+RemainAfterExit=yes
+TimeoutStartSec=30
+UMask=0077
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/etc/aca/gx10
+RestrictSUIDSGID=yes
+LockPersonality=yes

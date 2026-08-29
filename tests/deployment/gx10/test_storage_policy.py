@@ -258,7 +258,7 @@ def test_critical_pause_failure_emits_correlated_alert_and_cli_fails_closed(
             "--concurrency",
             "8",
             "--operation-id",
-            "critical-pause",
+            "701",
             "--trace-id",
             "e" * 32,
             "--actions",

@@ -1,0 +1,86 @@
+{
+  "restore": {
+    "application_postgresql": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "restore",
+      "application_postgresql"
+    ],
+    "neo4j": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "restore",
+      "neo4j"
+    ],
+    "langfuse_postgresql": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "restore",
+      "langfuse_postgresql"
+    ],
+    "clickhouse": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "restore",
+      "clickhouse"
+    ],
+    "minio": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "restore",
+      "minio"
+    ],
+    "configuration_metadata": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "restore",
+      "configuration_metadata"
+    ]
+  },
+  "validate": {
+    "application_postgresql": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "validate",
+      "application_postgresql"
+    ],
+    "neo4j": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "validate",
+      "neo4j"
+    ],
+    "langfuse_postgresql": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "validate",
+      "langfuse_postgresql"
+    ],
+    "clickhouse": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "validate",
+      "clickhouse"
+    ],
+    "minio": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "validate",
+      "minio"
+    ],
+    "configuration_metadata": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "validate",
+      "configuration_metadata"
+    ]
+  },
+  "production_sources": {
+    "application_postgresql": "/srv/aca/postgres",
+    "neo4j": "/srv/aca/neo4j",
+    "langfuse_postgresql": "/srv/aca/langfuse-postgres",
+    "clickhouse": "/srv/aca/clickhouse",
+    "minio": "/srv/aca/minio",
+    "configuration_metadata": "/opt/aca/deploy/gx10"
+  },
+  "metadata_probe": {
+    "application_operation_rows": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "probe",
+      "application_operation_rows"
+    ],
+    "langfuse_trace_metadata": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "probe",
+      "langfuse_trace_metadata"
+    ]
+  }
+}

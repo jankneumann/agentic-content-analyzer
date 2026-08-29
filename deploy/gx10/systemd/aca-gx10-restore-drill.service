@@ -1,7 +1,9 @@
 [Unit]
 Description=GX-10 isolated full-stack restore drill
 Requires=aca-gx10.service aca-gx10-backup-secrets.service
+Requires=aca-gx10-maintenance-plans.service
 After=aca-gx10.service aca-gx10-backup.service aca-gx10-backup-secrets.service
+After=aca-gx10-maintenance-plans.service
 OnFailure=aca-gx10-maintenance-alert@%n.service
 
 [Service]

@@ -17,8 +17,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from pydantic import TypeAdapter, ValidationError
+
 from src.clients.operational_observability import operational_entrypoint, operational_stage
 from src.contracts.operation_context import get_current_operation_context
+from src.contracts.workflow_models import OperationId, TraceId
 from src.services.storage_governance import (
     CleanupResult,
     RetentionCapabilities,
@@ -29,6 +32,8 @@ from src.services.storage_governance import (
 
 ActionInvoker = Callable[[str, dict[str, object]], bool]
 _MAX_STATE_BYTES = 4096
+_OPERATION_ID = TypeAdapter(OperationId)
+_TRACE_ID = TypeAdapter(TraceId)
 
 
 def _load_controller(path: Path) -> StorageController:
@@ -207,12 +212,21 @@ def _runtime_identity(
 ) -> tuple[str, str]:
     if (operation_id is None) != (trace_id is None):
         raise ValueError("operation-id and trace-id must be supplied together")
-    if operation_id is not None and trace_id is not None:
-        return operation_id, trace_id
     context = get_current_operation_context()
-    if context is None:
-        raise RuntimeError("scheduled storage monitor requires a durable operation root")
-    return context.operation_id, context.trace_id
+    if operation_id is None or trace_id is None:
+        if context is None:
+            raise RuntimeError("scheduled storage monitor requires a durable operation root")
+        return context.operation_id, context.trace_id
+    try:
+        canonical_operation_id = _OPERATION_ID.validate_python(operation_id)
+        canonical_trace_id = _TRACE_ID.validate_python(trace_id)
+    except ValidationError as exc:
+        raise ValueError("maintenance identity is not canonical") from exc
+    if context is not None and (
+        canonical_operation_id != context.operation_id or canonical_trace_id != context.trace_id
+    ):
+        raise ValueError("explicit identity does not match the bound durable operation root")
+    return canonical_operation_id, canonical_trace_id
 
 
 def _command_outcome(result: int) -> Literal["succeeded", "permanent_failure"]:

@@ -1,0 +1,34 @@
+{
+  "producers": {
+    "application_postgresql": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "produce",
+      "application_postgresql"
+    ],
+    "neo4j": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "produce",
+      "neo4j"
+    ],
+    "langfuse_postgresql": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "produce",
+      "langfuse_postgresql"
+    ],
+    "clickhouse": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "produce",
+      "clickhouse"
+    ],
+    "minio": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "produce",
+      "minio"
+    ],
+    "configuration_metadata": [
+      "/opt/aca/scripts/gx10/backup/component.sh",
+      "produce",
+      "configuration_metadata"
+    ]
+  }
+}

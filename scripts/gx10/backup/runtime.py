@@ -18,9 +18,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from pydantic import TypeAdapter, ValidationError
+
 from scripts.gx10.storage.runtime import StorageRuntime
 from src.clients.operational_observability import operational_entrypoint, operational_stage
 from src.contracts.operation_context import get_current_operation_context
+from src.contracts.workflow_models import OperationId, TraceId
 from src.services.backup.gx10 import (
     AgeRecipientCatalog,
     BackupComponent,
@@ -38,6 +41,8 @@ from src.services.backup.gx10 import (
 )
 
 _AGE_ENVELOPE = b"age-encryption.org/v1\n"
+_OPERATION_ID = TypeAdapter(OperationId)
+_TRACE_ID = TypeAdapter(TraceId)
 
 
 def _safe_command(argv: Sequence[str], *, payload: bytes | None = None) -> bytes:
@@ -132,12 +137,24 @@ def _maintenance_correlation(
 ) -> MaintenanceCorrelation:
     if (operation_id is None) != (trace_id is None):
         raise ValueError("operation-id and trace-id must be supplied together")
-    if operation_id is not None and trace_id is not None:
-        return MaintenanceCorrelation(operation_id=operation_id, trace_id=trace_id)
     context = get_current_operation_context()
-    if context is None:
-        raise RuntimeError("scheduled backup operation requires a durable operation root")
-    return MaintenanceCorrelation(operation_id=context.operation_id, trace_id=context.trace_id)
+    if operation_id is None or trace_id is None:
+        if context is None:
+            raise RuntimeError("scheduled backup operation requires a durable operation root")
+        return MaintenanceCorrelation(operation_id=context.operation_id, trace_id=context.trace_id)
+    try:
+        canonical_operation_id = _OPERATION_ID.validate_python(operation_id)
+        canonical_trace_id = _TRACE_ID.validate_python(trace_id)
+    except ValidationError as exc:
+        raise ValueError("maintenance identity is not canonical") from exc
+    if context is not None and (
+        canonical_operation_id != context.operation_id or canonical_trace_id != context.trace_id
+    ):
+        raise ValueError("explicit identity does not match the bound durable operation root")
+    return MaintenanceCorrelation(
+        operation_id=canonical_operation_id,
+        trace_id=canonical_trace_id,
+    )
 
 
 def _command_outcome(result: int) -> Literal["succeeded", "permanent_failure"]:

@@ -1,8 +1,10 @@
 [Unit]
 Description=Agentic Content Analyzer GX-10 production runtime
 Requires=aca-gx10-image-pins.service aca-gx10-secrets.service aca-gx10-proxy-policy.service aca-gx10-firewall.service
+Requires=aca-gx10-maintenance-plans.service
 Wants=aca-gx10-proxy-policy.timer aca-gx10-storage.timer aca-gx10-backup.timer aca-gx10-restore-drill.timer
 After=aca-gx10-image-pins.service aca-gx10-secrets.service aca-gx10-proxy-policy.service aca-gx10-proxy-policy.timer aca-gx10-firewall.service
+After=aca-gx10-maintenance-plans.service
 StartLimitIntervalSec=300
 StartLimitBurst=5
 
