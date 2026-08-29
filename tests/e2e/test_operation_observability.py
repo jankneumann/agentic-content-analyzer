@@ -1,0 +1,226 @@
+"""End-to-end contract tests for the backend-neutral GX-10 trace verifier."""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Callable
+
+from scripts.gx10.verify_observability import (
+    EvidenceSnapshot,
+    PollPolicy,
+    poll_trace_arrival,
+    verify_snapshot,
+)
+
+
+TRACE_ID = "1" * 32
+ROOT_OPERATION_ID = "42"
+CANARY = "gx10-secret-canary-do-not-export"
+
+
+def _snapshot(*, include_retry: bool = True, include_restart: bool = True) -> dict[str, object]:
+    attempts = [
+        {
+            "operation_id": ROOT_OPERATION_ID,
+            "root_operation_id": ROOT_OPERATION_ID,
+            "trace_id": TRACE_ID,
+            "claim_generation": 1,
+            "service_name": "aca-worker",
+            "carrier_source": "queue_envelope",
+            "outcome": "failed" if include_retry else "succeeded",
+            "telemetry_delivery_state": "delivered",
+        }
+    ]
+    if include_retry:
+        attempts.append(
+            {
+                "operation_id": ROOT_OPERATION_ID,
+                "root_operation_id": ROOT_OPERATION_ID,
+                "trace_id": TRACE_ID,
+                "claim_generation": 2,
+                "service_name": "aca-worker",
+                "carrier_source": "persisted_queue_envelope" if include_restart else "queue_envelope",
+                "outcome": "succeeded",
+                "telemetry_delivery_state": "delivered",
+            }
+        )
+
+    return {
+        "submission": {
+            "status_code": 202,
+            "operation_id": ROOT_OPERATION_ID,
+            "root_operation_id": ROOT_OPERATION_ID,
+            "trace_id": TRACE_ID,
+            "response_headers": {"X-Trace-Id": TRACE_ID},
+        },
+        "attempts": attempts,
+        "logs": [
+            {
+                "service_name": "aca-api",
+                "operation_id": ROOT_OPERATION_ID,
+                "root_operation_id": ROOT_OPERATION_ID,
+                "trace_id": TRACE_ID,
+                "stage": "submit",
+            },
+            {
+                "service_name": "aca-worker",
+                "operation_id": ROOT_OPERATION_ID,
+                "root_operation_id": ROOT_OPERATION_ID,
+                "trace_id": TRACE_ID,
+                "stage": "complete",
+            },
+        ],
+        "observations": [
+            {
+                "observation_id": "root-observation",
+                "parent_observation_id": None,
+                "service_name": "aca-api",
+                "operation_id": ROOT_OPERATION_ID,
+                "root_operation_id": ROOT_OPERATION_ID,
+                "trace_id": TRACE_ID,
+                "claim_generation": 0,
+            },
+            {
+                "observation_id": "worker-attempt-1",
+                "parent_observation_id": "root-observation",
+                "service_name": "aca-worker",
+                "operation_id": ROOT_OPERATION_ID,
+                "root_operation_id": ROOT_OPERATION_ID,
+                "trace_id": TRACE_ID,
+                "claim_generation": 1,
+            },
+            {
+                "observation_id": "worker-attempt-2",
+                "parent_observation_id": "root-observation",
+                "service_name": "aca-worker",
+                "operation_id": ROOT_OPERATION_ID,
+                "root_operation_id": ROOT_OPERATION_ID,
+                "trace_id": TRACE_ID,
+                "claim_generation": 2,
+                "generation": {
+                    "provider": "fixture-provider",
+                    "model": "fixture-model",
+                    "usage": {"input_tokens": 3, "output_tokens": 2},
+                },
+            },
+        ],
+        "export_health": {
+            "last_successful_export_at": "2026-08-29T18:00:00Z",
+            "affected_service": "aca-worker",
+        },
+    }
+
+
+def test_complete_snapshot_joins_api_queue_postgres_logs_and_langfuse() -> None:
+    report = verify_snapshot(EvidenceSnapshot.from_mapping(_snapshot()), canaries=(CANARY,))
+
+    assert report.ready is True
+    assert report.operation_id == ROOT_OPERATION_ID
+    assert report.trace_id == TRACE_ID
+    assert report.checks == {
+        "api_response_header": True,
+        "queued_worker_hop": True,
+        "postgres_attempt_rows": True,
+        "correlated_logs": True,
+        "langfuse_hierarchy": True,
+        "generation_metadata": True,
+        "retry_continuity": True,
+        "restart_continuity": True,
+        "secret_canaries_absent": True,
+    }
+    assert report.failure_codes == ()
+
+
+def test_retry_and_restart_fixtures_require_monotonic_persisted_generations() -> None:
+    missing_restart = verify_snapshot(
+        EvidenceSnapshot.from_mapping(_snapshot(include_restart=False)), canaries=(CANARY,)
+    )
+    missing_retry = verify_snapshot(
+        EvidenceSnapshot.from_mapping(_snapshot(include_retry=False)), canaries=(CANARY,)
+    )
+
+    assert missing_restart.ready is False
+    assert "restart_context_not_persisted" in missing_restart.failure_codes
+    assert missing_retry.ready is False
+    assert "retry_generation_missing" in missing_retry.failure_codes
+
+
+def test_secret_canary_failure_is_redacted_from_report() -> None:
+    unsafe = _snapshot()
+    unsafe["logs"][1]["diagnostic"] = f"provider returned {CANARY}"  # type: ignore[index]
+
+    report = verify_snapshot(EvidenceSnapshot.from_mapping(unsafe), canaries=(CANARY,))
+    serialized = report.to_json()
+
+    assert report.ready is False
+    assert "secret_canary_exposed" in report.failure_codes
+    assert CANARY not in serialized
+    assert "provider returned" not in serialized
+
+
+def test_trace_arrival_polling_is_deterministic_and_stops_when_ready() -> None:
+    snapshots = [
+        EvidenceSnapshot.from_mapping({**_snapshot(), "observations": []}),
+        EvidenceSnapshot.from_mapping(_snapshot()),
+    ]
+    sleeps: list[float] = []
+
+    def collect() -> EvidenceSnapshot:
+        return snapshots.pop(0)
+
+    report = poll_trace_arrival(
+        collect,
+        canaries=(CANARY,),
+        policy=PollPolicy(timeout_seconds=2.0, interval_seconds=0.25),
+        monotonic=_monotonic([0.0, 0.0, 0.25]),
+        sleep=sleeps.append,
+    )
+
+    assert report.ready is True
+    assert sleeps == [0.25]
+
+
+def test_trace_arrival_timeout_is_bounded_and_names_only_safe_health_fields() -> None:
+    incomplete = _snapshot()
+    incomplete["observations"] = []
+    incomplete["logs"] = [{"diagnostic": CANARY * 10_000}]
+
+    report = poll_trace_arrival(
+        lambda: EvidenceSnapshot.from_mapping(incomplete),
+        canaries=(CANARY,),
+        policy=PollPolicy(timeout_seconds=0.5, interval_seconds=0.25, max_report_bytes=4096),
+        monotonic=_monotonic([0.0, 0.0, 0.25, 0.5]),
+        sleep=lambda _seconds: None,
+    )
+    encoded = report.to_json().encode()
+
+    assert report.ready is False
+    assert "trace_arrival_timeout" in report.failure_codes
+    assert report.last_successful_export_at == "2026-08-29T18:00:00Z"
+    assert report.affected_service == "aca-worker"
+    assert CANARY.encode() not in encoded
+    assert len(encoded) <= 4096
+
+
+def _monotonic(values: list[float]) -> Callable[[], float]:
+    iterator = iter(values)
+    last = values[-1]
+
+    def current() -> float:
+        nonlocal last
+        try:
+            last = next(iterator)
+        except StopIteration:
+            pass
+        return last
+
+    return current
+
+
+def test_report_json_is_stable_for_immutable_evidence() -> None:
+    evidence = EvidenceSnapshot.from_mapping(json.loads(json.dumps(_snapshot())))
+
+    first = verify_snapshot(evidence, canaries=(CANARY,)).to_json()
+    second = verify_snapshot(evidence, canaries=(CANARY,)).to_json()
+
+    assert first == second
