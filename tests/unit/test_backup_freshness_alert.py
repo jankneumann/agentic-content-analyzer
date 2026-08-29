@@ -93,10 +93,7 @@ class TestManifestDerivedFreshness:
         """`no_history` means no backup has run. `unknown` means we could not find
         out. Reporting either as the other sends the operator to the wrong system."""
         assert evaluate(None).status is BackupFreshnessStatus.UNKNOWN
-        assert (
-            evaluate(manifest_reader._ABSENT).status
-            is not evaluate(None).status
-        )
+        assert evaluate(manifest_reader._ABSENT).status is not evaluate(None).status
 
     def test_disabled_monitoring_reports_no_status_and_no_alert(self) -> None:
         freshness = evaluate(manifest(), settings(backup_monitoring_enabled=False))
@@ -216,8 +213,7 @@ class TestCheckWindowKeying:
         cfg = settings(backup_staleness_hours=48)
         base = datetime(2026, 8, 21, 0, 0, tzinfo=UTC)
         keys = {
-            event_key_for(cfg, base + timedelta(minutes=minutes))
-            for minutes in (0, 1, 59, 60, 600)
+            event_key_for(cfg, base + timedelta(minutes=minutes)) for minutes in (0, 1, 59, 60, 600)
         }
         assert len(keys) == 1
 

@@ -241,9 +241,7 @@ class TestReadinessEndpoint:
         assert response.json()["checks"]["database"] == "unavailable"
 
     @patch("src.api.health_routes.settings")
-    def test_the_staleness_warning_names_the_setting_that_controls_it(
-        self, mock_settings, caplog
-    ):
+    def test_the_staleness_warning_names_the_setting_that_controls_it(self, mock_settings, caplog):
         """The old text claimed "2x schedule interval". The real threshold is
         `backup_staleness_hours`, independent of any schedule — so the message sent
         operators to the wrong setting."""

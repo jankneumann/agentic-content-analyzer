@@ -76,10 +76,10 @@ jobs:
           uv pip install --system ruff==0.15.15 mypy==2.1.0
 
       - name: Run Ruff linter
-        run: ruff check src/
+        run: ruff check src/ tests/
 
       - name: Run Ruff formatter check
-        run: ruff format --check src/
+        run: ruff format --check src/ tests/
 
       - name: Check Alembic single head
         run: python scripts/check_alembic_heads.py

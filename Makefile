@@ -167,11 +167,13 @@ test-clean:  ## Stop and remove test infrastructure (WARNING: deletes ALL test d
 		done
 	@echo "Test infrastructure cleaned"
 
-lint:  ## Lint code with ruff
-	ruff check src/ tests/
+lint: lint-ci  ## Lint + format-check under the CI-pinned ruff (see lint-ci)
 
-lint-fix:  ## Lint and auto-fix issues
-	ruff check --fix src/ tests/
+lint-fix:  ## Lint and auto-fix issues under the CI-pinned ruff
+	@test -n "$(CI_RUFF)" || { echo "lint-fix: could not read ruff pin from .github/workflows/ci.yml"; exit 1; }
+	@test -n "$(UVX)" || { echo "lint-fix: uvx not found. Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh"; exit 1; }
+	$(UVX) ruff@$(CI_RUFF) check --fix src/ tests/
+	$(UVX) ruff@$(CI_RUFF) format src/ tests/
 
 type-check:  ## Type check with mypy
 	mypy src/
@@ -193,8 +195,8 @@ lint-ci:  ## Lint + format-check under the exact ruff version CI pins (via uvx, 
 	@test -n "$(CI_RUFF)" || { echo "lint-ci: could not read ruff pin from .github/workflows/ci.yml"; exit 1; }
 	@test -n "$(UVX)" || { echo "lint-ci: uvx not found. Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh"; exit 1; }
 	@echo "lint-ci: ruff $(CI_RUFF) (from ci.yml) via $(UVX)"
-	$(UVX) ruff@$(CI_RUFF) check src/
-	$(UVX) ruff@$(CI_RUFF) format --check src/
+	$(UVX) ruff@$(CI_RUFF) check src/ tests/
+	$(UVX) ruff@$(CI_RUFF) format --check src/ tests/
 
 db-migrate:  ## Create a new database migration (use MSG="message")
 	alembic revision --autogenerate -m "$(MSG)"

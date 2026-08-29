@@ -77,8 +77,10 @@ class TestEstimateSavings:
         """All calls routed to weak → maximum savings."""
         calibrator = ThresholdCalibrator()
         result = calibrator.estimate_savings(
-            [0.1, 0.2, 0.3], threshold=0.5,
-            strong_cost_per_call=0.01, weak_cost_per_call=0.001,
+            [0.1, 0.2, 0.3],
+            threshold=0.5,
+            strong_cost_per_call=0.01,
+            weak_cost_per_call=0.001,
         )
         assert result["weak_routed"] == 3
         assert result["strong_routed"] == 0
@@ -88,8 +90,10 @@ class TestEstimateSavings:
         """All calls routed to strong → no savings."""
         calibrator = ThresholdCalibrator()
         result = calibrator.estimate_savings(
-            [0.6, 0.7, 0.8], threshold=0.5,
-            strong_cost_per_call=0.01, weak_cost_per_call=0.001,
+            [0.6, 0.7, 0.8],
+            threshold=0.5,
+            strong_cost_per_call=0.01,
+            weak_cost_per_call=0.001,
         )
         assert result["weak_routed"] == 0
         assert result["savings"] == 0.0
@@ -98,8 +102,10 @@ class TestEstimateSavings:
         """Verify savings math."""
         calibrator = ThresholdCalibrator()
         result = calibrator.estimate_savings(
-            [0.1, 0.2, 0.6, 0.8], threshold=0.5,
-            strong_cost_per_call=0.01, weak_cost_per_call=0.001,
+            [0.1, 0.2, 0.6, 0.8],
+            threshold=0.5,
+            strong_cost_per_call=0.01,
+            weak_cost_per_call=0.001,
         )
         # 2 weak (0.001 each) + 2 strong (0.01 each) = 0.022
         # vs 4 strong = 0.04

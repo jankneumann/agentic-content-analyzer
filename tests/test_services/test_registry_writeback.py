@@ -42,9 +42,7 @@ class TestProposeDefault:
     def test_applied_when_approved(self, service):
         decision = PromotionDecision(recommend=True, reasons=["ok"])
         mock_settings = MagicMock()
-        with patch(
-            "src.services.settings_service.SettingsService", return_value=mock_settings
-        ):
+        with patch("src.services.settings_service.SettingsService", return_value=mock_settings):
             result = service.propose_default(
                 "youtube_processing", "gemini-2.5-flash", approved=True, decision=decision
             )

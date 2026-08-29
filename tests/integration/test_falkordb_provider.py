@@ -82,20 +82,14 @@ class TestFalkorDBProviderIntegration:
     @pytest.mark.asyncio
     async def test_relationship_creation(self, falkordb_provider):
         """Relationship creation and traversal should work."""
+        await falkordb_provider.execute_write("CREATE (a:Person {uuid: 'p1', name: 'Alice'})")
+        await falkordb_provider.execute_write("CREATE (b:Person {uuid: 'p2', name: 'Bob'})")
         await falkordb_provider.execute_write(
-            "CREATE (a:Person {uuid: 'p1', name: 'Alice'})"
-        )
-        await falkordb_provider.execute_write(
-            "CREATE (b:Person {uuid: 'p2', name: 'Bob'})"
-        )
-        await falkordb_provider.execute_write(
-            "MATCH (a:Person {uuid: 'p1'}), (b:Person {uuid: 'p2'}) "
-            "CREATE (a)-[:KNOWS]->(b)"
+            "MATCH (a:Person {uuid: 'p1'}), (b:Person {uuid: 'p2'}) CREATE (a)-[:KNOWS]->(b)"
         )
 
         records = await falkordb_provider.execute_query(
-            "MATCH (a:Person)-[:KNOWS]->(b:Person) "
-            "RETURN a.name AS from_name, b.name AS to_name"
+            "MATCH (a:Person)-[:KNOWS]->(b:Person) RETURN a.name AS from_name, b.name AS to_name"
         )
         assert len(records) == 1
         assert records[0]["from_name"] == "Alice"
@@ -122,9 +116,7 @@ class TestFalkorDBProviderIntegration:
     async def test_order_by_and_limit(self, falkordb_provider):
         """ORDER BY and LIMIT should work."""
         for i in range(5):
-            await falkordb_provider.execute_write(
-                f"CREATE (n:Ordered {{uuid: 'o-{i}', val: {i}}})"
-            )
+            await falkordb_provider.execute_write(f"CREATE (n:Ordered {{uuid: 'o-{i}', val: {i}}})")
 
         records = await falkordb_provider.execute_query(
             "MATCH (n:Ordered) RETURN n.val AS val ORDER BY n.val DESC LIMIT 3"
@@ -197,8 +189,7 @@ class TestReferenceGraphSyncOnFalkorDB:
     async def test_episode_uuid_lookup(self, falkordb_provider):
         """The episode UUID lookup pattern from reference_graph_sync should work."""
         await falkordb_provider.execute_write(
-            "CREATE (e:Episode {uuid: 'ep-uuid-123', source_id: '42', "
-            "name: 'Test Episode'})"
+            "CREATE (e:Episode {uuid: 'ep-uuid-123', source_id: '42', name: 'Test Episode'})"
         )
 
         # Run the exact lookup query from reference_graph_sync.py
@@ -246,7 +237,6 @@ class TestReferenceGraphSyncOnFalkorDB:
         await falkordb_provider.execute_write(merge_query, params)
 
         records = await falkordb_provider.execute_query(
-            "MATCH (:Episode {uuid: 'a'})-[r:CITES]->(:Episode {uuid: 'b'}) "
-            "RETURN count(r) AS cnt"
+            "MATCH (:Episode {uuid: 'a'})-[r:CITES]->(:Episode {uuid: 'b'}) RETURN count(r) AS cnt"
         )
         assert records[0]["cnt"] == 1

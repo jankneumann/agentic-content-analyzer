@@ -95,24 +95,20 @@ class TestTheThreeDdlCopiesAgree:
 
     def test_the_orm_model_admits_system_check(self) -> None:
         source = self._read("src/models/workflow_alert.py")
-        assert "SYSTEM_CHECK = \"system_check\"" in source
+        assert 'SYSTEM_CHECK = "system_check"' in source
         assert "'system_check'" in source
 
     def test_the_bootstrap_ddl_admits_system_check(self) -> None:
         source = self._read("src/queue/setup.py")
         assert "'system_check'" in source
 
-    @pytest.mark.parametrize(
-        "relative", ["src/models/workflow_alert.py", "src/queue/setup.py"]
-    )
+    @pytest.mark.parametrize("relative", ["src/models/workflow_alert.py", "src/queue/setup.py"])
     def test_every_copy_carries_all_three_system_check_arms(self, relative: str) -> None:
         source = self._read(relative)
         # 1. source_kind list, 2. event-identity grammar, 3. source-shape arm.
         assert re.search(r"source_kind IN \([^)]*'system_check'", source, re.S)
         assert "system_check:backup_freshness:[0-9]+" in source
-        assert re.search(
-            r"source_kind = 'system_check' AND operation_id IS NULL", source, re.S
-        )
+        assert re.search(r"source_kind = 'system_check' AND operation_id IS NULL", source, re.S)
 
     def test_the_key_grammar_is_identical_everywhere_including_the_model(self) -> None:
         """A2 — two candidate grammars once disagreed with each other about the

@@ -90,8 +90,14 @@ class TestObsidianExporterWriteNote:
 
     def test_creates_new_file(self, exporter: ObsidianExporter) -> None:
         result = exporter._write_note(
-            "Digests", "d-1", "digest", None, "Test Digest",
-            "---\ngenerator: aca\n---\n# Test", "sha256:abc", ["ai"],
+            "Digests",
+            "d-1",
+            "digest",
+            None,
+            "Test Digest",
+            "---\ngenerator: aca\n---\n# Test",
+            "sha256:abc",
+            ["ai"],
         )
         assert result == "created"
         assert (exporter._vault_path / "Digests").exists()
@@ -99,24 +105,48 @@ class TestObsidianExporterWriteNote:
     def test_skips_unchanged(self, exporter: ObsidianExporter) -> None:
         # Write once
         exporter._write_note(
-            "Digests", "d-1", "digest", None, "Test",
-            "content", "sha256:abc", [],
+            "Digests",
+            "d-1",
+            "digest",
+            None,
+            "Test",
+            "content",
+            "sha256:abc",
+            [],
         )
         # Write again with same hash
         result = exporter._write_note(
-            "Digests", "d-1", "digest", None, "Test",
-            "content", "sha256:abc", [],
+            "Digests",
+            "d-1",
+            "digest",
+            None,
+            "Test",
+            "content",
+            "sha256:abc",
+            [],
         )
         assert result == "skipped"
 
     def test_updates_changed(self, exporter: ObsidianExporter) -> None:
         exporter._write_note(
-            "Digests", "d-1", "digest", None, "Test",
-            "content v1", "sha256:v1", [],
+            "Digests",
+            "d-1",
+            "digest",
+            None,
+            "Test",
+            "content v1",
+            "sha256:v1",
+            [],
         )
         result = exporter._write_note(
-            "Digests", "d-1", "digest", None, "Test",
-            "content v2", "sha256:v2", [],
+            "Digests",
+            "d-1",
+            "digest",
+            None,
+            "Test",
+            "content v2",
+            "sha256:v2",
+            [],
         )
         assert result == "updated"
 
@@ -128,8 +158,14 @@ class TestObsidianExporterWriteNote:
         exporter = ObsidianExporter(engine=engine, vault_path=vault, options=options)
 
         result = exporter._write_note(
-            "Digests", "d-1", "digest", None, "Test",
-            "content", "sha256:abc", [],
+            "Digests",
+            "d-1",
+            "digest",
+            None,
+            "Test",
+            "content",
+            "sha256:abc",
+            [],
         )
         assert result == "created"
         # File should NOT exist in dry-run mode
@@ -137,16 +173,28 @@ class TestObsidianExporterWriteNote:
 
     def test_tracks_tags_for_mocs(self, exporter: ObsidianExporter) -> None:
         exporter._write_note(
-            "Digests", "d-1", "digest", None, "Test",
-            "content", "sha256:abc", ["ai", "ml"],
+            "Digests",
+            "d-1",
+            "digest",
+            None,
+            "Test",
+            "content",
+            "sha256:abc",
+            ["ai", "ml"],
         )
         assert "ai" in exporter._all_tags
         assert "ml" in exporter._all_tags
 
     def test_tracks_id_to_filename(self, exporter: ObsidianExporter) -> None:
         exporter._write_note(
-            "Digests", "d-1", "digest", None, "Test",
-            "content", "sha256:abc", [],
+            "Digests",
+            "d-1",
+            "digest",
+            None,
+            "Test",
+            "content",
+            "sha256:abc",
+            [],
         )
         assert "d-1" in exporter._id_to_filename
 
@@ -203,8 +251,14 @@ class TestObsidianExporterContentHash:
         """_write_note writes content verbatim; caller is responsible for hash replacement."""
         content = '---\ncontent_hash: "sha256:abc"\n---\n# Test body'
         exporter._write_note(
-            "Digests", "d-1", "digest", None, "Test",
-            content, "sha256:abc", [],
+            "Digests",
+            "d-1",
+            "digest",
+            None,
+            "Test",
+            content,
+            "sha256:abc",
+            [],
         )
         written = list((exporter._vault_path / "Digests").glob("*.md"))
         assert len(written) == 1
@@ -215,7 +269,9 @@ class TestObsidianExporterContentHash:
         from src.sync.obsidian_frontmatter import build_frontmatter, compute_content_hash
 
         fm = build_frontmatter(
-            aca_id="d-1", aca_type="digest", content_hash="PLACEHOLDER",
+            aca_id="d-1",
+            aca_type="digest",
+            content_hash="PLACEHOLDER",
         )
         body = "# Test\n\nSome content here."
         full = fm + body
@@ -245,7 +301,7 @@ class TestObsidianExporterCleanup:
         digests_dir = exporter._vault_path / "Digests"
         digests_dir.mkdir()
         stale_file = digests_dir / "old-digest.md"
-        stale_file.write_text("---\ngenerator: aca\naca_id: \"d-old\"\n---\n# Old")
+        stale_file.write_text('---\ngenerator: aca\naca_id: "d-old"\n---\n# Old')
 
         # Record it in manifest but don't mark as current
         exporter._manifest.record("d-old", "Digests/old-digest.md", "digest", "sha256:old")

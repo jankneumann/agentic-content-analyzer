@@ -81,9 +81,7 @@ def test_upsert_updates_existing_row_in_place() -> None:
     )
     assert a.interest_hash != b.interest_hash
     # One row in the fake session — upsert didn't create a duplicate.
-    matching = [
-        v for (cls, _pk), v in session._rows.items() if cls is PersonaFilterProfile
-    ]
+    matching = [v for (cls, _pk), v in session._rows.items() if cls is PersonaFilterProfile]
     assert len(matching) == 1
 
 

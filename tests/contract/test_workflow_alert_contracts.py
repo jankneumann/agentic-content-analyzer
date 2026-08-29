@@ -699,9 +699,7 @@ def _valid_system_check_envelope() -> dict[str, object]:
         "release_revision_source": "local_development",
         "operation_id": None,
         "attempt": 1,
-        "diagnostic_url": (
-            f"https://ops.example.com/api/v1/workflow-terminal-events/{event_id}"
-        ),
+        "diagnostic_url": (f"https://ops.example.com/api/v1/workflow-terminal-events/{event_id}"),
         "resource_refs": [],
         "source_keys": [],
         "counts": {"manifest_age_seconds": 187200, "stores_succeeded": 3},
@@ -730,9 +728,7 @@ def test_backup_alert_schema_omits_no_model_field() -> None:
 def test_backup_alert_schema_requires_at_least_what_the_model_requires() -> None:
     schema_required = set(_backup_alert_schema()["required"])
     model_required = {
-        name
-        for name, field in WorkflowAlertEnvelopeV1.model_fields.items()
-        if field.is_required()
+        name for name, field in WorkflowAlertEnvelopeV1.model_fields.items() if field.is_required()
     }
 
     assert model_required <= schema_required

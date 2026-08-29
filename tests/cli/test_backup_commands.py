@@ -168,12 +168,8 @@ class TestVerify:
             canary_decrypted=False,
             detail="Canary did not decrypt with the configured identity.",
         )
-        absent_payload = json.loads(
-            invoke(["--json", "backup", "verify"], verify=absent).stdout
-        )
-        broken_payload = json.loads(
-            invoke(["--json", "backup", "verify"], verify=broken).stdout
-        )
+        absent_payload = json.loads(invoke(["--json", "backup", "verify"], verify=absent).stdout)
+        broken_payload = json.loads(invoke(["--json", "backup", "verify"], verify=broken).stdout)
         assert absent_payload["canary_present"] is False
         assert absent_payload["canary_decrypted"] is None
         assert broken_payload["canary_present"] is True

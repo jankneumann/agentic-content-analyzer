@@ -78,7 +78,10 @@ def test_typer_cap_tracks_docling() -> None:
     lock = tomllib.loads((REPO_ROOT / "uv.lock").read_text())
     locked = next(package for package in lock["package"] if package["name"] == "typer")
     assert Version(locked["version"]) in typer.specifier
-    assert Version(locked["version"]) >= Version("0.20"), "the lock should actually use the lifted cap"
+    assert Version(locked["version"]) >= Version("0.20"), (
+        "the lock should actually use the lifted cap"
+    )
+
 
 def test_local_profile_uses_only_canonical_neo4j_keys() -> None:
     profile = yaml.safe_load((REPO_ROOT / "profiles/local.yaml").read_text())

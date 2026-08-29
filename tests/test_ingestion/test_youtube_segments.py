@@ -12,7 +12,9 @@ async def test_segments_calls_per_window_and_stitches():
     """Each planned window is processed with its offsets; results are stitched."""
     calls = []
 
-    async def fake_extract(*, video_url, model_step, gemini_resolution, user_prompt, fps, start_offset, end_offset):
+    async def fake_extract(
+        *, video_url, model_step, gemini_resolution, user_prompt, fps, start_offset, end_offset
+    ):
         calls.append((start_offset, end_offset))
         return f"content[{start_offset}-{end_offset}]"
 

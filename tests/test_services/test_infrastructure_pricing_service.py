@@ -167,10 +167,18 @@ class TestNeonEstimation:
     def test_scale_plan_same_rates_as_launch(self, service: InfrastructurePricingService):
         """Scale plan has same per-unit rates as Launch but higher compute ceiling."""
         launch = service.estimate_neon_cost(
-            plan="launch", compute_hours_per_day=2, storage_gb=10, pitr_gb=1, snapshot_gb=1,
+            plan="launch",
+            compute_hours_per_day=2,
+            storage_gb=10,
+            pitr_gb=1,
+            snapshot_gb=1,
         )
         scale = service.estimate_neon_cost(
-            plan="scale", compute_hours_per_day=2, storage_gb=10, pitr_gb=1, snapshot_gb=1,
+            plan="scale",
+            compute_hours_per_day=2,
+            storage_gb=10,
+            pitr_gb=1,
+            snapshot_gb=1,
         )
         assert launch.compute_cost == scale.compute_cost
         assert launch.storage_cost == scale.storage_cost
@@ -268,7 +276,9 @@ class TestResendEstimation:
 class TestCombinedPrediction:
     """Tests for predict_monthly_costs."""
 
-    def test_predict_monthly_costs_returns_all_breakdowns(self, service: InfrastructurePricingService):
+    def test_predict_monthly_costs_returns_all_breakdowns(
+        self, service: InfrastructurePricingService
+    ):
         """predict_monthly_costs returns neon, resend, llm breakdowns + grand_total."""
         mock_estimate = {
             "summarization": 1.00,
@@ -281,8 +291,14 @@ class TestCombinedPrediction:
         mock_config = MagicMock()
         mock_config.get_cost_estimate.return_value = mock_estimate
 
-        with patch("src.services.infrastructure_pricing_service.get_model_config", return_value=mock_config, create=True), \
-             patch("src.config.models.get_model_config", return_value=mock_config):
+        with (
+            patch(
+                "src.services.infrastructure_pricing_service.get_model_config",
+                return_value=mock_config,
+                create=True,
+            ),
+            patch("src.config.models.get_model_config", return_value=mock_config),
+        ):
             result = service.predict_monthly_costs(
                 neon_plan="free",
                 resend_plan="free",
@@ -309,8 +325,14 @@ class TestCombinedPrediction:
         mock_config = MagicMock()
         mock_config.get_cost_estimate.return_value = mock_estimate
 
-        with patch("src.services.infrastructure_pricing_service.get_model_config", return_value=mock_config, create=True), \
-             patch("src.config.models.get_model_config", return_value=mock_config):
+        with (
+            patch(
+                "src.services.infrastructure_pricing_service.get_model_config",
+                return_value=mock_config,
+                create=True,
+            ),
+            patch("src.config.models.get_model_config", return_value=mock_config),
+        ):
             result = service.predict_monthly_costs(
                 neon_plan="launch",
                 neon_compute_hours_per_day=3,
@@ -339,7 +361,8 @@ class TestPlanComparison:
     """Tests for compare_neon_plans and compare_resend_plans."""
 
     def test_compare_neon_plans_recommends_free_when_usage_fits(
-        self, service: InfrastructurePricingService,
+        self,
+        service: InfrastructurePricingService,
     ):
         """Recommends 'free' when compute and storage fit within free tier."""
         # Free tier: 100 compute hours/month, 5 GB storage
@@ -356,7 +379,8 @@ class TestPlanComparison:
         assert result.plans["free"] == 0.0
 
     def test_compare_neon_plans_recommends_paid_when_exceeds_free(
-        self, service: InfrastructurePricingService,
+        self,
+        service: InfrastructurePricingService,
     ):
         """Recommends paid plan when usage exceeds free tier limits."""
         # 5 hours/day * 30 = 150 hours > 100 included in free
@@ -369,7 +393,8 @@ class TestPlanComparison:
         assert "exceeds free tier" in result.recommendation_reason.lower()
 
     def test_compare_neon_plans_recommends_paid_when_storage_exceeds(
-        self, service: InfrastructurePricingService,
+        self,
+        service: InfrastructurePricingService,
     ):
         """Recommends paid plan when storage alone exceeds free tier."""
         # 1 hour/day (fits compute) but 10 GB > 5 GB max storage
@@ -409,7 +434,9 @@ class TestPlanComparison:
                 f"is not cheapest; {plan_name} costs ${cost}"
             )
 
-    def test_compare_resend_plans_includes_non_enterprise(self, service: InfrastructurePricingService):
+    def test_compare_resend_plans_includes_non_enterprise(
+        self, service: InfrastructurePricingService
+    ):
         """Enterprise plan is excluded from comparison."""
         result = service.compare_resend_plans(emails_per_month=100)
         assert "enterprise" not in result.plans

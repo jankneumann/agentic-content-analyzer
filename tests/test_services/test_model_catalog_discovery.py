@@ -21,7 +21,9 @@ class TestDiscover:
         monkeypatch.setenv("GOOGLE_API_KEY", "k")
         disc = ModelCatalogDiscovery()
         with (
-            patch.object(disc, "_list_google", return_value=["gemini-2.5-flash", "gemini-3.1-flash-lite"]),
+            patch.object(
+                disc, "_list_google", return_value=["gemini-2.5-flash", "gemini-3.1-flash-lite"]
+            ),
             patch(
                 "src.services.model_catalog_discovery.known_provider_model_ids",
                 return_value={"gemini-2.5-flash"},

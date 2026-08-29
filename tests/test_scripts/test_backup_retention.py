@@ -63,9 +63,7 @@ class TestCommittedTieredPolicy:
         assert by_name["weekly"]["retain_days"] == 28  # four weeks
         assert by_name["monthly"]["retain_days"] == 365  # twelve months
 
-    def test_tiers_match_the_promotion_rule_that_writes_them(
-        self, policy: dict[str, Any]
-    ) -> None:
+    def test_tiers_match_the_promotion_rule_that_writes_them(self, policy: dict[str, Any]) -> None:
         """The tier is a key segment chosen at write time. A policy naming a tier
         nothing writes would expire nothing; a written tier the policy omits would
         be kept forever."""
@@ -84,9 +82,7 @@ class TestCommittedTieredPolicy:
 
 class TestRuleRendering:
     @pytest.mark.parametrize("dialect", DIALECTS)
-    def test_both_provider_dialects_are_emitted(
-        self, policy: dict[str, Any], dialect: str
-    ) -> None:
+    def test_both_provider_dialects_are_emitted(self, policy: dict[str, Any], dialect: str) -> None:
         rules = build_rules(policy, prefix="aca", dialect=dialect)
         assert rules
         assert all(rule["Status"] == "Enabled" for rule in rules)
@@ -102,9 +98,7 @@ class TestRuleRendering:
             assert "Tag" not in rule["Filter"]
             assert "And" not in rule["Filter"]
 
-    def test_expiry_policy_is_identical_across_dialects(
-        self, policy: dict[str, Any]
-    ) -> None:
+    def test_expiry_policy_is_identical_across_dialects(self, policy: dict[str, Any]) -> None:
         def expiries(dialect: str) -> dict[str, int]:
             return {
                 rule["Filter"]["Prefix"]: rule["Expiration"]["Days"]
@@ -114,9 +108,7 @@ class TestRuleRendering:
 
         assert expiries("r2") == expiries("aws")
 
-    def test_aws_additionally_aborts_incomplete_uploads(
-        self, policy: dict[str, Any]
-    ) -> None:
+    def test_aws_additionally_aborts_incomplete_uploads(self, policy: dict[str, Any]) -> None:
         """AWS charges for incomplete multipart uploads indefinitely; R2 does not.
         An addition, not a change, so the expiry policy stays identical."""
         aws_ids = {rule["ID"] for rule in build_rules(policy, prefix="aca", dialect="aws")}
@@ -200,9 +192,7 @@ class TestDryRunByDefault:
         """It sets provider-side EXPIRY policy. The provider does the expiring, and
         keeps doing it while gx-10 is down. Nothing here deletes an object."""
         source = (REPO_ROOT / "scripts" / "backup_retention.py").read_text()
-        code = "\n".join(
-            line for line in source.splitlines() if not line.strip().startswith("#")
-        )
+        code = "\n".join(line for line in source.splitlines() if not line.strip().startswith("#"))
         for forbidden in ("delete_object", "delete_objects", "delete_bucket"):
             assert forbidden not in code
 
@@ -234,7 +224,6 @@ def timer() -> str:
 
 
 class TestSchedulingUnits:
-
     def test_both_units_are_shipped(self) -> None:
         assert (DEPLOY_DIR / "aca-backup.service").exists()
         assert (DEPLOY_DIR / "aca-backup.timer").exists()

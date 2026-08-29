@@ -262,7 +262,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = [
+# `tests/**` (not `tests/*`) so nested suites get the same ignores.
+"tests/**" = [
     "S101",   # Allow asserts
     "S105",   # Allow test credentials
     "S106",   # Allow test credentials
@@ -273,6 +274,10 @@ ignore = [
     "RUF015", # iter() over slice (minor)
     "RUF043", # Regex pattern without raw string (acceptable in tests)
     "B007",   # Loop variable not used (sometimes intentional)
+    # Preview rule RUF069 (ruff 0.15+): tests compare assigned float
+    # literals, not computed results. Mechanical pytest.approx noise
+    # would not change semantics.
+    "RUF069",
 ]
 "alembic/*" = ["E402"]  # Imports not at top of file
 "src/agents/memory/strategies/*" = ["S608"]  # SQL uses parameterized queries with f-string constants

@@ -31,9 +31,13 @@ class TestListDatasets:
         from src.services.evaluation_service import DatasetInfo
 
         ds = DatasetInfo(
-            id=1, step="summarization", name="test_ds",
-            status="pending_evaluation", sample_count=10,
-            strong_model="strong", weak_model="weak",
+            id=1,
+            step="summarization",
+            name="test_ds",
+            status="pending_evaluation",
+            sample_count=10,
+            strong_model="strong",
+            weak_model="weak",
         )
         with patch(_SVC_PATH) as mock_svc_cls:
             mock_svc_cls.return_value.get_datasets.return_value = [ds]
@@ -55,15 +59,26 @@ class TestCreateDataset:
         from src.services.evaluation_service import DatasetInfo
 
         ds = DatasetInfo(
-            id=42, step="summarization", name="my_ds",
-            status="pending_evaluation", sample_count=0,
-            strong_model="claude-sonnet-4-5", weak_model="claude-haiku-4-5",
+            id=42,
+            step="summarization",
+            name="my_ds",
+            status="pending_evaluation",
+            sample_count=0,
+            strong_model="claude-sonnet-4-5",
+            weak_model="claude-haiku-4-5",
         )
         with patch(_SVC_PATH) as mock_svc_cls:
             mock_svc_cls.return_value.create_dataset.return_value = ds
-            result = runner.invoke(app, [
-                "create-dataset", "--step", "summarization", "--name", "my_ds",
-            ])
+            result = runner.invoke(
+                app,
+                [
+                    "create-dataset",
+                    "--step",
+                    "summarization",
+                    "--name",
+                    "my_ds",
+                ],
+            )
             assert result.exit_code == 0
             assert "42" in result.output
             assert "summarization" in result.output

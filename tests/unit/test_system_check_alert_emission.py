@@ -181,9 +181,7 @@ class TestEachGateAdmitsSystemCheck:
         ):
             snapshot = _system_check_snapshot_with(backup_settings())
         event = system_check_event()
-        envelope = project_alert_envelope(
-            event, classify_terminal_event(event, snapshot), ORIGIN
-        )
+        envelope = project_alert_envelope(event, classify_terminal_event(event, snapshot), ORIGIN)
         assert envelope.source_kind == "system_check"
         assert envelope.operation_id is None
         assert envelope.attempt == 1
@@ -205,10 +203,13 @@ class TestEndToEndEmission:
             external_delivery_enabled=True,
             telemetry_emitter=lambda **_: True,
         )
-        with patch(
-            "src.services.backup.manifest_reader.read_freshness",
-            lambda *_a, **_k: stale_freshness(),
-        ), patch("src.config.settings.get_settings", backup_settings):
+        with (
+            patch(
+                "src.services.backup.manifest_reader.read_freshness",
+                lambda *_a, **_k: stale_freshness(),
+            ),
+            patch("src.config.settings.get_settings", backup_settings),
+        ):
             processed = await service.process_pending_event(EVENT_ID)
 
         assert processed is not None
@@ -226,10 +227,13 @@ class TestEndToEndEmission:
             external_delivery_enabled=True,
             telemetry_emitter=lambda **_: True,
         )
-        with patch(
-            "src.services.backup.manifest_reader.read_freshness",
-            lambda *_a, **_k: stale_freshness(),
-        ), patch("src.config.settings.get_settings", backup_settings):
+        with (
+            patch(
+                "src.services.backup.manifest_reader.read_freshness",
+                lambda *_a, **_k: stale_freshness(),
+            ),
+            patch("src.config.settings.get_settings", backup_settings),
+        ):
             processed = await service.process_pending_event(EVENT_ID)
 
         assert processed is not None
@@ -246,10 +250,13 @@ class TestEndToEndEmission:
             external_delivery_enabled=True,
             telemetry_emitter=lambda **_: True,
         )
-        with patch(
-            "src.services.backup.manifest_reader.read_freshness",
-            lambda *_a, **_k: stale_freshness(),
-        ), patch("src.config.settings.get_settings", backup_settings):
+        with (
+            patch(
+                "src.services.backup.manifest_reader.read_freshness",
+                lambda *_a, **_k: stale_freshness(),
+            ),
+            patch("src.config.settings.get_settings", backup_settings),
+        ):
             await service.process_pending_event(EVENT_ID)
 
         assert conn.stored["envelope"] is not None
@@ -265,10 +272,13 @@ class TestEndToEndEmission:
             external_delivery_enabled=True,
             telemetry_emitter=lambda **_: True,
         )
-        with patch(
-            "src.services.backup.manifest_reader.read_freshness",
-            lambda *_a, **_k: stale_freshness(),
-        ), patch("src.config.settings.get_settings", backup_settings):
+        with (
+            patch(
+                "src.services.backup.manifest_reader.read_freshness",
+                lambda *_a, **_k: stale_freshness(),
+            ),
+            patch("src.config.settings.get_settings", backup_settings),
+        ):
             await service.process_pending_event(EVENT_ID)
 
         body = conn.stored["envelope"]
@@ -288,10 +298,13 @@ class TestEndToEndEmission:
             external_delivery_enabled=True,
             telemetry_emitter=lambda **_: True,
         )
-        with patch(
-            "src.services.backup.manifest_reader.read_freshness",
-            lambda *_a, **_k: stale_freshness(),
-        ), patch("src.config.settings.get_settings", backup_settings):
+        with (
+            patch(
+                "src.services.backup.manifest_reader.read_freshness",
+                lambda *_a, **_k: stale_freshness(),
+            ),
+            patch("src.config.settings.get_settings", backup_settings),
+        ):
             await service.process_pending_event(EVENT_ID)
 
         schema_path = (
@@ -381,10 +394,13 @@ class TestTheRealTelemetryEmitterAcceptsSystemCheck:
             external_delivery_enabled=True,
             telemetry_emitter=emit_workflow_terminal_telemetry,
         )
-        with patch(
-            "src.services.backup.manifest_reader.read_freshness",
-            lambda *_a, **_k: stale_freshness(),
-        ), patch("src.config.settings.get_settings", backup_settings):
+        with (
+            patch(
+                "src.services.backup.manifest_reader.read_freshness",
+                lambda *_a, **_k: stale_freshness(),
+            ),
+            patch("src.config.settings.get_settings", backup_settings),
+        ):
             await service.process_pending_event(EVENT_ID)
 
         assert any("telemetry_emitted_at" in query for query in conn.executed)
@@ -466,9 +482,9 @@ class TestTheDiagnosticRouteAdmitsSystemCheck:
                     "deliveries_exhausted": 0,
                 }
 
-        diagnostic = await WorkflowTerminalEventService(
-            DiagnosticConnection()
-        ).get_diagnostic(EVENT_ID)
+        diagnostic = await WorkflowTerminalEventService(DiagnosticConnection()).get_diagnostic(
+            EVENT_ID
+        )
         assert diagnostic is not None
         assert diagnostic.source_kind == "system_check"
 
@@ -496,10 +512,13 @@ class TestARecoveredBackupDoesNotRaiseAnAlert:
     @pytest.mark.parametrize("status_name", ["OK", "NOT_CONFIGURED"])
     def test_a_healthy_reading_classifies_as_info(self, status_name: str) -> None:
         event = system_check_event()
-        with patch(
-            "src.services.backup.manifest_reader.read_freshness",
-            lambda *_a, **_k: self._freshness(status_name),
-        ), patch("src.config.settings.get_settings", backup_settings):
+        with (
+            patch(
+                "src.services.backup.manifest_reader.read_freshness",
+                lambda *_a, **_k: self._freshness(status_name),
+            ),
+            patch("src.config.settings.get_settings", backup_settings),
+        ):
             snapshot = _system_check_snapshot()
         classification = classify_terminal_event(event, snapshot)
         assert classification.outcome == "success"
@@ -509,10 +528,13 @@ class TestARecoveredBackupDoesNotRaiseAnAlert:
     @pytest.mark.parametrize("status_name", ["OK", "NOT_CONFIGURED"])
     def test_no_codeless_warning_is_ever_projected(self, status_name: str) -> None:
         event = system_check_event()
-        with patch(
-            "src.services.backup.manifest_reader.read_freshness",
-            lambda *_a, **_k: self._freshness(status_name),
-        ), patch("src.config.settings.get_settings", backup_settings):
+        with (
+            patch(
+                "src.services.backup.manifest_reader.read_freshness",
+                lambda *_a, **_k: self._freshness(status_name),
+            ),
+            patch("src.config.settings.get_settings", backup_settings),
+        ):
             snapshot = _system_check_snapshot()
         with pytest.raises(ValueError, match="not externally routable"):
             project_alert_envelope(event, classify_terminal_event(event, snapshot), ORIGIN)
@@ -526,10 +548,13 @@ class TestARecoveredBackupDoesNotRaiseAnAlert:
             external_delivery_enabled=True,
             telemetry_emitter=lambda **_: True,
         )
-        with patch(
-            "src.services.backup.manifest_reader.read_freshness",
-            lambda *_a, **_k: self._freshness("OK"),
-        ), patch("src.config.settings.get_settings", backup_settings):
+        with (
+            patch(
+                "src.services.backup.manifest_reader.read_freshness",
+                lambda *_a, **_k: self._freshness("OK"),
+            ),
+            patch("src.config.settings.get_settings", backup_settings),
+        ):
             processed = await service.process_pending_event(EVENT_ID)
 
         assert processed is not None
@@ -551,10 +576,13 @@ class TestARecoveredBackupDoesNotRaiseAnAlert:
     ) -> None:
         """The recovery branch must not swallow a real problem on its way past."""
         event = system_check_event()
-        with patch(
-            "src.services.backup.manifest_reader.read_freshness",
-            lambda *_a, **_k: self._freshness(status_name),
-        ), patch("src.config.settings.get_settings", backup_settings):
+        with (
+            patch(
+                "src.services.backup.manifest_reader.read_freshness",
+                lambda *_a, **_k: self._freshness(status_name),
+            ),
+            patch("src.config.settings.get_settings", backup_settings),
+        ):
             snapshot = _system_check_snapshot()
         classification = classify_terminal_event(event, snapshot)
         assert classification.outcome == expected_outcome

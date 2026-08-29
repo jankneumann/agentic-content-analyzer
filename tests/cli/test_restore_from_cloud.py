@@ -198,9 +198,7 @@ class TestDiscoveryIsIndependentOfLegacyNaming:
         assert "2026-08-21T030000Z" in " ".join(copy["argv"])
 
     def test_an_explicit_date_selects_that_backup(self) -> None:
-        _, runs = invoke(
-            ["manage", "restore-from-cloud", "--yes", "--backup-date", "2026-08-19"]
-        )
+        _, runs = invoke(["manage", "restore-from-cloud", "--yes", "--backup-date", "2026-08-19"])
         copy = runs.invocation("rclone", "copyto")
         assert copy is not None
         assert "2026-08-19T030000Z" in " ".join(copy["argv"])
@@ -322,9 +320,7 @@ class TestOutputMasksTheTargetDatabase:
             ("postgresql://u:p@h/d?sslmode=require", "postgresql://u:***@h/d?sslmode=require"),
         ],
     )
-    def test_masking_preserves_everything_but_the_password(
-        self, url: str, expected: str
-    ) -> None:
+    def test_masking_preserves_everything_but_the_password(self, url: str, expected: str) -> None:
         """The URL is how an operator confirms the restore went where they meant.
         Masking the whole thing would remove the confirmation along with the risk."""
         assert mask_database_url(url) == expected

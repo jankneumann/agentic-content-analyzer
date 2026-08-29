@@ -40,9 +40,7 @@ async def test_enqueues_once_per_minute_when_enabled():
     await sched.tick(MONDAY_0400)
 
     refresh_payloads = [
-        c.args[0]
-        for c in enqueue_fn.call_args_list
-        if c.args[0]["schedule_id"] == "refresh_models"
+        c.args[0] for c in enqueue_fn.call_args_list if c.args[0]["schedule_id"] == "refresh_models"
     ]
     assert len(refresh_payloads) == 1  # enqueued exactly once across both ticks
     payload = refresh_payloads[0]

@@ -323,9 +323,7 @@ def test_youtube_channel_rss_fix_rewrites_channel_page_url():
 def test_youtube_channel_rss_fix_leaves_feeds_and_handles_alone():
     # already a feed URL -> no fix
     assert (
-        _youtube_channel_rss_fix(
-            "https://www.youtube.com/feeds/videos.xml?channel_id=UCabc123"
-        )
+        _youtube_channel_rss_fix("https://www.youtube.com/feeds/videos.xml?channel_id=UCabc123")
         is None
     )
     # @handle can't be resolved to a channel id without an API call -> no fix
@@ -383,7 +381,10 @@ def test_api_check_ok_channel_resolves_uploads_and_freshness():
     recent = datetime.now(UTC).isoformat()
     client = _api_client(
         channel_resp={"items": [{"contentDetails": {"relatedPlaylists": {"uploads": "UUabc"}}}]},
-        playlist_resp={"items": [{"snippet": {"publishedAt": recent}}], "pageInfo": {"totalResults": 30}},
+        playlist_resp={
+            "items": [{"snippet": {"publishedAt": recent}}],
+            "pageInfo": {"totalResults": 30},
+        },
     )
     src = _yt_source("https://www.youtube.com/feeds/videos.xml?channel_id=UCabc")
     [health] = check_youtube_feeds_via_api([src], client=client)
@@ -413,7 +414,10 @@ def test_api_check_stale_channel():
     old = (datetime.now(UTC) - timedelta(days=400)).isoformat()
     client = _api_client(
         channel_resp={"items": [{"contentDetails": {"relatedPlaylists": {"uploads": "UUabc"}}}]},
-        playlist_resp={"items": [{"snippet": {"publishedAt": old}}], "pageInfo": {"totalResults": 5}},
+        playlist_resp={
+            "items": [{"snippet": {"publishedAt": old}}],
+            "pageInfo": {"totalResults": 5},
+        },
     )
     src = _yt_source("https://www.youtube.com/feeds/videos.xml?channel_id=UCabc")
     [health] = check_youtube_feeds_via_api([src], client=client, stale_days=180)
@@ -423,7 +427,10 @@ def test_api_check_stale_channel():
 def test_api_check_playlist_source_skips_channel_lookup():
     recent = datetime.now(UTC).isoformat()
     client = _api_client(
-        playlist_resp={"items": [{"snippet": {"publishedAt": recent}}], "pageInfo": {"totalResults": 7}},
+        playlist_resp={
+            "items": [{"snippet": {"publishedAt": recent}}],
+            "pageInfo": {"totalResults": 7},
+        },
     )
     src = _yt_source("https://www.youtube.com/feeds/videos.xml?playlist_id=PLabc")
     [health] = check_youtube_feeds_via_api([src], client=client)

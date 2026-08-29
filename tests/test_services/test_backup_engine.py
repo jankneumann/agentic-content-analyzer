@@ -201,9 +201,7 @@ class TestPerStoreOutcomes:
         assert by_store[StoreName.ARTIFACTS] is StoreOutcome.FAILED
         assert by_store[StoreName.POSTGRES] is StoreOutcome.SUCCEEDED
 
-    def test_a_non_required_failure_still_exits_non_zero(
-        self, harness: Any, tmp_path: Any
-    ) -> None:
+    def test_a_non_required_failure_still_exits_non_zero(self, harness: Any, tmp_path: Any) -> None:
         """`succeeded` (manifest-worthy) and `exit_code` (operator-visible) are
         deliberately different questions. A failing artifacts store does not
         invalidate the Postgres backup, but it must not be reported as fine."""
@@ -402,9 +400,7 @@ class TestManifest:
 
 
 class TestCanary:
-    def test_the_run_writes_the_canary_through_the_same_encryption_path(
-        self, harness: Any
-    ) -> None:
+    def test_the_run_writes_the_canary_through_the_same_encryption_path(self, harness: Any) -> None:
         """A canary placed by hand proves a human once ran `age` correctly. This one
         proves the pipeline that wrote today's backups produces readable output."""
         h = harness()
@@ -530,9 +526,7 @@ class TestRunPreflight:
 
 class TestStoreResultRefusesUnverifiableSuccess:
     @pytest.mark.parametrize("dropped", ["artifact_key", "size", "checksum_sha256"])
-    def test_a_succeeded_store_without_evidence_cannot_be_constructed(
-        self, dropped: str
-    ) -> None:
+    def test_a_succeeded_store_without_evidence_cannot_be_constructed(self, dropped: str) -> None:
         kwargs: dict[str, Any] = {
             "artifact_key": "aca/daily/x/postgres.dump.age",
             "size": 10,

@@ -210,7 +210,11 @@ class TestEnvironmentIsolation:
                 Stage(name="src", argv=("printf", "%s", "x"), env={"BACKUP_TEST_SECRET": "s3cr3t"}),
                 Stage(
                     name="sink",
-                    argv=("sh", "-c", f'cat >/dev/null; printf "%s" "${{BACKUP_TEST_SECRET:-absent}}" > {sink}'),
+                    argv=(
+                        "sh",
+                        "-c",
+                        f'cat >/dev/null; printf "%s" "${{BACKUP_TEST_SECRET:-absent}}" > {sink}',
+                    ),
                 ),
             ]
         )

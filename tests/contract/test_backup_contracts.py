@@ -122,9 +122,7 @@ class TestBackupManifestSchema:
             "stores",
         ],
     )
-    def test_required_fields_enforced(
-        self, manifest_schema: dict[str, Any], missing: str
-    ) -> None:
+    def test_required_fields_enforced(self, manifest_schema: dict[str, Any], missing: str) -> None:
         instance = _valid_manifest()
         del instance[missing]
         with pytest.raises(JsonSchemaValidationError):
@@ -170,9 +168,7 @@ class TestBackupManifestSchema:
         with pytest.raises(JsonSchemaValidationError):
             _validate(manifest_schema, instance)
 
-    def test_skipped_store_may_not_claim_an_artifact(
-        self, manifest_schema: dict[str, Any]
-    ) -> None:
+    def test_skipped_store_may_not_claim_an_artifact(self, manifest_schema: dict[str, Any]) -> None:
         instance = _valid_manifest()
         instance["stores"] = [
             {
@@ -192,9 +188,7 @@ class TestBackupManifestSchema:
         with pytest.raises(JsonSchemaValidationError):
             _validate(manifest_schema, instance)
 
-    def test_reason_is_a_closed_token_not_free_text(
-        self, manifest_schema: dict[str, Any]
-    ) -> None:
+    def test_reason_is_a_closed_token_not_free_text(self, manifest_schema: dict[str, Any]) -> None:
         """stderr bodies can echo a connection string; reasons are closed tokens."""
         instance = _valid_manifest()
         instance["stores"] = [
@@ -214,9 +208,7 @@ class TestBackupManifestSchema:
         with pytest.raises(JsonSchemaValidationError):
             _validate(manifest_schema, instance)
 
-    def test_failed_run_outcome_is_not_expressible(
-        self, manifest_schema: dict[str, Any]
-    ) -> None:
+    def test_failed_run_outcome_is_not_expressible(self, manifest_schema: dict[str, Any]) -> None:
         """A manifest is never written for a failed run, so 'failed' is not an outcome."""
         instance = _valid_manifest()
         instance["overall_outcome"] = "failed"
