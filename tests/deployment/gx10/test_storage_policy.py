@@ -159,3 +159,129 @@ def test_synthetic_checkpoint_records_truthful_evidence_and_native_unavailabilit
     assert len(evidence["backup"]["checksums"]) == 6
     assert evidence["restore"]["source_untouched"] is True
     assert evidence["restore"]["measured_rpo_rto"]["accepted"] is True
+
+
+def test_storage_state_persists_hysteresis_across_runtime_instances(tmp_path: Path) -> None:
+    import stat
+    from datetime import UTC, datetime, timedelta
+
+    from scripts.gx10.storage.runtime import StorageRuntime
+
+    state_file = tmp_path / "state" / "storage.json"
+    kwargs = {
+        "scheduled_ingestion_concurrency": 8,
+        "operation_id": "persisted-storage",
+        "trace_id": "d" * 32,
+        "outcome_specific_retention": False,
+    }
+    start = datetime(2026, 8, 29, tzinfo=UTC)
+
+    StorageRuntime(invoke=lambda _action, _payload: True, state_file=state_file).run_cycle(
+        usage_percent=80, now=start, **kwargs
+    )
+    before = StorageRuntime(
+        invoke=lambda _action, _payload: True, state_file=state_file
+    ).run_cycle(usage_percent=75, now=start + timedelta(minutes=1), **kwargs)
+    cleared = StorageRuntime(
+        invoke=lambda _action, _payload: True, state_file=state_file
+    ).run_cycle(usage_percent=75, now=start + timedelta(minutes=16), **kwargs)
+
+    assert before.state == "high"
+    assert cleared.state == "normal"
+    assert stat.S_IMODE(state_file.stat().st_mode) == 0o600
+    assert state_file.stat().st_size <= 4096
+
+
+def test_critical_pause_failure_emits_correlated_alert_and_cli_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import json
+    import sys
+    from collections import namedtuple
+
+    from scripts.gx10.storage import runtime as storage_runtime
+
+    actions = tmp_path / "actions.json"
+    actions.write_text(
+        json.dumps(
+            {
+                "throttle": [sys.executable, "-c", "raise SystemExit(7)"],
+                "cleanup": [sys.executable, "-c", "raise SystemExit(0)"],
+                "alert": [sys.executable, "-c", "raise SystemExit(0)"],
+            }
+        )
+    )
+    Disk = namedtuple("Disk", "total used free")
+    monkeypatch.setattr(storage_runtime.shutil, "disk_usage", lambda _path: Disk(100, 90, 10))
+
+    result = storage_runtime.main(
+        [
+            "--filesystem",
+            str(tmp_path),
+            "--concurrency",
+            "8",
+            "--operation-id",
+            "critical-pause",
+            "--trace-id",
+            "e" * 32,
+            "--actions",
+            str(actions),
+            "--state-file",
+            str(tmp_path / "state.json"),
+        ]
+    )
+
+    assert result != 0
+    evidence = json.loads(capsys.readouterr().out)
+    assert evidence["trace_id"] == "e" * 32
+    assert evidence["action_failures"] == ["critical_pause_action_failed"]
+
+
+def test_allowed_entrypoints_expose_bounded_monitor_and_daily_backup_schedules() -> None:
+    from scripts.gx10.backup.runtime import run_daily_backup_schedule
+    from scripts.gx10.storage.runtime import run_monitor_schedule
+
+    monitor_calls: list[int] = []
+    monitor_sleeps: list[float] = []
+    assert (
+        run_monitor_schedule(
+            lambda: monitor_calls.append(1) or 0,
+            interval_seconds=60,
+            max_cycles=2,
+            sleep=monitor_sleeps.append,
+        )
+        == 0
+    )
+    backup_calls: list[int] = []
+    backup_sleeps: list[float] = []
+    assert (
+        run_daily_backup_schedule(
+            lambda: backup_calls.append(1) or 0,
+            max_runs=2,
+            sleep=backup_sleeps.append,
+        )
+        == 0
+    )
+
+    assert monitor_calls == [1, 1]
+    assert monitor_sleeps == [60]
+    assert backup_calls == [1, 1]
+    assert backup_sleeps == [24 * 60 * 60]
+
+
+def test_storage_entrypoint_uses_only_frozen_operation_stages() -> None:
+    source = (ROOT / "scripts/gx10/storage/runtime.py").read_text()
+
+    assert 'stage="storage_governance"' not in source
+    assert '"stage": "storage_governance"' not in source
+    assert 'stage="cleanup"' in source
+
+
+@pytest.mark.parametrize("name", ["../outside.age", "/tmp/outside.age", "nested/file.age"])
+def test_restore_rejects_manifest_artifact_path_escape(tmp_path: Path, name: str) -> None:
+    from scripts.gx10.backup.runtime import resolve_manifest_artifact_path
+
+    with pytest.raises(ValueError, match="artifact name"):
+        resolve_manifest_artifact_path(tmp_path, name)

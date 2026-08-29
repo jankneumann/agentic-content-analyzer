@@ -351,6 +351,65 @@ def test_restore_refuses_nonisolated_or_source_targets(
         )
 
 
+def test_restore_plan_requires_complete_sources_and_fresh_dedicated_root(
+    tmp_path: Path,
+) -> None:
+    backup = _backup()
+    targets = {
+        component: tmp_path / "isolated" / str(component)
+        for component in backup.BackupComponent
+    }
+    incomplete_sources = {backup.BackupComponent.NEO4J: tmp_path / "production" / "neo4j"}
+
+    with pytest.raises(backup.ComponentInventoryError, match="production sources"):
+        backup.validate_restore_plan(
+            targets=targets,
+            isolated_root=tmp_path / "isolated",
+            production_sources=incomplete_sources,
+        )
+
+    sources = {
+        component: tmp_path / "production" / str(component)
+        for component in backup.BackupComponent
+    }
+    (tmp_path / "isolated").mkdir()
+    with pytest.raises(backup.RestoreIsolationError, match="must not already exist"):
+        backup.validate_restore_plan(
+            targets=targets,
+            isolated_root=tmp_path / "isolated",
+            production_sources=sources,
+        )
+
+
+def test_restore_plan_rejects_root_containing_production_and_preexisting_target(
+    tmp_path: Path,
+) -> None:
+    backup = _backup()
+    isolated = tmp_path / "isolated"
+    targets = {component: isolated / str(component) for component in backup.BackupComponent}
+    sources = {
+        component: tmp_path / "production" / str(component)
+        for component in backup.BackupComponent
+    }
+    sources[backup.BackupComponent.NEO4J] = isolated / "production-neo4j"
+
+    with pytest.raises(backup.RestoreIsolationError, match="production"):
+        backup.validate_restore_plan(
+            targets=targets,
+            isolated_root=isolated,
+            production_sources=sources,
+        )
+
+    sources[backup.BackupComponent.NEO4J] = tmp_path / "production" / "neo4j"
+    targets[backup.BackupComponent.MINIO].mkdir(parents=True)
+    with pytest.raises(backup.RestoreIsolationError, match="already exists"):
+        backup.validate_restore_plan(
+            targets=targets,
+            isolated_root=isolated,
+            production_sources=sources,
+        )
+
+
 def test_restore_validation_failure_is_component_specific_and_source_untouched(
     tmp_path: Path,
 ) -> None:
