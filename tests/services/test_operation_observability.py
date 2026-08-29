@@ -50,6 +50,8 @@ def _context(*, operation_id: str = "41", parent: str | None = None) -> Operatio
         service_instance_id="api-1",
         environment="test",
         release_revision="test-revision",
+        authority_fingerprint=None,
+        ownership_epoch=None,
         stage="submit",
         resource_kind=None,
         resource_key=None,

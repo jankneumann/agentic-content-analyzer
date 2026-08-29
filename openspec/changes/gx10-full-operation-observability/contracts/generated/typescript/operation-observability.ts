@@ -24,6 +24,7 @@ export const CLAIM_GENERATION_MAX = 9223372036854775806n;
 const CANONICAL_DECIMAL = /^(0|[1-9][0-9]*)$/;
 const TRACE_ID = /^[0-9a-f]{32}$/;
 const SPAN_ID = /^[0-9a-f]{16}$/;
+const AUTHORITY_FINGERPRINT = /^[0-9a-f]{64}$/;
 const TRACEPARENT = /^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$/;
 const codePointLength = (value: string): number => Array.from(value).length;
 
@@ -69,7 +70,8 @@ const CONTEXT_KEYS = new Set([
   "schema_version", "operation_id", "root_operation_id", "parent_operation_id",
   "traceparent", "tracestate", "trace_id", "span_id", "claim_generation",
   "attempt_number", "entrypoint", "service_name", "service_instance_id",
-  "environment", "release_revision", "stage", "resource_kind", "resource_key",
+  "environment", "release_revision", "authority_fingerprint", "ownership_epoch",
+  "stage", "resource_kind", "resource_key",
 ]);
 const OPERATION_STAGES = new Set<string>([
   "submit", "queue_wait", "claim", "fetch", "discover", "metadata", "transcript",
@@ -133,6 +135,8 @@ export function parseOperationContextEnvelope(value: unknown): OperationContextE
   boundedString("service_instance_id", 1, 128);
   boundedString("environment", 1, 32);
   boundedString("release_revision", 1, 64);
+  if (context.authority_fingerprint !== null && (typeof context.authority_fingerprint !== "string" || !AUTHORITY_FINGERPRINT.test(context.authority_fingerprint))) throw new TypeError("invalid authority_fingerprint");
+  if (context.ownership_epoch !== null && (typeof context.ownership_epoch !== "string" || !isNonNegativeInt64String(context.ownership_epoch))) throw new TypeError("invalid ownership_epoch");
   if (context.stage !== null && (typeof context.stage !== "string" || !OPERATION_STAGES.has(context.stage))) throw new TypeError("invalid stage");
   if (context.resource_kind !== null && (typeof context.resource_kind !== "string" || codePointLength(context.resource_kind) > 64)) throw new TypeError("invalid resource_kind");
   if (context.resource_key !== null && (typeof context.resource_key !== "string" || codePointLength(context.resource_key) > 128)) throw new TypeError("invalid resource_key");
@@ -143,7 +147,8 @@ export interface OperationContextEnvelope {
   schema_version: 1; operation_id: OperationIdString; root_operation_id: OperationIdString; parent_operation_id: OperationIdString | null;
   traceparent: string; tracestate: string | null; trace_id: TraceIdString; span_id: SpanIdString;
   claim_generation: ClaimGenerationString; attempt_number: PositiveInt64String | null; entrypoint: string; service_name: string;
-  service_instance_id: string; environment: string; release_revision: string; stage: OperationStage | null;
+  service_instance_id: string; environment: string; release_revision: string; authority_fingerprint: string | null;
+  ownership_epoch: NonNegativeInt64String | null; stage: OperationStage | null;
   resource_kind: string | null; resource_key: string | null;
 }
 export interface OperationAttemptSummary {

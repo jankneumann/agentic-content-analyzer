@@ -38,6 +38,8 @@ def operation_span(
         "service.instance.id": context.service_instance_id,
         "deployment.environment": context.environment,
         "service.version": context.release_revision,
+        "operation.authority_fingerprint": context.authority_fingerprint,
+        "operation.ownership_epoch": context.ownership_epoch,
         "resource.kind": context.resource_kind,
         "resource.key": context.resource_key,
     }

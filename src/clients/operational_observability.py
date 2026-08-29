@@ -16,6 +16,7 @@ import hashlib
 import inspect
 import json
 import os
+import re
 import secrets
 from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from contextlib import ExitStack, contextmanager
@@ -188,6 +189,24 @@ def _plain_lifecycle_value(value: Any, *, fallback: str, maximum: int) -> str:
     return fallback
 
 
+def _ownership_context_values(
+    settings: Any, parent_context: OperationContext | None
+) -> tuple[str | None, str | None]:
+    if parent_context is not None:
+        return parent_context.authority_fingerprint, parent_context.ownership_epoch
+    fingerprint = getattr(settings, "gx10_authority_fingerprint", None)
+    if not isinstance(fingerprint, str) or re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None:
+        fingerprint = None
+    epoch = getattr(settings, "gx10_ownership_epoch", None)
+    if (
+        not isinstance(epoch, int)
+        or isinstance(epoch, bool)
+        or not 0 <= epoch <= 9_223_372_036_854_775_807
+    ):
+        epoch = None
+    return fingerprint, str(epoch) if epoch is not None else None
+
+
 def _context_for(
     *,
     operation_id: int,
@@ -202,6 +221,9 @@ def _context_for(
         trace_id = parent_context.trace_id
         span_id = parent_context.span_id
     operation = str(operation_id)
+    authority_fingerprint, ownership_epoch = _ownership_context_values(
+        lifecycle.settings, parent_context
+    )
     return OperationContext(
         schema_version=1,
         operation_id=operation,
@@ -232,6 +254,8 @@ def _context_for(
             fallback="unknown",
             maximum=64,
         ),
+        authority_fingerprint=authority_fingerprint,
+        ownership_epoch=ownership_epoch,
         stage=stage,
         resource_kind=None,
         resource_key=None,

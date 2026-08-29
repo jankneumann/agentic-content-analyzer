@@ -451,6 +451,22 @@ class OperationService:
         release = os.environ.get(
             "RELEASE_REVISION", os.environ.get("RAILWAY_GIT_COMMIT_SHA", "unknown")
         )
+        fingerprint = (
+            parent_context.authority_fingerprint
+            if parent_context is not None
+            else getattr(settings, "gx10_authority_fingerprint", None)
+        )
+        if not isinstance(fingerprint, str) or re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None:
+            fingerprint = None
+        epoch = (
+            parent_context.ownership_epoch
+            if parent_context is not None
+            else getattr(settings, "gx10_ownership_epoch", None)
+        )
+        if isinstance(epoch, int) and not isinstance(epoch, bool):
+            epoch = str(epoch) if 0 <= epoch <= 9_223_372_036_854_775_807 else None
+        elif not isinstance(epoch, str):
+            epoch = None
         return OperationContext(
             schema_version=1,
             operation_id=operation,
@@ -467,6 +483,8 @@ class OperationService:
             service_instance_id=instance,
             environment=settings.environment,
             release_revision=release[:64] or "unknown",
+            authority_fingerprint=fingerprint,
+            ownership_epoch=epoch,
             stage=OperationStage.SUBMIT,
             resource_kind=None,
             resource_key=None,

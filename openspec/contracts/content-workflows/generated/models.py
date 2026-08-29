@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-
 from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -18,7 +17,7 @@ from pydantic import (
     model_validator,
 )
 
-CONTRACT_SHA256 = "56ef2c7a6099873c96edce7e400353a913d55e7f70aec84ab209e57b2bae1cec"
+CONTRACT_SHA256 = "cf0dbd992a3617bd4887ea21e305e9cee0b7eb360f7f3f060fea4ce85a401c55"
 
 TRACEPARENT_PATTERN = re.compile(r"^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$")
 TRACESTATE_KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_*/-]{0,255}$")
@@ -1027,6 +1026,8 @@ class OperationContextEnvelope(StrictModel):
     service_instance_id: Annotated[str, Field(min_length=1, max_length=128)]
     environment: Annotated[str, Field(min_length=1, max_length=32)]
     release_revision: Annotated[str, Field(min_length=1, max_length=64)]
+    authority_fingerprint: Annotated[str | None, Field(max_length=64, pattern="^[0-9a-f]{64}$")]
+    ownership_epoch: Int64NonNegativeString | None
     stage: OperationStage | None
     resource_kind: Annotated[str | None, Field(max_length=64)]
     resource_key: Annotated[str | None, Field(max_length=128)]
@@ -1037,7 +1038,7 @@ class OperationContextEnvelope(StrictModel):
         return _validate_schema_version_one(value)
 
     @model_validator(mode="after")
-    def validate_semantic_context(self) -> "OperationContextEnvelope":
+    def validate_semantic_context(self) -> OperationContextEnvelope:
         match = TRACEPARENT_PATTERN.fullmatch(self.traceparent)
         if match is None:
             raise ValueError("traceparent must be canonical W3C version 00")
@@ -1074,7 +1075,7 @@ class OperationAttemptSummary(StrictModel):
     diagnostics_omitted: Annotated[int, Field(ge=0)]
 
     @model_validator(mode="after")
-    def validate_attempt_number(self) -> "OperationAttemptSummary":
+    def validate_attempt_number(self) -> OperationAttemptSummary:
         if int(self.attempt_number) != int(self.claim_generation) + 1:
             raise ValueError("attempt_number must equal claim_generation + 1")
         return self

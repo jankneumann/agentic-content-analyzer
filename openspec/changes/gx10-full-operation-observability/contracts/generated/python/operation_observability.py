@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import re
-
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
-
 
 TRACEPARENT_PATTERN = re.compile(r"^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$")
 TRACESTATE_KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_*/-]{0,255}$")
@@ -35,17 +33,41 @@ def _is_valid_tracestate(value: str) -> bool:
         keys.add(key)
     return True
 
+
 def _reject_zero_identifier(value: str) -> str:
     if not value.strip("0"):
         raise ValueError("W3C trace and span identifiers must be non-zero")
     return value
 
-OperationIdString = Annotated[str, Field(pattern=r"^([1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$", max_length=19)]
+
+OperationIdString = Annotated[
+    str,
+    Field(
+        pattern=r"^([1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$",
+        max_length=19,
+    ),
+]
 PositiveInt64String = OperationIdString
-ClaimGenerationString = Annotated[str, Field(pattern=r"^(0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6])$", max_length=19)]
-NonNegativeInt64String = Annotated[str, Field(pattern=r"^(0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$", max_length=19)]
-TraceIdString = Annotated[str, Field(pattern=r"^[0-9a-f]{32}$"), AfterValidator(_reject_zero_identifier)]
-SpanIdString = Annotated[str, Field(pattern=r"^[0-9a-f]{16}$"), AfterValidator(_reject_zero_identifier)]
+ClaimGenerationString = Annotated[
+    str,
+    Field(
+        pattern=r"^(0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6])$",
+        max_length=19,
+    ),
+]
+NonNegativeInt64String = Annotated[
+    str,
+    Field(
+        pattern=r"^(0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[01][0-9]{17}|92[01][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7])$",
+        max_length=19,
+    ),
+]
+TraceIdString = Annotated[
+    str, Field(pattern=r"^[0-9a-f]{32}$"), AfterValidator(_reject_zero_identifier)
+]
+SpanIdString = Annotated[
+    str, Field(pattern=r"^[0-9a-f]{16}$"), AfterValidator(_reject_zero_identifier)
+]
 
 
 class StrictModel(BaseModel):
@@ -110,7 +132,9 @@ class OperationContextEnvelope(StrictModel):
     operation_id: OperationIdString
     root_operation_id: OperationIdString
     parent_operation_id: OperationIdString | None
-    traceparent: str = Field(pattern=r"^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$", min_length=55, max_length=55)
+    traceparent: str = Field(
+        pattern=r"^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$", min_length=55, max_length=55
+    )
     tracestate: str | None = Field(max_length=512)
     trace_id: TraceIdString
     span_id: SpanIdString
@@ -121,12 +145,14 @@ class OperationContextEnvelope(StrictModel):
     service_instance_id: str = Field(min_length=1, max_length=128)
     environment: str = Field(min_length=1, max_length=32)
     release_revision: str = Field(min_length=1, max_length=64)
+    authority_fingerprint: Annotated[str | None, Field(pattern=r"^[0-9a-f]{64}$", max_length=64)]
+    ownership_epoch: NonNegativeInt64String | None
     stage: OperationStage | None
     resource_kind: str | None = Field(max_length=64)
     resource_key: str | None = Field(max_length=128)
 
     @model_validator(mode="after")
-    def validate_semantic_context(self) -> "OperationContextEnvelope":
+    def validate_semantic_context(self) -> OperationContextEnvelope:
         match = TRACEPARENT_PATTERN.fullmatch(self.traceparent)
         if match is None:
             raise ValueError("traceparent must be canonical W3C version 00")
@@ -135,7 +161,10 @@ class OperationContextEnvelope(StrictModel):
             raise ValueError("traceparent identifiers must match trace_id and span_id")
         if self.tracestate is not None and not _is_valid_tracestate(self.tracestate):
             raise ValueError("tracestate must use the bounded W3C simple-key subset")
-        if self.attempt_number is not None and int(self.attempt_number) != int(self.claim_generation) + 1:
+        if (
+            self.attempt_number is not None
+            and int(self.attempt_number) != int(self.claim_generation) + 1
+        ):
             raise ValueError("attempt_number must equal claim_generation + 1")
         return self
 
@@ -160,7 +189,7 @@ class OperationAttemptSummary(StrictModel):
     diagnostics_omitted: int = Field(ge=0)
 
     @model_validator(mode="after")
-    def validate_attempt_number(self) -> "OperationAttemptSummary":
+    def validate_attempt_number(self) -> OperationAttemptSummary:
         if int(self.attempt_number) != int(self.claim_generation) + 1:
             raise ValueError("attempt_number must equal claim_generation + 1")
         return self
@@ -229,6 +258,7 @@ class Problem(BaseModel):
     status: int = Field(ge=400, le=599)
     code: str | None = Field(None, max_length=100)
     detail: Any | None = None
+
 
 class OwnershipDryRun(StrictModel):
     target_environment: str = Field(min_length=1, max_length=32)

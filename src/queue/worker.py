@@ -549,6 +549,14 @@ def _attempt_context_from_job(job: dict[str, Any]):
             service_instance_id="legacy-submission",
             environment=settings.environment,
             release_revision="legacy",
+            authority_fingerprint=(
+                settings.gx10_authority_fingerprint if settings.gx10_runtime_enabled else None
+            ),
+            ownership_epoch=(
+                str(settings.gx10_ownership_epoch)
+                if settings.gx10_runtime_enabled and settings.gx10_ownership_epoch is not None
+                else None
+            ),
             stage=OperationStage.SUBMIT,
             resource_kind=None,
             resource_key=None,
@@ -580,6 +588,16 @@ def _attempt_context_from_job(job: dict[str, Any]):
         service_instance_id=instance,
         environment=settings.environment,
         release_revision=release[:64] or "unknown",
+        authority_fingerprint=(
+            settings.gx10_authority_fingerprint
+            if settings.gx10_runtime_enabled
+            else submission.authority_fingerprint
+        ),
+        ownership_epoch=(
+            str(settings.gx10_ownership_epoch)
+            if settings.gx10_runtime_enabled and settings.gx10_ownership_epoch is not None
+            else submission.ownership_epoch
+        ),
         stage=OperationStage.CLAIM,
     )
     return OperationContext.model_validate(values)

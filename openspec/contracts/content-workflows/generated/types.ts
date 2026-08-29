@@ -1,5 +1,5 @@
 // Generated from contracts/openapi/v1.yaml; do not edit.
-export const CONTRACT_SHA256 = "56ef2c7a6099873c96edce7e400353a913d55e7f70aec84ab209e57b2bae1cec" as const;
+export const CONTRACT_SHA256 = "cf0dbd992a3617bd4887ea21e305e9cee0b7eb360f7f3f060fea4ce85a401c55" as const;
 
 export type OperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 export type OperationType = "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
@@ -28,6 +28,7 @@ export const CLAIM_GENERATION_MAX = 9223372036854775806n;
 const CANONICAL_DECIMAL = /^(0|[1-9][0-9]*)$/;
 const TRACE_ID = /^[0-9a-f]{32}$/;
 const SPAN_ID = /^[0-9a-f]{16}$/;
+const AUTHORITY_FINGERPRINT = /^[0-9a-f]{64}$/;
 const TRACEPARENT = /^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$/;
 const TRACESTATE_KEY = /^[a-z0-9][a-z0-9_*/-]{0,255}$/;
 const OPERATION_STAGES = new Set<string>(["submit", "queue_wait", "claim", "fetch", "discover", "metadata", "transcript", "extract", "parse", "filter", "deduplicate", "model", "fallback", "persist", "index", "graph", "deliver", "backup", "restore", "alert", "cleanup", "flush"]);
@@ -35,7 +36,8 @@ const CONTEXT_KEYS = new Set([
   "schema_version", "operation_id", "root_operation_id", "parent_operation_id",
   "traceparent", "tracestate", "trace_id", "span_id", "claim_generation",
   "attempt_number", "entrypoint", "service_name", "service_instance_id",
-  "environment", "release_revision", "stage", "resource_kind", "resource_key",
+  "environment", "release_revision", "authority_fingerprint", "ownership_epoch",
+  "stage", "resource_kind", "resource_key",
 ]);
 const codePointLength = (value: string): number => Array.from(value).length;
 
@@ -52,6 +54,9 @@ export function isClaimGenerationString(value: string): value is ClaimGeneration
 }
 export function isInt64PositiveString(value: string): value is Int64PositiveString {
   return isBoundedDecimal(value, 1n, SIGNED_BIGINT_MAX);
+}
+export function isInt64NonNegativeString(value: string): value is Int64NonNegativeString {
+  return isBoundedDecimal(value, 0n, SIGNED_BIGINT_MAX);
 }
 export function isTraceId(value: string): value is TraceId {
   return TRACE_ID.test(value) && value !== "0".repeat(32);
@@ -113,6 +118,8 @@ export function parseOperationContextEnvelope(value: unknown): OperationContextE
   boundedString("service_instance_id", 1, 128);
   boundedString("environment", 1, 32);
   boundedString("release_revision", 1, 64);
+  if (context.authority_fingerprint !== null && (typeof context.authority_fingerprint !== "string" || !AUTHORITY_FINGERPRINT.test(context.authority_fingerprint))) throw new TypeError("invalid authority_fingerprint");
+  if (context.ownership_epoch !== null && (typeof context.ownership_epoch !== "string" || !isInt64NonNegativeString(context.ownership_epoch))) throw new TypeError("invalid ownership_epoch");
   if (context.stage !== null && (typeof context.stage !== "string" || !OPERATION_STAGES.has(context.stage))) throw new TypeError("invalid stage");
   if (context.resource_kind !== null && (typeof context.resource_kind !== "string" || codePointLength(context.resource_kind) > 64)) throw new TypeError("invalid resource_kind");
   if (context.resource_key !== null && (typeof context.resource_key !== "string" || codePointLength(context.resource_key) > 128)) throw new TypeError("invalid resource_key");
@@ -688,6 +695,8 @@ export interface OperationContextEnvelope {
   service_instance_id: string;
   environment: string;
   release_revision: string;
+  authority_fingerprint: string | null;
+  ownership_epoch: Int64NonNegativeString | null;
   stage: OperationStage | null;
   resource_kind: string | null;
   resource_key: string | null;
