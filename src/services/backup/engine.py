@@ -154,13 +154,25 @@ class BackupEngine:
                 "backup.required": plan.store in REQUIRED_STORES,
             },
         ):
-            result = self._execute_store(
-                plan,
-                config=config,
-                recipient=recipient,
-                tier=tier,
-                stamp=stamp,
-            )
+            try:
+                result = self._execute_store(
+                    plan,
+                    config=config,
+                    recipient=recipient,
+                    tier=tier,
+                    stamp=stamp,
+                )
+            except BaseException:
+                with operational_stage(
+                    "backup.component.outcome",
+                    stage="backup",
+                    attributes={
+                        "backup.component": component,
+                        "operation.outcome": "permanent_failure",
+                    },
+                ):
+                    pass
+                raise
             outcome_attributes: dict[str, Any] = {
                 "backup.component": component,
                 "operation.outcome": str(result.outcome),

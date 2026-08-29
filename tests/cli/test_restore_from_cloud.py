@@ -26,10 +26,9 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-
-from src.cli import restore_commands
 from typer.testing import CliRunner
 
+from src.cli import restore_commands
 from src.cli.app import app
 from src.cli.restore_commands import (
     DatabaseIdentity,
@@ -628,8 +627,9 @@ def test_restore_tool_exception_emits_terminal_phase_outcome(
         lambda *_args, **_kwargs: (_ for _ in ()).throw(FileNotFoundError(secret)),
     )
 
-    with bind_operation_context(_restore_context()), pytest.raises(
-        FileNotFoundError, match="do-not-record"
+    with (
+        bind_operation_context(_restore_context()),
+        pytest.raises(FileNotFoundError, match="do-not-record"),
     ):
         restore_commands._run_restore_phase("download", ["rclone", "copyto"])
 

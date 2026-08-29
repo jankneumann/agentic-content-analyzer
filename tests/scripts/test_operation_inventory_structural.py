@@ -64,6 +64,26 @@ def test_inventory_rejects_uninstrumented_declared_file_even_when_peer_is_covere
 
 
 @pytest.mark.parametrize(
+    "pattern",
+    ["src/services/cloud_stt/**", "src/storage/providers/**"],
+)
+def test_inventory_rejects_new_unclassified_file_in_owned_broad_pattern(
+    tmp_path: Path,
+    pattern: str,
+) -> None:
+    relative = pattern.removesuffix("/**") + "/new_provider.py"
+    candidate = tmp_path / relative
+    candidate.parent.mkdir(parents=True)
+    candidate.write_text("def run(): pass\n")
+    inventory = tmp_path / "inventory.yaml"
+    inventory.write_text(yaml.safe_dump(_minimal_inventory(domain_operations=[pattern])))
+
+    report = validate_frozen_entrypoint_inventory(tmp_path, inventory)
+
+    assert report.uninstrumented == (relative,)
+
+
+@pytest.mark.parametrize(
     ("section", "relative_path"),
     [
         ("shared_boundaries", "src/cli/app.py"),

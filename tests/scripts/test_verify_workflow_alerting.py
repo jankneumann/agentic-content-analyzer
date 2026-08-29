@@ -17,8 +17,8 @@ from scripts.verify_workflow_alerting import (
     validate_evidence,
     verify_workflow_alerting,
 )
+from tests.clients.operational_runtime import install_operational_runtime
 from tests.fixtures.workflow_alert_receiver.app import _redaction_assertions, create_app
-from tests.fixtures.operational_runtime import install_operational_runtime
 
 EVENT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 REVISION = "a" * 40

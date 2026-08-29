@@ -13,7 +13,7 @@ from src.agents.persona.models import PersonaConfig
 from src.agents.specialists.base import SpecialistResult, SpecialistTask
 from src.models.agent_task import AgentTaskStatus
 from src.models.approval_request import RiskLevel
-from tests.fixtures.operational_runtime import install_operational_runtime
+from tests.clients.operational_runtime import install_operational_runtime
 
 # ---------------------------------------------------------------------------
 # Fixtures
