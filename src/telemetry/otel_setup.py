@@ -20,6 +20,18 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+_MAX_RESOURCE_IDENTIFIER_LENGTH = 64
+_MAX_OWNERSHIP_EPOCH = 9_223_372_036_854_775_807
+
+
+def _bounded_resource_identifier(value: object) -> str | None:
+    """Return a bounded printable identifier suitable for OTel resources."""
+    if not isinstance(value, str) or not 1 <= len(value) <= _MAX_RESOURCE_IDENTIFIER_LENGTH:
+        return None
+    if any(ord(character) < 32 or ord(character) == 127 for character in value):
+        return None
+    return value
+
 
 def _parse_headers(headers_str: str | None) -> dict[str, str]:
     """Parse comma-separated key=value header string into dict."""
@@ -58,20 +70,43 @@ def _create_resource() -> Resource:
 
     Returns the same Resource identity for TracerProvider, LoggerProvider,
     and MeterProvider so that traces, logs, and metrics are correlated by
-    service.name and deployment.environment.
+    service.name, deployment.environment, release, and optional ownership
+    identity.
 
     Returns:
         An opentelemetry.sdk.resources.Resource instance
     """
     from opentelemetry.sdk.resources import Resource as _Resource
 
-    return _Resource.create(
-        {
-            "service.name": settings.otel_service_name,
-            "telemetry.sdk.name": "opentelemetry",
-            "deployment.environment": settings.environment,
-        }
+    attributes: dict[str, str] = {
+        "service.name": settings.otel_service_name,
+        "telemetry.sdk.name": "opentelemetry",
+        "deployment.environment": settings.environment,
+    }
+
+    release_revision = _bounded_resource_identifier(
+        getattr(settings, "telemetry_release_revision", None)
     )
+    if release_revision is not None:
+        attributes["service.version"] = release_revision
+
+    authority_fingerprint = getattr(settings, "gx10_authority_fingerprint", None)
+    if (
+        isinstance(authority_fingerprint, str)
+        and len(authority_fingerprint) == 64
+        and all(character in "0123456789abcdef" for character in authority_fingerprint)
+    ):
+        attributes["aca.authority_fingerprint"] = authority_fingerprint
+
+    ownership_epoch = getattr(settings, "gx10_ownership_epoch", None)
+    if (
+        isinstance(ownership_epoch, int)
+        and not isinstance(ownership_epoch, bool)
+        and 0 <= ownership_epoch <= _MAX_OWNERSHIP_EPOCH
+    ):
+        attributes["aca.ownership_epoch"] = str(ownership_epoch)
+
+    return _Resource.create(attributes)
 
 
 def setup_otel_infrastructure(app: FastAPI | None = None) -> None:
