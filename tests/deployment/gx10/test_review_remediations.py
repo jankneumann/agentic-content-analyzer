@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import subprocess
 import sys
@@ -189,6 +190,47 @@ def test_internal_hosts_bypass_proxy_and_roles_have_distinct_exporters() -> None
             "http://langfuse-web:3000/"
         )
         assert "gx10-role-ready" in " ".join(service["healthcheck"]["test"])
+
+
+
+@pytest.mark.parametrize(
+    ("role", "lost_host"),
+    [
+        ("api", "neo4j"),
+        ("worker", "redis"),
+        ("scheduler", "app-postgres"),
+        ("maintenance", "langfuse-web"),
+    ],
+)
+def test_role_readiness_fails_after_mapped_dependency_loss(
+    monkeypatch: pytest.MonkeyPatch, role: str, lost_host: str
+) -> None:
+    path = ROOT / "scripts/gx10/check_role_readiness.py"
+    spec = importlib.util.spec_from_file_location("gx10_role_readiness", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    mapped_hosts = {host for host, _port in module.ROLE_DEPENDENCIES[role]}
+    assert lost_host in mapped_hosts
+
+    class Connection:
+        def __enter__(self) -> "Connection":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    def connect(address: tuple[str, int], timeout: int) -> Connection:
+        assert timeout == 3
+        if address[0] == lost_host:
+            raise OSError("dependency lost after process start")
+        return Connection()
+
+    monkeypatch.setattr(module.socket, "create_connection", connect)
+    monkeypatch.setattr(module.sys, "argv", [str(path), "--role", role])
+    monkeypatch.setenv("HTTPS_PROXY", "http://fixture:fixture@squid:3128")
+    assert module.main() == 1
 
 
 def test_proxy_readiness_requires_fresh_marker_and_authenticated_connect_probe() -> None:
