@@ -5,49 +5,25 @@
   "findings": [
     {
       "id": 1,
-      "type": "contract_mismatch",
-      "criticality": "critical",
-      "description": "Critical: the new composite validators still disagree on the schema-version discriminator. JSON Schema and TypeScript require the numeric integer 1 exactly, but Pydantic's Literal[1] coerces both JSON true and 1.0 to integer 1 even with ConfigDict(strict=True); the reproduced Python ingress probe accepts and normalizes both values. This breaks the promised cross-runtime acceptance boundary at the field that selects the wire contract version.",
-      "resolution": "Add an explicit before-validator that requires type(schema_version) is int and value == 1 (not bool or float) to every versioned Pydantic wire model, rather than relying on Literal equality or global strict mode. Freeze true, 1.0, and \"1\" negative fixtures across JSON Schema, OpenAPI-derived validation, Python, and TypeScript composite parsers.",
-      "disposition": "fix",
-      "file_path": "openspec/changes/gx10-full-operation-observability/contracts/generated/python/operation_observability.py",
-      "line_range": {"start": 51, "end": 100},
+      "type": "correctness",
+      "criticality": "low",
+      "description": "Revision 6 closes every reproduced contract blocker: schema-version numeric parity now matches Draft 2020-12 and JavaScript while rejecting booleans/strings, Python and TypeScript composite validators agree on W3C/arithmetic/bounds behavior, Unicode maxLength uses code points, and every SQL correlation table rejects zero identifiers.",
+      "resolution": "Retain the frozen negative/boundary fixtures and mandatory semantic-parser rule during implementation and contract regeneration.",
+      "disposition": "accept",
+      "file_path": "openspec/changes/gx10-full-operation-observability/plan-findings.md",
+      "line_range": {"start": 105, "end": 113},
       "axis": "correctness",
-      "severity": "critical"
+      "severity": "none"
     },
     {
       "id": 2,
-      "type": "contract_mismatch",
-      "criticality": "medium",
-      "description": "Nit: TypeScript applies string maxLength with UTF-16 code-unit length while JSON Schema and Python count Unicode code points. A service_name containing 100 astral characters satisfies the declared maxLength 100 and is accepted by Python, but the mandatory TypeScript parser counts 200 and rejects the same envelope.",
-      "resolution": "Use Unicode code-point length (for example Array.from(value).length) for every OpenAPI/JSON-Schema maxLength check in the TypeScript parser, or explicitly constrain these identifier fields to an ASCII grammar in all artifacts. Add astral-character boundary fixtures for every bounded free-text field.",
-      "disposition": "fix",
-      "file_path": "openspec/changes/gx10-full-operation-observability/contracts/generated/typescript/operation-observability.ts",
-      "line_range": {"start": 110, "end": 137},
-      "axis": "correctness",
-      "severity": "nit"
-    },
-    {
-      "id": 3,
-      "type": "contract_mismatch",
-      "criticality": "medium",
-      "description": "Nit: audit_log and workflow_terminal_events still accept all-zero trace IDs (and audit request span IDs) even though the canonical W3C contract now rejects zero identifiers and these rows are specified to persist real trace/span IDs. Invalid zero values can therefore enter retained audit/terminal correlation despite being rejected on queue and attempt rows.",
-      "resolution": "Apply the same non-zero trace/span predicates used by pgqueuer_jobs and operation_observation_attempts to audit_log and workflow_terminal_events, and extend the direct-SQL zero-ID migration cases to all correlation tables.",
-      "disposition": "fix",
-      "file_path": "openspec/changes/gx10-full-operation-observability/contracts/sql/001_operation_observability.sql",
-      "line_range": {"start": 204, "end": 227},
-      "axis": "correctness",
-      "severity": "nit"
-    },
-    {
-      "id": 4,
       "type": "architecture",
       "criticality": "low",
-      "description": "Revision 5 correctly documents structural-schema limits, requires composite ingress validation, adds a branded TypeScript parser with semantic checks, closes the SQL JSON-null bypass, and bounds decimal parsing before BigInt conversion.",
-      "resolution": "Retain these corrections while aligning the remaining discriminator and scalar semantics.",
+      "description": "The approved plan now provides an implementation-ready universal observability architecture with bounded durable PostgreSQL correlation, mandatory semantic context validation, full entrypoint coverage, fail-closed GX-10 egress, retention/recovery policy, a valid package DAG, and measurable end-to-end acceptance evidence.",
+      "resolution": "Proceed to implementation under the declared package scopes and preserve the integration and six-hour acceptance gates.",
       "disposition": "accept",
-      "file_path": "openspec/changes/gx10-full-operation-observability/plan-findings.md",
-      "line_range": {"start": 93, "end": 102},
+      "file_path": "openspec/changes/gx10-full-operation-observability/work-packages.yaml",
+      "line_range": {"start": 1, "end": 851},
       "axis": "architecture",
       "severity": "none"
     }
