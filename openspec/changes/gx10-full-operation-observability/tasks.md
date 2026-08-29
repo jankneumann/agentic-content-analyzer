@@ -47,9 +47,9 @@
 
 - [x] 7.1 [M] Using the frozen task-1.1 workflow/provider inventory, write failing trace-topology tests for parsers, workflows, summarization, model and approved external-provider routing/fallback, PostgreSQL, graph, indexing, storage, delivery, and parent/child pipeline outcomes. References: CORR-003, OBS-001, PIPE-001, PIPE-002, PIPE-003, GX10-005, contracts/events/*.schema.json, D2, D4, D5.
 - [x] 7.2 [M] Instrument the inventoried parser, workflow, model/provider, persistence, graph, index, storage, delivery, and pipeline modules with shared stage helpers. Depends on 4.2, 7.1. References: CORR-003, OBS-001, PIPE-001, PIPE-002, D4, D5.
-- [x] 7.3 [S] Using the frozen task-1.1 non-HTTP entrypoint inventory, write failing trace tests for MCP, CLI commands, schedulers, agents, maintenance, cleanup, backups, restores, alerts, every classified operational script, and the pre-PostgreSQL bootstrap spool/import path. References: CORR-004, CORR-014, GX10-005, GX10-007, contracts/events/*.schema.json, D6, D10.
-- [x] 7.4 [M] Instrument inventoried non-HTTP entrypoints with durable root operations, safe metadata, process-health heartbeat or terminal flush evidence, and existing timeout/rate-limit policy. Depends on 4.4, 7.3. References: CORR-004, CORR-014, GX10-005, GX10-007, D6, D10.
-- [x] 7.5 [XS] Checkpoint: run the non-HTTP trace-coverage inventory and fail CI for unallowlisted entrypoints without context; validate restart and flush fixtures. Depends on 7.4. References: CORR-004, CORR-014, OBS-003, OBS-004, D6.
+- [ ] 7.3 [S] Using the frozen task-1.1 non-HTTP entrypoint inventory, write failing trace tests for MCP, CLI commands, schedulers, agents, maintenance, cleanup, backups, restores, alerts, every classified operational script, and the pre-PostgreSQL bootstrap spool/import path. References: CORR-004, CORR-014, GX10-005, GX10-007, contracts/events/*.schema.json, D6, D10.
+- [ ] 7.4 [M] Instrument inventoried non-HTTP entrypoints with durable root operations, safe metadata, process-health heartbeat or terminal flush evidence, and existing timeout/rate-limit policy. Depends on 4.4, 7.3. References: CORR-004, CORR-014, GX10-005, GX10-007, D6, D10.
+- [ ] 7.5 [XS] Checkpoint: run the non-HTTP trace-coverage inventory and fail CI for unallowlisted entrypoints without context; validate restart and flush fixtures. Depends on 7.4. References: CORR-004, CORR-014, OBS-003, OBS-004, D6.
 
 ## 8. GX-10 Production Runtime
 
