@@ -74,12 +74,31 @@ REQUIRED_QUEUE_COLUMNS: set[str] = {
     "retry_count",
     "claim_generation",
     "claim_protocol_version",
+    "root_job_id",
+    "submission_context",
+    "submission_traceparent",
+    "submission_tracestate",
+    "trace_id",
+    "submission_span_id",
 }
 REQUIRED_QUEUE_TABLES: set[str] = {
     "pgqueuer_jobs",
     "content_reconciliation_actions",
     "workflow_terminal_events",
     "workflow_alert_deliveries",
+    "operation_observation_attempts",
+    "telemetry_process_health",
+    "environment_ownership",
+}
+REQUIRED_CORRELATION_COLUMNS: dict[str, set[str]] = {
+    "audit_log": {
+        "trace_id",
+        "request_span_id",
+        "submitted_operation_id",
+        "service_name",
+        "release_revision",
+    },
+    "workflow_terminal_events": {"trace_id"},
 }
 REQUIRED_QUEUE_TRIGGERS: set[tuple[str, str]] = {
     ("pgqueuer_jobs", "pgqueuer_jobs_capture_terminal_event"),
@@ -523,6 +542,25 @@ async def ensure_queue_schema_compatible() -> None:
                 "Queue schema is outdated. Missing columns in 'pgqueuer_jobs': "
                 f"{missing_csv}. Run migrations first."
             )
+
+        for table_name, required_columns in REQUIRED_CORRELATION_COLUMNS.items():
+            rows = await conn.fetch(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = $1
+                """,
+                table_name,
+            )
+            actual_columns = {str(row["column_name"]) for row in rows}
+            missing_columns = sorted(required_columns - actual_columns)
+            if missing_columns:
+                missing_csv = ", ".join(missing_columns)
+                raise RuntimeError(
+                    "Queue schema is outdated. Missing columns in "
+                    f"'{table_name}': {missing_csv}. Run migrations first."
+                )
 
         trigger_rows = await conn.fetch(
             """

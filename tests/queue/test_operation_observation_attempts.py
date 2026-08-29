@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -32,10 +31,16 @@ SPAN_ID = "2" * 16
 
 def _attempt_start(*, generation: int = 0) -> AttemptStart:
     return AttemptStart(
-        operation_id=41, claim_generation=generation, trace_id=TRACE_ID,
-        root_span_id=SPAN_ID, langfuse_observation_id="obs-41",
-        service_name="aca-worker", service_instance_id="worker-1",
-        environment="test", release_revision="abc123", started_at=NOW,
+        operation_id=41,
+        claim_generation=generation,
+        trace_id=TRACE_ID,
+        root_span_id=SPAN_ID,
+        langfuse_observation_id="obs-41",
+        service_name="aca-worker",
+        service_instance_id="worker-1",
+        environment="test",
+        release_revision="abc123",
+        started_at=NOW,
     )
 
 
@@ -57,9 +62,13 @@ async def test_attempt_completion_is_fenced_and_never_upserts() -> None:
     conn = AsyncMock()
     conn.fetchval.return_value = 41
     completion = AttemptCompletion(
-        completed_at=NOW, terminal_stage="persist", outcome="succeeded",
-        retryable=False, telemetry_delivery_state="delivered",
-        diagnostic_codes=("telemetry.export_recovered",), diagnostics_omitted=0,
+        completed_at=NOW,
+        terminal_stage="persist",
+        outcome="succeeded",
+        retryable=False,
+        telemetry_delivery_state="delivered",
+        diagnostic_codes=("telemetry.export_recovered",),
+        diagnostics_omitted=0,
     )
     assert await complete_attempt(conn, 41, 7, completion)
     query = conn.fetchval.await_args.args[0]
@@ -74,9 +83,13 @@ async def test_stale_attempt_start_and_completion_report_false() -> None:
     conn = AsyncMock()
     conn.fetchval.return_value = None
     completion = AttemptCompletion(
-        completed_at=NOW, terminal_stage="cleanup", outcome="retryable_failure",
-        retryable=True, telemetry_delivery_state="degraded",
-        diagnostic_codes=("queue.stale_claim",), diagnostics_omitted=2,
+        completed_at=NOW,
+        terminal_stage="cleanup",
+        outcome="retryable_failure",
+        retryable=True,
+        telemetry_delivery_state="degraded",
+        diagnostic_codes=("queue.stale_claim",),
+        diagnostics_omitted=2,
     )
     assert not await start_attempt(conn, _attempt_start(generation=6))
     assert not await complete_attempt(conn, 41, 6, completion)
@@ -102,22 +115,44 @@ async def test_attempt_queries_are_exact_and_deterministically_ordered() -> None
 async def test_process_health_writer_derives_exact_expiry_classes() -> None:
     conn = AsyncMock()
     conn.fetchrow.return_value = {
-        "environment": "test", "service_name": "aca-worker",
-        "service_instance_id": "worker-1", "release_revision": "abc123",
-        "lifecycle_kind": "long_running", "expires_at": NOW,
-        "required_observability": True, "initialized": True, "status": "healthy",
-        "export_target": "local_langfuse", "last_heartbeat_at": NOW,
-        "last_success_at": NOW, "last_error_at": None, "last_error_code": None,
-        "buffered_count": 0, "buffer_capacity": 100, "dropped_count": 0,
-        "last_flush_at": None, "last_flush_succeeded": None,
+        "environment": "test",
+        "service_name": "aca-worker",
+        "service_instance_id": "worker-1",
+        "release_revision": "abc123",
+        "lifecycle_kind": "long_running",
+        "expires_at": NOW,
+        "required_observability": True,
+        "initialized": True,
+        "status": "healthy",
+        "export_target": "local_langfuse",
+        "last_heartbeat_at": NOW,
+        "last_success_at": NOW,
+        "last_error_at": None,
+        "last_error_code": None,
+        "buffered_count": 0,
+        "buffer_capacity": 100,
+        "dropped_count": 0,
+        "last_flush_at": None,
+        "last_flush_succeeded": None,
     }
     heartbeat = ProcessHealthHeartbeat(
-        environment="test", service_name="aca-worker", service_instance_id="worker-1",
-        release_revision="abc123", lifecycle_kind="long_running",
-        required_observability=True, initialized=True, status="healthy",
-        export_target="local_langfuse", last_heartbeat_at=NOW, last_success_at=NOW,
-        last_error_at=None, last_error_code=None, buffered_count=0,
-        buffer_capacity=100, dropped_count=0, last_flush_at=None,
+        environment="test",
+        service_name="aca-worker",
+        service_instance_id="worker-1",
+        release_revision="abc123",
+        lifecycle_kind="long_running",
+        required_observability=True,
+        initialized=True,
+        status="healthy",
+        export_target="local_langfuse",
+        last_heartbeat_at=NOW,
+        last_success_at=NOW,
+        last_error_at=None,
+        last_error_code=None,
+        buffered_count=0,
+        buffer_capacity=100,
+        dropped_count=0,
+        last_flush_at=None,
         last_flush_succeeded=None,
     )
     await upsert_process_health(conn, heartbeat)
@@ -146,12 +181,22 @@ async def test_process_health_cleanup_is_failure_biased_and_listing_is_bounded()
 
 @pytest.mark.asyncio
 async def test_queue_schema_compatibility_requires_observability_objects(monkeypatch) -> None:
-    rows = [{"table_name": name} for name in queue_setup.REQUIRED_QUEUE_TABLES
-            if name != "operation_observation_attempts"]
+    rows = [
+        {"table_name": name}
+        for name in queue_setup.REQUIRED_QUEUE_TABLES
+        if name != "operation_observation_attempts"
+    ]
     conn = AsyncMock()
     conn.fetch.side_effect = [rows]
-    context = SimpleNamespace(__aenter__=AsyncMock(return_value=conn),
-                              __aexit__=AsyncMock(return_value=None))
+
+    class AsyncContext:
+        async def __aenter__(self):
+            return conn
+
+        async def __aexit__(self, *_args):
+            return None
+
+    context = AsyncContext()
     monkeypatch.setattr(queue_setup, "_queue_connection", lambda: context)
     with pytest.raises(RuntimeError, match="operation_observation_attempts"):
         await queue_setup.ensure_queue_schema_compatible()
@@ -162,8 +207,15 @@ def test_migration_contains_additive_and_reversible_observability_schema() -> No
     assert len(migrations) == 1
     source = migrations[0].read_text()
     for required in (
-        "root_job_id", "submission_context", "operation_observation_attempts",
-        "telemetry_process_health", "environment_ownership", "trace_id",
-        "request_span_id", "submitted_operation_id", "def upgrade()", "def downgrade()",
+        "root_job_id",
+        "submission_context",
+        "operation_observation_attempts",
+        "telemetry_process_health",
+        "environment_ownership",
+        "trace_id",
+        "request_span_id",
+        "submitted_operation_id",
+        "def upgrade()",
+        "def downgrade()",
     ):
         assert required in source
