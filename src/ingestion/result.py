@@ -270,6 +270,8 @@ class SourceFetchResult:
     error_type: str | None = None
     items_failed: int = 0
     item_errors: list[IngestionError] = field(default_factory=list)
+    items_skipped: int = 0
+    items_filtered: int = 0
     redirected_to: str | None = None
     public_source_key: str | None = None
 
@@ -481,6 +483,7 @@ def build_response_from_source_results(
     warnings: list[IngestionWarning] = []
     raw_source_outcomes: list[dict[str, Any]] = []
     items_failed = extra_items_failed
+    items_skipped = 0
 
     for r in source_results:
         source_errors: list[IngestionError] = []
@@ -509,6 +512,8 @@ def build_response_from_source_results(
         source_item_errors = list(getattr(r, "item_errors", []))
         items_failed += source_items_failed
         errors.extend(source_item_errors)
+        items_skipped += getattr(r, "items_skipped", 0)
+        items_skipped += getattr(r, "items_filtered", 0)
         source_errors.extend(source_item_errors)
 
         public_source_key = getattr(r, "public_source_key", None)
@@ -543,6 +548,7 @@ def build_response_from_source_results(
         ),
         items_ingested=items_ingested,
         items_failed=items_failed,
+        items_skipped=items_skipped,
         errors=errors,
         warnings=warnings,
         source_outcomes=[
