@@ -9,7 +9,7 @@
 - [x] 2.2 [M] Implement the additive Alembic migration, queue-bootstrap compatibility checks, indexes, typed attempt/process-health repositories, audit and terminal trace fields, and inactive ownership-fence schema. Depends on 2.1. References: CORR-007, JOB-001, contracts/sql/001_operation_observability.sql, D3.
 - [x] 2.3 [S] Write failing fencing tests that prove a stale claim cannot overwrite a newer attempt or canonical operation state. References: CORR-005, JOB-002, contracts/events/operation-attempt-v1.schema.json, D2, D3.
 - [x] 2.4 [M] Integrate fenced attempt start/completion writes with existing claim-generation transactions; terminal-event writers remain owned by task 5.4. Depends on 2.2, 2.3. References: CORR-005, OPS-003, JOB-001, JOB-002, D2, D3.
-- [ ] 2.5 [XS] Checkpoint: run migration upgrade/downgrade, legacy-row, retention-order, process-health, queue-fencing, SQL lint, and focused PostgreSQL integration suites; record evidence before propagation work. Depends on 2.2, 2.4. References: CORR-005, CORR-007, CORR-008, JOB-001, JOB-002, JOB-003, JOB-004, AUDIT-001, AUDIT-002, D3.
+- [x] 2.5 [XS] Checkpoint: run migration upgrade/downgrade, legacy-row, retention-order, process-health, queue-fencing, SQL lint, and focused PostgreSQL integration suites; record evidence before propagation work. Depends on 2.2, 2.4. References: CORR-005, CORR-007, CORR-008, JOB-001, JOB-002, JOB-003, JOB-004, AUDIT-001, AUDIT-002, D3.
 
 ## 3. Shared Context and Telemetry Safety
 
