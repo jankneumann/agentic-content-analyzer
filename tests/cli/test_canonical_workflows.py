@@ -65,7 +65,9 @@ def _pipeline_handle(outcome: str, *, status: str = "completed") -> OperationHan
 
 def _summary() -> OperationSummary:
     return OperationSummary.model_validate(
-        _handle().model_dump(mode="json", exclude={"resource", "result", "problem"})
+        _handle().model_dump(
+            mode="json", exclude={"resource", "result", "problem", "observability"}
+        )
     )
 
 

@@ -14,6 +14,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from src.clients.operational_observability import operational_entrypoint
+
 
 class Colors:
     """ANSI color codes for terminal output."""
@@ -342,6 +344,7 @@ def print_summary(results: dict[str, bool]) -> None:
         print(f"{Colors.RED}{Colors.BOLD}{total - passed} checks failed{Colors.RESET}")
 
 
+@operational_entrypoint("script.validate_docling", stage="parse", service_name="aca-script")
 def main() -> int:
     """Run all validation checks."""
     parser = argparse.ArgumentParser(description="Validate Docling parser integration")

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from pydantic import BaseModel, ValidationError
 
+from src.clients.operational_observability import operational_entrypoint
 from src.clients.workflow_api_client import ProblemError, WorkflowApiClient
 from src.contracts.workflow_models import Problem
 from src.services.operation_service import OperationConflictError, OperationNotFoundError
@@ -178,7 +179,9 @@ def tool_boundary[**P, T](
         except RuntimeError as exc:
             raise protocol_error("tool_execution_error", str(exc)) from exc
 
-    return guarded
+    return operational_entrypoint(
+        f"mcp.{function.__name__}", stage="submit", service_name="aca-mcp"
+    )(guarded)
 
 
 def request_json(

@@ -10,6 +10,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from src.clients.operational_observability import operational_entrypoint
 from src.release_smoke.browser import (
     AssetManifestError,
     load_retired_routes,
@@ -62,6 +63,9 @@ def _surface(
     }
 
 
+@operational_entrypoint(
+    "maintenance.release_smoke", stage="fetch", service_name="aca-release-smoke"
+)
 def run_release_smoke(
     policy: ProtectedTargetPolicy,
     *,

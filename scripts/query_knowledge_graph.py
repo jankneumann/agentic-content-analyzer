@@ -5,6 +5,7 @@ import asyncio
 import json
 from datetime import datetime, timedelta
 
+from src.clients.operational_observability import operational_entrypoint
 from src.storage.graphiti_client import GraphitiClient
 from src.utils.logging import get_logger, setup_logging
 
@@ -72,6 +73,7 @@ async def get_temporal_trends(
             print(f"{i}. {json.dumps(result, indent=2, default=str)}\n")
 
 
+@operational_entrypoint("script.query_knowledge_graph", stage="graph", service_name="aca-script")
 async def main() -> None:
     """Run knowledge graph queries."""
     parser = argparse.ArgumentParser(description="Query the Graphiti knowledge graph")

@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from src.clients.operational_observability import operational_entrypoint
 from src.services.backup import target as target_module
 from src.services.backup.executor import Stage, run_command, run_pipeline
 from src.services.backup.models import (
@@ -83,6 +84,7 @@ class BackupEngine:
 
     # ------------------------------------------------------------------ run
 
+    @operational_entrypoint("backup.run", stage="backup", service_name="aca-backup")
     def run(self) -> BackupRunResult:
         plans = plan_all(self._settings)
 

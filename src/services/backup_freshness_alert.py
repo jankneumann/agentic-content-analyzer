@@ -24,6 +24,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from src.clients.operational_observability import operational_entrypoint
 from src.services.backup.manifest_reader import BackupFreshness, read_freshness
 from src.utils.logging import get_logger
 
@@ -71,6 +72,7 @@ def event_key_for(settings: Any, moment: datetime) -> str:
     return f"system_check:backup_freshness:{start}"
 
 
+@operational_entrypoint("alert.backup_freshness", stage="alert", service_name="aca-maintenance")
 async def emit_backup_freshness_alert(
     conn: Any,
     *,

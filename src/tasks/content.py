@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from pgqueuer import PgQueuer
 from pgqueuer.models import Job
 
+from src.clients.operational_observability import operational_entrypoint
 from src.utils.logging import get_logger
 
 if TYPE_CHECKING:
@@ -55,6 +56,7 @@ def register_content_tasks(pgq: PgQueuer) -> None:
     """
 
     @pgq.entrypoint("extract_url_content")
+    @operational_entrypoint("task.extract_url_content", stage="extract", service_name="aca-task")
     async def extract_url_content(job: Job) -> None:
         """Extract content from a saved URL.
 
@@ -86,6 +88,7 @@ def register_content_tasks(pgq: PgQueuer) -> None:
             raise
 
     @pgq.entrypoint("process_content")
+    @operational_entrypoint("task.process_content", stage="model", service_name="aca-task")
     async def process_content(job: Job) -> None:
         """Generic content processing task.
 
@@ -120,6 +123,7 @@ def register_content_tasks(pgq: PgQueuer) -> None:
             raise
 
     @pgq.entrypoint("scan_newsletters")
+    @operational_entrypoint("task.scan_newsletters", stage="fetch", service_name="aca-task")
     async def scan_newsletters(job: Job) -> None:
         """Scan email for new newsletters.
 
@@ -151,6 +155,7 @@ def register_content_tasks(pgq: PgQueuer) -> None:
             raise
 
     @pgq.entrypoint("summarize_content")
+    @operational_entrypoint("task.summarize_content", stage="model", service_name="aca-task")
     async def summarize_content(job: Job) -> None:
         """Summarize a content item.
 
@@ -226,6 +231,7 @@ def register_content_tasks(pgq: PgQueuer) -> None:
             raise last_error
 
     @pgq.entrypoint("ingest_content")
+    @operational_entrypoint("task.ingest_content", stage="fetch", service_name="aca-task")
     async def ingest_content(job: Job) -> None:
         """Ingest content from a source.
 

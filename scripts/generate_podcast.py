@@ -26,6 +26,7 @@ import argparse
 import asyncio
 from pathlib import Path
 
+from src.clients.operational_observability import operational_entrypoint
 from src.config import settings
 from src.models.podcast import (
     PodcastLength,
@@ -248,6 +249,7 @@ def get_voice_persona(speaker: str, gender: str) -> VoicePersona:
         return VoicePersona.SAM_MALE if gender.lower() == "male" else VoicePersona.SAM_FEMALE
 
 
+@operational_entrypoint("script.generate_podcast", stage="deliver", service_name="aca-script")
 async def generate_podcast(
     digest_id: int | None = None,
     script_id: int | None = None,

@@ -29,6 +29,7 @@ from src.agents.persona.loader import PersonaLoader
 from src.agents.persona.models import PersonaConfig
 from src.agents.registry import SpecialistRegistry
 from src.agents.specialists.base import SpecialistResult, SpecialistTask
+from src.clients.operational_observability import operational_entrypoint
 from src.models.agent_task import AgentTaskStatus
 from src.telemetry.agent_metrics import (
     record_agent_task,
@@ -93,6 +94,7 @@ class Conductor:
         self.persona_loader = persona_loader or PersonaLoader()
         self.llm_router = llm_router
 
+    @operational_entrypoint("agent.execute_task", stage="model", service_name="aca-agent")
     async def execute_task(
         self,
         task_id: str,

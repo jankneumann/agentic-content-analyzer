@@ -18,6 +18,7 @@ from sqlalchemy import Select, and_, delete, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.orm import Session
 
+from src.clients.operational_observability import operational_entrypoint
 from src.contracts.workflow_alert_models import WorkflowAlertEnvelopeV1
 from src.models.workflow_alert import (
     WorkflowAlertDelivery,
@@ -331,6 +332,9 @@ def record_delivery_failure(
     return status if matched else None
 
 
+@operational_entrypoint(
+    "maintenance.alert_cleanup", stage="cleanup", service_name="aca-maintenance"
+)
 def cleanup_terminal_deliveries(
     db: Session,
     *,

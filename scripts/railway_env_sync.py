@@ -21,6 +21,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from src.clients.operational_observability import bootstrap_entrypoint
+
 # ANSI colors
 RED = "\033[0;31m"
 GREEN = "\033[0;32m"
@@ -192,6 +194,7 @@ def print_service_instructions() -> None:
     print("    4. Run: python scripts/railway_env_sync.py --apply")
 
 
+@bootstrap_entrypoint("bootstrap.railway_env_sync")
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Sync environment variables from .env to Railway",

@@ -85,6 +85,7 @@ from src.cli.workflow_commands import (
     summarize_app,
     theme_app,
 )
+from src.clients.operational_observability import install_cli_telemetry
 
 
 class CanonicalCommandGroup(TyperGroup):
@@ -232,3 +233,4 @@ def main_callback(
     from src.utils.logging import setup_logging
 
     setup_logging()
+    install_cli_telemetry(ctx)

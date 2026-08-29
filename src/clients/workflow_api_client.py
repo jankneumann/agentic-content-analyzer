@@ -13,6 +13,7 @@ from typing import Any, TypeVar
 import httpx
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
+from src.clients.operational_observability import operational_stage
 from src.contracts.workflow_models import (
     AudioDigestRequest,
     CapabilityDocument,
@@ -106,6 +107,15 @@ class WorkflowApiClient:
     def close(self) -> None:
         self._client.close()
 
+    def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        """Issue one nested safe provider span without recording URL or payload."""
+        with operational_stage(
+            "provider.workflow_api",
+            stage="fetch",
+            attributes={"http.request.method": method, "provider": "workflow_api"},
+        ):
+            return self._client.request(method, path, **kwargs)
+
     def upload(
         self,
         path: str | Path,
@@ -121,7 +131,8 @@ class WorkflowApiClient:
             if value
         }
         with file_path.open("rb") as stream:
-            response = self._client.post(
+            response = self._request(
+                "POST",
                 "/api/v1/uploads",
                 files={"file": (file_path.name, stream, media_type)},
                 data=data,
@@ -143,7 +154,8 @@ class WorkflowApiClient:
             for key, value in {"title": title, "publication": publication}.items()
             if value
         }
-        response = self._client.post(
+        response = self._request(
+            "POST",
             "/api/v1/uploads",
             files={"file": (filename, content, media_type)},
             data=data,
@@ -159,7 +171,7 @@ class WorkflowApiClient:
         json: Any | None = None,
     ) -> Any:
         """Call an authenticated JSON endpoint with canonical Problem handling."""
-        response = self._client.request(method, path, params=params, json=json)
+        response = self._request(method, path, params=params, json=json)
         return self._decode_json(response)
 
     def submit_ingestion(
@@ -241,7 +253,8 @@ class WorkflowApiClient:
         params = _cursor_page_params(limit=limit, cursor=cursor)
         if status is not None:
             params["status"] = status
-        response = self._client.get(
+        response = self._request(
+            "GET",
             "/api/v1/operations",
             params=params,
         )
@@ -257,7 +270,8 @@ class WorkflowApiClient:
             if isinstance(request, ContentReconciliationRequest)
             else ContentReconciliationRequest.model_validate(request)
         )
-        response = self._client.post(
+        response = self._request(
+            "POST",
             "/api/v1/operations/reconcile-content",
             json=validated.model_dump(mode="json", exclude_none=True),
         )
@@ -307,7 +321,7 @@ class WorkflowApiClient:
             "created_before": created_before.isoformat() if created_before is not None else None,
         }
         params.update({key: value for key, value in optional_params.items() if value is not None})
-        response = self._client.get("/api/v1/ingestions", params=params)
+        response = self._request("GET", "/api/v1/ingestions", params=params)
         return self._decode(response, IngestionHistoryPage)
 
     def collect_ingestion_history(
@@ -351,8 +365,8 @@ class WorkflowApiClient:
         return IngestionHistoryTraversal(data=data, next_cursor=next_cursor, truncated=True)
 
     def get_operation(self, operation_id: str, *, wait_seconds: int = 0) -> OperationHandle:
-        response = self._client.get(
-            f"/api/v1/operations/{operation_id}", params={"wait_seconds": wait_seconds}
+        response = self._request(
+            "GET", f"/api/v1/operations/{operation_id}", params={"wait_seconds": wait_seconds}
         )
         return self._decode(response, OperationHandle)
 
@@ -377,16 +391,17 @@ class WorkflowApiClient:
 
     def retry_operation(self, operation_id: str) -> OperationHandle:
         return self._decode(
-            self._client.post(f"/api/v1/operations/{operation_id}/retry"), OperationHandle
+            self._request("POST", f"/api/v1/operations/{operation_id}/retry"), OperationHandle
         )
 
     def cancel_operation(self, operation_id: str) -> OperationHandle:
         return self._decode(
-            self._client.post(f"/api/v1/operations/{operation_id}/cancel"), OperationHandle
+            self._request("POST", f"/api/v1/operations/{operation_id}/cancel"), OperationHandle
         )
 
     def get_capabilities(self, *, limit: int = 50, cursor: str | None = None) -> CapabilityDocument:
-        response = self._client.get(
+        response = self._request(
+            "GET",
             "/api/v1/capabilities",
             params=_cursor_page_params(limit=limit, cursor=cursor),
         )
@@ -395,7 +410,8 @@ class WorkflowApiClient:
     def list_configured_sources(
         self, *, limit: int = 50, cursor: str | None = None
     ) -> ConfiguredSourcePage:
-        response = self._client.get(
+        response = self._request(
+            "GET",
             "/api/v1/configured-sources",
             params=_cursor_page_params(limit=limit, cursor=cursor),
         )
@@ -415,7 +431,8 @@ class WorkflowApiClient:
         self, path: str, request: BaseModel, *, idempotency_key: str | None
     ) -> OperationHandle:
         headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
-        response = self._client.post(
+        response = self._request(
+            "POST",
             path,
             json=request.model_dump(mode="json", exclude_none=True),
             headers=headers,

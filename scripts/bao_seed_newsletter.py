@@ -47,6 +47,8 @@ from urllib.parse import urlparse
 
 import yaml
 
+from src.clients.operational_observability import bootstrap_entrypoint
+
 
 def _repo_root() -> Path:
     """Find the repository root."""
@@ -314,6 +316,7 @@ def seed_db_engine(
     print("Created database role: newsletter-app (TTL: 1h, max: 24h)")
 
 
+@bootstrap_entrypoint("bootstrap.bao_seed_newsletter")
 def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Seed OpenBao with newsletter-aggregator secrets.")

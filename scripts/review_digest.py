@@ -6,6 +6,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from src.clients.operational_observability import operational_entrypoint
 from src.services.review_service import ReviewService
 from src.utils.digest_formatter import DigestFormatter
 from src.utils.logging import get_logger, setup_logging
@@ -372,6 +373,7 @@ async def quick_review(
         return False
 
 
+@operational_entrypoint("script.review_digest", stage="deliver", service_name="aca-script")
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(

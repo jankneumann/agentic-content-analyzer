@@ -16,6 +16,8 @@ from typing import Any
 import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field
 
+from src.clients.operational_observability import operational_entrypoint
+
 logger = logging.getLogger(__name__)
 
 # Weekday name mapping for cron expressions
@@ -246,6 +248,7 @@ class AgentScheduler:
 
         return due
 
+    @operational_entrypoint("scheduler.tick", stage="submit", service_name="aca-scheduler")
     async def tick(self, now: datetime | None = None) -> list[str]:
         """Check for due schedules and enqueue tasks.
 
