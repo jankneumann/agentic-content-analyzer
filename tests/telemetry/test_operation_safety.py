@@ -9,12 +9,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from src.contracts.operation_context import parse_operation_context
 from src.telemetry.operation_spans import (
     generation_metadata,
     operation_span,
 )
-
-from src.contracts.operation_context import parse_operation_context
 from src.telemetry.providers.langfuse import LangfuseProvider
 from src.telemetry.safety import (
     REDACTED,
@@ -276,6 +275,7 @@ def test_operation_span_adds_attempt_generation_and_bounded_metadata() -> None:
     name, attributes = provider.calls[0]
     assert name == "operation.fetch"
     assert attributes["operation.id"] == "42"
+    assert "operation.parent_id" not in attributes
     assert attributes["operation.claim_generation"] == "2"
     assert attributes["operation.attempt_number"] == "3"
     assert attributes["operation.stage"] == "fetch"

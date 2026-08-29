@@ -117,10 +117,13 @@ def setup_otel_infrastructure(app: FastAPI | None = None) -> None:
 
     # Configure trace exporter
     endpoint, headers = _build_exporter_config("/v1/traces")
-    exporter = OTLPSpanExporter(
+    raw_exporter = OTLPSpanExporter(
         endpoint=endpoint,
         headers=headers,
     )
+    from src.telemetry.safety import MaskingSpanExporter
+
+    exporter = MaskingSpanExporter(raw_exporter)
 
     # Only set global tracer provider if not already set by an LLM provider
     # (Opik and OTel providers set their own TracerProvider in setup())

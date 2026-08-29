@@ -19,12 +19,23 @@ if TYPE_CHECKING:
 
     from fastapi import FastAPI
 
+from src.telemetry.operation_spans import generation_metadata
+from src.telemetry.safety import (
+    SelectedTraceValue,
+    TelemetryMasker,
+    export_selected_trace_value,
+    safe_span_attributes,
+)
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-def _sanitize_metadata(metadata: dict[str, Any] | None) -> dict[str, str]:
+def _sanitize_metadata(
+    metadata: dict[str, Any] | None,
+    *,
+    masker: TelemetryMasker | None = None,
+) -> dict[str, str]:
     """Sanitize metadata to dict[str, str] with 200-char value limit.
 
     Langfuse SDK v4 requires metadata values to be strings with a
@@ -34,7 +45,8 @@ def _sanitize_metadata(metadata: dict[str, Any] | None) -> dict[str, str]:
     if not metadata:
         return {}
     result: dict[str, str] = {}
-    for key, value in metadata.items():
+    masked = (masker or TelemetryMasker.from_environment()).mask(metadata)
+    for key, value in masked.items():
         str_value = str(value)
         if len(str_value) > 200:
             str_value = str_value[:197] + "..."
@@ -63,6 +75,7 @@ class LangfuseProvider:
         sample_rate: float = 1.0,
         debug: bool = False,
         environment: str | None = None,
+        mask_canaries: tuple[str, ...] = (),
     ) -> None:
         self._public_key = public_key
         self._secret_key = secret_key
@@ -75,6 +88,7 @@ class LangfuseProvider:
         self._client: Any = None
         self._setup_complete = False
         self._instrumentor_active = False
+        self._masker = TelemetryMasker(canaries=mask_canaries)
 
     @property
     def name(self) -> str:
@@ -111,6 +125,7 @@ class LangfuseProvider:
                 "host": self._base_url,
                 "sample_rate": self._sample_rate,
                 "debug": self._debug,
+                "mask": self._masker.mask,
             }
             if self._public_key:
                 kwargs["public_key"] = self._public_key
@@ -172,6 +187,8 @@ class LangfuseProvider:
         duration_ms: float,
         max_tokens: int | None = None,
         metadata: dict[str, Any] | None = None,
+        trace_input: SelectedTraceValue | None = None,
+        trace_output: SelectedTraceValue | None = None,
     ) -> None:
         """Record an LLM call as a Langfuse generation observation.
 
@@ -203,18 +220,31 @@ class LangfuseProvider:
                     "input": input_tokens,
                     "output": output_tokens,
                 },
-                "metadata": {
-                    "provider": provider,
-                    **_sanitize_metadata(metadata),
-                },
+                "metadata": _sanitize_metadata(
+                    generation_metadata(
+                        model=model,
+                        provider=provider,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        duration_ms=duration_ms,
+                        max_tokens=max_tokens,
+                        extra=metadata,
+                        masker=self._masker,
+                    ),
+                    masker=self._masker,
+                ),
             }
 
-            if self._log_prompts:
-                gen_kwargs["input"] = user_prompt[:1000]
-                gen_kwargs["output"] = response_text[:1000]
-
-            if max_tokens is not None:
-                gen_kwargs["metadata"]["max_tokens"] = str(max_tokens)
+            selected_input = export_selected_trace_value(
+                trace_input, expected_kind="input", masker=self._masker
+            )
+            selected_output = export_selected_trace_value(
+                trace_output, expected_kind="output", masker=self._masker
+            )
+            if selected_input is not None:
+                gen_kwargs["input"] = selected_input
+            if selected_output is not None:
+                gen_kwargs["output"] = selected_output
 
             with self._client.start_as_current_observation(**gen_kwargs):
                 pass  # Observation is created and closed immediately
@@ -254,7 +284,10 @@ class LangfuseProvider:
             with self._client.start_as_current_observation(
                 name=name,
                 as_type="span",
-                metadata=_sanitize_metadata(attributes),
+                metadata=_sanitize_metadata(
+                    safe_span_attributes(attributes, masker=self._masker),
+                    masker=self._masker,
+                ),
             ) as observation:
                 yield observation
         except Exception as e:
