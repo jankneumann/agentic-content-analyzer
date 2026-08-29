@@ -11,7 +11,6 @@ import pytest
 from pydantic import ValidationError
 
 from src.contracts.operation_context import (
-    OperationContext,
     OperationOutcome,
     OperationStage,
     bind_operation_context,
@@ -205,7 +204,7 @@ def test_checked_in_typescript_validator_covers_runtime_parity_rules() -> None:
         "parseOperationContextEnvelope",
         "SIGNED_BIGINT_MAX",
         "CLAIM_GENERATION_MAX",
-        "hasCanonicalMatchingTraceparent",
+        "carrier[1] !== context.trace_id || carrier[2] !== context.span_id",
         "isValidTracestate",
         "BigInt(context.attempt_number) !== BigInt(context.claim_generation) + 1n",
         "Array.from(value).length",
