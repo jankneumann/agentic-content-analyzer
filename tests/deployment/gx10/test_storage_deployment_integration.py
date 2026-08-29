@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-
 
 ROOT = Path(__file__).parents[3]
 DEPLOY = ROOT / "deploy/gx10"
@@ -167,5 +169,91 @@ def test_new_openbao_scripts_are_bash_syntax_clean() -> None:
         DEPLOY / "openbao/render-backup-secrets.sh",
     ]
     for script in scripts:
-        completed = subprocess.run(["bash", "-n", script], capture_output=True, text=True)
+        completed = subprocess.run(["/usr/bin/bash", "-n", script], capture_output=True, text=True)
         assert completed.returncode == 0, completed.stderr
+
+
+def test_backup_renderer_writes_separated_mode_0600_material(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    backup_runtime = runtime / "backup"
+    backup_runtime.mkdir(parents=True)
+    (backup_runtime / "backup-openbao-token").write_text("token")
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    active = "age1" + "a" * 58
+    retained = "age1" + "b" * 58
+    response = {
+        "data": {
+            "data": {
+                "backup_age_recipient": active,
+                "backup_age_retained_recipients": [retained],
+                "backup_age_identities": {
+                    active: "AGE-SECRET-KEY-ACTIVE",
+                    retained: "AGE-SECRET-KEY-RETAINED",
+                },
+            }
+        }
+    }
+    curl = tools / "curl"
+    curl.write_text("#!/usr/bin/env bash\nprintf '%s\\n' '" + json.dumps(response) + "'\n")
+    curl.chmod(0o700)
+
+    result = subprocess.run(
+        [DEPLOY / "openbao/render-backup-secrets.sh"],
+        env=os.environ
+        | {
+            "PATH": f"{tools}:{os.environ['PATH']}",
+            "GX10_RUNTIME_DIR": str(runtime),
+            "GX10_BAO_ADDR": "http://openbao.test/v1",
+        },
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    backup = backup_runtime / "backup-age.json"
+    restore = backup_runtime / "restore-age.json"
+    assert stat.S_IMODE(backup.stat().st_mode) == 0o600
+    assert stat.S_IMODE(restore.stat().st_mode) == 0o600
+    assert json.loads(backup.read_text())["identities"] == {}
+    assert set(json.loads(restore.read_text())["identities"]) == {active, retained}
+    assert not (runtime / "common.env").exists()
+    assert not (runtime / "worker.env").exists()
+
+
+def test_scheduled_units_never_hardcode_operation_or_trace_identity() -> None:
+    for unit in (
+        "aca-gx10-storage.service",
+        "aca-gx10-backup.service",
+        "aca-gx10-restore-drill.service",
+    ):
+        source = (DEPLOY / "systemd" / unit).read_text()
+        assert "--operation-id" not in source
+        assert "--trace-id" not in source
+        assert "00000000000000000000000000000000" not in source
+
+
+def test_scheduled_entrypoints_derive_one_identity_from_durable_roots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scripts.gx10.backup import runtime as backup_runtime
+    from scripts.gx10.storage import runtime as storage_runtime
+
+    context = SimpleNamespace(operation_id="701", trace_id="a" * 32)
+    monkeypatch.setattr(storage_runtime, "get_current_operation_context", lambda: context)
+    monkeypatch.setattr(backup_runtime, "get_current_operation_context", lambda: context)
+
+    assert storage_runtime._runtime_identity(None, None) == ("701", "a" * 32)
+    assert backup_runtime._maintenance_correlation(
+        None, None
+    ) == backup_runtime.MaintenanceCorrelation(
+        operation_id="701",
+        trace_id="a" * 32,
+    )
+    assert storage_runtime.scheduled_main.__aca_operational_entrypoint__ == (
+        "gx10.storage.monitor",
+        "cleanup",
+        "aca-gx10-storage",
+    )
+    assert backup_runtime._scheduled_backup.__aca_operational_entrypoint__[1] == "backup"
+    assert backup_runtime._scheduled_restore.__aca_operational_entrypoint__[1] == "restore"
