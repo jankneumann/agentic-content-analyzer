@@ -75,3 +75,42 @@ Planned a contract-first correlation spine for every meaningful backend operatio
 
 ### Context
 Consolidated two independent reviews and resolved all high/medium plan findings. The revision now freezes complete correlation, pagination, process-health, persistence, security, runtime, retention, backup, coexistence, validation, and package-scope contracts while preserving a cutover-ready-only boundary.
+
+---
+
+## Phase: Implementation (2026-08-29)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Preserve canonical workflow compatibility through an additive merge** `architectural: cross-service-operation-correlation` — The exact-operation response keeps every legacy OperationHandle field and adds nullable observability, while operator-only endpoints and schemas are additive.
+2. **Generate composite validators from the durable OpenAPI source** `architectural: cross-service-operation-correlation` — Structural schemas cannot enforce carrier identity or generation arithmetic; the generator now emits matching Python and TypeScript semantic parsers.
+
+### Alternatives Considered
+- Hand-copy the approved review stubs into runtime modules: rejected because That would make drift checks non-deterministic and leave the durable OpenAPI disconnected from runtime types.
+
+### Trade-offs
+- Accepted A small amount of target-specific semantic generation over A purely generic structural generator because W3C identity equality, BIGINT arithmetic, exact numeric versions, and Unicode code-point bounds require composite logic.
+
+### Open Questions
+- [ ] wp-contracts has no context_impact declaration, so its context checkpoint status remains unmigrated.
+
+### Completed Work
+- Task 1.1: merged durable OpenAPI, SQL, and event contracts and added CI drift/nullability validation.
+- Task 1.2: generated canonical/runtime Python and branded TypeScript models with mandatory context parsers.
+- Verified 163 contract tests, workflow-contract drift, strict OpenSpec, Ruff, TypeScript compilation, and whitespace.
+
+### Next Steps
+- Implement wp-db-projection and wp-telemetry-context from the now-frozen contract revision.
+- Preserve direct-SQL negative fixtures and generated validator parity in downstream packages.
+
+### Relevant Files
+- `openspec/contracts/content-workflows/openapi/v1.yaml` — Durable additive observability API contract
+- `openspec/contracts/content-workflows/db/schema.sql` — Durable GX-10 correlation DDL contract
+- `scripts/generate_workflow_contracts.py` — Schema validation and semantic model generator
+- `src/contracts/workflow_models.py` — Generated Python runtime models and parser
+- `web/src/generated/workflow-contracts.ts` — Generated branded TypeScript models and parser
+- `tests/contract/test_canonical_workflow_contracts.py` — Contract, parity, and boundary tests
+
+### Context
+Completed the root wp-contracts slice: the approved GX-10 OpenAPI, SQL, and event contracts now live in the durable registry, and canonical Python/TypeScript outputs include mandatory semantic ingress validation. Remaining implementation packages are intentionally untouched.

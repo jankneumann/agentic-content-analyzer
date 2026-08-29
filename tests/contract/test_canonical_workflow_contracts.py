@@ -877,6 +877,68 @@ def test_database_contract_declares_provenance_and_queue_payload() -> None:
         assert fragment in schema
 
 
+def _valid_operation_context() -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "operation_id": "9223372036854775807",
+        "root_operation_id": "1",
+        "parent_operation_id": None,
+        "traceparent": "00-11111111111111111111111111111111-2222222222222222-01",
+        "tracestate": "vendor=value",
+        "trace_id": "11111111111111111111111111111111",
+        "span_id": "2222222222222222",
+        "claim_generation": "9223372036854775806",
+        "attempt_number": "9223372036854775807",
+        "entrypoint": "api.submit",
+        "service_name": "api",
+        "service_instance_id": "instance-1",
+        "environment": "test",
+        "release_revision": "a" * 40,
+        "stage": "submit",
+        "resource_kind": None,
+        "resource_key": "😀" * 128,
+    }
+
+
+def test_generated_python_operation_context_parser_enforces_composite_semantics() -> None:
+    module = _generated_models()
+    payload = _valid_operation_context()
+
+    parsed = module.parse_operation_context_envelope(payload)
+    assert parsed.operation_id == "9223372036854775807"
+    assert module.parse_operation_context_envelope({**payload, "schema_version": 1.0})
+
+    invalid_payloads = (
+        {**payload, "schema_version": True},
+        {**payload, "schema_version": "1"},
+        {**payload, "operation_id": "9223372036854775808"},
+        {**payload, "claim_generation": "9223372036854775807"},
+        {**payload, "trace_id": "0" * 32},
+        {**payload, "span_id": "0" * 16},
+        {**payload, "traceparent": "00-33333333333333333333333333333333-2222222222222222-01"},
+        {**payload, "attempt_number": "1"},
+        {**payload, "tracestate": "vendor=value,vendor=duplicate"},
+        {**payload, "resource_key": "😀" * 129},
+        {**payload, "unexpected": True},
+    )
+    for invalid in invalid_payloads:
+        with pytest.raises(ValidationError):
+            module.parse_operation_context_envelope(invalid)
+
+
+def test_generated_typescript_contract_has_brands_and_mandatory_context_parser() -> None:
+    source = (CONTRACTS / "generated/types.ts").read_text()
+    runtime = (ROOT / "web/src/generated/workflow-contracts.ts").read_text()
+
+    for generated in (source, runtime):
+        assert 'type Brand<Value, Name extends string>' in generated
+        assert 'export type OperationId = Brand<string, "OperationId">;' in generated
+        assert 'export type TraceId = Brand<string, "TraceId">;' in generated
+        assert 'export function parseOperationContextEnvelope(' in generated
+        assert 'BigInt(context.attempt_number)' in generated
+        assert 'Array.from(value).length' in generated
+
+
 def test_generated_contract_files_have_no_drift() -> None:
     result = subprocess.run(
         [sys.executable, str(GENERATOR), "--check"],

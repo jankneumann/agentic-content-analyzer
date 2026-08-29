@@ -1,7 +1,7 @@
 ## 1. Contract Freeze
 
 - [x] 1.1 [S] Freeze a checked-in meaningful-operation entrypoint/provider inventory and merge the approved delta into the durable `openspec/contracts/content-workflows/` registry and add CI validation for OpenAPI, SQL, event JSON Schemas, cross-artifact nullability, and generated stub drift. References: CORR-001, CORR-004, CORR-009, contracts/operation-entrypoints.yaml, contracts/openapi/v1.yaml, contracts/sql/001_operation_observability.sql, contracts/events/*.schema.json, D1, D4, D12.
-- [ ] 1.2 [S] Regenerate durable Python and branded TypeScript workflow models plus mandatory composite ingress parsers, including `src/contracts/workflow_models.py` and `web/src/generated/workflow-contracts.ts`, from the frozen contracts without breaking legacy fields. Depends on 1.1. References: OPS-002, contracts/generated/python/operation_observability.py, contracts/generated/typescript/operation-observability.ts, D7, D12.
+- [x] 1.2 [S] Regenerate durable Python and branded TypeScript workflow models plus mandatory composite ingress parsers, including `src/contracts/workflow_models.py` and `web/src/generated/workflow-contracts.ts`, from the frozen contracts without breaking legacy fields. Depends on 1.1. References: OPS-002, contracts/generated/python/operation_observability.py, contracts/generated/typescript/operation-observability.ts, D7, D12.
 
 ## 2. PostgreSQL Correlation Projection
 

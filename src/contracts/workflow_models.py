@@ -2,13 +2,60 @@
 
 from __future__ import annotations
 
+import re
+
 from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import AnyUrl, BaseModel, ConfigDict, Field
+from pydantic import (
+    AfterValidator,
+    AnyUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 CONTRACT_SHA256 = "56ef2c7a6099873c96edce7e400353a913d55e7f70aec84ab209e57b2bae1cec"
+
+TRACEPARENT_PATTERN = re.compile(r"^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$")
+TRACESTATE_KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_*/-]{0,255}$")
+
+
+def _reject_zero_identifier(value: str) -> str:
+    if not value.strip("0"):
+        raise ValueError("W3C trace and span identifiers must be non-zero")
+    return value
+
+
+def _validate_schema_version_one(value: Any) -> int:
+    if isinstance(value, bool) or type(value) not in (int, float) or value != 1:
+        raise ValueError("schema_version must be the JSON number 1")
+    return 1
+
+
+def _is_valid_tracestate(value: str) -> bool:
+    if not 1 <= len(value) <= 512:
+        return False
+    members = value.split(",")
+    if not 1 <= len(members) <= 32:
+        return False
+    keys: set[str] = set()
+    for member in members:
+        if "=" not in member:
+            return False
+        key, member_value = member.split("=", 1)
+        if TRACESTATE_KEY_PATTERN.fullmatch(key) is None or key in keys:
+            return False
+        if not 1 <= len(member_value) <= 256:
+            return False
+        if any(not 0x21 <= ord(char) <= 0x7E or char in ",=" for char in member_value):
+            return False
+        keys.add(key)
+    return True
+
 
 OperationStatus = Literal["queued", "in_progress", "completed", "failed", "cancelled"]
 OperationType = Literal[
@@ -64,8 +111,8 @@ ContentReconciliationReason = Literal[
     "revalidation_conflict",
     "apply_failed",
 ]
-TraceId = str
-SpanId = str
+TraceId = Annotated[str, Field(pattern=r"^[0-9a-f]{32}$"), AfterValidator(_reject_zero_identifier)]
+SpanId = Annotated[str, Field(pattern=r"^[0-9a-f]{16}$"), AfterValidator(_reject_zero_identifier)]
 OperationId = Annotated[
     str,
     Field(
@@ -523,6 +570,11 @@ class WorkflowAlertVerificationContext(StrictModel):
     revision: Annotated[str, Field(min_length=40, max_length=40, pattern="^[a-f0-9]{40}$")]
     revision_source: Literal["railway_commit_sha"] = "railway_commit_sha"
 
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def validate_workflowalertverificationcontext_schema_version(cls, value: Any) -> int:
+        return _validate_schema_version_one(value)
+
 
 class WorkflowTerminalDeliveryCounts(StrictModel):
     pending: Annotated[int, Field(ge=0, le=9223372036854775807)]
@@ -550,6 +602,11 @@ class WorkflowTerminalEventDiagnostic(StrictModel):
     occurred_at: datetime
     telemetry_emitted_at: datetime | None
     delivery_counts: WorkflowTerminalDeliveryCounts
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def validate_workflowterminaleventdiagnostic_schema_version(cls, value: Any) -> int:
+        return _validate_schema_version_one(value)
 
 
 class ContentReconciliationRequest(StrictModel):
@@ -974,6 +1031,28 @@ class OperationContextEnvelope(StrictModel):
     resource_kind: Annotated[str | None, Field(max_length=64)]
     resource_key: Annotated[str | None, Field(max_length=128)]
 
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def validate_operationcontextenvelope_schema_version(cls, value: Any) -> int:
+        return _validate_schema_version_one(value)
+
+    @model_validator(mode="after")
+    def validate_semantic_context(self) -> "OperationContextEnvelope":
+        match = TRACEPARENT_PATTERN.fullmatch(self.traceparent)
+        if match is None:
+            raise ValueError("traceparent must be canonical W3C version 00")
+        _, carrier_trace_id, carrier_parent_id, _ = self.traceparent.split("-")
+        if carrier_trace_id != self.trace_id or carrier_parent_id != self.span_id:
+            raise ValueError("traceparent identifiers must match trace_id and span_id")
+        if self.tracestate is not None and not _is_valid_tracestate(self.tracestate):
+            raise ValueError("tracestate must use the bounded W3C simple-key subset")
+        if (
+            self.attempt_number is not None
+            and int(self.attempt_number) != int(self.claim_generation) + 1
+        ):
+            raise ValueError("attempt_number must equal claim_generation + 1")
+        return self
+
 
 class OperationAttemptSummary(StrictModel):
     claim_generation: ClaimGenerationString
@@ -994,6 +1073,12 @@ class OperationAttemptSummary(StrictModel):
     diagnostic_codes: Annotated[list[str], Field(max_length=20)]
     diagnostics_omitted: Annotated[int, Field(ge=0)]
 
+    @model_validator(mode="after")
+    def validate_attempt_number(self) -> "OperationAttemptSummary":
+        if int(self.attempt_number) != int(self.claim_generation) + 1:
+            raise ValueError("attempt_number must equal claim_generation + 1")
+        return self
+
 
 class OperationObservabilitySummary(StrictModel):
     root_operation_id: OperationId
@@ -1011,6 +1096,11 @@ class OperationAttemptPage(StrictModel):
     attempts: Annotated[list[OperationAttemptSummary], Field(max_length=100)]
     attempts_omitted: Annotated[int, Field(ge=0)]
     next_after_claim_generation: ClaimGenerationString | None
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def validate_operationattemptpage_schema_version(cls, value: Any) -> int:
+        return _validate_schema_version_one(value)
 
 
 class ProcessObservabilityHealth(StrictModel):
@@ -1037,6 +1127,11 @@ class ProcessObservabilityHealth(StrictModel):
     last_flush_at: datetime | None
     last_flush_succeeded: bool | None
 
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def validate_processobservabilityhealth_schema_version(cls, value: Any) -> int:
+        return _validate_schema_version_one(value)
+
 
 class ObservabilityHealthPage(StrictModel):
     schema_version: Literal[1] = 1
@@ -1045,6 +1140,11 @@ class ObservabilityHealthPage(StrictModel):
     stale_after_seconds: Annotated[int, Field(ge=1)]
     processes_omitted: Annotated[int, Field(ge=0)]
     processes: Annotated[list[ProcessObservabilityHealth], Field(max_length=1000)]
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def validate_observabilityhealthpage_schema_version(cls, value: Any) -> int:
+        return _validate_schema_version_one(value)
 
 
 class EnvironmentOwnershipStatus(StrictModel):
@@ -1057,6 +1157,11 @@ class EnvironmentOwnershipStatus(StrictModel):
     epoch: Int64NonNegativeString
     passive_reasons: Annotated[list[str], Field(max_length=20)]
     dry_run: OwnershipDryRun | None
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def validate_environmentownershipstatus_schema_version(cls, value: Any) -> int:
+        return _validate_schema_version_one(value)
 
 
 class OwnershipDryRun(StrictModel):
@@ -1091,3 +1196,8 @@ IngestCommand = Annotated[
     | ObsidianVaultIngestCommand,
     Field(discriminator="kind"),
 ]
+
+
+def parse_operation_context_envelope(value: Any) -> OperationContextEnvelope:
+    """Validate structure and all cross-field operation-context invariants."""
+    return OperationContextEnvelope.model_validate(value)

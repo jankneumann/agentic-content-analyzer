@@ -106,6 +106,16 @@ def _python_type(schema: dict[str, Any], *, field_name: str | None = None) -> st
 
 
 def _python_scalar_alias(name: str, schema: dict[str, Any]) -> str:
+    if name == "TraceId":
+        return (
+            'Annotated[str, Field(pattern=r"^[0-9a-f]{32}$"), '
+            "AfterValidator(_reject_zero_identifier)]"
+        )
+    if name == "SpanId":
+        return (
+            'Annotated[str, Field(pattern=r"^[0-9a-f]{16}$"), '
+            "AfterValidator(_reject_zero_identifier)]"
+        )
     if "enum" in schema:
         return _literal(schema["enum"], language="python")
     base = _python_type({key: value for key, value in schema.items() if key != "pattern"})
@@ -126,10 +136,157 @@ def _python_scalar_alias(name: str, schema: dict[str, Any]) -> str:
     return f"Annotated[{base}, Field({', '.join(constraints)})]" if constraints else base
 
 
-def _typescript_scalar_alias(schema: dict[str, Any]) -> str:
+def _typescript_scalar_alias(name: str, schema: dict[str, Any]) -> str:
+    if name in {
+        "TraceId",
+        "SpanId",
+        "OperationId",
+        "Int64NonNegativeString",
+        "ClaimGenerationString",
+        "Int64PositiveString",
+    }:
+        return f'Brand<string, "{name}">'
     if "enum" in schema:
         return _literal(schema["enum"], language="typescript")
     return _typescript_type(schema)
+
+
+def _python_semantic_support() -> list[str]:
+    return r"""TRACEPARENT_PATTERN = re.compile(r"^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$")
+TRACESTATE_KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_*/-]{0,255}$")
+
+
+def _reject_zero_identifier(value: str) -> str:
+    if not value.strip("0"):
+        raise ValueError("W3C trace and span identifiers must be non-zero")
+    return value
+
+
+def _validate_schema_version_one(value: Any) -> int:
+    if isinstance(value, bool) or type(value) not in (int, float) or value != 1:
+        raise ValueError("schema_version must be the JSON number 1")
+    return 1
+
+
+def _is_valid_tracestate(value: str) -> bool:
+    if not 1 <= len(value) <= 512:
+        return False
+    members = value.split(",")
+    if not 1 <= len(members) <= 32:
+        return False
+    keys: set[str] = set()
+    for member in members:
+        if "=" not in member:
+            return False
+        key, member_value = member.split("=", 1)
+        if TRACESTATE_KEY_PATTERN.fullmatch(key) is None or key in keys:
+            return False
+        if not 1 <= len(member_value) <= 256:
+            return False
+        if any(not 0x21 <= ord(char) <= 0x7E or char in ",=" for char in member_value):
+            return False
+        keys.add(key)
+    return True""".splitlines()
+
+
+def _typescript_semantic_support(stages: list[Any]) -> list[str]:
+    rendered_stages = ", ".join(json.dumps(stage) for stage in stages)
+    return f"""
+export const SIGNED_BIGINT_MAX = 9223372036854775807n;
+export const CLAIM_GENERATION_MAX = 9223372036854775806n;
+const CANONICAL_DECIMAL = /^(0|[1-9][0-9]*)$/;
+const TRACE_ID = /^[0-9a-f]{{32}}$/;
+const SPAN_ID = /^[0-9a-f]{{16}}$/;
+const TRACEPARENT = /^00-([0-9a-f]{{32}})-([0-9a-f]{{16}})-[0-9a-f]{{2}}$/;
+const TRACESTATE_KEY = /^[a-z0-9][a-z0-9_*/-]{{0,255}}$/;
+const OPERATION_STAGES = new Set<string>([{rendered_stages}]);
+const CONTEXT_KEYS = new Set([
+  "schema_version", "operation_id", "root_operation_id", "parent_operation_id",
+  "traceparent", "tracestate", "trace_id", "span_id", "claim_generation",
+  "attempt_number", "entrypoint", "service_name", "service_instance_id",
+  "environment", "release_revision", "stage", "resource_kind", "resource_key",
+]);
+const codePointLength = (value: string): number => Array.from(value).length;
+
+function isBoundedDecimal(value: string, minimum: bigint, maximum: bigint): boolean {{
+  return value.length <= 19 && CANONICAL_DECIMAL.test(value)
+    && BigInt(value) >= minimum && BigInt(value) <= maximum;
+}}
+
+export function isOperationId(value: string): value is OperationId {{
+  return isBoundedDecimal(value, 1n, SIGNED_BIGINT_MAX);
+}}
+export function isClaimGenerationString(value: string): value is ClaimGenerationString {{
+  return isBoundedDecimal(value, 0n, CLAIM_GENERATION_MAX);
+}}
+export function isInt64PositiveString(value: string): value is Int64PositiveString {{
+  return isBoundedDecimal(value, 1n, SIGNED_BIGINT_MAX);
+}}
+export function isTraceId(value: string): value is TraceId {{
+  return TRACE_ID.test(value) && value !== "0".repeat(32);
+}}
+export function isSpanId(value: string): value is SpanId {{
+  return SPAN_ID.test(value) && value !== "0".repeat(16);
+}}
+
+function isValidTracestate(value: string): boolean {{
+  if (value.length < 1 || value.length > 512) return false;
+  const members = value.split(",");
+  if (members.length < 1 || members.length > 32) return false;
+  const keys = new Set<string>();
+  return members.every((member) => {{
+    const separator = member.indexOf("=");
+    if (separator < 1) return false;
+    const key = member.slice(0, separator);
+    const memberValue = member.slice(separator + 1);
+    if (!TRACESTATE_KEY.test(key) || keys.has(key) || memberValue.length < 1 || memberValue.length > 256) return false;
+    for (const char of memberValue) {{
+      const code = char.charCodeAt(0);
+      if (code < 0x21 || code > 0x7e || char === "," || char === "=") return false;
+    }}
+    keys.add(key);
+    return true;
+  }});
+}}
+
+/** Mandatory semantic ingress validator; structural validation alone is insufficient. */
+export function parseOperationContextEnvelope(value: unknown): OperationContextEnvelope {{
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {{
+    throw new TypeError("operation context must be an object");
+  }}
+  const context = value as Record<string, unknown>;
+  const keys = Object.keys(context);
+  if (keys.length !== CONTEXT_KEYS.size || keys.some((key) => !CONTEXT_KEYS.has(key))) {{
+    throw new TypeError("operation context keys do not match schema version 1");
+  }}
+  const boundedString = (field: string, minimum: number, maximum: number): string => {{
+    const item = context[field];
+    if (typeof item !== "string" || codePointLength(item) < minimum || codePointLength(item) > maximum) {{
+      throw new TypeError(`${{field}} is outside its string bounds`);
+    }}
+    return item;
+  }};
+  if (context.schema_version !== 1) throw new TypeError("schema_version must be 1");
+  if (typeof context.operation_id !== "string" || !isOperationId(context.operation_id)) throw new TypeError("invalid operation_id");
+  if (typeof context.root_operation_id !== "string" || !isOperationId(context.root_operation_id)) throw new TypeError("invalid root_operation_id");
+  if (context.parent_operation_id !== null && (typeof context.parent_operation_id !== "string" || !isOperationId(context.parent_operation_id))) throw new TypeError("invalid parent_operation_id");
+  if (typeof context.trace_id !== "string" || !isTraceId(context.trace_id)) throw new TypeError("invalid trace_id");
+  if (typeof context.span_id !== "string" || !isSpanId(context.span_id)) throw new TypeError("invalid span_id");
+  const carrier = typeof context.traceparent === "string" ? TRACEPARENT.exec(context.traceparent) : null;
+  if (carrier === null || carrier[1] !== context.trace_id || carrier[2] !== context.span_id) throw new TypeError("invalid or mismatched traceparent");
+  if (context.tracestate !== null && (typeof context.tracestate !== "string" || !isValidTracestate(context.tracestate))) throw new TypeError("invalid tracestate");
+  if (typeof context.claim_generation !== "string" || !isClaimGenerationString(context.claim_generation)) throw new TypeError("invalid claim_generation");
+  if (context.attempt_number !== null && (typeof context.attempt_number !== "string" || !isInt64PositiveString(context.attempt_number) || BigInt(context.attempt_number) !== BigInt(context.claim_generation) + 1n)) throw new TypeError("invalid attempt_number");
+  boundedString("entrypoint", 1, 160);
+  boundedString("service_name", 1, 100);
+  boundedString("service_instance_id", 1, 128);
+  boundedString("environment", 1, 32);
+  boundedString("release_revision", 1, 64);
+  if (context.stage !== null && (typeof context.stage !== "string" || !OPERATION_STAGES.has(context.stage))) throw new TypeError("invalid stage");
+  if (context.resource_kind !== null && (typeof context.resource_kind !== "string" || codePointLength(context.resource_kind) > 64)) throw new TypeError("invalid resource_kind");
+  if (context.resource_key !== null && (typeof context.resource_key !== "string" || codePointLength(context.resource_key) > 128)) throw new TypeError("invalid resource_key");
+  return context as unknown as OperationContextEnvelope;
+}}""".strip().splitlines()
 
 
 def _python_default(schema: dict[str, Any], *, required: bool) -> tuple[str, list[str]]:
@@ -195,13 +352,25 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
         "",
         "from __future__ import annotations",
         "",
+        "import re",
+        "",
         "from datetime import datetime",
         "from typing import Annotated, Any, Literal",
         "from uuid import UUID",
         "",
-        "from pydantic import AnyUrl, BaseModel, ConfigDict, Field",
+        "from pydantic import (",
+        "    AfterValidator,",
+        "    AnyUrl,",
+        "    BaseModel,",
+        "    ConfigDict,",
+        "    Field,",
+        "    field_validator,",
+        "    model_validator,",
+        ")",
         "",
         f'CONTRACT_SHA256 = "{digest}"',
+        "",
+        *_python_semantic_support(),
         "",
         f"OperationStatus = {_literal(operation_statuses, language='python')}",
         f"OperationType = {_literal(operation_types, language='python')}",
@@ -258,6 +427,48 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
             else:
                 lines.append(f"    {field_name}: {field_type} = {default}")
 
+        schema_version = properties.get("schema_version", {})
+        if schema_version.get("const") == 1:
+            lines.extend(
+                [
+                    "",
+                    '    @field_validator("schema_version", mode="before")',
+                    "    @classmethod",
+                    f"    def validate_{name.lower()}_schema_version(cls, value: Any) -> int:",
+                    "        return _validate_schema_version_one(value)",
+                ]
+            )
+        if name == "OperationContextEnvelope":
+            lines.extend(
+                [
+                    "",
+                    '    @model_validator(mode="after")',
+                    '    def validate_semantic_context(self) -> "OperationContextEnvelope":',
+                    "        match = TRACEPARENT_PATTERN.fullmatch(self.traceparent)",
+                    "        if match is None:",
+                    '            raise ValueError("traceparent must be canonical W3C version 00")',
+                    '        _, carrier_trace_id, carrier_parent_id, _ = self.traceparent.split("-")',
+                    "        if carrier_trace_id != self.trace_id or carrier_parent_id != self.span_id:",
+                    '            raise ValueError("traceparent identifiers must match trace_id and span_id")',
+                    "        if self.tracestate is not None and not _is_valid_tracestate(self.tracestate):",
+                    '            raise ValueError("tracestate must use the bounded W3C simple-key subset")',
+                    "        if self.attempt_number is not None and int(self.attempt_number) != int(self.claim_generation) + 1:",
+                    '            raise ValueError("attempt_number must equal claim_generation + 1")',
+                    "        return self",
+                ]
+            )
+        if name == "OperationAttemptSummary":
+            lines.extend(
+                [
+                    "",
+                    '    @model_validator(mode="after")',
+                    '    def validate_attempt_number(self) -> "OperationAttemptSummary":',
+                    "        if int(self.attempt_number) != int(self.claim_generation) + 1:",
+                    '            raise ValueError("attempt_number must equal claim_generation + 1")',
+                    "        return self",
+                ]
+            )
+
     for name, schema in aliases:
         union = _python_type(schema)
         discriminator = schema.get("discriminator", {}).get("propertyName")
@@ -273,6 +484,15 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
             )
         else:
             lines.append(f"{name} = {union}")
+    lines.extend(
+        [
+            "",
+            "",
+            "def parse_operation_context_envelope(value: Any) -> OperationContextEnvelope:",
+            '    """Validate structure and all cross-field operation-context invariants."""',
+            "    return OperationContextEnvelope.model_validate(value)",
+        ]
+    )
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -357,10 +577,12 @@ def _render_typescript(spec: dict[str, Any], digest: str) -> str:
         "",
         f"export type OperationStatus = {_literal(operation_statuses, language='typescript')};",
         f"export type OperationType = {_literal(operation['operation_type']['enum'], language='typescript')};",
+        "type Brand<Value, Name extends string> = Value & { readonly __brand: Name };",
         *[
-            f"export type {name} = {_typescript_scalar_alias(schema)};"
+            f"export type {name} = {_typescript_scalar_alias(name, schema)};"
             for name, schema in scalar_aliases
         ],
+        *_typescript_semantic_support(schemas["OperationStage"]["enum"]),
     ]
 
     aliases: list[tuple[str, dict[str, Any]]] = []
