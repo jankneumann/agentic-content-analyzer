@@ -28,9 +28,7 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
-from src.clients import operational_observability
 from src.cli.app import app
-from src.contracts.operation_context import OperationContext, bind_operation_context
 from src.cli.restore_commands import (
     DatabaseIdentity,
     _addresses_same_database,
@@ -38,6 +36,8 @@ from src.cli.restore_commands import (
     mask_text,
     split_database_credentials,
 )
+from src.clients import operational_observability
+from src.contracts.operation_context import OperationContext, bind_operation_context
 
 runner = CliRunner()
 
@@ -572,6 +572,13 @@ def _restore_context() -> OperationContext:
         resource_kind=None,
         resource_key=None,
     )
+
+
+@pytest.fixture(autouse=True)
+def _bind_durable_cli_context():
+    """Keep subprocess unit tests isolated without weakening production roots."""
+    with bind_operation_context(_restore_context()):
+        yield
 
 
 @pytest.mark.parametrize(

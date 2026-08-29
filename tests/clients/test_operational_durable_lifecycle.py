@@ -120,7 +120,7 @@ def durable_runtime(monkeypatch: pytest.MonkeyPatch):
     store = _DurableStore()
 
     def create_lifecycle(*, service_name: str, lifecycle_kind: str) -> _Lifecycle:
-        assert service_name == "aca-test"
+        assert service_name in {"aca-test", "aca-cli"}
         assert lifecycle_kind == "short_lived"
         lifecycle = _Lifecycle()
         lifecycles.append(lifecycle)
@@ -157,6 +157,31 @@ def test_root_is_durable_before_body_and_uses_actual_provider_identity(durable_r
     assert durable["trace_id"] == observed.trace_id
     assert durable["span_id"] == observed.span_id
     assert durable["outcome"] == "succeeded"
+    assert store.events == ["reserve", "activate", "finish"]
+    assert len(lifecycles) == 1
+
+
+def test_production_cli_adapter_reserves_durable_root_before_command_body(
+    durable_runtime,
+) -> None:
+    module, lifecycles, _provider, store = durable_runtime
+
+    class _CliContext:
+        invoked_subcommand = "manage"
+
+        def __init__(self) -> None:
+            self.close_callback = None
+
+        def call_on_close(self, callback: Any) -> None:
+            self.close_callback = callback
+
+    context = _CliContext()
+    scope = module.install_cli_telemetry(context)
+
+    assert scope.context is get_current_operation_context()
+    assert store.events == ["reserve", "activate"]
+    assert context.close_callback is not None
+    context.close_callback()
     assert store.events == ["reserve", "activate", "finish"]
     assert len(lifecycles) == 1
 
