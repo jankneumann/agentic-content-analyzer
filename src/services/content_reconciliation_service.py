@@ -358,8 +358,16 @@ class ContentReconciliationService:
             try:
                 async with self._connection.transaction():
                     item = await self._apply_one(row, run_id=run_id)
-            except Exception:
+            except Exception as exc:
                 candidate = self._candidate(row)
+                logger.warning(
+                    "content reconciliation apply_failed",
+                    extra={
+                        "reconciliation_run_id": str(run_id),
+                        "content_id": candidate.content_id,
+                        "error_type": type(exc).__name__,
+                    },
+                )
                 failed = ReconciliationDecision(
                     action="none",
                     reason="apply_failed",

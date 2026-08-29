@@ -33,6 +33,7 @@ import {
   submitPipeline,
   uploadFile,
 } from "@/lib/api/workflows"
+import { capabilityInputValue, initialCapabilityValues } from "@/lib/capability-form-values"
 
 export const IngestRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -51,14 +52,10 @@ function initialValues(
   source: SourceCapability,
   configuredSources: ConfiguredSource[]
 ): FormValues {
-  const values = Object.fromEntries(
-    source.fields
-      .filter(
-        (field) =>
-          !INTERNAL_FIELDS.has(field.name) && field.default !== undefined
-      )
-      .map((field) => [field.name, field.default as FormValues[string]])
-  )
+  const values = initialCapabilityValues(
+    source.fields,
+    INTERNAL_FIELDS
+  ) as FormValues
   if (source.fields.some((field) => field.name === "source_key")) {
     const available = configuredSources.find(
       (configured) => configured.enabled && configured.ready
@@ -168,14 +165,16 @@ function InputField({
         type={
           field.format === "date-time"
             ? "datetime-local"
-            : numeric
-              ? "number"
-              : field.format === "uri"
-                ? "url"
-                : "text"
+            : field.format === "date"
+              ? "date"
+              : numeric
+                ? "number"
+                : field.format === "uri"
+                  ? "url"
+                  : "text"
         }
         required={field.required}
-        value={value === undefined ? "" : String(value)}
+        value={capabilityInputValue(field, value)}
         min={
           numeric && field.constraints?.minimum !== undefined
             ? Number(field.constraints.minimum)

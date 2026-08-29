@@ -35,6 +35,22 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Closed public error persisted on Content.error_message. Provider payloads,
+# API keys, and traceback text stay out of durable fields and log messages.
+SUMMARIZATION_ERROR_CODE = "summarization_failed"
+
+
+def _record_summarization_failure(
+    content: Content,
+    *,
+    error_type: str,
+) -> None:
+    content.error_message = SUMMARIZATION_ERROR_CODE
+    logger.error(
+        "summarization failed",
+        extra={"content_id": content.id, "error_type": error_type},
+    )
+
 
 class ContentSummarizer:
     """Service for summarizing content.
@@ -113,9 +129,8 @@ class ContentSummarizer:
                     )
                     content.status = ContentStatus.FAILED
                     content.status_owner_version = (content.status_owner_version or 0) + 1
-                    content.error_message = response.error
+                    _record_summarization_failure(content, error_type="agent_response")
                     db.commit()
-                    logger.error(f"Summarization failed: {response.error}")
                     return False
 
                 summary_data = response.data
@@ -181,9 +196,8 @@ class ContentSummarizer:
                 )
                 content.status = ContentStatus.FAILED
                 content.status_owner_version = (content.status_owner_version or 0) + 1
-                content.error_message = str(exc)
+                _record_summarization_failure(content, error_type=type(exc).__name__)
                 db.commit()
-                logger.error(f"Error summarizing content {content_id}: {exc}")
                 return False
 
     def _summarize_content_legacy(self, content_id: int) -> bool:
@@ -213,9 +227,8 @@ class ContentSummarizer:
 
                 if not response.success:
                     content.status = ContentStatus.FAILED
-                    content.error_message = response.error
+                    _record_summarization_failure(content, error_type="agent_response")
                     db.commit()
-                    logger.error(f"Summarization failed: {response.error}")
                     return False
 
                 # Store summary
@@ -279,9 +292,8 @@ class ContentSummarizer:
                     return True
 
                 content.status = ContentStatus.FAILED
-                content.error_message = str(e)
+                _record_summarization_failure(content, error_type=type(e).__name__)
                 db.commit()
-                logger.error(f"Error summarizing content {content_id}: {e}")
                 return False
 
     @observe()

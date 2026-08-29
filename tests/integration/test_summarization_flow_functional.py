@@ -364,7 +364,8 @@ def test_summarize_handles_api_failures(db_session, mock_get_db):
     assert success is False, "Summarization should return False on failure"
     assert content.status == ContentStatus.FAILED, "Content status should be FAILED"
     assert content.error_message is not None, "Error message should be set"
-    assert "Simulated API failure" in content.error_message
+    assert content.error_message == "summarization_failed"
+    assert "Simulated API failure" not in content.error_message
 
     logger.info(f"Failure handled: status={content.status}, error='{content.error_message}'")
     logger.info("=== TEST PASSED ===\n")

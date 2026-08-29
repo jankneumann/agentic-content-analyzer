@@ -19,6 +19,7 @@ import httpx
 
 from src.config import settings
 from src.ingestion.gmail import ContentData
+from src.ingestion.log_redaction import adapter_log_extra
 from src.ingestion.result import (
     IngestionError,
     IngestionResponse,
@@ -70,6 +71,7 @@ class RSSClient:
         after_date: datetime | None = None,
         source_name: str | None = None,
         source_tags: list[str] | None = None,
+        public_source_key: str | None = None,
     ) -> tuple[list[ContentData], SourceFetchResult]:
         """
         Fetch content from an RSS feed as ContentData (unified Content model).
@@ -80,11 +82,13 @@ class RSSClient:
             after_date: Only fetch entries published after this date
             source_name: Optional source name from config (included in metadata)
             source_tags: Optional source tags from config (included in metadata)
+            public_source_key: Opaque configured-source key for logs
 
         Returns:
             Tuple of (list of ContentData objects, SourceFetchResult with fetch outcome)
         """
-        logger.info(f"Fetching RSS content: {feed_url}")
+        log_extra = adapter_log_extra(source_key=public_source_key)
+        logger.info("Fetching RSS content", extra=log_extra)
         result = SourceFetchResult(url=feed_url, name=source_name)
 
         try:
@@ -97,8 +101,8 @@ class RSSClient:
                 final_url = str(response.url)
                 result.redirected_to = final_url
                 logger.warning(
-                    f"Feed redirected: {feed_url} -> {final_url} "
-                    f"— consider updating source config to use the new URL"
+                    "Feed redirected",
+                    extra=adapter_log_extra(source_key=public_source_key, code="feed_redirected"),
                 )
 
             # Parse RSS feed
@@ -106,7 +110,12 @@ class RSSClient:
 
             if feed.bozo:
                 logger.warning(
-                    f"Feed parsing error for {feed_url}: {feed.get('bozo_exception', 'Unknown error')}"
+                    "Feed parsing error",
+                    extra=adapter_log_extra(
+                        source_key=public_source_key,
+                        code="parse_error",
+                        error=feed.get("bozo_exception"),
+                    ),
                 )
 
             # Extract publication name from feed metadata
@@ -136,8 +145,10 @@ class RSSClient:
                     logger.debug(f"Parsed content: {content.title}")
                 except Exception as e:
                     logger.error(
-                        f"Error parsing entry '{entry.get('title', 'Unknown')}': {e}",
-                        exc_info=True,
+                        "Error parsing RSS entry",
+                        extra=adapter_log_extra(
+                            source_key=public_source_key, code="parse_error", error=e
+                        ),
                     )
                     result.items_failed += 1
                     result.item_errors.append(
@@ -150,7 +161,10 @@ class RSSClient:
                     continue
 
             result.items_fetched = len(contents)
-            logger.info(f"Fetched {len(contents)} content items from {feed_url}")
+            logger.info(
+                "Fetched RSS content items",
+                extra={**log_extra, "items_fetched": len(contents)},
+            )
             return contents, result
 
         except httpx.HTTPStatusError as e:
@@ -158,20 +172,31 @@ class RSSClient:
             result.error = str(e)
             result.error_type = f"HTTP {e.response.status_code}"
             logger.warning(
-                f"Feed unavailable {feed_url}: {e.response.status_code} {e.response.reason_phrase}"
+                "Feed unavailable",
+                extra=adapter_log_extra(
+                    source_key=public_source_key, code="source_unavailable", error=e
+                ),
             )
             return [], result
         except httpx.HTTPError as e:
             result.success = False
             result.error = str(e)
             result.error_type = type(e).__name__
-            logger.warning(f"HTTP error fetching feed {feed_url}: {e}")
+            logger.warning(
+                "HTTP error fetching feed",
+                extra=adapter_log_extra(source_key=public_source_key, code="fetch_error", error=e),
+            )
             return [], result
         except Exception as e:
             result.success = False
             result.error = str(e)
             result.error_type = type(e).__name__
-            logger.error(f"Unexpected error fetching feed {feed_url}: {e}", exc_info=True)
+            logger.error(
+                "Unexpected error fetching feed",
+                extra=adapter_log_extra(
+                    source_key=public_source_key, code="unexpected_error", error=e
+                ),
+            )
             return [], result
 
     def fetch_multiple_contents(
@@ -545,15 +570,17 @@ class RSSContentIngestionService:
         contents: list[ContentData] = []
         for source in enabled_sources:
             max_entries = source.max_entries or max_entries_per_feed
+            public_key = public_source_key_for(source)
             fetched, fetch_result = self.client.fetch_content(
                 feed_url=source.url,
                 max_entries=max_entries,
                 after_date=after_date,
                 source_name=source.name,
                 source_tags=source.tags if source.tags else None,
+                public_source_key=public_key,
             )
             contents.extend(fetched)
-            fetch_result.public_source_key = public_source_key_for(source)
+            fetch_result.public_source_key = public_key
             fetch_result.items_fetched = 0
             source_results_by_feed[source.url] = fetch_result
             source_results.append(fetch_result)

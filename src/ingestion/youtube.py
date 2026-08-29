@@ -26,6 +26,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import NoTranscriptFound, TranscriptsDisabled
 
 from src.config import settings
+from src.ingestion.log_redaction import adapter_log_extra
 from src.ingestion.result import (
     IngestionError,
     IngestionResponse,
@@ -1489,7 +1490,11 @@ class YouTubeContentIngestionService:
             playlist_url = f"https://www.youtube.com/playlist?list={source.id}"
             if source.visibility == "private" and not self.client.oauth_available:
                 logger.warning(
-                    f"Skipping private playlist '{source.name or source.id}' (OAuth not available)"
+                    "Skipping private playlist (OAuth not available)",
+                    extra=adapter_log_extra(
+                        source_key=public_source_key_for(source),
+                        code="oauth_unavailable",
+                    ),
                 )
                 source_results.append(
                     SourceFetchResult(
@@ -1536,7 +1541,14 @@ class YouTubeContentIngestionService:
                     fetch_result.public_source_key = public_source_key
                     return fetch_result
                 except Exception as e:
-                    logger.error(f"Error ingesting playlist {source.name or source.id}: {e}")
+                    logger.error(
+                        "Error ingesting playlist",
+                        extra=adapter_log_extra(
+                            source_key=public_source_key,
+                            code="playlist_ingest_error",
+                            error=e,
+                        ),
+                    )
                     return SourceFetchResult(
                         url=f"https://www.youtube.com/playlist?list={source.id}",
                         name=source.name,
@@ -1556,7 +1568,14 @@ class YouTubeContentIngestionService:
                 if r.success:
                     total += r.items_fetched
             elif isinstance(r, Exception):
-                logger.error(f"Unexpected error in playlist processing: {r}")
+                logger.error(
+                    "Unexpected error in playlist processing",
+                    extra=adapter_log_extra(
+                        source_key=public_source_key_for(configured_source),
+                        code="unexpected_error",
+                        error=r,
+                    ),
+                )
                 source_results.append(
                     SourceFetchResult(
                         url="(unknown)",
@@ -1700,7 +1719,14 @@ class YouTubeContentIngestionService:
                     fetch_result.public_source_key = public_source_key
                     return fetch_result
                 except Exception as e:
-                    logger.error(f"Error ingesting channel {source.name or source.channel_id}: {e}")
+                    logger.error(
+                        "Error ingesting channel",
+                        extra=adapter_log_extra(
+                            source_key=public_source_key,
+                            code="channel_ingest_error",
+                            error=e,
+                        ),
+                    )
                     return SourceFetchResult(
                         url=channel_url,
                         name=source.name,
@@ -1720,7 +1746,14 @@ class YouTubeContentIngestionService:
                 if r.success:
                     total += r.items_fetched
             elif isinstance(r, Exception):
-                logger.error(f"Unexpected error in channel processing: {r}")
+                logger.error(
+                    "Unexpected error in channel processing",
+                    extra=adapter_log_extra(
+                        source_key=public_source_key_for(configured_source),
+                        code="unexpected_error",
+                        error=r,
+                    ),
+                )
                 source_results.append(
                     SourceFetchResult(
                         url="(unknown)",
@@ -2208,8 +2241,10 @@ class YouTubeRSSIngestionService:
         async def ingest_one(source: YouTubeRSSSource) -> SourceFetchResult:
             public_source_key = public_source_key_for(source)
             async with semaphore:
-                feed_label = source.name or source.url
-                logger.debug(f"Fetching RSS feed: {feed_label}")
+                logger.debug(
+                    "Fetching YouTube RSS feed",
+                    extra=adapter_log_extra(source_key=public_source_key),
+                )
                 try:
                     max_entries = source.max_entries or max_entries_per_feed
                     fetch_result = await self.ingest_feed(
@@ -2233,7 +2268,14 @@ class YouTubeRSSIngestionService:
                     fetch_result.public_source_key = public_source_key
                     return fetch_result
                 except Exception as e:
-                    logger.error(f"Error ingesting YouTube RSS feed {feed_label}: {e}")
+                    logger.error(
+                        "Error ingesting YouTube RSS feed",
+                        extra=adapter_log_extra(
+                            source_key=public_source_key,
+                            code="feed_ingest_error",
+                            error=e,
+                        ),
+                    )
                     return SourceFetchResult(
                         url=source.url,
                         name=source.name,
@@ -2253,7 +2295,14 @@ class YouTubeRSSIngestionService:
                 if r.success:
                     total += r.items_fetched
             elif isinstance(r, Exception):
-                logger.error(f"Unexpected error in RSS feed processing: {r}")
+                logger.error(
+                    "Unexpected error in RSS feed processing",
+                    extra=adapter_log_extra(
+                        source_key=public_source_key_for(configured_source),
+                        code="unexpected_error",
+                        error=r,
+                    ),
+                )
                 source_results.append(
                     SourceFetchResult(
                         url="(unknown)",

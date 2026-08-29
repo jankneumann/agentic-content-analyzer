@@ -124,7 +124,8 @@ def test_summarize_content_llm_error(db_session, sample_contents, mock_get_db):
     db_session.refresh(content)
     assert content.status == ContentStatus.FAILED
     assert content.error_message is not None
-    assert "API Error" in content.error_message
+    assert content.error_message == "summarization_failed"
+    assert "API Error" not in content.error_message
 
 
 @pytest.mark.integration
