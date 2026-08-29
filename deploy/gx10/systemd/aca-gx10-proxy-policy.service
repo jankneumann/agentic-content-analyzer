@@ -1,0 +1,19 @@
+[Unit]
+Description=GX-10 validated CONNECT proxy policy
+Requires=aca-gx10-secrets.service
+After=aca-gx10-secrets.service
+Before=aca-gx10-firewall.service aca-gx10.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/aca
+Environment=GX10_ROOT_DIR=/opt/aca
+Environment=GX10_RUNTIME_DIR=/run/aca/gx10
+ExecStartPre=/usr/bin/docker compose -f /opt/aca/docker-compose.gx10.yml up -d squid
+ExecStart=/opt/aca/scripts/gx10/reload_proxy_policy.sh
+RemainAfterExit=yes
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target
