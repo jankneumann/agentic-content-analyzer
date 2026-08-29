@@ -6,6 +6,7 @@ import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -152,3 +153,34 @@ def test_api_deployment_worker_and_cli_worker_use_one_lifecycle_factory() -> Non
     surfaces = [Path("src/api/app.py"), Path("src/worker.py"), Path("src/cli/worker_commands.py")]
     for surface in surfaces:
         assert "create_telemetry_lifecycle" in surface.read_text()
+
+
+@pytest.mark.asyncio
+async def test_deployment_worker_uses_configured_role_service_name(monkeypatch) -> None:
+    import src.worker as deployment_worker
+
+    configured = _settings(otel_service_name="aca-worker-pool")
+    lifecycle = SimpleNamespace(initialize=lambda *, app: None)
+    captured: dict[str, str] = {}
+
+    def create_lifecycle(*, service_name: str, lifecycle_kind: str) -> object:
+        captured.update(service_name=service_name, lifecycle_kind=lifecycle_kind)
+        return lifecycle
+
+    async def wait_for_cancellation(_lifecycle: object) -> None:
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(deployment_worker, "get_settings", lambda: configured, raising=False)
+    monkeypatch.setattr(deployment_worker, "create_telemetry_lifecycle", create_lifecycle)
+    monkeypatch.setattr(deployment_worker, "run_telemetry_heartbeat", wait_for_cancellation)
+    monkeypatch.setattr(deployment_worker, "register_all_handlers", lambda: None)
+    monkeypatch.setattr(deployment_worker, "run_worker", AsyncMock())
+    monkeypatch.setattr(deployment_worker, "shutdown_process_telemetry", AsyncMock())
+    monkeypatch.setattr("src.queue.setup.ensure_queue_schema_compatible", AsyncMock())
+
+    await deployment_worker.main()
+
+    assert captured == {
+        "service_name": "aca-worker-pool",
+        "lifecycle_kind": "long_running",
+    }
