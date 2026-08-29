@@ -178,3 +178,17 @@ def test_nested_mcp_tool_is_child_operation_with_one_process_lifecycle(durable_r
     assert len(lifecycles) == 1
     assert child.operation_id != root.operation_id
     assert child.parent_operation_id == root.operation_id
+    durable_root = module._run_awaitable_sync(store.lookup(int(root.operation_id)))
+    durable_child = module._run_awaitable_sync(store.lookup(int(child.operation_id)))
+    assert durable_root["status"] == "completed"
+    assert durable_child["status"] == "completed"
+    assert durable_root["outcome"] == "succeeded"
+    assert durable_child["outcome"] == "succeeded"
+    assert store.events == [
+        "reserve",
+        "activate",
+        "reserve",
+        "activate",
+        "finish",
+        "finish",
+    ]

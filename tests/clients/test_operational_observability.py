@@ -35,12 +35,37 @@ class _Provider:
         yield None
 
 
+class _Store:
+    def __init__(self) -> None:
+        self.next_id = 800
+
+    async def reserve(self, *, entrypoint: str, parent_context: Any) -> int:
+        del entrypoint, parent_context
+        operation_id = self.next_id
+        self.next_id += 1
+        return operation_id
+
+    async def activate(self, context: Any) -> None:
+        del context
+
+    async def finish(
+        self,
+        context: Any,
+        *,
+        outcome: str,
+        telemetry_delivery_state: str,
+        diagnostic_codes: tuple[str, ...],
+    ) -> None:
+        del context, outcome, telemetry_delivery_state, diagnostic_codes
+
+
 @pytest.fixture
 def operational_runtime(monkeypatch: pytest.MonkeyPatch):
     from src.clients import operational_observability as module
 
     lifecycles: list[_Lifecycle] = []
     provider = _Provider()
+    store = _Store()
 
     def create_lifecycle(*, service_name: str, lifecycle_kind: str) -> _Lifecycle:
         assert service_name == "aca-test"
@@ -56,6 +81,7 @@ def operational_runtime(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(module, "create_telemetry_lifecycle", create_lifecycle)
     monkeypatch.setattr(module, "shutdown_process_telemetry", shutdown)
     monkeypatch.setattr(module, "get_provider", lambda: provider)
+    monkeypatch.setattr(module, "create_durable_operation_store", lambda: store)
     return module, lifecycles, provider
 
 
@@ -73,7 +99,7 @@ def test_sync_operational_entrypoint_binds_valid_root_and_flushes(operational_ru
     assert observed is not None
     assert observed.operation_id == observed.root_operation_id
     assert observed.parent_operation_id is None
-    assert observed.attempt_number is None
+    assert observed.attempt_number == "1"
     assert observed.stage == "backup"
     assert lifecycles[0].initialized is True
     assert lifecycles[0].last_flush_succeeded is True
