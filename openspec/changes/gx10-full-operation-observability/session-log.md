@@ -114,3 +114,37 @@ Consolidated two independent reviews and resolved all high/medium plan findings.
 
 ### Context
 Completed the root wp-contracts slice: the approved GX-10 OpenAPI, SQL, and event contracts now live in the durable registry, and canonical Python/TypeScript outputs include mandatory semantic ingress validation. Remaining implementation packages are intentionally untouched.
+
+---
+
+## Phase: Implementation (2026-08-29)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Fence attempt writes against the canonical queue claim** `architectural: cross-service-operation-correlation` — `FOR UPDATE` checks ensure a stale claim can record only bounded evidence on its own attempt and cannot overwrite a newer attempt or canonical operation state.
+2. **Reserve capacity for terminal telemetry** `architectural: operation-observability-safety` — The deterministic 256-observation/16-MiB envelope reserves 64 observations and 4 MiB for final evidence while shedding optional successful detail first and exposing omission counters.
+
+### Open Questions
+- [ ] wp-db-projection and wp-telemetry-context have no `context_impact` declaration, so their context checkpoint status remains unmigrated.
+
+### Completed Work
+- Tasks 2.1-2.5: added the additive Alembic projection, queue compatibility checks, typed attempt/process-health repositories, canonical-claim fences, retention behavior, and complete direct-SQL negative fixtures.
+- Tasks 3.1-3.5: added immutable `OperationContext` propagation, W3C helpers, safe cross-provider telemetry, masking canaries, byte bounds, and a reserved final-observation budget.
+- Verified 9 database unit and 23 disposable-PostgreSQL integration tests, 89 telemetry/context tests, Ruff, mypy, strict OpenSpec, and whitespace checks.
+
+### Next Steps
+- Implement the next dependency-ready packages from `work-packages.yaml` without weakening direct-SQL negative fixtures or generated validator parity.
+- Carry the package JUnit evidence into integration validation and retain the mandatory six-hour GX-10 acceptance gate.
+
+### Relevant Files
+- `alembic/versions/e4b7c9d2a610_add_operation_observability.py` — Additive operation observability projection migration
+- `src/repositories/operation_observation_attempts.py` — Fenced attempt projection repository
+- `src/repositories/telemetry_process_health.py` — Bounded telemetry process-health repository
+- `src/contracts/operation_context.py` — Immutable context and W3C propagation helpers
+- `src/telemetry/safety.py` — Masking, byte ceilings, and observation budgets
+- `tests/integration/test_operation_observation_attempts.py` — PostgreSQL migration, fencing, retention, and direct-SQL negative coverage
+- `tests/telemetry/test_operation_safety.py` — Telemetry masking, bounds, budget, and canary coverage
+
+### Context
+Completed and integrated wp-db-projection and wp-telemetry-context with package-level evidence. The integrated live PostgreSQL rerun is environment-blocked by the absent local service; the verified disposable-Neon package run remains the authoritative 23-test integration result.
