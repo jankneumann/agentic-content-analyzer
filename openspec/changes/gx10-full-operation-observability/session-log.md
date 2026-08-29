@@ -186,3 +186,49 @@ Completed and integrated wp-db-projection and wp-telemetry-context with package-
 
 ### Context
 Completed and integrated wp-queue-core. API and child submissions now persist validated W3C context atomically; each claim continues the stored trace with independently fenced attempt evidence, and API/deployment/CLI workers share bounded telemetry lifecycle health. A final review hardening made canonical terminal state and matching attempt outcome one atomic transaction.
+
+---
+
+## Phase: Implementation (2026-08-29)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Keep operator diagnostics additive and separately authorized** `architectural: cross-service-operation-correlation` — Operation handles remain stable while audit, attempt, and health surfaces enforce explicit operator authorization and bounded output.
+2. **Use shared bounded stage evidence for truthful domain outcomes** `architectural: operation-observability-safety` — YouTube, blog, parser, workflow, provider, persistence, graph, index, storage, delivery, and pipeline boundaries now emit consistent masked outcome evidence.
+3. **Honor the external database authorization boundary** `architectural: operation-observability-safety` — No external database workload was retried or bypassed after policy rejection; the blocked exact result is preserved without being represented as passing.
+
+### Capability Gaps Observed
+- **authorization_blocked**: The exact ingestion package gate requires PostgreSQL, but no local service or container is available and external fixture/migration execution requires explicit end-user authorization. (skill: implement-feature, severity: medium)
+
+### Open Questions
+- [ ] Will the user authorize one isolated exact ingestion run against a temporary external PostgreSQL database, or provide an authorized local PostgreSQL runner?
+
+### Completed Work
+- Completed and integrated tasks 5.1-5.5: operator-authorized observability surfaces, audit correlation fields, trace response headers, retry-aware terminal topology, and compatibility guards.
+- API exact gate passed: 967 collected, 966 passed, 1 known xfail, 0 failures/errors; scoped Ruff, mypy, strict OpenSpec, and 33 non-frontend canonical contract checks passed.
+- Completed and integrated tasks 6.1-7.2: truthful YouTube/blog outcomes and bounded instrumentation across concrete parser, workflow, model/provider, PostgreSQL, graph, index, storage, delivery, and pipeline boundaries.
+- Post-rebase focused API/startup gate passed 19/19 and in-memory domain topology gate passed 6/6 at feature head 38173ea0.
+- Removed integration import cycles while retaining the workflows public API through lazy exports; direct API startup smoke passed.
+- Preserved the exact ingestion run as honest blocked evidence: 450 collected, 427 passed, 23 localhost PostgreSQL setup errors, 0 test failures.
+
+### In Progress
+- Exact database-backed ingestion package gate awaits explicit authorization or an available local PostgreSQL service.
+
+### Next Steps
+- After authorization, provision an isolated temporary PostgreSQL database, run the exact ingestion command once, replace the blocked JUnit with the passing result, commit, and push.
+- Preserve direct-SQL negative fixtures, generated validator parity, bounded telemetry behavior, and the six-hour GX-10 acceptance gate in later slices.
+
+### Relevant Files
+- `src/api/routes/operations.py` — Operator observability surfaces and trace response linkage.
+- `src/api/middleware/audit.py` — Audit correlation persistence and active-span linkage.
+- `src/ingestion/youtube_ingestor.py` — Truthful per-item YouTube outcome classification.
+- `src/ingestion/blog_extractor.py` — Preferred/fallback extractor outcome evidence.
+- `src/workflows/stage_observability.py` — Shared bounded stage instrumentation helper.
+- `src/workflows/__init__.py` — Lazy public exports preventing instrumentation import cycles.
+- `tests/workflows/test_domain_operation_topology.py` — Executable in-memory topology and masking proof.
+- `artifacts/wp-api-audit/pytest.xml` — Passing exact API package evidence.
+- `artifacts/wp-ingestion-coverage/pytest.xml` — Honest blocked exact ingestion package evidence.
+
+### Context
+Integrated and verified wp-api-audit and wp-ingestion-coverage on the feature branch. The API exact suite and post-rebase API/topology gates are clean. The sole remaining gate is the exact ingestion PostgreSQL suite: local PostgreSQL is unavailable, and execution policy requires explicit end-user authorization before repository migrations and fixtures may run against an external temporary database. The honest exact-run JUnit records 450 collected, 427 passed, 23 PostgreSQL setup-only errors, and 0 test failures.

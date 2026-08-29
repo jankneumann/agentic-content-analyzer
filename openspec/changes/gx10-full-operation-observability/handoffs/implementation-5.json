@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-08-29T05:25:10.766310+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "local-only handoff requested",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Integrated and verified wp-api-audit and wp-ingestion-coverage on the feature branch. The API exact suite and post-rebase API/topology gates are clean. The sole remaining gate is the exact ingestion PostgreSQL suite: local PostgreSQL is unavailable, and execution policy requires explicit end-user authorization before repository migrations and fixtures may run against an external temporary database. The honest exact-run JUnit records 450 collected, 427 passed, 23 PostgreSQL setup-only errors, and 0 test failures.",
+    "completed_work": [
+      "Completed and integrated tasks 5.1-5.5: operator-authorized observability surfaces, audit correlation fields, trace response headers, retry-aware terminal topology, and compatibility guards.",
+      "API exact gate passed: 967 collected, 966 passed, 1 known xfail, 0 failures/errors; scoped Ruff, mypy, strict OpenSpec, and 33 non-frontend canonical contract checks passed.",
+      "Completed and integrated tasks 6.1-7.2: truthful YouTube/blog outcomes and bounded instrumentation across concrete parser, workflow, model/provider, PostgreSQL, graph, index, storage, delivery, and pipeline boundaries.",
+      "Post-rebase focused API/startup gate passed 19/19 and in-memory domain topology gate passed 6/6 at feature head 38173ea0.",
+      "Removed integration import cycles while retaining the workflows public API through lazy exports; direct API startup smoke passed.",
+      "Preserved the exact ingestion run as honest blocked evidence: 450 collected, 427 passed, 23 localhost PostgreSQL setup errors, 0 test failures."
+    ],
+    "in_progress": [
+      "Exact database-backed ingestion package gate awaits explicit authorization or an available local PostgreSQL service."
+    ],
+    "decisions": [
+      {
+        "title": "Keep operator diagnostics additive and separately authorized",
+        "rationale": "Operation handles remain stable while audit, attempt, and health surfaces enforce explicit operator authorization and bounded output.",
+        "capability": "cross-service-operation-correlation",
+        "supersedes": null
+      },
+      {
+        "title": "Use shared bounded stage evidence for truthful domain outcomes",
+        "rationale": "YouTube, blog, parser, workflow, provider, persistence, graph, index, storage, delivery, and pipeline boundaries now emit consistent masked outcome evidence.",
+        "capability": "operation-observability-safety",
+        "supersedes": null
+      },
+      {
+        "title": "Honor the external database authorization boundary",
+        "rationale": "No external database workload was retried or bypassed after policy rejection; the blocked exact result is preserved without being represented as passing.",
+        "capability": "operation-observability-safety",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "After authorization, provision an isolated temporary PostgreSQL database, run the exact ingestion command once, replace the blocked JUnit with the passing result, commit, and push.",
+      "Preserve direct-SQL negative fixtures, generated validator parity, bounded telemetry behavior, and the six-hour GX-10 acceptance gate in later slices."
+    ],
+    "relevant_files": [
+      {
+        "path": "src/api/routes/operations.py",
+        "description": "Operator observability surfaces and trace response linkage."
+      },
+      {
+        "path": "src/api/middleware/audit.py",
+        "description": "Audit correlation persistence and active-span linkage."
+      },
+      {
+        "path": "src/ingestion/youtube_ingestor.py",
+        "description": "Truthful per-item YouTube outcome classification."
+      },
+      {
+        "path": "src/ingestion/blog_extractor.py",
+        "description": "Preferred/fallback extractor outcome evidence."
+      },
+      {
+        "path": "src/workflows/stage_observability.py",
+        "description": "Shared bounded stage instrumentation helper."
+      },
+      {
+        "path": "src/workflows/__init__.py",
+        "description": "Lazy public exports preventing instrumentation import cycles."
+      },
+      {
+        "path": "tests/workflows/test_domain_operation_topology.py",
+        "description": "Executable in-memory topology and masking proof."
+      },
+      {
+        "path": "artifacts/wp-api-audit/pytest.xml",
+        "description": "Passing exact API package evidence."
+      },
+      {
+        "path": "artifacts/wp-ingestion-coverage/pytest.xml",
+        "description": "Honest blocked exact ingestion package evidence."
+      }
+    ]
+  }
+}
