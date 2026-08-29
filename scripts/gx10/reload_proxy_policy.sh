@@ -2,6 +2,32 @@
 set -euo pipefail
 
 ROOT_DIR="${GX10_ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+
+# bootstrap_audit: durable terminal evidence while PostgreSQL may be unavailable.
+gx10_proxy_policy_audit_exit() {
+  local command_status=$?
+  trap - EXIT
+  local outcome="succeeded"
+  local diagnostic_args=()
+  if [[ $command_status -ne 0 ]]; then
+    outcome="permanent_failure"
+    diagnostic_args=(--diagnostic-code gx10.proxy_policy_reload_failed)
+  fi
+  local python_bin="python3"
+  if [[ -x "$ROOT_DIR/.venv/bin/python" ]]; then
+    python_bin="$ROOT_DIR/.venv/bin/python"
+  fi
+  local audit_status=0
+  PYTHONPATH="$ROOT_DIR${PYTHONPATH:+:$PYTHONPATH}" \
+    "$python_bin" -m src.clients.operational_observability \
+    "gx10.reload_proxy_policy" "$outcome" "${diagnostic_args[@]}" \
+    >/dev/null || audit_status=$?
+  if [[ $command_status -eq 0 && $audit_status -ne 0 ]]; then
+    command_status=$audit_status
+  fi
+  exit "$command_status"
+}
+trap gx10_proxy_policy_audit_exit EXIT
 COMPOSE=(docker compose -f "$ROOT_DIR/docker-compose.gx10.yml")
 POLICY="$ROOT_DIR/deploy/gx10/squid/squid.conf"
 DOMAINS="$ROOT_DIR/deploy/gx10/squid/allowed-domains.txt"

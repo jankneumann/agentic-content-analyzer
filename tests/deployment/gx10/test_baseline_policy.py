@@ -55,3 +55,6 @@ def test_squid_policy_is_pinned_fail_closed_and_masks_connect_logs() -> None:
     assert "squid -k parse" in reload_script
     assert "squid -k reconfigure" in reload_script
     assert "stale" in reload_script.lower()
+    assert "bootstrap_audit" in reload_script
+    assert "gx10.reload_proxy_policy" in reload_script
+    assert "trap gx10_proxy_policy_audit_exit EXIT" in reload_script
