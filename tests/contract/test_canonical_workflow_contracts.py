@@ -986,3 +986,32 @@ def test_generated_typescript_declares_named_unions_and_type_checks() -> None:
         text=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_ownership_trace_identity_is_canonical_and_change_copy_parity() -> None:
+    durable_event = json.loads(
+        (CONTRACTS / "events/operation-context-v1.schema.json").read_text()
+    )
+    change_event = json.loads(
+        (GX10_CONTRACTS / "events/operation-context-v1.schema.json").read_text()
+    )
+    durable_openapi = _openapi()["components"]["schemas"]["OperationContextEnvelope"]
+    change_openapi = yaml.safe_load(
+        (GX10_CONTRACTS / "openapi/v1.yaml").read_text()
+    )["components"]["schemas"]["OperationContextEnvelope"]
+
+    for schema in (durable_event, change_event, durable_openapi, change_openapi):
+        assert {"authority_fingerprint", "ownership_epoch"} <= set(schema["required"])
+        assert schema["properties"]["authority_fingerprint"]["type"] == ["string", "null"]
+        assert schema["properties"]["authority_fingerprint"]["pattern"] == "^[0-9a-f]{64}$"
+        assert schema["properties"]["ownership_epoch"]
+
+    for path in (
+        CONTRACTS / "generated/types.ts",
+        ROOT / "web/src/generated/workflow-contracts.ts",
+        GX10_CONTRACTS / "generated/typescript/operation-observability.ts",
+    ):
+        source = path.read_text()
+        assert "authority_fingerprint" in source
+        assert "ownership_epoch" in source
+        assert "^[0-9a-f]{64}$" in source

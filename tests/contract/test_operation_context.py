@@ -210,3 +210,33 @@ def test_checked_in_typescript_validator_covers_runtime_parity_rules() -> None:
         "Array.from(value).length",
     ):
         assert rule in source
+
+
+def test_ownership_trace_identity_is_required_nullable_bounded_and_round_trips() -> None:
+    active = {
+        **valid_context(),
+        "authority_fingerprint": "a" * 64,
+        "ownership_epoch": str(SIGNED_BIGINT_MAX),
+    }
+    parsed = parse_operation_context(active)
+    assert parsed.authority_fingerprint == "a" * 64
+    assert parsed.ownership_epoch == str(SIGNED_BIGINT_MAX)
+    assert parse_operation_context(json.loads(parsed.model_dump_json())) == parsed
+
+    passive = {**active, "authority_fingerprint": None, "ownership_epoch": None}
+    assert parse_operation_context(passive).authority_fingerprint is None
+    assert parse_operation_context(passive).ownership_epoch is None
+
+    for field in ("authority_fingerprint", "ownership_epoch"):
+        missing = dict(active)
+        missing.pop(field)
+        assert_all_python_validators_reject(missing)
+
+    for invalid in (
+        {**active, "authority_fingerprint": "A" * 64},
+        {**active, "authority_fingerprint": "a" * 63},
+        {**active, "ownership_epoch": -1},
+        {**active, "ownership_epoch": "-1"},
+        {**active, "ownership_epoch": str(SIGNED_BIGINT_MAX + 1)},
+    ):
+        assert_all_python_validators_reject(invalid)
