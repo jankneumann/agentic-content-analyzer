@@ -188,7 +188,7 @@ def test_gx10_ownership_epoch_is_optional_and_bounded() -> None:
     active = Settings(_env_file=None, **{**common, "gx10_ownership_epoch": 17})
     assert active.gx10_ownership_epoch == 17
 
-    with pytest.raises(ValidationError, match="GX10_OWNERSHIP_EPOCH"):
+    with pytest.raises(ValidationError, match="gx10_ownership_epoch"):
         Settings(
             _env_file=None,
             **{**common, "gx10_ownership_epoch": -1},
