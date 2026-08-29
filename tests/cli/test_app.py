@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from typer.testing import CliRunner
 
 from src.cli.app import app
@@ -14,6 +16,7 @@ from src.cli.output import (
     is_remote_db,
     output_result,
 )
+from tests.fixtures.operational_runtime import install_operational_runtime
 
 runner = CliRunner()
 
@@ -85,6 +88,17 @@ class TestOutputResult:
 
 class TestSubcommandGroups:
     """Verify all expected subcommand groups are registered."""
+
+    def test_real_cli_callback_reserves_and_finalizes_durable_root(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        runtime = install_operational_runtime(monkeypatch)
+
+        result = runner.invoke(app, ["operations", "--help"])
+
+        assert result.exit_code == 0
+        assert runtime.events == ["reserve", "activate", "finish"]
+        assert runtime.entrypoints == ["cli.operations"]
 
     def test_ingest_group_exists(self):
         result = runner.invoke(app, ["ingest", "--help"])

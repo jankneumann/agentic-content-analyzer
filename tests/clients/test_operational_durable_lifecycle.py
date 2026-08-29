@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from time import monotonic
 from typing import Any
@@ -344,3 +345,41 @@ async def test_one_outer_deadline_covers_flush_and_final_evidence(
     assert monotonic() - started < 0.075
     records = module.BootstrapAuditSpool(tmp_path).verify(required=True)
     assert records[-1]["diagnostic_code"] == "telemetry.exit_deadline_exceeded"
+
+
+@pytest.mark.asyncio
+async def test_shutdown_flushes_exporter_once_when_heartbeat_persistence_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.clients import operational_observability as module
+    from src.queue import setup as queue_setup
+
+    calls = {"shutdown": 0, "heartbeat": 0, "exporter": 0}
+
+    class _FailingHeartbeatLifecycle:
+        async def shutdown(self, connection: Any, *, flush: Any) -> bool:
+            calls["shutdown"] += 1
+            await flush()
+            if connection is not None:
+                await self.heartbeat(connection)
+            return True
+
+        async def heartbeat(self, _connection: Any) -> None:
+            calls["heartbeat"] += 1
+            raise ConnectionError("database unavailable")
+
+        def record_export_failure(self, _code: str) -> None:
+            pass
+
+    @asynccontextmanager
+    async def connection():
+        yield object()
+
+    async def exporter_bridge(_callback: Any) -> None:
+        calls["exporter"] += 1
+
+    monkeypatch.setattr(queue_setup, "_queue_connection", connection)
+    monkeypatch.setattr(module, "_ASYNCIO_TO_THREAD", exporter_bridge)
+
+    assert await module.shutdown_process_telemetry(_FailingHeartbeatLifecycle()) is True
+    assert calls == {"shutdown": 1, "heartbeat": 1, "exporter": 1}
