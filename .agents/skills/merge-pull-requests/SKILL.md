@@ -729,7 +729,10 @@ The tracked record is appended to **`docs/merge-logs/context-convergence.jsonl`*
 It pins the refresh manifest by path and `sha256` digest — that is what "the
 manifest is committed" means in git-native form. The manifest itself stays in
 `.git-context/` and stays **gitignored**; tracking it would reintroduce the
-repository diff that ri-07 D6 exists to prevent.
+repository diff that ri-07 D6 exists to prevent. Staging goes through
+`stage_convergence_tree()`: it refuses to run when `.git-context/` is not
+ignored, uses `git add -A` with a pathspec exclude (never a bare `git add -A`),
+and aborts if `git diff --cached` still lists `.git-context/**`.
 
 #### Ownership boundary
 

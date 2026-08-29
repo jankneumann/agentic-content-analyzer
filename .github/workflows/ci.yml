@@ -222,8 +222,17 @@ jobs:
           pytest $PATHS -v --no-cov -x -m "not hoverfly and not contract and not smoke and not integration and not live_api and not real_ingest"
 
   contract-test:
+    name: contract-test (${{ matrix.suite }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: schema
+            pytest-args: tests/contract/test_schema_conformance.py
+          - suite: fuzz
+            pytest-args: tests/contract/ --ignore=tests/contract/test_schema_conformance.py
     services:
       postgres:
         image: paradedb/paradedb:0.22.2-pg17
@@ -254,8 +263,19 @@ jobs:
 
       - name: Install dependencies
         run: |
-          # Keep the derandomized contract corpus aligned with uv.lock.
+          # Pin Hypothesis/Schemathesis to uv.lock so cached examples replay
+          # against the same shrinker. Do not derandomize: the random draw is
+          # how contract tests find new defects.
           uv pip install --system -e ".[dev]" hypothesis==6.151.9 schemathesis==4.10.2
+
+      - name: Cache Hypothesis examples
+        uses: actions/cache@v4
+        with:
+          path: .hypothesis/examples
+          key: hypothesis-contract-${{ matrix.suite }}-${{ hashFiles('uv.lock') }}-${{ github.sha }}
+          restore-keys: |
+            hypothesis-contract-${{ matrix.suite }}-${{ hashFiles('uv.lock') }}-
+            hypothesis-contract-${{ matrix.suite }}-
 
       - name: Run database migrations
         env:
@@ -274,7 +294,10 @@ jobs:
           ENVIRONMENT: development
           WORKER_ENABLED: "false"
         run: |
-          pytest tests/contract/ -m contract -v --no-cov --tb=short
+          # Per-test timeout converts a hung case into a named failure instead
+          # of a job-level kill with no output. 300s is above observed healthy
+          # per-endpoint times (~2 min) and far below the 16+ min stall.
+          pytest ${{ matrix.pytest-args }} -m contract -v --no-cov --tb=short --timeout=300 --timeout-method=thread
 
   real-ingest-test:
     name: real-ingest-test (PR tier)
