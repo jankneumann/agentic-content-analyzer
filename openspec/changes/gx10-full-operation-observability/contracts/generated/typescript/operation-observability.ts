@@ -25,6 +25,7 @@ const CANONICAL_DECIMAL = /^(0|[1-9][0-9]*)$/;
 const TRACE_ID = /^[0-9a-f]{32}$/;
 const SPAN_ID = /^[0-9a-f]{16}$/;
 const TRACEPARENT = /^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$/;
+const codePointLength = (value: string): number => Array.from(value).length;
 
 function isBoundedDecimal(value: string, minimum: bigint, maximum: bigint): boolean {
   return value.length <= 19 && CANONICAL_DECIMAL.test(value)
@@ -109,7 +110,7 @@ export function parseOperationContextEnvelope(value: unknown): OperationContextE
   }
   const boundedString = (field: string, minimum: number, maximum: number): string => {
     const item = context[field];
-    if (typeof item !== "string" || item.length < minimum || item.length > maximum) {
+    if (typeof item !== "string" || codePointLength(item) < minimum || codePointLength(item) > maximum) {
       throw new TypeError(`${field} is outside its string bounds`);
     }
     return item;
@@ -133,8 +134,8 @@ export function parseOperationContextEnvelope(value: unknown): OperationContextE
   boundedString("environment", 1, 32);
   boundedString("release_revision", 1, 64);
   if (context.stage !== null && (typeof context.stage !== "string" || !OPERATION_STAGES.has(context.stage))) throw new TypeError("invalid stage");
-  if (context.resource_kind !== null && (typeof context.resource_kind !== "string" || context.resource_kind.length > 64)) throw new TypeError("invalid resource_kind");
-  if (context.resource_key !== null && (typeof context.resource_key !== "string" || context.resource_key.length > 128)) throw new TypeError("invalid resource_key");
+  if (context.resource_kind !== null && (typeof context.resource_kind !== "string" || codePointLength(context.resource_kind) > 64)) throw new TypeError("invalid resource_kind");
+  if (context.resource_key !== null && (typeof context.resource_key !== "string" || codePointLength(context.resource_key) > 128)) throw new TypeError("invalid resource_key");
   return context as unknown as OperationContextEnvelope;
 }
 

@@ -26,7 +26,7 @@
       "agreed_type": "contract_mismatch",
       "agreed_criticality": "critical",
       "recommended_disposition": "accept",
-      "description": "Critical: D1 and task 3.1 require JSON Schema, OpenAPI, Python, and TypeScript to accept the same context objects, but the structural schemas and generated TypeScript still admit objects that Python rejects. Draft-2020-12 validation accepts a traceparent whose embedded IDs differ from trace_id/span_id (and an attempt_number unrelated to claim_generation), while the Pydantic model rejects it; the TypeScript aliases are plain string and an entirely invalid OperationContextEnvelope compiles without invoking any guard."
+      "description": "Critical: the new composite validators still disagree on the schema-version discriminator. JSON Schema and TypeScript require the numeric integer 1 exactly, but Pydantic's Literal[1] coerces both JSON true and 1.0 to integer 1 even with ConfigDict(strict=True); the reproduced Python ingress probe accepts and normalizes both values. This breaks the promised cross-runtime acceptance boundary at the field that selects the wire contract version."
     },
     {
       "id": 2,
@@ -36,9 +36,9 @@
       "matched_findings": [],
       "match_score": 0.0,
       "agreed_type": "contract_mismatch",
-      "agreed_criticality": "critical",
+      "agreed_criticality": "medium",
       "recommended_disposition": "accept",
-      "description": "Critical: the SQL null-bypass is not fully closed. A non-null submission_context can contain JSON null for traceparent, trace_id, and span_id while the duplicated columns are SQL NULL; key-presence and size checks pass, every nullable column check passes, and IS NOT DISTINCT FROM considers each null pair equal. This contradicts the non-null envelope schema and the iteration-4 claim that every duplicate is required when canonical context exists."
+      "description": "Nit: TypeScript applies string maxLength with UTF-16 code-unit length while JSON Schema and Python count Unicode code points. A service_name containing 100 astral characters satisfies the declared maxLength 100 and is accepted by Python, but the mandatory TypeScript parser counts 200 and rejects the same envelope."
     },
     {
       "id": 3,
@@ -47,10 +47,10 @@
       "primary_finding_id": 3,
       "matched_findings": [],
       "match_score": 0.0,
-      "agreed_type": "performance",
+      "agreed_type": "contract_mismatch",
       "agreed_criticality": "medium",
       "recommended_disposition": "accept",
-      "description": "Nit: the TypeScript signed-BIGINT guard tests an unbounded decimal regex and then constructs BigInt(value) before checking the 19-character contract limit, so a long digit string reaches an unnecessarily expensive arbitrary-precision parse even though every canonical value is at most 19 characters."
+      "description": "Nit: audit_log and workflow_terminal_events still accept all-zero trace IDs (and audit request span IDs) even though the canonical W3C contract now rejects zero identifiers and these rows are specified to persist real trace/span IDs. Invalid zero values can therefore enter retained audit/terminal correlation despite being rejected on queue and attempt rows."
     },
     {
       "id": 4,
@@ -62,7 +62,7 @@
       "agreed_type": "architecture",
       "agreed_criticality": "low",
       "recommended_disposition": "accept",
-      "description": "The revision correctly adds executable process-health lifecycle columns and exact expiry constraints, explicit claim-generation headroom, null-safe duplicate comparisons, bounded Python scalars, non-zero W3C identifiers, and a still-valid package DAG."
+      "description": "Revision 5 correctly documents structural-schema limits, requires composite ingress validation, adds a branded TypeScript parser with semantic checks, closes the SQL JSON-null bypass, and bounds decimal parsing before BigInt conversion."
     }
   ],
   "summary": {

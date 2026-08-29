@@ -209,9 +209,14 @@ ALTER TABLE audit_log
     ADD COLUMN IF NOT EXISTS service_name VARCHAR(100) NULL,
     ADD COLUMN IF NOT EXISTS release_revision VARCHAR(64) NULL,
     ADD CONSTRAINT ck_audit_log_trace_id
-        CHECK (trace_id IS NULL OR trace_id ~ '^[0-9a-f]{32}$'),
+        CHECK (trace_id IS NULL OR (
+            trace_id ~ '^[0-9a-f]{32}$' AND trace_id <> repeat('0', 32)
+        )),
     ADD CONSTRAINT ck_audit_log_request_span_id
-        CHECK (request_span_id IS NULL OR request_span_id ~ '^[0-9a-f]{16}$');
+        CHECK (request_span_id IS NULL OR (
+            request_span_id ~ '^[0-9a-f]{16}$'
+            AND request_span_id <> repeat('0', 16)
+        ));
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_trace_id
     ON audit_log(trace_id) WHERE trace_id IS NOT NULL;
@@ -224,7 +229,9 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_trace_operation
 ALTER TABLE workflow_terminal_events
     ADD COLUMN IF NOT EXISTS trace_id CHAR(32) NULL,
     ADD CONSTRAINT ck_workflow_terminal_events_trace_id
-        CHECK (trace_id IS NULL OR trace_id ~ '^[0-9a-f]{32}$');
+        CHECK (trace_id IS NULL OR (
+            trace_id ~ '^[0-9a-f]{32}$' AND trace_id <> repeat('0', 32)
+        ));
 
 -- Ownership remains inactive until a separate cutover selects one shared authority.
 CREATE TABLE IF NOT EXISTS environment_ownership (

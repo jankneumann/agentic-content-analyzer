@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 TRACEPARENT_PATTERN = re.compile(r"^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$")
@@ -50,6 +50,15 @@ SpanIdString = Annotated[str, Field(pattern=r"^[0-9a-f]{16}$"), AfterValidator(_
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("schema_version", mode="before", check_fields=False)
+    @classmethod
+    def validate_exact_schema_version(cls, value: Any) -> Any:
+        # JSON Schema numeric semantics treat lexical 1 and 1.0 as the same
+        # integer value; bool and string aliases remain invalid.
+        if isinstance(value, bool) or type(value) not in (int, float) or value != 1:
+            raise ValueError("schema_version must be the JSON number 1")
+        return 1
 
 
 class OperationStage(StrEnum):

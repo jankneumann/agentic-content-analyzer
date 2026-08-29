@@ -3,12 +3,12 @@ schema_version: 1
 feature:
   id: "gx10-full-operation-observability"
   title: "GX-10 full operation observability"
-  plan_revision: 5
+  plan_revision: 6
   created_by: "codex"
   created_at: "2026-08-28T12:00:00Z"
 
 contracts:
-  revision: 5
+  revision: 6
   openapi:
     primary: "openspec/changes/gx10-full-operation-observability/contracts/openapi/v1.yaml"
     files:

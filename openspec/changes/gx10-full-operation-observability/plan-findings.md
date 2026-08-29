@@ -100,3 +100,14 @@ PLAN_REVIEW round 4 confirmed the issue #514 fixes and found two final semantic-
 - TypeScript decimal guards reject inputs longer than 19 characters before regex or BigInt parsing; oversized inputs are required test cases.
 
 Validation: structural schemas accept the documented cross-field mismatch fixture while both generated runtime validators reject it; Python and TypeScript reject carrier, arithmetic, duplicate-tracestate, size, and signed-BIGINT boundary violations; SQL null/type assertions pass; strict OpenSpec, all work-package validation checks, and `git diff --check` pass.
+
+
+## Iteration 6
+
+PLAN_REVIEW round 5 left one schema-version concern and two consistency nits; all were resolved before the final reset-budget review.
+
+- Schema-version parity now follows actual JSON semantics: Draft 2020-12 and JavaScript both treat lexical `1` and `1.0` as the same numeric integer value. Generated Python normalizes those numeric forms to integer 1 and explicitly rejects boolean `true` and string `"1"`, matching structural JSON Schema and TypeScript. Cross-runtime fixtures freeze this rule.
+- TypeScript uses Unicode code-point counts for every free-text maxLength check, matching JSON Schema and Python at astral-character boundaries.
+- Audit-log trace/span constraints and workflow-terminal trace constraints now reject all-zero W3C identifiers, matching queue and attempt tables.
+
+Validation: Python, JSON Schema, and TypeScript agree on numeric `1`/`1.0`, boolean/string rejection, and 100/101 astral-character boundaries; every versioned StrictModel inherits the schema-version pre-validator; SQL zero-ID assertions pass; strict OpenSpec, all work-package checks, generated artifact runtime checks, and `git diff --check` pass.
