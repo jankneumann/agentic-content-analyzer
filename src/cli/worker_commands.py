@@ -55,7 +55,13 @@ async def _run_worker(concurrency: int) -> None:
     Args:
         concurrency: Maximum number of concurrent tasks
     """
-    from src.queue.worker import register_all_handlers, run_worker
+    from src.queue.worker import (
+        create_telemetry_lifecycle,
+        register_all_handlers,
+        run_telemetry_heartbeat,
+        run_worker,
+        shutdown_process_telemetry,
+    )
 
     # Register signal handlers for graceful shutdown
     shutdown_event = asyncio.Event()
@@ -68,6 +74,12 @@ async def _run_worker(concurrency: int) -> None:
 
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
+
+    telemetry_lifecycle = create_telemetry_lifecycle(
+        service_name="aca-cli-worker", lifecycle_kind="short_lived"
+    )
+    telemetry_lifecycle.initialize(app=None)
+    telemetry_health_task = asyncio.create_task(run_telemetry_heartbeat(telemetry_lifecycle))
 
     # Register all job handlers
     register_all_handlers()
@@ -99,6 +111,9 @@ async def _run_worker(concurrency: int) -> None:
         logger.error(f"Worker error: {e}")
         raise
     finally:
+        telemetry_health_task.cancel()
+        await asyncio.gather(telemetry_health_task, return_exceptions=True)
+        await shutdown_process_telemetry(telemetry_lifecycle)
         logger.info("Worker shutdown complete")
         if not is_json_mode():
             typer.echo(typer.style("Worker stopped", fg=typer.colors.YELLOW))

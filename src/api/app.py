@@ -86,10 +86,14 @@ async def lifespan(app: FastAPI):
             exc_info=True,
         )
 
-    # Startup: Initialize telemetry (observability provider + OTel infrastructure)
-    from src.telemetry import setup_telemetry
+    # Startup: Initialize telemetry before instrumented clients and heartbeat health.
+    from src.queue.worker import create_telemetry_lifecycle, run_telemetry_heartbeat
 
-    setup_telemetry(app=app)
+    telemetry_lifecycle = create_telemetry_lifecycle(
+        service_name="aca-api", lifecycle_kind="long_running"
+    )
+    telemetry_lifecycle.initialize(app=app)
+    telemetry_health_task = asyncio.create_task(run_telemetry_heartbeat(telemetry_lifecycle))
 
     # Check embedding configuration matches database state (non-blocking)
     if settings.enable_search_indexing:
@@ -138,10 +142,12 @@ async def lifespan(app: FastAPI):
                 pass
             logger.info("Embedded worker stopped")
 
-        # Shutdown: Flush and close telemetry
-        from src.telemetry import shutdown_telemetry
+        # Shutdown: stop heartbeat then perform one bounded flush/final health write.
+        telemetry_health_task.cancel()
+        await asyncio.gather(telemetry_health_task, return_exceptions=True)
+        from src.queue.worker import shutdown_process_telemetry
 
-        shutdown_telemetry()
+        await shutdown_process_telemetry(telemetry_lifecycle)
 
         # Close queue connection if it was opened
         try:

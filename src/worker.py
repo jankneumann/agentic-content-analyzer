@@ -9,8 +9,13 @@ import os
 import signal
 import sys
 
-from src.queue.worker import register_all_handlers, run_worker
-from src.telemetry import setup_telemetry, shutdown_telemetry
+from src.queue.worker import (
+    create_telemetry_lifecycle,
+    register_all_handlers,
+    run_telemetry_heartbeat,
+    run_worker,
+    shutdown_process_telemetry,
+)
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -44,7 +49,11 @@ async def main() -> None:
     signal.signal(signal.SIGINT, _handle_shutdown)
     signal.signal(signal.SIGTERM, _handle_shutdown)
 
-    setup_telemetry(app=None)
+    telemetry_lifecycle = create_telemetry_lifecycle(
+        service_name="aca-worker", lifecycle_kind="long_running"
+    )
+    telemetry_lifecycle.initialize(app=None)
+    telemetry_health_task = asyncio.create_task(run_telemetry_heartbeat(telemetry_lifecycle))
     concurrency = _get_runtime_concurrency()
 
     logger.info(f"Starting embedded queue worker (concurrency={concurrency})")
@@ -60,7 +69,9 @@ async def main() -> None:
         logger.error(f"Worker error: {e}")
         raise
     finally:
-        shutdown_telemetry()
+        telemetry_health_task.cancel()
+        await asyncio.gather(telemetry_health_task, return_exceptions=True)
+        await shutdown_process_telemetry(telemetry_lifecycle)
         logger.info("Worker shutdown complete")
 
 

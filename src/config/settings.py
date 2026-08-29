@@ -801,6 +801,12 @@ class Settings(BaseSettings):
     # Observability Provider Configuration
     # Explicit provider selection — matches database/storage provider patterns
     observability_provider: ObservabilityProviderType = "noop"
+    observability_required: bool = False
+    telemetry_heartbeat_interval_seconds: int = Field(default=30, ge=5, le=300)
+    telemetry_buffer_capacity: int = Field(default=2048, ge=1, le=1_000_000)
+    telemetry_flush_timeout_seconds: float = Field(default=5.0, ge=0.05, le=30.0)
+    telemetry_service_instance_id: str | None = Field(default=None, min_length=1, max_length=128)
+    telemetry_release_revision: str = Field(default="unknown", min_length=1, max_length=64)
 
     # OpenTelemetry (infrastructure layer — used by all providers except noop)
     otel_enabled: bool = False  # Enable OTel auto-instrumentation (FastAPI, SQLAlchemy, httpx)
@@ -1261,6 +1267,22 @@ class Settings(BaseSettings):
             case "local":
                 # Local provider uses local settings or legacy fallbacks
                 pass
+        return self
+
+    @model_validator(mode="after")
+    def validate_required_observability(self) -> Settings:
+        """Reject silent disablement when a deployment requires telemetry."""
+
+        if not self.observability_required:
+            return self
+        if self.observability_provider == "noop":
+            raise ValueError(
+                "observability_provider cannot be noop when observability_required is true"
+            )
+        if self.observability_provider == "otel" and not self.otel_exporter_otlp_endpoint:
+            raise ValueError(
+                "otel_exporter_otlp_endpoint is required when observability is required"
+            )
         return self
 
     @model_validator(mode="after")

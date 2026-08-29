@@ -15,10 +15,11 @@ import json
 import os
 import secrets
 import socket
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from time import monotonic
-from typing import Any
+from typing import Any, Literal
 
 import asyncpg
 
@@ -26,6 +27,205 @@ from src.storage.database import get_queue_connection_string
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+class TelemetryLifecycle:
+    """One bounded telemetry lifecycle shared by every long/short-lived process."""
+
+    def __init__(
+        self,
+        *,
+        settings: Any,
+        service_name: str,
+        lifecycle_kind: Literal["long_running", "short_lived"],
+        service_instance_id: str | None = None,
+    ) -> None:
+        self.settings = settings
+        self.service_name = service_name[:100]
+        self.lifecycle_kind = lifecycle_kind
+        configured_instance = getattr(settings, "telemetry_service_instance_id", None)
+        self.service_instance_id = (
+            service_instance_id
+            or configured_instance
+            or os.environ.get("ACA_SERVICE_INSTANCE_ID")
+            or f"{socket.gethostname()}-{os.getpid()}-{secrets.token_hex(4)}"
+        )[:128]
+        self.release_revision = (
+            getattr(settings, "telemetry_release_revision", None)
+            or os.environ.get("RELEASE_REVISION")
+            or os.environ.get("RAILWAY_GIT_COMMIT_SHA")
+            or "unknown"
+        )[:64]
+        self.required = bool(getattr(settings, "observability_required", False))
+        self.initialized = False
+        self.status: Literal["healthy", "degraded", "disabled", "stale"] = "disabled"
+        self.last_success_at: datetime | None = None
+        self.last_error_at: datetime | None = None
+        self.last_error_code: str | None = None
+        self.buffered_count = 0
+        self.buffer_capacity = int(getattr(settings, "telemetry_buffer_capacity", 2048))
+        self.dropped_count = 0
+        self.last_flush_at: datetime | None = None
+        self.last_flush_succeeded: bool | None = None
+
+    @property
+    def export_target(self) -> Literal["local_langfuse", "remote_langfuse", "other_otlp", "none"]:
+        provider = str(getattr(self.settings, "observability_provider", "noop"))
+        if provider == "langfuse":
+            base_url = str(getattr(self.settings, "langfuse_base_url", ""))
+            return (
+                "local_langfuse"
+                if "localhost" in base_url or "127.0.0.1" in base_url
+                else "remote_langfuse"
+            )
+        if getattr(self.settings, "otel_exporter_otlp_endpoint", None):
+            return "other_otlp"
+        return "none"
+
+    def initialize(
+        self,
+        *,
+        app: Any | None = None,
+        setup: Callable[[Any | None], None] | None = None,
+    ) -> None:
+        """Initialize before instrumented clients and enforce required readiness."""
+
+        provider = str(getattr(self.settings, "observability_provider", "noop"))
+        if self.required and (provider == "noop" or self.export_target == "none"):
+            self.status = "degraded"
+            self.last_error_at = datetime.now(UTC)
+            self.last_error_code = "telemetry.required_configuration_missing"
+            raise RuntimeError("required observability has no configured export target")
+        if setup is None:
+            from src.telemetry import setup_telemetry
+
+            setup = setup_telemetry
+        setup(app)
+        self.initialized = True
+        self.status = "disabled" if self.export_target == "none" else "healthy"
+
+    def record_buffered(self, count: int) -> None:
+        """Apply the bounded process buffer and expose deterministic overflow."""
+
+        if count < 0:
+            raise ValueError("buffered count must be non-negative")
+        accepted = min(count, self.buffer_capacity)
+        self.buffered_count = accepted
+        overflow = count - accepted
+        if overflow:
+            self.dropped_count += overflow
+            self.status = "degraded"
+            self.last_error_at = datetime.now(UTC)
+            self.last_error_code = "telemetry.buffer_overflow"
+
+    def record_export_success(self, *, buffered_count: int = 0) -> None:
+        self.buffered_count = min(max(buffered_count, 0), self.buffer_capacity)
+        self.last_success_at = datetime.now(UTC)
+        self.last_error_code = None
+        self.status = "healthy"
+
+    def record_export_failure(self, error_code: str) -> None:
+        self.last_error_at = datetime.now(UTC)
+        self.last_error_code = error_code[:80]
+        self.status = "degraded"
+
+    async def heartbeat(self, conn: Any) -> Any:
+        from src.repositories.telemetry_process_health import (
+            ProcessHealthHeartbeat,
+            upsert_process_health,
+        )
+
+        return await upsert_process_health(
+            conn,
+            ProcessHealthHeartbeat(
+                environment=str(self.settings.environment),
+                service_name=self.service_name,
+                service_instance_id=self.service_instance_id,
+                release_revision=self.release_revision,
+                lifecycle_kind=self.lifecycle_kind,
+                required_observability=self.required,
+                initialized=self.initialized,
+                status=self.status,
+                export_target=self.export_target,
+                last_heartbeat_at=datetime.now(UTC),
+                last_success_at=self.last_success_at,
+                last_error_at=self.last_error_at,
+                last_error_code=self.last_error_code,
+                buffered_count=self.buffered_count,
+                buffer_capacity=self.buffer_capacity,
+                dropped_count=self.dropped_count,
+                last_flush_at=self.last_flush_at,
+                last_flush_succeeded=self.last_flush_succeeded,
+            ),
+        )
+
+    async def shutdown(
+        self,
+        conn: Any | None,
+        *,
+        flush: Callable[[], Awaitable[None]] | None = None,
+    ) -> bool:
+        """Bound shutdown flush and persist terminal evidence when possible."""
+
+        if flush is None:
+            from src.telemetry import shutdown_telemetry
+
+            async def flush() -> None:
+                await asyncio.to_thread(shutdown_telemetry)
+
+        succeeded = True
+        try:
+            await asyncio.wait_for(
+                flush(),
+                timeout=float(getattr(self.settings, "telemetry_flush_timeout_seconds", 5.0)),
+            )
+        except (TimeoutError, Exception):
+            succeeded = False
+            self.record_export_failure("telemetry.flush_failed")
+        self.last_flush_at = datetime.now(UTC)
+        self.last_flush_succeeded = succeeded
+        if conn is not None:
+            await self.heartbeat(conn)
+        return succeeded
+
+
+def create_telemetry_lifecycle(
+    *, service_name: str, lifecycle_kind: Literal["long_running", "short_lived"]
+) -> TelemetryLifecycle:
+    from src.config.settings import get_settings
+
+    return TelemetryLifecycle(
+        settings=get_settings(), service_name=service_name, lifecycle_kind=lifecycle_kind
+    )
+
+
+async def run_telemetry_heartbeat(lifecycle: TelemetryLifecycle) -> None:
+    """Persist bounded process health until the owning process cancels the task."""
+
+    from src.queue.setup import _queue_connection
+
+    interval = float(getattr(lifecycle.settings, "telemetry_heartbeat_interval_seconds", 30))
+    while True:
+        try:
+            async with _queue_connection() as conn:
+                await lifecycle.heartbeat(conn)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            lifecycle.record_export_failure("telemetry.health_write_failed")
+            logger.warning("Telemetry process-health heartbeat failed", exc_info=True)
+        await asyncio.sleep(interval)
+
+
+async def shutdown_process_telemetry(lifecycle: TelemetryLifecycle) -> bool:
+    from src.queue.setup import _queue_connection
+
+    try:
+        async with _queue_connection() as conn:
+            return await lifecycle.shutdown(conn)
+    except Exception:
+        return await lifecycle.shutdown(None)
+
 
 # Registry of entrypoint → async handler functions
 _handlers: dict[str, Callable[..., Coroutine[Any, Any, None]]] = {}
@@ -371,6 +571,81 @@ def _attempt_context_from_job(job: dict[str, Any]):
     return OperationContext.model_validate(values)
 
 
+@contextmanager
+def _bind_submission_parent(job: dict[str, Any]) -> Iterator[None]:
+    """Install the validated persisted W3C carrier as the OTel remote parent."""
+
+    raw = job.get("submission_context")
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+    if raw is None:
+        yield
+        return
+    from src.contracts.operation_context import parse_operation_context
+
+    submission = parse_operation_context(raw)
+    carrier = {"traceparent": submission.traceparent}
+    if submission.tracestate is not None:
+        carrier["tracestate"] = submission.tracestate
+    try:
+        from opentelemetry.context import attach, detach
+        from opentelemetry.propagate import extract
+
+        token = attach(extract(carrier))
+    except Exception:
+        yield
+        return
+    try:
+        yield
+    finally:
+        detach(token)
+
+
+def _actual_attempt_context(context: Any, span: Any) -> Any:
+    """Replace provisional identifiers with the actual provider span when exposed."""
+
+    try:
+        span_context = span.get_span_context()
+        if not span_context.is_valid:
+            return context
+        trace_id = format(span_context.trace_id, "032x")
+        span_id = format(span_context.span_id, "016x")
+    except (AttributeError, TypeError, ValueError):
+        return context
+    values = context.model_dump(mode="python")
+    values.update(
+        trace_id=trace_id,
+        span_id=span_id,
+        traceparent=f"00-{trace_id}-{span_id}-01",
+    )
+    return type(context).model_validate(values)
+
+
+@contextmanager
+def _attempt_trace(job: dict[str, Any], context: Any) -> Iterator[Any]:
+    from src.contracts.operation_context import bind_operation_context
+    from src.telemetry import get_provider
+    from src.telemetry.operation_spans import operation_span
+
+    generation = int(context.claim_generation)
+    with (
+        _bind_submission_parent(job),
+        operation_span(
+            get_provider(),
+            f"operation.{job['entrypoint']}.attempt",
+            context=context,
+            attributes={
+                "queue.retry": generation > 0,
+                "queue.retry_from_claim_generation": generation - 1 if generation > 0 else None,
+                "queue.wait_ms": _queue_wait_milliseconds(job),
+            },
+        ) as span,
+    ):
+        actual = _actual_attempt_context(context, span)
+        with bind_operation_context(actual):
+            yield actual
+
+
 async def _start_attempt_evidence(conn: asyncpg.Connection, context: Any) -> bool:
     """Fence and append the durable attempt row before handler side effects."""
 
@@ -447,7 +722,6 @@ async def _process_job(
         await _fail_job(conn, job_id, claim_generation, "Invalid operation observation context")
         return
 
-    from src.contracts.operation_context import bind_operation_context
     from src.queue.execution_claim import ExecutionClaim, bind_execution_claim
     from src.queue.setup import touch_job_heartbeat
 
@@ -457,7 +731,7 @@ async def _process_job(
         claim_protocol_version=claim_protocol_version,
     )
 
-    with bind_execution_claim(claim), bind_operation_context(attempt_context):
+    with bind_execution_claim(claim), _attempt_trace(job, attempt_context) as attempt_context:
         if await _checkpoint_job_cancellation(conn, job_id, claim_generation):
             logger.info(f"Job {job_id} ({entrypoint}) cancelled before handler invocation")
             return
@@ -508,22 +782,7 @@ async def _process_job(
 
         heartbeat_task = asyncio.create_task(_heartbeat_loop())
         try:
-            from src.telemetry import get_provider
-            from src.telemetry.operation_spans import operation_span
-
-            with operation_span(
-                get_provider(),
-                f"operation.{entrypoint}.attempt",
-                context=attempt_context,
-                attributes={
-                    "queue.retry": claim_generation > 0,
-                    "queue.retry_from_claim_generation": (
-                        claim_generation - 1 if claim_generation > 0 else None
-                    ),
-                    "queue.wait_ms": _queue_wait_milliseconds(job),
-                },
-            ):
-                await handler(job_id, payload)
+            await handler(job_id, payload)
             await _complete_attempt_evidence(
                 conn, attempt_context, outcome="succeeded", retryable=False
             )
