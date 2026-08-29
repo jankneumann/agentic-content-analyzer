@@ -471,6 +471,37 @@ def validate_restore_target(
             raise RestoreIsolationError("restore target contains a production source")
 
 
+def validate_restore_plan(
+    *,
+    targets: Mapping[BackupComponent, Path],
+    isolated_root: Path,
+    production_sources: Mapping[BackupComponent, Path],
+) -> None:
+    """Reject incomplete or non-fresh restore plans before any decryption occurs."""
+    _require_complete_inventory("restore targets", targets)
+    _require_complete_inventory("production sources", production_sources)
+    resolved_root = isolated_root.resolve()
+    for target in targets.values():
+        if target.exists():
+            raise RestoreIsolationError("restore target already exists")
+    if isolated_root.exists():
+        raise RestoreIsolationError("dedicated restore root must not already exist")
+    for source in production_sources.values():
+        resolved_source = source.resolve()
+        if (
+            resolved_root == resolved_source
+            or resolved_root.is_relative_to(resolved_source)
+            or resolved_source.is_relative_to(resolved_root)
+        ):
+            raise RestoreIsolationError("dedicated restore root overlaps production")
+    for target in targets.values():
+        validate_restore_target(
+            target=target,
+            isolated_root=isolated_root,
+            production_sources=tuple(production_sources.values()),
+        )
+
+
 class GX10RestoreDrill:
     def __init__(
         self,
@@ -586,20 +617,25 @@ class GX10RestoreDrill:
         artifacts: Mapping[BackupComponent, EncryptedArtifact],
         targets: Mapping[BackupComponent, Path],
         isolated_root: Path,
-        production_sources: Sequence[Path],
+        production_sources: Mapping[BackupComponent, Path],
         available_recipients: Sequence[str],
         correlation: MaintenanceCorrelation,
         metadata_probe: Callable[[], RestoreValidation],
     ) -> RestoreDrillResult:
         _require_complete_inventory("restore artifacts", artifacts)
         _require_complete_inventory("restore targets", targets)
+        validate_restore_plan(
+            targets=targets,
+            isolated_root=isolated_root,
+            production_sources=production_sources,
+        )
         restore_started_at = self._clock()
         results = tuple(
             self._restore_one(
                 artifact=artifacts[component],
                 target=targets[component],
                 isolated_root=isolated_root,
-                production_sources=production_sources,
+                production_sources=tuple(production_sources.values()),
                 available_recipients=available_recipients,
                 correlation=correlation,
                 restore_started_at=restore_started_at,

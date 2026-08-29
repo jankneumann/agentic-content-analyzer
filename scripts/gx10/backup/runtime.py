@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
@@ -83,6 +84,57 @@ def _producer(argv: tuple[str, ...]) -> Callable[[], bytes]:
     return produce
 
 
+def resolve_manifest_artifact_path(artifact_dir: Path, name: str) -> Path:
+    artifact_name = Path(name)
+    if not name or artifact_name.is_absolute() or artifact_name.name != name:
+        raise ValueError("manifest artifact name must be a single relative filename")
+    root = artifact_dir.resolve()
+    resolved = (artifact_dir / artifact_name).resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError("manifest artifact name escapes the artifact directory")
+    return resolved
+
+
+def _production_source_inventory(plan: Mapping[str, Any]) -> dict[BackupComponent, Path]:
+    value = plan.get("production_sources")
+    if not isinstance(value, dict):
+        raise ValueError("production_sources must be a complete object")
+    expected = {str(component) for component in BackupComponent}
+    if set(value) != expected:
+        raise ValueError("production_sources must contain exactly the GX-10 component inventory")
+    sources: dict[BackupComponent, Path] = {}
+    for component in BackupComponent:
+        raw = value[str(component)]
+        if not isinstance(raw, str) or not raw:
+            raise ValueError(f"production_sources.{component} must be an absolute path")
+        source = Path(raw)
+        if not source.is_absolute() or not source.exists():
+            raise ValueError(f"production_sources.{component} must be an existing absolute path")
+        sources[component] = source
+    if len({source.resolve() for source in sources.values()}) != len(sources):
+        raise ValueError("production_sources must identify distinct component paths")
+    return sources
+
+
+def run_daily_backup_schedule(
+    run_once: Callable[[], int],
+    *,
+    max_runs: int | None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> int:
+    if max_runs is not None and max_runs < 1:
+        raise ValueError("max_runs must be positive or None")
+    completed = 0
+    while max_runs is None or completed < max_runs:
+        result = run_once()
+        completed += 1
+        if result != 0:
+            return result
+        if max_runs is None or completed < max_runs:
+            sleep(24 * 60 * 60)
+    return 0
+
+
 def run_scheduled_backup(
     *,
     plan_path: Path,
@@ -146,11 +198,14 @@ def run_isolated_restore(
     }
     if set(successful) != set(BackupComponent):
         raise ValueError("restore manifest must contain every successful component")
+    production_sources = _production_source_inventory(plan)
     artifacts = {
         component: EncryptedArtifact(
             component=component,
             name=successful[component].artifact_name or "",
-            payload=(artifact_dir / (successful[component].artifact_name or "")).read_bytes(),
+            payload=resolve_manifest_artifact_path(
+                artifact_dir, successful[component].artifact_name or ""
+            ).read_bytes(),
             checksum_sha256=successful[component].checksum_sha256 or "",
             encryption_recipient=successful[component].encryption_recipient or "",
             completed_at=manifest.completed_at,
@@ -206,7 +261,7 @@ def run_isolated_restore(
         artifacts=artifacts,
         targets={component: isolated_root / str(component) for component in BackupComponent},
         isolated_root=isolated_root,
-        production_sources=tuple(Path(value) for value in plan.get("production_sources", [])),
+        production_sources=production_sources,
         available_recipients=(
             recipient_catalog.validated_active(),
             *recipient_catalog.retained,
@@ -288,9 +343,12 @@ def run_synthetic_checkpoint(output: Path) -> dict[str, Any]:
 
     with tempfile.TemporaryDirectory(prefix="gx10-checkpoint-") as temporary:
         root = Path(temporary)
-        source = root / "production"
-        source.mkdir()
-        sentinel = source / "sentinel"
+        production_sources = {
+            component: root / "production" / str(component) for component in BackupComponent
+        }
+        for source in production_sources.values():
+            source.mkdir(parents=True)
+        sentinel = production_sources[BackupComponent.APPLICATION_POSTGRESQL] / "sentinel"
         sentinel.write_text("untouched", encoding="utf-8")
         artifacts = {
             result.component: EncryptedArtifact(
@@ -325,7 +383,7 @@ def run_synthetic_checkpoint(output: Path) -> dict[str, Any]:
                 component: root / "isolated" / str(component) for component in BackupComponent
             },
             isolated_root=root / "isolated",
-            production_sources=(source,),
+            production_sources=production_sources,
             available_recipients=("age1" + "a" * 58,),
             correlation=correlation,
             metadata_probe=lambda: RestoreValidation(
@@ -387,11 +445,14 @@ def _parser() -> argparse.ArgumentParser:
     checkpoint = subparsers.add_parser("checkpoint")
     checkpoint.add_argument("--output", type=Path, required=True)
     backup = subparsers.add_parser("backup")
-    backup.add_argument("--plan", type=Path, required=True)
-    backup.add_argument("--output", type=Path, required=True)
-    backup.add_argument("--operation-id", required=True)
-    backup.add_argument("--trace-id", required=True)
-    backup.add_argument("--quota-bytes", type=int, required=True)
+    scheduled = subparsers.add_parser("schedule")
+    for command in (backup, scheduled):
+        command.add_argument("--plan", type=Path, required=True)
+        command.add_argument("--output", type=Path, required=True)
+        command.add_argument("--operation-id", required=True)
+        command.add_argument("--trace-id", required=True)
+        command.add_argument("--quota-bytes", type=int, required=True)
+    scheduled.add_argument("--max-runs", type=int, default=0)
     restore = subparsers.add_parser("restore")
     restore.add_argument("--plan", type=Path, required=True)
     restore.add_argument("--manifest", type=Path, required=True)
@@ -411,15 +472,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         operation_id=args.operation_id,
         trace_id=args.trace_id,
     )
-    if args.command == "backup":
-        manifest = run_scheduled_backup(
-            plan_path=args.plan,
-            output_dir=args.output,
-            correlation=correlation,
-            quota=BackupQuota(limit_bytes=args.quota_bytes, used_bytes=0),
-        )
-        print(manifest.to_json())
-        return 0 if manifest.outcome == "succeeded" else 1
+    if args.command in {"backup", "schedule"}:
+
+        def run_once() -> int:
+            manifest = run_scheduled_backup(
+                plan_path=args.plan,
+                output_dir=args.output,
+                correlation=correlation,
+                quota=BackupQuota(limit_bytes=args.quota_bytes, used_bytes=0),
+            )
+            print(manifest.to_json())
+            return 0 if manifest.outcome == "succeeded" else 1
+
+        if args.command == "schedule":
+            return run_daily_backup_schedule(
+                run_once,
+                max_runs=None if args.max_runs == 0 else args.max_runs,
+            )
+        return run_once()
     result = run_isolated_restore(
         plan_path=args.plan,
         manifest_path=args.manifest,

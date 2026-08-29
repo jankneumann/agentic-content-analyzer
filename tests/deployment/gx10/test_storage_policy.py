@@ -179,9 +179,9 @@ def test_storage_state_persists_hysteresis_across_runtime_instances(tmp_path: Pa
     StorageRuntime(invoke=lambda _action, _payload: True, state_file=state_file).run_cycle(
         usage_percent=80, now=start, **kwargs
     )
-    before = StorageRuntime(
-        invoke=lambda _action, _payload: True, state_file=state_file
-    ).run_cycle(usage_percent=75, now=start + timedelta(minutes=1), **kwargs)
+    before = StorageRuntime(invoke=lambda _action, _payload: True, state_file=state_file).run_cycle(
+        usage_percent=75, now=start + timedelta(minutes=1), **kwargs
+    )
     cleared = StorageRuntime(
         invoke=lambda _action, _payload: True, state_file=state_file
     ).run_cycle(usage_percent=75, now=start + timedelta(minutes=16), **kwargs)
@@ -190,6 +190,21 @@ def test_storage_state_persists_hysteresis_across_runtime_instances(tmp_path: Pa
     assert cleared.state == "normal"
     assert stat.S_IMODE(state_file.stat().st_mode) == 0o600
     assert state_file.stat().st_size <= 4096
+
+
+def test_storage_state_rejects_oversized_or_unsafe_files(tmp_path: Path) -> None:
+    from scripts.gx10.storage.runtime import StorageRuntime
+
+    state_file = tmp_path / "state.json"
+    state_file.write_bytes(b"x" * 4097)
+    state_file.chmod(0o600)
+    with pytest.raises(ValueError, match="bounded size"):
+        StorageRuntime(invoke=lambda _action, _payload: True, state_file=state_file)
+
+    state_file.write_text('{"schema_version":1,"state":"normal","clear_since":null}')
+    state_file.chmod(0o644)
+    with pytest.raises(ValueError, match="permissions"):
+        StorageRuntime(invoke=lambda _action, _payload: True, state_file=state_file)
 
 
 def test_critical_pause_failure_emits_correlated_alert_and_cli_fails_closed(
@@ -202,6 +217,26 @@ def test_critical_pause_failure_emits_correlated_alert_and_cli_fails_closed(
     from collections import namedtuple
 
     from scripts.gx10.storage import runtime as storage_runtime
+
+    invoked: list[tuple[str, dict[str, object]]] = []
+    runtime = storage_runtime.StorageRuntime(
+        invoke=lambda action, payload: invoked.append((action, payload)) or action != "throttle"
+    )
+    runtime.run_cycle(
+        usage_percent=90,
+        scheduled_ingestion_concurrency=8,
+        now=storage_runtime.datetime(2026, 8, 29, tzinfo=storage_runtime.UTC),
+        operation_id="critical-pause",
+        trace_id="e" * 32,
+        outcome_specific_retention=False,
+    )
+    assert runtime.action_failures == ("critical_pause_action_failed",)
+    assert any(
+        action == "alert"
+        and payload["trace_id"] == "e" * 32
+        and payload["diagnostic_code"] == "critical_pause_action_failed"
+        for action, payload in invoked
+    )
 
     actions = tmp_path / "actions.json"
     actions.write_text(
@@ -240,8 +275,8 @@ def test_critical_pause_failure_emits_correlated_alert_and_cli_fails_closed(
 
 
 def test_allowed_entrypoints_expose_bounded_monitor_and_daily_backup_schedules() -> None:
-    from scripts.gx10.backup.runtime import run_daily_backup_schedule
-    from scripts.gx10.storage.runtime import run_monitor_schedule
+    from scripts.gx10.backup.runtime import _parser as backup_parser, run_daily_backup_schedule
+    from scripts.gx10.storage.runtime import _parser as storage_parser, run_monitor_schedule
 
     monitor_calls: list[int] = []
     monitor_sleeps: list[float] = []
@@ -269,6 +304,8 @@ def test_allowed_entrypoints_expose_bounded_monitor_and_daily_backup_schedules()
     assert monitor_sleeps == [60]
     assert backup_calls == [1, 1]
     assert backup_sleeps == [24 * 60 * 60]
+    assert "--interval-seconds" in storage_parser().format_help()
+    assert "schedule" in backup_parser().format_help()
 
 
 def test_storage_entrypoint_uses_only_frozen_operation_stages() -> None:
@@ -279,9 +316,22 @@ def test_storage_entrypoint_uses_only_frozen_operation_stages() -> None:
     assert 'stage="cleanup"' in source
 
 
-@pytest.mark.parametrize("name", ["../outside.age", "/tmp/outside.age", "nested/file.age"])
+@pytest.mark.parametrize("name", ["../outside.age", "/outside.age", "nested/file.age"])
 def test_restore_rejects_manifest_artifact_path_escape(tmp_path: Path, name: str) -> None:
     from scripts.gx10.backup.runtime import resolve_manifest_artifact_path
 
     with pytest.raises(ValueError, match="artifact name"):
         resolve_manifest_artifact_path(tmp_path, name)
+
+
+def test_restore_rejects_manifest_artifact_symlink_escape(tmp_path: Path) -> None:
+    from scripts.gx10.backup.runtime import resolve_manifest_artifact_path
+
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    outside = tmp_path / "outside.age"
+    outside.write_bytes(b"ciphertext")
+    (artifacts / "linked.age").symlink_to(outside)
+
+    with pytest.raises(ValueError, match="escapes"):
+        resolve_manifest_artifact_path(artifacts, "linked.age")

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from types import MappingProxyType
 
@@ -126,6 +126,44 @@ class StorageController:
     policy: StoragePolicy = field(default_factory=StoragePolicy)
     state: StorageState = StorageState.NORMAL
     _clear_since: datetime | None = None
+
+    @classmethod
+    def from_state(cls, value: Mapping[str, object]) -> StorageController:
+        """Restore only the bounded, versioned policy state needed for hysteresis."""
+        if set(value) != {"schema_version", "state", "clear_since"}:
+            raise ValueError("storage controller state has unexpected fields")
+        if value["schema_version"] != 1 or isinstance(value["schema_version"], bool):
+            raise ValueError("storage controller state schema is unsupported")
+        try:
+            state = StorageState(value["state"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("storage controller state is invalid") from exc
+        clear_value = value["clear_since"]
+        clear_since = None
+        if clear_value is not None:
+            if not isinstance(clear_value, str):
+                raise ValueError("storage clear timestamp must be a string or null")
+            try:
+                clear_since = datetime.fromisoformat(clear_value.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise ValueError("storage clear timestamp is invalid") from exc
+            if clear_since.tzinfo is None:
+                raise ValueError("storage clear timestamp must include an offset")
+            clear_since = clear_since.astimezone(UTC)
+        if state is StorageState.NORMAL and clear_since is not None:
+            raise ValueError("normal storage state cannot retain a clear timer")
+        return cls(state=state, _clear_since=clear_since)
+
+    def to_state(self) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "state": str(self.state),
+            "clear_since": (
+                self._clear_since.astimezone(UTC).isoformat().replace("+00:00", "Z")
+                if self._clear_since is not None
+                else None
+            ),
+        }
 
     def evaluate(
         self,

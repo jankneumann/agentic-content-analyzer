@@ -40,6 +40,10 @@ def _restore_validators(backup, overrides=None):
     return validators
 
 
+def _production_sources(backup, root: Path):
+    return {component: root / "production" / str(component) for component in backup.BackupComponent}
+
+
 def _encrypt(payload: bytes, recipient: str) -> bytes:
     return b"age-encryption.org/v1\n" + recipient.encode() + b":" + payload
 
@@ -356,8 +360,7 @@ def test_restore_plan_requires_complete_sources_and_fresh_dedicated_root(
 ) -> None:
     backup = _backup()
     targets = {
-        component: tmp_path / "isolated" / str(component)
-        for component in backup.BackupComponent
+        component: tmp_path / "isolated" / str(component) for component in backup.BackupComponent
     }
     incomplete_sources = {backup.BackupComponent.NEO4J: tmp_path / "production" / "neo4j"}
 
@@ -369,8 +372,7 @@ def test_restore_plan_requires_complete_sources_and_fresh_dedicated_root(
         )
 
     sources = {
-        component: tmp_path / "production" / str(component)
-        for component in backup.BackupComponent
+        component: tmp_path / "production" / str(component) for component in backup.BackupComponent
     }
     (tmp_path / "isolated").mkdir()
     with pytest.raises(backup.RestoreIsolationError, match="must not already exist"):
@@ -388,8 +390,7 @@ def test_restore_plan_rejects_root_containing_production_and_preexisting_target(
     isolated = tmp_path / "isolated"
     targets = {component: isolated / str(component) for component in backup.BackupComponent}
     sources = {
-        component: tmp_path / "production" / str(component)
-        for component in backup.BackupComponent
+        component: tmp_path / "production" / str(component) for component in backup.BackupComponent
     }
     sources[backup.BackupComponent.NEO4J] = isolated / "production-neo4j"
 
@@ -717,7 +718,7 @@ def test_restore_drill_integrates_metadata_and_measured_objectives(
             for component in backup.BackupComponent
         },
         isolated_root=tmp_path / "isolated",
-        production_sources=(),
+        production_sources=_production_sources(backup, tmp_path),
         available_recipients=(ACTIVE_RECIPIENT,),
         correlation=_context(backup),
         metadata_probe=lambda: backup.RestoreValidation(
@@ -771,7 +772,7 @@ def test_restore_drill_rejects_missing_operation_rows_or_trace_metadata(
             for component in backup.BackupComponent
         },
         isolated_root=tmp_path / "isolated",
-        production_sources=(),
+        production_sources=_production_sources(backup, tmp_path),
         available_recipients=(ACTIVE_RECIPIENT,),
         correlation=_context(backup),
         metadata_probe=lambda: backup.RestoreValidation(
