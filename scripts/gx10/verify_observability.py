@@ -162,7 +162,17 @@ class SubprocessLiveAdapter:
     def submit(self, *, canaries: tuple[str, ...]) -> SubmissionIdentity:
         response = self._invoke(
             self._submit_executable,
-            {"schema_version": 1, "canaries": list(canaries)},
+            {
+                "schema_version": 1,
+                "scenario": {
+                    "id": "gx10-observability-retry-restart-v1",
+                    "operation_type": "summarization.run",
+                    "force_first_attempt_failure": True,
+                    "persist_context_before_restart": True,
+                    "restart_before_retry": True,
+                },
+                "canaries": list(canaries),
+            },
             failure_code="adapter_submit_failed",
         )
         return SubmissionIdentity.from_mapping(response)
@@ -424,14 +434,30 @@ def run_live_smoke(
 
     fixed_canaries = tuple(canaries)
     identity = adapter.submit(canaries=fixed_canaries)
-    return poll_trace_arrival(
-        lambda: adapter.collect(identity),
-        canaries=fixed_canaries,
-        policy=policy,
-        mode="live",
-        monotonic=monotonic,
-        sleep=sleep,
-    )
+
+    def collect_submitted_operation() -> EvidenceSnapshot:
+        snapshot = adapter.collect(identity)
+        submission = snapshot.submission
+        if (
+            _safe_identifier(submission.get("operation_id"), 64) != identity.operation_id
+            or _safe_identifier(submission.get("root_operation_id"), 64)
+            != identity.root_operation_id
+            or _safe_identifier(submission.get("trace_id"), 32) != identity.trace_id
+        ):
+            raise _SubmissionIdentityMismatchError
+        return snapshot
+
+    try:
+        return poll_trace_arrival(
+            collect_submitted_operation,
+            canaries=fixed_canaries,
+            policy=policy,
+            mode="live",
+            monotonic=monotonic,
+            sleep=sleep,
+        )
+    except _SubmissionIdentityMismatchError:
+        return _safe_failure_report("submission_identity_mismatch", mode="live", policy=policy)
 
 
 class FixtureEvidenceCollector:
@@ -508,9 +534,19 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _write_private_report(path: Path, payload: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp")
-    temporary.write_text(payload + "\n", encoding="utf-8")
-    os.chmod(temporary, 0o600)
-    temporary.replace(path)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(temporary, flags, 0o600)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(payload + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def _safe_failure_report(code: str, *, mode: str, policy: PollPolicy) -> VerificationReport:
@@ -543,6 +579,10 @@ def _is_env_name(value: str) -> bool:
         and value[0] in "ABCDEFGHIJKLMNOPQRSTUVWXYZ_"
         and all(character in "ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789" for character in value)
     )
+
+
+class _SubmissionIdentityMismatchError(Exception):
+    """Internal control flow; no evidence fields are attached by design."""
 
 
 def _mapping(value: object) -> JsonMapping:

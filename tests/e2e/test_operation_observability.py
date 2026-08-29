@@ -319,9 +319,7 @@ def test_live_smoke_rejects_snapshot_for_a_different_submission_identity() -> No
     )
     for collection in ("attempts", "logs", "observations"):
         for item in wrong[collection]:  # type: ignore[union-attr]
-            item.update(
-                operation_id="43", root_operation_id="43", trace_id=wrong_trace_id
-            )
+            item.update(operation_id="43", root_operation_id="43", trace_id=wrong_trace_id)
 
     class WrongOperationAdapter:
         def submit(self, *, canaries: tuple[str, ...]) -> SubmissionIdentity:
