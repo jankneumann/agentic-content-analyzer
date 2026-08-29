@@ -1,0 +1,212 @@
+"""Executable deployment policy contract for the GX-10 production runtime."""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+import yaml
+
+ROOT = Path(__file__).resolve().parents[3]
+COMPOSE_PATH = ROOT / "docker-compose.gx10.yml"
+DIGEST_PIN = re.compile(r"^[^\s@]+:[^\s@]+@sha256:[0-9a-f]{64}$")
+APPLICATION_SERVICES = {"api", "worker", "scheduler", "maintenance"}
+STATEFUL_SERVICES = {
+    "app-postgres",
+    "langfuse-postgres",
+    "redis",
+    "neo4j",
+    "clickhouse",
+    "minio",
+    "openbao",
+}
+REQUIRED_SERVICES = STATEFUL_SERVICES | APPLICATION_SERVICES | {
+    "langfuse-web",
+    "langfuse-worker",
+    "squid",
+    "caddy",
+}
+
+
+def _compose() -> dict[str, object]:
+    assert COMPOSE_PATH.is_file(), "GX-10 Compose overlay is required"
+    return yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
+
+
+def _service(compose: dict[str, object], name: str) -> dict[str, object]:
+    services = compose["services"]
+    assert isinstance(services, dict)
+    value = services[name]
+    assert isinstance(value, dict)
+    return value
+
+
+def test_all_runtime_images_are_immutable_and_squid_uses_reviewed_release() -> None:
+    compose = _compose()
+    services = compose["services"]
+    assert isinstance(services, dict)
+    assert services.keys() >= REQUIRED_SERVICES
+
+    for name, value in services.items():
+        assert isinstance(value, dict)
+        image = value.get("image")
+        assert isinstance(image, str), f"{name} must declare a rendered image"
+        assert DIGEST_PIN.fullmatch(image), f"{name} image must include tag and immutable digest"
+
+    squid_image = _service(compose, "squid")["image"]
+    assert isinstance(squid_image, str)
+    assert squid_image.startswith("ubuntu/squid:6.13-25.10_beta@sha256:")
+
+
+def test_stateful_ports_are_private_and_ingress_is_loopback_bound() -> None:
+    compose = _compose()
+    for name in STATEFUL_SERVICES | {"langfuse-web", "langfuse-worker", "squid"}:
+        service = _service(compose, name)
+        assert "ports" not in service, f"{name} must not publish a host port"
+
+    caddy_ports = _service(compose, "caddy").get("ports")
+    assert caddy_ports == ["127.0.0.1:8443:443"]
+
+
+def test_application_namespaces_have_no_direct_internet_route() -> None:
+    compose = _compose()
+    networks = compose["networks"]
+    assert isinstance(networks, dict)
+    assert networks["application"]["internal"] is True
+    assert networks["stateful"]["internal"] is True
+    assert networks["egress"]["internal"] is False
+
+    for name in APPLICATION_SERVICES:
+        service_networks = _service(compose, name)["networks"]
+        assert "application" in service_networks
+        assert "egress" not in service_networks
+        environment = _service(compose, name)["environment"]
+        assert environment["HTTPS_PROXY"] == "http://squid:3128"
+        assert environment["HTTP_PROXY"] == "http://squid:3128"
+        assert environment["NO_PROXY"] == "localhost,127.0.0.1,.gx10.internal"
+
+    assert {"application", "egress"} <= set(_service(compose, "squid")["networks"])
+
+
+def test_proxy_policy_is_read_only_authenticated_masked_and_fail_closed() -> None:
+    compose = _compose()
+    squid = _service(compose, "squid")
+    mounts = squid["volumes"]
+    assert any("squid.conf:/etc/squid/squid.conf:ro" in mount for mount in mounts)
+    assert any("allowed-domains.txt:/etc/squid/allowed-domains.txt:ro" in mount for mount in mounts)
+    assert any("/run/aca/gx10/proxy" in mount and mount.endswith(":ro") for mount in mounts)
+
+    config = (ROOT / "deploy/gx10/squid/squid.conf").read_text(encoding="utf-8")
+    assert "auth_param basic" in config
+    assert "acl authenticated proxy_auth REQUIRED" in config
+    assert "acl allowed_domains dstdomain" in config
+    assert "acl SSL_ports port 443" in config
+    assert "http_access allow authenticated allowed_domains SSL_ports CONNECT" in config
+    assert config.rstrip().endswith("http_access deny all")
+    assert "logformat gx10_connect" in config
+    assert "%>a" not in config and "%ru" not in config
+
+
+def test_egress_exceptions_and_failure_matrix_are_explicit_and_bounded() -> None:
+    policy = yaml.safe_load(
+        (ROOT / "deploy/gx10/egress-policy.yaml").read_text(encoding="utf-8")
+    )
+    assert policy["default"] == "deny"
+    assert policy["application_direct_route"] == "deny"
+    assert set(policy["bounded_exceptions"]) == {
+        "dns",
+        "ntp",
+        "certificate_bootstrap",
+        "proxy_health",
+    }
+    assert all(entry["targets"] and entry["timeout_seconds"] <= 30 for entry in policy["bounded_exceptions"].values())
+
+    failures = policy["fail_closed"]
+    assert set(failures) == {
+        "unknown_destination",
+        "stale_policy",
+        "invalid_policy",
+        "dns_failure",
+        "credential_failure",
+        "proxy_failure",
+    }
+    assert all(value["external_calls"] == "deny" for value in failures.values())
+    assert all(value["local_diagnostics"] == "allow" for value in failures.values())
+
+
+def test_health_order_persistence_restart_backoff_and_quotas_are_bounded() -> None:
+    compose = _compose()
+    for name in REQUIRED_SERVICES:
+        service = _service(compose, name)
+        assert "healthcheck" in service, f"{name} must be health checked"
+        assert service.get("restart") == "on-failure:5"
+        limits = service.get("deploy", {}).get("resources", {}).get("limits", {})
+        assert limits.get("cpus") and limits.get("memory")
+
+    for name in STATEFUL_SERVICES:
+        mounts = _service(compose, name).get("volumes", [])
+        assert any(str(mount).startswith("/srv/aca/") for mount in mounts), name
+
+    for name in APPLICATION_SERVICES:
+        depends = _service(compose, name)["depends_on"]
+        assert depends["squid"]["condition"] == "service_healthy"
+        assert depends["openbao"]["condition"] == "service_healthy"
+        assert depends["langfuse-web"]["condition"] == "service_healthy"
+
+    unit = (ROOT / "deploy/gx10/systemd/aca-gx10.service").read_text(encoding="utf-8")
+    assert "Requires=aca-gx10-secrets.service aca-gx10-proxy-policy.service aca-gx10-firewall.service" in unit
+    assert "After=aca-gx10-secrets.service aca-gx10-proxy-policy.service aca-gx10-firewall.service" in unit
+    assert "Restart=on-failure" in unit
+    assert "RestartSec=15s" in unit
+    assert "StartLimitBurst=5" in unit
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "unknown_destination",
+        "stale_policy",
+        "invalid_policy",
+        "dns_failure",
+        "credential_failure",
+        "proxy_failure",
+        "direct_route",
+    ],
+)
+def test_failure_scenarios_fail_closed_but_keep_local_diagnostics(scenario: str) -> None:
+    validator = ROOT / "scripts/gx10/validate_runtime.py"
+    result = subprocess.run(
+        [sys.executable, str(validator), "--simulate-failure", scenario],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    evidence = json.loads(result.stdout)
+    assert evidence == {
+        "external_calls": "denied",
+        "local_diagnostics": "available",
+        "scenario": scenario,
+    }
+
+
+def test_static_cold_restart_simulation_restores_dependency_order() -> None:
+    validator = ROOT / "scripts/gx10/validate_runtime.py"
+    result = subprocess.run(
+        [sys.executable, str(validator), "--simulate-cold-restart"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    evidence = json.loads(result.stdout)
+    assert evidence["result"] == "ready"
+    assert evidence["persistent_mounts"] == "preserved"
+    order = evidence["health_order"]
+    assert order.index("openbao") < order.index("squid") < order.index("api") < order.index("caddy")
