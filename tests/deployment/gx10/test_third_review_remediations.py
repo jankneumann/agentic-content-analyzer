@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -173,6 +174,100 @@ esac
         capture_output=True,
         text=True,
     )
+    assert result.returncode != 0
+    assert "seed credential is invalid" in result.stderr
+    assert not (operator_dir / "openbao-provisioned.ready").exists()
+
+
+def _valid_first_install_seed() -> dict[str, Any]:
+    return {
+        "runtime": {
+            "database_url": "postgresql://newsletter_user:pass@app-postgres/newsletters",
+            "app_secret_key": "a" * 48,
+            "configured_source_key_secret": "b" * 48,
+            "operation_cursor_signing_key": "c" * 48,
+            "admin_api_key": "d" * 48,
+            "langfuse_public_key": "pk-lf-test",
+            "langfuse_secret_key": "e" * 48,
+            "neo4j_password": "f" * 48,
+            "release_revision": "1" * 40,
+            "authority_fingerprint": "2" * 64,
+            "app_postgres_password": "g" * 48,
+            "langfuse_postgres_password": "h" * 48,
+            "redis_password": "i" * 48,
+            "clickhouse_password": "j" * 48,
+            "minio_root_user": "gx10-minio",
+            "minio_root_password": "k" * 48,
+            "langfuse_nextauth_secret": "l" * 48,
+            "langfuse_salt": "m" * 48,
+            "langfuse_encryption_key": "3" * 64,
+            "caddy_username": "operator",
+            "caddy_password_hash": "$2a$14$" + "A" * 53,
+        },
+        "operator": {"operator_api_key": "n" * 48, "rotation_generation": "1"},
+        "proxy": {
+            "username": "aca-egress",
+            "password": "p" * 48,
+            "rotation_generation": "1",
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("langfuse_postgres_password", "g" * 48),
+        ("redis_password", "i" * 47 + "!"),
+        ("proxy.password", "p" * 47 + ":"),
+        ("caddy_password_hash", "bcrypt-fixture"),
+    ],
+)
+def test_first_install_rejects_incompatible_secret_values_before_ready_marker(
+    tmp_path: Path,
+    field: str,
+    value: str,
+) -> None:
+    credential_dir = tmp_path / "credentials"
+    credential_dir.mkdir()
+    operator_dir = tmp_path / "operator"
+    operator_dir.mkdir()
+    (operator_dir / "bao-bootstrap-token").write_text("root-token\n")
+    (operator_dir / "bao-unseal-key").write_text("unseal-key\n")
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    curl = tools / "curl"
+    curl.write_text(
+        """#!/usr/bin/env bash
+url="${!#}"
+case "$url" in
+  *sys/health*) printf '{"initialized":true,"sealed":false}\n' ;;
+  *sys/mounts) printf '{"data":{"secret/":{"type":"kv","options":{"version":"2"}}}}\n' ;;
+  *sys/auth) printf '{"data":{"approle/":{"type":"approle"}}}\n' ;;
+  *) printf '{}\n' ;;
+esac
+"""
+    )
+    curl.chmod(0o700)
+    seed = _valid_first_install_seed()
+    if field == "proxy.password":
+        seed["proxy"]["password"] = value
+    else:
+        seed["runtime"][field] = value
+    (credential_dir / "bao-seed").write_text(json.dumps(seed))
+
+    result = subprocess.run(
+        [DEPLOY / "openbao/provision-first-install.sh"],
+        env=os.environ
+        | {
+            "PATH": f"{tools}:{os.environ['PATH']}",
+            "CREDENTIALS_DIRECTORY": str(credential_dir),
+            "GX10_BAO_OPERATOR_DIR": str(operator_dir),
+            "GX10_BAO_ADDR": "http://openbao.test/v1",
+        },
+        capture_output=True,
+        text=True,
+    )
+
     assert result.returncode != 0
     assert "seed credential is invalid" in result.stderr
     assert not (operator_dir / "openbao-provisioned.ready").exists()
