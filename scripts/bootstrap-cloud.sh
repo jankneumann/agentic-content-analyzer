@@ -21,19 +21,67 @@ bootstrap_audit_exit() {
     local command_status=$?
     trap - EXIT
     local outcome="succeeded"
-    local diagnostic_args=()
+    local diagnostic_code=""
     if [[ $command_status -ne 0 ]]; then
         outcome="permanent_failure"
-        diagnostic_args=(--diagnostic-code bootstrap.command_failed)
-    fi
-    local python_bin="python3"
-    if [[ -x "$_BOOTSTRAP_PROJECT_DIR/.venv/bin/python" ]]; then
-        python_bin="$_BOOTSTRAP_PROJECT_DIR/.venv/bin/python"
+        diagnostic_code="bootstrap.command_failed"
     fi
     local audit_status=0
-    PYTHONPATH="$_BOOTSTRAP_PROJECT_DIR${PYTHONPATH:+:$PYTHONPATH}" \
-        "$python_bin" -m src.clients.operational_observability \
-        'bootstrap.bootstrap_cloud' "$outcome" "${diagnostic_args[@]}" >/dev/null || audit_status=$?
+    ACA_AUDIT_OUTCOME="$outcome" ACA_AUDIT_DIAGNOSTIC="$diagnostic_code" python3 - <<'PY' \
+        >/dev/null || audit_status=$?
+import datetime
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+
+directory = Path(os.environ.get("ACA_BOOTSTRAP_AUDIT_DIR", "/srv/aca/bootstrap-audit"))
+directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+os.chmod(str(directory), 0o700)
+path = directory / "events.jsonl"
+lock_path = directory / "events.lock"
+lock_descriptor = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o600)
+try:
+    os.fchmod(lock_descriptor, 0o600)
+    fcntl.flock(lock_descriptor, fcntl.LOCK_EX)
+    previous_hash = None
+    if path.exists():
+        if path.stat().st_mode & 0o077:
+            raise RuntimeError("bootstrap audit permissions are not 0600")
+        for line in path.read_text(encoding="utf-8").splitlines():
+            record = json.loads(line)
+            claimed_hash = record.pop("record_hash")
+            if record.get("previous_hash") != previous_hash:
+                raise RuntimeError("bootstrap audit hash chain is corrupt")
+            seed = bytes.fromhex(previous_hash) if previous_hash else b"aca-bootstrap-audit-v1"
+            serialized = json.dumps(record, sort_keys=True, separators=(",", ":")).encode()
+            if hashlib.sha256(seed + serialized).hexdigest() != claimed_hash:
+                raise RuntimeError("bootstrap audit record hash is corrupt")
+            previous_hash = claimed_hash
+    body = {
+        "schema_version": 1,
+        "occurred_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "entrypoint": "bootstrap.bootstrap_cloud",
+        "outcome": os.environ["ACA_AUDIT_OUTCOME"],
+        "diagnostic_code": os.environ.get("ACA_AUDIT_DIAGNOSTIC") or None,
+        "metadata": {},
+        "previous_hash": previous_hash,
+    }
+    seed = bytes.fromhex(previous_hash) if previous_hash else b"aca-bootstrap-audit-v1"
+    serialized = json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
+    body["record_hash"] = hashlib.sha256(seed + serialized).hexdigest()
+    descriptor = os.open(str(path), os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o600)
+    try:
+        os.fchmod(descriptor, 0o600)
+        encoded = json.dumps(body, sort_keys=True, separators=(",", ":")) + "\n"
+        os.write(descriptor, encoded.encode())
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+finally:
+    os.close(lock_descriptor)
+PY
     if [[ $command_status -eq 0 && $audit_status -ne 0 ]]; then
         command_status=$audit_status
     fi
