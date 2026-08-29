@@ -148,3 +148,41 @@ Completed the root wp-contracts slice: the approved GX-10 OpenAPI, SQL, and even
 
 ### Context
 Completed and integrated wp-db-projection and wp-telemetry-context with package-level evidence. The integrated live PostgreSQL rerun is environment-blocked by the absent local service; the verified disposable-Neon package run remains the authoritative 23-test integration result.
+
+---
+
+## Phase: Implementation (2026-08-29)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Use the persisted submission carrier as the attempt parent** `architectural: cross-service-operation-correlation` — Attaching the validated W3C carrier before the provider span makes restarted workers continue the original trace, while the actual emitted span identity is persisted for durable lookup.
+2. **Finalize canonical state and attempt evidence atomically** `architectural: attempt-aware-execution` — A same-transaction status and claim-generation fence prevents cancellation or reclaim from creating a divergent durable attempt outcome.
+
+### Alternatives Considered
+- Persist attempt evidence before changing canonical job state: rejected because A cancellation or reclaim can interleave between autocommit statements and leave the attempt outcome inconsistent with the queue state.
+
+### Trade-offs
+- Accepted A shared lifecycle helper in the queue core over Separate API, deployment-worker, and CLI-worker lifecycle implementations because One bounded contract keeps readiness, heartbeat, overflow, recovery, and flush behavior consistent across the three owned entrypoints.
+
+### Open Questions
+- [ ] wp-queue-core has no context_impact declaration, so its context checkpoint status remains unmigrated.
+
+### Completed Work
+- Tasks 4.1-4.5: implemented atomic submission/child context propagation, restart-safe claim extraction, real attempt-root topology, retry/queue-wait evidence, and stale-claim isolation.
+- Unified API, deployment worker, and CLI worker telemetry initialization, durable health heartbeat, required-observability readiness, dual 10,000-observation/256-MiB buffer limits, outage recovery, and bounded shutdown flush.
+- Verified the exact package suite with 21 passing tests, the extended worker regression with 43 passing tests, focused Ruff/format/mypy, strict OpenSpec, bytecode compilation, and whitespace checks.
+
+### Next Steps
+- Implement the newly dependency-ready API/audit, ingestion, operational coverage, and GX-10 runtime packages according to the approved DAG.
+- Preserve direct-SQL negative fixtures, generated validator parity, bounded telemetry, and the mandatory six-hour GX-10 acceptance gate.
+
+### Relevant Files
+- `src/services/operation_service.py` — Atomic root and child submission context persistence
+- `src/queue/worker.py` — W3C attempt continuation, atomic terminal evidence, and shared telemetry lifecycle
+- `src/config/settings.py` — Required observability and bounded process-buffer settings
+- `tests/integration/test_queue_trace_propagation.py` — In-memory W3C topology and archived sibling-retry trace fixture
+- `tests/api/test_observability_lifecycle.py` — Readiness, heartbeat, overflow, recovery, restart, and flush coverage
+
+### Context
+Completed and integrated wp-queue-core. API and child submissions now persist validated W3C context atomically; each claim continues the stored trace with independently fenced attempt evidence, and API/deployment/CLI workers share bounded telemetry lifecycle health. A final review hardening made canonical terminal state and matching attempt outcome one atomic transaction.
