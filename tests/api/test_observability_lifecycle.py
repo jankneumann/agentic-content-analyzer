@@ -156,7 +156,9 @@ def test_api_deployment_worker_and_cli_worker_use_one_lifecycle_factory() -> Non
 
 
 @pytest.mark.asyncio
-async def test_deployment_worker_uses_configured_role_service_name(monkeypatch) -> None:
+async def test_deployment_worker_uses_configured_role_service_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import src.worker as deployment_worker
 
     configured = _settings(otel_service_name="aca-worker-pool")

@@ -9,6 +9,7 @@ import os
 import signal
 import sys
 
+from src.config.settings import get_settings
 from src.queue.worker import (
     create_telemetry_lifecycle,
     register_all_handlers,
@@ -49,8 +50,9 @@ async def main() -> None:
     signal.signal(signal.SIGINT, _handle_shutdown)
     signal.signal(signal.SIGTERM, _handle_shutdown)
 
+    settings = get_settings()
     telemetry_lifecycle = create_telemetry_lifecycle(
-        service_name="aca-worker", lifecycle_kind="long_running"
+        service_name=settings.otel_service_name, lifecycle_kind="long_running"
     )
     telemetry_lifecycle.initialize(app=None)
     telemetry_health_task = asyncio.create_task(run_telemetry_heartbeat(telemetry_lifecycle))
