@@ -69,6 +69,11 @@ jq -e '
     $operator.operator_api_key,
     $proxy.password
   ] | all(length >= 32)) and
+  ($runtime.app_postgres_password != $runtime.langfuse_postgres_password) and
+  ($runtime.redis_password | test("^[A-Za-z0-9._~-]{32,}$")) and
+  ($proxy.password | test("^[A-Za-z0-9._~-]{32,}$")) and
+  ($runtime.caddy_password_hash |
+    test("^\\$2[aby]\\$(0[4-9]|[12][0-9]|3[01])\\$[./A-Za-z0-9]{53}$")) and
   ($runtime.minio_root_user | test("^[A-Za-z0-9._~-]+$")) and
   ($proxy.username | test("^[A-Za-z0-9._~-]+$")) and
   ($operator.rotation_generation | test("^[1-9][0-9]*$")) and
