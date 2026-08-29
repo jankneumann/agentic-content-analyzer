@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from types import SimpleNamespace
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import httpx
 
@@ -187,3 +188,53 @@ def test_filter_dedup_and_persistence_have_distinct_counts_and_codes() -> None:
         "blog_duplicate",
         "blog_persistence_failed",
     ]
+
+
+def test_fallback_records_failed_preferred_stage_and_selected_extractor() -> None:
+    service = BlogContentIngestionService()
+    url = "https://example.com/fallback"
+    service.client.fetch_index_page = Mock(return_value="<html></html>")
+    service.client.discover_post_links = Mock(return_value=[DiscoveredLink(url)])
+    service.client.extract_post = Mock(
+        return_value=BlogExtractionResult(
+            content=_content(url),
+            outcome=BlogItemOutcome.partial(
+                OperationStage.FALLBACK,
+                error_code="blog_preferred_extractor_failed",
+                fallback_from="trafilatura",
+            ),
+        )
+    )
+    service._content_filter_for_source = Mock(return_value=None)
+    service._persist_contents = Mock(return_value=(1, []))
+    observations: list[tuple[str, OperationStage, Mock]] = []
+
+    @contextmanager
+    def record_stage(name: str, stage: OperationStage, **_: object):
+        evidence = Mock()
+        observations.append((name, stage, evidence))
+        yield evidence
+
+    with patch("src.ingestion.blog_scraper.operation_stage", side_effect=record_stage):
+        result = service._ingest_source(
+            _source("https://example.com"),
+            max_entries=10,
+            after_date=None,
+            force_reprocess=False,
+        )
+
+    assert result.items_fetched == 1
+    extract = next(item for item in observations if item[0] == "blog.extract")
+    fallback = next(item for item in observations if item[0] == "blog.fallback")
+    assert extract[1] == OperationStage.EXTRACT
+    assert extract[2].finish.call_args.kwargs == {
+        "error_code": "blog_preferred_extractor_failed",
+        "retryable": False,
+        "attributes": {
+            "blog.fallback_from": "trafilatura",
+            "blog.selected_extractor": "crawl4ai",
+        },
+    }
+    assert extract[2].finish.call_args.args == (OperationOutcome.PARTIAL,)
+    assert fallback[1] == OperationStage.FALLBACK
+    assert fallback[2].finish.call_args.args == (OperationOutcome.SUCCEEDED,)

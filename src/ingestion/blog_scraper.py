@@ -12,13 +12,14 @@ from __future__ import annotations
 import json
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from urllib.parse import urldefrag, urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
 
+from src.contracts.operation_context import OperationOutcome, OperationStage
 from src.ingestion.gmail import ContentData
 from src.ingestion.result import (
     IngestionError,
@@ -27,11 +28,12 @@ from src.ingestion.result import (
     build_response_from_source_results,
 )
 from src.models.content import Content, ContentSource, ContentStatus
-from src.parsers.html_markdown import convert_html_to_markdown
+from src.parsers.html_markdown import convert_html_to_markdown, convert_html_with_result
 from src.storage.database import get_db
 from src.utils.content_hash import generate_markdown_hash
 from src.utils.html_parser import extract_links
 from src.utils.logging import get_logger
+from src.workflows.stage_observability import operation_stage
 
 logger = get_logger(__name__)
 
@@ -77,6 +79,81 @@ class DiscoveredLink:
 
     url: str
     title_hint: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class BlogItemOutcome:
+    """One bounded source/article outcome using the shared vocabulary."""
+
+    outcome: OperationOutcome
+    stage: OperationStage
+    error_code: str | None = None
+    retryable: bool | None = None
+    fallback_from: str | None = None
+
+    @classmethod
+    def succeeded(cls, stage: OperationStage) -> BlogItemOutcome:
+        return cls(OperationOutcome.SUCCEEDED, stage)
+
+    @classmethod
+    def partial(
+        cls,
+        stage: OperationStage,
+        *,
+        error_code: str,
+        fallback_from: str,
+    ) -> BlogItemOutcome:
+        return cls(OperationOutcome.PARTIAL, stage, error_code, False, fallback_from)
+
+    @classmethod
+    def filtered(cls) -> BlogItemOutcome:
+        return cls(OperationOutcome.FILTERED, OperationStage.FILTER, "blog_filtered", False)
+
+    @classmethod
+    def skipped_policy(cls, error_code: str) -> BlogItemOutcome:
+        return cls(OperationOutcome.SKIPPED_POLICY, OperationStage.FILTER, error_code, False)
+
+    @classmethod
+    def skipped_duplicate(cls) -> BlogItemOutcome:
+        return cls(
+            OperationOutcome.SKIPPED_DUPLICATE,
+            OperationStage.DEDUPLICATE,
+            "blog_duplicate",
+            False,
+        )
+
+    @classmethod
+    def failed(
+        cls,
+        *,
+        stage: OperationStage,
+        error_code: str,
+        retryable: bool,
+    ) -> BlogItemOutcome:
+        return cls(
+            OperationOutcome.RETRYABLE_FAILURE if retryable else OperationOutcome.PERMANENT_FAILURE,
+            stage,
+            error_code,
+            retryable,
+        )
+
+    @property
+    def is_failure(self) -> bool:
+        return self.outcome in {
+            OperationOutcome.RETRYABLE_FAILURE,
+            OperationOutcome.PERMANENT_FAILURE,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class BlogExtractionResult:
+    content: ContentData | None
+    outcome: BlogItemOutcome
+
+
+@dataclass
+class BlogSourceResult(SourceFetchResult):
+    item_outcomes: list[BlogItemOutcome] = field(default_factory=list)
 
 
 class BlogScrapingClient:
@@ -199,8 +276,33 @@ class BlogScrapingClient:
 
         return filtered
 
-    def extract_post_content(self, url: str) -> ContentData | None:
-        """Fetch and extract content from a single blog post URL.
+    def extract_post(self, url: str) -> BlogExtractionResult:
+        """Fetch and extract one post with a truthful typed stage outcome.
+
+        A caller-overridden legacy ``extract_post_content`` remains supported so
+        existing integrations can migrate without losing truthful aggregation.
+        """
+        legacy_method = self.extract_post_content
+        if getattr(legacy_method, "__func__", None) is not BlogScrapingClient.extract_post_content:
+            content = legacy_method(url)
+            if content is not None:
+                return BlogExtractionResult(
+                    content=content,
+                    outcome=BlogItemOutcome.succeeded(OperationStage.EXTRACT),
+                )
+            return BlogExtractionResult(
+                content=None,
+                outcome=BlogItemOutcome.failed(
+                    stage=OperationStage.EXTRACT,
+                    error_code="blog_extraction_failed",
+                    retryable=False,
+                ),
+            )
+
+        return self._extract_post_result(url)
+
+    def _extract_post_result(self, url: str) -> BlogExtractionResult:
+        """Fetch and extract one post using the typed converter result.
 
         Uses Trafilatura via HtmlMarkdownConverter for extraction.
 
@@ -214,15 +316,30 @@ class BlogScrapingClient:
             response = self._client.get(url)
             response.raise_for_status()
             raw_html = response.text
-        except httpx.HTTPError as e:
-            logger.warning(f"Failed to fetch blog post {url}: {e}")
-            return None
+        except httpx.HTTPError:
+            logger.warning("Failed to fetch blog post")
+            return BlogExtractionResult(
+                content=None,
+                outcome=BlogItemOutcome.failed(
+                    stage=OperationStage.FETCH,
+                    error_code="blog_fetch_failed",
+                    retryable=True,
+                ),
+            )
 
-        # Extract markdown via Trafilatura
-        markdown = convert_html_to_markdown(html=raw_html, url=url)
+        # Retain the selected extractor so fallback decisions stay diagnosable.
+        conversion = convert_html_with_result(html=raw_html, url=url)
+        markdown = conversion.markdown or ""
         if not markdown or len(markdown.strip()) < 100:
             logger.warning(f"Insufficient content extracted from {url}")
-            return None
+            return BlogExtractionResult(
+                content=None,
+                outcome=BlogItemOutcome.failed(
+                    stage=OperationStage.EXTRACT,
+                    error_code="blog_extraction_failed",
+                    retryable=False,
+                ),
+            )
 
         # Extract metadata from HTML
         soup = BeautifulSoup(raw_html, "html.parser")
@@ -231,7 +348,7 @@ class BlogScrapingClient:
         published_date = self.extract_published_date(raw_html)
         links = extract_links(raw_html)
 
-        return ContentData(
+        content = ContentData(
             source_type=ContentSource.BLOG,
             source_id=f"blog:{url}",
             source_url=url,
@@ -243,6 +360,47 @@ class BlogScrapingClient:
             links_json=links if links else None,
             metadata_json=None,
             raw_content=raw_html,
+            raw_format="html",
+            parser_used="BlogScraper",
+            content_hash=generate_markdown_hash(markdown),
+        )
+        if conversion.method == "crawl4ai":
+            outcome = BlogItemOutcome.partial(
+                OperationStage.FALLBACK,
+                error_code="blog_preferred_extractor_failed",
+                fallback_from="trafilatura",
+            )
+        else:
+            outcome = BlogItemOutcome.succeeded(OperationStage.EXTRACT)
+        return BlogExtractionResult(content=content, outcome=outcome)
+
+    def extract_post_content(self, url: str) -> ContentData | None:
+        """Backward-compatible content-only wrapper for legacy callers."""
+        try:
+            response = self._client.get(url)
+            response.raise_for_status()
+        except httpx.HTTPError:
+            logger.warning("Failed to fetch blog post")
+            return None
+        markdown = convert_html_to_markdown(html=response.text, url=url)
+        if not markdown or len(markdown.strip()) < 100:
+            logger.warning("Insufficient content extracted from blog post")
+            return None
+        soup = BeautifulSoup(response.text, "html.parser")
+        title = self._extract_title(soup, url)
+        author = self._extract_author(soup)
+        published_date = self.extract_published_date(response.text)
+        return ContentData(
+            source_type=ContentSource.BLOG,
+            source_id=f"blog:{url}",
+            source_url=url,
+            title=title or "Untitled",
+            author=author,
+            publication=urlparse(url).netloc,
+            published_date=published_date,
+            markdown_content=markdown,
+            links_json=extract_links(response.text),
+            raw_content=None,
             raw_format="html",
             parser_used="BlogScraper",
             content_hash=generate_markdown_hash(markdown),
@@ -484,11 +642,13 @@ class BlogContentIngestionService:
         """Ingest posts from a single blog source."""
         source_url = getattr(source, "url", "")
         source_name = getattr(source, "name", None)
-        fetch_result = SourceFetchResult(url=source_url, name=source_name)
+        fetch_result = BlogSourceResult(url=source_url, name=source_name)
+        current_stage = OperationStage.DISCOVER
 
         try:
             # Phase 1: Link discovery
-            html = self.client.fetch_index_page(source_url)
+            with operation_stage("blog.discover", OperationStage.DISCOVER):
+                html = self.client.fetch_index_page(source_url)
             links = self.client.discover_post_links(
                 html,
                 source_url,
@@ -504,13 +664,7 @@ class BlogContentIngestionService:
             logger.info(f"Discovered {len(links)} links from {source_name or source_url}")
 
             # Phase 2: Content extraction with optional filtering
-            content_filter = None
-            try:
-                from src.services.content_filter import create_content_filter
-
-                content_filter = create_content_filter(source)
-            except Exception:
-                logger.debug("Content filter not available, proceeding without filtering")
+            content_filter = self._content_filter_for_source(source)
 
             request_delay = getattr(source, "request_delay", 1.0)
             contents: list[ContentData] = []
@@ -519,17 +673,39 @@ class BlogContentIngestionService:
                 if i > 0 and request_delay > 0:
                     time.sleep(request_delay)
 
-                content_data = self.client.extract_post_content(link.url)
-                if content_data is None:
-                    fetch_result.items_failed += 1
-                    fetch_result.item_errors.append(
-                        IngestionError(
-                            code="extraction_failed",
-                            message="Failed to extract post content (HTTP error or insufficient content)",
-                            url=link.url,
-                        )
+                current_stage = OperationStage.EXTRACT
+                with operation_stage("blog.extract", OperationStage.EXTRACT) as evidence:
+                    extraction = self.client.extract_post(link.url)
+                    fallback_attributes = (
+                        {
+                            "blog.fallback_from": extraction.outcome.fallback_from,
+                            "blog.selected_extractor": "crawl4ai",
+                        }
+                        if extraction.outcome.fallback_from
+                        else None
                     )
+                    evidence.finish(
+                        extraction.outcome.outcome,
+                        error_code=extraction.outcome.error_code,
+                        retryable=extraction.outcome.retryable,
+                        attributes=fallback_attributes,
+                    )
+                if extraction.outcome.outcome == OperationOutcome.PARTIAL:
+                    with operation_stage(
+                        "blog.fallback",
+                        OperationStage.FALLBACK,
+                        attributes=fallback_attributes,
+                    ) as fallback_evidence:
+                        fallback_evidence.finish(
+                            OperationOutcome.SUCCEEDED,
+                            attributes=fallback_attributes,
+                        )
+                content_data = extraction.content
+                if content_data is None:
+                    self._record_item_outcome(fetch_result, extraction.outcome, link.url)
                     continue
+                if extraction.outcome.outcome == OperationOutcome.PARTIAL:
+                    fetch_result.item_outcomes.append(extraction.outcome)
 
                 # Use title hint from link if extraction didn't find one
                 if link.title_hint and content_data.title == "Untitled":
@@ -542,6 +718,11 @@ class BlogContentIngestionService:
                 if after_date and content_data.published_date:
                     if content_data.published_date < after_date:
                         logger.debug(f"Skipping old post: {content_data.title}")
+                        self._record_item_outcome(
+                            fetch_result,
+                            BlogItemOutcome.skipped_policy("blog_date_policy"),
+                            link.url,
+                        )
                         continue
 
                 # Content relevance filtering
@@ -556,30 +737,50 @@ class BlogContentIngestionService:
                                 f"Filtered out: {content_data.title} "
                                 f"(strategy: {filter_result.strategy_used})"
                             )
+                            self._record_item_outcome(
+                                fetch_result, BlogItemOutcome.filtered(), link.url
+                            )
                             continue
-                    except Exception as e:
-                        logger.debug(f"Content filter error, keeping post: {e}")
+                    except Exception:
+                        logger.debug("Content filter error, keeping post")
 
                 contents.append(content_data)
 
             # Phase 3: Database persistence with deduplication
-            count, persist_errors = self._persist_contents(
-                contents, force_reprocess=force_reprocess
-            )
+            current_stage = OperationStage.PERSIST
+            with operation_stage("blog.persist", OperationStage.PERSIST):
+                count, persist_outcomes = self._persist_contents(
+                    contents, force_reprocess=force_reprocess
+                )
             fetch_result.items_fetched = count
-            fetch_result.items_failed += len(persist_errors)
-            fetch_result.item_errors.extend(persist_errors)
+            for outcome in persist_outcomes:
+                self._record_item_outcome(fetch_result, outcome, source_url)
 
-        except httpx.HTTPError as e:
-            logger.error(f"HTTP error fetching {source_url}: {e}")
+        except httpx.HTTPError:
+            logger.error("HTTP error discovering blog source")
             fetch_result.success = False
-            fetch_result.error = str(e)
-            fetch_result.error_type = type(e).__name__
-        except Exception as e:
-            logger.error(f"Error processing blog source {source_url}: {e}")
+            fetch_result.error = "Blog source discovery failed"
+            fetch_result.error_type = "blog_discovery_failed"
+            fetch_result.item_outcomes.append(
+                BlogItemOutcome.failed(
+                    stage=OperationStage.DISCOVER,
+                    error_code="blog_discovery_failed",
+                    retryable=True,
+                )
+            )
+        except Exception:
+            error_code = f"blog_{current_stage.value}_failed"
+            logger.error("Blog source processing failed", extra={"error_code": error_code})
             fetch_result.success = False
-            fetch_result.error = str(e)
-            fetch_result.error_type = type(e).__name__
+            fetch_result.error = f"Blog {current_stage.value} stage failed"
+            fetch_result.error_type = error_code
+            fetch_result.item_outcomes.append(
+                BlogItemOutcome.failed(
+                    stage=current_stage,
+                    error_code=error_code,
+                    retryable=current_stage != OperationStage.EXTRACT,
+                )
+            )
 
         return fetch_result
 
@@ -588,14 +789,10 @@ class BlogContentIngestionService:
         contents: list[ContentData],
         *,
         force_reprocess: bool = False,
-    ) -> tuple[int, list[IngestionError]]:
-        """Persist content to database with 3-level deduplication.
-
-        Returns:
-            (count of items persisted, list of per-item persistence errors).
-        """
+    ) -> tuple[int, list[BlogItemOutcome]]:
+        """Persist content and return one bounded outcome per non-persisted item."""
         count = 0
-        errors: list[IngestionError] = []
+        outcomes: list[BlogItemOutcome] = []
 
         with get_db() as db:
             for content_data in contents:
@@ -646,10 +843,12 @@ class BlogContentIngestionService:
                             logger.info(f"Updated for reprocessing: {content_data.title}")
                         else:
                             logger.debug(f"Already exists: {content_data.source_id}")
+                            outcomes.append(BlogItemOutcome.skipped_duplicate())
                         continue
 
                     if url_duplicate:
                         logger.debug(f"URL duplicate: {content_data.source_url}")
+                        outcomes.append(BlogItemOutcome.skipped_duplicate())
                         continue
 
                     if content_duplicate:
@@ -709,18 +908,52 @@ class BlogContentIngestionService:
                     count += 1
                     logger.info(f"Ingested blog post: {content_data.title}")
 
-                except Exception as e:
-                    logger.error(f"Failed to persist {content_data.source_url}: {e}")
-                    errors.append(
-                        IngestionError(
-                            code="persistence_error",
-                            message=str(e),
-                            url=content_data.source_url,
+                except Exception:
+                    logger.error("Failed to persist blog article")
+                    outcomes.append(
+                        BlogItemOutcome.failed(
+                            stage=OperationStage.PERSIST,
+                            error_code="blog_persistence_failed",
+                            retryable=True,
                         )
                     )
                     continue
 
-        return count, errors
+        return count, outcomes
+
+    @staticmethod
+    def _record_item_outcome(
+        result: BlogSourceResult,
+        outcome: BlogItemOutcome,
+        url: str,
+    ) -> None:
+        result.item_outcomes.append(outcome)
+        if outcome.outcome == OperationOutcome.FILTERED:
+            result.items_filtered += 1
+        elif outcome.outcome in {
+            OperationOutcome.SKIPPED_POLICY,
+            OperationOutcome.SKIPPED_DUPLICATE,
+        }:
+            result.items_skipped += 1
+        elif outcome.is_failure:
+            result.items_failed += 1
+            result.item_errors.append(
+                IngestionError(
+                    code=outcome.error_code or "blog_item_failed",
+                    message=f"Blog {outcome.stage.value} stage failed",
+                    url=url,
+                )
+            )
+
+    @staticmethod
+    def _content_filter_for_source(source: object) -> object | None:
+        try:
+            from src.services.content_filter import create_content_filter
+
+            return create_content_filter(source)
+        except Exception:
+            logger.debug("Content filter not available, proceeding without filtering")
+            return None
 
     @staticmethod
     def _load_sources() -> list:
