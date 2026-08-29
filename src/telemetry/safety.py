@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import traceback
@@ -16,6 +17,8 @@ from opentelemetry.sdk.trace.export import SpanExporter
 from src.contracts.operation_context import OperationContext
 
 REDACTED = "[REDACTED]"
+MAX_EXCERPT_BYTES = 4 * 1024
+MAX_EXCEPTION_STACK_BYTES = 64 * 1024
 DEFAULT_EXCERPT_CODE_POINTS = 1_000
 MAX_ATTRIBUTE_COUNT = 128
 MAX_SERIALIZED_PAYLOAD_BYTES = 128 * 1024
@@ -28,9 +31,7 @@ _SENSITIVE_KEY = re.compile(
 _BEARER = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/-]+=*\b")
 _BASIC = re.compile(r"(?i)\bBasic\s+[A-Za-z0-9+/]+=*\b")
 _EMAIL = re.compile(r"(?<![\w.+-])[\w.+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![\w.-])")
-_ASSIGNMENT_SECRET = re.compile(
-    r"(?i)\b(?:api[_-]?key|secret|token|password)\s*[=:]\s*[^\s,;]+"
-)
+_ASSIGNMENT_SECRET = re.compile(r"(?i)\b(?:api[_-]?key|secret|token|password)\s*[=:]\s*[^\s,;]+")
 
 _METRIC_ATTRIBUTE_BOUNDS: dict[str, int] = {
     "direction": 16,
@@ -56,16 +57,24 @@ class SelectedTraceValue:
     value: str
 
 
-def bounded_excerpt(value: Any, *, max_code_points: int = DEFAULT_EXCERPT_CODE_POINTS) -> str:
-    """Convert an explicitly selected value to a Unicode-code-point-bounded excerpt."""
+def bounded_excerpt(
+    value: Any,
+    *,
+    max_code_points: int = DEFAULT_EXCERPT_CODE_POINTS,
+    max_bytes: int | None = None,
+) -> str:
+    """Return an excerpt bounded by Unicode code points and optional UTF-8 bytes."""
     if max_code_points < 1:
         raise ValueError("max_code_points must be positive")
+    if max_bytes is not None and max_bytes < 1:
+        raise ValueError("max_bytes must be positive")
     text = str(value)
-    if len(text) <= max_code_points:
-        return text
-    if max_code_points == 1:
-        return "…"
-    return f"{text[: max_code_points - 1]}…"
+    truncated = len(text) > max_code_points
+    body = text[: max_code_points - 1] if truncated else text
+    candidate = f"{body}…" if truncated else body
+    if max_bytes is not None and len(candidate.encode("utf-8")) > max_bytes:
+        return _truncate_utf8(body, max_bytes=max_bytes)
+    return candidate
 
 
 def select_trace_input(
@@ -74,7 +83,14 @@ def select_trace_input(
     max_code_points: int = DEFAULT_EXCERPT_CODE_POINTS,
 ) -> SelectedTraceValue:
     """Explicitly opt a bounded input excerpt into detailed trace export."""
-    return SelectedTraceValue("input", bounded_excerpt(value, max_code_points=max_code_points))
+    return SelectedTraceValue(
+        "input",
+        bounded_excerpt(
+            value,
+            max_code_points=max_code_points,
+            max_bytes=MAX_EXCERPT_BYTES,
+        ),
+    )
 
 
 def select_trace_output(
@@ -83,7 +99,14 @@ def select_trace_output(
     max_code_points: int = DEFAULT_EXCERPT_CODE_POINTS,
 ) -> SelectedTraceValue:
     """Explicitly opt a bounded output excerpt into detailed trace export."""
-    return SelectedTraceValue("output", bounded_excerpt(value, max_code_points=max_code_points))
+    return SelectedTraceValue(
+        "output",
+        bounded_excerpt(
+            value,
+            max_code_points=max_code_points,
+            max_bytes=MAX_EXCERPT_BYTES,
+        ),
+    )
 
 
 class TelemetryMasker:
@@ -143,7 +166,7 @@ def export_selected_trace_value(
     if not isinstance(selected, SelectedTraceValue) or selected.kind != expected_kind:
         raise TypeError(f"trace {expected_kind} must use select_trace_{expected_kind}()")
     masked = masker.mask(selected.value)
-    return str(masked)
+    return _truncate_utf8(str(masked), max_bytes=MAX_EXCERPT_BYTES)
 
 
 def masked_exception_stack(
@@ -153,7 +176,8 @@ def masked_exception_stack(
 ) -> str:
     """Preserve full stack shape while masking its serialized text at export."""
     rendered = "".join(traceback.format_exception(type(error), error, error.__traceback__))
-    return str((masker or TelemetryMasker.from_environment()).mask(rendered))
+    masked = str((masker or TelemetryMasker.from_environment()).mask(rendered))
+    return _truncate_utf8(masked, max_bytes=MAX_EXCEPTION_STACK_BYTES)
 
 
 def safe_metric_attributes(
@@ -187,11 +211,14 @@ def safe_span_attributes(
         return {}
     bounded = dict(list(attributes.items())[:MAX_ATTRIBUTE_COUNT])
     masked = masker.mask(bounded)
-    return {
-        str(key)[:128]: _bound_attribute_value(value)
-        for key, value in masked.items()
-        if value is not None
-    }
+    result: dict[str, Any] = {}
+    for key, value in masked.items():
+        if value is None:
+            continue
+        candidate = {**result, str(key)[:128]: _bound_attribute_value(value)}
+        if _serialized_payload_bytes(candidate) <= MAX_SERIALIZED_PAYLOAD_BYTES:
+            result = candidate
+    return result
 
 
 def safe_log_fields(
@@ -329,8 +356,167 @@ def _bound_attribute_value(value: Any) -> Any:
     return value
 
 
+def _truncate_utf8(text: str, *, max_bytes: int) -> str:
+    """Truncate text without splitting a UTF-8 code point, reserving an ellipsis."""
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return text
+    marker = "…"
+    marker_bytes = marker.encode("utf-8")
+    if max_bytes < len(marker_bytes):
+        return encoded[:max_bytes].decode("utf-8", errors="ignore")
+    prefix = encoded[: max_bytes - len(marker_bytes)].decode("utf-8", errors="ignore")
+    return f"{prefix}{marker}"
+
+
+def _serialized_payload_bytes(value: Any) -> int:
+    return len(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ObservationBudgetDecision:
+    """Fields retained for one successful observation after deterministic shedding."""
+
+    accepted: bool
+    include_metadata: bool
+    include_excerpt: bool
+
+
+@dataclass(slots=True)
+class AttemptObservationBudget:
+    """Process-local D5 envelope with capacity reserved for critical evidence."""
+
+    max_observations: int = 256
+    max_bytes: int = 16 * 1024 * 1024
+    reserved_observations: int = 64
+    reserved_bytes: int = 4 * 1024 * 1024
+    observations_used: int = 0
+    bytes_used: int = 0
+    _success_observations_used: int = 0
+    _success_bytes_used: int = 0
+    _observations_omitted: int = 0
+    _bytes_omitted: int = 0
+    _successful_excerpts_omitted: int = 0
+    _successful_metadata_omitted: int = 0
+    _reserved_evidence_omitted: int = 0
+
+    def __post_init__(self) -> None:
+        if self.max_observations < 1 or self.max_bytes < 1:
+            raise ValueError("attempt budget maxima must be positive")
+        if not 0 <= self.reserved_observations < self.max_observations:
+            raise ValueError("reserved observations must be below the attempt maximum")
+        if not 0 <= self.reserved_bytes < self.max_bytes:
+            raise ValueError("reserved bytes must be below the attempt maximum")
+
+    @property
+    def success_observation_limit(self) -> int:
+        return self.max_observations - self.reserved_observations
+
+    @property
+    def success_byte_limit(self) -> int:
+        return self.max_bytes - self.reserved_bytes
+
+    @property
+    def omitted_counters(self) -> dict[str, int]:
+        return {
+            "observations": self._observations_omitted,
+            "bytes": self._bytes_omitted,
+            "successful_excerpts": self._successful_excerpts_omitted,
+            "successful_metadata": self._successful_metadata_omitted,
+            "reserved_evidence": self._reserved_evidence_omitted,
+        }
+
+    def record_success(
+        self,
+        *,
+        topology_bytes: int,
+        metadata_bytes: int = 0,
+        excerpt_bytes: int = 0,
+    ) -> ObservationBudgetDecision:
+        """Admit topology, shedding excerpts before optional metadata."""
+        self._validate_sizes(topology_bytes, metadata_bytes, excerpt_bytes)
+        supplied_bytes = topology_bytes + metadata_bytes + excerpt_bytes
+        remaining = min(
+            self.success_byte_limit - self._success_bytes_used,
+            self.max_bytes - self.bytes_used,
+        )
+        if (
+            self._success_observations_used >= self.success_observation_limit
+            or self.observations_used >= self.max_observations
+            or topology_bytes > remaining
+        ):
+            self._observations_omitted += 1
+            self._bytes_omitted += supplied_bytes
+            self._successful_excerpts_omitted += int(excerpt_bytes > 0)
+            self._successful_metadata_omitted += int(metadata_bytes > 0)
+            return ObservationBudgetDecision(False, False, False)
+
+        include_metadata = topology_bytes + metadata_bytes <= remaining
+        include_excerpt = (
+            include_metadata and topology_bytes + metadata_bytes + excerpt_bytes <= remaining
+        )
+        retained_bytes = topology_bytes
+        if include_metadata:
+            retained_bytes += metadata_bytes
+        else:
+            self._successful_metadata_omitted += int(metadata_bytes > 0)
+            self._bytes_omitted += metadata_bytes
+        if include_excerpt:
+            retained_bytes += excerpt_bytes
+        else:
+            self._successful_excerpts_omitted += int(excerpt_bytes > 0)
+            self._bytes_omitted += excerpt_bytes
+
+        self.observations_used += 1
+        self.bytes_used += retained_bytes
+        self._success_observations_used += 1
+        self._success_bytes_used += retained_bytes
+        return ObservationBudgetDecision(True, include_metadata, include_excerpt)
+
+    def record_reserved(self, *, payload_bytes: int, kind: str) -> bool:
+        """Admit terminal/failure-class evidence against the total envelope."""
+        self._validate_sizes(payload_bytes)
+        allowed_kinds = {
+            "terminal",
+            "failure",
+            "security",
+            "backup",
+            "restore",
+            "telemetry_health",
+        }
+        if kind not in allowed_kinds:
+            raise ValueError(f"unsupported reserved evidence kind: {kind}")
+        if (
+            self.observations_used >= self.max_observations
+            or self.bytes_used + payload_bytes > self.max_bytes
+        ):
+            self._observations_omitted += 1
+            self._bytes_omitted += payload_bytes
+            self._reserved_evidence_omitted += 1
+            return False
+        self.observations_used += 1
+        self.bytes_used += payload_bytes
+        return True
+
+    @staticmethod
+    def _validate_sizes(*sizes: int) -> None:
+        if any(isinstance(size, bool) or not isinstance(size, int) or size < 0 for size in sizes):
+            raise ValueError("observation byte sizes must be non-negative integers")
+
+
 __all__ = [
     "DEFAULT_EXCERPT_CODE_POINTS",
+    "AttemptObservationBudget",
+    "MAX_EXCEPTION_STACK_BYTES",
+    "MAX_EXCERPT_BYTES",
+    "ObservationBudgetDecision",
     "MAX_ATTRIBUTE_COUNT",
     "MAX_SERIALIZED_PAYLOAD_BYTES",
     "REDACTED",
