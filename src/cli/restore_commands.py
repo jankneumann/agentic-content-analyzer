@@ -51,6 +51,7 @@ from urllib.parse import unquote, urlsplit
 import typer
 
 from src.cli.output import is_json_mode, output_result
+from src.clients.operational_observability import operational_stage
 from src.config.settings import get_settings
 
 app = typer.Typer(help="Cloud backup restoration commands.")
@@ -261,6 +262,32 @@ def _parse_backup_listing(stdout: str, prefix: str) -> list[tuple[str, str]]:
     return found
 
 
+def _run_restore_phase(
+    phase: str,
+    argv: list[str],
+    **kwargs: Any,
+) -> subprocess.CompletedProcess[str]:
+    """Run one real restore subprocess inside masked phase and outcome spans."""
+    with operational_stage(
+        f"restore.{phase}",
+        stage="restore",
+        attributes={"restore.phase": phase},
+    ):
+        result = subprocess.run(argv, **kwargs)
+        with operational_stage(
+            f"restore.{phase}.outcome",
+            stage="restore",
+            attributes={
+                "restore.phase": phase,
+                "operation.outcome": (
+                    "succeeded" if result.returncode == 0 else "permanent_failure"
+                ),
+            },
+        ):
+            pass
+        return result
+
+
 @app.command("restore-from-cloud")
 def restore_from_cloud(
     backup_date: str | None = typer.Option(
@@ -374,8 +401,9 @@ def restore_from_cloud(
     restore_path = staged_path.removesuffix(".age")
 
     # --- 5. Download ---------------------------------------------------------
-    cp_result = subprocess.run(
-        ["rclone", "copyto", config.remote_path(artifact_key), staged_path],  # noqa: S607
+    cp_result = _run_restore_phase(
+        "download",
+        ["rclone", "copyto", config.remote_path(artifact_key), staged_path],
         capture_output=True,
         text=True,
         env=rclone_env,
@@ -398,8 +426,9 @@ def restore_from_cloud(
                 "first — see docs/BACKUP_RESTORE.md."
             )
             return
-        age_result = subprocess.run(
-            [  # noqa: S607 — `age` resolved from operator PATH
+        age_result = _run_restore_phase(
+            "decrypt",
+            [
                 "age",
                 "--decrypt",
                 "--identity",
@@ -428,8 +457,9 @@ def restore_from_cloud(
     # is retained deliberately (see above); what changes here is only WHERE the
     # credential travels.
     argv_url, pg_env = split_database_credentials(target_url)
-    pg_result = subprocess.run(
-        [  # noqa: S607 — `pg_restore` resolved from operator PATH
+    pg_result = _run_restore_phase(
+        "apply",
+        [
             "pg_restore",
             "--clean",
             "--if-exists",

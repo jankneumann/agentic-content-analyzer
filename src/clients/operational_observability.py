@@ -531,6 +531,7 @@ def operational_entrypoint(
     *,
     stage: OperationStage | str,
     service_name: str = "aca-operational",
+    result_outcome: Callable[[Any], _Outcome] | None = None,
 ) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]:
     """Decorate a sync or async non-HTTP entrypoint without capturing arguments."""
 
@@ -553,7 +554,8 @@ def operational_entrypoint(
                     except BaseException:
                         pass
                     raise
-                flush_succeeded = await scope.aclose(outcome="succeeded")
+                outcome = result_outcome(result) if result_outcome is not None else "succeeded"
+                flush_succeeded = await scope.aclose(outcome=outcome)
                 if not flush_succeeded:
                     raise OperationalFlushError(f"telemetry flush failed for {entrypoint}")
                 return result
@@ -581,7 +583,8 @@ def operational_entrypoint(
                 except BaseException:
                     pass
                 raise
-            flush_succeeded = scope.close(outcome="succeeded")
+            outcome = result_outcome(result) if result_outcome is not None else "succeeded"
+            flush_succeeded = scope.close(outcome=outcome)
             if not flush_succeeded:
                 raise OperationalFlushError(f"telemetry flush failed for {entrypoint}")
             return result

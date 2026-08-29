@@ -19,12 +19,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from src.clients.operational_observability import operational_entrypoint
+from src.clients.operational_observability import (
+    operational_entrypoint,
+    operational_stage,
+)
 from src.services.backup import target as target_module
 from src.services.backup.executor import Stage, run_command, run_pipeline
 from src.services.backup.models import (
     FAIL_SIZE_MISMATCH,
     FAIL_STAGE_EXIT,
+    REQUIRED_STORES,
     BackupRunResult,
     StoreResult,
     retention_tier_for,
@@ -84,7 +88,12 @@ class BackupEngine:
 
     # ------------------------------------------------------------------ run
 
-    @operational_entrypoint("backup.run", stage="backup", service_name="aca-backup")
+    @operational_entrypoint(
+        "backup.run",
+        stage="backup",
+        service_name="aca-backup",
+        result_outcome=lambda result: result.overall_outcome,
+    )
     def run(self) -> BackupRunResult:
         plans = plan_all(self._settings)
 
@@ -128,6 +137,47 @@ class BackupEngine:
         return run_result
 
     def _run_store(
+        self,
+        plan: StorePlan,
+        *,
+        config: TargetConfig,
+        recipient: str,
+        tier: Any,
+        stamp: str,
+    ) -> StoreResult:
+        component = str(plan.store)
+        with operational_stage(
+            "backup.component",
+            stage="backup",
+            attributes={
+                "backup.component": component,
+                "backup.required": plan.store in REQUIRED_STORES,
+            },
+        ):
+            result = self._execute_store(
+                plan,
+                config=config,
+                recipient=recipient,
+                tier=tier,
+                stamp=stamp,
+            )
+            outcome_attributes: dict[str, Any] = {
+                "backup.component": component,
+                "operation.outcome": str(result.outcome),
+            }
+            if result.checksum_sha256 is not None:
+                outcome_attributes["backup.checksum_sha256"] = result.checksum_sha256
+            if result.bytes is not None:
+                outcome_attributes["backup.bytes"] = result.bytes
+            with operational_stage(
+                "backup.component.outcome",
+                stage="backup",
+                attributes=outcome_attributes,
+            ):
+                pass
+            return result
+
+    def _execute_store(
         self,
         plan: StorePlan,
         *,
