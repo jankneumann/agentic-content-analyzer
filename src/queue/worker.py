@@ -827,6 +827,19 @@ async def _record_stale_attempt(conn: asyncpg.Connection, context: Any) -> bool:
     )
 
 
+async def _guard_execution_claim_before_handler() -> None:
+    """Verify the bound claim against the shared authority off the event loop."""
+
+    def guard() -> None:
+        from src.queue.execution_claim import guard_execution_claim
+        from src.storage.database import get_db
+
+        with get_db() as session:
+            guard_execution_claim(session)
+
+    await asyncio.to_thread(guard)
+
+
 async def _process_job(
     conn: asyncpg.Connection,
     job: dict[str, Any],
@@ -847,19 +860,31 @@ async def _process_job(
         await _fail_job(conn, job_id, claim_generation, "Invalid operation observation context")
         return
 
-    from src.queue.execution_claim import ExecutionClaim, bind_execution_claim
+    from src.config.settings import get_settings
+    from src.queue.execution_claim import ClaimSuperseded, ExecutionClaim, bind_execution_claim
     from src.queue.setup import touch_job_heartbeat
 
+    settings = get_settings()
+    gx10_enabled = settings.gx10_runtime_enabled
     claim = ExecutionClaim(
         job_id=job_id,
         claim_generation=claim_generation,
         claim_protocol_version=claim_protocol_version,
+        environment="gx10" if gx10_enabled else None,
+        authority_fingerprint=(settings.gx10_authority_fingerprint if gx10_enabled else None),
+        ownership_epoch=(settings.gx10_ownership_epoch if gx10_enabled else None),
     )
 
     with bind_execution_claim(claim), _attempt_trace(job, attempt_context) as attempt_context:
         if await _checkpoint_job_cancellation(conn, job_id, claim_generation):
             logger.info(f"Job {job_id} ({entrypoint}) cancelled before handler invocation")
             return
+        if gx10_enabled:
+            try:
+                await _guard_execution_claim_before_handler()
+            except ClaimSuperseded:
+                logger.info(f"Job {job_id} ({entrypoint}) rejected by its ownership fence")
+                return
         if not await touch_job_heartbeat(
             job_id,
             conn=conn,
