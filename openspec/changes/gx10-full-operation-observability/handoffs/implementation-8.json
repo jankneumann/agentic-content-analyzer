@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-08-29T20:21:43.349941+00:00",
+  "coordinator_error": null,
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Completed, independently reviewed, and integrated storage recovery and scheduling, environment coexistence fencing, and the dependency-ready backend-neutral E2E verifier/runbook. Tasks 8.6-8.9, 9.1-9.4, and 10.1 are coordinator-checked. Live clean-stack, native encrypted restore, six-hour soak, measured baselines, and cutover proposal tasks remain explicitly incomplete.",
+    "completed_work": [
+      "Integrated storage governance and recovery policy with durable hysteresis, complete six-component inventories, age/OpenBao fail-closed material handling, scheduled monitor/backup/isolated-restore systemd units, validated mode-0600 plans, and bound maintenance operation identity; post-merge exact storage evidence passed 90/90.",
+      "Integrated environment ownership with credential-free live database authority binding, scheduler pre-enqueue and worker pre-handler fences, operator-only status access, authority/epoch propagation through OperationContext and OTel resources, and authorized live PostgreSQL acceptance passing 17/17.",
+      "Integrated the backend-neutral synthetic observability verifier with submit-once live adapter orchestration, deterministic retry/restart scenario, identity-bound polling, API/PostgreSQL/log/Langfuse joins, canonical terminal retry truthfulness, exporter-health proof, bounded redacted reports, and private report writes; exact post-merge evidence passed 21/21.",
+      "Added the GX-10 observability operations runbook covering trace lookup, stage/error catalog, exporter troubleshooting, storage/retention, backup/restore, environment fencing, rollback boundaries, and Langfuse capability limits.",
+      "Post-merge generated workflow contracts, Ruff/format, mypy, strict OpenSpec, scope, secret, and whitespace gates passed for the integrated slices."
+    ],
+    "in_progress": [
+      "Task 8.5 remains unchecked because clean-stack Docker/Caddy/OpenBao/Squid restart behavior has not run and the frozen Squid tag remains unavailable.",
+      "Task 8.10 remains unchecked because native age and component backup/restore tooling was unavailable; synthetic storage evidence is partial only.",
+      "Tasks 9.5, 10.2, and 10.3 remain unchecked because the mandatory six-hour 50-operations/minute soak, full restart/native restore acceptance, measured baseline, and subsequent cutover proposal have not run."
+    ],
+    "decisions": [
+      {
+        "title": "Keep fixture and synthetic evidence distinct from live acceptance",
+        "rationale": "Deterministic fixtures and executable adapters prove verifier semantics, but they cannot substitute for real Langfuse arrival, native encrypted restore, clean-stack restart, or six-hour soak evidence.",
+        "capability": "gx10-production-runtime",
+        "supersedes": null
+      },
+      {
+        "title": "Bind coexistence to the actual database authority",
+        "rationale": "A copied ownership row on an independent PostgreSQL endpoint is not authority; scheduler and worker mutation gates compare a credential-free live endpoint fingerprint plus environment and epoch before enqueue or handler execution.",
+        "capability": "environment-ownership",
+        "supersedes": null
+      },
+      {
+        "title": "Require one truthful persisted terminal retry for E2E readiness",
+        "rationale": "Monotonic claim generations alone are insufficient. The verifier requires a prior retryable failure and the highest generation to be the persisted successful retry, with matching submitted identity and fresh bounded exporter-health evidence.",
+        "capability": "cross-service-operation-correlation",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Run tasks 8.5 and 8.10 only on a capable clean host with published pinned images, Docker/Caddy/OpenBao/Squid, native age/component tools, and protected evidence paths.",
+      "After 8.10 passes, execute the resumable six-hour task-9.5 soak at 50 operations per minute, validate p95 arrival, drops, failed/partial roots, redaction, restart, and 90-day storage headroom, then record task 10.2 baselines.",
+      "Only after task 9.5, scaffold task 10.3 as a separate awaiting-approval cutover proposal; do not activate GX-10 mutation ownership in this change.",
+      "Preserve direct-SQL negative fixtures, generated contract parity, exhaustive operation inventory, immutable audit history, and all honest incomplete validation markers."
+    ],
+    "relevant_files": [
+      {
+        "path": "artifacts/wp-e2e-handoff/pytest.xml",
+        "description": "Passing 21-test non-soak verifier evidence; not a live soak result."
+      },
+      {
+        "path": "docs/runbooks/gx10-observability.md",
+        "description": "Operations runbook with explicit live-acceptance holds and safe verifier workflow."
+      },
+      {
+        "path": "deploy/gx10/VALIDATION.md",
+        "description": "Honest incomplete clean-stack/runtime validation record; task 8.5 remains open."
+      },
+      {
+        "path": "scripts/gx10/verify_observability.py",
+        "description": "Backend-neutral fixture/live synthetic trace verifier with bounded redacted reports."
+      },
+      {
+        "path": "openspec/changes/gx10-full-operation-observability/tasks.md",
+        "description": "Coordinator ledger showing completed implementation slices and retained live acceptance holds."
+      }
+    ]
+  }
+}
