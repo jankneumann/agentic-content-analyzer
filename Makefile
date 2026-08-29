@@ -1,6 +1,6 @@
 # Makefile for common development tasks
 
-.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format workflow-contracts workflow-contracts-check db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai falkordb-up falkordb-down test-e2e-live tauri-setup tauri-dev tauri-build tauri-icons test-tauri mcp-install mcp-install-claude mcp-install-codex mcp-install-desktop mcp-install-claude-desktop mcp-install-codex-desktop mcp-uninstall mcp-uninstall-desktop mcp-uninstall-claude-desktop mcp-uninstall-codex-desktop architecture-refresh architecture-check context-drift-gate context-refresh decisions decisions-check
+.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format workflow-contracts workflow-contracts-check db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai falkordb-up falkordb-down test-e2e-live tauri-setup tauri-dev tauri-build tauri-icons test-tauri mcp-install mcp-install-claude mcp-install-codex mcp-install-desktop mcp-install-claude-desktop mcp-install-codex-desktop mcp-uninstall mcp-uninstall-desktop mcp-uninstall-claude-desktop mcp-uninstall-codex-desktop architecture-refresh architecture-check context-drift-gate context-refresh decisions decisions-check lint-ci
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -178,6 +178,23 @@ type-check:  ## Type check with mypy
 
 format:  ## Format code with ruff
 	ruff format src/ tests/
+
+# The ruff version CI pins is the ONLY authority; this target reads it rather
+# than restating it. A second copy of the pin (venv, pre-commit rev, here) is a
+# second thing to forget -- the 2026-08-27 lint failure on #512 was exactly
+# that: local ruff 0.14.14 accepted a line that CI's 0.15.15 reflowed.
+CI_RUFF := $(shell grep -oP 'ruff==\K[0-9.]+' .github/workflows/ci.yml | head -1)
+# Prefer a project-local uvx if one exists, else whatever is on PATH. uv is this
+# project's package manager (see `install:`), so a missing uvx is an environment
+# problem; say so with the fix rather than failing on "command not found".
+UVX := $(shell test -x .venv/bin/uvx && echo .venv/bin/uvx || command -v uvx)
+
+lint-ci:  ## Lint + format-check under the exact ruff version CI pins (via uvx, venv untouched)
+	@test -n "$(CI_RUFF)" || { echo "lint-ci: could not read ruff pin from .github/workflows/ci.yml"; exit 1; }
+	@test -n "$(UVX)" || { echo "lint-ci: uvx not found. Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh"; exit 1; }
+	@echo "lint-ci: ruff $(CI_RUFF) (from ci.yml) via $(UVX)"
+	$(UVX) ruff@$(CI_RUFF) check src/
+	$(UVX) ruff@$(CI_RUFF) format --check src/
 
 db-migrate:  ## Create a new database migration (use MSG="message")
 	alembic revision --autogenerate -m "$(MSG)"

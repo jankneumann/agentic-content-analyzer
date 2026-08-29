@@ -5,14 +5,16 @@
 repos:
   # Ruff - Fast Python linter and formatter
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.0
+    rev: v0.15.15  # keep equal to the ruff== pin in .github/workflows/ci.yml
     hooks:
       # Run the linter
       - id: ruff
+        stages: [pre-commit]
         args: [--fix, --exit-non-zero-on-fix]
         types_or: [python, pyi]
       # Run the formatter
       - id: ruff-format
+        stages: [pre-commit]
         types_or: [python, pyi]
 
   # Standard pre-commit hooks
@@ -20,22 +22,29 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
+        stages: [pre-commit]
         exclude: ^(web/|\.md$)
       - id: end-of-file-fixer
+        stages: [pre-commit]
         exclude: ^web/
       - id: check-yaml
+        stages: [pre-commit]
         args: [--unsafe]  # Allow custom YAML tags
       - id: check-added-large-files
+        stages: [pre-commit]
         args: [--maxkb=1000]
         exclude: \.icns$
       - id: check-merge-conflict
+        stages: [pre-commit]
       - id: detect-private-key
+        stages: [pre-commit]
         exclude: ^(\.claude/skills/|\.agents/skills/|\.codex/skills/|\.gemini/skills/).*test_
 
   # Secret detection in profile files
   - repo: local
     hooks:
       - id: check-profile-secrets
+        stages: [pre-commit]
         name: Check for secrets in profile files
         entry: ./scripts/check-profile-secrets.sh
         language: script
@@ -47,12 +56,14 @@ repos:
     rev: v8.21.2
     hooks:
       - id: gitleaks
+        stages: [pre-commit]
 
   # Type checking with mypy
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.14.1
     hooks:
       - id: mypy
+        stages: [pre-commit]
         additional_dependencies:
           - pydantic>=2.5.0
           - pydantic-settings>=2.0.0
@@ -64,9 +75,29 @@ repos:
         args: [--ignore-missing-imports]
         exclude: ^(tests/|alembic/|scripts/|\.claude/skills/|\.codex/skills/|\.gemini/skills/|\.agents/skills/|openspec/changes/archive/)
 
+  # Pre-push: the CI lint job, under CI's exact ruff version.
+  # `make lint-ci` reads the pin from ci.yml, so this hook can never drift from
+  # CI the way a `rev:` above can. Runs once per push, not per file.
+  - repo: local
+    hooks:
+      - id: lint-ci
+        name: lint-ci (ruff @ CI-pinned version)
+        entry: make lint-ci
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
 # Configuration
 default_language_version:
   python: python3  # Use system's python3
+
+# Every hook except lint-ci carries an explicit `stages: [pre-commit]`. This is
+# deliberate and load-bearing: upstream hook definitions declare their own
+# stages (which include pre-push), and a hook's own declaration overrides
+# default_stages. Without the per-hook pin, installing the pre-push hook type
+# runs the whole list -- including the file-FIXING hooks -- at push time.
+default_stages: [pre-commit]
 
 # Skip certain hooks in CI if needed
 ci:
