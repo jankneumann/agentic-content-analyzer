@@ -50,6 +50,28 @@ ENDPOINT_AUTH_MAP: dict[str, dict[str, str]] = {
 
 # Define the API key header scheme
 api_key_header = APIKeyHeader(name="X-Admin-Key", auto_error=False)
+operator_key_header = APIKeyHeader(name="X-Operator-Key", auto_error=False)
+
+
+def operator_capability_matches(api_key: str | None) -> bool:
+    """Return whether an optional header holds the distinct operator capability."""
+
+    configured = get_settings().operator_api_key
+    if not api_key or configured is None:
+        return False
+    return secrets.compare_digest(api_key, configured.get_secret_value())
+
+
+async def verify_operator_key(
+    api_key: str | None = Security(operator_key_header),
+) -> str:
+    """Require the distinct deployment-observability operator capability."""
+
+    if api_key is None:
+        raise HTTPException(status_code=401, detail="Operator capability required")
+    if not operator_capability_matches(api_key):
+        raise HTTPException(status_code=403, detail="Invalid operator capability")
+    return api_key
 
 
 async def verify_admin_key(

@@ -63,6 +63,12 @@ def _is_exempt(path: str) -> bool:
     return any(path.startswith(prefix) for prefix in AUTH_EXEMPT_PREFIXES)
 
 
+def _is_operator_only_path(path: str) -> bool:
+    return path == "/api/v1/status/observability" or (
+        path.startswith("/api/v1/operations/") and path.endswith("/attempts")
+    )
+
+
 def _is_local_client(request: Request) -> bool:
     """Return True when a request originates from loopback/local test clients.
 
@@ -116,6 +122,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Exempt paths: health, ready, system config, otel proxy, auth endpoints
         if _is_exempt(request.url.path):
             return await call_next(request)
+
+        # The distinct operator key authenticates only the two privileged
+        # diagnostics surfaces. It never grants access to unrelated owner APIs.
+        if _is_operator_only_path(request.url.path):
+            operator_key = request.headers.get("X-Operator-Key")
+            configured = settings.operator_api_key
+            if operator_key and configured is not None:
+                if secrets.compare_digest(operator_key, configured.get_secret_value()):
+                    return await call_next(request)
+                return _auth_error_response(
+                    request, 403, "Forbidden", "Invalid operator capability"
+                )
 
         # Check session cookie first
         token = request.cookies.get(_COOKIE_NAME)

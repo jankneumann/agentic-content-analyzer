@@ -582,6 +582,7 @@ class Settings(BaseSettings):
     gemini_batch_enabled: bool = False  # Global kill switch; per-step modes remain in models.yaml
     tavily_api_key: str | None = None
     admin_api_key: str | None = None  # Protects sensitive endpoints
+    operator_api_key: SecretStr | None = Field(default=None, min_length=32)
 
     # Owner Authentication (Phase 1)
     app_secret_key: str | None = None  # Login password for browser/mobile access
@@ -841,6 +842,9 @@ class Settings(BaseSettings):
     langfuse_sample_rate: float = 1.0  # Trace sampling rate (0.0-1.0, default: all)
     langfuse_debug: bool = False  # Enable Langfuse SDK debug logging
     langfuse_environment: str | None = None  # Environment tag (production, staging, etc.)
+    # Public browser origin used only for operator trace lookup links. Internal
+    # ingestion/API endpoints are deliberately never reflected to clients.
+    langfuse_public_url: str | None = None
 
     # Braintrust Configuration
     braintrust_api_key: str | None = None  # Braintrust API key
@@ -1108,6 +1112,37 @@ class Settings(BaseSettings):
                 "to content_reconciliation_lock_timeout_ms"
             )
         return self
+
+    @field_validator("langfuse_public_url")
+    @classmethod
+    def validate_langfuse_public_url(cls, value: str | None) -> str | None:
+        """Accept only a credential-free public HTTPS origin for browser links."""
+
+        if value is None:
+            return None
+        normalized = value.rstrip("/")
+        parsed = urlparse(normalized)
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if (
+            parsed.scheme != "https"
+            or not host
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("LANGFUSE_PUBLIC_URL must be a credential-free HTTPS URL")
+        if host == "localhost" or host.endswith((".localhost", ".local", ".internal")):
+            raise ValueError("LANGFUSE_PUBLIC_URL must not expose an internal host")
+        try:
+            address = ip_address(host)
+        except ValueError:
+            if "." not in host:
+                raise ValueError("LANGFUSE_PUBLIC_URL must use a public hostname")
+        else:
+            if not address.is_global:
+                raise ValueError("LANGFUSE_PUBLIC_URL must use a public address")
+        return normalized
 
     @field_validator("langfuse_sample_rate")
     @classmethod

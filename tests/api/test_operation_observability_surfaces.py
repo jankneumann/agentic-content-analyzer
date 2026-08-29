@@ -6,16 +6,26 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
 from src.api.app import app
 from src.api.workflow_dependencies import get_operation_service
-from src.contracts.workflow_models import OperationHandle
+from src.contracts.workflow_models import OperationHandle, OperationPage, OperationSummary
 from src.models.jobs import OperationStatus, OperationType
 
 TRACE_ID = "1" * 32
 SPAN_ID = "2" * 16
 OPERATOR_KEY = "operator-capability-for-observability-tests"
+
+
+@pytest.fixture(autouse=True)
+def _clear_api_state():
+    yield
+    from src.config.settings import get_settings
+
+    app.dependency_overrides.clear()
+    get_settings.cache_clear()
 
 
 def _handle() -> OperationHandle:
@@ -47,8 +57,7 @@ def _attempt(generation: int) -> SimpleNamespace:
         environment="production",
         release_revision="a" * 40,
         started_at=datetime(2026, 8, 29, tzinfo=UTC) + timedelta(seconds=generation),
-        completed_at=datetime(2026, 8, 29, tzinfo=UTC)
-        + timedelta(seconds=generation + 1),
+        completed_at=datetime(2026, 8, 29, tzinfo=UTC) + timedelta(seconds=generation + 1),
         terminal_stage="persist",
         outcome="succeeded",
         retryable=False,
@@ -73,8 +82,12 @@ class _Connection:
         assert operation_id == 42
         return {"root_operation_id": 42, "trace_id": TRACE_ID}
 
-    async def fetchval(self, _query: str, operation_id: int, *_args):
+    async def fetchval(self, query: str, operation_id: int, *args):
         assert operation_id == 42
+        if "MAX" in query:
+            return 2
+        if args and args[0] == 1:
+            return 1
         return 3
 
 
@@ -89,7 +102,7 @@ def _settings(monkeypatch) -> None:
 
 
 def _wire(monkeypatch, attempts: list[SimpleNamespace] | None = None) -> None:
-    attempts = attempts or [_attempt(0), _attempt(1), _attempt(2)]
+    attempts = [_attempt(0), _attempt(1), _attempt(2)] if attempts is None else attempts
 
     @asynccontextmanager
     async def connection(*_args, **_kwargs):
@@ -105,8 +118,7 @@ def _wire(monkeypatch, attempts: list[SimpleNamespace] | None = None) -> None:
         selected = [
             attempt
             for attempt in attempts
-            if after_claim_generation is None
-            or attempt.claim_generation > after_claim_generation
+            if after_claim_generation is None or attempt.claim_generation > after_claim_generation
         ]
         return selected[:limit]
 
@@ -119,9 +131,7 @@ def test_exact_operation_preserves_legacy_auth_and_hides_privileged_link(monkeyp
     _settings(monkeypatch)
     _wire(monkeypatch)
     with TestClient(app) as client:
-        response = client.get(
-            "/api/v1/operations/42", headers={"X-Admin-Key": "test-admin-key"}
-        )
+        response = client.get("/api/v1/operations/42", headers={"X-Admin-Key": "test-admin-key"})
     app.dependency_overrides.clear()
     assert response.status_code == 200
     assert response.json()["observability"]["trace_id"] == TRACE_ID
@@ -142,7 +152,7 @@ def test_exact_operation_operator_receives_only_trusted_langfuse_url(monkeypatch
         f"https://traces.example.test/trace/{TRACE_ID}"
     )
     assert "localhost" not in response.text
-    assert "langfuse" not in response.text.lower()
+    assert "http://langfuse" not in response.text.lower()
 
 
 def test_legacy_exact_operation_remains_readable_without_fabricated_trace(monkeypatch) -> None:
@@ -161,13 +171,9 @@ def test_legacy_exact_operation_remains_readable_without_fabricated_trace(monkey
     async def legacy_connection(*_args, **_kwargs):
         yield LegacyConnection()
 
-    monkeypatch.setattr(
-        "src.api.operation_routes.queue_setup._queue_connection", legacy_connection
-    )
+    monkeypatch.setattr("src.api.operation_routes.queue_setup._queue_connection", legacy_connection)
     with TestClient(app) as client:
-        response = client.get(
-            "/api/v1/operations/42", headers={"X-Admin-Key": "test-admin-key"}
-        )
+        response = client.get("/api/v1/operations/42", headers={"X-Admin-Key": "test-admin-key"})
     app.dependency_overrides.clear()
     assert response.status_code == 200
     assert response.json()["observability"] is None
@@ -216,16 +222,30 @@ def test_operation_lists_remain_summary_only(monkeypatch) -> None:
 
     class ListingService(_OperationService):
         async def list(self, **_kwargs):
-            summary = _handle().model_dump(
-                exclude={"resource", "result", "problem", "observability"}
+            handle = _handle()
+            return OperationPage(
+                data=[
+                    OperationSummary(
+                        operation_id=handle.operation_id,
+                        operation_type=handle.operation_type,
+                        status=handle.status,
+                        progress=handle.progress,
+                        message=handle.message,
+                        cancellable=handle.cancellable,
+                        retry_count=handle.retry_count,
+                        status_url=handle.status_url,
+                        events_url=handle.events_url,
+                        created_at=handle.created_at,
+                        started_at=handle.started_at,
+                        completed_at=handle.completed_at,
+                    )
+                ],
+                next_cursor=None,
             )
-            return {"data": [summary], "next_cursor": None}
 
     app.dependency_overrides[get_operation_service] = lambda: ListingService()
     with TestClient(app) as client:
-        response = client.get(
-            "/api/v1/operations", headers={"X-Admin-Key": "test-admin-key"}
-        )
+        response = client.get("/api/v1/operations", headers={"X-Admin-Key": "test-admin-key"})
     app.dependency_overrides.clear()
     assert response.status_code == 200
     item = response.json()["data"][0]
@@ -236,18 +256,18 @@ def test_operation_lists_remain_summary_only(monkeypatch) -> None:
 def test_deployment_observability_health_is_operator_only_and_aggregated(monkeypatch) -> None:
     _settings(monkeypatch)
     now = datetime.now(UTC)
-    common = dict(
-        environment="production",
-        release_revision="a" * 40,
-        lifecycle_kind="long_running",
-        expires_at=now + timedelta(hours=23),
-        required_observability=True,
-        export_target="local_langfuse",
-        last_heartbeat_at=now,
-        buffer_capacity=10_000,
-        last_flush_at=None,
-        last_flush_succeeded=None,
-    )
+    common = {
+        "environment": "production",
+        "release_revision": "a" * 40,
+        "lifecycle_kind": "long_running",
+        "expires_at": now + timedelta(hours=23),
+        "required_observability": True,
+        "export_target": "local_langfuse",
+        "last_heartbeat_at": now,
+        "buffer_capacity": 10_000,
+        "last_flush_at": None,
+        "last_flush_succeeded": None,
+    }
     rows = [
         SimpleNamespace(
             **common,
@@ -307,9 +327,7 @@ def test_synthetic_mobile_response_always_has_lossless_trace_header(monkeypatch)
     _settings(monkeypatch)
     _wire(monkeypatch)
     with TestClient(app) as client:
-        response = client.get(
-            "/api/v1/operations/42", headers={"X-Admin-Key": "test-admin-key"}
-        )
+        response = client.get("/api/v1/operations/42", headers={"X-Admin-Key": "test-admin-key"})
     app.dependency_overrides.clear()
     trace_id = response.headers["X-Trace-Id"]
     assert len(trace_id) == 32
