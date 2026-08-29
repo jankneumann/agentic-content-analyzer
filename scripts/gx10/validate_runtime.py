@@ -79,6 +79,10 @@ def check_images(compose: dict[str, Any], errors: list[str]) -> None:
             expected = "ubuntu/squid:6.13-25.10_beta@sha256:${GX10_SQUID_DIGEST:?set the reviewed published manifest digest}"
             if image != expected:
                 errors.append("squid: frozen tag plus protected digest input required")
+        elif name == "langfuse-worker":
+            expected = "langfuse/langfuse-worker:3@sha256:${GX10_LANGFUSE_WORKER_DIGEST:?set the reviewed worker manifest digest}"
+            if image != expected:
+                errors.append("langfuse-worker: dedicated protected worker image required")
         elif not DIGEST_PIN.fullmatch(image):
             errors.append(f"{name}: image is not immutable")
 
@@ -147,6 +151,7 @@ def static_validate(runtime: Path | None) -> list[str]:
         ROOT / "deploy/gx10/systemd/aca-gx10-proxy-policy.timer",
         ROOT / "scripts/gx10/check_proxy_ready.sh",
         ROOT / "scripts/gx10/persistence_sentinels.sh",
+        ROOT / "scripts/gx10/native_persistence_evidence.sh",
         ROOT / "scripts/gx10/verify_dependency_recovery.sh",
         ROOT / "scripts/gx10/check_role_readiness.py",
     )
@@ -181,6 +186,7 @@ def rendered_validate(path: Path, evidence: Path | None) -> list[str]:
         if (
             f"app={compose['services']['api']['image']}" not in proof
             or f"squid={squid}" not in proof
+            or f"langfuse_worker={compose['services']['langfuse-worker']['image']}" not in proof
         ):
             errors.append("rendered images do not match verified registry evidence")
     return errors
@@ -234,7 +240,9 @@ def main() -> int:
             "cold_restart_passed": True,
             "direct_routes_denied": True,
             "persistence_sentinels_verified": True,
+            "native_persistence_verified": True,
             "dependency_recovery_verified": True,
+            "cleanup_completed": True,
         }
         errors = (
             []

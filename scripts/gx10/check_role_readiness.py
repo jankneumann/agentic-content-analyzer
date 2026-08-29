@@ -16,12 +16,13 @@ CORE_DEPENDENCIES = (
     ("langfuse-web", 3000),
     ("openbao", 8200),
     ("squid", 3128),
+    ("neo4j", 7687),
 )
 ROLE_DEPENDENCIES = {
-    "api": (*CORE_DEPENDENCIES, ("neo4j", 7687)),
-    "worker": (*CORE_DEPENDENCIES, ("neo4j", 7687)),
+    "api": CORE_DEPENDENCIES,
+    "worker": CORE_DEPENDENCIES,
     "scheduler": CORE_DEPENDENCIES,
-    "maintenance": (*CORE_DEPENDENCIES, ("neo4j", 7687)),
+    "maintenance": CORE_DEPENDENCIES,
 }
 
 

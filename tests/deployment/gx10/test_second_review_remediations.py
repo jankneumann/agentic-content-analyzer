@@ -115,13 +115,19 @@ def test_every_stateful_mount_has_a_verified_persistence_sentinel(tmp_path: Path
     seed = subprocess.run([script, "seed"], env=env, capture_output=True, text=True)
     assert seed.returncode == 0, seed.stderr
     required_mounts = {
+        "application",
         "postgres",
         "langfuse-postgres",
         "redis",
         "neo4j",
+        "neo4j-logs",
         "clickhouse",
+        "clickhouse-logs",
         "minio",
         "openbao",
+        "squid-logs",
+        "caddy-data",
+        "caddy-config",
     }
     assert required_mounts == {path.name for path in persistent_root.iterdir()}
     verify = subprocess.run([script, "verify"], env=env, capture_output=True, text=True)

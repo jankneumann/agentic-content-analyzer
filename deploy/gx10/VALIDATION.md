@@ -42,14 +42,17 @@ No live cold-restart success is claimed. Task 8.5 must remain unchecked until
 the following command exits successfully on a clean GX-10 host:
 
 ```bash
-sudo --preserve-env=GX10_APP_IMAGE,GX10_SQUID_DIGEST \
+sudo --preserve-env=GX10_APP_IMAGE,GX10_SQUID_DIGEST,GX10_LANGFUSE_WORKER_DIGEST \
   scripts/gx10/verify_clean_stack.sh
 ```
 
-The gate verifies the protected image pins against registry manifests before
+The gate verifies the protected application, Squid, and dedicated Langfuse
+worker image pins against registry manifests before
 starting services, renders and validates Compose, checks root-owned `0600`
 runtime files, executes the failure harness, validates Caddy and OpenBao in
 their pinned containers, stops mapped dependencies and requires unhealthy role
 transitions with local diagnostics and recovery, seeds every required
-persistent mount, performs a true down/up cold restart, verifies every
-sentinel, and only then emits live evidence.
+persistent mount and native queued-operation/Langfuse/ClickHouse records,
+performs a true down/up cold restart, verifies every record, brings the stack
+down, and only then emits checksum-protected evidence under
+`/srv/aca/validation`.

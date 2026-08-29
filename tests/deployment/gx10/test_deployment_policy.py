@@ -55,7 +55,7 @@ def test_all_runtime_images_are_immutable_and_squid_uses_reviewed_release() -> N
         assert isinstance(value, dict)
         image = value.get("image")
         assert isinstance(image, str), f"{name} must declare a rendered image"
-        if name not in APPLICATION_SERVICES | {"squid"}:
+        if name not in APPLICATION_SERVICES | {"squid", "langfuse-worker"}:
             assert DIGEST_PIN.fullmatch(image), (
                 f"{name} image must include tag and immutable digest"
             )
@@ -70,6 +70,10 @@ def test_all_runtime_images_are_immutable_and_squid_uses_reviewed_release() -> N
     assert squid_image == (
         "ubuntu/squid:6.13-25.10_beta@sha256:"
         "${GX10_SQUID_DIGEST:?set the reviewed published manifest digest}"
+    )
+    assert _service(compose, "langfuse-worker")["image"] == (
+        "langfuse/langfuse-worker:3@sha256:"
+        "${GX10_LANGFUSE_WORKER_DIGEST:?set the reviewed worker manifest digest}"
     )
 
 

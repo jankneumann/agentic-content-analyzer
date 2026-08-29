@@ -291,7 +291,7 @@ services:
     security_opt: *id001
     cap_drop: *id002
     deploy: *id003
-    image: langfuse/langfuse:3@sha256:a921990b3cf6f62e9452eaf8ab9bea045852375a6883abd1fdbe63afa08defa0
+    image: langfuse/langfuse-worker:3@sha256:${GX10_LANGFUSE_WORKER_DIGEST:?set the reviewed worker manifest digest}
     env_file:
     - path: /run/aca/gx10/langfuse.env
       required: true
@@ -307,10 +307,13 @@ services:
     healthcheck:
       test:
       - CMD-SHELL
-      - node -e 'process.exit(0)'
+      - wget --spider -q http://127.0.0.1:3030/api/health
       interval: 15s
       timeout: 5s
       retries: 12
+      start_period: 60s
+    tmpfs:
+    - /tmp:rw,noexec,nosuid,size=256m
   squid:
     restart: on-failure:5
     read_only: true

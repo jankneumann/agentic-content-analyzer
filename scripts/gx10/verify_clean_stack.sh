@@ -8,12 +8,22 @@ VALIDATOR="$ROOT_DIR/scripts/gx10/validate_runtime.py"
 FAILURE_HARNESS="$ROOT_DIR/scripts/gx10/policy_failure_harness.sh"
 DEPENDENCY_RECOVERY="$ROOT_DIR/scripts/gx10/verify_dependency_recovery.sh"
 PERSISTENCE_SENTINELS="$ROOT_DIR/scripts/gx10/persistence_sentinels.sh"
+NATIVE_PERSISTENCE="$ROOT_DIR/scripts/gx10/native_persistence_evidence.sh"
 WORK_DIR="$(mktemp -d)"
-EVIDENCE="${GX10_CLEAN_STACK_EVIDENCE:-$WORK_DIR/clean-stack.json}"
+VALIDATION_DIR="${GX10_VALIDATION_DIR:-/srv/aca/validation}"
+RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+EVIDENCE="${GX10_CLEAN_STACK_EVIDENCE:-$VALIDATION_DIR/clean-stack-$RUN_ID.json}"
+STACK_RUNNING=false
+
+case "$(realpath -m "$EVIDENCE")" in
+  "$WORK_DIR"/*) echo "gx10 clean-stack evidence must survive WORK_DIR cleanup" >&2; exit 1 ;;
+esac
 
 cleanup() {
-  docker compose -f "$COMPOSE_FILE" down --remove-orphans >/dev/null 2>&1 || true
-  rm -rf "$WORK_DIR"
+  if [[ "$STACK_RUNNING" == true ]]; then
+    docker compose -f "$COMPOSE_FILE" down --remove-orphans >/dev/null 2>&1 || true
+  fi
+  [[ -z "${WORK_DIR:-}" ]] || rm -rf -- "$WORK_DIR"
 }
 trap cleanup EXIT
 
@@ -44,26 +54,39 @@ uv run python "$VALIDATOR" --runtime-dir "$RUNTIME_DIR"
 require_root_owned_runtime
 
 compose up -d --wait
+STACK_RUNNING=true
 compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile
 compose exec -T openbao bao status -address=http://127.0.0.1:8200
 uv run python "$VALIDATOR" --failure-harness "$FAILURE_HARNESS"
 "$DEPENDENCY_RECOVERY"
 "$PERSISTENCE_SENTINELS" seed
+"$NATIVE_PERSISTENCE" seed
 
 # A real down/up cycle exercises and verifies every required persistent mount.
 compose down --remove-orphans
+STACK_RUNNING=false
 prepare_runtime
 compose up -d --wait
+STACK_RUNNING=true
 "$PERSISTENCE_SENTINELS" verify
+"$NATIVE_PERSISTENCE" verify
 for role in api worker scheduler maintenance; do
   compose exec -T "$role" gx10-role-ready --role "$role"
 done
 uv run python "$VALIDATOR" --failure-harness "$FAILURE_HARNESS"
 "$DEPENDENCY_RECOVERY"
 
-printf '%s\n' \
-  '{"live":true,"registry_verified":true,"cold_restart_passed":true,"direct_routes_denied":true,"persistence_sentinels_verified":true,"dependency_recovery_verified":true}' \
-  >"$EVIDENCE"
-chmod 0600 "$EVIDENCE"
+EVIDENCE_PAYLOAD='{"live":true,"registry_verified":true,"cold_restart_passed":true,"direct_routes_denied":true,"persistence_sentinels_verified":true,"native_persistence_verified":true,"dependency_recovery_verified":true,"cleanup_completed":true}'
+compose down --remove-orphans
+STACK_RUNNING=false
+rm -rf -- "$WORK_DIR"
+WORK_DIR=""
+install -d -m 0700 "$(dirname "$EVIDENCE")"
+printf '%s\n' "$EVIDENCE_PAYLOAD" | install -m 0600 /dev/stdin "$EVIDENCE.new"
+mv -f "$EVIDENCE.new" "$EVIDENCE"
+sha256sum "$EVIDENCE" >"$EVIDENCE.sha256"
+chmod 0600 "$EVIDENCE" "$EVIDENCE.sha256"
+sha256sum -c "$EVIDENCE.sha256"
 uv run python "$VALIDATOR" --clean-stack-evidence "$EVIDENCE"
+trap - EXIT
 printf 'GX-10 clean-stack evidence: %s\n' "$EVIDENCE"
