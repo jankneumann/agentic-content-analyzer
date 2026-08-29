@@ -5,6 +5,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from src.clients.operational_observability import operational_entrypoint
 from src.models.digest import Digest, DigestRequest, DigestStatus, DigestType
 from src.processors.digest_creator import DigestCreator
 from src.storage.database import get_db
@@ -146,6 +147,7 @@ async def main_async(args) -> None:
         print(f"\n⚠️  No newsletters found for {period_start.date()}")
 
 
+@operational_entrypoint("script.generate_daily_digest", stage="deliver", service_name="aca-script")
 def main() -> None:
     """Generate daily digest (sync wrapper)."""
     parser = argparse.ArgumentParser(description="Generate daily newsletter digest")

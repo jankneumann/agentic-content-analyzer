@@ -6,6 +6,7 @@ import sys
 import psycopg2
 from neo4j import GraphDatabase
 
+from src.clients.operational_observability import bootstrap_entrypoint
 from src.config import settings
 
 
@@ -73,6 +74,7 @@ def check_gmail_credentials() -> bool:
     return True
 
 
+@bootstrap_entrypoint("bootstrap.verify_setup")
 def main() -> None:
     """Run all verification checks."""
     print("Verifying local development setup...\n")

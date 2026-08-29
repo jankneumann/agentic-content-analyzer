@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from src.clients.operational_observability import operational_entrypoint
 from src.models.theme import ThemeAnalysis, ThemeAnalysisRequest
 from src.processors.theme_analyzer import ThemeAnalyzer
 from src.storage.database import get_db
@@ -163,6 +164,7 @@ async def main_async(args) -> None:
         print("   with large batches.")
 
 
+@operational_entrypoint("script.analyze_themes", stage="model", service_name="aca-script")
 def main() -> None:
     """Run theme analysis (sync wrapper)."""
     parser = argparse.ArgumentParser(description="Analyze themes across newsletters")

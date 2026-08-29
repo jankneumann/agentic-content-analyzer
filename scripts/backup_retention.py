@@ -29,6 +29,8 @@ from typing import Any
 
 import yaml
 
+from src.clients.operational_observability import operational_entrypoint
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = REPO_ROOT / "deploy" / "backup" / "retention.yaml"
 
@@ -86,9 +88,7 @@ def _excluded_prefixes(policy: dict[str, Any], prefix: str) -> list[str]:
     return [f"{base}/{item['prefix_suffix']}" for item in policy.get("exclusions", [])]
 
 
-def _assert_no_rule_covers_an_exclusion(
-    rules: list[dict[str, Any]], excluded: list[str]
-) -> None:
+def _assert_no_rule_covers_an_exclusion(rules: list[dict[str, Any]], excluded: list[str]) -> None:
     """Refuse to emit a rule that would expire the manifest.
 
     An expired manifest reports `no_history`, which is indistinguishable from a
@@ -135,6 +135,7 @@ def apply_rules(bucket: str, configuration: dict[str, Any], settings: Any) -> No
     )
 
 
+@operational_entrypoint("script.backup_retention", stage="cleanup", service_name="aca-script")
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(

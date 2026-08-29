@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import warnings
 
+from src.clients.operational_observability import operational_entrypoint
 from src.models.content import Content
 from src.models.summary import Summary
 from src.storage.database import get_db
@@ -114,6 +115,7 @@ async def extract_single_summary(content_id: int) -> bool:
             return False
 
 
+@operational_entrypoint("script.extract_entities", stage="graph", service_name="aca-script")
 def main() -> None:
     """Main entry point for CLI."""
     parser = argparse.ArgumentParser(

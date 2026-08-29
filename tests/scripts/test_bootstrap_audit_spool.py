@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from src.clients.operational_observability import (
-    BootstrapAuditCorruption,
+    BootstrapAuditCorruptionError,
     BootstrapAuditSpool,
 )
 
@@ -43,7 +43,8 @@ def test_first_healthy_maintenance_imports_once_and_marks_checkpoint(tmp_path: P
     imported: list[dict[str, object]] = []
 
     assert spool.import_records(imported.append) == 1
-    assert spool.import_records(imported.append) == 0
+    restarted = BootstrapAuditSpool(spool.directory)
+    assert restarted.import_records(imported.append) == 0
     assert len(imported) == 1
     assert stat.S_IMODE(spool.checkpoint_path.stat().st_mode) == 0o600
 
@@ -62,5 +63,5 @@ def test_missing_or_corrupt_required_spool_degrades_readiness(tmp_path: Path) ->
 
     assert corrupt.readiness(required=True).ready is False
     assert corrupt.readiness(required=True).diagnostic_code == "bootstrap.spool_corrupt"
-    with pytest.raises(BootstrapAuditCorruption):
+    with pytest.raises(BootstrapAuditCorruptionError):
         corrupt.verify(required=True)
