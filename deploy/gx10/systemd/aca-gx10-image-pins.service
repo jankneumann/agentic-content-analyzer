@@ -1,0 +1,19 @@
+[Unit]
+Description=GX-10 immutable registry image provenance gate
+Requires=docker.service
+After=docker.service network-online.target
+Before=aca-gx10-secrets.service aca-gx10.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/aca/gx10-images.env
+Environment=GX10_RUNTIME_DIR=/run/aca/gx10
+ExecStart=/opt/aca/scripts/gx10/verify_image_pins.sh
+RemainAfterExit=yes
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/aca/gx10
+
+[Install]
+WantedBy=multi-user.target

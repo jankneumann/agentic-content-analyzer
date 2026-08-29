@@ -1,11 +1,12 @@
 [Unit]
 Description=Agentic Content Analyzer GX-10 production runtime
-Requires=aca-gx10-secrets.service aca-gx10-proxy-policy.service aca-gx10-firewall.service
-After=aca-gx10-secrets.service aca-gx10-proxy-policy.service aca-gx10-firewall.service
+Requires=aca-gx10-image-pins.service aca-gx10-secrets.service aca-gx10-proxy-policy.service aca-gx10-firewall.service
+After=aca-gx10-image-pins.service aca-gx10-secrets.service aca-gx10-proxy-policy.service aca-gx10-firewall.service
 StartLimitIntervalSec=300
 StartLimitBurst=5
 
 [Service]
+EnvironmentFile=/etc/aca/gx10-images.env
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/opt/aca

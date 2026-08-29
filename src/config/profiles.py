@@ -280,6 +280,7 @@ class Gx10Settings(BaseModel):
     """Production-only GX-10 policy projected into application settings."""
 
     runtime_enabled: bool = False
+    process_role: Literal["api", "worker", "scheduler", "maintenance"] | None = None
     service_identities: dict[str, str] = Field(default_factory=dict)
     masking_policy: str | None = None
     authority_fingerprint: str | None = None

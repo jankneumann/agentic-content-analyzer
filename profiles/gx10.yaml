@@ -34,8 +34,8 @@ settings:
   observability:
     observability_required: true
     otel_enabled: true
-    otel_service_name: aca-gx10-api
-    telemetry_service_instance_id: aca-gx10-api-1
+    otel_service_name: "${OTEL_SERVICE_NAME}"
+    telemetry_service_instance_id: "${TELEMETRY_SERVICE_INSTANCE_ID}"
     telemetry_release_revision: "${GX10_RELEASE_REVISION}"
     otel_exporter_otlp_endpoint: "http://langfuse-web:3000/api/public/otel"
     otel_log_prompts: false
@@ -52,13 +52,14 @@ settings:
     anthropic_api_key: "${ANTHROPIC_API_KEY:-}"
     openai_api_key: "${OPENAI_API_KEY:-}"
     google_api_key: "${GOOGLE_API_KEY:-}"
-    admin_api_key: "${GX10_ADMIN_API_KEY}"
-    operator_api_key: "${GX10_OPERATOR_API_KEY}"
+    admin_api_key: "${GX10_ADMIN_API_KEY:-}"
+    operator_api_key: "${GX10_OPERATOR_API_KEY:-}"
     app_secret_key: "${GX10_APP_SECRET_KEY}"
     configured_source_key_secret: "${GX10_CONFIGURED_SOURCE_KEY_SECRET}"
     operation_cursor_signing_key: "${GX10_OPERATION_CURSOR_SIGNING_KEY}"
 
   gx10:
+    process_role: "${GX10_PROCESS_ROLE}"
     runtime_enabled: true
     service_identities:
       api: aca-gx10-api

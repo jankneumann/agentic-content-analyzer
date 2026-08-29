@@ -92,6 +92,12 @@ def _flatten_profile_to_settings(profile_data: dict[str, Any]) -> dict[str, Any]
                     # Settings keeps an explicit prefix for collision safety.
                     target_key = f"gx10_{key}" if section == "gx10" else key
                     if target_key != "gx10_service_identities":
+                        # Empty inherited aliases must not erase concrete values;
+                        # absent API-only capabilities must remain absent for
+                        # non-API roles rather than failing minimum-length checks.
+                        api_capabilities = {"admin_api_key", "operator_api_key"}
+                        if value == "" and (target_key in result or target_key in api_capabilities):
+                            continue
                         result[target_key] = value
 
     # Map providers to Settings provider fields AFTER settings flattening
@@ -819,6 +825,7 @@ class Settings(BaseSettings):
     # GX-10 production runtime. Defaults preserve all existing deployments; the
     # stricter policy activates only for the explicit production profile.
     gx10_runtime_enabled: bool = False
+    gx10_process_role: Literal["api", "worker", "scheduler", "maintenance"] | None = None
     gx10_masking_policy: str | None = Field(default=None, min_length=1, max_length=100)
     gx10_authority_fingerprint: str | None = None
     gx10_proxy_username: str | None = Field(default=None, min_length=1, max_length=128)
@@ -1353,10 +1360,10 @@ class Settings(BaseSettings):
 
         missing: list[str] = []
         required_values = {
+            "GX10_PROCESS_ROLE": self.gx10_process_role,
             "OTEL_EXPORTER_OTLP_ENDPOINT": self.otel_exporter_otlp_endpoint,
             "LANGFUSE_PUBLIC_KEY": self.langfuse_public_key,
             "LANGFUSE_SECRET_KEY": self.langfuse_secret_key,
-            "OPERATOR_API_KEY": self.operator_api_key,
             "TELEMETRY_SERVICE_INSTANCE_ID": self.telemetry_service_instance_id,
             "GX10_MASKING_POLICY": self.gx10_masking_policy,
             "GX10_AUTHORITY_FINGERPRINT": self.gx10_authority_fingerprint,
@@ -1367,6 +1374,14 @@ class Settings(BaseSettings):
         if missing:
             raise ValueError(f"GX-10 activation requires: {', '.join(missing)}")
 
+        role = self.gx10_process_role
+        if role == "api" and self.operator_api_key is None:
+            raise ValueError("GX-10 API activation requires OPERATOR_API_KEY")
+        expected_identity = f"aca-gx10-{role}"
+        if self.otel_service_name != expected_identity:
+            raise ValueError("OTEL_SERVICE_NAME must match the GX-10 process role")
+        if self.telemetry_service_instance_id != expected_identity:
+            raise ValueError("TELEMETRY_SERVICE_INSTANCE_ID must match the GX-10 process role")
         if self.environment != "production":
             raise ValueError("GX10_RUNTIME_ENABLED requires ENVIRONMENT=production")
         if self.observability_provider != "langfuse" or not self.observability_required:
