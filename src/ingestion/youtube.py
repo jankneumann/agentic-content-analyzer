@@ -13,6 +13,7 @@ import os
 import random
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
@@ -26,6 +27,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import NoTranscriptFound, TranscriptsDisabled
 
 from src.config import settings
+from src.contracts.operation_context import OperationOutcome, OperationStage
 from src.ingestion.result import (
     IngestionError,
     IngestionResponse,
@@ -39,6 +41,7 @@ from src.storage.database import get_db
 from src.utils.content_hash import generate_markdown_hash
 from src.utils.logging import get_logger
 from src.utils.youtube_links import extract_video_id, validate_video_id_format
+from src.workflows.stage_observability import StageError, operation_stage
 
 if TYPE_CHECKING:
     from src.config.sources import YouTubeChannelSource, YouTubePlaylistSource, YouTubeRSSSource
@@ -56,6 +59,72 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 T = TypeVar("T")
+
+YouTubeStageFailure = StageError
+
+
+@dataclass(frozen=True, slots=True)
+class YouTubeItemOutcome:
+    """One bounded, correlated domain outcome for a selected video."""
+
+    outcome: OperationOutcome
+    stage: OperationStage
+    error_code: str | None = None
+    retryable: bool | None = None
+
+    @classmethod
+    def succeeded(cls, *, stage: OperationStage) -> YouTubeItemOutcome:
+        return cls(OperationOutcome.SUCCEEDED, stage)
+
+    @classmethod
+    def skipped_duplicate(cls) -> YouTubeItemOutcome:
+        return cls(
+            OperationOutcome.SKIPPED_DUPLICATE,
+            OperationStage.DEDUPLICATE,
+            "youtube_duplicate",
+            False,
+        )
+
+    @classmethod
+    def skipped_policy(cls, *, error_code: str) -> YouTubeItemOutcome:
+        return cls(
+            OperationOutcome.SKIPPED_POLICY,
+            OperationStage.FILTER,
+            error_code,
+            False,
+        )
+
+    @classmethod
+    def filtered(cls, *, error_code: str) -> YouTubeItemOutcome:
+        return cls(OperationOutcome.FILTERED, OperationStage.FILTER, error_code, False)
+
+    @classmethod
+    def failed(
+        cls,
+        *,
+        stage: OperationStage,
+        error_code: str,
+        retryable: bool,
+    ) -> YouTubeItemOutcome:
+        return cls(
+            OperationOutcome.RETRYABLE_FAILURE
+            if retryable
+            else OperationOutcome.PERMANENT_FAILURE,
+            stage,
+            error_code,
+            retryable,
+        )
+
+    @property
+    def is_failure(self) -> bool:
+        return self.outcome in {
+            OperationOutcome.RETRYABLE_FAILURE,
+            OperationOutcome.PERMANENT_FAILURE,
+        }
+
+    def __bool__(self) -> bool:
+        return self.outcome == OperationOutcome.SUCCEEDED
+
 
 # YouTube API scopes (for private playlists)
 SCOPES = ["https://www.googleapis.com/auth/youtube.readonly"]
@@ -502,11 +571,13 @@ class YouTubeClient:
             logger.warning(f"Transcripts disabled for video {video_id}")
             return None
         except HttpError as e:
-            logger.error(f"HTTP error getting transcript for {video_id} after retries: {e}")
-            return None
+            raise YouTubeStageFailure(
+                OperationStage.TRANSCRIPT, "youtube_transcript_failed", True, e
+            ) from e
         except Exception as e:
-            logger.error(f"Error getting transcript for {video_id}: {e}")
-            return None
+            raise YouTubeStageFailure(
+                OperationStage.TRANSCRIPT, "youtube_transcript_failed", True, e
+            ) from e
 
     def _parse_date(self, date_str: str) -> datetime:
         """Parse ISO 8601 date string."""
@@ -769,8 +840,9 @@ async def _extract_video_content_with_gemini(
         return None
 
     except Exception as e:
-        logger.warning(f"Gemini video extraction failed for {video_url}: {e}")
-        return None
+        raise YouTubeStageFailure(
+            OperationStage.MODEL, "youtube_model_failed", True, e
+        ) from e
 
 
 async def _extract_long_video_with_grounding(
@@ -801,8 +873,9 @@ async def _extract_long_video_with_grounding(
         logger.warning(f"Grounding returned insufficient content for {video_url}")
         return None
     except Exception as e:
-        logger.warning(f"Grounding extraction failed for {video_url}: {e}")
-        return None
+        raise YouTubeStageFailure(
+            OperationStage.MODEL, "youtube_model_failed", True, e
+        ) from e
 
 
 async def _extract_long_video_with_segments(
@@ -913,20 +986,28 @@ class YouTubeContentIngestionService:
         # Metadata fetch is a sync Data API call — bridge to a thread.
         try:
             video = await asyncio.to_thread(self.client.get_video_metadata, video_id)
-        except Exception as exc:
-            logger.warning(f"YouTube metadata fetch failed for {video_id}: {exc}")
+        except Exception:
+            logger.warning(f"YouTube metadata fetch failed for {video_id}")
             return IngestionResponse(
                 command="ingest.url",
                 source="url",
                 status="error",
+                items_failed=1,
                 errors=[
                     IngestionError(
                         code="youtube_metadata_failed",
-                        message=str(exc),
+                        message="YouTube metadata provider failed",
                         url=url_or_id,
                     )
                 ],
-                details={"routed_to": "youtube_video", "url": url_or_id, "video_id": video_id},
+                details={
+                    "routed_to": "youtube_video",
+                    "url": url_or_id,
+                    "video_id": video_id,
+                    "outcome": OperationOutcome.RETRYABLE_FAILURE,
+                    "stage": OperationStage.METADATA,
+                    "error_code": "youtube_metadata_failed",
+                },
             )
 
         if video is None:
@@ -944,12 +1025,28 @@ class YouTubeContentIngestionService:
                 details={"routed_to": "youtube_video", "url": url_or_id, "video_id": video_id},
             )
 
-        ingested = await self._process_video(
-            video,
-            playlist_id="",
-            force_reprocess=force_reprocess,
-            languages=languages,
+        outcome = _normalize_youtube_outcome(
+            await self._process_video(
+                video,
+                playlist_id="",
+                force_reprocess=force_reprocess,
+                languages=languages,
+            )
         )
+        if outcome.is_failure:
+            return IngestionResponse(
+                command="ingest.url",
+                source="url",
+                status="error",
+                items_failed=1,
+                errors=[_youtube_outcome_error(outcome, url_or_id)],
+                details={
+                    "routed_to": "youtube_video",
+                    "url": url_or_id,
+                    "video_id": video_id,
+                    **_youtube_outcome_details(outcome),
+                },
+            )
 
         # Resolve the resulting row (created or updated in place) and merge any
         # user-supplied tags/notes — _process_video rewrites metadata_json on a
@@ -975,19 +1072,21 @@ class YouTubeContentIngestionService:
                         meta["notes"] = notes
                     row.metadata_json = meta
 
-        duplicate = bool(content_id is not None and not ingested)
+        duplicate = outcome.outcome == OperationOutcome.SKIPPED_DUPLICATE
+        succeeded = outcome.outcome == OperationOutcome.SUCCEEDED
         return IngestionResponse(
             command="ingest.url",
             source="url",
             status="ok",
-            items_ingested=1 if ingested else 0,
-            items_skipped=0 if ingested else 1,
+            items_ingested=1 if succeeded else 0,
+            items_skipped=0 if succeeded else 1,
             details={
                 "routed_to": "youtube_video",
                 "url": url_or_id,
                 "video_id": video_id,
                 "content_id": content_id,
                 "duplicate": duplicate,
+                **_youtube_outcome_details(outcome),
             },
         )
 
@@ -1010,7 +1109,7 @@ class YouTubeContentIngestionService:
         min_duration_seconds: int | None = None,
         max_duration_seconds: int | None = None,
         content_filter: Any = None,
-    ) -> bool:
+    ) -> YouTubeItemOutcome:
         """Process a single video from a playlist.
 
         Each call creates its own DB session for per-video isolation.
@@ -1037,6 +1136,7 @@ class YouTubeContentIngestionService:
         Returns:
             True if video was ingested/updated, False if skipped/failed.
         """
+        current_stage = OperationStage.METADATA
         try:
             if languages is None:
                 languages = DEFAULT_LANGUAGES
@@ -1057,7 +1157,7 @@ class YouTubeContentIngestionService:
 
                 if existing and not force_reprocess:
                     logger.debug(f"Video already exists: {video['title']}")
-                    return False
+                    return YouTubeItemOutcome.skipped_duplicate()
 
                 # --- Topic filter (title + description) before any processing ---
                 if content_filter is not None and getattr(content_filter, "enabled", False):
@@ -1067,7 +1167,9 @@ class YouTubeContentIngestionService:
                     )
                     if not fr.relevant:
                         logger.info(f"Filtered out by topic: {video.get('title')!r}")
-                        return False
+                        return YouTubeItemOutcome.filtered(
+                            error_code="youtube_content_policy"
+                        )
 
                 video_url = f"https://www.youtube.com/watch?v={video['video_id']}"
                 processing_method = "transcript"
@@ -1097,10 +1199,13 @@ class YouTubeContentIngestionService:
                         f"Filtered out by length/route (duration={probed_duration}s): "
                         f"{video.get('title')!r}"
                     )
-                    return False
+                    return YouTubeItemOutcome.filtered(
+                        error_code="youtube_duration_policy"
+                    )
 
                 # --- Path 1: Gemini native video extraction (duration-routed) ---
                 if gemini_summary:
+                    current_stage = OperationStage.MODEL
                     gemini_content = None
                     if route == Route.SHORT:
                         gemini_content = await _extract_video_content_with_gemini(
@@ -1132,13 +1237,16 @@ class YouTubeContentIngestionService:
 
                 # --- Path 2: Transcript-based extraction (fallback) ---
                 if markdown_content is None:
+                    current_stage = OperationStage.TRANSCRIPT
                     transcript = await asyncio.to_thread(
                         self.client.get_transcript, video["video_id"], languages
                     )
 
                     if not transcript:
                         logger.warning(f"No transcript for: {video['title']}")
-                        return False
+                        return YouTubeItemOutcome.skipped_policy(
+                            error_code="youtube_transcript_unavailable"
+                        )
 
                     # Update transcript with video metadata
                     transcript.title = video["title"]
@@ -1172,7 +1280,12 @@ class YouTubeContentIngestionService:
                                 f"for {video['title']}"
                             )
                         except Exception as e:
-                            logger.warning(f"Proofreading failed for {video['title']}: {e}")
+                            raise YouTubeStageFailure(
+                                OperationStage.MODEL,
+                                "youtube_model_failed",
+                                True,
+                                e,
+                            ) from e
 
                     # Convert to markdown
                     markdown_content = transcript_to_markdown(transcript)
@@ -1215,12 +1328,14 @@ class YouTubeContentIngestionService:
 
                 # Optional: Extract keyframes
                 if settings.youtube_keyframe_extraction:
+                    current_stage = OperationStage.EXTRACT
                     metadata_json = await self._extract_keyframes(
                         video_id=video["video_id"],
                         transcript=None,
                         metadata_json=metadata_json,
                     )
 
+                current_stage = OperationStage.PERSIST
                 if existing and force_reprocess:
                     # Update existing
                     existing.title = video["title"]
@@ -1237,7 +1352,7 @@ class YouTubeContentIngestionService:
                     existing.status = ContentStatus.PARSED
                     existing.error_message = None
                     logger.info(f"Updated for reprocessing: {video['title']}")
-                    return True
+                    return YouTubeItemOutcome.succeeded(stage=OperationStage.PERSIST)
 
                 elif content_duplicate:
                     # Link to canonical
@@ -1260,7 +1375,7 @@ class YouTubeContentIngestionService:
                     )
                     db.add(content)
                     logger.info(f"Linked duplicate: {video['title']}")
-                    return True
+                    return YouTubeItemOutcome.skipped_duplicate()
 
                 else:
                     # Create new
@@ -1289,11 +1404,31 @@ class YouTubeContentIngestionService:
                     index_content(content, db)
 
                     logger.info(f"Ingested: {video['title']}")
-                    return True
+                    return YouTubeItemOutcome.succeeded(stage=OperationStage.PERSIST)
 
-        except Exception as e:
-            logger.error(f"Error processing video {video.get('title', 'unknown')}: {e}")
-            return False
+        except Exception as error:
+            failure = (
+                error
+                if isinstance(error, StageError)
+                else _youtube_stage_failure(error, current_stage)
+            )
+            with operation_stage(
+                f"youtube.{failure.stage.value}", failure.stage
+            ) as evidence:
+                evidence.fail(
+                    failure.cause,
+                    error_code=failure.error_code,
+                    retryable=failure.retryable,
+                )
+            logger.error(
+                "YouTube item processing failed",
+                extra={"stage": failure.stage.value, "error_code": failure.error_code},
+            )
+            return YouTubeItemOutcome.failed(
+                stage=failure.stage,
+                error_code=failure.error_code,
+                retryable=failure.retryable,
+            )
 
     async def ingest_playlist(
         self,
@@ -1365,7 +1500,7 @@ class YouTubeContentIngestionService:
         # Process videos in parallel with concurrency limit
         semaphore = asyncio.Semaphore(settings.youtube_max_concurrent_videos)
 
-        async def process_with_limit(video: dict[str, Any]) -> bool:
+        async def process_with_limit(video: dict[str, Any]) -> YouTubeItemOutcome:
             async with semaphore:
                 return await self._process_video(
                     video,
@@ -1389,7 +1524,28 @@ class YouTubeContentIngestionService:
         tasks = [process_with_limit(v) for v in videos]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        fetch_result.items_fetched = sum(1 for r in results if r is True)
+        normalized = [
+            _normalize_youtube_outcome(result)
+            for result in results
+            if not isinstance(result, Exception)
+        ]
+        fetch_result.items_fetched = sum(
+            item.outcome == OperationOutcome.SUCCEEDED for item in normalized
+        )
+        fetch_result.items_skipped = sum(
+            item.outcome
+            in {OperationOutcome.SKIPPED_DUPLICATE, OperationOutcome.SKIPPED_POLICY}
+            for item in normalized
+        )
+        fetch_result.items_filtered = sum(
+            item.outcome == OperationOutcome.FILTERED for item in normalized
+        )
+        for item in normalized:
+            if item.is_failure:
+                fetch_result.items_failed += 1
+                fetch_result.item_errors.append(
+                    _youtube_outcome_error(item, playlist_url)
+                )
 
         # Surface per-video exceptions as item-level errors. _process_video
         # itself catches its own exceptions and returns False (logged + not
@@ -1400,7 +1556,7 @@ class YouTubeContentIngestionService:
         # with real failures.
         for video, r in zip(videos, results, strict=False):
             if isinstance(r, Exception):
-                logger.error(f"Unexpected error in video processing: {r}")
+                logger.error("Unexpected error in video processing")
                 fetch_result.items_failed += 1
                 video_url = (
                     f"https://www.youtube.com/watch?v={video.get('video_id')}"
@@ -1410,7 +1566,7 @@ class YouTubeContentIngestionService:
                 fetch_result.item_errors.append(
                     IngestionError(
                         code="video_processing_error",
-                        message=str(r),
+                        message="Unexpected video processing error",
                         url=video_url,
                     )
                 )
@@ -1803,9 +1959,59 @@ class YouTubeContentIngestionService:
         except ImportError:
             logger.warning("Keyframe extraction skipped: dependencies not installed")
         except Exception as e:
-            logger.error(f"Keyframe extraction error: {e}")
+            if isinstance(e, StageError):
+                raise
+            raise YouTubeStageFailure(
+                OperationStage.EXTRACT, "youtube_keyframe_failed", False, e
+            ) from e
 
         return metadata_json
+
+
+def _normalize_youtube_outcome(value: object) -> YouTubeItemOutcome:
+    if isinstance(value, YouTubeItemOutcome):
+        return value
+    if value is True:
+        return YouTubeItemOutcome.succeeded(stage=OperationStage.PERSIST)
+    if value is False:
+        return YouTubeItemOutcome.skipped_duplicate()
+    raise TypeError("YouTube processor returned an unsupported outcome")
+
+
+def _youtube_stage_failure(
+    error: BaseException, stage: OperationStage
+) -> YouTubeStageFailure:
+    error_codes = {
+        OperationStage.METADATA: "youtube_metadata_failed",
+        OperationStage.FETCH: "youtube_download_failed",
+        OperationStage.TRANSCRIPT: "youtube_transcript_failed",
+        OperationStage.MODEL: "youtube_model_failed",
+        OperationStage.EXTRACT: "youtube_keyframe_failed",
+        OperationStage.PERSIST: "youtube_persistence_failed",
+    }
+    return YouTubeStageFailure(
+        stage,
+        error_codes.get(stage, "youtube_processing_failed"),
+        stage != OperationStage.EXTRACT,
+        error,
+    )
+
+
+def _youtube_outcome_error(outcome: YouTubeItemOutcome, url: str) -> IngestionError:
+    return IngestionError(
+        code=outcome.error_code or "youtube_processing_failed",
+        message=f"YouTube {outcome.stage.value} stage failed",
+        url=url,
+    )
+
+
+def _youtube_outcome_details(outcome: YouTubeItemOutcome) -> dict[str, Any]:
+    return {
+        "outcome": outcome.outcome,
+        "stage": outcome.stage,
+        "error_code": outcome.error_code,
+        "retryable": outcome.retryable,
+    }
 
 
 class YouTubeRSSIngestionService:
