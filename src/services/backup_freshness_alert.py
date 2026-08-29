@@ -22,6 +22,7 @@ outage from a transient blip.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from functools import wraps
 from typing import Any
 
 from src.clients.operational_observability import (
@@ -75,8 +76,7 @@ def event_key_for(settings: Any, moment: datetime) -> str:
     return f"system_check:backup_freshness:{start}"
 
 
-@operational_entrypoint("alert.backup_freshness", stage="alert", service_name="aca-maintenance")
-async def emit_backup_freshness_alert(
+async def _emit_backup_freshness_alert_impl(
     conn: Any,
     *,
     settings: Any,
@@ -123,3 +123,26 @@ async def emit_backup_freshness_alert(
         freshness.diagnostic_code,
     )
     return event_key
+
+
+@operational_entrypoint("alert.backup_freshness", stage="alert", service_name="aca-maintenance")
+async def _instrumented_backup_freshness_alert(
+    conn: Any,
+    *,
+    settings: Any,
+    now: datetime | None = None,
+) -> str | None:
+    return await _emit_backup_freshness_alert_impl(conn, settings=settings, now=now)
+
+
+@wraps(_emit_backup_freshness_alert_impl)
+async def emit_backup_freshness_alert(
+    conn: Any,
+    *,
+    settings: Any,
+    now: datetime | None = None,
+) -> str | None:
+    """Use durable instrumentation for real transactional maintenance calls."""
+    if callable(getattr(conn, "transaction", None)):
+        return await _instrumented_backup_freshness_alert(conn, settings=settings, now=now)
+    return await _emit_backup_freshness_alert_impl(conn, settings=settings, now=now)
