@@ -57,8 +57,10 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from src.config.models import ModelConfig, ModelFamily, Provider
+from src.contracts.operation_context import OperationOutcome, OperationStage
 from src.services.batch.types import BatchPollResult, BatchRequest, BatchState
 from src.utils.logging import get_logger
+from src.workflows.stage_observability import operation_stage
 
 if TYPE_CHECKING:
     from src.config.models import ModelStep
@@ -314,31 +316,49 @@ class LLMRouter:
         response: LLMResponse | None = None
         resolved_provider: Provider | None = None
         last_error: Exception | None = None
-        for candidate in self.get_provider_candidates(model, provider):
-            try:
-                logger.info("Generating with model=%s, provider=%s", model, candidate.value)
-                response = await self._generate_for_provider(
-                    model,
-                    candidate,
-                    system_prompt,
-                    user_prompt,
-                    max_tokens,
-                    temperature,
-                )
-                resolved_provider = candidate
-                break
-            except Exception as exc:
-                last_error = exc
-                logger.warning(
-                    "Generation failed with model=%s provider=%s: %s",
-                    model,
-                    candidate.value,
-                    exc,
-                )
-        if response is None or resolved_provider is None:
-            if last_error is not None:
-                raise last_error
-            raise RuntimeError(f"No provider candidates available for model '{model}'")
+        with operation_stage("llm.generate", OperationStage.MODEL) as model_evidence:
+            for attempt, candidate in enumerate(self.get_provider_candidates(model, provider)):
+                candidate_stage = OperationStage.MODEL if attempt == 0 else OperationStage.FALLBACK
+                with operation_stage(
+                    f"llm.provider.{candidate.value}",
+                    candidate_stage,
+                    attributes={"model.provider": candidate.value},
+                ) as provider_evidence:
+                    try:
+                        logger.info("Generating with model=%s, provider=%s", model, candidate.value)
+                        response = await self._generate_for_provider(
+                            model,
+                            candidate,
+                            system_prompt,
+                            user_prompt,
+                            max_tokens,
+                            temperature,
+                        )
+                        resolved_provider = candidate
+                        provider_evidence.finish(
+                            OperationOutcome.SUCCEEDED,
+                            attributes={"model.provider": candidate.value},
+                        )
+                        break
+                    except Exception as error:
+                        last_error = error
+                        provider_evidence.fail(
+                            error,
+                            error_code="model_provider_failed",
+                            retryable=True,
+                        )
+                        logger.warning(
+                            "Generation provider failed",
+                            extra={"provider": candidate.value},
+                        )
+            if response is None or resolved_provider is None:
+                if last_error is not None:
+                    raise last_error
+                raise RuntimeError("No provider candidates available")
+            model_evidence.finish(
+                OperationOutcome.SUCCEEDED,
+                attributes={"model.provider": resolved_provider.value},
+            )
         response.selected_model = model
 
         duration_ms = (time.monotonic() - start_time) * 1000

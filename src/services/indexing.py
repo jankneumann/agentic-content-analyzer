@@ -18,6 +18,8 @@ from sqlalchemy import event, text
 from sqlalchemy.orm import Session
 
 from src.config.settings import get_settings
+from src.contracts.operation_context import OperationStage
+from src.workflows.stage_observability import operation_stage
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +67,12 @@ def index_content(
     if not settings.enable_search_indexing:
         return
 
-    try:
-        _index_content_impl(content, db)
-    except Exception:
-        logger.error(
-            f"Search indexing failed for content {getattr(content, 'id', '?')}",
-            exc_info=True,
-        )
+    with operation_stage("search.index", OperationStage.INDEX) as evidence:
+        try:
+            _index_content_impl(content, db)
+        except Exception as error:
+            evidence.fail(error, error_code="content_index_failed", retryable=True)
+            logger.error("Search indexing failed", exc_info=True)
 
 
 def _index_content_impl(content: object, db: Session) -> None:

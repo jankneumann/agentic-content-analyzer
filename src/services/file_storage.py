@@ -32,7 +32,9 @@ if TYPE_CHECKING:
     from src.config.settings import Settings
 
 from src.config import settings
+from src.contracts.operation_context import OperationStage
 from src.utils.logging import get_logger
+from src.workflows.stage_observability import operation_stage
 
 logger = get_logger(__name__)
 
@@ -226,7 +228,8 @@ class LocalFileStorage(FileStorageProvider):
             with open(full_path, "wb") as f:
                 f.write(data)  # type: ignore[arg-type]
 
-        await asyncio.to_thread(_write)
+        with operation_stage("storage.local.save", OperationStage.PERSIST):
+            await asyncio.to_thread(_write)
 
         logger.debug(f"Saved file to {relative_path}")
         return relative_path
@@ -271,7 +274,8 @@ class LocalFileStorage(FileStorageProvider):
             with open(full_path, "rb") as f:
                 return f.read()
 
-        return await asyncio.to_thread(_read)
+        with operation_stage("storage.local.get", OperationStage.FETCH):
+            return await asyncio.to_thread(_read)
 
     async def delete(self, path: str) -> bool:
         """Delete file from local filesystem."""

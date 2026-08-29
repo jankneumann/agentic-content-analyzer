@@ -69,9 +69,7 @@ class StageObservation:
         if self.finished:
             return
         self.finished = True
-        if error_code is not None and (
-            not error_code or len(error_code) > _MAX_ERROR_CODE_LENGTH
-        ):
+        if error_code is not None and (not error_code or len(error_code) > _MAX_ERROR_CODE_LENGTH):
             raise ValueError("error_code must contain 1-100 characters")
         payload: dict[str, Any] = {
             "operation.stage": self.stage.value,
@@ -87,9 +85,7 @@ class StageObservation:
                 masker=self.masker,
             )
         safe = safe_span_attributes(payload, masker=self.masker)
-        payload_bytes = len(
-            json.dumps(safe, ensure_ascii=False, default=str).encode("utf-8")
-        )
+        payload_bytes = len(json.dumps(safe, ensure_ascii=False, default=str).encode("utf-8"))
         failure = outcome in {
             OperationOutcome.RETRYABLE_FAILURE,
             OperationOutcome.PERMANENT_FAILURE,
@@ -119,9 +115,7 @@ class StageObservation:
         retryable: bool,
     ) -> None:
         self.finish(
-            OperationOutcome.RETRYABLE_FAILURE
-            if retryable
-            else OperationOutcome.PERMANENT_FAILURE,
+            OperationOutcome.RETRYABLE_FAILURE if retryable else OperationOutcome.PERMANENT_FAILURE,
             error_code=error_code,
             retryable=retryable,
             error=error,
@@ -162,12 +156,18 @@ def operation_stage(
         return
 
     budget = _attempt_budget(context.trace_id, context.claim_generation, context.service_name)
+    span_attributes: dict[str, Any] = {
+        "operation.trace_id": context.trace_id,
+        "operation.parent_span_id": context.span_id,
+    }
+    if attributes:
+        span_attributes.update(attributes)
     with operation_span(
         get_provider(),
         name,
         context=context,
         stage=stage,
-        attributes=attributes,
+        attributes=span_attributes,
         masker=masker,
     ) as span:
         observation = StageObservation(stage, span, budget, masker)
