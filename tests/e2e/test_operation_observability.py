@@ -12,7 +12,6 @@ from scripts.gx10.verify_observability import (
     verify_snapshot,
 )
 
-
 TRACE_ID = "1" * 32
 ROOT_OPERATION_ID = "42"
 CANARY = "gx10-secret-canary-do-not-export"
@@ -39,7 +38,9 @@ def _snapshot(*, include_retry: bool = True, include_restart: bool = True) -> di
                 "trace_id": TRACE_ID,
                 "claim_generation": 2,
                 "service_name": "aca-worker",
-                "carrier_source": "persisted_queue_envelope" if include_restart else "queue_envelope",
+                "carrier_source": "persisted_queue_envelope"
+                if include_restart
+                else "queue_envelope",
                 "outcome": "succeeded",
                 "telemetry_delivery_state": "delivered",
             }

@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 from scripts.gx10.verify_observability import main
-
 from tests.e2e.test_operation_observability import CANARY, _snapshot
 
 
