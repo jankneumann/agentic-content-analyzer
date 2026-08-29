@@ -163,14 +163,17 @@ class BackupEngine:
                     stamp=stamp,
                 )
             except BaseException:
-                with operational_stage(
-                    "backup.component.outcome",
-                    stage="backup",
-                    attributes={
-                        "backup.component": component,
-                        "operation.outcome": "permanent_failure",
-                    },
-                ):
+                try:
+                    with operational_stage(
+                        "backup.component.outcome",
+                        stage="backup",
+                        attributes={
+                            "backup.component": component,
+                            "operation.outcome": "permanent_failure",
+                        },
+                    ):
+                        pass
+                except BaseException:
                     pass
                 raise
             outcome_attributes: dict[str, Any] = {
