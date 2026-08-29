@@ -7,6 +7,7 @@ to the corresponding orchestrator function with the right keyword arguments.
 from __future__ import annotations
 
 import asyncio
+import importlib
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -359,6 +360,77 @@ async def test_process_job_checkpoints_cancellation_before_handler(monkeypatch) 
     checkpoint.assert_awaited_once_with(ANY, 42, 7)
     heartbeat.assert_not_awaited()
     handler.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_process_job_gx10_fences_before_handler_with_bound_identity(monkeypatch) -> None:
+    from src.queue import worker
+    from src.queue.execution_claim import ClaimSuperseded, current_execution_claim
+
+    handler = AsyncMock()
+    observed_claims = []
+    settings_module = importlib.import_module("src.config.settings")
+
+    async def reject_passive_claim() -> None:
+        observed_claims.append(current_execution_claim())
+        raise ClaimSuperseded("environment.passive")
+
+    @contextmanager
+    def attempt_trace(_job, context):
+        yield context
+
+    attempt_context = SimpleNamespace(operation_id="42", claim_generation="7")
+    monkeypatch.setitem(worker._handlers, "test.gx10-passive", handler)
+    monkeypatch.setattr(worker, "_attempt_context_from_job", lambda _job: attempt_context)
+    monkeypatch.setattr(worker, "_attempt_trace", attempt_trace)
+    monkeypatch.setattr(
+        worker,
+        "_guard_execution_claim_before_handler",
+        reject_passive_claim,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        settings_module,
+        "get_settings",
+        lambda: SimpleNamespace(
+            gx10_runtime_enabled=True,
+            gx10_authority_fingerprint="a" * 64,
+            gx10_ownership_epoch=17,
+        ),
+    )
+    monkeypatch.setattr(
+        worker,
+        "_checkpoint_job_cancellation",
+        AsyncMock(return_value=False),
+    )
+    monkeypatch.setattr(
+        "src.queue.setup.touch_job_heartbeat",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(worker, "_start_attempt_evidence", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        worker,
+        "_finalize_attempt_transition",
+        AsyncMock(return_value=("completed", True)),
+    )
+    monkeypatch.setattr(worker, "_emit_job_notification", AsyncMock())
+
+    await worker._process_job(
+        AsyncMock(),
+        {
+            "id": 42,
+            "entrypoint": "test.gx10-passive",
+            "payload": {},
+            "claim_generation": 7,
+            "claim_protocol_version": 2,
+        },
+    )
+
+    handler.assert_not_awaited()
+    assert len(observed_claims) == 1
+    assert observed_claims[0].environment == "gx10"
+    assert observed_claims[0].authority_fingerprint == "a" * 64
+    assert observed_claims[0].ownership_epoch == 17
 
 
 @pytest.mark.asyncio
