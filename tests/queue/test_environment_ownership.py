@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import socket
@@ -10,6 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from src.queue.execution_claim import (
@@ -18,8 +20,13 @@ from src.queue.execution_claim import (
     bind_execution_claim,
     guard_execution_claim,
 )
+from src.services.environment_ownership import database_authority_fingerprint
 
-AUTHORITY = "c" * 64
+PRIMARY_ENDPOINT = "postgresql://owner@shared-queue:5432/newsletters"
+_PRIMARY_URL = make_url(PRIMARY_ENDPOINT)
+AUTHORITY = hashlib.sha256(
+    f"{_PRIMARY_URL.host}:{_PRIMARY_URL.port or 5432}/{_PRIMARY_URL.database}".encode()
+).hexdigest()
 
 
 def _postgres_available() -> bool:
@@ -51,7 +58,8 @@ def _job(session: Session) -> int:
     )
 
 
-def _ownership(session: Session, *, active_environment: str, epoch: int) -> None:
+def _ownership(session: Session, *, active_environment: str, epoch: int) -> str:
+    authority = database_authority_fingerprint(session)
     session.execute(
         text(
             """
@@ -62,20 +70,27 @@ def _ownership(session: Session, *, active_environment: str, epoch: int) -> None
             """
         ),
         {
-            "authority": AUTHORITY,
+            "authority": authority,
             "environment": active_environment,
             "epoch": epoch,
             "updated_at": datetime.now(UTC),
         },
     )
+    return authority
 
 
-def _claim(job_id: int, *, environment: str = "gx10", epoch: int = 9) -> ExecutionClaim:
+def _claim(
+    job_id: int,
+    *,
+    environment: str = "gx10",
+    authority: str = AUTHORITY,
+    epoch: int = 9,
+) -> ExecutionClaim:
     return ExecutionClaim(
         job_id=job_id,
         claim_generation=2,
         environment=environment,
-        authority_fingerprint=AUTHORITY,
+        authority_fingerprint=authority,
         ownership_epoch=epoch,
     )
 
@@ -83,18 +98,18 @@ def _claim(job_id: int, *, environment: str = "gx10", epoch: int = 9) -> Executi
 @requires_live_postgres
 def test_claim_time_fence_accepts_only_the_single_recorded_owner(db_session: Session) -> None:
     job_id = _job(db_session)
-    _ownership(db_session, active_environment="gx10", epoch=9)
+    authority = _ownership(db_session, active_environment="gx10", epoch=9)
 
-    with bind_execution_claim(_claim(job_id)):
+    with bind_execution_claim(_claim(job_id, authority=authority)):
         assert guard_execution_claim(db_session).job_id == job_id
 
 
 @requires_live_postgres
 def test_claim_time_fence_rejects_passive_environment(db_session: Session) -> None:
     job_id = _job(db_session)
-    _ownership(db_session, active_environment="railway", epoch=9)
+    authority = _ownership(db_session, active_environment="railway", epoch=9)
 
-    with bind_execution_claim(_claim(job_id)):
+    with bind_execution_claim(_claim(job_id, authority=authority)):
         with pytest.raises(ClaimSuperseded, match="environment.passive"):
             guard_execution_claim(db_session)
 
@@ -102,9 +117,9 @@ def test_claim_time_fence_rejects_passive_environment(db_session: Session) -> No
 @requires_live_postgres
 def test_claim_time_fence_rejects_epoch_changed_after_claim(db_session: Session) -> None:
     job_id = _job(db_session)
-    _ownership(db_session, active_environment="gx10", epoch=10)
+    authority = _ownership(db_session, active_environment="gx10", epoch=10)
 
-    with bind_execution_claim(_claim(job_id, epoch=9)):
+    with bind_execution_claim(_claim(job_id, authority=authority, epoch=9)):
         with pytest.raises(ClaimSuperseded, match="epoch.stale"):
             guard_execution_claim(db_session)
 
@@ -154,6 +169,9 @@ class _QueueSession:
     def execute(self, statement: object, *_args: object, **_kwargs: object) -> _QueueResult:
         self.statements.append(str(statement))
         return _QueueResult(owner=self.owner, job=self.job)
+
+    def get_bind(self) -> SimpleNamespace:
+        return SimpleNamespace(url=make_url(PRIMARY_ENDPOINT))
 
 
 def test_unit_claim_fence_accepts_owner_and_rejects_passive_stale_or_partial(monkeypatch) -> None:
