@@ -12,6 +12,7 @@ import argparse
 import itertools
 import json
 import os
+import subprocess
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -19,6 +20,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 DEFAULT_MAX_REPORT_BYTES = 16 * 1024
+DEFAULT_MAX_ADAPTER_BYTES = 1024 * 1024
 _PERSISTED_CARRIER_SOURCES = frozenset({"persisted_queue_envelope", "postgresql"})
 _CHECK_ORDER = (
     "api_response_header",
@@ -90,6 +92,119 @@ class EvidenceSnapshot:
             separators=(",", ":"),
             default=str,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class SubmissionIdentity:
+    """Opaque identity returned once by the live synthetic submit adapter."""
+
+    operation_id: str
+    root_operation_id: str
+    trace_id: str
+
+    @classmethod
+    def from_mapping(cls, value: JsonMapping) -> SubmissionIdentity:
+        operation_id = _safe_identifier(value.get("operation_id"), 64)
+        root_operation_id = _safe_identifier(value.get("root_operation_id"), 64)
+        trace_id = _safe_identifier(value.get("trace_id"), 32)
+        if not operation_id or not root_operation_id or not _is_trace_id(trace_id):
+            raise AdapterCommandError("adapter_submit_invalid")
+        return cls(operation_id, root_operation_id, trace_id)
+
+    def to_mapping(self) -> dict[str, str]:
+        return {
+            "operation_id": self.operation_id,
+            "root_operation_id": self.root_operation_id,
+            "trace_id": self.trace_id,
+        }
+
+
+class LiveEvidenceAdapter(Protocol):
+    """Backend-neutral boundary for a real synthetic submission and evidence poll."""
+
+    def submit(self, *, canaries: tuple[str, ...]) -> SubmissionIdentity: ...
+
+    def collect(self, identity: SubmissionIdentity) -> EvidenceSnapshot: ...
+
+
+class AdapterCommandError(RuntimeError):
+    """Safe fixed-code adapter failure; command output is deliberately discarded."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+class SubprocessLiveAdapter:
+    """Invoke explicit adapters with JSON stdin/stdout, never a shell or secret argv."""
+
+    def __init__(
+        self,
+        *,
+        submit_executable: Path,
+        collect_executable: Path,
+        env_names: Sequence[str] = (),
+        command_timeout_seconds: float = 30.0,
+        max_response_bytes: int = DEFAULT_MAX_ADAPTER_BYTES,
+    ) -> None:
+        if not submit_executable.is_absolute() or not collect_executable.is_absolute():
+            raise ValueError("live adapter executable paths must be absolute")
+        if command_timeout_seconds <= 0:
+            raise ValueError("command_timeout_seconds must be positive")
+        if max_response_bytes < 1024:
+            raise ValueError("max_response_bytes must be at least 1024")
+        self._submit_executable = submit_executable
+        self._collect_executable = collect_executable
+        self._env_names = tuple(dict.fromkeys(env_names))
+        self._command_timeout_seconds = command_timeout_seconds
+        self._max_response_bytes = max_response_bytes
+
+    def submit(self, *, canaries: tuple[str, ...]) -> SubmissionIdentity:
+        response = self._invoke(
+            self._submit_executable,
+            {"schema_version": 1, "canaries": list(canaries)},
+            failure_code="adapter_submit_failed",
+        )
+        return SubmissionIdentity.from_mapping(response)
+
+    def collect(self, identity: SubmissionIdentity) -> EvidenceSnapshot:
+        response = self._invoke(
+            self._collect_executable,
+            {"schema_version": 1, "identity": identity.to_mapping()},
+            failure_code="adapter_collect_failed",
+        )
+        return EvidenceSnapshot.from_mapping(response)
+
+    def _invoke(self, executable: Path, request: JsonMapping, *, failure_code: str) -> JsonMapping:
+        environment = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+        for name in self._env_names:
+            if not _is_env_name(name) or name not in os.environ:
+                raise AdapterCommandError(failure_code)
+            environment[name] = os.environ[name]
+        try:
+            completed = subprocess.run(
+                [str(executable)],
+                input=json.dumps(request, sort_keys=True, separators=(",", ":")),
+                text=True,
+                capture_output=True,
+                env=environment,
+                cwd="/",
+                timeout=self._command_timeout_seconds,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise AdapterCommandError(failure_code) from exc
+        if completed.returncode != 0:
+            raise AdapterCommandError(failure_code)
+        if len(completed.stdout.encode("utf-8")) > self._max_response_bytes:
+            raise AdapterCommandError(failure_code)
+        try:
+            decoded = json.loads(completed.stdout)
+        except (json.JSONDecodeError, UnicodeError) as exc:
+            raise AdapterCommandError(failure_code) from exc
+        if not isinstance(decoded, dict):
+            raise AdapterCommandError(failure_code)
+        return decoded
 
 
 @dataclass(frozen=True, slots=True)
@@ -297,6 +412,28 @@ def poll_trace_arrival(
         sleep(policy.interval_seconds)
 
 
+def run_live_smoke(
+    adapter: LiveEvidenceAdapter,
+    *,
+    canaries: Sequence[str],
+    policy: PollPolicy,
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> VerificationReport:
+    """Submit exactly once, then poll all evidence using only returned identity."""
+
+    fixed_canaries = tuple(canaries)
+    identity = adapter.submit(canaries=fixed_canaries)
+    return poll_trace_arrival(
+        lambda: adapter.collect(identity),
+        canaries=fixed_canaries,
+        policy=policy,
+        mode="live",
+        monotonic=monotonic,
+        sleep=sleep,
+    )
+
+
 class FixtureEvidenceCollector:
     """Deterministic adapter for contract tests and offline GX-10 rehearsal."""
 
@@ -312,25 +449,58 @@ class FixtureEvidenceCollector:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fixture", type=Path, required=True)
+    parser.add_argument("--fixture", type=Path)
+    parser.add_argument("--live-submit-command", type=Path)
+    parser.add_argument("--live-collect-command", type=Path)
+    parser.add_argument("--adapter-env-name", action="append", default=[])
+    parser.add_argument("--canary-env-name", action="append", default=[])
     parser.add_argument("--canary", action="append", default=[])
-    parser.add_argument("--timeout-seconds", type=float, default=0.0)
+    parser.add_argument("--timeout-seconds", type=float)
     parser.add_argument("--interval-seconds", type=float, default=0.25)
     parser.add_argument("--max-report-bytes", type=int, default=DEFAULT_MAX_REPORT_BYTES)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
 
-    collector = FixtureEvidenceCollector(args.fixture)
-    report = poll_trace_arrival(
-        collector.collect,
-        canaries=args.canary,
-        policy=PollPolicy(
-            timeout_seconds=args.timeout_seconds,
-            interval_seconds=args.interval_seconds,
-            max_report_bytes=args.max_report_bytes,
-        ),
-        mode="fixture",
+    live_requested = args.live_submit_command is not None or args.live_collect_command is not None
+    if args.fixture is not None and live_requested:
+        parser.error("choose fixture mode or live command mode, not both")
+    if args.fixture is None and not live_requested:
+        parser.error("fixture mode or both live commands are required")
+    if live_requested and (args.live_submit_command is None or args.live_collect_command is None):
+        parser.error("live mode requires both submit and collect commands")
+    if live_requested and args.canary:
+        parser.error("live canaries must come from --canary-env-name, not command arguments")
+
+    timeout_seconds = args.timeout_seconds
+    if timeout_seconds is None:
+        timeout_seconds = 30.0 if live_requested else 0.0
+    policy = PollPolicy(
+        timeout_seconds=timeout_seconds,
+        interval_seconds=args.interval_seconds,
+        max_report_bytes=args.max_report_bytes,
     )
+    mode = "live" if live_requested else "fixture"
+    try:
+        if live_requested:
+            canaries = _named_environment_values(args.canary_env_name)
+            adapter = SubprocessLiveAdapter(
+                submit_executable=args.live_submit_command,
+                collect_executable=args.live_collect_command,
+                env_names=args.adapter_env_name,
+            )
+            report = run_live_smoke(adapter, canaries=canaries, policy=policy)
+        else:
+            collector = FixtureEvidenceCollector(args.fixture)
+            report = poll_trace_arrival(
+                collector.collect,
+                canaries=args.canary,
+                policy=policy,
+                mode="fixture",
+            )
+    except AdapterCommandError as exc:
+        report = _safe_failure_report(exc.code, mode=mode, policy=policy)
+    except (OSError, ValueError, json.JSONDecodeError):
+        report = _safe_failure_report("evidence_adapter_invalid", mode=mode, policy=policy)
     _write_private_report(args.output, report.to_json())
     return 0 if report.ready else 1
 
@@ -341,6 +511,38 @@ def _write_private_report(path: Path, payload: str) -> None:
     temporary.write_text(payload + "\n", encoding="utf-8")
     os.chmod(temporary, 0o600)
     temporary.replace(path)
+
+
+def _safe_failure_report(code: str, *, mode: str, policy: PollPolicy) -> VerificationReport:
+    return VerificationReport(
+        schema_version=1,
+        mode=mode,
+        ready=False,
+        operation_id=None,
+        trace_id=None,
+        checks=dict.fromkeys(_CHECK_ORDER, False),
+        failure_codes=(code,),
+        last_successful_export_at=None,
+        affected_service=None,
+        max_report_bytes=policy.max_report_bytes,
+    )
+
+
+def _named_environment_values(names: Sequence[str]) -> tuple[str, ...]:
+    values: list[str] = []
+    for name in names:
+        if not _is_env_name(name) or name not in os.environ or not os.environ[name]:
+            raise AdapterCommandError("canary_environment_missing")
+        values.append(os.environ[name])
+    return tuple(values)
+
+
+def _is_env_name(value: str) -> bool:
+    return bool(
+        value
+        and value[0] in "ABCDEFGHIJKLMNOPQRSTUVWXYZ_"
+        and all(character in "ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789" for character in value)
+    )
 
 
 def _mapping(value: object) -> JsonMapping:

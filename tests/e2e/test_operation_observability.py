@@ -213,9 +213,10 @@ def test_live_smoke_submits_exactly_once_and_carries_identity_through_polling() 
     complete = EvidenceSnapshot.from_mapping(_snapshot())
 
     class Adapter:
-        submit_calls = 0
-        collected_identities: list[SubmissionIdentity] = []
-        snapshots = [incomplete, complete]
+        def __init__(self) -> None:
+            self.submit_calls = 0
+            self.collected_identities: list[SubmissionIdentity] = []
+            self.snapshots = [incomplete, complete]
 
         def submit(self, *, canaries: tuple[str, ...]) -> SubmissionIdentity:
             assert canaries == (CANARY,)
