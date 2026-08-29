@@ -54,6 +54,8 @@ def context_payload() -> dict[str, Any]:
         "stage": "fetch",
         "resource_kind": "content",
         "resource_key": "opaque-7",
+        "authority_fingerprint": None,
+        "ownership_epoch": None,
     }
 
 
@@ -456,3 +458,21 @@ def test_attempt_budget_enforces_total_count_when_reserved_evidence_arrives_firs
 
     assert rejected.accepted is False
     assert budget.observations_used == 2
+
+
+def test_operation_span_propagates_bounded_ownership_identity() -> None:
+    context = parse_operation_context(
+        {
+            **context_payload(),
+            "authority_fingerprint": "a" * 64,
+            "ownership_epoch": "17",
+        }
+    )
+    provider = FakeSpanProvider()
+
+    with operation_span(provider, "operation.claim", context=context):
+        pass
+
+    attributes = provider.calls[0][1]
+    assert attributes["operation.authority_fingerprint"] == "a" * 64
+    assert attributes["operation.ownership_epoch"] == "17"

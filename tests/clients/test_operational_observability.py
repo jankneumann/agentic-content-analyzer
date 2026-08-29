@@ -17,6 +17,9 @@ class _Lifecycle:
 
     class _Settings:
         environment = "test"
+        gx10_runtime_enabled = True
+        gx10_authority_fingerprint = "a" * 64
+        gx10_ownership_epoch = 17
 
     settings = _Settings()
 
@@ -101,6 +104,8 @@ def test_sync_operational_entrypoint_binds_valid_root_and_flushes(operational_ru
     assert observed.parent_operation_id is None
     assert observed.attempt_number == "1"
     assert observed.stage == "backup"
+    assert observed.authority_fingerprint == "a" * 64
+    assert observed.ownership_epoch == "17"
     assert lifecycles[0].initialized is True
     assert lifecycles[0].last_flush_succeeded is True
     assert provider.spans[0][0] == "operation.backup.run"
