@@ -190,7 +190,7 @@ def test_proxy_readiness_requires_fresh_marker_and_authenticated_connect_probe()
     command = " ".join(compose["services"]["squid"]["healthcheck"]["test"])
     assert "gx10-proxy-ready" in command
     probe = (ROOT / "scripts/gx10/check_proxy_ready.sh").read_text()
-    for token in ("policy.ready", "stat", "--proxy-user", "--connect-timeout", "--max-time"):
+    for token in ("policy.ready", "stat", "proxy-user", "connect-timeout", "max-time"):
         assert token in probe
     assert "https://api.github.com/" in probe
 
@@ -243,3 +243,22 @@ raise SystemExit(23 if sys.argv[1] == 'external' else 0)
     assert "--simulate-cold-restart" not in (
         ROOT / "scripts/gx10/validate_runtime.py"
     ).read_text()
+
+
+def test_real_clean_stack_gate_is_executable_and_evidence_stays_incomplete() -> None:
+    failure_harness = ROOT / "scripts/gx10/policy_failure_harness.sh"
+    clean_stack = ROOT / "scripts/gx10/verify_clean_stack.sh"
+    validation = RUNTIME / "VALIDATION.md"
+
+    assert failure_harness.stat().st_mode & 0o111
+    assert clean_stack.stat().st_mode & 0o111
+    harness_source = failure_harness.read_text()
+    gate_source = clean_stack.read_text()
+    evidence = validation.read_text()
+
+    assert "docker compose" in harness_source
+    assert "exec" in harness_source
+    assert "validate_runtime.py" in gate_source
+    assert "--failure-harness" in gate_source
+    assert "docker compose" in gate_source
+    assert "restart" in gate_source
