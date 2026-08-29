@@ -109,21 +109,25 @@ def test_renderer_outputs_profile_compatible_least_privilege_role_envs(tmp_path:
     assert "-stdin" in args
     assert "proxycanary" in stdin
 
-    api_environment = (
-        _read_env(runtime / "common.env")
-        | _read_env(runtime / "api.env")
-        | _read_env(runtime / "proxy.env")
-        | {
-            "GX10_PUBLIC_ORIGIN": "https://gx10.example.com",
-            "GX10_PUBLIC_LANGFUSE_URL": "https://gx10.example.com/langfuse",
-        }
-    )
-    profile = load_profile("gx10", profiles_dir=ROOT / "profiles", env_vars=api_environment)
-    settings = Settings(_env_file=None, **_flatten_profile_to_settings(profile.model_dump()))
-    assert settings.gx10_runtime_enabled is True
-    assert settings.gx10_process_role == "api"
-    assert settings.otel_service_name == "aca-gx10-api"
-    assert settings.operator_api_key is not None
+    public_environment = {
+        "GX10_PUBLIC_ORIGIN": "https://gx10.example.com",
+        "GX10_PUBLIC_LANGFUSE_URL": "https://gx10.example.com/langfuse",
+    }
+    for role in ("api", "worker", "scheduler", "maintenance"):
+        role_environment = (
+            _read_env(runtime / "common.env")
+            | _read_env(runtime / f"{role}.env")
+            | _read_env(runtime / "proxy.env")
+            | public_environment
+        )
+        profile = load_profile("gx10", profiles_dir=ROOT / "profiles", env_vars=role_environment)
+        settings = Settings(_env_file=None, **_flatten_profile_to_settings(profile.model_dump()))
+        assert settings.gx10_runtime_enabled is True
+        assert settings.gx10_process_role == role
+        assert settings.otel_service_name == f"aca-gx10-{role}"
+        assert settings.telemetry_service_instance_id == f"aca-gx10-{role}"
+        assert (settings.operator_api_key is not None) is (role == "api")
+        assert (settings.admin_api_key is not None) is (role == "api")
 
 
 def test_systemd_sources_protected_pins_and_verifies_registry_provenance() -> None:
