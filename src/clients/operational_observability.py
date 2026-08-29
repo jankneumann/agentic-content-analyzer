@@ -52,33 +52,124 @@ _BOOTSTRAP_IMPORT_ADVISORY_LOCK = 2_104_711_918
 _ACTIVE_PROCESS_SCOPE: ContextVar[OperationalScope | None] = ContextVar(
     "operational_process_scope", default=None
 )
-_INVENTORY_FILE_OWNERSHIP: dict[str, str] = {
-    "src/cli/__main__.py": "forwards execution to the instrumented src.cli.app callback",
-    "src/cli/main.py": "forwards the legacy executable to the instrumented src.cli.app callback",
-    "src/services/operation_service.py": (
-        "queue submission is owned by the instrumented src.queue worker lifecycle"
+_OWNED_HELPERS = "exact helper set owned by the instrumented frozen boundary"
+_INVENTORY_OWNERSHIP_SNAPSHOTS: dict[str, tuple[str, int, str]] = {
+    "src/api/**": (
+        "fafc7cbcd8319128cd0879d0bcd80fae10df3a9c4fd6799472ef35a8058890c8",
+        67,
+        _OWNED_HELPERS,
     ),
-    "src/services/cloud_stt/__init__.py": "module facade owned by instrumented workflow stages",
-    "src/services/cloud_stt/deepgram_provider.py": "provider called only from instrumented workflow stages",
-    "src/services/cloud_stt/gemini_provider.py": "provider called only from instrumented workflow stages",
-    "src/services/cloud_stt/models.py": "data contract owned by instrumented workflow stages",
-    "src/services/cloud_stt/prompts.py": "prompt data owned by instrumented workflow stages",
-    "src/services/cloud_stt/provider.py": "provider contract owned by instrumented workflow stages",
-    "src/services/cloud_stt/service.py": "service called only from instrumented workflow stages",
-    "src/services/cloud_stt/whisper_provider.py": "provider called only from instrumented workflow stages",
-    "src/storage/providers/__init__.py": "module facade owned by instrumented storage operations",
-    "src/storage/providers/base.py": "provider contract owned by instrumented storage operations",
-    "src/storage/providers/factory.py": "factory called only from instrumented storage operations",
-    "src/storage/providers/local.py": "provider called only from instrumented storage operations",
-    "src/storage/providers/neon.py": "provider called only from instrumented storage operations",
-    "src/storage/providers/neon_branch.py": "provider called only from instrumented storage operations",
-    "src/storage/providers/railway.py": "provider called only from instrumented storage operations",
-    "src/storage/providers/supabase.py": "provider called only from instrumented storage operations",
+    "src/services/operation_service.py": (
+        "d706b5bf1eec99f405a29085a6730789493f08e516c4ae8c0fe3b2aa9afb99a5",
+        1,
+        _OWNED_HELPERS,
+    ),
+    "src/queue/**": (
+        "3afc41311dbf6fa273d14d70da11f0ebc2eda05148088ce7d68be6807d7948f8",
+        5,
+        _OWNED_HELPERS,
+    ),
+    "src/cli/main.py": (
+        "f9ce59d1cb1354e108bbac25272aef6320153415db6c4b9b5264d710cf1577af",
+        1,
+        _OWNED_HELPERS,
+    ),
+    "src/cli/__main__.py": (
+        "266545773b96a40791f36540136124340bf8409a6bc71e95f14b96bc490d8bb0",
+        1,
+        _OWNED_HELPERS,
+    ),
+    "src/cli/*_commands.py": (
+        "bbbe2d724849f4631f9d1ad86311bd946c5a876000f6048cbd44eb67a6c3dc73",
+        28,
+        _OWNED_HELPERS,
+    ),
+    "src/mcp_tools/**": (
+        "80a109ed330f2b2d5ca90896bdb27811f57cfcf5a7af9446d392fa040faeba4b",
+        8,
+        _OWNED_HELPERS,
+    ),
+    "src/agents/**": (
+        "fccb37cdc0ad2aa6372ae6235aaab74f810a320cd8cfac3d46139bb258e0c9a5",
+        26,
+        _OWNED_HELPERS,
+    ),
+    "src/tasks/**": (
+        "2ffacdcec18588eb5b404ae1ded1530adaa1c5701201635c3893ffb1b0a83de4",
+        1,
+        _OWNED_HELPERS,
+    ),
+    "src/agents/scheduler/**": (
+        "e11f919ed81659aa5d427ebf8a10e8a726c746a9e613c42969aebab2c57e1662",
+        2,
+        _OWNED_HELPERS,
+    ),
+    "src/ingestion/**": (
+        "91cb7e16089ebef0ef5667fe19c612d8f2509360dd88920101623a052b69a64f",
+        30,
+        _OWNED_HELPERS,
+    ),
+    "src/parsers/**": (
+        "24b6bd5cdfecba23896a49c2c677ad071bb7f4530aeeb4cf399f7c17e85b4f25",
+        9,
+        _OWNED_HELPERS,
+    ),
+    "src/processors/**": (
+        "9ff52ed01ec50753d54033d35dff21a157a95c440be8146c07190e032a3cdbaf",
+        8,
+        _OWNED_HELPERS,
+    ),
+    "src/pipeline/**": (
+        "8589fff69da75a8f6d3cdbc35b82005ed2ffc0873efc6322cebea918d8494468",
+        1,
+        _OWNED_HELPERS,
+    ),
+    "src/workflows/**": (
+        "4000b93f560bbaf5ca9d779a97872aa4e96a5bb6ff1cc8478b59f9ea7225be6a",
+        8,
+        _OWNED_HELPERS,
+    ),
+    "src/delivery/**": (
+        "a19b8665cd4ffc2440c46e648ae3bf265b92231ba1cb54655b2c20947f529daf",
+        7,
+        _OWNED_HELPERS,
+    ),
+    "src/services/cloud_stt/**": (
+        "bc81e78ec2d8d780bb7dbf5081014ba36abcddf889f249ebb829105f24565ffb",
+        8,
+        _OWNED_HELPERS,
+    ),
+    "src/storage/**": (
+        "21512b6cb6b69b7241c9483da921934d692f1221e304a1d5532234b090a0a3cb",
+        11,
+        _OWNED_HELPERS,
+    ),
+    "src/services/backup/**": (
+        "d0035234bb8fa840374eef89fb7d6dd8f1df5285db8b3c988005436c054cef73",
+        7,
+        _OWNED_HELPERS,
+    ),
+    "src/release_smoke/**": (
+        "26dcdb0a9442b827fd9c67196d84c80a4143d260677da18307c95ece18b975da",
+        6,
+        _OWNED_HELPERS,
+    ),
+    "src/clients/**": (
+        "eac60acba9b4b6b117e59bb309083bc46d03b9fcd4124bf9a486f543771075fc",
+        1,
+        _OWNED_HELPERS,
+    ),
+    "src/telemetry/providers/**": (
+        "72c668768bc047f1780ca3221dc624591862da9719a6b78ab8e55661820ab816",
+        7,
+        _OWNED_HELPERS,
+    ),
+    "src/storage/providers/**": (
+        "0b529a66439d2133d36bcbdeba802bbdd20a365c2ad7cdc3c553d45007a840aa",
+        8,
+        _OWNED_HELPERS,
+    ),
 }
-_INVENTORY_EXHAUSTIVE_OWNERSHIP_PREFIXES = (
-    "src/services/cloud_stt/",
-    "src/storage/providers/",
-)
 
 
 def _bounded_identifier(value: str, *, maximum: int, field: str) -> str:
@@ -1302,24 +1393,24 @@ def validate_frozen_entrypoint_inventory(
                 source_files = tuple(
                     path for path in pattern_files if path.suffix in {".py", ".sh"}
                 )
-                exhaustive = any(
-                    pattern.startswith(prefix.rstrip("/"))
-                    for prefix in _INVENTORY_EXHAUSTIVE_OWNERSHIP_PREFIXES
-                )
-                if exhaustive:
-                    for path in source_files:
-                        relative = path.relative_to(root).as_posix()
-                        ownership_reason = _INVENTORY_FILE_OWNERSHIP.get(relative, "").strip()
-                        if not _path_is_structurally_instrumented(path) and not ownership_reason:
-                            uninstrumented.append(relative)
-                elif source_files and not any(
-                    _path_is_structurally_instrumented(path)
-                    or bool(
-                        _INVENTORY_FILE_OWNERSHIP.get(path.relative_to(root).as_posix(), "").strip()
-                    )
+                uncovered = sorted(
+                    path.relative_to(root).as_posix()
                     for path in source_files
-                ):
-                    uninstrumented.append(pattern)
+                    if not _path_is_structurally_instrumented(path)
+                )
+                if not uncovered:
+                    continue
+                snapshot = _INVENTORY_OWNERSHIP_SNAPSHOTS.get(pattern)
+                digest = hashlib.sha256("\n".join(uncovered).encode()).hexdigest()
+                if snapshot is not None:
+                    expected_digest, expected_count, reason = snapshot
+                    if (
+                        reason.strip()
+                        and len(uncovered) == expected_count
+                        and digest == expected_digest
+                    ):
+                        continue
+                uninstrumented.extend(uncovered)
 
     candidates: set[str] = set()
     scripts = root / "scripts"
