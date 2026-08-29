@@ -11,12 +11,13 @@ export type OperationOutcome =
   | "filtered" | "retryable_failure" | "permanent_failure" | "cancelled";
 export type TelemetryDeliveryState = "pending" | "delivered" | "degraded" | "dropped" | "disabled";
 
-export type OperationIdString = string;
-export type PositiveInt64String = string;
-export type ClaimGenerationString = string;
-export type NonNegativeInt64String = string;
-export type TraceIdString = string;
-export type SpanIdString = string;
+type Brand<Value, Name extends string> = Value & { readonly __brand: Name };
+export type OperationIdString = Brand<string, "OperationIdString">;
+export type PositiveInt64String = Brand<string, "PositiveInt64String">;
+export type ClaimGenerationString = Brand<string, "ClaimGenerationString">;
+export type NonNegativeInt64String = Brand<string, "NonNegativeInt64String">;
+export type TraceIdString = Brand<string, "TraceIdString">;
+export type SpanIdString = Brand<string, "SpanIdString">;
 
 export const SIGNED_BIGINT_MAX = 9223372036854775807n;
 export const CLAIM_GENERATION_MAX = 9223372036854775806n;
@@ -26,7 +27,8 @@ const SPAN_ID = /^[0-9a-f]{16}$/;
 const TRACEPARENT = /^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$/;
 
 function isBoundedDecimal(value: string, minimum: bigint, maximum: bigint): boolean {
-  return CANONICAL_DECIMAL.test(value) && BigInt(value) >= minimum && BigInt(value) <= maximum;
+  return value.length <= 19 && CANONICAL_DECIMAL.test(value)
+    && BigInt(value) >= minimum && BigInt(value) <= maximum;
 }
 
 export function isOperationIdString(value: string): value is OperationIdString {
@@ -60,6 +62,80 @@ export function hasCanonicalMatchingTraceparent(
 ): boolean {
   const match = TRACEPARENT.exec(traceparent);
   return match !== null && match[1] === traceId && match[2] === spanId;
+}
+
+const CONTEXT_KEYS = new Set([
+  "schema_version", "operation_id", "root_operation_id", "parent_operation_id",
+  "traceparent", "tracestate", "trace_id", "span_id", "claim_generation",
+  "attempt_number", "entrypoint", "service_name", "service_instance_id",
+  "environment", "release_revision", "stage", "resource_kind", "resource_key",
+]);
+const OPERATION_STAGES = new Set<string>([
+  "submit", "queue_wait", "claim", "fetch", "discover", "metadata", "transcript",
+  "extract", "parse", "filter", "deduplicate", "model", "fallback", "persist",
+  "index", "graph", "deliver", "backup", "restore", "alert", "cleanup", "flush",
+]);
+const TRACESTATE_KEY = /^[a-z0-9][a-z0-9_*/-]{0,255}$/;
+
+function isValidTracestate(value: string): boolean {
+  if (value.length < 1 || value.length > 512) return false;
+  const members = value.split(",");
+  if (members.length < 1 || members.length > 32) return false;
+  const keys = new Set<string>();
+  return members.every((member) => {
+    const separator = member.indexOf("=");
+    if (separator < 1) return false;
+    const key = member.slice(0, separator);
+    const memberValue = member.slice(separator + 1);
+    if (!TRACESTATE_KEY.test(key) || keys.has(key) || memberValue.length < 1 || memberValue.length > 256) return false;
+    for (const char of memberValue) {
+      const code = char.charCodeAt(0);
+      if (code < 0x21 || code > 0x7e || char === "," || char === "=") return false;
+    }
+    keys.add(key);
+    return true;
+  });
+}
+
+/** Mandatory semantic ingress validator; structural OpenAPI/JSON Schema validation alone is insufficient. */
+export function parseOperationContextEnvelope(value: unknown): OperationContextEnvelope {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new TypeError("operation context must be an object");
+  }
+  const context = value as Record<string, unknown>;
+  const keys = Object.keys(context);
+  if (keys.length !== CONTEXT_KEYS.size || keys.some((key) => !CONTEXT_KEYS.has(key))) {
+    throw new TypeError("operation context keys do not match schema version 1");
+  }
+  const boundedString = (field: string, minimum: number, maximum: number): string => {
+    const item = context[field];
+    if (typeof item !== "string" || item.length < minimum || item.length > maximum) {
+      throw new TypeError(`${field} is outside its string bounds`);
+    }
+    return item;
+  };
+  if (context.schema_version !== 1) throw new TypeError("schema_version must be 1");
+  if (typeof context.operation_id !== "string" || !isOperationIdString(context.operation_id)) throw new TypeError("invalid operation_id");
+  if (typeof context.root_operation_id !== "string" || !isOperationIdString(context.root_operation_id)) throw new TypeError("invalid root_operation_id");
+  if (context.parent_operation_id !== null && (typeof context.parent_operation_id !== "string" || !isOperationIdString(context.parent_operation_id))) throw new TypeError("invalid parent_operation_id");
+  if (typeof context.trace_id !== "string" || !isTraceIdString(context.trace_id)) throw new TypeError("invalid trace_id");
+  if (typeof context.span_id !== "string" || !isSpanIdString(context.span_id)) throw new TypeError("invalid span_id");
+  if (typeof context.traceparent !== "string" || !hasCanonicalMatchingTraceparent(context.traceparent, context.trace_id, context.span_id)) throw new TypeError("invalid or mismatched traceparent");
+  if (context.tracestate !== null && (typeof context.tracestate !== "string" || !isValidTracestate(context.tracestate))) throw new TypeError("invalid tracestate");
+  if (typeof context.claim_generation !== "string" || !isClaimGenerationString(context.claim_generation)) throw new TypeError("invalid claim_generation");
+  if (context.attempt_number !== null) {
+    if (typeof context.attempt_number !== "string" || !isPositiveInt64String(context.attempt_number)
+      || BigInt(context.attempt_number) !== BigInt(context.claim_generation) + 1n) throw new TypeError("invalid attempt_number");
+  }
+  boundedString("entrypoint", 1, 160);
+  boundedString("service_name", 1, 100);
+  boundedString("service_instance_id", 1, 128);
+  boundedString("environment", 1, 32);
+  boundedString("release_revision", 1, 64);
+  if (context.stage !== null && (typeof context.stage !== "string" || !OPERATION_STAGES.has(context.stage))) throw new TypeError("invalid stage");
+  if (context.resource_kind !== null && (typeof context.resource_kind !== "string" || context.resource_kind.length > 64)) throw new TypeError("invalid resource_kind");
+  if (context.resource_key !== null && (typeof context.resource_key !== "string" || context.resource_key.length > 128)) throw new TypeError("invalid resource_key");
+  return context as unknown as OperationContextEnvelope;
 }
 
 export interface OperationContextEnvelope {

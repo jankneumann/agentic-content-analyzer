@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-08-29T01:51:31.888756+00:00",
+  "coordinator_error": null,
+  "payload": {
+    "agent_name": "reviewer",
+    "session_id": null,
+    "summary": "PLAN_REVIEW round 4 does not converge. Revision 4 closes the prior lifecycle-column, explicit claim bound, Python scalar, basic W3C syntax, and null-safe comparison findings; strict OpenSpec and work-package validation pass. Two critical contract blockers remain: JSON Schema/OpenAPI/TypeScript still accept semantically invalid envelopes that Python rejects despite the promised same-object contract, and SQL still permits required duplicated correlation fields to be JSON null paired with SQL NULL. One non-blocking TypeScript oversized-BigInt parsing nit also remains. External multi-vendor dispatch remains policy-blocked, so the safe consensus is single-reviewer and lacks cross-vendor quorum.",
+    "completed_work": [
+      "Reviewed commit 16d5d20f and all revised SQL, event, OpenAPI, Python, TypeScript, design, spec, task, and package artifacts against plan-review-3.",
+      "Confirmed the prior process-health DDL, class-specific expiry, claim-generation cap, Python BIGINT fields, basic W3C syntax/non-zero checks, and named package ownership fixes are present.",
+      "Reproduced that Draft-2020-12 JSON Schema accepts a carrier whose embedded IDs disagree with trace_id/span_id while the generated Pydantic model rejects the same object.",
+      "Demonstrated that TypeScript compiles an OperationContextEnvelope containing out-of-range IDs, malformed W3C values, zero identifiers, and invalid lengths because all constrained aliases remain plain string and no composite parser is required.",
+      "Traced the remaining direct-SQL JSON-null path through key-presence checks, nullable column checks, and IS NOT DISTINCT FROM equality.",
+      "Validated the findings schema, strict OpenSpec change, TypeScript artifact compilation, work-package schema, dependency references, DAG, and lock keys.",
+      "Did not retry the prohibited external vendor dispatch; regenerated a safe single-reviewer consensus and recorded the policy constraint."
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Outcome remains not_converged",
+        "rationale": "Two directly reproduced contract paths still accept invalid cross-service correlation, and the configured PLAN_REVIEW budget has not yet been exhausted.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Structural schemas cannot silently substitute for semantic validation",
+        "rationale": "Descriptions do not enforce cross-field equality, and plain TypeScript aliases do not enforce runtime values. The plan must either generate equivalent composite validators or state and enforce a mandatory runtime-validation boundary.",
+        "capability": "cross-service-operation-correlation",
+        "supersedes": null
+      },
+      {
+        "title": "Null-safe equality does not imply required presence",
+        "rationale": "IS NOT DISTINCT FROM intentionally considers SQL NULL equal to an extracted JSON null; explicit non-null/type predicates are still required when canonical context exists.",
+        "capability": "job-management",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "PLAN_ITERATE: generate or require one composite envelope validator for every consumer; add the reproduced carrier mismatch and generation mismatch as cross-artifact tests, and reconcile D1/task 3.1 with standard JSON Schema limits.",
+      "PLAN_ITERATE: add explicit SQL non-null and JSON-type predicates for required canonical and duplicated fields, with direct-SQL JSON-null tests.",
+      "PLAN_ITERATE: cap TypeScript decimal length before regex/BigInt conversion and add an oversized digit-string guard test.",
+      "Re-run PLAN_REVIEW; external vendor quorum still requires explicit permission to share repository-derived plan details with configured vendor services."
+    ],
+    "relevant_files": [
+      "openspec/changes/gx10-full-operation-observability/review-findings-plan.json",
+      "openspec/changes/gx10-full-operation-observability/reviews/consensus-plan.json",
+      "openspec/changes/gx10-full-operation-observability/reviews/review-manifest.json",
+      "openspec/changes/gx10-full-operation-observability/contracts/events/operation-context-v1.schema.json",
+      "openspec/changes/gx10-full-operation-observability/contracts/generated/python/operation_observability.py",
+      "openspec/changes/gx10-full-operation-observability/contracts/generated/typescript/operation-observability.ts",
+      "openspec/changes/gx10-full-operation-observability/contracts/sql/001_operation_observability.sql",
+      "openspec/changes/gx10-full-operation-observability/design.md",
+      "openspec/changes/gx10-full-operation-observability/tasks.md"
+    ]
+  }
+}

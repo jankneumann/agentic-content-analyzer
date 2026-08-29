@@ -1,7 +1,7 @@
 ## 1. Contract Freeze
 
 - [ ] 1.1 [S] Freeze a checked-in meaningful-operation entrypoint/provider inventory and merge the approved delta into the durable `openspec/contracts/content-workflows/` registry and add CI validation for OpenAPI, SQL, event JSON Schemas, cross-artifact nullability, and generated stub drift. References: CORR-001, CORR-004, CORR-009, contracts/operation-entrypoints.yaml, contracts/openapi/v1.yaml, contracts/sql/001_operation_observability.sql, contracts/events/*.schema.json, D1, D4, D12.
-- [ ] 1.2 [S] Regenerate durable Python and TypeScript workflow models, including `src/contracts/workflow_models.py` and `web/src/generated/workflow-contracts.ts`, from the frozen contracts without breaking legacy fields. Depends on 1.1. References: OPS-002, contracts/generated/python/operation_observability.py, contracts/generated/typescript/operation-observability.ts, D7, D12.
+- [ ] 1.2 [S] Regenerate durable Python and branded TypeScript workflow models plus mandatory composite ingress parsers, including `src/contracts/workflow_models.py` and `web/src/generated/workflow-contracts.ts`, from the frozen contracts without breaking legacy fields. Depends on 1.1. References: OPS-002, contracts/generated/python/operation_observability.py, contracts/generated/typescript/operation-observability.ts, D7, D12.
 
 ## 2. PostgreSQL Correlation Projection
 
@@ -13,8 +13,8 @@
 
 ## 3. Shared Context and Telemetry Safety
 
-- [ ] 3.1 [S] Write failing unit/property tests for every signed-BIGINT string at max and max+1, claim-generation headroom at max and max+1, malformed/oversized W3C carriers, zero and mismatched carrier identifiers, invalid tracestate, context-variable nesting, stage/outcome enums, and serialization round trips across JSON Schema, OpenAPI, Python, and TypeScript artifacts. References: CORR-001, CORR-002, CORR-009, CORR-010, contracts/events/operation-context-v1.schema.json, D1, D4.
-- [ ] 3.2 [M] Implement the immutable OperationContext envelope, W3C inject/extract helpers, context binding, and generated stage/outcome vocabulary. Depends on 1.2, 3.1. References: CORR-001, CORR-002, contracts/events/*.schema.json, D1, D4.
+- [ ] 3.1 [S] Write failing unit/property tests for every signed-BIGINT string at max and max+1, claim-generation headroom at max and max+1, malformed/oversized W3C carriers, zero and mismatched carrier identifiers, invalid tracestate, context-variable nesting, stage/outcome enums, and serialization round trips across structural JSON Schema/OpenAPI plus mandatory generated Python/TypeScript composite validators, including the reproduced structurally-valid carrier-mismatch and generation-mismatch fixtures and oversized decimal inputs. References: CORR-001, CORR-002, CORR-009, CORR-010, contracts/events/operation-context-v1.schema.json, D1, D4.
+- [ ] 3.2 [M] Implement the immutable OperationContext envelope, mandatory Python/TypeScript composite ingress validators, W3C inject/extract helpers, context binding, and generated stage/outcome vocabulary. Depends on 1.2, 3.1. References: CORR-001, CORR-002, contracts/events/*.schema.json, D1, D4.
 - [ ] 3.3 [S] Write failing canary tests for explicit trace input/output selection, export-time masking, exception-stack masking, third-party span masking, and metric-label cardinality. References: OBS-001, OBS-002, GX10-005, contracts/openapi/v1.yaml, D5.
 - [ ] 3.4 [M] Implement shared Langfuse/OTel span helpers, generation metadata, bounded excerpts, export-time masking, and safe log enrichment. Depends on 3.2, 3.3. References: OBS-001, OBS-002, CORR-003, D5.
 - [ ] 3.5 [XS] Checkpoint: run context, telemetry, redaction, bound/overflow, static typing, and lint suites; inspect representative in-memory trace trees and canary output. Depends on 3.2, 3.4. References: CORR-001, CORR-002, OBS-001, OBS-002, OBS-005, D1, D5.

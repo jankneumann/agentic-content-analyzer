@@ -88,3 +88,15 @@ Issue #514's five reproduced contract findings were resolved before resetting th
 - The named PostgreSQL claim-generation constraint explicitly caps values at `9223372036854775806`.
 
 Validation: strict OpenSpec passes; all work-package schema/reference/DAG/lock/scope checks pass; JSON Schema metaschema, OpenAPI parsing, Python model validation, TypeScript runtime guards, SQL contract assertions, signed-BIGINT max/max+1 cases, W3C malformed/zero/mismatch cases, and `git diff --check` pass.
+
+
+## Iteration 5
+
+PLAN_REVIEW round 4 confirmed the issue #514 fixes and found two final semantic-validation gaps plus one bounded-input nit; all were fixed inline before round 5.
+
+- The contract now states the deliberate boundary: JSON Schema and OpenAPI enforce structure and scalar bounds, while every ingress/deserializer must call a generated composite semantic validator. Structural-only validation and raw TypeScript assertions are forbidden.
+- The generated TypeScript artifact uses branded scalar types and a mandatory parser equivalent to Pydantic validation for exact keys, scalar/string bounds, signed-BIGINT limits, W3C carrier-to-envelope equality, non-zero identifiers, unique bounded tracestate members, stage vocabulary, and `attempt_number = claim_generation + 1`. The reproduced mismatch fixtures are frozen as drift tests.
+- PostgreSQL now requires every duplicated correlation column to be non-null when canonical context exists and validates JSON types for every required envelope member, so JSON null cannot pair with SQL NULL to bypass identity checks. Direct-SQL JSON-null cases are explicit migration tests.
+- TypeScript decimal guards reject inputs longer than 19 characters before regex or BigInt parsing; oversized inputs are required test cases.
+
+Validation: structural schemas accept the documented cross-field mismatch fixture while both generated runtime validators reject it; Python and TypeScript reject carrier, arithmetic, duplicate-tracestate, size, and signed-BIGINT boundary violations; SQL null/type assertions pass; strict OpenSpec, all work-package validation checks, and `git diff --check` pass.

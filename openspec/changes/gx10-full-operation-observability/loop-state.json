@@ -2,8 +2,8 @@
   "schema_version": 4,
   "change_id": "gx10-full-operation-observability",
   "current_phase": "PLAN_REVIEW",
-  "iteration": 3,
-  "total_iterations": 9,
+  "iteration": 4,
+  "total_iterations": 11,
   "max_phase_iterations": 6,
   "findings_trend": [
     0,
@@ -21,7 +21,8 @@
     "plan-iteration-1-1",
     "plan-review-1",
     "plan-review-2",
-    "plan-review-3"
+    "plan-review-3",
+    "plan-review-4"
   ],
   "phase_history": [
     {
@@ -53,11 +54,21 @@
       "at": "2026-08-29T01:47:12.697392+00:00",
       "outcome": "budget_reset_after_issue_514",
       "phase": "ESCALATE"
+    },
+    {
+      "at": "2026-08-29T01:53:36.288468+00:00",
+      "outcome": "not_converged",
+      "phase": "PLAN_REVIEW"
+    },
+    {
+      "at": "2026-08-29T01:58:58.227172+00:00",
+      "outcome": "fixed",
+      "phase": "PLAN_FIX"
     }
   ],
-  "last_handoff_id": "plan-review-3",
+  "last_handoff_id": "plan-review-4",
   "started_at": "2026-08-28T21:20:27.347960+00:00",
-  "phase_started_at": "2026-08-29T01:47:12.697401+00:00",
+  "phase_started_at": "2026-08-29T01:58:58.227182+00:00",
   "previous_phase": null,
   "escalation_reason": null,
   "val_review_enabled": true,

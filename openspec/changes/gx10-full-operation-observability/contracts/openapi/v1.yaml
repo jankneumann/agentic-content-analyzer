@@ -243,6 +243,7 @@ components:
         - dropped
         - disabled
     OperationContextEnvelope:
+      description: Structural wire schema. Every ingress must additionally call the generated composite semantic validator before accepting an envelope.
       type: object
       additionalProperties: false
       required:

@@ -25,6 +25,23 @@ ALTER TABLE pgqueuer_jobs
                 'service_name', 'service_instance_id', 'environment',
                 'release_revision', 'stage', 'resource_kind', 'resource_key'
             ]::text[]) = '{}'::jsonb
+            AND jsonb_typeof(submission_context->'operation_id') = 'string'
+            AND jsonb_typeof(submission_context->'root_operation_id') = 'string'
+            AND jsonb_typeof(submission_context->'parent_operation_id') IN ('string', 'null')
+            AND jsonb_typeof(submission_context->'traceparent') = 'string'
+            AND jsonb_typeof(submission_context->'tracestate') IN ('string', 'null')
+            AND jsonb_typeof(submission_context->'trace_id') = 'string'
+            AND jsonb_typeof(submission_context->'span_id') = 'string'
+            AND jsonb_typeof(submission_context->'claim_generation') = 'string'
+            AND jsonb_typeof(submission_context->'attempt_number') IN ('string', 'null')
+            AND jsonb_typeof(submission_context->'entrypoint') = 'string'
+            AND jsonb_typeof(submission_context->'service_name') = 'string'
+            AND jsonb_typeof(submission_context->'service_instance_id') = 'string'
+            AND jsonb_typeof(submission_context->'environment') = 'string'
+            AND jsonb_typeof(submission_context->'release_revision') = 'string'
+            AND jsonb_typeof(submission_context->'stage') IN ('string', 'null')
+            AND jsonb_typeof(submission_context->'resource_kind') IN ('string', 'null')
+            AND jsonb_typeof(submission_context->'resource_key') IN ('string', 'null')
             AND octet_length(submission_context::text) <= 4096
         )),
     ADD CONSTRAINT ck_pgqueuer_jobs_trace_id
@@ -47,7 +64,11 @@ ALTER TABLE pgqueuer_jobs
         -- Root operations store root_job_id = id; children store the allocated
         -- root id. Legacy rows are allowed only when submission_context is NULL.
         CHECK (submission_context IS NULL OR (
-            id IS NOT DISTINCT FROM (submission_context->>'operation_id')::BIGINT
+            root_job_id IS NOT NULL
+            AND submission_traceparent IS NOT NULL
+            AND trace_id IS NOT NULL
+            AND submission_span_id IS NOT NULL
+            AND id IS NOT DISTINCT FROM (submission_context->>'operation_id')::BIGINT
             AND root_job_id IS NOT DISTINCT FROM (submission_context->>'root_operation_id')::BIGINT
             AND submission_traceparent IS NOT DISTINCT FROM submission_context->>'traceparent'
             AND submission_tracestate IS NOT DISTINCT FROM submission_context->>'tracestate'

@@ -12,7 +12,28 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validat
 
 
 TRACEPARENT_PATTERN = re.compile(r"^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$")
-TRACESTATE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_*/-]{0,255}=(?:[!-+\--<>-~]|[!-+\--<>-~][ -+\--<>-~]{0,254}[!-+\--<>-~])(,[a-z0-9][a-z0-9_*/-]{0,255}=(?:[!-+\--<>-~]|[!-+\--<>-~][ -+\--<>-~]{0,254}[!-+\--<>-~])){0,31}$")
+TRACESTATE_KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_*/-]{0,255}$")
+
+
+def _is_valid_tracestate(value: str) -> bool:
+    if not 1 <= len(value) <= 512:
+        return False
+    members = value.split(",")
+    if not 1 <= len(members) <= 32:
+        return False
+    keys: set[str] = set()
+    for member in members:
+        if "=" not in member:
+            return False
+        key, member_value = member.split("=", 1)
+        if TRACESTATE_KEY_PATTERN.fullmatch(key) is None or key in keys:
+            return False
+        if not 1 <= len(member_value) <= 256:
+            return False
+        if any(not 0x21 <= ord(char) <= 0x7E or char in ",=" for char in member_value):
+            return False
+        keys.add(key)
+    return True
 
 def _reject_zero_identifier(value: str) -> str:
     if not value.strip("0"):
@@ -103,7 +124,7 @@ class OperationContextEnvelope(StrictModel):
         _, carrier_trace_id, carrier_parent_id, _ = self.traceparent.split("-")
         if carrier_trace_id != self.trace_id or carrier_parent_id != self.span_id:
             raise ValueError("traceparent identifiers must match trace_id and span_id")
-        if self.tracestate is not None and TRACESTATE_PATTERN.fullmatch(self.tracestate) is None:
+        if self.tracestate is not None and not _is_valid_tracestate(self.tracestate):
             raise ValueError("tracestate must use the bounded W3C simple-key subset")
         if self.attempt_number is not None and int(self.attempt_number) != int(self.claim_generation) + 1:
             raise ValueError("attempt_number must equal claim_generation + 1")
