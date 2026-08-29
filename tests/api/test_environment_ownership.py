@@ -21,7 +21,7 @@ def _operator_capability(monkeypatch) -> None:
 
 @pytest.fixture
 def client():
-    with TestClient(app, headers={"X-Admin-Key": "test-admin-key"}) as test_client:
+    with TestClient(app) as test_client:
         yield test_client
 
 
@@ -120,4 +120,40 @@ def test_allowed_dry_run_reports_fence_verify_enable_order(client, monkeypatch) 
             "passive_target.verify_second",
             "target_mutations.enable_last",
         ],
+    }
+
+
+def test_operator_capability_does_not_authorize_unrelated_owner_route(client) -> None:
+    response = client.get(
+        "/api/v1/status/connections",
+        headers={"X-Operator-Key": OPERATOR_KEY},
+    )
+
+    assert response.status_code == 401
+
+
+def test_authority_unavailable_returns_bounded_problem(client, monkeypatch) -> None:
+    from src.services.environment_ownership import EnvironmentOwnershipUnavailable
+
+    def unavailable(dry_run_target=None):
+        raise EnvironmentOwnershipUnavailable("postgresql://secret@example.invalid/private")
+
+    monkeypatch.setattr(
+        "src.api.status_routes.environment_ownership_status",
+        unavailable,
+    )
+
+    response = client.get(
+        "/api/v1/status/environment-ownership",
+        headers={"X-Operator-Key": OPERATOR_KEY},
+    )
+
+    assert response.status_code == 503
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json() == {
+        "type": "urn:aca:problem:environment-ownership-unavailable",
+        "title": "Environment ownership unavailable",
+        "status": 503,
+        "detail": "The shared ownership authority could not be verified",
+        "code": "environment_ownership_unavailable",
     }
