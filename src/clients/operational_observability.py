@@ -420,20 +420,59 @@ class OperationalScope:
         if self._borrowed_context:
             return True
         assert self.context is not None
-        flush_succeeded = True
+        assert self.lifecycle is not None
+        timeout_seconds = max(
+            0.001,
+            float(getattr(self.lifecycle.settings, "telemetry_flush_timeout_seconds", 5.0)),
+        )
         try:
-            if self._owns_process:
-                assert self.lifecycle is not None
-                flush_succeeded = await shutdown_process_telemetry(self.lifecycle)
-            await self._store.finish(
-                self.context,
-                outcome=outcome,
-                telemetry_delivery_state=("delivered" if flush_succeeded else "degraded"),
-                diagnostic_codes=(() if flush_succeeded else ("telemetry.flush_failed",)),
-            )
-            return flush_succeeded
+            try:
+                async with asyncio.timeout(timeout_seconds):
+                    flush_succeeded = True
+                    if self._owns_process:
+                        flush_succeeded = await shutdown_process_telemetry(self.lifecycle)
+                    try:
+                        await self._store.finish(
+                            self.context,
+                            outcome=outcome,
+                            telemetry_delivery_state=(
+                                "delivered" if flush_succeeded else "degraded"
+                            ),
+                            diagnostic_codes=(
+                                () if flush_succeeded else ("telemetry.flush_failed",)
+                            ),
+                        )
+                    except (TimeoutError, asyncio.CancelledError):
+                        raise
+                    except Exception as exc:
+                        self._fallback_exit_evidence(
+                            outcome=outcome,
+                            diagnostic_code="telemetry.database_unavailable",
+                        )
+                        raise OperationalFlushError(
+                            "terminal evidence database unavailable"
+                        ) from exc
+                    return flush_succeeded
+            except TimeoutError as exc:
+                self._fallback_exit_evidence(
+                    outcome=outcome,
+                    diagnostic_code="telemetry.exit_deadline_exceeded",
+                )
+                raise OperationalFlushError("telemetry exit deadline exceeded") from exc
         finally:
             self._reset_process_scope()
+
+    def _fallback_exit_evidence(self, *, outcome: _Outcome, diagnostic_code: str) -> None:
+        assert self.context is not None
+        try:
+            BootstrapAuditSpool(_bootstrap_directory()).append(
+                entrypoint=self.context.entrypoint,
+                outcome=outcome,
+                diagnostic_code=diagnostic_code,
+                metadata={"operation_id": self.context.operation_id},
+            )
+        except Exception:
+            pass
 
     def _close_stack(self) -> None:
         """Exit context bindings in the context that created their tokens."""
