@@ -7,7 +7,9 @@ import pytest
 from src.clients.operational_observability import validate_frozen_entrypoint_inventory
 
 ROOT = Path(__file__).resolve().parents[2]
-INVENTORY = ROOT / "openspec/changes/gx10-full-operation-observability/contracts/operation-entrypoints.yaml"
+INVENTORY = (
+    ROOT / "openspec/changes/gx10-full-operation-observability/contracts/operation-entrypoints.yaml"
+)
 
 
 def test_frozen_non_http_inventory_is_complete_and_instrumented() -> None:

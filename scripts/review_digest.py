@@ -161,7 +161,7 @@ async def interactive_revision_session(
     conversation_history: list[dict[str, Any]] = []
 
     while True:
-        user_input = input("You: ").strip()
+        user_input = input("You: ").strip()  # noqa: ASYNC250
 
         if not user_input:
             continue
@@ -224,7 +224,7 @@ async def interactive_revision_session(
         print("=" * 80)
 
         # Get approval
-        keep = input("\nKeep this change? [yes/no/edit]: ").strip().lower()
+        keep = input("\nKeep this change? [yes/no/edit]: ").strip().lower()  # noqa: ASYNC250
 
         if keep == "yes":
             # Apply revision via service
@@ -292,12 +292,12 @@ async def interactive_revision_session(
     print(f"  - Estimated Cost: ${cost:.4f}")
     print("=" * 80 + "\n")
 
-    action = input("Action [approve/save-draft/discard]: ").strip().lower()
+    action = input("Action [approve/save-draft/discard]: ").strip().lower()  # noqa: ASYNC250
 
     valid_actions = ["approve", "save-draft", "discard"]
     while action not in valid_actions:
         print(f"Invalid action. Choose: {', '.join(valid_actions)}")
-        action = input("Action [approve/save-draft/discard]: ").strip().lower()
+        action = input("Action [approve/save-draft/discard]: ").strip().lower()  # noqa: ASYNC250
 
     session["final_action"] = action
 
