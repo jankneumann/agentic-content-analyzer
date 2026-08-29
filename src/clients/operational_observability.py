@@ -8,8 +8,10 @@ operator-script roots useful without turning telemetry into a credential sink.
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import fcntl
+import fnmatch
 import hashlib
 import inspect
 import json
@@ -1049,7 +1051,7 @@ class EntrypointInventoryReport:
     explicit_exclusions_only: bool
 
 
-def validate_frozen_entrypoint_inventory(
+def _validate_frozen_entrypoint_inventory_legacy(
     repository: str | Path,
     inventory_path: str | Path,
     *,
@@ -1126,6 +1128,186 @@ def _string_paths(value: Any, field: str) -> tuple[str, ...]:
     if any(not isinstance(item, str) or not item for item in value):
         raise ValueError(f"{field} contains an invalid path")
     return tuple(cast(Sequence[str], value))
+
+
+_STRUCTURAL_INSTRUMENTATION_CALLS = frozenset(
+    {
+        "BootstrapAuditSpool",
+        "TelemetryLifecycle",
+        "TelemetryMiddleware",
+        "bind_operation_context",
+        "bootstrap_entrypoint",
+        "create_telemetry_lifecycle",
+        "install_cli_telemetry",
+        "operation_span",
+        "operation_stage",
+        "operational_entrypoint",
+        "operational_stage",
+        "observe",
+        "setup_telemetry",
+        "start_span",
+    }
+)
+
+
+def _call_name(node: ast.Call) -> str | None:
+    function = node.func
+    if isinstance(function, ast.Name):
+        return function.id
+    if isinstance(function, ast.Attribute):
+        return function.attr
+    return None
+
+
+def _python_is_structurally_instrumented(path: Path) -> bool:
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (OSError, UnicodeError, SyntaxError):
+        return False
+    return any(
+        isinstance(node, ast.Call) and _call_name(node) in _STRUCTURAL_INSTRUMENTATION_CALLS
+        for node in ast.walk(tree)
+    )
+
+
+def _shell_is_structurally_instrumented(path: Path) -> bool:
+    try:
+        executable = "\n".join(
+            line.strip()
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+    except (OSError, UnicodeError):
+        return False
+    return ("bootstrap_audit" in executable and "trap " in executable and "EXIT" in executable) or (
+        "operational_observability" in executable and "python" in executable
+    )
+
+
+def _path_is_structurally_instrumented(path: Path) -> bool:
+    if path.suffix == ".py":
+        return _python_is_structurally_instrumented(path)
+    if path.suffix == ".sh":
+        return _shell_is_structurally_instrumented(path)
+    return False
+
+
+def _inventory_groups(loaded: Mapping[str, Any]) -> list[tuple[str, tuple[str, ...]]]:
+    groups: list[tuple[str, tuple[str, ...]]] = []
+    shared = loaded.get("shared_boundaries", {})
+    if not isinstance(shared, dict):
+        raise ValueError("shared_boundaries must be an object")
+    for name, value in shared.items():
+        groups.append((f"shared_boundaries.{name}", _string_paths(value, str(name))))
+    for section in (
+        "domain_operations",
+        "operational_services",
+        "operational_scripts",
+        "provider_boundaries",
+    ):
+        groups.append((section, _string_paths(loaded.get(section), section)))
+    bootstrap = loaded.get("bootstrap_operations", {})
+    if not isinstance(bootstrap, dict):
+        raise ValueError("bootstrap_operations must be an object")
+    groups.append(
+        (
+            "bootstrap_operations",
+            _string_paths(bootstrap.get("paths"), "bootstrap_operations.paths"),
+        )
+    )
+    return groups
+
+
+def _pattern_files(root: Path, pattern: str) -> tuple[Path, ...]:
+    if pattern.endswith("/**"):
+        directory = root / pattern.removesuffix("/**")
+        if not directory.is_dir():
+            return ()
+        return tuple(sorted(path for path in directory.rglob("*") if path.is_file()))
+    if any(character in pattern for character in "*?["):
+        matches = root.glob(pattern)
+        files: set[Path] = set()
+        for match in matches:
+            if match.is_file():
+                files.add(match)
+            elif match.is_dir():
+                files.update(path for path in match.rglob("*") if path.is_file())
+        return tuple(sorted(files))
+    candidate = root / pattern
+    return (candidate,) if candidate.is_file() else ()
+
+
+def validate_frozen_entrypoint_inventory(
+    repository: str | Path,
+    inventory_path: str | Path,
+    *,
+    require_declared_paths: bool = True,
+) -> EntrypointInventoryReport:
+    """Parse every frozen boundary and verify executable instrumentation structure."""
+    root = Path(repository)
+    loaded = yaml.safe_load(Path(inventory_path).read_text(encoding="utf-8"))
+    if not isinstance(loaded, dict):
+        raise ValueError("entrypoint inventory must be an object")
+    exclusions = loaded.get("explicit_exclusions", [])
+    if not isinstance(exclusions, list):
+        raise ValueError("explicit_exclusions must be a list")
+    excluded: list[str] = []
+    for exclusion in exclusions:
+        if not isinstance(exclusion, dict) or not exclusion.get("pattern"):
+            raise ValueError("every explicit exclusion requires a pattern")
+        if not exclusion.get("reason"):
+            raise ValueError("every explicit exclusion requires a reason")
+        excluded.append(str(exclusion["pattern"]))
+
+    groups = _inventory_groups(loaded)
+    declared_patterns = [pattern for _section, patterns in groups for pattern in patterns]
+    missing: list[str] = []
+    uninstrumented: list[str] = []
+    declared_files: set[str] = set()
+    if require_declared_paths:
+        for _section, patterns in groups:
+            files: list[Path] = []
+            for pattern in patterns:
+                pattern_files = _pattern_files(root, pattern)
+                if not pattern_files:
+                    missing.append(pattern)
+                files.extend(pattern_files)
+            declared_files.update(path.relative_to(root).as_posix() for path in files)
+            if files and not any(
+                _path_is_structurally_instrumented(path) for path in files
+            ):
+                uninstrumented.extend(patterns)
+
+    candidates: set[str] = set()
+    scripts = root / "scripts"
+    if scripts.exists():
+        for path in scripts.rglob("*"):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(root).as_posix()
+            if path.suffix == ".sh" or (
+                path.suffix == ".py"
+                and "__main__" in path.read_text(encoding="utf-8", errors="ignore")
+            ):
+                candidates.add(relative)
+
+    def covered(path: str) -> bool:
+        return path in declared_files or any(
+            fnmatch.fnmatch(path, pattern) for pattern in declared_patterns
+        )
+
+    def explicitly_excluded(path: str) -> bool:
+        return any(path == pattern or fnmatch.fnmatch(path, pattern) for pattern in excluded)
+
+    unlisted = tuple(
+        sorted(path for path in candidates if not covered(path) and not explicitly_excluded(path))
+    )
+    return EntrypointInventoryReport(
+        unlisted=unlisted,
+        missing=tuple(sorted(set(missing))),
+        uninstrumented=tuple(sorted(set(uninstrumented))),
+        explicit_exclusions_only=True,
+    )
 
 
 def _command_line(argv: Sequence[str] | None = None) -> int:
