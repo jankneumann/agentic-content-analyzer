@@ -125,13 +125,20 @@ services:
     command:
     - sh
     - -ec
-    - exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
+    - |-
+      mkdir -p /tmp/redis
+      cp /run/aca/gx10/redis/users.acl /tmp/redis/users.acl
+      chown redis:redis /tmp/redis/users.acl
+      chmod 0600 /tmp/redis/users.acl
+      exec gosu redis redis-server /etc/redis/gx10.conf
     volumes:
     - /srv/aca/redis:/data:rw
+    - ./deploy/gx10/redis/gx10.conf:/etc/redis/gx10.conf:ro
+    - /run/aca/gx10/redis/users.acl:/run/aca/gx10/redis/users.acl:ro
     healthcheck:
       test:
       - CMD-SHELL
-      - redis-cli -a "$$REDIS_PASSWORD" ping | grep -qx PONG
+      - redis-cli ping | grep -qx PONG
       interval: 10s
       timeout: 5s
       retries: 12
@@ -315,6 +322,8 @@ services:
     networks:
     - application
     - egress
+    tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=8m
     volumes:
     - ./deploy/gx10/squid/squid.conf:/etc/squid/squid.conf:ro
     - ./deploy/gx10/squid/allowed-domains.txt:/etc/squid/allowed-domains.txt:ro

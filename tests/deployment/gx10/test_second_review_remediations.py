@@ -14,6 +14,7 @@ from .test_review_remediations import _mock_secret_tools, _read_env
 ROOT = Path(__file__).resolve().parents[3]
 DEPLOY = ROOT / "deploy/gx10"
 SCRIPTS = ROOT / "scripts/gx10"
+SQUID_PROBE_TMPFS = "/tmp:rw,noexec,nosuid,nodev,size=8m"  # noqa: S108
 
 
 def _compose() -> dict[str, object]:
@@ -40,7 +41,7 @@ def test_redis_credentials_never_appear_in_server_or_healthcheck_argv() -> None:
 def test_read_only_squid_has_only_a_bounded_writable_probe_tmpfs() -> None:
     squid = _compose()["services"]["squid"]
     assert squid["read_only"] is True
-    assert squid["tmpfs"] == ["/tmp:rw,noexec,nosuid,nodev,size=8m"]
+    assert squid["tmpfs"] == [SQUID_PROBE_TMPFS]
 
 
 def test_proxy_policy_refreshes_before_expiry_and_recovers_from_stale_marker(
@@ -113,8 +114,8 @@ def test_every_stateful_mount_has_a_verified_persistence_sentinel(tmp_path: Path
     }
     seed = subprocess.run([script, "seed"], env=env, capture_output=True, text=True)
     assert seed.returncode == 0, seed.stderr
-    required = {
-        "app-postgres",
+    required_mounts = {
+        "postgres",
         "langfuse-postgres",
         "redis",
         "neo4j",
@@ -122,7 +123,7 @@ def test_every_stateful_mount_has_a_verified_persistence_sentinel(tmp_path: Path
         "minio",
         "openbao",
     }
-    assert required == {path.name for path in persistent_root.iterdir()}
+    assert required_mounts == {path.name for path in persistent_root.iterdir()}
     verify = subprocess.run([script, "verify"], env=env, capture_output=True, text=True)
     assert verify.returncode == 0, verify.stderr
     (persistent_root / "redis/.gx10-persistence-sentinel").write_text("tampered\n")
@@ -130,12 +131,11 @@ def test_every_stateful_mount_has_a_verified_persistence_sentinel(tmp_path: Path
     assert rejected.returncode != 0
 
     clean_stack = (SCRIPTS / "verify_clean_stack.sh").read_text()
-    assert clean_stack.index('persistence_sentinels.sh" seed') < clean_stack.index(
-        "compose down --remove-orphans"
-    )
-    assert clean_stack.index('persistence_sentinels.sh" verify') < clean_stack.index(
-        '"cold_restart_passed":true'
-    )
+    seed_at = clean_stack.index('"$PERSISTENCE_SENTINELS" seed')
+    restart_at = clean_stack.index("compose down --remove-orphans", seed_at)
+    verify_at = clean_stack.index('"$PERSISTENCE_SENTINELS" verify', restart_at)
+    evidence_at = clean_stack.index('"cold_restart_passed":true', verify_at)
+    assert seed_at < restart_at < verify_at < evidence_at
 
 
 def test_first_install_openbao_provisioning_is_explicit_protected_and_separate() -> None:

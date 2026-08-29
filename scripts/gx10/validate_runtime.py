@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_PATH = ROOT / "docker-compose.gx10.yml"
 DIGEST_PIN = re.compile(r"^[^\s@]+:[^\s@]+@sha256:([0-9a-f]{64})$")
 APPLICATION_SERVICES = ("api", "worker", "scheduler", "maintenance")
+SQUID_PROBE_TMPFS = "/tmp:rw,noexec,nosuid,nodev,size=8m"  # noqa: S108
 STATEFUL_SERVICES = (
     "app-postgres",
     "langfuse-postgres",
@@ -51,6 +52,7 @@ RUNTIME_FILES = (
     "langfuse.env",
     "caddy.env",
     "proxy/squid.passwd",
+    "redis/users.acl",
     "proxy/policy.ready",
     "image-pins.ready",
 )
@@ -103,6 +105,17 @@ def check_topology(compose: dict[str, Any], errors: list[str]) -> None:
             errors.append(f"{name}: internal port published")
     if services["caddy"].get("ports") != ["127.0.0.1:8443:443"]:
         errors.append("caddy: ingress must be loopback-only")
+    redis = services["redis"]
+    redis_command = " ".join(redis.get("command", []))
+    redis_health = " ".join(redis.get("healthcheck", {}).get("test", []))
+    if any(token in redis_command for token in ("REDIS_PASSWORD", "requirepass")):
+        errors.append("redis: credential present in server argv")
+    if "REDIS_PASSWORD" in redis_health or " -a " in redis_health:
+        errors.append("redis: credential present in healthcheck argv")
+    if "redis-server /etc/redis/gx10.conf" not in redis_command:
+        errors.append("redis: protected ACL configuration is not loaded")
+    if services["squid"].get("tmpfs") != [SQUID_PROBE_TMPFS]:
+        errors.append("squid: bounded writable readiness tmpfs required")
 
 
 def check_runtime(runtime: Path, errors: list[str]) -> None:
@@ -123,12 +136,18 @@ def static_validate(runtime: Path | None) -> list[str]:
         ROOT / "deploy/gx10/egress-policy.yaml",
         ROOT / "deploy/gx10/squid/squid.conf",
         ROOT / "deploy/gx10/openbao/bootstrap-approle.sh",
+        ROOT / "deploy/gx10/openbao/provision-first-install.sh",
         ROOT / "deploy/gx10/openbao/unseal.sh",
         ROOT / "deploy/gx10/openbao/login-approle.sh",
         ROOT / "deploy/gx10/openbao/render-secrets.sh",
+        ROOT / "deploy/gx10/redis/gx10.conf",
+        ROOT / "deploy/gx10/systemd/aca-gx10-openbao-provision.service",
         ROOT / "deploy/gx10/systemd/aca-gx10-image-pins.service",
         ROOT / "scripts/gx10/verify_image_pins.sh",
+        ROOT / "deploy/gx10/systemd/aca-gx10-proxy-policy.timer",
         ROOT / "scripts/gx10/check_proxy_ready.sh",
+        ROOT / "scripts/gx10/persistence_sentinels.sh",
+        ROOT / "scripts/gx10/verify_dependency_recovery.sh",
         ROOT / "scripts/gx10/check_role_readiness.py",
     )
     for path in required:
@@ -214,6 +233,8 @@ def main() -> int:
             "registry_verified": True,
             "cold_restart_passed": True,
             "direct_routes_denied": True,
+            "persistence_sentinels_verified": True,
+            "dependency_recovery_verified": True,
         }
         errors = (
             []
