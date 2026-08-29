@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import warnings
 from functools import lru_cache
 from ipaddress import ip_address
@@ -74,6 +75,7 @@ def _flatten_profile_to_settings(profile_data: dict[str, Any]) -> dict[str, Any]
         "graphdb",
         "storage",
         "observability",
+        "gx10",
         "api_keys",
         "digest",
         "search",
@@ -86,7 +88,11 @@ def _flatten_profile_to_settings(profile_data: dict[str, Any]) -> dict[str, Any]
         if isinstance(section_data, dict):
             for key, value in section_data.items():
                 if value is not None:
-                    result[key] = value
+                    # GX-10 policy uses readable nested names in YAML while
+                    # Settings keeps an explicit prefix for collision safety.
+                    target_key = f"gx10_{key}" if section == "gx10" else key
+                    if target_key != "gx10_service_identities":
+                        result[target_key] = value
 
     # Map providers to Settings provider fields AFTER settings flattening
     # so providers.* is authoritative over inherited settings like
@@ -810,6 +816,23 @@ class Settings(BaseSettings):
     telemetry_service_instance_id: str | None = Field(default=None, min_length=1, max_length=128)
     telemetry_release_revision: str = Field(default="unknown", min_length=1, max_length=64)
 
+    # GX-10 production runtime. Defaults preserve all existing deployments; the
+    # stricter policy activates only for the explicit production profile.
+    gx10_runtime_enabled: bool = False
+    gx10_masking_policy: str | None = Field(default=None, min_length=1, max_length=100)
+    gx10_authority_fingerprint: str | None = None
+    gx10_proxy_username: str | None = Field(default=None, min_length=1, max_length=128)
+    gx10_proxy_password: SecretStr | None = Field(default=None, min_length=32)
+    gx10_rotation_generation: int = Field(default=1, ge=1)
+    gx10_successful_trace_retention_days: int = Field(default=30, ge=1, le=3650)
+    gx10_failed_trace_retention_days: int = Field(default=90, ge=1, le=3650)
+    gx10_high_watermark_percent: int = Field(default=80, ge=1, le=99)
+    gx10_high_clear_percent: int = Field(default=75, ge=1, le=99)
+    gx10_critical_watermark_percent: int = Field(default=90, ge=1, le=99)
+    gx10_critical_clear_percent: int = Field(default=85, ge=1, le=99)
+    gx10_hysteresis_minutes: int = Field(default=15, ge=1, le=1440)
+    gx10_reserve_percent: int = Field(default=13, ge=13, le=100)
+
     # OpenTelemetry (infrastructure layer — used by all providers except noop)
     otel_enabled: bool = False  # Enable OTel auto-instrumentation (FastAPI, SQLAlchemy, httpx)
     otel_service_name: str = "newsletter-aggregator"
@@ -1319,6 +1342,61 @@ class Settings(BaseSettings):
             raise ValueError(
                 "otel_exporter_otlp_endpoint is required when observability is required"
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_gx10_runtime_policy(self) -> Settings:
+        """Fail GX-10 activation closed when observability or identity is incomplete."""
+
+        if not self.gx10_runtime_enabled:
+            return self
+
+        missing: list[str] = []
+        required_values = {
+            "OTEL_EXPORTER_OTLP_ENDPOINT": self.otel_exporter_otlp_endpoint,
+            "LANGFUSE_PUBLIC_KEY": self.langfuse_public_key,
+            "LANGFUSE_SECRET_KEY": self.langfuse_secret_key,
+            "OPERATOR_API_KEY": self.operator_api_key,
+            "TELEMETRY_SERVICE_INSTANCE_ID": self.telemetry_service_instance_id,
+            "GX10_MASKING_POLICY": self.gx10_masking_policy,
+            "GX10_AUTHORITY_FINGERPRINT": self.gx10_authority_fingerprint,
+            "GX10_PROXY_USERNAME": self.gx10_proxy_username,
+            "GX10_PROXY_PASSWORD": self.gx10_proxy_password,
+        }
+        missing.extend(name for name, value in required_values.items() if not value)
+        if missing:
+            raise ValueError(f"GX-10 activation requires: {', '.join(missing)}")
+
+        if self.environment != "production":
+            raise ValueError("GX10_RUNTIME_ENABLED requires ENVIRONMENT=production")
+        if self.observability_provider != "langfuse" or not self.observability_required:
+            raise ValueError(
+                "GX10_RUNTIME_ENABLED requires required authenticated Langfuse observability"
+            )
+        if not self.otel_enabled:
+            raise ValueError("GX10_RUNTIME_ENABLED requires OTEL_ENABLED=true")
+        if self.langfuse_sample_rate != 1.0 or self.otel_traces_sampler_arg != 1.0:
+            raise ValueError("GX-10 production sampling must retain 100 percent of traces")
+        if self.otel_log_prompts:
+            raise ValueError("GX10 production masking forbids OTEL_LOG_PROMPTS")
+        if self.gx10_masking_policy != "gx10-export-mask-v1":
+            raise ValueError("GX10_MASKING_POLICY must be gx10-export-mask-v1")
+        fingerprint = self.gx10_authority_fingerprint or ""
+        if re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None:
+            raise ValueError("GX10_AUTHORITY_FINGERPRINT must be 64 lowercase hex characters")
+        if self.telemetry_release_revision == "unknown":
+            raise ValueError("GX10 runtime requires a concrete TELEMETRY_RELEASE_REVISION")
+        if self.gx10_failed_trace_retention_days < self.gx10_successful_trace_retention_days:
+            raise ValueError(
+                "GX10_FAILED_TRACE_RETENTION_DAYS cannot be shorter than successful retention"
+            )
+        if not (
+            self.gx10_high_clear_percent
+            < self.gx10_high_watermark_percent
+            < self.gx10_critical_clear_percent
+            < self.gx10_critical_watermark_percent
+        ):
+            raise ValueError("GX-10 watermarks must preserve 75 < 80 < 85 < 90 hysteresis")
         return self
 
     @model_validator(mode="after")

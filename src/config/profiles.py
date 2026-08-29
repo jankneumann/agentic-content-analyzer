@@ -276,6 +276,33 @@ class ObservabilitySettings(BaseModel):
     model_config = {"extra": "allow"}
 
 
+class Gx10Settings(BaseModel):
+    """Production-only GX-10 policy projected into application settings."""
+
+    runtime_enabled: bool = False
+    service_identities: dict[str, str] = Field(default_factory=dict)
+    masking_policy: str | None = None
+    authority_fingerprint: str | None = None
+    proxy_username: str | None = None
+    proxy_url: str = "http://squid:3128"
+    proxy_policy_max_age_seconds: int = Field(default=300, ge=30, le=3600)
+    proxy_allowed_domains: list[str] = Field(default_factory=list)
+    local_diagnostic_paths: list[str] = Field(default_factory=list)
+    proxy_password: str | None = None
+    rotation_generation: int = Field(default=1, ge=1)
+    successful_trace_retention_days: int = Field(default=30, ge=1, le=3650)
+    failed_trace_retention_days: int = Field(default=90, ge=1, le=3650)
+    high_watermark_percent: int = Field(default=80, ge=1, le=99)
+    high_clear_percent: int = Field(default=75, ge=1, le=99)
+    critical_watermark_percent: int = Field(default=90, ge=1, le=99)
+    critical_clear_percent: int = Field(default=85, ge=1, le=99)
+    hysteresis_minutes: int = Field(default=15, ge=1, le=1440)
+    reserve_percent: int = Field(default=13, ge=13, le=100)
+    component_budgets_percent: dict[str, int] = Field(default_factory=dict)
+
+    model_config = {"extra": "forbid"}
+
+
 class APIKeySettings(BaseModel):
     """API keys for various services."""
 
@@ -311,6 +338,7 @@ class ProfileSettings(BaseModel):
     neo4j: Neo4jSettings = Field(default_factory=Neo4jSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
+    gx10: Gx10Settings = Field(default_factory=Gx10Settings)
     api_keys: APIKeySettings = Field(default_factory=APIKeySettings)
     digest: DigestSettings = Field(default_factory=DigestSettings)
 
