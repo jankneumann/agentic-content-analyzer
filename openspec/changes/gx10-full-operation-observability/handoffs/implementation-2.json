@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-08-29T02:31:30.912849+00:00",
+  "coordinator_error": null,
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Completed the root wp-contracts slice: the approved GX-10 OpenAPI, SQL, and event contracts now live in the durable registry, and canonical Python/TypeScript outputs include mandatory semantic ingress validation. Remaining implementation packages are intentionally untouched. Commits 389d3df0 and 9fe879ab are synchronized with the remote feature branch.",
+    "completed_work": [
+      "Task 1.1: merged durable OpenAPI, SQL, and event contracts and added CI drift/nullability validation.",
+      "Task 1.2: generated canonical/runtime Python and branded TypeScript models with mandatory context parsers.",
+      "Verified 163 contract tests, workflow-contract drift, strict OpenSpec, Ruff, TypeScript compilation, and whitespace."
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Preserve canonical workflow compatibility through an additive merge",
+        "rationale": "The exact-operation response keeps every legacy OperationHandle field and adds nullable observability, while operator-only endpoints and schemas are additive.",
+        "capability": "cross-service-operation-correlation",
+        "supersedes": null
+      },
+      {
+        "title": "Generate composite validators from the durable OpenAPI source",
+        "rationale": "Structural schemas cannot enforce carrier identity or generation arithmetic; the generator now emits matching Python and TypeScript semantic parsers.",
+        "capability": "cross-service-operation-correlation",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Implement wp-db-projection and wp-telemetry-context from the now-frozen contract revision.",
+      "Preserve direct-SQL negative fixtures and generated validator parity in downstream packages."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/contracts/content-workflows/openapi/v1.yaml",
+        "description": "Durable additive observability API contract"
+      },
+      {
+        "path": "openspec/contracts/content-workflows/db/schema.sql",
+        "description": "Durable GX-10 correlation DDL contract"
+      },
+      {
+        "path": "scripts/generate_workflow_contracts.py",
+        "description": "Schema validation and semantic model generator"
+      },
+      {
+        "path": "src/contracts/workflow_models.py",
+        "description": "Generated Python runtime models and parser"
+      },
+      {
+        "path": "web/src/generated/workflow-contracts.ts",
+        "description": "Generated branded TypeScript models and parser"
+      },
+      {
+        "path": "tests/contract/test_canonical_workflow_contracts.py",
+        "description": "Contract, parity, and boundary tests"
+      }
+    ]
+  }
+}
