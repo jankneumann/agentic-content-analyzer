@@ -41,7 +41,7 @@
 - [x] 6.2 [M] Replace boolean YouTube item results with typed correlated outcomes and emit masked stage exception evidence. Depends on 3.4, 4.2, 6.1. References: YT-001, YT-002, YT-003, D4, D5.
 - [x] 6.3 [S] Write failing blog tests for discovery failure, preferred-extractor fallback, terminal extraction failure, filtering, deduplication, and persistence failure. References: BLOG-001, BLOG-002, BLOG-003, contracts/events/operation-attempt-v1.schema.json, D4.
 - [x] 6.4 [M] Instrument blog source/item stages and persist shared bounded outcome/error codes while preserving source isolation. Depends on 3.4, 4.2, 6.3. References: BLOG-001, BLOG-002, BLOG-003, D4, D5.
-- [ ] 6.5 [XS] Checkpoint: run YouTube/blog success and forced-failure suites; compare deterministic aggregate results to emitted attempt/stage evidence. Depends on 6.2, 6.4. References: CORR-009, CORR-010, YT-001, YT-002, YT-003, BLOG-001, BLOG-002, BLOG-003, D4.
+- [x] 6.5 [XS] Checkpoint: run YouTube/blog success and forced-failure suites; compare deterministic aggregate results to emitted attempt/stage evidence. Depends on 6.2, 6.4. References: CORR-009, CORR-010, YT-001, YT-002, YT-003, BLOG-001, BLOG-002, BLOG-003, D4.
 
 ## 7. Remaining Operation Coverage
 
