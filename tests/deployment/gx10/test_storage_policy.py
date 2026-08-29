@@ -104,6 +104,7 @@ def test_production_storage_and_backup_entrypoints_are_runnable_and_wired() -> N
 
 def test_storage_runtime_executes_throttle_cleanup_and_correlated_alert() -> None:
     from datetime import UTC, datetime
+
     from scripts.gx10.storage.runtime import StorageRuntime
 
     invoked: list[tuple[str, dict[str, object]]] = []
@@ -140,12 +141,15 @@ def test_synthetic_checkpoint_records_truthful_evidence_and_native_unavailabilit
     tmp_path: Path,
 ) -> None:
     import json
+
     from scripts.gx10.backup.runtime import run_synthetic_checkpoint
 
     output = tmp_path / "checkpoint.json"
     evidence = run_synthetic_checkpoint(output)
 
     assert json.loads(output.read_text()) == evidence
+    assert evidence["evidence_status"] == "partial"
+    assert evidence["task_8_10"]["status"] == "incomplete"
     assert evidence["checkpoint_mode"] == "synthetic"
     assert evidence["native_age_drill"]["status"] == "unavailable"
     assert evidence["native_age_drill"]["reason"] == "age_cli_absent"

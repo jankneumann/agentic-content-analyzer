@@ -4,17 +4,21 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import subprocess
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal, cast
 
 from src.clients.operational_observability import operational_stage
+from src.config.bao_secrets import get_bao_secret
 
 _AGE_RECIPIENT = re.compile(r"^age1[0-9a-z]{20,100}$")
+_AGE_ENVELOPE = b"age-encryption.org/v1\n"
 
 
 class BackupComponent(StrEnum):
@@ -81,6 +85,161 @@ class EncryptionMaterialError(RuntimeError):
 
 class RestoreIsolationError(RuntimeError):
     """A requested restore target is not isolated from production volumes."""
+
+
+class ComponentInventoryError(RuntimeError):
+    """Backup or restore activation omitted a required GX-10 component."""
+
+
+def _require_complete_inventory(label: str, values: Mapping[BackupComponent, Any]) -> None:
+    required = set(BackupComponent)
+    actual = set(values)
+    if actual != required:
+        missing = sorted(str(component) for component in required - actual)
+        extra = sorted(str(component) for component in actual - required)
+        raise ComponentInventoryError(
+            f"{label} must contain the complete GX-10 component inventory; "
+            f"missing={missing}, extra={extra}"
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class AgeCommandRequest:
+    argv: tuple[str, ...]
+    stdin: bytes
+    env: Mapping[str, str] = field(default_factory=dict)
+    secret_identity: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AgeCommandResult:
+    returncode: int
+    stdout: bytes
+
+
+class AgeCommandAdapter:
+    """Invoke age without placing private identities in argv or environment."""
+
+    def __init__(
+        self,
+        *,
+        run: Callable[[AgeCommandRequest], AgeCommandResult] | None = None,
+    ) -> None:
+        self._run = run or self._run_subprocess
+
+    def encrypt(self, payload: bytes, recipient: str) -> bytes:
+        if _AGE_RECIPIENT.fullmatch(recipient) is None:
+            raise EncryptionMaterialError("valid age recipient required")
+        result = self._run(
+            AgeCommandRequest(
+                argv=("age", "--encrypt", "--recipient", recipient),
+                stdin=payload,
+            )
+        )
+        if result.returncode != 0:
+            raise EncryptionMaterialError("age encryption command failed")
+        _validate_age_ciphertext(result.stdout, plaintext=payload)
+        return result.stdout
+
+    def decrypt(self, payload: bytes, identity: str) -> bytes:
+        _validate_age_ciphertext(payload)
+        if not identity.startswith("AGE-SECRET-KEY-"):
+            raise EncryptionMaterialError("valid age identity required")
+        result = self._run(
+            AgeCommandRequest(
+                argv=("age", "--decrypt"),
+                stdin=payload,
+                secret_identity=identity,
+            )
+        )
+        if result.returncode != 0:
+            raise EncryptionMaterialError("age decryption command failed")
+        return result.stdout
+
+    @staticmethod
+    def _run_subprocess(request: AgeCommandRequest) -> AgeCommandResult:
+        safe_env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+        argv = list(request.argv)
+        identity_fd: int | None = None
+        pass_fds: tuple[int, ...] = ()
+        try:
+            if request.secret_identity is not None:
+                identity_fd, identity_writer = os.pipe()
+                try:
+                    os.write(identity_writer, request.secret_identity.encode())
+                finally:
+                    os.close(identity_writer)
+                argv.extend(("--identity", f"/proc/self/fd/{identity_fd}"))
+                pass_fds = (identity_fd,)
+            completed = subprocess.run(
+                argv,
+                input=request.stdin,
+                capture_output=True,
+                check=False,
+                env=safe_env,
+                pass_fds=pass_fds,
+            )
+        finally:
+            if identity_fd is not None:
+                os.close(identity_fd)
+        return AgeCommandResult(returncode=completed.returncode, stdout=completed.stdout or b"")
+
+
+@dataclass(frozen=True, slots=True)
+class OpenBaoAgeMaterialProvider:
+    """Resolve age public recipients and private identities from OpenBao."""
+
+    read_secret: Callable[[str], str | None] = get_bao_secret
+
+    def catalog(self) -> AgeRecipientCatalog:
+        active = self.read_secret("GX10_AGE_RECIPIENT")
+        retained_raw = self.read_secret("GX10_AGE_RETAINED_RECIPIENTS") or "[]"
+        try:
+            retained_value = json.loads(retained_raw)
+        except json.JSONDecodeError as exc:
+            raise EncryptionMaterialError("retained age recipients are unreadable") from exc
+        if not isinstance(retained_value, list) or not all(
+            isinstance(value, str) for value in retained_value
+        ):
+            raise EncryptionMaterialError("retained age recipients must be a JSON string list")
+        catalog = AgeRecipientCatalog(active=active, retained=tuple(retained_value))
+        catalog.validated_active()
+        return catalog
+
+    def identity_for(self, recipient: str) -> str:
+        identities_raw = self.read_secret("GX10_AGE_IDENTITIES")
+        if identities_raw is None:
+            raise EncryptionMaterialError("OpenBao age identities are unavailable")
+        try:
+            identities = json.loads(identities_raw)
+        except json.JSONDecodeError as exc:
+            raise EncryptionMaterialError("OpenBao age identities are unreadable") from exc
+        identity = identities.get(recipient) if isinstance(identities, dict) else None
+        if not isinstance(identity, str) or not identity.startswith("AGE-SECRET-KEY-"):
+            raise EncryptionMaterialError("matching OpenBao age identity is unavailable")
+        return identity
+
+
+@dataclass(frozen=True, slots=True)
+class OpenBaoAgeAdapter:
+    material: OpenBaoAgeMaterialProvider = field(default_factory=OpenBaoAgeMaterialProvider)
+    command: AgeCommandAdapter = field(default_factory=AgeCommandAdapter)
+
+    def catalog(self) -> AgeRecipientCatalog:
+        return self.material.catalog()
+
+    def encrypt(self, payload: bytes, recipient: str) -> bytes:
+        return self.command.encrypt(payload, recipient)
+
+    def decrypt(self, payload: bytes, recipient: str) -> bytes:
+        return self.command.decrypt(payload, self.material.identity_for(recipient))
+
+
+def _validate_age_ciphertext(payload: bytes, *, plaintext: bytes | None = None) -> None:
+    if not payload.startswith(_AGE_ENVELOPE):
+        raise EncryptionMaterialError("ciphertext is missing the age envelope")
+    if plaintext is not None and payload == plaintext:
+        raise EncryptionMaterialError("identity encryption is forbidden")
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,6 +340,7 @@ class GX10BackupController:
         store: Callable[[str, bytes], None],
         clock: Callable[[], datetime] | None = None,
     ) -> None:
+        _require_complete_inventory("backup producers", producers)
         self._producers = dict(producers)
         self._encrypt = encrypt
         self._store = store
@@ -210,6 +370,7 @@ class GX10BackupController:
                     encrypted = self._encrypt(plain, recipient)
                     if not isinstance(encrypted, bytes) or not encrypted:
                         raise EncryptionMaterialError("age encryption produced no artifact")
+                    _validate_age_ciphertext(encrypted, plaintext=plain)
                     artifact_name = f"{component}-{started_at:%Y%m%dT%H%M%SZ}.age"
                     if len(encrypted) > remaining:
                         results.append(
@@ -288,6 +449,8 @@ class ComponentRestoreResult:
     trace_id: str
     diagnostic_code: str | None = None
     target: str | None = None
+    completed_at: datetime | None = None
+    rto_seconds: int | None = None
 
 
 def validate_restore_target(
@@ -315,10 +478,14 @@ class GX10RestoreDrill:
         decrypt: Callable[[bytes, str], bytes],
         restore: Mapping[BackupComponent, Callable[[bytes, Path], None]],
         validate: Mapping[BackupComponent, Callable[[Path], bool]],
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
+        _require_complete_inventory("restore handlers", restore)
+        _require_complete_inventory("restore validators", validate)
         self._decrypt = decrypt
         self._restore = dict(restore)
         self._validate = dict(validate)
+        self._clock = clock or (lambda: datetime.now(UTC))
 
     def restore_component(
         self,
@@ -329,9 +496,29 @@ class GX10RestoreDrill:
         production_sources: Sequence[Path],
         available_recipients: Sequence[str],
         correlation: MaintenanceCorrelation,
+    ) -> ComponentRestoreResult:
+        restore_started_at = self._clock()
+        return self._restore_one(
+            artifact=artifact,
+            target=target,
+            isolated_root=isolated_root,
+            production_sources=production_sources,
+            available_recipients=available_recipients,
+            correlation=correlation,
+            restore_started_at=restore_started_at,
+        )
+
+    def _restore_one(
+        self,
+        *,
+        artifact: EncryptedArtifact,
+        target: Path,
+        isolated_root: Path,
+        production_sources: Sequence[Path],
+        available_recipients: Sequence[str],
+        correlation: MaintenanceCorrelation,
         restore_started_at: datetime,
     ) -> ComponentRestoreResult:
-        del restore_started_at
         validate_restore_target(
             target=target,
             isolated_root=isolated_root,
@@ -343,19 +530,29 @@ class GX10RestoreDrill:
         }
         with operational_stage("gx10.restore.component", stage="restore", attributes=attributes):
             if artifact.encryption_recipient not in available_recipients:
-                return _restore_failure(artifact, correlation, "restore_recipient_unavailable")
+                return self._restore_failure_measured(
+                    artifact, correlation, "restore_recipient_unavailable", restore_started_at
+                )
             checksum = hashlib.sha256(artifact.payload).hexdigest()
             if checksum != artifact.checksum_sha256:
-                return _restore_failure(artifact, correlation, "artifact_checksum_mismatch")
+                return self._restore_failure_measured(
+                    artifact, correlation, "artifact_checksum_mismatch", restore_started_at
+                )
             try:
                 plaintext = self._decrypt(artifact.payload, artifact.encryption_recipient)
                 self._restore[artifact.component](plaintext, target)
                 if not self._validate[artifact.component](target):
-                    return _restore_failure(
-                        artifact, correlation, "component_restore_validation_failed"
+                    return self._restore_failure_measured(
+                        artifact,
+                        correlation,
+                        "component_restore_validation_failed",
+                        restore_started_at,
                     )
             except Exception:
-                return _restore_failure(artifact, correlation, "component_restore_failed")
+                return self._restore_failure_measured(
+                    artifact, correlation, "component_restore_failed", restore_started_at
+                )
+        completed_at = self._clock()
         return ComponentRestoreResult(
             component=artifact.component,
             outcome="succeeded",
@@ -363,6 +560,96 @@ class GX10RestoreDrill:
             operation_id=correlation.operation_id,
             trace_id=correlation.trace_id,
             target=str(target),
+            completed_at=completed_at,
+            rto_seconds=max(0, int((completed_at - restore_started_at).total_seconds())),
+        )
+
+    def _restore_failure_measured(
+        self,
+        artifact: EncryptedArtifact,
+        correlation: MaintenanceCorrelation,
+        diagnostic_code: str,
+        restore_started_at: datetime,
+    ) -> ComponentRestoreResult:
+        completed_at = self._clock()
+        return _restore_failure(
+            artifact,
+            correlation,
+            diagnostic_code,
+            completed_at=completed_at,
+            rto_seconds=max(0, int((completed_at - restore_started_at).total_seconds())),
+        )
+
+    def run_drill(
+        self,
+        *,
+        artifacts: Mapping[BackupComponent, EncryptedArtifact],
+        targets: Mapping[BackupComponent, Path],
+        isolated_root: Path,
+        production_sources: Sequence[Path],
+        available_recipients: Sequence[str],
+        correlation: MaintenanceCorrelation,
+        metadata_probe: Callable[[], RestoreValidation],
+    ) -> RestoreDrillResult:
+        _require_complete_inventory("restore artifacts", artifacts)
+        _require_complete_inventory("restore targets", targets)
+        restore_started_at = self._clock()
+        results = tuple(
+            self._restore_one(
+                artifact=artifacts[component],
+                target=targets[component],
+                isolated_root=isolated_root,
+                production_sources=production_sources,
+                available_recipients=available_recipients,
+                correlation=correlation,
+                restore_started_at=restore_started_at,
+            )
+            for component in BackupComponent
+        )
+        validation = metadata_probe()
+        synthetic_operation_passed_at = self._clock()
+        completed = max(
+            result.completed_at for result in results if result.completed_at is not None
+        )
+        objectives = evaluate_recovery_objectives(
+            application_backup_completed_at=artifacts[
+                BackupComponent.APPLICATION_POSTGRESQL
+            ].completed_at,
+            declared_failure_at=restore_started_at,
+            restore_started_at=restore_started_at,
+            component_completed_at=completed,
+            synthetic_operation_passed_at=synthetic_operation_passed_at,
+        )
+        diagnostics = (
+            tuple(
+                result.diagnostic_code for result in results if result.diagnostic_code is not None
+            )
+            + tuple(
+                code
+                for code, present in (
+                    ("application_operation_rows_missing", validation.application_operation_rows),
+                    ("langfuse_trace_metadata_missing", validation.langfuse_trace_metadata),
+                )
+                if not present
+            )
+            + tuple(f"recovery_objective_{name}_exceeded" for name in objectives.breaches)
+        )
+        all_components_succeeded = all(result.outcome == "succeeded" for result in results)
+        accepted = (
+            all_components_succeeded
+            and required_restore_metadata_valid(validation)
+            and objectives.accepted
+        )
+        return RestoreDrillResult(
+            started_at=restore_started_at,
+            completed_at=synthetic_operation_passed_at,
+            outcome="succeeded" if accepted else "permanent_failure",
+            operation_id=correlation.operation_id,
+            trace_id=correlation.trace_id,
+            components=results,
+            validation=validation,
+            objectives=objectives,
+            diagnostic_codes=diagnostics,
         )
 
 
@@ -370,6 +657,9 @@ def _restore_failure(
     artifact: EncryptedArtifact,
     correlation: MaintenanceCorrelation,
     diagnostic_code: str,
+    *,
+    completed_at: datetime | None = None,
+    rto_seconds: int | None = None,
 ) -> ComponentRestoreResult:
     return ComponentRestoreResult(
         component=artifact.component,
@@ -378,6 +668,8 @@ def _restore_failure(
         operation_id=correlation.operation_id,
         trace_id=correlation.trace_id,
         diagnostic_code=diagnostic_code,
+        completed_at=completed_at,
+        rto_seconds=rto_seconds,
     )
 
 
@@ -427,6 +719,19 @@ def evaluate_recovery_objectives(
 class RestoreValidation:
     application_operation_rows: bool
     langfuse_trace_metadata: bool
+
+
+@dataclass(frozen=True, slots=True)
+class RestoreDrillResult:
+    started_at: datetime
+    completed_at: datetime
+    outcome: Literal["succeeded", "permanent_failure"]
+    operation_id: str
+    trace_id: str
+    components: tuple[ComponentRestoreResult, ...]
+    validation: RestoreValidation
+    objectives: RecoveryObjectiveResult
+    diagnostic_codes: tuple[str, ...]
 
 
 def required_restore_metadata_valid(validation: RestoreValidation) -> bool:

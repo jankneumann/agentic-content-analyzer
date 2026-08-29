@@ -28,8 +28,20 @@ def _components(backup):
     }
 
 
+def _restore_handlers(backup, overrides=None):
+    handlers = {component: (lambda _payload, _path: None) for component in backup.BackupComponent}
+    handlers.update(overrides or {})
+    return handlers
+
+
+def _restore_validators(backup, overrides=None):
+    validators = {component: (lambda _path: True) for component in backup.BackupComponent}
+    validators.update(overrides or {})
+    return validators
+
+
 def _encrypt(payload: bytes, recipient: str) -> bytes:
-    return b"age-encrypted:" + recipient.encode() + b":" + payload
+    return b"age-encryption.org/v1\n" + recipient.encode() + b":" + payload
 
 
 def test_component_inventory_includes_every_required_state_store() -> None:
@@ -57,7 +69,7 @@ def test_missing_or_invalid_age_recipient_fails_before_any_component_runs(
         return b"plaintext"
 
     controller = backup.GX10BackupController(
-        producers={backup.BackupComponent.APPLICATION_POSTGRESQL: producer},
+        producers=dict.fromkeys(backup.BackupComponent, producer),
         encrypt=_encrypt,
         store=lambda _name, _payload: None,
     )
@@ -95,7 +107,7 @@ def test_each_component_is_encrypted_before_storage_and_checksummed() -> None:
     assert len(manifest.components) == 6
     for result in manifest.components:
         payload = stored[result.artifact_name]
-        assert payload.startswith(b"age-encrypted:")
+        assert payload.startswith(b"age-encryption.org/v1\n")
         assert b"plain:" in payload
         assert result.outcome == "succeeded"
         assert result.stage == "backup"
@@ -122,7 +134,7 @@ def test_plaintext_is_never_sent_to_storage() -> None:
     )
 
     assert seen
-    assert all(payload.startswith(b"age-encrypted:") for payload in seen)
+    assert all(payload.startswith(b"age-encryption.org/v1\n") for payload in seen)
 
 
 def test_one_component_failure_makes_aggregate_partial_not_success() -> None:
@@ -176,7 +188,7 @@ def test_quota_exhaustion_is_a_component_failure_and_never_calls_store() -> None
     backup = _backup()
     stored: list[str] = []
     controller = backup.GX10BackupController(
-        producers={backup.BackupComponent.APPLICATION_POSTGRESQL: lambda: b"large-payload"},
+        producers={component: (lambda: b"large-payload") for component in backup.BackupComponent},
         encrypt=_encrypt,
         store=lambda name, _payload: stored.append(name),
     )
@@ -229,12 +241,15 @@ def test_restore_accepts_rotated_recipient_retained_for_restore_window(tmp_path:
     source_sentinel.write_text("production")
     drill = backup.GX10RestoreDrill(
         decrypt=lambda payload, _recipient: b"plain:" + payload,
-        restore={
-            backup.BackupComponent.APPLICATION_POSTGRESQL: lambda _payload, path: path.mkdir(
-                parents=True
-            )
-        },
-        validate={backup.BackupComponent.APPLICATION_POSTGRESQL: lambda _path: True},
+        restore=_restore_handlers(
+            backup,
+            {
+                backup.BackupComponent.APPLICATION_POSTGRESQL: (
+                    lambda _payload, path: path.mkdir(parents=True)
+                )
+            },
+        ),
+        validate=_restore_validators(backup),
     )
 
     result = drill.restore_component(
@@ -244,7 +259,6 @@ def test_restore_accepts_rotated_recipient_retained_for_restore_window(tmp_path:
         production_sources=(source,),
         available_recipients=(ACTIVE_RECIPIENT, OLD_RECIPIENT),
         correlation=_context(backup),
-        restore_started_at=datetime(2026, 8, 30, tzinfo=UTC),
     )
 
     assert result.outcome == "succeeded"
@@ -265,8 +279,8 @@ def test_restore_rejects_missing_rotated_recipient_before_decryption(tmp_path: P
     )
     drill = backup.GX10RestoreDrill(
         decrypt=lambda payload, _recipient: decrypted.append(payload) or b"plain",
-        restore={backup.BackupComponent.NEO4J: lambda _payload, _path: None},
-        validate={backup.BackupComponent.NEO4J: lambda _path: True},
+        restore=_restore_handlers(backup),
+        validate=_restore_validators(backup),
     )
 
     result = drill.restore_component(
@@ -276,7 +290,6 @@ def test_restore_rejects_missing_rotated_recipient_before_decryption(tmp_path: P
         production_sources=(tmp_path / "production" / "neo4j",),
         available_recipients=(ACTIVE_RECIPIENT,),
         correlation=_context(backup),
-        restore_started_at=datetime(2026, 8, 30, tzinfo=UTC),
     )
 
     assert result.outcome == "permanent_failure"
@@ -297,8 +310,8 @@ def test_restore_rejects_checksum_mismatch_before_decryption(tmp_path: Path) -> 
     )
     drill = backup.GX10RestoreDrill(
         decrypt=lambda payload, _recipient: decrypted.append(payload) or b"plain",
-        restore={backup.BackupComponent.MINIO: lambda _payload, _path: None},
-        validate={backup.BackupComponent.MINIO: lambda _path: True},
+        restore=_restore_handlers(backup),
+        validate=_restore_validators(backup),
     )
 
     result = drill.restore_component(
@@ -308,7 +321,6 @@ def test_restore_rejects_checksum_mismatch_before_decryption(tmp_path: Path) -> 
         production_sources=(tmp_path / "production" / "minio",),
         available_recipients=(ACTIVE_RECIPIENT,),
         correlation=_context(backup),
-        restore_started_at=datetime(2026, 8, 30, tzinfo=UTC),
     )
 
     assert result.outcome == "permanent_failure"
@@ -357,10 +369,14 @@ def test_restore_validation_failure_is_component_specific_and_source_untouched(
     )
     drill = backup.GX10RestoreDrill(
         decrypt=lambda payload, _recipient: payload,
-        restore={
-            backup.BackupComponent.CLICKHOUSE: lambda _payload, path: path.mkdir(parents=True)
-        },
-        validate={backup.BackupComponent.CLICKHOUSE: lambda _path: False},
+        restore=_restore_handlers(
+            backup,
+            {backup.BackupComponent.CLICKHOUSE: (lambda _payload, path: path.mkdir(parents=True))},
+        ),
+        validate=_restore_validators(
+            backup,
+            {backup.BackupComponent.CLICKHOUSE: lambda _path: False},
+        ),
     )
 
     result = drill.restore_component(
@@ -370,7 +386,6 @@ def test_restore_validation_failure_is_component_specific_and_source_untouched(
         production_sources=(source,),
         available_recipients=(ACTIVE_RECIPIENT,),
         correlation=_context(backup),
-        restore_started_at=datetime(2026, 8, 30, tzinfo=UTC),
     )
 
     assert result.outcome == "permanent_failure"
