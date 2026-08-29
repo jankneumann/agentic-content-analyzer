@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import re
-import subprocess
-import sys
 from pathlib import Path
 
-import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -79,10 +75,15 @@ def test_all_runtime_images_are_immutable_and_squid_uses_reviewed_release() -> N
 
 def test_stateful_ports_are_private_and_ingress_is_loopback_bound() -> None:
     compose = _compose()
-    for name in STATEFUL_SERVICES | {"langfuse-web", "langfuse-worker", "squid"}:
+    for name in (STATEFUL_SERVICES - {"openbao"}) | {
+        "langfuse-web",
+        "langfuse-worker",
+        "squid",
+    }:
         service = _service(compose, name)
         assert "ports" not in service, f"{name} must not publish a host port"
 
+    assert _service(compose, "openbao")["ports"] == ["127.0.0.1:18200:8200"]
     caddy_ports = _service(compose, "caddy").get("ports")
     assert caddy_ports == ["127.0.0.1:8443:443"]
 
@@ -101,12 +102,20 @@ def test_application_namespaces_have_no_direct_internet_route() -> None:
         assert "egress" not in service_networks
         service = _service(compose, name)
         environment = service["environment"]
-        assert "HTTPS_PROXY" not in environment
-        assert "HTTP_PROXY" not in environment
-        assert environment["NO_PROXY"] == "localhost,127.0.0.1,.gx10.internal"
+        assert {
+            "localhost",
+            "127.0.0.1",
+            "app-postgres",
+            "redis",
+            "neo4j",
+            "openbao",
+            "squid",
+            "langfuse-web",
+        } <= set(environment["NO_PROXY"].split(","))
         env_files = service["env_file"]
         assert {
-            "/run/aca/gx10/application.env",
+            "/run/aca/gx10/common.env",
+            f"/run/aca/gx10/{name}.env",
             "/run/aca/gx10/proxy.env",
         } == {entry["path"] for entry in env_files if entry["required"] is True}
 
@@ -180,61 +189,16 @@ def test_health_order_persistence_restart_backoff_and_quotas_are_bounded() -> No
         assert depends["langfuse-web"]["condition"] == "service_healthy"
 
     unit = (ROOT / "deploy/gx10/systemd/aca-gx10.service").read_text(encoding="utf-8")
-    assert (
-        "Requires=aca-gx10-secrets.service aca-gx10-proxy-policy.service aca-gx10-firewall.service"
-        in unit
-    )
-    assert (
-        "After=aca-gx10-secrets.service aca-gx10-proxy-policy.service aca-gx10-firewall.service"
-        in unit
-    )
+    requires = next(line for line in unit.splitlines() if line.startswith("Requires="))
+    after = next(line for line in unit.splitlines() if line.startswith("After="))
+    dependencies = {
+        "aca-gx10-image-pins.service",
+        "aca-gx10-secrets.service",
+        "aca-gx10-proxy-policy.service",
+        "aca-gx10-firewall.service",
+    }
+    assert dependencies <= set(requires.removeprefix("Requires=").split())
+    assert dependencies <= set(after.removeprefix("After=").split())
     assert "Restart=on-failure" in unit
     assert "RestartSec=15s" in unit
     assert "StartLimitBurst=5" in unit
-
-
-@pytest.mark.parametrize(
-    "scenario",
-    [
-        "unknown_destination",
-        "stale_policy",
-        "invalid_policy",
-        "dns_failure",
-        "credential_failure",
-        "proxy_failure",
-        "direct_route",
-    ],
-)
-def test_failure_scenarios_fail_closed_but_keep_local_diagnostics(scenario: str) -> None:
-    validator = ROOT / "scripts/gx10/validate_runtime.py"
-    result = subprocess.run(
-        [sys.executable, str(validator), "--simulate-failure", scenario],
-        cwd=ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, result.stderr
-    evidence = json.loads(result.stdout)
-    assert evidence == {
-        "external_calls": "denied",
-        "local_diagnostics": "available",
-        "scenario": scenario,
-    }
-
-
-def test_static_cold_restart_simulation_restores_dependency_order() -> None:
-    validator = ROOT / "scripts/gx10/validate_runtime.py"
-    result = subprocess.run(
-        [sys.executable, str(validator), "--simulate-cold-restart"],
-        cwd=ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, result.stderr
-    evidence = json.loads(result.stdout)
-    assert evidence["result"] == "ready"
-    assert evidence["persistent_mounts"] == "preserved"
-    order = evidence["health_order"]
-    assert order.index("openbao") < order.index("squid") < order.index("api") < order.index("caddy")

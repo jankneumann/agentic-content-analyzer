@@ -34,6 +34,9 @@ def _secret_environment() -> dict[str, str]:
         "GX10_NEO4J_PASSWORD": "h" * 48,
         "GX10_RELEASE_REVISION": "1" * 40,
         "GX10_AUTHORITY_FINGERPRINT": "2" * 64,
+        "GX10_PROCESS_ROLE": "api",
+        "OTEL_SERVICE_NAME": "aca-gx10-api",
+        "TELEMETRY_SERVICE_INSTANCE_ID": "aca-gx10-api",
     }
 
 
@@ -131,7 +134,9 @@ def _valid_gx10_settings() -> dict[str, object]:
         "langfuse_public_key": "pk-lf-placeholder",
         "langfuse_secret_key": "b" * 48,
         "operator_api_key": "c" * 48,
-        "telemetry_service_instance_id": "aca-gx10-api-1",
+        "gx10_process_role": "api",
+        "otel_service_name": "aca-gx10-api",
+        "telemetry_service_instance_id": "aca-gx10-api",
         "telemetry_release_revision": "1" * 40,
         "gx10_masking_policy": "gx10-export-mask-v1",
         "gx10_authority_fingerprint": "2" * 64,
