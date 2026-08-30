@@ -34,7 +34,7 @@ class SpecialistRegistry:
         self._specialists[name] = specialist
         logger.info(
             "Registered specialist",
-            extra={"name": name, "capabilities": specialist.get_capabilities()},
+            extra={"specialist": name, "capabilities": specialist.get_capabilities()},
         )
 
     def get(self, name: str) -> BaseSpecialist | None:

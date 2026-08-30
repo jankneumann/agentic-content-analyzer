@@ -118,15 +118,24 @@ def _load_bao_secrets() -> dict[str, str]:
         if _bao_checked:
             return _bao_cache or {}
 
-        _bao_checked = True
-
+        # _bao_checked is set immediately before every return below, always
+        # AFTER any _bao_cache write. Setting it first opened a window in which
+        # the lockless fast path above saw checked=True while the cache was
+        # still None and returned a fresh {} instead of the shared dict —
+        # observed in CI as TestThreadSafety failing `r is results[0]`. The
+        # 028d446c logging change widened the window (real stderr I/O between
+        # the two writes) but the race predates it. The lock cannot protect
+        # readers that never take it; the ORDER of the two writes is the
+        # invariant.
         if not _is_bao_configured():
+            _bao_checked = True
             return {}
 
         if hvac is None:
             logger.debug(
                 "bao.connection_error: hvac not installed -- install with: pip install '.[vault]'"
             )
+            _bao_checked = True
             return {}
 
         bao_addr = os.environ["BAO_ADDR"]
@@ -139,6 +148,7 @@ def _load_bao_secrets() -> dict[str, str]:
 
             if not client.is_authenticated():
                 logger.warning("bao.auth_failure: authentication failed at %s", bao_addr)
+                _bao_checked = True
                 return {}
 
             secrets = _fetch_secrets(client, mount_path, secret_path)
@@ -162,6 +172,7 @@ def _load_bao_secrets() -> dict[str, str]:
                 )
                 _token_manager.start()
 
+            _bao_checked = True
             return secrets
 
         except Exception:
@@ -170,6 +181,7 @@ def _load_bao_secrets() -> dict[str, str]:
                 bao_addr,
                 exc_info=True,
             )
+            _bao_checked = True
             return {}
 
 

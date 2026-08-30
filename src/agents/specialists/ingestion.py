@@ -124,7 +124,7 @@ class IngestionSpecialist(BaseSpecialist):
         findings: list[dict[str, Any]],
     ) -> str:
         """Execute a single tool call and record findings."""
-        logger.debug("Executing tool", extra={"tool": tool_name, "args": args})
+        logger.debug("Executing tool", extra={"tool": tool_name, "tool_args": args})
 
         result: str
         if tool_name == "ingest_source" and self._ingestion_service is not None:

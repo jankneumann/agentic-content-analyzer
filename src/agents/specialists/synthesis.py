@@ -148,7 +148,7 @@ class SynthesisSpecialist(BaseSpecialist):
         findings: list[dict[str, Any]],
     ) -> str:
         """Execute a single tool call and record findings."""
-        logger.debug("Executing tool", extra={"tool": tool_name, "args": args})
+        logger.debug("Executing tool", extra={"tool": tool_name, "tool_args": args})
 
         result: str
         if tool_name == "draft_digest" and self._digest_creator is not None:
