@@ -77,4 +77,10 @@ def test_frontend_dependency_graph_uses_audit_safe_protobuf_override() -> None:
 
     assert root_package["pnpm"]["overrides"]["protobufjs"] == "8.7.1"
     assert frontend_package["overrides"]["protobufjs"] == "8.7.1"
-    assert package_lock["packages"]["node_modules/protobufjs"]["version"] == "8.7.1"
+    # The OTel 0.221 bump dropped @opentelemetry/otlp-transformer's protobufjs
+    # dependency, so the package may be absent from the graph entirely. Absent
+    # is as audit-safe as pinned; what this test forbids is protobufjs PRESENT
+    # at any other version. The overrides above stay as defense-in-depth for
+    # whenever a dependency reintroduces it.
+    protobufjs = package_lock["packages"].get("node_modules/protobufjs")
+    assert protobufjs is None or protobufjs["version"] == "8.7.1"

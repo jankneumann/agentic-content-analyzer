@@ -3,6 +3,7 @@
 import json
 import logging
 import sys
+import typing
 from datetime import UTC, datetime
 
 from src.config import settings
@@ -121,7 +122,23 @@ class _AppLogHandler(logging.StreamHandler):
     Identity (not ``basicConfig``) makes setup idempotent. ``basicConfig`` is a
     no-op once any root handler exists — pytest, a prior call, or a custom
     uvicorn log config — which is exactly when we still need our formatter.
+
+    ``stream`` resolves ``sys.stderr`` at EMIT time, never at construction —
+    the same trick as stdlib ``logging._StderrHandler``. Binding the stream in
+    ``__init__`` freezes whatever ``sys.stderr`` was then; after anything swaps
+    the streams (click's ``CliRunner``, ``contextlib.redirect_stderr``), every
+    emit writes to the stale object and logging prints ``--- Logging error ---``
+    into the *current* stderr instead of the record. ``Handler.__init__`` (not
+    ``StreamHandler.__init__``) because the parent would assign ``self.stream``,
+    which a read-only property must refuse.
     """
+
+    def __init__(self) -> None:
+        logging.Handler.__init__(self)
+
+    @property
+    def stream(self) -> "typing.TextIO":  # type: ignore[override]
+        return sys.stderr
 
 
 def setup_logging() -> None:
@@ -152,7 +169,7 @@ def setup_logging() -> None:
             handler.setFormatter(formatter)
             handler.setLevel(log_level)
     else:
-        handler = _AppLogHandler(sys.stderr)
+        handler = _AppLogHandler()
         handler.setFormatter(formatter)
         handler.setLevel(log_level)
         root.addHandler(handler)

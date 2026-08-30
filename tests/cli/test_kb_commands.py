@@ -58,7 +58,7 @@ class TestKBCompile:
             result = runner.invoke(app, ["--json", "kb", "compile"])
 
         assert result.exit_code == 0, result.output
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload["topics_compiled"] == 2
 
     def test_compile_full_flag(self, runner):
@@ -120,7 +120,7 @@ class TestKBList:
             result = runner.invoke(app, ["--json", "kb", "list"])
 
         assert result.exit_code == 0, result.output
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload["topics"] == []
         assert payload["count"] == 0
 
@@ -192,7 +192,7 @@ class TestKBHttpRouting:
         assert result.exit_code == 0, result.output
         client.kb_list_topics.assert_called_once()
         client.close.assert_called_once()
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload["count"] == 1
         assert payload["topics"][0]["slug"] == "rag"
 
@@ -222,7 +222,7 @@ class TestKBHttpRouting:
 
         assert result.exit_code == 0, result.output
         client.kb_get_topic.assert_called_once_with("rag")
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload["article_version"] == 3
 
     @patch("src.cli.kb_commands.is_remote_backend", return_value=True)

@@ -45,7 +45,7 @@ class TestBatchSavingsCLI:
             result = runner.invoke(app, ["--json", "evaluate", "batch-savings"])
 
         assert result.exit_code == 0, result.output
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload["projection"] == "backfill"
         assert payload["discount"] == 0.5
         assert {"steps", "total_std_cost", "total_batch_cost", "total_savings"} <= payload.keys()
@@ -85,7 +85,7 @@ class TestBatchStatusCLI:
             result = runner.invoke(app, ["--json", "batch", "status"])
 
         assert result.exit_code == 0, result.output
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload["jobs"] == {"running": 2, "succeeded": 1}
         assert payload["requests"] == {"pending": 5, "submitted": 2}
         assert payload["recent_jobs"] == []
@@ -116,7 +116,7 @@ class TestBatchStatusCLI:
             result = runner.invoke(app, ["--json", "batch", "status"])
 
         assert result.exit_code == 0, result.output
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload["recent_jobs"][0] == {
             "id": "job-1",
             "provider_job_name": "batches/provider-1",

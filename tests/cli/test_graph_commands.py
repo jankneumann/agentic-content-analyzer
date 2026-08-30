@@ -147,7 +147,7 @@ class TestExtractEntitiesHttpRouting:
         result = runner.invoke(app, ["--json", "graph", "extract-entities", "--content-id", "7"])
 
         assert result.exit_code == 0, result.output
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload["content_id"] == 7
         assert payload["graph_episode_id"] == "ep-9"
 
@@ -263,7 +263,7 @@ class TestGraphQueryHttpRouting:
         result = runner.invoke(app, ["--json", "graph", "query", "--query", "RAG"])
 
         assert result.exit_code == 0, result.output
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload["total"] == 1
         assert payload["results"][0]["name"] == "RAG"
 

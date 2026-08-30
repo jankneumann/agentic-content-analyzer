@@ -177,7 +177,7 @@ def test_json_output_shape_and_redaction():
     finally:
         _set_json_mode(False)
     assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
+    payload = json.loads(result.stdout)
     assert set(payload) >= {
         "service",
         "environment",

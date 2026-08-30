@@ -106,7 +106,7 @@ class TestListBranches:
             result = runner.invoke(app, ["--json", "neon", "list"])
 
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert "branches" in data
         assert len(data["branches"]) == 1
         assert data["branches"][0]["name"] == "main"
@@ -122,7 +122,7 @@ class TestListBranches:
             result = runner.invoke(app, ["--json", "neon", "list"])
 
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data["branches"] == []
 
 
@@ -166,7 +166,7 @@ class TestCreateBranch:
             result = runner.invoke(app, ["--json", "neon", "create", "claude/test"])
 
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data["id"] == "br-new-456"
         assert data["name"] == "claude/test"
         assert data["connection_string"] == "postgresql://neon.tech/test"
@@ -281,7 +281,7 @@ class TestDeleteBranch:
             result = runner.invoke(app, ["--json", "neon", "delete", "claude/gone", "--force"])
 
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data["deleted"] == "claude/gone"
 
     def test_delete_json_mode_skips_confirmation(self):
@@ -292,7 +292,7 @@ class TestDeleteBranch:
             result = runner.invoke(app, ["--json", "neon", "delete", "claude/auto"])
 
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data["deleted"] == "claude/auto"
         mgr.delete_branch.assert_awaited_once_with("claude/auto")
 
@@ -351,7 +351,7 @@ class TestConnectionString:
             result = runner.invoke(app, ["--json", "neon", "connection", "claude/branch"])
 
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data["branch"] == "claude/branch"
         assert data["pooled"] is True
         assert data["connection_string"] == "postgresql://neon.tech/db"
@@ -368,7 +368,7 @@ class TestConnectionString:
             )
 
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data["pooled"] is False
 
 
@@ -487,7 +487,7 @@ class TestCleanBranches:
             result = runner.invoke(app, ["--json", "neon", "clean", "--force"])
 
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert "deleted" in data
         assert "count" in data
         assert data["count"] == 2
@@ -503,7 +503,7 @@ class TestCleanBranches:
             result = runner.invoke(app, ["--json", "neon", "clean", "--dry-run"])
 
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data["dry_run"] is True
         assert data["count"] == 2
         assert "claude/old-one" in data["deleted"]
@@ -518,7 +518,7 @@ class TestCleanBranches:
             result = runner.invoke(app, ["--json", "neon", "clean", "--force"])
 
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert "dry_run" not in data
 
     def test_clean_partial_failure(self):

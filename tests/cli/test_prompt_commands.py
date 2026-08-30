@@ -72,7 +72,7 @@ class TestListPrompts:
         assert result.exit_code == 0
         import json
 
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert "prompts" in data
         assert "count" in data
         assert data["count"] > 0
@@ -102,7 +102,7 @@ class TestShowPrompt:
         assert result.exit_code == 0
         import json
 
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data["key"] == "pipeline.summarization.system"
         assert "default_value" in data
 
