@@ -18,7 +18,10 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | [UX Design](docs/UX_DESIGN.md) | Frontend patterns |
 | [Markdown Pipeline](docs/MARKDOWN_PIPELINE_DESIGN.md) | End-to-end markdown flow |
 | [Case Studies](docs/CASE_STUDIES.md) | Refactoring lessons, migration patterns |
-| [Content Capture](docs/CONTENT_CAPTURE.md) | Chrome extension, bookmarklet, save URL API |
+| [Content Capture](docs/CONTENT_CAPTURE.md) | Chrome extension, bookmarklet, canonical ingestions |
+| [Mobile Capture](docs/MOBILE_CAPTURE.md) | iOS Shortcut, bookmarklet, web save page |
+| [API consumers](docs/API_CONSUMERS.md) | Independently deployed clients and compatibility windows |
+| [Unified workflow cutover](docs/UNIFIED_WORKFLOW_CUTOVER.md) | July 2026 `/api/v1` contract 2.0.0 production evidence |
 | [Obsidian Vault Ingest](docs/OBSIDIAN_VAULT_INGEST.md) | Web Clipper vault ingress: allowed roots, clip contract, privacy, troubleshooting |
 | [Search](docs/SEARCH.md) | Hybrid BM25+vector search, embedding providers, chunking |
 | [Deployment](docs/MOBILE_DEPLOYMENT.md) | Railway deployment, Docker, migrations, CORS |

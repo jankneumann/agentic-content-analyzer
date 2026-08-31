@@ -1,17 +1,18 @@
 # Newsletter Aggregator - Chrome Extension
 
-Save any webpage to your Newsletter Aggregator instance with one click — including paywall-protected content.
+Queue the current page URL into durable ingestion with one click.
+
+Full-page HTML capture (`POST /api/v1/content/save-page`) is **retired**.
+The extension always posts `POST /api/v1/ingestions` with `kind: url`.
+Reload the unpacked extension from this directory after pulling `main`.
 
 ## Features
 
-- **Full page capture**: Captures the rendered DOM, including paywall and JS-rendered content
-- **One-click save**: Click the extension icon to save the current page
-- **Text selection**: Selected text is automatically captured as an excerpt
-- **Capture mode toggle**: Switch between full page (default) and URL-only modes
-- **Image extraction**: Images are downloaded and stored locally from captured pages
-- **Tags**: Add comma-separated tags to organize saved content
+- **One-click save**: Click the extension icon to queue the current page URL
+- **Text selection**: Selected text is sent as `notes`
+- **Tags**: Add comma-separated tags
 - **Dark mode**: Adapts to your system color scheme
-- **Status feedback**: Immediate success/error feedback after saving
+- **Status feedback**: Shows the returned `operation_id`
 
 ## Installation (Load Unpacked)
 
@@ -23,58 +24,54 @@ Save any webpage to your Newsletter Aggregator instance with one click — inclu
 
 ## Configuration
 
-1. Right-click the extension icon and select **Options** (or click the gear icon in Chrome's extension management)
-2. Enter your **API URL** (e.g., `https://your-app.example.com`)
-3. Optionally enter an **API Key** if your instance requires authentication
+1. Right-click the extension icon and select **Options**
+2. Enter your **API URL** (the `aca-api` origin, not the frontend origin)
+3. Enter **API Key** (`ADMIN_API_KEY`, sent as `X-Admin-Key`)
 4. Click **Save Settings**
 
 ## Usage
 
 1. Navigate to any webpage you want to save
-2. Optionally select text on the page (it will be captured as an excerpt)
+2. Optionally select text on the page (captured as `notes`)
 3. Click the extension icon in your toolbar
 4. Review the pre-filled URL, title, excerpt, and add tags if desired
-5. Choose your capture mode:
-   - **Capture full page** (default, checkbox checked): Saves the rendered HTML including paywall content
-   - **URL only** (checkbox unchecked): Sends only the URL for server-side extraction
-6. Click **Save**
+5. Click **Save**
 
-### Capture Status Indicator
+The request body is:
 
-The extension shows the capture status below the toggle:
-- ✓ "Full page captured" — DOM captured successfully
-- "URL only" — URL-only mode selected
-- "Capture failed (URL only)" — DOM capture failed, falling back to URL mode
+```json
+{
+  "kind": "url",
+  "url": "https://example.com/article",
+  "title": "Page title",
+  "tags": ["ai"],
+  "notes": "selected text"
+}
+```
 
-## Capture Modes
+Success is HTTP 202 with an `OperationHandle` (`schema_version: 2`,
+`operation_id`). Poll `GET /api/v1/operations/{operation_id}`.
 
-| Mode | Best For | What's Captured |
-|------|----------|-----------------|
-| **Full Page** | Paywall content, JS SPAs, login-required pages | Entire rendered DOM as you see it |
-| **URL Only** | Public articles, faster saves | Just the URL; server fetches content |
-
-**Why use full page capture?**
-- Captures exactly what you see, including content behind paywalls
-- Works with JavaScript-rendered single-page applications
-- Extracts and stores images locally so they persist
+Paywall and JS-rendered pages that the server cannot fetch anonymously will
+not round-trip through the extension. Restoring client-supplied HTML requires
+a URL-major (`/api/v2`) or a new ingest `kind`. See
+[API consumers](../docs/API_CONSUMERS.md).
 
 ## Permissions
 
 | Permission | Purpose |
 |------------|---------|
 | `activeTab` | Access the current tab's URL and title when you click the icon |
-| `scripting` | Capture selected text and full DOM from the page |
-| `storage` | Persist API URL, key, and capture mode preference across sessions |
+| `scripting` | Capture selected text from the page |
+| `storage` | Persist API URL and key across sessions |
 
 ## Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
 | "No API URL configured" | Open extension options and set your API URL |
-| "Failed to fetch" | Check that your API URL is correct and the server is running |
-| "Save failed" with 422 | URL format invalid, or HTML payload too large (>5 MB) |
-| "Capture failed (URL only)" | DOM capture blocked on this page; use URL-only mode |
+| "Failed to fetch" | Check that your API URL is the API origin and the server is running |
+| "Save failed" with 422 | Body must include `"kind": "url"`; do not send `source`, `excerpt`, or HTML |
 | Can't capture selected text | Some pages (chrome://, file://) restrict extension access |
 | Extension not visible | Click the puzzle piece icon in Chrome toolbar and pin the extension |
-| Large page won't save | Try disabling "Capture full page"; page HTML may exceed 5 MB |
-| Images missing in saved content | Server downloads images; some behind auth may fail |
+| Empty content behind a paywall | Client-supplied HTML is retired; the server fetches the URL |

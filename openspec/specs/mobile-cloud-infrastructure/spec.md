@@ -42,22 +42,25 @@ The system SHALL use different connection types for API and worker processes to 
 
 ### Requirement: Save URL API
 
-The system SHALL provide an API endpoint for saving URLs from mobile devices, enabling iOS Shortcuts and other mobile clients to capture content.
+The system SHALL queue URL capture from mobile clients through canonical ingestion.
 
 #### Scenario: Save new URL
-- **WHEN** a `POST /api/v1/content/save-url` request is received with a valid URL
-- **THEN** the system SHALL create a Content record with status PENDING
-- **AND** queue a background job for content extraction
-- **AND** return the content ID and queued status
+- **WHEN** a `POST /api/v1/ingestions` request is received with `{ "kind": "url", "url": "<https URL>" }` and `X-Admin-Key`
+- **THEN** the system SHALL return `202` with an `OperationHandle`
+- **AND** queue durable `ingestion.execute`
+
+#### Scenario: Retired save-url mutation
+- **WHEN** `POST /api/v1/content/save-url` is called
+- **THEN** the response SHALL be 404 or 405
 
 #### Scenario: Duplicate URL detection
 - **WHEN** a URL that already exists in the database is submitted
-- **THEN** the system SHALL return the existing content ID
-- **AND** indicate that the content is a duplicate
+- **THEN** the system SHALL still return `202` with an `OperationHandle`
+- **AND** durable ingestion MAY skip creating a second content row
 
-#### Scenario: Check extraction status
-- **WHEN** a `GET /api/v1/content/{id}/status` request is received
-- **THEN** the system SHALL return the current status (pending, parsing, parsed, failed)
+#### Scenario: Check operation status
+- **WHEN** a `GET /api/v1/operations/{operation_id}` request is received
+- **THEN** the system SHALL return the current operation status
 
 ---
 

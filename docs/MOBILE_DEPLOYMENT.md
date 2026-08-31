@@ -199,29 +199,26 @@ async def summarize_content(job_id: int, payload: dict) -> None:
 
 ## API Endpoints
 
-### POST /api/v1/content/save-url
+### POST /api/v1/ingestions
 
-Save a URL for background content extraction.
+Queue URL capture. See [Mobile Capture](MOBILE_CAPTURE.md) and
+[API consumers](API_CONSUMERS.md).
 
 **Request:**
 ```json
 {
+  "kind": "url",
   "url": "https://example.com/article",
   "title": "Optional title",
-  "excerpt": "Optional selected text",
-  "source": "ios_shortcut"
+  "notes": "Optional selected text"
 }
 ```
 
-**Response (201 Created):**
-```json
-{
-  "content_id": 123,
-  "status": "queued",
-  "message": "URL saved. Content extraction in progress.",
-  "duplicate": false
-}
-```
+**Headers:** `Content-Type: application/json`, `X-Admin-Key: <ADMIN_API_KEY>`
+
+**Response (202):** `OperationHandle` with `schema_version: 2`.
+
+Retired: `POST /api/v1/content/save-url` (404/405).
 
 ### GET /api/v1/content/{id}/status
 

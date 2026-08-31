@@ -103,8 +103,10 @@ No refactoring or contract-stabilization work remains.
 1. Complete TestFlight signing and Fastlane setup in #453. Add a `Gemfile` or remove the
    `bundle exec` mismatch, configure signing/App Store Connect credentials, add a clear
    preflight, and prove a signed IPA upload.
-2. Execute the coordinated production cutover in #446 only with explicit deployment
-   authority. It was intentionally not performed during this refactoring session.
+2. Coordinated production cutover (#446): recorded in
+   `docs/UNIFIED_WORKFLOW_CUTOVER.md`. Contract `2.0.0` under `/api/v1` was live
+   in production by the 2026-07-23 frontend restore evidence (ingestions 202,
+   retired save-url count 0).
 3. Address the non-blocking dependency and API hardening work in #447.
 
 ## Restart Context

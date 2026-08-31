@@ -132,10 +132,10 @@
     <input
       type="password"
       id="api-key"
-      placeholder="Your API key or Supabase anon key"
+      placeholder="ADMIN_API_KEY"
       autocomplete="off"
     >
-    <p class="hint">Leave empty if your instance doesn't require authentication</p>
+    <p class="hint">Sent as <code>X-Admin-Key</code>. Required in production.</p>
   </div>
 
   <button id="save-btn">Save Settings</button>

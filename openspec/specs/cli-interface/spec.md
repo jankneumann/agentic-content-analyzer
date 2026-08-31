@@ -66,7 +66,7 @@ The system SHALL provide `aca ingest` subcommands for all supported ingestion so
 
 #### Scenario: Ingest URL
 - **WHEN** `aca ingest url <url>` is executed
-- **THEN** the URL SHALL be submitted to the save-url workflow
+- **THEN** the URL SHALL be submitted as an `IngestCommand` with `kind: url`
 - **AND** the returned content ID and status SHALL be displayed
 
 #### Scenario: Ingestion with missing credentials

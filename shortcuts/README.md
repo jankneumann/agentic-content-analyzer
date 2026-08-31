@@ -1,136 +1,76 @@
 # iOS Shortcuts for Newsletter Aggregator
 
-This directory contains iOS Shortcut files for capturing web content from your iPhone.
+This directory documents iOS Shortcuts for capturing web URLs from an iPhone.
 
-> **Full documentation**: See [Mobile Capture Guide](../docs/MOBILE_CAPTURE.md) for complete setup instructions.
+> **Full documentation**: [Mobile Capture Guide](../docs/MOBILE_CAPTURE.md)
 >
-> **Interactive setup**: Visit `https://your-server.com/api/v1/content/shortcut` for a guided installation page.
+> **Interactive setup**: `https://your-server.com/api/v1/content/shortcut`
+>
+> Independently installed shortcuts that POST to `/api/v1/content/save-url`
+> are unsupported. Recreate them from the installation page. See
+> [API consumers](../docs/API_CONSUMERS.md).
 
 ## Installation
 
-### Option 1: Import from File
+There is no checked-in `.shortcut` binary. Create the shortcut from the live
+installation page or by hand:
 
-1. Transfer the `.shortcut` file to your iPhone (AirDrop, iCloud, email)
-2. Open the file - it will open in the Shortcuts app
-3. Tap "Add Shortcut"
-4. Configure your API URL (see Configuration below)
-
-### Option 2: Create Manually
-
-If you prefer to create the Shortcut yourself:
-
-1. Open the **Shortcuts** app on your iPhone
-2. Tap **+** to create a new Shortcut
-3. Add the following actions:
-
-#### Shortcut Actions
+1. Open the **Shortcuts** app
+2. Tap **+**
+3. Add:
 
 ```
 1. Receive [URLs] from Share Sheet
-   - Types: URLs
 
-2. Set Variable
-   - Name: url
-   - Value: Shortcut Input
-
-3. Text
-   {
-     "url": "[url]",
-     "source": "ios_shortcut"
-   }
-
-4. Get Contents of URL
-   - URL: [Your API URL]/api/v1/content/save-url
+2. Get Contents of URL
+   - URL: [Your API URL]/api/v1/ingestions
    - Method: POST
    - Headers:
      - Content-Type: application/json
-   - Request Body: [Text from step 3]
+     - X-Admin-Key: [ADMIN_API_KEY]
+   - Request Body (JSON):
+     {
+       "kind": "url",
+       "url": "[Shortcut Input]"
+     }
 
-5. If [Status Code] is 201 or 200
-   - Show Notification: "Saved!"
-6. Otherwise
-   - Show Alert: "Save failed: [Response]"
+3. Show Result
+   - Display operation_id
 ```
 
-## Configuration
+4. Name it **Save to Aggregator**
+5. Enable **Show in Share Sheet**
 
-After installing the Shortcut:
-
-1. Open the Shortcuts app
-2. Find "Save to Newsletter"
-3. Tap the **...** (three dots) to edit
-4. Find the "Get Contents of URL" action
-5. Replace `[Your API URL]` with your actual server URL
-
-### Example URLs
-
-- **Local development**: `http://192.168.1.x:8000` (your computer's IP)
-- **Railway**: `https://your-app.railway.app`
-- **Fly.io**: `https://your-app.fly.dev`
+Replace `[Your API URL]` with the API origin (Railway `aca-api`, not the
+frontend origin), for example `https://aca-production-410f.up.railway.app`.
 
 ## Usage
 
 1. Open Safari (or any app with a URL)
-2. Tap the **Share** button
-3. Scroll down and tap **"Save to Newsletter"**
-4. Wait for the success notification
-
-## Troubleshooting
-
-### "Could not connect to server"
-
-- Check that your API server is running
-- Verify the URL is correct
-- For local development, ensure your phone is on the same WiFi network
-
-### "Save failed"
-
-- Check the server logs for errors
-- Verify the database is accessible
-- Ensure CORS is configured (set `ALLOWED_ORIGINS=*` in your .env)
-
-### Shortcut doesn't appear in Share Sheet
-
-- Open Settings > Shortcuts
-- Enable "Allow Sharing Large Amounts of Data"
-- Restart the Shortcuts app
+2. Tap **Share**
+3. Tap **Save to Aggregator**
+4. Confirm the returned `operation_id`
 
 ## API Reference
 
-### POST /api/v1/content/save-url
+### POST /api/v1/ingestions
 
-Saves a URL for content extraction.
+**Headers:** `Content-Type: application/json`, `X-Admin-Key: <key>`
 
 **Request:**
 ```json
 {
+  "kind": "url",
   "url": "https://example.com/article",
   "title": "Optional title",
-  "excerpt": "Optional selected text",
-  "source": "ios_shortcut"
+  "notes": "Optional selected text"
 }
 ```
 
-**Response (201 Created):**
-```json
-{
-  "content_id": 123,
-  "status": "queued",
-  "message": "URL saved. Content extraction in progress.",
-  "duplicate": false
-}
-```
+**Response (202):** `OperationHandle` with `schema_version: 2` and `operation_id`.
 
-### GET /api/v1/content/{id}/status
+### GET /api/v1/operations/{operation_id}
 
-Check extraction status.
+Poll durable status.
 
-**Response:**
-```json
-{
-  "content_id": 123,
-  "status": "parsed",
-  "title": "Article Title",
-  "word_count": 1500
-}
-```
+Retired: `POST /api/v1/content/save-url` (404/405).

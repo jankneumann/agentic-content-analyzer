@@ -4,7 +4,7 @@ Save web content to your Newsletter Aggregator while browsing. Two capture metho
 
 | Method | Best For | Browser Support |
 |--------|----------|-----------------|
-| Chrome Extension | Desktop Chrome users, paywall content | Chrome, Chromium-based |
+| Chrome Extension | Desktop Chrome users | Chrome, Chromium-based |
 | Bookmarklet | Universal fallback | All browsers including mobile Safari |
 
 ## Mobile Capture
@@ -14,17 +14,14 @@ see the **[Mobile Capture Guide](MOBILE_CAPTURE.md)**.
 
 ## Capture Modes
 
-The Chrome extension supports two capture modes:
+URL capture is the supported mutation. The extension always submits
+`POST /api/v1/ingestions` with `kind: url`. Server-side extraction follows
+`classify_url` (YouTube, RSS, or webpage).
 
-| Mode | Description | Use Case |
-|------|-------------|----------|
-| **Full Page** (default) | Captures the rendered DOM from your browser | Paywall-gated content, JS-rendered SPAs, authenticated pages |
-| **URL Only** | Sends only the URL for server-side fetching | Public articles, faster saves, smaller payloads |
-
-Full page capture works because:
-- The extension captures `document.documentElement.outerHTML` — exactly what you see in your browser
-- Your authenticated session's content is captured, including paid articles and login-required pages
-- Images are extracted and stored locally to ensure they persist
+Client-supplied HTML (`POST /api/v1/content/save-page`) is **retired**. Paywall
+and JS-rendered pages that cannot be fetched anonymously will not round-trip
+through the extension until a future URL-major command exists. See
+[API consumers](API_CONSUMERS.md).
 
 ## Chrome Extension
 
@@ -40,7 +37,7 @@ Full page capture works because:
 
 1. Right-click the extension icon → **Options**
 2. Enter your **API URL** (e.g., `https://your-app.railway.app` or `http://localhost:8000`)
-3. Optionally enter an **API Key** if your instance requires authentication
+3. Enter an **API Key** (`ADMIN_API_KEY`, sent as `X-Admin-Key`)
 4. Click **Save Settings**
 
 ### Usage
@@ -49,23 +46,15 @@ Full page capture works because:
 2. Optionally select text (captured as an excerpt)
 3. Click the extension icon
 4. Review pre-filled fields, add tags if desired
-5. Toggle **"Capture full page"** based on your needs:
-   - **On** (default): Captures the full rendered page — best for paywall content
-   - **Off**: Sends only the URL for server-side extraction — faster for public pages
-6. Click **Save**
-
-The capture status indicator shows:
-- ✓ "Full page captured" — DOM successfully captured
-- "URL only" — URL-only mode selected
-- "Capture failed (URL only)" — DOM capture failed, falling back to URL
+5. Click **Save**. The extension queues `kind: url` ingestion and shows `operation_id`.
 
 ### Permissions
 
 | Permission | Purpose |
 |------------|---------|
 | `activeTab` | Access current tab's URL and title when clicked |
-| `scripting` | Capture selected text and full DOM from the active page |
-| `storage` | Persist API URL, key, and capture mode settings across sessions |
+| `scripting` | Capture selected text from the active page |
+| `storage` | Persist API URL and key across sessions |
 
 ## Bookmarklet
 
@@ -98,33 +87,30 @@ The bookmarklet executes a small JavaScript snippet that:
 3. Captures `window.getSelection()` (selected text, truncated to 500 chars)
 4. Opens the save page with these as query parameters
 
-## Save URL API
+## URL ingestion API
 
-The bookmarklet and URL-only mode use this endpoint:
+The bookmarklet, web save page, shortcut, and extension URL capture use:
 
 ```
-POST /api/v1/content/save-url
+POST /api/v1/ingestions
 Content-Type: application/json
-
-{
-  "url": "https://example.com/article",
-  "title": "Article Title",
-  "excerpt": "Selected text excerpt",
-  "tags": ["ai", "research"],
-  "notes": "My notes about this article",
-  "source": "chrome_extension"
-}
+X-Admin-Key: <ADMIN_API_KEY>
 ```
 
-**Response** (201):
 ```json
 {
-  "content_id": 123,
-  "status": "queued",
-  "message": "URL saved. Content extraction in progress.",
-  "duplicate": false
+  "kind": "url",
+  "url": "https://example.com/article",
+  "title": "Article Title",
+  "tags": ["ai", "research"],
+  "notes": "Selected text excerpt"
 }
 ```
+
+**Response** (202): `OperationHandle` (`schema_version: 2`, `operation_id`,
+`status_url`). Poll `GET /api/v1/operations/{operation_id}`.
+
+`POST /api/v1/content/save-url` is retired (404/405).
 
 ### Auto-routing
 
@@ -139,78 +125,18 @@ URL shape (`src/ingestion/url_router.py`, `classify_url`):
 | anything else | `webpage` | Generic Trafilatura extraction (unchanged) |
 
 Classification is deterministic and network-free (URL patterns only). The
-chosen route is recorded on the row's `metadata_json.route`, and the response
-`message` names the route (e.g. `"URL saved. Routed to youtube_video ingestion."`).
+chosen route is recorded on the row's `metadata_json.route` after the durable
+operation completes. The HTTP response is the `202` handle, not a completed
+content row.
 
 The same routing powers the CLI: `aca ingest url <url>` routes by default; pass
 `--no-route` to force generic web-page extraction regardless of the URL.
 
-## Save Page API (Full Page Capture)
+## Save Page API (retired)
 
-The Chrome extension uses this endpoint when full page capture is enabled:
-
-```
-POST /api/v1/content/save-page
-Content-Type: application/json
-
-{
-  "url": "https://example.com/article",
-  "html": "<html>...(rendered DOM)...</html>",
-  "title": "Article Title",
-  "excerpt": "Selected text excerpt",
-  "tags": ["ai", "research"],
-  "source": "chrome_extension"
-}
-```
-
-**Response** (201):
-```json
-{
-  "content_id": 123,
-  "status": "queued",
-  "message": "Page saved. Content processing in progress.",
-  "duplicate": false
-}
-```
-
-### Key Differences from save-url
-
-| Aspect | save-url | save-page |
-|--------|----------|-----------|
-| HTML source | Server fetches URL anonymously | Client sends rendered DOM |
-| Paywall content | ❌ Blocked | ✓ Captured |
-| JS-rendered SPAs | ❌ Empty shell | ✓ Full content |
-| Image extraction | ❌ Not supported | ✓ Extracted & stored locally |
-| Payload size | ~100 bytes | Up to 5 MB |
-| Processing | Server-side fetch + parse | Parse client HTML directly |
-
-### HTML Payload Limits
-
-- Maximum HTML size: **5 MB**
-- Maximum images per page: **20**
-- Maximum image size: **5 MB** per image
-
-Oversized payloads return HTTP 422 validation error.
-
-### Status Polling
-
-Check extraction progress:
-```
-GET /api/v1/content/{content_id}/status
-```
-
-**Response**:
-```json
-{
-  "content_id": 123,
-  "status": "parsed",
-  "title": "Extracted Article Title",
-  "word_count": 1542,
-  "error": null
-}
-```
-
-Status values: `pending` → `parsing` → `parsed` | `failed`
+`POST /api/v1/content/save-page` is not composed. Full-page HTML capture is not
+on `UrlIngestCommand`. Restoring it requires a URL-major (`/api/v2`) or a new
+ingest `kind`, not an in-place `/api/v1` adapter.
 
 ## Configuration Options
 
@@ -224,9 +150,8 @@ Status values: `pending` → `parsing` → `parsed` | `failed`
 
 | Setting | Required | Default | Description |
 |---------|----------|---------|-------------|
-| `apiUrl` | Yes | - | Base URL of your Newsletter Aggregator instance |
-| `apiKey` | No | - | API key or Supabase anon key for authentication |
-| `captureFullPage` | No | `true` | Enable full page capture (DOM) vs URL-only mode |
+| `apiUrl` | Yes | - | API origin (the `aca-api` host, not the frontend origin) |
+| `apiKey` | Production | - | Sent as `X-Admin-Key` (`ADMIN_API_KEY`) |
 
 ## Troubleshooting
 
@@ -236,12 +161,11 @@ Status values: `pending` → `parsing` → `parsed` | `failed`
 |-------|----------|
 | "No API URL configured" | Open extension options and set your API URL |
 | "Failed to fetch" | Check that your API URL is correct and the server is running |
-| "Save failed" (422) | The URL format may be invalid, or HTML payload too large |
-| "Capture failed (URL only)" | DOM capture failed on this page; content restricted |
+| "Save failed" (422) | Body must be `{ "kind": "url", "url": "https://..." }`; unknown fields are rejected |
 | Can't capture selected text | Some pages (chrome://, file://) restrict extension access |
 | Extension not visible | Click the puzzle piece icon and pin the extension |
 | CORS error | Ensure `ALLOWED_ORIGINS` includes `chrome-extension://` or is set to `*` |
-| Large page fails to save | Disable full page capture; HTML may exceed 5 MB limit |
+| Paywall / JS-only page is empty | Client-supplied HTML is retired; server fetches the URL anonymously |
 | Images not extracted | Server downloads images after save; some may require auth |
 
 ### Bookmarklet
@@ -259,6 +183,6 @@ Status values: `pending` → `parsing` → `parsed` | `failed`
 | Issue | Solution |
 |-------|----------|
 | 422 Validation Error | Check URL format (must include `https://` or `http://`) |
-| 404 Content Not Found | The content_id doesn't exist; check the save response |
-| Extraction stuck on "pending" | Check server logs; the background extraction task may have failed |
+| 404 Content Not Found | Poll `GET /api/v1/operations/{operation_id}`, not the retired save-url body |
+| Extraction stuck on "queued" | Check `GET /api/v1/operations/{id}`; workers may not be running |
 | Duplicate detection returns wrong content | Duplicate check is by exact URL match including query params |
