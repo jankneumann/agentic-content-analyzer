@@ -3,7 +3,7 @@ set -euo pipefail
 umask 077
 
 action="${1:-}"
-COMPOSE=(/usr/bin/docker compose -f /opt/aca/docker-compose.gx10.yml)
+COMPOSE=(/opt/aca/scripts/gx10/podman-compose.sh)
 payload="$(mktemp)"
 trap 'rm -f -- "$payload"' EXIT
 head -c 16385 >"$payload"

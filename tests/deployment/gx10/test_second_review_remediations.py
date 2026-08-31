@@ -138,7 +138,7 @@ def test_every_stateful_mount_has_a_verified_persistence_sentinel(tmp_path: Path
 
     clean_stack = (SCRIPTS / "verify_clean_stack.sh").read_text()
     seed_at = clean_stack.index('"$PERSISTENCE_SENTINELS" seed')
-    restart_at = clean_stack.index("compose down --remove-orphans", seed_at)
+    restart_at = clean_stack.index('podman-runtime.sh" down', seed_at)
     verify_at = clean_stack.index('"$PERSISTENCE_SENTINELS" verify', restart_at)
     evidence_at = clean_stack.index('"cold_restart_passed":true', verify_at)
     assert seed_at < restart_at < verify_at < evidence_at

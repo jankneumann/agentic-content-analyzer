@@ -5,10 +5,10 @@ with **Podman**, not Docker. It covers the `PROFILE=gx10` local-production
 stack: PostgreSQL, Redis, Neo4j, OpenBao, Langfuse, ClickHouse, MinIO, Caddy,
 Squid, the API, workers, schedulers, and maintenance services.
 
-> **Status:** This is the Podman target runbook. The checked-in GX-10 Compose
-> file, validation scripts, and some systemd units still invoke `docker` or
-> `docker compose`. Complete the explicit conversion in [Step 5](#5-convert-the-runtime-to-podman)
-> and retain its evidence before declaring the stack Podman-ready.
+> **Status:** The checked-in GX-10 runtime uses rootful Podman through an
+> explicit `podman-compose` wrapper, bounded health polling, and ARM64-aware
+> `skopeo` provenance checks. The stack remains unaccepted until its real
+> clean-stack, native-backup, and soak evidence gates are completed.
 
 The GX-10 stack is passive until a separately approved cutover. Do not redirect
 Railway traffic, public DNS, or shared-environment authority as part of this
@@ -148,14 +148,14 @@ sudo podman pull registry.example/namespace/image:tag@sha256:<64-hex-digest>
 sudo podman image inspect registry.example/namespace/image:tag@sha256:<64-hex-digest> --format '{{.Digest}} {{.Os}}/{{.Architecture}}'
 ```
 
-## 5. Convert the runtime to Podman
+## 5. Use the checked-in Podman runtime
 
-This is required source-controlled work, not a host-only substitution. These
-surfaces currently invoke Docker and must be converted and tested together:
+This is source-controlled, not a host-only substitution. The following Podman
+contract is already checked in and must be preserved as the runtime evolves:
 
 | Surface | Required Podman change |
 | --- | --- |
-| `deploy/gx10/systemd/aca-gx10.service` | Rootful Podman start/stop and bounded explicit readiness polling; do not rely on Docker Compose `--wait`. |
+| `deploy/gx10/systemd/aca-gx10.service` | Rootful Podman start/stop and bounded explicit readiness polling; do not rely on a Compose `--wait` extension. |
 | secret, proxy-policy, and OpenBao units | Remove `docker.service` dependencies and use the same Podman execution path. |
 | `scripts/gx10/*.sh` | Replace `docker compose`, `docker run`, and `docker buildx` with a single wrapper, `podman run`, and `skopeo inspect`. |
 | clean-stack/recovery gates | Preserve real restart, health, and persistence evidence under Podman. |
@@ -164,9 +164,10 @@ Do **not** use `podman-docker` as the production answer. It hides incompatible
 Buildx and Compose semantics, which can make a validation appear successful
 without proving the intended behavior.
 
-### 5.1 Use one wrapper
+### 5.1 One wrapper, no implicit provider
 
-Add and review `/opt/aca/scripts/gx10/podman-compose.sh` in the repository:
+The checked-in `/opt/aca/scripts/gx10/podman-compose.sh` is the only Compose
+entry point:
 
 ```bash
 #!/usr/bin/env bash
@@ -175,7 +176,7 @@ exec /usr/bin/podman-compose -p aca-gx10 -f /opt/aca/docker-compose.gx10.yml "$@
 ```
 
 Every GX-10 unit and script uses this wrapper. It must not read secrets or open
-a shell. Prove the selected `podman-compose` version can render the current
+a shell. After image policy and rendered secrets exist, prove the selected `podman-compose` version can render the current
 networks, bind mounts, health checks, and environment files:
 
 ```bash
@@ -184,14 +185,12 @@ sudo scripts/gx10/podman-compose.sh config >/run/aca/gx10/rendered-compose.yml
 sudo chmod 0600 /run/aca/gx10/rendered-compose.yml
 ```
 
-If it cannot honor `depends_on` health conditions, start stateful services first
-and gate every application role with `gx10-role-ready`. Never replace readiness
-with arbitrary sleeps.
+The runtime calls `podman-runtime.sh up`, which polls every required container's
+health with a bounded timeout. Never replace that readiness proof with sleeps.
 
 ### 5.2 Convert units and verify them
 
-After the wrapper changes are committed, copy the units and edit only their
-tracked Podman equivalents:
+Copy the reviewed units; do not hand-edit substitutes outside version control:
 
 ```bash
 sudo install -m 0644 /opt/aca/deploy/gx10/systemd/aca-gx10*.service /etc/systemd/system/

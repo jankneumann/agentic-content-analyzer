@@ -7,7 +7,7 @@ MODE="${1:?usage: policy_failure_harness.sh external|diagnostics SCENARIO}"
 SCENARIO="${2:?usage: policy_failure_harness.sh external|diagnostics SCENARIO}"
 
 compose() {
-  docker compose -f "$COMPOSE_FILE" "$@"
+  "$ROOT_DIR/scripts/gx10/podman-compose.sh" "$@"
 }
 
 diagnostics() {

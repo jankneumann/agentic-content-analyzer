@@ -99,7 +99,7 @@ def test_every_srv_bind_and_native_datastore_record_is_verified_across_restart(
 
     clean_stack = (SCRIPTS / "verify_clean_stack.sh").read_text()
     seed_at = clean_stack.index('"$NATIVE_PERSISTENCE" seed')
-    restart_at = clean_stack.index("compose down --remove-orphans", seed_at)
+    restart_at = clean_stack.index('podman-runtime.sh" down', seed_at)
     verify_at = clean_stack.index('"$NATIVE_PERSISTENCE" verify', restart_at)
     assert seed_at < restart_at < verify_at
 
@@ -293,7 +293,7 @@ def test_clean_stack_evidence_survives_cleanup_with_checksum() -> None:
     source = (SCRIPTS / "verify_clean_stack.sh").read_text()
     assert "${GX10_VALIDATION_DIR:-/srv/aca/validation}" in source
     assert "$WORK_DIR/clean-stack.json" not in source
-    cleanup_at = source.index("compose down --remove-orphans", source.index("cold_restart_passed"))
+    cleanup_at = source.index('podman-runtime.sh" down', source.index("cold_restart_passed"))
     evidence_at = source.index("sha256sum", cleanup_at)
     assert cleanup_at < evidence_at
     assert 'chmod 0600 "$EVIDENCE" "$EVIDENCE.sha256"' in source

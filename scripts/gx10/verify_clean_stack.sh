@@ -21,14 +21,14 @@ esac
 
 cleanup() {
   if [[ "$STACK_RUNNING" == true ]]; then
-    docker compose -f "$COMPOSE_FILE" down --remove-orphans >/dev/null 2>&1 || true
+    "$ROOT_DIR/scripts/gx10/podman-runtime.sh" down >/dev/null 2>&1 || true
   fi
   [[ -z "${WORK_DIR:-}" ]] || rm -rf -- "$WORK_DIR"
 }
 trap cleanup EXIT
 
 compose() {
-  docker compose -f "$COMPOSE_FILE" "$@"
+  "$ROOT_DIR/scripts/gx10/podman-compose.sh" "$@"
 }
 
 require_root_owned_runtime() {
@@ -48,12 +48,12 @@ compose config --no-env-resolution >"$WORK_DIR/rendered-compose.yml"
 uv run python "$VALIDATOR" \
   --rendered-compose "$WORK_DIR/rendered-compose.yml" \
   --image-pins-evidence "$RUNTIME_DIR/image-pins.ready"
-compose down --remove-orphans
+"$ROOT_DIR/scripts/gx10/podman-runtime.sh" down
 prepare_runtime
 uv run python "$VALIDATOR" --runtime-dir "$RUNTIME_DIR"
 require_root_owned_runtime
 
-compose up -d --wait
+"$ROOT_DIR/scripts/gx10/podman-runtime.sh" up
 STACK_RUNNING=true
 compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile
 compose exec -T openbao bao status -address=http://127.0.0.1:8200
@@ -63,10 +63,10 @@ uv run python "$VALIDATOR" --failure-harness "$FAILURE_HARNESS"
 "$NATIVE_PERSISTENCE" seed
 
 # A real down/up cycle exercises and verifies every required persistent mount.
-compose down --remove-orphans
+"$ROOT_DIR/scripts/gx10/podman-runtime.sh" down
 STACK_RUNNING=false
 prepare_runtime
-compose up -d --wait
+"$ROOT_DIR/scripts/gx10/podman-runtime.sh" up
 STACK_RUNNING=true
 "$PERSISTENCE_SENTINELS" verify
 "$NATIVE_PERSISTENCE" verify
@@ -77,7 +77,7 @@ uv run python "$VALIDATOR" --failure-harness "$FAILURE_HARNESS"
 "$DEPENDENCY_RECOVERY"
 
 EVIDENCE_PAYLOAD='{"live":true,"registry_verified":true,"cold_restart_passed":true,"direct_routes_denied":true,"persistence_sentinels_verified":true,"native_persistence_verified":true,"dependency_recovery_verified":true,"cleanup_completed":true}'
-compose down --remove-orphans
+"$ROOT_DIR/scripts/gx10/podman-runtime.sh" down
 STACK_RUNNING=false
 rm -rf -- "$WORK_DIR"
 WORK_DIR=""

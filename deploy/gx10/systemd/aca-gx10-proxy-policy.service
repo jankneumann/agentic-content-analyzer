@@ -11,7 +11,7 @@ WorkingDirectory=/opt/aca
 Environment=GX10_ROOT_DIR=/opt/aca
 Environment=GX10_RUNTIME_DIR=/run/aca/gx10
 Environment=GX10_PROXY_POLICY_MAX_AGE_SECONDS=300
-ExecStartPre=/usr/bin/docker compose -f /opt/aca/docker-compose.gx10.yml up -d squid
+ExecStartPre=/opt/aca/scripts/gx10/podman-compose.sh up -d squid
 ExecStart=/opt/aca/scripts/gx10/reload_proxy_policy.sh
 UMask=0077
 NoNewPrivileges=yes

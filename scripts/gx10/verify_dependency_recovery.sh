@@ -41,7 +41,7 @@ declare -a RUNTIME_DEPENDENCIES=(
 )
 
 compose() {
-  docker compose -f "$COMPOSE_FILE" "$@"
+  "$ROOT_DIR/scripts/gx10/podman-compose.sh" "$@"
 }
 
 probe_dependency() {

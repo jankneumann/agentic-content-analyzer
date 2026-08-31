@@ -14,9 +14,9 @@ Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/opt/aca
 Environment=COMPOSE_PROJECT_NAME=aca-gx10
-ExecStart=/usr/bin/docker compose -f /opt/aca/docker-compose.gx10.yml up -d --wait --wait-timeout 300
-ExecReload=/usr/bin/docker compose -f /opt/aca/docker-compose.gx10.yml up -d --wait --wait-timeout 300
-ExecStop=/usr/bin/docker compose -f /opt/aca/docker-compose.gx10.yml down --timeout 45
+ExecStart=/opt/aca/scripts/gx10/podman-runtime.sh up
+ExecReload=/opt/aca/scripts/gx10/podman-runtime.sh up
+ExecStop=/opt/aca/scripts/gx10/podman-runtime.sh down
 Restart=on-failure
 RestartSec=15s
 TimeoutStartSec=360

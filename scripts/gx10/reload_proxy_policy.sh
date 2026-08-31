@@ -28,7 +28,7 @@ gx10_proxy_policy_audit_exit() {
   exit "$command_status"
 }
 trap gx10_proxy_policy_audit_exit EXIT
-COMPOSE=(docker compose -f "$ROOT_DIR/docker-compose.gx10.yml")
+COMPOSE=("$ROOT_DIR/scripts/gx10/podman-compose.sh")
 POLICY="$ROOT_DIR/deploy/gx10/squid/squid.conf"
 DOMAINS="$ROOT_DIR/deploy/gx10/squid/allowed-domains.txt"
 RUNTIME_DIR="${GX10_RUNTIME_DIR:-/run/aca/gx10}"

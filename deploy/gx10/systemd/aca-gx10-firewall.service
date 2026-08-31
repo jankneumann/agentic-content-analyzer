@@ -1,7 +1,7 @@
 [Unit]
 Description=GX-10 private network and direct-route guard
-Requires=docker.service aca-gx10-proxy-policy.service
-After=docker.service aca-gx10-proxy-policy.service
+Requires=aca-gx10-proxy-policy.service
+After=aca-gx10-proxy-policy.service
 Before=aca-gx10.service
 
 [Service]

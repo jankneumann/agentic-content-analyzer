@@ -1,7 +1,7 @@
 [Unit]
 Description=GX-10 immutable registry image provenance gate
-Requires=docker.service
-After=docker.service network-online.target
+Requires=network-online.target
+After=network-online.target
 Before=aca-gx10-secrets.service aca-gx10.service
 
 [Service]

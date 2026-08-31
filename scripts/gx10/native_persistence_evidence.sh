@@ -9,7 +9,7 @@ MANIFEST="$RUNTIME_DIR/native-persistence.env"
 MODE="${1:?usage: native_persistence_evidence.sh seed|verify}"
 
 compose() {
-  docker compose -f "$COMPOSE_FILE" "$@"
+  "$ROOT_DIR/scripts/gx10/podman-compose.sh" "$@"
 }
 
 seed() {

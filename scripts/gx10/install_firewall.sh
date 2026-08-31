@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="${GX10_ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
-COMPOSE=(docker compose -f "$ROOT_DIR/docker-compose.gx10.yml")
+COMPOSE=("$ROOT_DIR/scripts/gx10/podman-compose.sh")
 
 # Compose internal networks have no default gateway. Refuse activation if the
 # application or stateful network changes to routed, or an app joins egress.

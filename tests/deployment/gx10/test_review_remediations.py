@@ -135,8 +135,9 @@ def test_systemd_sources_protected_pins_and_verifies_registry_provenance() -> No
     assert "EnvironmentFile=/etc/aca/gx10-images.env" in units
     assert "aca-gx10-image-pins.service" in units
     verifier = (ROOT / "scripts/gx10/verify_image_pins.sh").read_text()
-    assert "imagetools inspect" in verifier
+    assert "skopeo inspect" in verifier
     assert "image-pins.ready" in verifier
+    assert "--override-arch arm64" in verifier
     assert "0000000000000000000000000000000000000000000000000000000000000000" not in verifier
 
 
@@ -311,9 +312,38 @@ def test_real_clean_stack_gate_is_executable_and_evidence_stays_incomplete() -> 
     gate_source = clean_stack.read_text()
     evidence = validation.read_text()
 
-    assert "docker compose" in harness_source
+    assert "podman-compose.sh" in harness_source
     assert "exec" in harness_source
     assert "validate_runtime.py" in gate_source
     assert "--failure-harness" in gate_source
-    assert "docker compose" in gate_source
+    assert "podman-compose.sh" in gate_source
     assert "restart" in gate_source
+
+
+def test_gx10_runtime_uses_a_pinned_rootful_podman_compose_provider() -> None:
+    """The production path must not silently select a Docker Compose provider."""
+    wrapper = ROOT / "scripts/gx10/podman-compose.sh"
+    runtime = ROOT / "scripts/gx10/podman-runtime.sh"
+
+    assert wrapper.is_file()
+    assert wrapper.stat().st_mode & 0o111
+    wrapper_source = wrapper.read_text()
+    assert "exec /usr/bin/podman-compose" in wrapper_source
+    assert "-p aca-gx10" in wrapper_source
+    assert 'ROOT_DIR="${GX10_ROOT_DIR:-/opt/aca}"' in wrapper_source
+    assert "docker-compose.gx10.yml" in wrapper_source
+
+    assert runtime.is_file()
+    runtime_source = runtime.read_text()
+    assert "wait_for_runtime" in runtime_source
+    assert "podman inspect" in runtime_source
+    assert "--wait" not in runtime_source
+
+    sources = [
+        *(ROOT / "scripts/gx10").rglob("*.sh"),
+        *(RUNTIME / "systemd").glob("*.service"),
+    ]
+    forbidden = ("docker compose", "/usr/bin/docker", "docker.service", "docker buildx")
+    for source in sources:
+        text = source.read_text()
+        assert not any(token in text for token in forbidden), source

@@ -1,8 +1,8 @@
 [Unit]
 Description=GX-10 explicit first-install OpenBao operator ceremony
 Documentation=file:/opt/aca/deploy/gx10/VALIDATION.md
-Requires=docker.service aca-gx10-image-pins.service
-After=docker.service network-online.target aca-gx10-image-pins.service
+Requires=aca-gx10-image-pins.service
+After=network-online.target aca-gx10-image-pins.service
 Conflicts=aca-gx10.service aca-gx10-secrets.service
 
 [Service]
@@ -12,7 +12,7 @@ EnvironmentFile=/etc/aca/gx10-images.env
 Environment=GX10_BAO_ADDR=http://127.0.0.1:18200/v1
 Environment=GX10_BAO_OPERATOR_DIR=/etc/aca/gx10
 LoadCredential=bao-seed:/etc/aca/gx10/bao-seed.json
-ExecStartPre=/usr/bin/docker compose -f /opt/aca/docker-compose.gx10.yml up -d openbao
+ExecStartPre=/opt/aca/scripts/gx10/podman-compose.sh up -d openbao
 ExecStart=/opt/aca/deploy/gx10/openbao/provision-first-install.sh
 UMask=0077
 PrivateTmp=yes
