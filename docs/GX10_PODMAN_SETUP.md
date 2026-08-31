@@ -72,7 +72,17 @@ On Ubuntu, install the verified ARM64 packages appropriate for the release:
 ```bash
 sudo apt update
 sudo apt install -y podman podman-compose skopeo fuse-overlayfs \
-  jq curl ca-certificates openssl age postgresql-client-17 tar coreutils
+  jq curl ca-certificates openssl age tar coreutils
+# Ubuntu 24.04 (Noble) supplies PostgreSQL 16 by default. Add stable PGDG
+# packages because the PostgreSQL 17 server needs a matching-major dump client.
+. /etc/os-release
+sudo install -d -m 0755 /usr/share/postgresql-common/pgdg
+sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+  https://www.postgresql.org/media/keys/ACCC4CF8.asc
+printf 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt %s-pgdg main\n' \
+  "$VERSION_CODENAME" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+sudo apt update
+sudo apt install -y postgresql-client-17
 
 sudo podman info --format '{{.Host.Security.Rootless}}'  # must print false
 sudo podman-compose --version
