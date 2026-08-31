@@ -139,13 +139,16 @@ def test_storage_runtime_executes_throttle_cleanup_and_correlated_alert() -> Non
 
 def test_synthetic_checkpoint_records_truthful_evidence_and_native_unavailability(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import json
 
-    from scripts.gx10.backup.runtime import run_synthetic_checkpoint
+    from scripts.gx10.backup import runtime as backup_runtime
+
+    monkeypatch.setattr(backup_runtime.shutil, "which", lambda _name: None)
 
     output = tmp_path / "checkpoint.json"
-    evidence = run_synthetic_checkpoint(output)
+    evidence = backup_runtime.run_synthetic_checkpoint(output)
 
     assert json.loads(output.read_text()) == evidence
     assert evidence["evidence_status"] == "partial"
