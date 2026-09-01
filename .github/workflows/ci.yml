@@ -231,8 +231,10 @@ jobs:
         include:
           - suite: schema
             pytest-args: tests/contract/test_schema_conformance.py
+            timeout-method: thread
           - suite: fuzz
             pytest-args: tests/contract/ --ignore=tests/contract/test_schema_conformance.py
+            timeout-method: signal
     services:
       postgres:
         image: paradedb/paradedb:0.22.2-pg17
@@ -265,7 +267,9 @@ jobs:
         run: |
           # Pin Hypothesis/Schemathesis to uv.lock so cached examples replay
           # against the same shrinker. Do not derandomize: the random draw is
-          # how contract tests find new defects.
+          # how contract tests find new defects. Hypothesis auto-loads profile
+          # ``ci`` (derandomize=True, database=None) when CI=true; contract
+          # tests replace that in tests/contract/hypothesis_profile.py.
           uv pip install --system -e ".[dev]" hypothesis==6.151.9 schemathesis==4.10.2
 
       - name: Cache Hypothesis examples
@@ -293,11 +297,28 @@ jobs:
           APP_SECRET_KEY: test-secret-key-for-ci
           ENVIRONMENT: development
           WORKER_ENABLED: "false"
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
         run: |
           # Per-test timeout converts a hung case into a named failure instead
           # of a job-level kill with no output. 300s is above observed healthy
           # per-endpoint times (~2 min) and far below the 16+ min stall.
-          pytest ${{ matrix.pytest-args }} -m contract -v --no-cov --tb=short --timeout=300 --timeout-method=thread
+          # Fuzz uses signal (#521): thread timeouts cannot interrupt C-level
+          # or GIL-deadlocked hangs, which exit 1 with no pytest summary.
+          # Tee stderr so an interpreter abort has a file to land in.
+          set -o pipefail
+          python -u -X faulthandler -m pytest ${{ matrix.pytest-args }} \
+            -m contract -v --no-cov --tb=short \
+            --timeout=300 --timeout-method=${{ matrix.timeout-method }} \
+            -o faulthandler_timeout=120 \
+            2> >(tee pytest-stderr.log >&2)
+
+      - name: Show pytest stderr if the process died unnamed
+        if: failure()
+        run: |
+          echo "::group::pytest stderr"
+          if [ -f pytest-stderr.log ]; then cat pytest-stderr.log; else echo "(no pytest-stderr.log)"; fi
+          echo "::endgroup::"
 
   real-ingest-test:
     name: real-ingest-test (PR tier)

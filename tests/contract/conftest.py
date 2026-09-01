@@ -39,12 +39,15 @@ from src.models.content import ContentStatus
 from src.models.settings import PromptOverride  # noqa: F401
 from src.models.settings_override import SettingsOverride  # noqa: F401
 from src.models.theme import ThemeAnalysis  # noqa: F401
+from tests.contract.hypothesis_profile import activate_contract_profile
 from tests.factories.content import ContentFactory
 from tests.factories.digest import DigestFactory
 from tests.factories.summary import SummaryFactory
 from tests.helpers.test_db import create_test_engine, get_test_database_url
 
 TEST_DATABASE_URL = get_test_database_url()
+
+activate_contract_profile()
 
 # Locate the alembic config relative to the project root
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
