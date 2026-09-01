@@ -68,7 +68,7 @@ def test_all_runtime_images_are_immutable_and_squid_uses_reviewed_release() -> N
     squid_image = _service(compose, "squid")["image"]
     assert isinstance(squid_image, str)
     assert squid_image == (
-        "ubuntu/squid:6.13-25.10_beta@sha256:"
+        "ubuntu/squid:6.6-24.04_beta@sha256:"
         "${GX10_SQUID_DIGEST:?set the reviewed published manifest digest}"
     )
     assert _service(compose, "langfuse-worker")["image"] == (
@@ -206,3 +206,12 @@ def test_health_order_persistence_restart_backoff_and_quotas_are_bounded() -> No
     assert "Restart=on-failure" in unit
     assert "RestartSec=15s" in unit
     assert "StartLimitBurst=5" in unit
+
+
+def test_runtime_validator_accepts_the_reviewed_squid_source_contract() -> None:
+    """The static and rendered image gates must share the approved Squid tag."""
+    from scripts.gx10 import validate_runtime
+
+    errors: list[str] = []
+    validate_runtime.check_images(_compose(), errors)
+    assert errors == []

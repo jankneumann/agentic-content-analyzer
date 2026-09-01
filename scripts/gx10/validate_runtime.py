@@ -76,7 +76,7 @@ def check_images(compose: dict[str, Any], errors: list[str]) -> None:
             if image != "${GX10_APP_IMAGE:?set a reviewed application tag@sha256 digest}":
                 errors.append(f"{name}: protected application image input required")
         elif name == "squid":
-            expected = "ubuntu/squid:6.13-25.10_beta@sha256:${GX10_SQUID_DIGEST:?set the reviewed published manifest digest}"
+            expected = "ubuntu/squid:6.6-24.04_beta@sha256:${GX10_SQUID_DIGEST:?set the reviewed published manifest digest}"
             if image != expected:
                 errors.append("squid: frozen tag plus protected digest input required")
         elif name == "langfuse-worker":
@@ -177,7 +177,7 @@ def rendered_validate(path: Path, evidence: Path | None) -> list[str]:
         elif sentinel(match.group(1)):
             errors.append(f"rendered {name}: sentinel digest denied")
     squid = compose["services"]["squid"]["image"]
-    if not squid.startswith("ubuntu/squid:6.13-25.10_beta@sha256:"):
+    if not squid.startswith("ubuntu/squid:6.6-24.04_beta@sha256:"):
         errors.append("rendered Squid tag provenance changed")
     if evidence is None or not evidence.is_file():
         errors.append("registry verified image-pins evidence required")

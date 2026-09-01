@@ -320,7 +320,7 @@ services:
     security_opt: *id001
     cap_drop: *id002
     deploy: *id003
-    image: ubuntu/squid:6.13-25.10_beta@sha256:${GX10_SQUID_DIGEST:?set the reviewed
+    image: ubuntu/squid:6.6-24.04_beta@sha256:${GX10_SQUID_DIGEST:?set the reviewed
       published manifest digest}
     networks:
     - application

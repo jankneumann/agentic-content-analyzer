@@ -45,7 +45,7 @@ def test_squid_policy_is_pinned_fail_closed_and_masks_connect_logs() -> None:
     policy = (ROOT / "deploy/gx10/squid/squid.conf").read_text(encoding="utf-8")
     reload_script = (ROOT / "scripts/gx10/reload_proxy_policy.sh").read_text(encoding="utf-8")
 
-    assert "ubuntu/squid:6.13-25.10_beta@sha256:" in compose
+    assert "ubuntu/squid:6.6-24.04_beta@sha256:" in compose
     assert "acl allowed_domains dstdomain" in policy
     assert "acl SSL_ports port 443" in policy
     assert "http_access deny all" in policy

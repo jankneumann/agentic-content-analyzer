@@ -29,7 +29,7 @@ have systemd execute rootful Podman commands directly.
 | --- | --- |
 | Root or passwordless `sudo` | Runtime, firewall, credentials, and data paths are root-managed. |
 | ARM64 immutable image digests | GX-10 is ARM64; mutable tags can change the executed image. |
-| Approved published Squid image | `ubuntu/squid:6.13-25.10_beta` returned 404 during validation. A digest cannot repair a missing source tag/provenance policy. |
+| Approved published Squid image | `ubuntu/squid:6.6-24.04_beta@sha256:6a097f68bae708cedbabd6188d68c7e2e7a38cedd05a176e1cc0ba29e3bbe029` is published for ARM64 and must remain digest-pinned. |
 | OpenBao recovery material and first-install seed | Initialization and unseal are operator ceremonies, never normal startup. |
 | External-provider credentials | Model, video, mail, and delivery APIs stay external by design. |
 | `age` recipient and escrowed decrypt identities | Loss of all identities makes encrypted backups unrecoverable. |

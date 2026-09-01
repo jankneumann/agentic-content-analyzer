@@ -6,13 +6,13 @@ as a live cold-restart pass.
 
 The following live checks remain incomplete in this environment:
 
-- Docker access and a clean Compose down/up/down/up cold restart;
+- rootful Podman access and a clean Compose down/up/down/up cold restart;
 - Caddy configuration validation inside the pinned container;
 - initialized, authenticated, and unsealed OpenBao lifecycle checks;
 - live authenticated Squid CONNECT, denied direct route, and failure matrix;
 - persistent-mount survival and post-start dependency-loss readiness;
-- registry provenance for `ubuntu/squid:6.13-25.10_beta`, whose reviewed tag
-  returned HTTP 404 during validation.
+- registry provenance for the approved ARM64 `ubuntu/squid:6.6-24.04_beta`
+  manifest during a real rootful Podman run.
 
 ## Explicit first-install OpenBao ceremony
 
