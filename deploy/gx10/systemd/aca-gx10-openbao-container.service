@@ -1,0 +1,21 @@
+[Unit]
+Description=GX-10 rootful Podman OpenBao container
+Documentation=file:/opt/aca/deploy/gx10/VALIDATION.md
+Requires=aca-gx10-image-pins.service
+After=network-online.target aca-gx10-image-pins.service
+Before=aca-gx10-openbao-provision.service aca-gx10-secrets.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/aca
+EnvironmentFile=/etc/aca/gx10-images.env
+ExecStart=/opt/aca/scripts/gx10/podman-compose.sh up -d openbao
+UMask=0077
+ProtectSystem=full
+ProtectHome=yes
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+# Dependency-driven only. The main GX-10 runtime owns normal stack shutdown.

@@ -15,6 +15,7 @@ def test_gx10_baseline_includes_compose_systemd_caddy_and_openbao() -> None:
         "deploy/gx10/openbao/render-secrets.sh",
         "deploy/gx10/systemd/aca-gx10.service",
         "deploy/gx10/systemd/aca-gx10-secrets.service",
+        "deploy/gx10/systemd/aca-gx10-openbao-container.service",
         "deploy/gx10/systemd/aca-gx10-proxy-policy.service",
         "deploy/gx10/systemd/aca-gx10-firewall.service",
         "deploy/gx10/squid/squid.conf",

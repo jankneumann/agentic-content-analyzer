@@ -1,8 +1,8 @@
 [Unit]
 Description=GX-10 explicit first-install OpenBao operator ceremony
 Documentation=file:/opt/aca/deploy/gx10/VALIDATION.md
-Requires=aca-gx10-image-pins.service
-After=network-online.target aca-gx10-image-pins.service
+Requires=aca-gx10-image-pins.service aca-gx10-openbao-container.service
+After=network-online.target aca-gx10-image-pins.service aca-gx10-openbao-container.service
 Conflicts=aca-gx10.service aca-gx10-secrets.service
 
 [Service]
@@ -12,14 +12,11 @@ EnvironmentFile=/etc/aca/gx10-images.env
 Environment=GX10_BAO_ADDR=http://127.0.0.1:18200/v1
 Environment=GX10_BAO_OPERATOR_DIR=/etc/aca/gx10
 LoadCredential=bao-seed:/etc/aca/gx10/bao-seed.json
-ExecStartPre=/opt/aca/scripts/gx10/podman-compose.sh up -d openbao
 ExecStart=/opt/aca/deploy/gx10/openbao/provision-first-install.sh
 UMask=0077
 PrivateTmp=yes
 ProtectSystem=strict
-# Rootful Podman uses these configured storage roots. They are narrowly made
-# writable within this otherwise ProtectSystem=strict provisioning ceremony.
-ReadWritePaths=/etc/aca/gx10 /srv/aca/openbao /var/lib/containers/storage /run/containers/storage /run/lock /var/tmp
+ReadWritePaths=/etc/aca/gx10 /srv/aca/openbao
 ProtectHome=yes
 NoNewPrivileges=yes
 RestrictSUIDSGID=yes

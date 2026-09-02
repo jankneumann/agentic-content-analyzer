@@ -145,6 +145,7 @@ def static_validate(runtime: Path | None) -> list[str]:
         ROOT / "deploy/gx10/openbao/login-approle.sh",
         ROOT / "deploy/gx10/openbao/render-secrets.sh",
         ROOT / "deploy/gx10/redis/gx10.conf",
+        ROOT / "deploy/gx10/systemd/aca-gx10-openbao-container.service",
         ROOT / "deploy/gx10/systemd/aca-gx10-openbao-provision.service",
         ROOT / "deploy/gx10/systemd/aca-gx10-image-pins.service",
         ROOT / "scripts/gx10/verify_image_pins.sh",
