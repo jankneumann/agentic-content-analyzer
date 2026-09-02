@@ -178,8 +178,11 @@ def test_first_install_openbao_provisioning_is_explicit_protected_and_separate()
     assert container_source.startswith("[Unit]\n")
     assert "\n[Service]\n" in container_source
     assert "ExecStart=/opt/aca/scripts/gx10/podman-compose.sh up -d openbao" in container_source
-    assert "ProtectSystem=true" in container_source
-    assert "ProtectSystem=full" not in container_source
+    assert "ProtectSystem=" not in container_source
+    assert "ProtectHome=" not in container_source
+    assert (
+        "ExecStartPost=/opt/aca/scripts/gx10/check_openbao_container_started.sh" in container_source
+    )
     assert "LoadCredential=" not in container_source
     assert "provision-first-install.sh" not in container_source
     assert "render-secrets.sh" not in container_source
@@ -189,6 +192,24 @@ def test_first_install_openbao_provisioning_is_explicit_protected_and_separate()
         for name in ("aca-gx10.service", "aca-gx10-secrets.service")
     )
     assert "aca-gx10-openbao-provision.service" not in normal_units
+
+
+def test_openbao_container_postcheck_fails_closed(tmp_path: Path) -> None:
+    script = SCRIPTS / "check_openbao_container_started.sh"
+    assert script.is_file() and script.stat().st_mode & 0o111
+
+    fake_podman = tmp_path / "podman"
+    fake_podman.write_text("#!/bin/sh\nprintf \x27exited\\n\x27\n")
+    fake_podman.chmod(0o755)
+    env = os.environ | {"GX10_PODMAN_BIN": str(fake_podman)}
+
+    failed = subprocess.run([script], env=env, capture_output=True, text=True)
+    assert failed.returncode != 0
+    assert "not running" in failed.stderr
+
+    fake_podman.write_text("#!/bin/sh\nprintf \x27running\\n\x27\n")
+    passed = subprocess.run([script], env=env, capture_output=True, text=True)
+    assert passed.returncode == 0
 
 
 def test_non_default_public_langfuse_url_drives_nextauth_renderer(tmp_path: Path) -> None:
