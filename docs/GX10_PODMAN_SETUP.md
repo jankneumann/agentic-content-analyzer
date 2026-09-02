@@ -206,6 +206,13 @@ reviewed replacement: every network, volume, health dependency, secret, and
 restart behavior must be carried over. Do not mix a partial Quadlet conversion
 with a Compose-managed production stack.
 
+The first-install OpenBao unit keeps `ProtectSystem=strict`, but its
+`ReadWritePaths=` must include rootful Podman's configured graph root
+(`/var/lib/containers/storage`), run root (`/run/containers/storage`), and
+image-copy temporary directory (`/var/tmp`). These are deliberately narrow
+exceptions: omitting them causes Podman to fail with a read-only
+`storage.lock` error inside the systemd mount namespace.
+
 ## 6. OpenBao, secrets, and network policy
 
 Create `/etc/aca/gx10/bao-seed.json` from an offline secret-generation process

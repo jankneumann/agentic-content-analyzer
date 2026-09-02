@@ -163,6 +163,16 @@ def test_first_install_openbao_provisioning_is_explicit_protected_and_separate()
     unit_source = unit.read_text()
     assert "LoadCredential=bao-seed:" in unit_source
     assert "provision-first-install.sh" in unit_source
+    # The provisioner starts the rootful OpenBao container while retaining
+    # ProtectSystem=strict. Podman still needs its configured graph, run, and
+    # image-copy roots writable inside the unit's mount namespace.
+    assert "ProtectSystem=strict" in unit_source
+    for writable_path in (
+        "/var/lib/containers/storage",
+        "/run/containers/storage",
+        os.path.join("/var", "tmp"),
+    ):
+        assert writable_path in unit_source
     normal_units = "\n".join(
         (DEPLOY / f"systemd/{name}").read_text()
         for name in ("aca-gx10.service", "aca-gx10-secrets.service")

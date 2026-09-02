@@ -17,7 +17,9 @@ ExecStart=/opt/aca/deploy/gx10/openbao/provision-first-install.sh
 UMask=0077
 PrivateTmp=yes
 ProtectSystem=strict
-ReadWritePaths=/etc/aca/gx10 /srv/aca/openbao
+# Rootful Podman uses these configured storage roots. They are narrowly made
+# writable within this otherwise ProtectSystem=strict provisioning ceremony.
+ReadWritePaths=/etc/aca/gx10 /srv/aca/openbao /var/lib/containers/storage /run/containers/storage /var/tmp
 ProtectHome=yes
 NoNewPrivileges=yes
 RestrictSUIDSGID=yes
