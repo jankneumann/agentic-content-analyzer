@@ -189,6 +189,13 @@ def _valid_first_install_seed() -> dict[str, Any]:
             "admin_api_key": "d" * 48,
             "langfuse_public_key": "pk-lf-test",
             "langfuse_secret_key": "e" * 48,
+            "langfuse_init_org_id": "aca-gx10",
+            "langfuse_init_org_name": "ACA GX-10",
+            "langfuse_init_project_id": "aca-gx10-observability",
+            "langfuse_init_project_name": "ACA GX-10 Observability",
+            "langfuse_init_user_email": "operator@example.test",
+            "langfuse_init_user_name": "GX-10 Operator",
+            "langfuse_init_user_password": "q" * 48,
             "neo4j_password": "f" * 48,
             "release_revision": "1" * 40,
             "authority_fingerprint": "2" * 64,
@@ -279,6 +286,48 @@ esac
     assert result.returncode != 0
     assert "seed credential is invalid" in result.stderr
     assert not (operator_dir / "openbao-provisioned.ready").exists()
+
+
+def test_first_install_accepts_complete_seed_and_records_ready_marker(tmp_path: Path) -> None:
+    credential_dir = tmp_path / "credentials"
+    credential_dir.mkdir()
+    operator_dir = tmp_path / "operator"
+    operator_dir.mkdir()
+    (operator_dir / "bao-bootstrap-token").write_text("root-token\\n")
+    (operator_dir / "bao-unseal-key").write_text("unseal-key\\n")
+    (credential_dir / "bao-seed").write_text(json.dumps(_valid_first_install_seed()))
+
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    curl = tools / "curl"
+    curl.write_text(
+        """#!/usr/bin/env bash
+url="${!#}"
+case "$url" in
+  *sys/health*) printf '{"initialized":true,"sealed":false}\n' ;;
+  *sys/mounts) printf '{"data":{"secret/":{"type":"kv","options":{"version":"2"}}}}\n' ;;
+  *sys/auth) printf '{"data":{"approle/":{"type":"approle"}}}\n' ;;
+  *) printf '{}\n' ;;
+esac
+"""
+    )
+    curl.chmod(0o700)
+
+    result = subprocess.run(
+        [DEPLOY / "openbao/provision-first-install.sh"],
+        env=os.environ
+        | {
+            "PATH": f"{tools}:{os.environ['PATH']}",
+            "CREDENTIALS_DIRECTORY": str(credential_dir),
+            "GX10_BAO_OPERATOR_DIR": str(operator_dir),
+            "GX10_BAO_ADDR": "http://openbao.test/v1",
+        },
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (operator_dir / "openbao-provisioned.ready").is_file()
 
 
 def test_public_environment_is_optional_and_renderer_defaults_remain_protected() -> None:

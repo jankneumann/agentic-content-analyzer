@@ -214,4 +214,14 @@ and install it mode `0600`. It contains `runtime`, `operator`, `proxy`, and
 safe 32+ character Redis/proxy credentials, a real bcrypt Caddy hash, release
 and authority values, and an active plus retained `age` recipient/identity set.
 
+For self-hosted Langfuse, the `runtime` object must also contain stable
+`langfuse_init_org_id`, `langfuse_init_org_name`, `langfuse_init_project_id`,
+`langfuse_init_project_name`, `langfuse_init_user_email`,
+`langfuse_init_user_name`, and a 32+ character
+`langfuse_init_user_password`. The renderer supplies these along with the
+seeded public/secret API keys to Langfuse headless initialization, so the
+application keys always belong to a real local Langfuse project. Treat the
+initial user password as a password-manager record; never print it or add it
+to a command line.
+
 ```bash

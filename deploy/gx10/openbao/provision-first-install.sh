@@ -33,6 +33,13 @@ jq -e '
     "admin_api_key",
     "langfuse_public_key",
     "langfuse_secret_key",
+    "langfuse_init_org_id",
+    "langfuse_init_org_name",
+    "langfuse_init_project_id",
+    "langfuse_init_project_name",
+    "langfuse_init_user_email",
+    "langfuse_init_user_name",
+    "langfuse_init_user_password",
     "neo4j_password",
     "release_revision",
     "authority_fingerprint",
@@ -59,12 +66,16 @@ jq -e '
   ($runtime.release_revision | test("^[0-9a-f]{40}$")) and
   ($runtime.authority_fingerprint | test("^[0-9a-f]{64}$")) and
   ($runtime.langfuse_encryption_key | test("^[0-9a-f]{64}$")) and
+  ($runtime.langfuse_init_org_id | test("^[A-Za-z0-9_-]+$")) and
+  ($runtime.langfuse_init_project_id | test("^[A-Za-z0-9_-]+$")) and
+  ($runtime.langfuse_init_user_email | test("^[^@[:space:]]+@[^@[:space:]]+$")) and
   ([
     $runtime.app_secret_key,
     $runtime.configured_source_key_secret,
     $runtime.operation_cursor_signing_key,
     $runtime.admin_api_key,
     $runtime.langfuse_secret_key,
+    $runtime.langfuse_init_user_password,
     $runtime.neo4j_password,
     $runtime.app_postgres_password,
     $runtime.langfuse_postgres_password,
