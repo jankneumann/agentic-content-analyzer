@@ -178,7 +178,8 @@ def test_first_install_openbao_provisioning_is_explicit_protected_and_separate()
     assert container_source.startswith("[Unit]\n")
     assert "\n[Service]\n" in container_source
     assert "ExecStart=/opt/aca/scripts/gx10/podman-compose.sh up -d openbao" in container_source
-    assert "ProtectSystem=full" in container_source
+    assert "ProtectSystem=true" in container_source
+    assert "ProtectSystem=full" not in container_source
     assert "LoadCredential=" not in container_source
     assert "provision-first-install.sh" not in container_source
     assert "render-secrets.sh" not in container_source

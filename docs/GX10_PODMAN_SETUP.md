@@ -210,7 +210,10 @@ Rootful Podman runs in the credential-free
 `aca-gx10-openbao-container.service`. The provisioning and secret-rendering
 units depend on it but never invoke Podman themselves, so they retain
 `ProtectSystem=strict` without exposing Podman's graph, Libpod, Netavark, or
-runtime namespace paths inside credential-bearing processes.
+runtime namespace paths inside credential-bearing processes. The container unit
+uses `ProtectSystem=true`, keeping operating-system binaries read-only while
+allowing Netavark to persist rootful network definitions under
+`/etc/containers/networks`.
 
 ## 6. OpenBao, secrets, and network policy
 
