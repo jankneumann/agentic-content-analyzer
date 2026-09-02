@@ -19,7 +19,7 @@ PrivateTmp=yes
 ProtectSystem=strict
 # Rootful Podman uses these configured storage roots. They are narrowly made
 # writable within this otherwise ProtectSystem=strict provisioning ceremony.
-ReadWritePaths=/etc/aca/gx10 /srv/aca/openbao /var/lib/containers/storage /run/containers/storage /var/tmp
+ReadWritePaths=/etc/aca/gx10 /srv/aca/openbao /var/lib/containers/storage /run/containers/storage /run/lock /var/tmp
 ProtectHome=yes
 NoNewPrivileges=yes
 RestrictSUIDSGID=yes

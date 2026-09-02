@@ -170,9 +170,19 @@ def test_first_install_openbao_provisioning_is_explicit_protected_and_separate()
     for writable_path in (
         "/var/lib/containers/storage",
         "/run/containers/storage",
+        "/run/lock",
         os.path.join("/var", "tmp"),
     ):
         assert writable_path in unit_source
+    secrets_unit_source = (DEPLOY / "systemd/aca-gx10-secrets.service").read_text()
+    assert "ProtectSystem=strict" in secrets_unit_source
+    for writable_path in (
+        "/var/lib/containers/storage",
+        "/run/containers/storage",
+        "/run/lock",
+        os.path.join("/var", "tmp"),
+    ):
+        assert writable_path in secrets_unit_source
     normal_units = "\n".join(
         (DEPLOY / f"systemd/{name}").read_text()
         for name in ("aca-gx10.service", "aca-gx10-secrets.service")

@@ -209,7 +209,7 @@ with a Compose-managed production stack.
 The first-install OpenBao unit keeps `ProtectSystem=strict`, but its
 `ReadWritePaths=` must include rootful Podman's configured graph root
 (`/var/lib/containers/storage`), run root (`/run/containers/storage`), and
-image-copy temporary directory (`/var/tmp`). These are deliberately narrow
+image-copy temporary directory (`/var/tmp`), and Netavark lock directory (`/run/lock`). These are deliberately narrow
 exceptions: omitting them causes Podman to fail with a read-only
 `storage.lock` error inside the systemd mount namespace.
 
