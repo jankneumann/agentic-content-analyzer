@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="${GX10_ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 COMPOSE=("$ROOT_DIR/scripts/gx10/podman-compose.sh")
 COMPOSE_FILE="${GX10_COMPOSE_FILE:-$ROOT_DIR/docker-compose.gx10.yml}"
+PROJECT="${COMPOSE_PROJECT_NAME:-aca-gx10}"
 TIMEOUT_SECONDS="${GX10_RUNTIME_WAIT_SECONDS:-300}"
 SERVICES=(
   app-postgres
@@ -30,7 +31,8 @@ wait_for_runtime() {
   deadline=$((SECONDS + TIMEOUT_SECONDS))
   for service in "${SERVICES[@]}"; do
     while true; do
-      container="$(compose ps -q "$service" | head -n 1)"
+      # podman-compose 1.0.6 has no per-service `ps -q`; resolve through labels.
+      container="$(/usr/bin/podman ps -a --filter "label=io.podman.compose.project=$PROJECT" --filter "label=com.docker.compose.service=$service" --format '{{.ID}}' | head -n 1)"
       if [[ -n "$container" ]]; then
         status="$(/usr/bin/podman inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container")"
         if [[ "$status" == "healthy" ]]; then
@@ -49,7 +51,11 @@ wait_for_runtime() {
 case "${1:-}" in
   up)
     "$ROOT_DIR/scripts/gx10/check_persistence_ownership.py" --compose "$COMPOSE_FILE"
-    compose up -d
+    # Podman records depends_on by container ID at creation, so a partially
+    # recreated stack (an OpenBao or Squid container replaced by its own unit)
+    # leaves dependents pointing at IDs that no longer exist. A cold start
+    # therefore recreates every container; all state lives on bind mounts.
+    compose up -d --force-recreate
     wait_for_runtime
     ;;
   down)

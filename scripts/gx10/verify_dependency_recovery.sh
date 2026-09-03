@@ -119,7 +119,7 @@ for mapping in "${RUNTIME_DEPENDENCIES[@]}"; do
   [[ "$role" == langfuse-* ]] && diagnostic_role=api
   GX10_DIAGNOSTIC_ROLE="$diagnostic_role" "$FAILURE_HARNESS" diagnostics dependency_loss
   compose start "$dependency"
-  compose up -d --wait "$role"
+  compose up -d "$role"
   wait_for_healthy "$role" "$dependency"
 done
 

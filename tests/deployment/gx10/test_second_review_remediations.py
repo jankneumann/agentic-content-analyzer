@@ -97,7 +97,8 @@ def test_clean_stack_exercises_dependency_loss_diagnostics_and_recovery() -> Non
         'gx10-role-ready --role "$role"',
         "diagnostics dependency_loss",
         'compose start "$dependency"',
-        'compose up -d --wait "$role"',
+        'compose up -d "$role"',
+        'wait_for_healthy "$role" "$dependency"',
     ):
         assert token in source
     assert "verify_dependency_recovery.sh" in clean_stack

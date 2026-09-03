@@ -224,8 +224,11 @@ sudo scripts/gx10/podman-compose.sh config >/run/aca/gx10/rendered-compose.yml
 sudo chmod 0600 /run/aca/gx10/rendered-compose.yml
 ```
 
-The runtime calls `podman-runtime.sh up`, which polls every required container's
-health with a bounded timeout. Never replace that readiness proof with sleeps.
+The runtime calls `podman-runtime.sh up`, which recreates every container
+(Podman stores `depends_on` by container ID, so a stack that was partially
+recreated cannot be started incrementally; all state lives under `/srv/aca`)
+and then polls every required container's health with a bounded timeout.
+Never replace that readiness proof with sleeps.
 
 ### 5.2 Convert units and verify them
 

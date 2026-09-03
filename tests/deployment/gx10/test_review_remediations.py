@@ -357,6 +357,13 @@ def test_gx10_runtime_uses_a_pinned_rootful_podman_compose_provider() -> None:
     assert "wait_for_runtime" in runtime_source
     assert "podman inspect" in runtime_source
     assert "--wait" not in runtime_source
+    # podman-compose 1.0.6 rejects `ps -q <service>`; containers resolve by label,
+    # and a cold start recreates the stack so depends_on IDs are never stale.
+    assert "compose ps -q" not in runtime_source
+    assert "label=com.docker.compose.service=$service" in runtime_source
+    assert "compose up -d --force-recreate" in runtime_source
+    recovery = (ROOT / "scripts/gx10/verify_dependency_recovery.sh").read_text()
+    assert "--wait" not in recovery
 
     sources = [
         *(ROOT / "scripts/gx10").rglob("*.sh"),
