@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
 from pathlib import Path
 
 import pytest
 
+from src.clients import operational_observability
 from src.clients.operational_observability import (
     BootstrapAuditCorruptionError,
     BootstrapAuditSpool,
@@ -65,3 +67,42 @@ def test_missing_or_corrupt_required_spool_degrades_readiness(tmp_path: Path) ->
     assert corrupt.readiness(required=True).diagnostic_code == "bootstrap.spool_corrupt"
     with pytest.raises(BootstrapAuditCorruptionError):
         corrupt.verify(required=True)
+
+
+def test_bootstrap_directory_prefers_explicit_configuration(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("ACA_BOOTSTRAP_AUDIT_DIR", str(tmp_path / "configured"))
+    assert operational_observability._bootstrap_directory() == tmp_path / "configured"
+
+
+def test_bootstrap_directory_keeps_the_durable_default_when_usable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("ACA_BOOTSTRAP_AUDIT_DIR", raising=False)
+    default = tmp_path / "srv" / "aca" / "bootstrap-audit"
+    default.parent.mkdir(parents=True)
+    monkeypatch.setattr(operational_observability, "_DEFAULT_BOOTSTRAP_DIRECTORY", default)
+    assert operational_observability._bootstrap_directory() == default
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can enter any directory")
+def test_bootstrap_directory_falls_back_to_user_state_when_default_is_root_owned(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A developer hook on the production host must not crash on /srv/aca."""
+    monkeypatch.delenv("ACA_BOOTSTRAP_AUDIT_DIR", raising=False)
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    sealed = tmp_path / "srv" / "aca"
+    sealed.mkdir(parents=True)
+    sealed.chmod(0o000)
+    try:
+        monkeypatch.setattr(
+            operational_observability, "_DEFAULT_BOOTSTRAP_DIRECTORY", sealed / "bootstrap-audit"
+        )
+        chosen = operational_observability._bootstrap_directory()
+        assert chosen == tmp_path / "state" / "aca" / "bootstrap-audit"
+        BootstrapAuditSpool(chosen).append(entrypoint="bootstrap.hook", outcome="succeeded")
+        assert chosen.is_dir()
+    finally:
+        sealed.chmod(0o700)

@@ -982,9 +982,31 @@ def _record_hash(record: Mapping[str, Any]) -> str:
     return hashlib.sha256(seed + serialized).hexdigest()
 
 
+def _directory_is_usable(directory: Path) -> bool:
+    """True when ``directory`` exists writable or can be created by this caller."""
+    try:
+        if directory.is_dir():
+            return os.access(directory, os.W_OK | os.X_OK)
+        for parent in directory.parents:
+            if parent.exists():
+                return parent.is_dir() and os.access(parent, os.W_OK | os.X_OK)
+    except PermissionError:
+        return False
+    return False
+
+
 def _bootstrap_directory() -> Path:
     configured = os.environ.get("ACA_BOOTSTRAP_AUDIT_DIR")
-    return Path(configured) if configured else _DEFAULT_BOOTSTRAP_DIRECTORY
+    if configured:
+        return Path(configured)
+    if _directory_is_usable(_DEFAULT_BOOTSTRAP_DIRECTORY):
+        return _DEFAULT_BOOTSTRAP_DIRECTORY
+    # Unprivileged callers, such as developer hooks on a host that already
+    # carries the root-owned production tree, cannot enter /srv/aca. Keep their
+    # evidence in the user's state directory rather than crashing the caller;
+    # the production units run as root and keep the durable default.
+    state_home = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
+    return Path(state_home) / "aca" / "bootstrap-audit"
 
 
 @dataclass(frozen=True, slots=True)
