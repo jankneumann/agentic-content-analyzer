@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-BAO_ADDR="${GX10_BAO_ADDR:-http://127.0.0.1:18200/v1}"
+BAO_ADDR="${GX10_BAO_ADDR:-http://10.89.0.250:8200/v1}"
 OPERATOR_DIR="${GX10_BAO_OPERATOR_DIR:-/etc/aca/gx10}"
 SEED_FILE="${CREDENTIALS_DIRECTORY:?systemd credentials required}/bao-seed"
 BOOTSTRAP_TOKEN_FILE="$OPERATOR_DIR/bao-bootstrap-token"

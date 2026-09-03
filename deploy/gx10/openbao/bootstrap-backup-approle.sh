@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 RUNTIME_DIR="${GX10_RUNTIME_DIR:-/run/aca/gx10}"
-BAO_ADDR="${GX10_BAO_ADDR:-http://127.0.0.1:18200/v1}"
+BAO_ADDR="${GX10_BAO_ADDR:-http://10.89.0.250:8200/v1}"
 BOOTSTRAP_TOKEN_FILE="${CREDENTIALS_DIRECTORY:?systemd credentials required}/bao-bootstrap-token"
 [[ -s "$BOOTSTRAP_TOKEN_FILE" ]] || { echo "OpenBao bootstrap credential missing" >&2; exit 1; }
 config="$(mktemp)"; trap 'rm -f -- "$config"' EXIT

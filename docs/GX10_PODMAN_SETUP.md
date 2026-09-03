@@ -234,6 +234,17 @@ sudo systemctl restart aca-gx10-openbao-container.service
 
 ## 6. OpenBao, secrets, and network policy
 
+OpenBao publishes no host port. The stateful network is `internal: true`, and
+netavark installs no port-forwarding rules for internal networks; Podman still
+binds the published host port as a reservation and hands that socket to
+`conmon`, so a loopback publish accepts TCP and then hangs with no reply. The
+service instead holds the fixed address `10.89.0.250` on the declared
+`10.89.0.0/24` stateful subnet, and the provisioning, secrets, and backup
+units dial `http://10.89.0.250:8200/v1` directly over the bridge. Host-local
+processes can reach it because the host owns the bridge gateway; nothing else
+can, because the network has no forwarding rules. Containers keep resolving
+the `openbao` alias.
+
 Create `/etc/aca/gx10/bao-seed.json` from an offline secret-generation process
 and install it mode `0600`. It contains `runtime`, `operator`, `proxy`, and
 `backup` objects. The checked-in ceremony validates distinct database passwords,

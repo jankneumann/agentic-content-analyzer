@@ -232,7 +232,11 @@ services:
     security_opt: *id001
     cap_drop: *id002
     deploy: *id003
-    networks: *id004
+    # Fixed address on the internal stateful bridge. The host reaches it at
+    # http://10.89.0.250:8200/v1; peers still resolve the ``openbao`` alias.
+    networks:
+      stateful:
+        ipv4_address: 10.89.0.250
     tmpfs: *id005
     image: quay.io/openbao/openbao:2.2@sha256:d5d098f98f5ca7cae2e33d1e6dd9e2bea332275ad6bb7ff09032b48af3e1141e
     command:
@@ -254,8 +258,6 @@ services:
       timeout: 5s
       retries: 18
       start_period: 30s
-    ports:
-    - 127.0.0.1:18200:8200
   langfuse-web:
     restart: on-failure:5
     read_only: true
@@ -572,6 +574,12 @@ networks:
   stateful:
     internal: true
     driver: bridge
+    # Declared so the OpenBao service can hold a fixed address that the
+    # host-side provisioning and secret units dial. netavark installs no port
+    # forwarding for internal networks, so a loopback publish cannot be used.
+    ipam:
+      config:
+      - subnet: 10.89.0.0/24
   egress:
     internal: false
     driver: bridge

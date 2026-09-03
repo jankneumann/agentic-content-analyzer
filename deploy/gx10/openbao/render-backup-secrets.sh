@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 RUNTIME_DIR="${GX10_RUNTIME_DIR:-/run/aca/gx10}/backup"
-BAO_ADDR="${GX10_BAO_ADDR:-http://127.0.0.1:18200/v1}"
+BAO_ADDR="${GX10_BAO_ADDR:-http://10.89.0.250:8200/v1}"
 BACKUP_PATH="${GX10_BAO_BACKUP_PATH:-secret/newsletter/gx10/backup}"
 TOKEN_FILE="$RUNTIME_DIR/backup-openbao-token"
 [[ -s "$TOKEN_FILE" ]] || { echo "backup OpenBao token unavailable" >&2; exit 1; }

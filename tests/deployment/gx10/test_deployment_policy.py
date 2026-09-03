@@ -79,7 +79,7 @@ def test_all_runtime_images_are_immutable_and_squid_uses_reviewed_release() -> N
 
 def test_stateful_ports_are_private_and_ingress_is_loopback_bound() -> None:
     compose = _compose()
-    for name in (STATEFUL_SERVICES - {"openbao"}) | {
+    for name in STATEFUL_SERVICES | {
         "langfuse-web",
         "langfuse-worker",
         "squid",
@@ -87,7 +87,6 @@ def test_stateful_ports_are_private_and_ingress_is_loopback_bound() -> None:
         service = _service(compose, name)
         assert "ports" not in service, f"{name} must not publish a host port"
 
-    assert _service(compose, "openbao")["ports"] == ["127.0.0.1:18200:8200"]
     caddy_ports = _service(compose, "caddy").get("ports")
     assert caddy_ports == ["127.0.0.1:8443:443"]
 
@@ -106,6 +105,46 @@ def test_openbao_runs_as_image_user_without_capabilities() -> None:
     assert "cap_add" not in service, "openbao must not add capabilities"
     config = (ROOT / "deploy/gx10/openbao/openbao.hcl").read_text(encoding="utf-8")
     assert re.search(r"^\s*disable_mlock\s*=", config, re.MULTILINE) is None
+
+
+OPENBAO_STATEFUL_ADDRESS = "10.89.0.250"
+OPENBAO_HOST_ADDR = f"http://{OPENBAO_STATEFUL_ADDRESS}:8200/v1"
+OPENBAO_HOST_UNITS = (
+    "deploy/gx10/systemd/aca-gx10-openbao-provision.service",
+    "deploy/gx10/systemd/aca-gx10-secrets.service",
+    "deploy/gx10/systemd/aca-gx10-backup-secrets.service",
+)
+
+
+def test_openbao_is_reached_on_a_fixed_stateful_address_not_a_host_port() -> None:
+    """netavark does not port-forward for ``internal: true`` networks.
+
+    Podman still binds the published host port as a reservation and hands the
+    socket to conmon, so a loopback publish on the internal stateful network
+    accepts TCP and then hangs forever. Host-side units therefore talk to
+    OpenBao on a fixed bridge address inside an explicitly declared subnet, and
+    the service publishes nothing on the host.
+    """
+    compose = _compose()
+    stateful = compose["networks"]["stateful"]
+    assert stateful["internal"] is True
+    assert stateful["ipam"]["config"] == [{"subnet": "10.89.0.0/24"}]
+
+    openbao = _service(compose, "openbao")
+    assert "ports" not in openbao
+    assert openbao["networks"] == {"stateful": {"ipv4_address": OPENBAO_STATEFUL_ADDRESS}}
+
+    for unit in OPENBAO_HOST_UNITS:
+        text = (ROOT / unit).read_text(encoding="utf-8")
+        assert f"Environment=GX10_BAO_ADDR={OPENBAO_HOST_ADDR}" in text, unit
+        assert "18200" not in text, unit
+
+    for script in sorted((ROOT / "deploy/gx10/openbao").glob("*.sh")):
+        text = script.read_text(encoding="utf-8")
+        if "GX10_BAO_ADDR" not in text:
+            continue
+        assert f'"${{GX10_BAO_ADDR:-{OPENBAO_HOST_ADDR}}}"' in text, script.name
+        assert "18200" not in text, script.name
 
 
 def test_application_namespaces_have_no_direct_internet_route() -> None:

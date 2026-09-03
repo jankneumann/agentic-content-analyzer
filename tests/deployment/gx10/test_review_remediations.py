@@ -172,7 +172,8 @@ def test_rendered_validator_rejects_sentinel_or_unverified_digests(tmp_path: Pat
 def test_openbao_lifecycle_is_reachable_authenticated_initialized_and_unsealed() -> None:
     compose = yaml.safe_load((ROOT / "docker-compose.gx10.yml").read_text())
     openbao = compose["services"]["openbao"]
-    assert openbao["ports"] == ["127.0.0.1:18200:8200"]
+    assert "ports" not in openbao
+    assert openbao["networks"]["stateful"]["ipv4_address"] == "10.89.0.250"
     health = " ".join(openbao["healthcheck"]["test"])
     assert "test $$? -eq 0" in health
     bootstrap = (RUNTIME / "openbao/bootstrap-approle.sh").read_text()

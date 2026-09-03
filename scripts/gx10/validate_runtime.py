@@ -27,6 +27,8 @@ STATEFUL_SERVICES = (
     "minio",
     "openbao",
 )
+OPENBAO_STATEFUL_ADDRESS = "10.89.0.250"
+STATEFUL_SUBNET = "10.89.0.0/24"
 FAILURE_SCENARIOS = (
     "unknown_destination",
     "stale_policy",
@@ -102,11 +104,17 @@ def check_topology(compose: dict[str, Any], errors: list[str]) -> None:
             errors.append(f"{name}: active dependency readiness missing")
     for name in (*STATEFUL_SERVICES, "langfuse-web", "langfuse-worker", "squid"):
         ports = services[name].get("ports", [])
-        if name == "openbao":
-            if ports != ["127.0.0.1:18200:8200"]:
-                errors.append("openbao: management API must be loopback-only")
-        elif ports:
+        if ports:
             errors.append(f"{name}: internal port published")
+    openbao_nets = services["openbao"].get("networks")
+    if (
+        not isinstance(openbao_nets, dict)
+        or openbao_nets.get("stateful", {}).get("ipv4_address") != OPENBAO_STATEFUL_ADDRESS
+    ):
+        errors.append("openbao: management API must sit on the fixed stateful address")
+    stateful_ipam = compose["networks"]["stateful"].get("ipam", {}).get("config", [])
+    if stateful_ipam != [{"subnet": STATEFUL_SUBNET}]:
+        errors.append("stateful: subnet must be declared for the fixed OpenBao address")
     if services["caddy"].get("ports") != ["127.0.0.1:8443:443"]:
         errors.append("caddy: ingress must be loopback-only")
     redis = services["redis"]

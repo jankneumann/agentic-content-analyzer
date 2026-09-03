@@ -6,7 +6,7 @@ RUNTIME_DIR="${GX10_RUNTIME_DIR:-/run/aca/gx10}"
 RUNTIME_PATH="${GX10_BAO_RUNTIME_PATH:-secret/newsletter/gx10/runtime}"
 OPERATOR_PATH="${GX10_BAO_OPERATOR_PATH:-secret/newsletter/gx10/operator}"
 PROXY_PATH="${GX10_BAO_PROXY_PATH:-secret/newsletter/gx10/proxy}"
-BAO_ADDR="${GX10_BAO_ADDR:-http://127.0.0.1:18200/v1}"
+BAO_ADDR="${GX10_BAO_ADDR:-http://10.89.0.250:8200/v1}"
 BAO_TOKEN_FILE="${GX10_BAO_TOKEN_FILE:-$RUNTIME_DIR/openbao-token}"
 
 [[ -s "$BAO_TOKEN_FILE" ]] || { echo "gx10 OpenBao token is unavailable" >&2; exit 1; }

@@ -9,7 +9,7 @@ Conflicts=aca-gx10.service aca-gx10-secrets.service
 Type=oneshot
 WorkingDirectory=/opt/aca
 EnvironmentFile=/etc/aca/gx10-images.env
-Environment=GX10_BAO_ADDR=http://127.0.0.1:18200/v1
+Environment=GX10_BAO_ADDR=http://10.89.0.250:8200/v1
 Environment=GX10_BAO_OPERATOR_DIR=/etc/aca/gx10
 LoadCredential=bao-seed:/etc/aca/gx10/bao-seed.json
 ExecStart=/opt/aca/deploy/gx10/openbao/provision-first-install.sh

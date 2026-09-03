@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-BAO_ADDR="${GX10_BAO_ADDR:-http://127.0.0.1:18200/v1}"
+BAO_ADDR="${GX10_BAO_ADDR:-http://10.89.0.250:8200/v1}"
 KEY_FILE="${CREDENTIALS_DIRECTORY:?systemd credentials required}/bao-unseal-key"
 [[ -s "$KEY_FILE" ]] || { echo "OpenBao unseal credential missing" >&2; exit 1; }
 
