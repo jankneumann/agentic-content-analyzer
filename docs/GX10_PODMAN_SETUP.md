@@ -165,7 +165,11 @@ GX10_LANGFUSE_WORKER_DIGEST=<64-hex-digest>
 Every image reference, including this one, must name its registry host. The
 rootful host defines no unqualified-search registries, and Podman does not apply
 short-name aliases to digested references, so `ubuntu/squid@sha256:...` is
-refused while `docker.io/ubuntu/squid:...@sha256:...` pulls.
+refused while `docker.io/ubuntu/squid:...@sha256:...` pulls. Tags must be exact
+releases (`langfuse/langfuse-worker:3.225.5`, never `:3`): the image-pins gate
+re-resolves each tag against the registry and refuses to start when the tag has
+moved away from the recorded digest, which a major-version tag does on every
+upstream patch release. Bump the tag and the digest together, after review.
 
 The image validation implementation must identify an approved **published**
 Squid tag and prove it resolves to the configured digest. Do not insert an

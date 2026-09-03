@@ -84,7 +84,7 @@ def check_images(compose: dict[str, Any], errors: list[str]) -> None:
             if image != expected:
                 errors.append("squid: frozen tag plus protected digest input required")
         elif name == "langfuse-worker":
-            expected = "docker.io/langfuse/langfuse-worker:3@sha256:${GX10_LANGFUSE_WORKER_DIGEST:?set the reviewed worker manifest digest}"
+            expected = "docker.io/langfuse/langfuse-worker:3.225.5@sha256:${GX10_LANGFUSE_WORKER_DIGEST:?set the reviewed worker manifest digest}"
             if image != expected:
                 errors.append("langfuse-worker: dedicated protected worker image required")
         elif not DIGEST_PIN.fullmatch(image):

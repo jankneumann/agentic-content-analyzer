@@ -72,7 +72,7 @@ def test_all_runtime_images_are_immutable_and_squid_uses_reviewed_release() -> N
         "${GX10_SQUID_DIGEST:?set the reviewed published manifest digest}"
     )
     assert _service(compose, "langfuse-worker")["image"] == (
-        "docker.io/langfuse/langfuse-worker:3@sha256:"
+        "docker.io/langfuse/langfuse-worker:3.225.5@sha256:"
         "${GX10_LANGFUSE_WORKER_DIGEST:?set the reviewed worker manifest digest}"
     )
 
@@ -346,9 +346,14 @@ def test_every_image_names_its_registry_explicitly() -> None:
         assert "." in registry or registry == "localhost", (
             f"{name}: {image} is not registry-qualified"
         )
+        # The pin gate verifies that the tag still resolves to the recorded
+        # digest, so a moving tag such as ``:3`` fails on every upstream patch
+        # release. Every tag must therefore be an exact release.
+        tag = image.split("@", 1)[0].rsplit(":", 1)[1]
+        assert not re.fullmatch(r"\d+", tag), f"{name}: bare major tag {tag} is a moving target"
     pins = (ROOT / "scripts/gx10/verify_image_pins.sh").read_text(encoding="utf-8")
     assert 'SQUID_TAG="docker.io/ubuntu/squid:6.6-24.04_beta"' in pins
-    assert 'LANGFUSE_WORKER_TAG="docker.io/langfuse/langfuse-worker:3"' in pins
+    assert 'LANGFUSE_WORKER_TAG="docker.io/langfuse/langfuse-worker:3.225.5"' in pins
     component = (ROOT / "scripts/gx10/backup/component.sh").read_text(encoding="utf-8")
     assert 'POSTGRES_IMAGE="docker.io/library/postgres:17@sha256:' in component
 

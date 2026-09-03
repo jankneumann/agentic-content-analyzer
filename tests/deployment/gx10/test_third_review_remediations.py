@@ -44,7 +44,7 @@ def test_dependency_recovery_covers_every_runtime_dependency_and_real_worker_hea
 
     worker = services["langfuse-worker"]
     assert worker["image"] == (
-        "docker.io/langfuse/langfuse-worker:3@sha256:"
+        "docker.io/langfuse/langfuse-worker:3.225.5@sha256:"
         "${GX10_LANGFUSE_WORKER_DIGEST:?set the reviewed worker manifest digest}"
     )
     health = " ".join(worker["healthcheck"]["test"])

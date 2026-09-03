@@ -14,7 +14,7 @@ for digest in "$APP_DIGEST" "$SQUID_DIGEST" "$LANGFUSE_WORKER_DIGEST"; do
 done
 APP_TAG="${APP_REF%@sha256:*}"
 SQUID_TAG="docker.io/ubuntu/squid:6.6-24.04_beta"
-LANGFUSE_WORKER_TAG="docker.io/langfuse/langfuse-worker:3"
+LANGFUSE_WORKER_TAG="docker.io/langfuse/langfuse-worker:3.225.5"
 inspect() { /usr/bin/skopeo inspect --override-os linux --override-arch arm64 --format '{{.Digest}}' "docker://$1"; }
 [[ "$(inspect "$APP_TAG")" == "sha256:$APP_DIGEST" ]] || { echo "application tag provenance mismatch" >&2; exit 1; }
 [[ "$(inspect "$SQUID_TAG")" == "sha256:$SQUID_DIGEST" ]] || { echo "Squid tag provenance mismatch or unpublished tag" >&2; exit 1; }

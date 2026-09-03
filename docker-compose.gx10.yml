@@ -279,7 +279,7 @@ services:
     security_opt: *id001
     cap_drop: *id002
     deploy: *id003
-    image: docker.io/langfuse/langfuse:3@sha256:a921990b3cf6f62e9452eaf8ab9bea045852375a6883abd1fdbe63afa08defa0
+    image: docker.io/langfuse/langfuse:3.225.5@sha256:a921990b3cf6f62e9452eaf8ab9bea045852375a6883abd1fdbe63afa08defa0
     env_file:
     - /run/aca/gx10/langfuse.env
     networks:
@@ -310,7 +310,7 @@ services:
     security_opt: *id001
     cap_drop: *id002
     deploy: *id003
-    image: docker.io/langfuse/langfuse-worker:3@sha256:${GX10_LANGFUSE_WORKER_DIGEST:?set the reviewed worker manifest digest}
+    image: docker.io/langfuse/langfuse-worker:3.225.5@sha256:${GX10_LANGFUSE_WORKER_DIGEST:?set the reviewed worker manifest digest}
     env_file:
     - /run/aca/gx10/langfuse.env
     networks:
