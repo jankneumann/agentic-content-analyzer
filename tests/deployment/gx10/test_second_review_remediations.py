@@ -61,9 +61,9 @@ def test_proxy_policy_refreshes_before_expiry_and_recovers_from_stale_marker(
     squid = tmp_path / "squid"
     squid.write_text("#!/usr/bin/env bash\nexit 0\n")
     squid.chmod(0o700)
-    curl = tmp_path / "curl"
-    curl.write_text("#!/usr/bin/env bash\nexit 0\n")
-    curl.chmod(0o700)
+    openssl = tmp_path / "openssl"
+    openssl.write_text("#!/usr/bin/env bash\nexit 0\n")
+    openssl.chmod(0o700)
     env = os.environ | {
         "PATH": f"{tmp_path}:{os.environ['PATH']}",
         "GX10_PROXY_READY_FILE": str(marker),

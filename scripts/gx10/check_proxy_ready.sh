@@ -14,7 +14,14 @@ mtime="$(stat -c %Y "$MARKER")"
 fi
 "$SQUID_BIN" -k parse -f /etc/squid/squid.conf >/dev/null 2>&1
 [[ -n "${GX10_PROXY_USERNAME:-}" && -n "${GX10_PROXY_PASSWORD:-}" ]] || exit 1
-config="$(mktemp)"; trap 'rm -f -- "$config"' EXIT; chmod 0600 "$config"
-# Curl config is equivalent to --proxy-user without putting credentials in argv.
-printf 'proxy = "http://127.0.0.1:3128"\nproxy-user = "%s:%s"\nconnect-timeout = 5\nmax-time = 10\noutput = "/dev/null"\nsilent\nshow-error\nfail\n' "$GX10_PROXY_USERNAME" "$GX10_PROXY_PASSWORD" >"$config"
-curl --config "$config" https://api.github.com/
+# The ubuntu/squid image ships no curl. OpenSSL performs the same authenticated
+# CONNECT through the local proxy and then a verified TLS handshake with an
+# allowed egress host. The username is a non-secret identifier; the password is
+# read from the environment by OpenSSL itself and never appears in argv.
+PROBE_HOST="${GX10_PROXY_PROBE_HOST:-api.github.com:443}"
+timeout "${GX10_PROXY_PROBE_TIMEOUT_SECONDS:-10}" openssl s_client \
+  -proxy 127.0.0.1:3128 \
+  -proxy_user "$GX10_PROXY_USERNAME" \
+  -proxy_pass env:GX10_PROXY_PASSWORD \
+  -connect "$PROBE_HOST" \
+  -verify_return_error -brief </dev/null >/dev/null 2>&1

@@ -252,9 +252,20 @@ def test_proxy_readiness_requires_fresh_marker_and_authenticated_connect_probe()
     command = " ".join(compose["services"]["squid"]["healthcheck"]["test"])
     assert "gx10-proxy-ready" in command
     probe = (ROOT / "scripts/gx10/check_proxy_ready.sh").read_text()
-    for token in ("policy.ready", "stat", "proxy-user", "connect-timeout", "max-time"):
+    # The ubuntu/squid image has no curl; the probe is OpenSSL's authenticated
+    # CONNECT plus a verified TLS handshake, with the password sourced from env.
+    for token in (
+        "policy.ready",
+        "stat",
+        "-proxy 127.0.0.1:3128",
+        "-proxy_user",
+        "-proxy_pass env:GX10_PROXY_PASSWORD",
+        "-verify_return_error",
+        "timeout",
+    ):
         assert token in probe
-    assert "https://api.github.com/" in probe
+    assert "api.github.com:443" in probe
+    assert "curl" not in probe.replace("# The ubuntu/squid image ships no curl.", "")
 
 
 def test_public_langfuse_path_and_generated_trace_url_are_aligned(
