@@ -263,6 +263,16 @@ def test_clean_stack_gate_renders_compose_with_supported_config_command() -> Non
     assert 'compose config >"$WORK_DIR/rendered-compose.yml"' in source
 
 
+def test_env_file_entries_are_plain_paths_for_podman_compose_1_0_6() -> None:
+    """podman-compose 1.0.6 joins each env_file entry as a path string and
+    crashes with a TypeError on the ``{path, required}`` long form. Podman
+    fails closed on a missing ``--env-file``, so nothing is lost."""
+    for name, service in _compose()["services"].items():
+        for entry in service.get("env_file", []):
+            assert isinstance(entry, str), f"{name}: {entry!r}"
+            assert entry.startswith("/run/aca/gx10/"), f"{name}: {entry}"
+
+
 def test_application_namespaces_have_no_direct_internet_route() -> None:
     compose = _compose()
     networks = compose["networks"]
@@ -292,7 +302,7 @@ def test_application_namespaces_have_no_direct_internet_route() -> None:
             "/run/aca/gx10/common.env",
             f"/run/aca/gx10/{name}.env",
             "/run/aca/gx10/proxy.env",
-        } == {entry["path"] for entry in env_files if entry["required"] is True}
+        } == set(env_files)
 
     assert {"application", "egress"} <= set(_service(compose, "squid")["networks"])
 
