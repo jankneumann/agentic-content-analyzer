@@ -29,6 +29,8 @@ STATEFUL_SERVICES = (
 )
 OPENBAO_STATEFUL_ADDRESS = "10.89.0.250"
 STATEFUL_SUBNET = "10.89.0.0/24"
+CADDY_APPLICATION_ADDRESS = "10.89.1.250"
+APPLICATION_SUBNET = "10.89.1.0/24"
 FAILURE_SCENARIOS = (
     "unknown_destination",
     "stale_policy",
@@ -115,8 +117,23 @@ def check_topology(compose: dict[str, Any], errors: list[str]) -> None:
     stateful_ipam = compose["networks"]["stateful"].get("ipam", {}).get("config", [])
     if stateful_ipam != [{"subnet": STATEFUL_SUBNET}]:
         errors.append("stateful: subnet must be declared for the fixed OpenBao address")
-    if services["caddy"].get("ports") != ["127.0.0.1:8443:443"]:
-        errors.append("caddy: ingress must be loopback-only")
+    caddy_nets = services["caddy"].get("networks")
+    if services["caddy"].get("ports"):
+        errors.append("caddy: internal network cannot publish a host port")
+    if (
+        not isinstance(caddy_nets, dict)
+        or caddy_nets.get("application", {}).get("ipv4_address") != CADDY_APPLICATION_ADDRESS
+    ):
+        errors.append("caddy: ingress must sit on the fixed application address")
+    application_ipam = compose["networks"]["application"].get("ipam", {}).get("config", [])
+    if application_ipam != [{"subnet": APPLICATION_SUBNET}]:
+        errors.append("application: subnet must be declared for the fixed Caddy address")
+    for name, service in services.items():
+        if service.get("cap_drop") != ["ALL"]:
+            errors.append(f"{name}: must drop all capabilities")
+        expected_caps = ["NET_BIND_SERVICE"] if name == "caddy" else None
+        if service.get("cap_add") != expected_caps:
+            errors.append(f"{name}: unexpected capability grant")
     redis = services["redis"]
     redis_command = " ".join(redis.get("command", []))
     redis_health = " ".join(redis.get("healthcheck", {}).get("test", []))

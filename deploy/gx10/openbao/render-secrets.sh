@@ -94,6 +94,10 @@ emit "$CADDY_TMP" CADDY_USERNAME "$RUNTIME_PATH" caddy_username; emit "$CADDY_TM
 printf 'GX10_PUBLIC_ORIGIN=%s\n' "$PUBLIC_ORIGIN" >>"$CADDY_TMP"
 
 for pair in "$COMMON_TMP:common.env" "$API_TMP:api.env" "$WORKER_TMP:worker.env" "$SCHEDULER_TMP:scheduler.env" "$MAINTENANCE_TMP:maintenance.env" "$PROXY_TMP:proxy.env" "$APP_POSTGRES_TMP:app-postgres.env" "$LANGFUSE_POSTGRES_TMP:langfuse-postgres.env" "$REDIS_TMP:redis.env" "$NEO4J_TMP:neo4j.env" "$CLICKHOUSE_TMP:clickhouse.env" "$MINIO_TMP:minio.env" "$LANGFUSE_TMP:langfuse.env" "$CADDY_TMP:caddy.env"; do source_file="${pair%%:*}"; destination="${pair#*:}"; install -m 0600 "$source_file" "$RUNTIME_DIR/$destination.new"; mv -f "$RUNTIME_DIR/$destination.new" "$RUNTIME_DIR/$destination"; done
-install -m 0600 "$PASSWD_TMP" "$RUNTIME_DIR/proxy/squid.passwd.new"; mv -f "$RUNTIME_DIR/proxy/squid.passwd.new" "$RUNTIME_DIR/proxy/squid.passwd"
-install -m 0600 "$REDIS_ACL_TMP" "$RUNTIME_DIR/redis/users.acl.new"; mv -f "$RUNTIME_DIR/redis/users.acl.new" "$RUNTIME_DIR/redis/users.acl"
+# Files the containers read directly are owned by the image user that reads
+# them (squid proxy 13:13, redis 999:1000); mode stays 0600. Only root can
+# assign ownership; unprivileged test runs keep the invoking user.
+if [[ "$(id -u)" == 0 ]]; then PASSWD_OWNER=(-o 13 -g 13); REDIS_ACL_OWNER=(-o 999 -g 1000); else PASSWD_OWNER=(); REDIS_ACL_OWNER=(); fi
+install "${PASSWD_OWNER[@]}" -m 0600 "$PASSWD_TMP" "$RUNTIME_DIR/proxy/squid.passwd.new"; mv -f "$RUNTIME_DIR/proxy/squid.passwd.new" "$RUNTIME_DIR/proxy/squid.passwd"
+install "${REDIS_ACL_OWNER[@]}" -m 0600 "$REDIS_ACL_TMP" "$RUNTIME_DIR/redis/users.acl.new"; mv -f "$RUNTIME_DIR/redis/users.acl.new" "$RUNTIME_DIR/redis/users.acl"
 echo "gx10 secrets rotated operator_generation=$OPERATOR_GENERATION proxy_generation=$PROXY_GENERATION" >&2

@@ -87,8 +87,7 @@ def test_stateful_ports_are_private_and_ingress_is_loopback_bound() -> None:
         service = _service(compose, name)
         assert "ports" not in service, f"{name} must not publish a host port"
 
-    caddy_ports = _service(compose, "caddy").get("ports")
-    assert caddy_ports == ["127.0.0.1:8443:443"]
+    assert "ports" not in _service(compose, "caddy"), "caddy must not publish a host port"
 
 
 def test_openbao_runs_as_image_user_without_capabilities() -> None:
@@ -145,6 +144,123 @@ def test_openbao_is_reached_on_a_fixed_stateful_address_not_a_host_port() -> Non
             continue
         assert f'"${{GX10_BAO_ADDR:-{OPENBAO_HOST_ADDR}}}"' in text, script.name
         assert "18200" not in text, script.name
+
+
+IMAGE_USERS = {
+    # Verified from the pinned digests: each image's own service account, so the
+    # entrypoint never needs CAP_SETUID/SETGID/CHOWN to drop root itself.
+    "app-postgres": "999:999",
+    "langfuse-postgres": "999:999",
+    "redis": "999:1000",
+    "neo4j": "7474:7474",
+    "clickhouse": "101:101",
+    "minio": "60001:60001",
+    "openbao": "100:1000",
+    "squid": "13:13",
+}
+CADDY_APPLICATION_ADDRESS = "10.89.1.250"
+
+
+def test_stateful_services_start_as_their_image_users_with_no_capabilities() -> None:
+    """Every image here drops root via gosu/su-exec/setpriv when started as root.
+
+    With ``cap_drop: ALL`` that drop fails, so each service starts directly as
+    the image's own user. Redis previously chowned and gosu'd inside its
+    command; both are impossible without capabilities and are gone.
+    """
+    compose = _compose()
+    for name, user in IMAGE_USERS.items():
+        service = _service(compose, name)
+        assert service.get("user") == user, name
+        assert "cap_add" not in service, name
+        assert service.get("cap_drop") == ["ALL"], name
+    redis_command = " ".join(_service(compose, "redis")["command"])
+    for forbidden in ("chown", "gosu", "su-exec", "setpriv"):
+        assert forbidden not in redis_command
+
+
+def test_caddy_ingress_sits_on_a_fixed_application_address() -> None:
+    """The application network is internal, so a loopback publish would hang
+    exactly like OpenBao's did. Caddy holds a fixed bridge address instead.
+
+    The caddy binary carries file capabilities; with every capability dropped
+    the kernel refuses to exec it at all, so NET_BIND_SERVICE is the one grant
+    in the stack, and it is exactly what binding 443 needs.
+    """
+    compose = _compose()
+    application = compose["networks"]["application"]
+    assert application["internal"] is True
+    assert application["ipam"]["config"] == [{"subnet": "10.89.1.0/24"}]
+    caddy = _service(compose, "caddy")
+    assert "ports" not in caddy
+    assert caddy["networks"] == {"application": {"ipv4_address": CADDY_APPLICATION_ADDRESS}}
+    assert caddy["cap_add"] == ["NET_BIND_SERVICE"]
+    for name, service in compose["services"].items():
+        if name != "caddy":
+            assert "cap_add" not in service, name
+
+
+def test_squid_runs_unprivileged_on_a_read_only_root() -> None:
+    config = (ROOT / "deploy/gx10/squid/squid.conf").read_text(encoding="utf-8")
+    assert re.search(r"^pid_filename /tmp/squid\.pid$", config, re.MULTILINE)
+    domains = [
+        line.strip()
+        for line in (ROOT / "deploy/gx10/squid/allowed-domains.txt").read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+    for domain in domains:
+        parents = [other for other in domains if other != domain and domain.endswith(other)]
+        assert not parents, f"squid 6 rejects {domain}: already covered by {parents}"
+
+
+def test_renderer_hands_container_read_secrets_to_the_consuming_image_user() -> None:
+    renderer = (ROOT / "deploy/gx10/openbao/render-secrets.sh").read_text(encoding="utf-8")
+    assert "REDIS_ACL_OWNER=(-o 999 -g 1000)" in renderer
+    assert "PASSWD_OWNER=(-o 13 -g 13)" in renderer
+    assert 'install "${REDIS_ACL_OWNER[@]}" -m 0600 "$REDIS_ACL_TMP"' in renderer
+    assert 'install "${PASSWD_OWNER[@]}" -m 0600 "$PASSWD_TMP"' in renderer
+
+
+def test_firewall_guard_parses_the_overlay_without_unsupported_compose_flags(
+    tmp_path: Path,
+) -> None:
+    """podman-compose 1.0.6 has no ``--no-env-resolution``/``--format`` on
+    ``config``; the guard must read the overlay itself and still fail closed."""
+    script = ROOT / "scripts/gx10/install_firewall.sh"
+    source = script.read_text(encoding="utf-8")
+    assert "--no-env-resolution" not in source
+    assert "--format json" not in source
+
+    import subprocess
+
+    env = {"PATH": "/usr/bin:/bin", "GX10_ROOT_DIR": str(ROOT)}
+    ok = subprocess.run([str(script)], env=env, capture_output=True, text=True)
+    assert ok.returncode == 0, ok.stderr
+
+    compose = _compose()
+    compose["services"]["caddy"]["ports"] = ["0.0.0.0:8443:8443"]
+    broken = tmp_path / "broken.yml"
+    broken.write_text(yaml.safe_dump(compose), encoding="utf-8")
+    rejected = subprocess.run(
+        [str(script)], env={**env, "GX10_COMPOSE_FILE": str(broken)}, capture_output=True, text=True
+    )
+    assert rejected.returncode != 0
+    assert "host port" in rejected.stderr
+
+    compose = _compose()
+    compose["networks"]["stateful"]["internal"] = False
+    broken.write_text(yaml.safe_dump(compose), encoding="utf-8")
+    rejected = subprocess.run(
+        [str(script)], env={**env, "GX10_COMPOSE_FILE": str(broken)}, capture_output=True, text=True
+    )
+    assert rejected.returncode != 0
+    assert "direct routing" in rejected.stderr
+
+
+def test_clean_stack_gate_renders_compose_with_supported_config_command() -> None:
+    source = (ROOT / "scripts/gx10/verify_clean_stack.sh").read_text(encoding="utf-8")
+    assert "--no-env-resolution" not in source
+    assert 'compose config >"$WORK_DIR/rendered-compose.yml"' in source
 
 
 def test_application_namespaces_have_no_direct_internet_route() -> None:

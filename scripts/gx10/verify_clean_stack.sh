@@ -44,7 +44,9 @@ prepare_runtime() {
 }
 
 "$ROOT_DIR/scripts/gx10/verify_image_pins.sh"
-compose config --no-env-resolution >"$WORK_DIR/rendered-compose.yml"
+# podman-compose 1.0.6 resolves the image environment while rendering; the
+# reviewed image variables are exported by the operator invocation.
+compose config >"$WORK_DIR/rendered-compose.yml"
 uv run python "$VALIDATOR" \
   --rendered-compose "$WORK_DIR/rendered-compose.yml" \
   --image-pins-evidence "$RUNTIME_DIR/image-pins.ready"

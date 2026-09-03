@@ -55,20 +55,39 @@ Create the required paths. Do not delete a volume to reset a failed deployment.
 sudo useradd --system --home /var/lib/aca --shell /usr/sbin/nologin aca 2>/dev/null || true
 sudo install -d -o root -g root -m 0755 /opt/aca
 sudo install -d -o root -g root -m 0700 /etc/aca/gx10 /run/aca/gx10 /srv/aca /srv/aca/validation /var/lib/aca/gx10
-sudo install -d -o root -g root -m 0700 \
-  /srv/aca/application /srv/aca/postgres /srv/aca/langfuse-postgres /srv/aca/redis \
-  /srv/aca/neo4j /srv/aca/neo4j-logs /srv/aca/clickhouse /srv/aca/clickhouse-logs \
-  /srv/aca/minio /srv/aca/caddy-data /srv/aca/caddy-config /srv/aca/squid-logs
+sudo install -d -o root -g root -m 0700 /srv/aca/application /srv/aca/caddy-data /srv/aca/caddy-config
+sudo install -d -o 999 -g 999 -m 0700 /srv/aca/postgres /srv/aca/langfuse-postgres
+sudo install -d -o 999 -g 1000 -m 0700 /srv/aca/redis
+sudo install -d -o 7474 -g 7474 -m 0700 /srv/aca/neo4j /srv/aca/neo4j-logs
+sudo install -d -o 101 -g 101 -m 0700 /srv/aca/clickhouse /srv/aca/clickhouse-logs
+sudo install -d -o 60001 -g 60001 -m 0700 /srv/aca/minio
 sudo install -d -o 100 -g 1000 -m 0700 /srv/aca/openbao
+sudo install -d -o 13 -g 13 -m 0700 /srv/aca/squid-logs
 ```
 
-Container images select their own users. If a bind mount fails permission checks,
-inspect that image's user and initialization contract; do not recursively chmod
-or chown `/srv/aca` to a guessed UID. OpenBao is the documented exception: the
-pinned `quay.io/openbao/openbao:2.2` image ships user `openbao` as uid 100 /
-gid 1000 and its entrypoint drops root with `su-exec`, which needs `CAP_SETGID`.
-Because the stack drops every capability, the Compose service starts directly
-as `user: "100:1000"` and the data directory must already carry that ownership.
+Every stateful image in the stack starts as root and drops to its own service
+account with `gosu`, `su-exec`, or `setpriv`. That drop needs `CAP_SETUID`,
+`CAP_SETGID`, and usually `CAP_CHOWN`; the stack drops every capability, so
+each Compose service starts directly as the image's own user and the bind
+mount must already carry that ownership. The users below were read from the
+pinned digests, not guessed; re-verify them whenever a digest changes.
+
+| Service | Image user | Data paths |
+| --- | --- | --- |
+| `app-postgres`, `langfuse-postgres` | `999:999` (`postgres`) | `/srv/aca/postgres`, `/srv/aca/langfuse-postgres` |
+| `redis` | `999:1000` (`redis`) | `/srv/aca/redis`, reads `/run/aca/gx10/redis/users.acl` |
+| `neo4j` | `7474:7474` (`neo4j`) | `/srv/aca/neo4j`, `/srv/aca/neo4j-logs` |
+| `clickhouse` | `101:101` (`clickhouse`) | `/srv/aca/clickhouse`, `/srv/aca/clickhouse-logs` |
+| `minio` | `60001:60001` (any uid; unallocated on the host) | `/srv/aca/minio` |
+| `openbao` | `100:1000` (`openbao`) | `/srv/aca/openbao` |
+| `squid` | `13:13` (`proxy`) | `/srv/aca/squid-logs`, reads `/run/aca/gx10/proxy/squid.passwd` |
+| `caddy` | root with only `NET_BIND_SERVICE` | `/srv/aca/caddy-data`, `/srv/aca/caddy-config` |
+
+Rootful Podman shares the host uid space, so a host account with the same
+numeric uid (for example `dnsmasq` at 999 or `proxy` at 13 on Ubuntu) can read
+that service's data. `install -d` on an existing directory re-applies owner
+and mode without recursing; if a directory already holds data written by
+another uid, `chown -R` it once to the user in the table.
 
 ## 3. Install and verify host prerequisites
 
@@ -233,6 +252,13 @@ sudo systemctl restart aca-gx10-openbao-container.service
 ```
 
 ## 6. OpenBao, secrets, and network policy
+
+No service publishes a host port. Caddy holds the fixed address `10.89.1.250`
+on the declared `10.89.1.0/24` application subnet and listens on 443 there.
+Map the host of `GX10_PUBLIC_ORIGIN` to that address in `/etc/hosts` on the
+GX-10 host (for example `10.89.1.250 gx10.local`) and open
+`https://gx10.local/`; from another machine, tunnel with
+`ssh -L 8443:10.89.1.250:443 gx10` and map the name to `127.0.0.1` locally.
 
 OpenBao publishes no host port. The stateful network is `internal: true`, and
 netavark installs no port-forwarding rules for internal networks; Podman still
