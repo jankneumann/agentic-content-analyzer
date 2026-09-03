@@ -34,7 +34,10 @@ DOMAINS="$ROOT_DIR/deploy/gx10/squid/allowed-domains.txt"
 RUNTIME_DIR="${GX10_RUNTIME_DIR:-/run/aca/gx10}"
 READY="$RUNTIME_DIR/proxy/policy.ready"
 
-install -d -m 0700 "$RUNTIME_DIR/proxy"
+# The directory is bind-mounted into squid, which runs as uid 13: root:13 0710
+# lets it traverse; the marker below is owned by 13 so the healthcheck can read it.
+if [[ "$(id -u)" == 0 ]]; then PROXY_DIR_OWNER=(-o 0 -g 13); PROXY_DIR_MODE=0710; READY_OWNER=(-o 13 -g 13); else PROXY_DIR_OWNER=(); PROXY_DIR_MODE=0700; READY_OWNER=(); fi
+install -d "${PROXY_DIR_OWNER[@]}" -m "$PROXY_DIR_MODE" "$RUNTIME_DIR/proxy"
 rm -f -- "$READY"
 
 if [[ ! -s "$POLICY" || ! -s "$DOMAINS" ]]; then
@@ -50,5 +53,5 @@ fi
 "${COMPOSE[@]}" exec -T squid squid -k parse -f /etc/squid/squid.conf
 "${COMPOSE[@]}" exec -T squid squid -k reconfigure
 "${COMPOSE[@]}" exec -T squid /usr/local/bin/gx10-proxy-ready --probe-only
-install -m 0600 /dev/null "$READY"
+install "${READY_OWNER[@]}" -m 0600 /dev/null "$READY"
 printf 'validated_at=%(%s)T\n' -1 >"$READY"

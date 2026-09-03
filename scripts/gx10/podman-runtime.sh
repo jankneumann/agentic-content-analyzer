@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="${GX10_ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 COMPOSE=("$ROOT_DIR/scripts/gx10/podman-compose.sh")
+COMPOSE_FILE="${GX10_COMPOSE_FILE:-$ROOT_DIR/docker-compose.gx10.yml}"
 TIMEOUT_SECONDS="${GX10_RUNTIME_WAIT_SECONDS:-300}"
 SERVICES=(
   app-postgres
@@ -47,6 +48,7 @@ wait_for_runtime() {
 
 case "${1:-}" in
   up)
+    "$ROOT_DIR/scripts/gx10/check_persistence_ownership.py" --compose "$COMPOSE_FILE"
     compose up -d
     wait_for_runtime
     ;;

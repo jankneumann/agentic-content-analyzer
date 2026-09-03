@@ -83,6 +83,11 @@ pinned digests, not guessed; re-verify them whenever a digest changes.
 | `squid` | `13:13` (`proxy`) | `/srv/aca/squid-logs`, reads `/run/aca/gx10/proxy/squid.passwd` |
 | `caddy` | root with only `NET_BIND_SERVICE` | `/srv/aca/caddy-data`, `/srv/aca/caddy-config` |
 
+`scripts/gx10/check_persistence_ownership.py` enforces this table before the
+runtime, the OpenBao container, and Squid start: it reads the overlay, compares
+every `/srv/aca` and `/run/aca/gx10` bind mount with the service's `user:`,
+and prints the exact `install -d` or `chown -R` command for each finding.
+
 Rootful Podman shares the host uid space, so a host account with the same
 numeric uid (for example `dnsmasq` at 999 or `proxy` at 13 on Ubuntu) can read
 that service's data. `install -d` on an existing directory re-applies owner

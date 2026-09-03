@@ -10,6 +10,7 @@ Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/opt/aca
 EnvironmentFile=/etc/aca/gx10-images.env
+ExecStartPre=/opt/aca/scripts/gx10/check_persistence_ownership.py --service openbao
 ExecStart=/opt/aca/scripts/gx10/podman-compose.sh up -d openbao
 ExecStartPost=/opt/aca/scripts/gx10/check_openbao_container_started.sh
 UMask=0077

@@ -14,7 +14,11 @@ PUBLIC_LANGFUSE_URL="${GX10_PUBLIC_LANGFUSE_URL:-https://gx10.local/langfuse}"
 PUBLIC_ORIGIN="${GX10_PUBLIC_ORIGIN:-${PUBLIC_LANGFUSE_URL%/langfuse}}"
 [[ "$PUBLIC_ORIGIN" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || { echo "gx10 public origin is invalid" >&2; exit 1; }
 [[ "$PUBLIC_LANGFUSE_URL" == "$PUBLIC_ORIGIN/langfuse" ]] || { echo "gx10 public Langfuse URL must be the public origin plus /langfuse" >&2; exit 1; }
-install -d -m 0700 "$RUNTIME_DIR" "$RUNTIME_DIR/proxy" "$RUNTIME_DIR/redis" "$RUNTIME_DIR/falkordb"
+# Squid bind-mounts the proxy directory itself and runs as the image user 13,
+# so that one directory is root:13 0710; everything else stays 0700 root.
+if [[ "$(id -u)" == 0 ]]; then PROXY_DIR_OWNER=(-o 0 -g 13); PROXY_DIR_MODE=0710; else PROXY_DIR_OWNER=(); PROXY_DIR_MODE=0700; fi
+install -d -m 0700 "$RUNTIME_DIR" "$RUNTIME_DIR/redis" "$RUNTIME_DIR/falkordb"
+install -d "${PROXY_DIR_OWNER[@]}" -m "$PROXY_DIR_MODE" "$RUNTIME_DIR/proxy"
 CURL_CONFIG="$(mktemp "$RUNTIME_DIR/bao-curl.XXXXXX")"
 printf 'header = "X-Vault-Token: %s"\n' "$(<"$BAO_TOKEN_FILE")" >"$CURL_CONFIG"
 chmod 0600 "$CURL_CONFIG"
