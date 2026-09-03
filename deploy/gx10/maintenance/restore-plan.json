@@ -5,10 +5,10 @@
       "restore",
       "application_postgresql"
     ],
-    "neo4j": [
+    "falkordb": [
       "/opt/aca/scripts/gx10/backup/component.sh",
       "restore",
-      "neo4j"
+      "falkordb"
     ],
     "langfuse_postgresql": [
       "/opt/aca/scripts/gx10/backup/component.sh",
@@ -37,10 +37,10 @@
       "validate",
       "application_postgresql"
     ],
-    "neo4j": [
+    "falkordb": [
       "/opt/aca/scripts/gx10/backup/component.sh",
       "validate",
-      "neo4j"
+      "falkordb"
     ],
     "langfuse_postgresql": [
       "/opt/aca/scripts/gx10/backup/component.sh",
@@ -65,7 +65,7 @@
   },
   "production_sources": {
     "application_postgresql": "/srv/aca/postgres",
-    "neo4j": "/srv/aca/neo4j",
+    "falkordb": "/srv/aca/falkordb",
     "langfuse_postgresql": "/srv/aca/langfuse-postgres",
     "clickhouse": "/srv/aca/clickhouse",
     "minio": "/srv/aca/minio",

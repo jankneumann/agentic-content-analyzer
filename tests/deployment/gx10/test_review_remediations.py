@@ -30,7 +30,7 @@ def _mock_secret_tools(tmp_path: Path) -> Path:
         """#!/usr/bin/env bash
 set -euo pipefail
 url="${!#}"
-common='{"database_url":"postgresql://newsletter_user:pass@app-postgres:5432/newsletters","app_secret_key":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","configured_source_key_secret":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","operation_cursor_signing_key":"cccccccccccccccccccccccccccccccccccccccccccccccc","admin_api_key":"dddddddddddddddddddddddddddddddddddddddddddddddd","langfuse_public_key":"pk-lf-fixture","langfuse_secret_key":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","langfuse_init_org_id":"aca-gx10","langfuse_init_org_name":"ACA GX-10","langfuse_init_project_id":"aca-gx10-observability","langfuse_init_project_name":"ACA GX-10 Observability","langfuse_init_user_email":"operator@example.test","langfuse_init_user_name":"GX-10 Operator","langfuse_init_user_password":"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq","neo4j_password":"ffffffffffffffffffffffffffffffffffffffffffffffff","release_revision":"1111111111111111111111111111111111111111","authority_fingerprint":"2222222222222222222222222222222222222222222222222222222222222222","app_postgres_password":"gggggggggggggggggggggggggggggggggggggggggggggggg","langfuse_postgres_password":"hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh","redis_password":"iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii","clickhouse_password":"jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj","minio_root_user":"gx10-minio","minio_root_password":"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk","langfuse_nextauth_secret":"llllllllllllllllllllllllllllllllllllllllllllllll","langfuse_salt":"mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm","langfuse_encryption_key":"3333333333333333333333333333333333333333333333333333333333333333","caddy_username":"operator","caddy_password_hash":"bcrypt-fixture"}'
+common='{"database_url":"postgresql://newsletter_user:pass@app-postgres:5432/newsletters","app_secret_key":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","configured_source_key_secret":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","operation_cursor_signing_key":"cccccccccccccccccccccccccccccccccccccccccccccccc","admin_api_key":"dddddddddddddddddddddddddddddddddddddddddddddddd","langfuse_public_key":"pk-lf-fixture","langfuse_secret_key":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","langfuse_init_org_id":"aca-gx10","langfuse_init_org_name":"ACA GX-10","langfuse_init_project_id":"aca-gx10-observability","langfuse_init_project_name":"ACA GX-10 Observability","langfuse_init_user_email":"operator@example.test","langfuse_init_user_name":"GX-10 Operator","langfuse_init_user_password":"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq","falkordb_password":"ffffffffffffffffffffffffffffffffffffffffffffffff","release_revision":"1111111111111111111111111111111111111111","authority_fingerprint":"2222222222222222222222222222222222222222222222222222222222222222","app_postgres_password":"gggggggggggggggggggggggggggggggggggggggggggggggg","langfuse_postgres_password":"hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh","redis_password":"iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii","clickhouse_password":"jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj","minio_root_user":"gx10-minio","minio_root_password":"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk","langfuse_nextauth_secret":"llllllllllllllllllllllllllllllllllllllllllllllll","langfuse_salt":"mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm","langfuse_encryption_key":"3333333333333333333333333333333333333333333333333333333333333333","caddy_username":"operator","caddy_password_hash":"bcrypt-fixture"}'
 case "$url" in
   */runtime) printf '{"data":{"data":%s}}\n' "$common" ;;
   */operator) printf '{"data":{"data":{"operator_api_key":"nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn","rotation_generation":"8"}}}\n' ;;
@@ -83,7 +83,7 @@ def test_renderer_outputs_profile_compatible_least_privilege_role_envs(tmp_path:
         "app-postgres.env",
         "langfuse-postgres.env",
         "redis.env",
-        "neo4j.env",
+        "falkordb.env",
         "clickhouse.env",
         "minio.env",
         "langfuse.env",
@@ -195,7 +195,7 @@ def test_openbao_lifecycle_is_reachable_authenticated_initialized_and_unsealed()
 
 def test_internal_hosts_bypass_proxy_and_roles_have_distinct_exporters() -> None:
     compose = yaml.safe_load((ROOT / "docker-compose.gx10.yml").read_text())
-    internal = {"app-postgres", "redis", "neo4j", "openbao", "squid", "langfuse-web"}
+    internal = {"app-postgres", "redis", "falkordb", "openbao", "squid", "langfuse-web"}
     for role in ("api", "worker", "scheduler", "maintenance"):
         service = compose["services"][role]
         no_proxy = set(service["environment"]["NO_PROXY"].split(","))
@@ -210,7 +210,7 @@ def test_internal_hosts_bypass_proxy_and_roles_have_distinct_exporters() -> None
 @pytest.mark.parametrize(
     ("role", "lost_host"),
     [
-        ("api", "neo4j"),
+        ("api", "falkordb"),
         ("worker", "redis"),
         ("scheduler", "app-postgres"),
         ("maintenance", "langfuse-web"),

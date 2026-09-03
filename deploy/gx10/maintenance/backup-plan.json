@@ -5,10 +5,10 @@
       "produce",
       "application_postgresql"
     ],
-    "neo4j": [
+    "falkordb": [
       "/opt/aca/scripts/gx10/backup/component.sh",
       "produce",
-      "neo4j"
+      "falkordb"
     ],
     "langfuse_postgresql": [
       "/opt/aca/scripts/gx10/backup/component.sh",

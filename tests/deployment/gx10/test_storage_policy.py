@@ -15,7 +15,7 @@ def test_gx10_profile_declares_exact_storage_budget_and_hysteresis_policy() -> N
 
     assert policy["component_budgets_percent"] == {
         "application_postgresql": 22,
-        "neo4j": 12,
+        "falkordb": 12,
         "clickhouse": 28,
         "minio": 8,
         "backups": 15,

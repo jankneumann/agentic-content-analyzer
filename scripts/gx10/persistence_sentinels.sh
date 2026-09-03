@@ -11,8 +11,7 @@ declare -A COMPONENT_PATHS=(
   [app-postgres]="postgres"
   [langfuse-postgres]="langfuse-postgres"
   [redis]="redis"
-  [neo4j]="neo4j"
-  [neo4j-logs]="neo4j-logs"
+  [falkordb]="falkordb"
   [clickhouse]="clickhouse"
   [clickhouse-logs]="clickhouse-logs"
   [minio]="minio"
@@ -26,8 +25,7 @@ declare -a COMPONENTS=(
   app-postgres
   langfuse-postgres
   redis
-  neo4j
-  neo4j-logs
+  falkordb
   clickhouse
   clickhouse-logs
   minio

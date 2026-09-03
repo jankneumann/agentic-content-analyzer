@@ -8,7 +8,7 @@ SERVICES=(
   app-postgres
   langfuse-postgres
   redis
-  neo4j
+  falkordb
   clickhouse
   minio
   openbao

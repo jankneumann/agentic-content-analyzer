@@ -4,8 +4,7 @@ description: Production GX-10 runtime; passive until the separate cutover change
 
 providers:
   database: local
-  graphdb: neo4j
-  neo4j: local
+  graphdb: falkordb
   storage: local
   observability: langfuse
 
@@ -19,11 +18,10 @@ settings:
 
   graphdb:
     graphdb_mode: local
-
-  neo4j:
-    neo4j_uri: "bolt://neo4j:7687"
-    neo4j_user: neo4j
-    neo4j_password: "${GX10_NEO4J_PASSWORD}"
+    falkordb_host: falkordb
+    falkordb_port: 6379
+    falkordb_password: "${GX10_FALKORDB_PASSWORD}"
+    falkordb_database: newsletter_graph
     semaphore_limit: 1
 
   storage:
@@ -96,7 +94,7 @@ settings:
     reserve_percent: 13
     component_budgets_percent:
       application_postgresql: 22
-      neo4j: 12
+      falkordb: 12
       clickhouse: 28
       minio: 8
       backups: 15

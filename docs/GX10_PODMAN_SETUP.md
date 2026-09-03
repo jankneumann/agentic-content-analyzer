@@ -2,7 +2,7 @@
 
 This is the operator runbook for running Agentic Content Analyzer on the GX-10
 with **Podman**, not Docker. It covers the `PROFILE=gx10` local-production
-stack: PostgreSQL, Redis, Neo4j, OpenBao, Langfuse, ClickHouse, MinIO, Caddy,
+stack: PostgreSQL, Redis, FalkorDB, OpenBao, Langfuse, ClickHouse, MinIO, Caddy,
 Squid, the API, workers, schedulers, and maintenance services.
 
 > **Status:** The checked-in GX-10 runtime uses rootful Podman through an
@@ -58,7 +58,7 @@ sudo install -d -o root -g root -m 0700 /etc/aca/gx10 /run/aca/gx10 /srv/aca /sr
 sudo install -d -o root -g root -m 0700 /srv/aca/application /srv/aca/caddy-data /srv/aca/caddy-config
 sudo install -d -o 999 -g 999 -m 0700 /srv/aca/postgres /srv/aca/langfuse-postgres
 sudo install -d -o 999 -g 1000 -m 0700 /srv/aca/redis
-sudo install -d -o 7474 -g 7474 -m 0700 /srv/aca/neo4j /srv/aca/neo4j-logs
+sudo install -d -o 999 -g 999 -m 0700 /srv/aca/falkordb
 sudo install -d -o 101 -g 101 -m 0700 /srv/aca/clickhouse /srv/aca/clickhouse-logs
 sudo install -d -o 60001 -g 60001 -m 0700 /srv/aca/minio
 sudo install -d -o 100 -g 1000 -m 0700 /srv/aca/openbao
@@ -76,7 +76,7 @@ pinned digests, not guessed; re-verify them whenever a digest changes.
 | --- | --- | --- |
 | `app-postgres`, `langfuse-postgres` | `999:999` (`postgres`) | `/srv/aca/postgres`, `/srv/aca/langfuse-postgres` |
 | `redis` | `999:1000` (`redis`) | `/srv/aca/redis`, reads `/run/aca/gx10/redis/users.acl` |
-| `neo4j` | `7474:7474` (`neo4j`) | `/srv/aca/neo4j`, `/srv/aca/neo4j-logs` |
+| `falkordb` | `999:999` (`redis` in this image) | `/srv/aca/falkordb`, reads `/run/aca/gx10/falkordb/users.acl` |
 | `clickhouse` | `101:101` (`clickhouse`) | `/srv/aca/clickhouse`, `/srv/aca/clickhouse-logs` |
 | `minio` | `60001:60001` (any uid; unallocated on the host) | `/srv/aca/minio` |
 | `openbao` | `100:1000` (`openbao`) | `/srv/aca/openbao` |
@@ -117,8 +117,9 @@ pg_restore --version
 ```
 
 Also install and version-record these native tools when their components are
-enabled: `neo4j-admin`, `clickhouse-backup`, MinIO `mc`, and the OpenBao `bao`
-client. Use verified ARM64 releases; do not use an unreviewed `curl | sh`
+enabled: `clickhouse-backup`, MinIO `mc`, and the OpenBao `bao` client. FalkorDB
+needs no native tool: it is backed up as an offline tar of its RDB/AOF data
+directory, and `redis-cli` inside the container is enough for inspection. Use verified ARM64 releases; do not use an unreviewed `curl | sh`
 installer.
 
 The rootful context is the only one that matters for the system units:

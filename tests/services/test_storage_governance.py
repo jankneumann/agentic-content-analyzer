@@ -25,7 +25,7 @@ def test_default_allocations_fit_one_terabyte_with_required_reserve() -> None:
     ("component", "limit"),
     [
         ("application_postgresql", 22),
-        ("neo4j", 12),
+        ("falkordb", 12),
         ("clickhouse", 28),
         ("minio", 8),
         ("backups", 15),

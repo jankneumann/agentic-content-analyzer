@@ -24,7 +24,7 @@ produce() {
     langfuse_postgresql)
       exec "${COMPOSE[@]}" exec -T langfuse-postgres sh -ec 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec pg_dump --format=custom --dbname=langfuse --username=langfuse'
       ;;
-    neo4j) offline_tar neo4j /srv/aca/neo4j ;;
+    falkordb) offline_tar falkordb /srv/aca/falkordb ;;
     clickhouse) offline_tar clickhouse /srv/aca/clickhouse ;;
     minio) offline_tar minio /srv/aca/minio ;;
     configuration_metadata)
@@ -58,7 +58,7 @@ restore() {
     application_postgresql|langfuse_postgresql)
       /usr/bin/podman run --rm --network none -v "$target:/restore:rw" "$POSTGRES_IMAGE" pg_restore --file="/restore/$component.sql" "/restore/$component.backup" >/dev/null
       ;;
-    neo4j|clickhouse|minio|configuration_metadata)
+    falkordb|clickhouse|minio|configuration_metadata)
       safe_tar "$artifact"
       install -d -m 0700 "$target/data"
       /usr/bin/tar -xf "$artifact" -C "$target/data"
@@ -73,7 +73,7 @@ validate() {
   [[ -s "$artifact" ]] || exit 1
   case "$component" in
     application_postgresql|langfuse_postgresql) [[ -s "$target/$component.sql" ]] ;;
-    neo4j|clickhouse|minio|configuration_metadata) [[ -d "$target/data" && -n "$(find "$target/data" -mindepth 1 -print -quit)" ]] ;;
+    falkordb|clickhouse|minio|configuration_metadata) [[ -d "$target/data" && -n "$(find "$target/data" -mindepth 1 -print -quit)" ]] ;;
     *) exit 64 ;;
   esac
 }

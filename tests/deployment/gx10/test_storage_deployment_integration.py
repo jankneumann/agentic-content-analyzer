@@ -266,7 +266,7 @@ def test_reviewed_maintenance_plans_are_complete_and_absolute() -> None:
     restore = json.loads((maintenance / "restore-plan.json").read_text())
     components = {
         "application_postgresql",
-        "neo4j",
+        "falkordb",
         "langfuse_postgresql",
         "clickhouse",
         "minio",
@@ -289,7 +289,7 @@ def test_reviewed_maintenance_plans_are_complete_and_absolute() -> None:
             assert argv and Path(argv[0]).is_absolute()
     assert set(restore["production_sources"].values()) == {
         "/srv/aca/postgres",
-        "/srv/aca/neo4j",
+        "/srv/aca/falkordb",
         "/srv/aca/langfuse-postgres",
         "/srv/aca/clickhouse",
         "/srv/aca/minio",

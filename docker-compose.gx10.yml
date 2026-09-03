@@ -45,7 +45,7 @@ x-application:
       condition: service_healthy
     redis:
       condition: service_healthy
-    neo4j:
+    falkordb:
       condition: service_healthy
     openbao:
       condition: service_healthy
@@ -141,32 +141,46 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-  neo4j:
+  falkordb:
     restart: on-failure:5
-    user: '7474:7474'
+    # The image's redis user is 999:999 (not 999:1000 as in redis:alpine).
+    user: '999:999'
     read_only: false
     security_opt: *id001
     cap_drop: *id002
     deploy: *id003
     networks: *id004
     tmpfs: *id005
-    image: neo4j:5.26-community@sha256:037cf5756f0135cbfd66b739b6df7c7c4bb100f9ce11602f6f9538e17e02c74d
+    image: falkordb/falkordb:v4.18.1@sha256:d6aa9598b79cd54935864d56f971f3916156399a9ca38a5fae6c029ab1f2bce9
+    # run.sh execs redis-server with $REDIS_ARGS; the ACL file is copied onto
+    # the /tmp tmpfs so the read-only rendered secret never has to be writable.
+    # No browser: BROWSER=0 skips the bundled node UI.
+    entrypoint:
+    - sh
+    - -ec
+    - |
+      mkdir -p /tmp/falkordb
+      cp /run/aca/gx10/falkordb/users.acl /tmp/falkordb/users.acl
+      chmod 0600 /tmp/falkordb/users.acl
+      exec /var/lib/falkordb/bin/run.sh
+    command: []
     env_file:
-    - /run/aca/gx10/neo4j.env
+    - /run/aca/gx10/falkordb.env
     environment:
-      NEO4J_PLUGINS: '["apoc"]'
-      NEO4J_dbms_security_procedures_unrestricted: apoc.*
+      BROWSER: '0'
+      TLS: '0'
+      REDIS_ARGS: --aclfile /tmp/falkordb/users.acl --appendonly yes
     volumes:
-    - /srv/aca/neo4j:/data:rw
-    - /srv/aca/neo4j-logs:/logs:rw
+    - /srv/aca/falkordb:/var/lib/falkordb/data:rw
+    - /run/aca/gx10/falkordb/users.acl:/run/aca/gx10/falkordb/users.acl:ro
     healthcheck:
       test:
       - CMD-SHELL
-      - wget -q -O /dev/null http://127.0.0.1:7474 || exit 1
+      - redis-cli ping | grep -qx PONG
       interval: 10s
       timeout: 5s
       retries: 18
-      start_period: 45s
+      start_period: 30s
   clickhouse:
     restart: on-failure:5
     user: '101:101'
@@ -360,13 +374,13 @@ services:
     environment:
       PROFILE: gx10
       GX10_RUNTIME_ENABLED: 'true'
-      NO_PROXY: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,neo4j,openbao,squid,langfuse-web,clickhouse,minio
+      NO_PROXY: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,falkordb,openbao,squid,langfuse-web,clickhouse,minio
       TELEMETRY_SERVICE_INSTANCE_ID: aca-gx10-api
       WORKER_ENABLED: 'false'
       GX10_PROCESS_ROLE: api
       OTEL_SERVICE_NAME: aca-gx10-api
       OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:3000/api/public/otel
-      no_proxy: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,neo4j,openbao,squid,langfuse-web,clickhouse,minio
+      no_proxy: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,falkordb,openbao,squid,langfuse-web,clickhouse,minio
     networks: *id010
     depends_on: *id011
     volumes:
@@ -407,13 +421,13 @@ services:
     environment:
       PROFILE: gx10
       GX10_RUNTIME_ENABLED: 'true'
-      NO_PROXY: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,neo4j,openbao,squid,langfuse-web,clickhouse,minio
+      NO_PROXY: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,falkordb,openbao,squid,langfuse-web,clickhouse,minio
       TELEMETRY_SERVICE_INSTANCE_ID: aca-gx10-worker
       WORKER_CONCURRENCY: '5'
       GX10_PROCESS_ROLE: worker
       OTEL_SERVICE_NAME: aca-gx10-worker
       OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:3000/api/public/otel
-      no_proxy: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,neo4j,openbao,squid,langfuse-web,clickhouse,minio
+      no_proxy: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,falkordb,openbao,squid,langfuse-web,clickhouse,minio
     networks: *id010
     depends_on: *id011
     volumes:
@@ -449,13 +463,13 @@ services:
     environment:
       PROFILE: gx10
       GX10_RUNTIME_ENABLED: 'true'
-      NO_PROXY: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,neo4j,openbao,squid,langfuse-web,clickhouse,minio
+      NO_PROXY: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,falkordb,openbao,squid,langfuse-web,clickhouse,minio
       TELEMETRY_SERVICE_INSTANCE_ID: aca-gx10-scheduler
       WORKER_CONCURRENCY: '1'
       GX10_PROCESS_ROLE: scheduler
       OTEL_SERVICE_NAME: aca-gx10-scheduler
       OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:3000/api/public/otel
-      no_proxy: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,neo4j,openbao,squid,langfuse-web,clickhouse,minio
+      no_proxy: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,falkordb,openbao,squid,langfuse-web,clickhouse,minio
     networks: *id010
     depends_on: *id011
     volumes:
@@ -491,13 +505,13 @@ services:
     environment:
       PROFILE: gx10
       GX10_RUNTIME_ENABLED: 'true'
-      NO_PROXY: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,neo4j,openbao,squid,langfuse-web,clickhouse,minio
+      NO_PROXY: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,falkordb,openbao,squid,langfuse-web,clickhouse,minio
       TELEMETRY_SERVICE_INSTANCE_ID: aca-gx10-maintenance
       WORKER_CONCURRENCY: '1'
       GX10_PROCESS_ROLE: maintenance
       OTEL_SERVICE_NAME: aca-gx10-maintenance
       OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:3000/api/public/otel
-      no_proxy: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,neo4j,openbao,squid,langfuse-web,clickhouse,minio
+      no_proxy: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,falkordb,openbao,squid,langfuse-web,clickhouse,minio
     networks: *id010
     depends_on: *id011
     volumes:

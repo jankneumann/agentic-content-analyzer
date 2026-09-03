@@ -14,7 +14,7 @@ PUBLIC_LANGFUSE_URL="${GX10_PUBLIC_LANGFUSE_URL:-https://gx10.local/langfuse}"
 PUBLIC_ORIGIN="${GX10_PUBLIC_ORIGIN:-${PUBLIC_LANGFUSE_URL%/langfuse}}"
 [[ "$PUBLIC_ORIGIN" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || { echo "gx10 public origin is invalid" >&2; exit 1; }
 [[ "$PUBLIC_LANGFUSE_URL" == "$PUBLIC_ORIGIN/langfuse" ]] || { echo "gx10 public Langfuse URL must be the public origin plus /langfuse" >&2; exit 1; }
-install -d -m 0700 "$RUNTIME_DIR" "$RUNTIME_DIR/proxy" "$RUNTIME_DIR/redis"
+install -d -m 0700 "$RUNTIME_DIR" "$RUNTIME_DIR/proxy" "$RUNTIME_DIR/redis" "$RUNTIME_DIR/falkordb"
 CURL_CONFIG="$(mktemp "$RUNTIME_DIR/bao-curl.XXXXXX")"
 printf 'header = "X-Vault-Token: %s"\n' "$(<"$BAO_TOKEN_FILE")" >"$CURL_CONFIG"
 chmod 0600 "$CURL_CONFIG"
@@ -25,10 +25,11 @@ COMMON_TMP="$(new_env common.env)"; API_TMP="$(new_env api.env)"; WORKER_TMP="$(
 SCHEDULER_TMP="$(new_env scheduler.env)"; MAINTENANCE_TMP="$(new_env maintenance.env)"
 PROXY_TMP="$(new_env proxy.env)"; APP_POSTGRES_TMP="$(new_env app-postgres.env)"
 LANGFUSE_POSTGRES_TMP="$(new_env langfuse-postgres.env)"; REDIS_TMP="$(new_env redis.env)"
-NEO4J_TMP="$(new_env neo4j.env)"; CLICKHOUSE_TMP="$(new_env clickhouse.env)"
+FALKORDB_TMP="$(new_env falkordb.env)"; CLICKHOUSE_TMP="$(new_env clickhouse.env)"
 MINIO_TMP="$(new_env minio.env)"; LANGFUSE_TMP="$(new_env langfuse.env)"; CADDY_TMP="$(new_env caddy.env)"
 PASSWD_TMP="$(mktemp "$RUNTIME_DIR/proxy/squid.passwd.XXXXXX")"; TEMPS+=("$PASSWD_TMP")
 REDIS_ACL_TMP="$(mktemp "$RUNTIME_DIR/redis/users.acl.XXXXXX")"; TEMPS+=("$REDIS_ACL_TMP")
+FALKORDB_ACL_TMP="$(mktemp "$RUNTIME_DIR/falkordb/users.acl.XXXXXX")"; TEMPS+=("$FALKORDB_ACL_TMP")
 cleanup() { rm -f -- "$CURL_CONFIG" "${TEMPS[@]}"; }
 trap cleanup EXIT
 
@@ -47,7 +48,7 @@ emit "$COMMON_TMP" GX10_CONFIGURED_SOURCE_KEY_SECRET "$RUNTIME_PATH" configured_
 emit "$COMMON_TMP" GX10_OPERATION_CURSOR_SIGNING_KEY "$RUNTIME_PATH" operation_cursor_signing_key
 emit "$COMMON_TMP" GX10_LANGFUSE_PUBLIC_KEY "$RUNTIME_PATH" langfuse_public_key
 emit "$COMMON_TMP" GX10_LANGFUSE_SECRET_KEY "$RUNTIME_PATH" langfuse_secret_key
-emit "$COMMON_TMP" GX10_NEO4J_PASSWORD "$RUNTIME_PATH" neo4j_password
+emit "$COMMON_TMP" GX10_FALKORDB_PASSWORD "$RUNTIME_PATH" falkordb_password
 emit "$COMMON_TMP" GX10_RELEASE_REVISION "$RUNTIME_PATH" release_revision
 emit "$COMMON_TMP" GX10_AUTHORITY_FINGERPRINT "$RUNTIME_PATH" authority_fingerprint
 printf 'GX10_PUBLIC_ORIGIN=%s\nGX10_PUBLIC_LANGFUSE_URL=%s\n' "$PUBLIC_ORIGIN" "$PUBLIC_LANGFUSE_URL" >>"$COMMON_TMP"
@@ -70,13 +71,14 @@ PROXY_HASH="$(printf '%s\n' "$PROXY_PASSWORD" | openssl passwd -apr1 -stdin)"
 printf '%s:%s\n' "$PROXY_USERNAME" "$PROXY_HASH" >"$PASSWD_TMP"
 
 APP_DB="$(fetch "$RUNTIME_PATH" app_postgres_password)"; LF_DB="$(fetch "$RUNTIME_PATH" langfuse_postgres_password)"
-REDIS="$(fetch "$RUNTIME_PATH" redis_password)"; NEO4J="$(fetch "$RUNTIME_PATH" neo4j_password)"
+REDIS="$(fetch "$RUNTIME_PATH" redis_password)"; FALKORDB="$(fetch "$RUNTIME_PATH" falkordb_password)"
 CLICKHOUSE="$(fetch "$RUNTIME_PATH" clickhouse_password)"; MINIO_USER="$(fetch "$RUNTIME_PATH" minio_root_user)"; MINIO_PASSWORD="$(fetch "$RUNTIME_PATH" minio_root_password)"
 printf 'POSTGRES_PASSWORD=%s\n' "$APP_DB" >"$APP_POSTGRES_TMP"; printf 'POSTGRES_PASSWORD=%s\n' "$LF_DB" >"$LANGFUSE_POSTGRES_TMP"
 [[ "$REDIS" =~ ^[A-Za-z0-9._~-]{32,}$ ]] || { echo "gx10 Redis credential is unsafe for ACL configuration" >&2; exit 1; }
 printf 'REDISCLI_AUTH=%s\n' "$REDIS" >"$REDIS_TMP"
 printf 'user default on >%s ~* +@all\n' "$REDIS" >"$REDIS_ACL_TMP"
-printf 'NEO4J_AUTH=neo4j/%s\n' "$NEO4J" >"$NEO4J_TMP"
+printf 'REDISCLI_AUTH=%s\n' "$FALKORDB" >"$FALKORDB_TMP"
+printf 'user default on >%s ~* +@all\n' "$FALKORDB" >"$FALKORDB_ACL_TMP"
 printf 'CLICKHOUSE_PASSWORD=%s\n' "$CLICKHOUSE" >"$CLICKHOUSE_TMP"; printf 'MINIO_ROOT_USER=%s\nMINIO_ROOT_PASSWORD=%s\n' "$MINIO_USER" "$MINIO_PASSWORD" >"$MINIO_TMP"
 printf 'DATABASE_URL=postgresql://langfuse:%s@langfuse-postgres:5432/langfuse\nNEXTAUTH_URL=%s\n' "$LF_DB" "$PUBLIC_LANGFUSE_URL" >"$LANGFUSE_TMP"
 emit "$LANGFUSE_TMP" NEXTAUTH_SECRET "$RUNTIME_PATH" langfuse_nextauth_secret; emit "$LANGFUSE_TMP" SALT "$RUNTIME_PATH" langfuse_salt; emit "$LANGFUSE_TMP" ENCRYPTION_KEY "$RUNTIME_PATH" langfuse_encryption_key
@@ -93,11 +95,12 @@ printf 'CLICKHOUSE_URL=http://clickhouse:8123\nCLICKHOUSE_MIGRATION_URL=clickhou
 emit "$CADDY_TMP" CADDY_USERNAME "$RUNTIME_PATH" caddy_username; emit "$CADDY_TMP" CADDY_PASSWORD_HASH "$RUNTIME_PATH" caddy_password_hash
 printf 'GX10_PUBLIC_ORIGIN=%s\n' "$PUBLIC_ORIGIN" >>"$CADDY_TMP"
 
-for pair in "$COMMON_TMP:common.env" "$API_TMP:api.env" "$WORKER_TMP:worker.env" "$SCHEDULER_TMP:scheduler.env" "$MAINTENANCE_TMP:maintenance.env" "$PROXY_TMP:proxy.env" "$APP_POSTGRES_TMP:app-postgres.env" "$LANGFUSE_POSTGRES_TMP:langfuse-postgres.env" "$REDIS_TMP:redis.env" "$NEO4J_TMP:neo4j.env" "$CLICKHOUSE_TMP:clickhouse.env" "$MINIO_TMP:minio.env" "$LANGFUSE_TMP:langfuse.env" "$CADDY_TMP:caddy.env"; do source_file="${pair%%:*}"; destination="${pair#*:}"; install -m 0600 "$source_file" "$RUNTIME_DIR/$destination.new"; mv -f "$RUNTIME_DIR/$destination.new" "$RUNTIME_DIR/$destination"; done
+for pair in "$COMMON_TMP:common.env" "$API_TMP:api.env" "$WORKER_TMP:worker.env" "$SCHEDULER_TMP:scheduler.env" "$MAINTENANCE_TMP:maintenance.env" "$PROXY_TMP:proxy.env" "$APP_POSTGRES_TMP:app-postgres.env" "$LANGFUSE_POSTGRES_TMP:langfuse-postgres.env" "$REDIS_TMP:redis.env" "$FALKORDB_TMP:falkordb.env" "$CLICKHOUSE_TMP:clickhouse.env" "$MINIO_TMP:minio.env" "$LANGFUSE_TMP:langfuse.env" "$CADDY_TMP:caddy.env"; do source_file="${pair%%:*}"; destination="${pair#*:}"; install -m 0600 "$source_file" "$RUNTIME_DIR/$destination.new"; mv -f "$RUNTIME_DIR/$destination.new" "$RUNTIME_DIR/$destination"; done
 # Files the containers read directly are owned by the image user that reads
-# them (squid proxy 13:13, redis 999:1000); mode stays 0600. Only root can
+# them (squid proxy 13:13, redis 999:1000, falkordb 999:999); mode stays 0600. Only root can
 # assign ownership; unprivileged test runs keep the invoking user.
-if [[ "$(id -u)" == 0 ]]; then PASSWD_OWNER=(-o 13 -g 13); REDIS_ACL_OWNER=(-o 999 -g 1000); else PASSWD_OWNER=(); REDIS_ACL_OWNER=(); fi
+if [[ "$(id -u)" == 0 ]]; then PASSWD_OWNER=(-o 13 -g 13); REDIS_ACL_OWNER=(-o 999 -g 1000); FALKORDB_ACL_OWNER=(-o 999 -g 999); else PASSWD_OWNER=(); REDIS_ACL_OWNER=(); FALKORDB_ACL_OWNER=(); fi
 install "${PASSWD_OWNER[@]}" -m 0600 "$PASSWD_TMP" "$RUNTIME_DIR/proxy/squid.passwd.new"; mv -f "$RUNTIME_DIR/proxy/squid.passwd.new" "$RUNTIME_DIR/proxy/squid.passwd"
 install "${REDIS_ACL_OWNER[@]}" -m 0600 "$REDIS_ACL_TMP" "$RUNTIME_DIR/redis/users.acl.new"; mv -f "$RUNTIME_DIR/redis/users.acl.new" "$RUNTIME_DIR/redis/users.acl"
+install "${FALKORDB_ACL_OWNER[@]}" -m 0600 "$FALKORDB_ACL_TMP" "$RUNTIME_DIR/falkordb/users.acl.new"; mv -f "$RUNTIME_DIR/falkordb/users.acl.new" "$RUNTIME_DIR/falkordb/users.acl"
 echo "gx10 secrets rotated operator_generation=$OPERATOR_GENERATION proxy_generation=$PROXY_GENERATION" >&2

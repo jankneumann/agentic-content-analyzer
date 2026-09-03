@@ -16,7 +16,7 @@ CORE_DEPENDENCIES = (
     ("langfuse-web", 3000),
     ("openbao", 8200),
     ("squid", 3128),
-    ("neo4j", 7687),
+    ("falkordb", 6379),
 )
 ROLE_DEPENDENCIES = {
     "api": CORE_DEPENDENCIES,

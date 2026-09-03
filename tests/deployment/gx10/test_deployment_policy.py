@@ -15,7 +15,7 @@ STATEFUL_SERVICES = {
     "app-postgres",
     "langfuse-postgres",
     "redis",
-    "neo4j",
+    "falkordb",
     "clickhouse",
     "minio",
     "openbao",
@@ -152,7 +152,7 @@ IMAGE_USERS = {
     "app-postgres": "999:999",
     "langfuse-postgres": "999:999",
     "redis": "999:1000",
-    "neo4j": "7474:7474",
+    "falkordb": "999:999",
     "clickhouse": "101:101",
     "minio": "60001:60001",
     "openbao": "100:1000",
@@ -273,6 +273,64 @@ def test_env_file_entries_are_plain_paths_for_podman_compose_1_0_6() -> None:
             assert entry.startswith("/run/aca/gx10/"), f"{name}: {entry}"
 
 
+GX10_SURFACE = (
+    "docker-compose.gx10.yml",
+    "profiles/gx10.yaml",
+    "docs/GX10_PODMAN_SETUP.md",
+    "deploy/gx10",
+    "scripts/gx10",
+)
+
+
+def test_graph_backend_is_falkordb_end_to_end() -> None:
+    """GX-10 runs FalkorDB, the backend production already uses on Railway.
+
+    Every Neo4j touchpoint must be gone: the profile, the compose service and
+    its dependents, the secret seed and renderer, readiness, the persistence
+    sentinels, backup/restore plans, storage budgets, and the setup doc.
+    """
+    profile = yaml.safe_load((ROOT / "profiles/gx10.yaml").read_text(encoding="utf-8"))
+    assert profile["providers"]["graphdb"] == "falkordb"
+    assert "neo4j" not in profile["providers"]
+    assert "neo4j" not in profile["settings"]
+    graph = profile["settings"]["graphdb"]
+    assert graph["graphdb_mode"] == "local"
+    assert graph["falkordb_host"] == "falkordb"
+    assert graph["falkordb_port"] == 6379
+    assert graph["falkordb_password"] == "${GX10_FALKORDB_PASSWORD}"
+    assert graph["falkordb_database"] == "newsletter_graph"
+    assert graph["semaphore_limit"] == 1
+    assert "falkordb" in profile["settings"]["gx10"]["component_budgets_percent"]
+
+    compose = _compose()
+    assert "neo4j" not in compose["services"]
+    falkordb = _service(compose, "falkordb")
+    assert falkordb["image"].startswith("falkordb/falkordb:v4.18.1@sha256:")
+    assert DIGEST_PIN.match(falkordb["image"])
+    assert falkordb["user"] == "999:999"
+    assert falkordb["environment"]["BROWSER"] == "0"
+    assert "--aclfile /tmp/falkordb/users.acl" in falkordb["environment"]["REDIS_ARGS"]
+    assert falkordb["env_file"] == ["/run/aca/gx10/falkordb.env"]
+    assert "/srv/aca/falkordb:/var/lib/falkordb/data:rw" in falkordb["volumes"]
+    assert any(m.endswith("falkordb/users.acl:ro") for m in falkordb["volumes"])
+    entrypoint = " ".join(falkordb["entrypoint"])
+    for forbidden in ("chown", "gosu", "su-exec", "setpriv", "requirepass"):
+        assert forbidden not in entrypoint
+    assert "exec /var/lib/falkordb/bin/run.sh" in entrypoint
+    assert "redis-cli ping" in " ".join(falkordb["healthcheck"]["test"])
+    for role in APPLICATION_SERVICES:
+        assert _service(compose, role)["depends_on"]["falkordb"]["condition"] == "service_healthy"
+
+    for relative in GX10_SURFACE:
+        path = ROOT / relative
+        files = [path] if path.is_file() else sorted(path.rglob("*"))
+        for file in files:
+            if not file.is_file() or (file.suffix in {".age", ".json"} and "evidence" in file.parts):
+                continue
+            text = file.read_text(encoding="utf-8", errors="ignore")
+            assert "neo4j" not in text.lower(), file.relative_to(ROOT)
+
+
 def test_application_namespaces_have_no_direct_internet_route() -> None:
     compose = _compose()
     networks = compose["networks"]
@@ -292,7 +350,7 @@ def test_application_namespaces_have_no_direct_internet_route() -> None:
             "127.0.0.1",
             "app-postgres",
             "redis",
-            "neo4j",
+            "falkordb",
             "openbao",
             "squid",
             "langfuse-web",

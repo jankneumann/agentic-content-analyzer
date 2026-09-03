@@ -16,7 +16,7 @@ from types import MappingProxyType
 DEFAULT_COMPONENT_BUDGETS_PERCENT: Mapping[str, int] = MappingProxyType(
     {
         "application_postgresql": 22,
-        "neo4j": 12,
+        "falkordb": 12,
         "clickhouse": 28,
         "minio": 8,
         "backups": 15,

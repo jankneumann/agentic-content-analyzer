@@ -7,7 +7,7 @@ CONFIG_DIR="${GX10_MAINTENANCE_CONFIG_DIR:-/etc/aca/gx10}"
 INSTALL_ROOT="${GX10_INSTALL_ROOT:-/opt/aca}"
 COMPONENT_SCRIPT="/opt/aca/scripts/gx10/backup/component.sh"
 ACTION_SCRIPT="/opt/aca/scripts/gx10/storage/action.sh"
-components='["application_postgresql","neo4j","langfuse_postgresql","clickhouse","minio","configuration_metadata"]'
+components='["application_postgresql","falkordb","langfuse_postgresql","clickhouse","minio","configuration_metadata"]'
 
 [[ -d "$SOURCE_DIR" && ! -L "$SOURCE_DIR" ]] || { echo "reviewed maintenance source directory unavailable" >&2; exit 1; }
 [[ ! -L "$CONFIG_DIR" ]] || { echo "maintenance configuration directory must not be a symlink" >&2; exit 1; }
@@ -37,7 +37,7 @@ jq -e --arg component "$COMPONENT_SCRIPT" --argjson names "$components" '
   (.validate | all(to_entries[]; .value == [$component, "validate", .key])) and
   .production_sources == {
     application_postgresql:"/srv/aca/postgres",
-    neo4j:"/srv/aca/neo4j",
+    falkordb:"/srv/aca/falkordb",
     langfuse_postgresql:"/srv/aca/langfuse-postgres",
     clickhouse:"/srv/aca/clickhouse",
     minio:"/srv/aca/minio",
