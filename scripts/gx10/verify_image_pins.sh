@@ -13,8 +13,8 @@ for digest in "$APP_DIGEST" "$SQUID_DIGEST" "$LANGFUSE_WORKER_DIGEST"; do
   [[ "$digest" != "$(printf '0%.0s' {1..64})" && "$digest" != "$(printf 'f%.0s' {1..64})" ]] || { echo "sentinel image digest denied" >&2; exit 1; }
 done
 APP_TAG="${APP_REF%@sha256:*}"
-SQUID_TAG="ubuntu/squid:6.6-24.04_beta"
-LANGFUSE_WORKER_TAG="langfuse/langfuse-worker:3"
+SQUID_TAG="docker.io/ubuntu/squid:6.6-24.04_beta"
+LANGFUSE_WORKER_TAG="docker.io/langfuse/langfuse-worker:3"
 inspect() { /usr/bin/skopeo inspect --override-os linux --override-arch arm64 --format '{{.Digest}}' "docker://$1"; }
 [[ "$(inspect "$APP_TAG")" == "sha256:$APP_DIGEST" ]] || { echo "application tag provenance mismatch" >&2; exit 1; }
 [[ "$(inspect "$SQUID_TAG")" == "sha256:$SQUID_DIGEST" ]] || { echo "Squid tag provenance mismatch or unpublished tag" >&2; exit 1; }

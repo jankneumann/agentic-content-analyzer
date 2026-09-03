@@ -29,7 +29,7 @@ have systemd execute rootful Podman commands directly.
 | --- | --- |
 | Root or passwordless `sudo` | Runtime, firewall, credentials, and data paths are root-managed. |
 | ARM64 immutable image digests | GX-10 is ARM64; mutable tags can change the executed image. |
-| Approved published Squid image | `ubuntu/squid:6.6-24.04_beta@sha256:6a097f68bae708cedbabd6188d68c7e2e7a38cedd05a176e1cc0ba29e3bbe029` is published for ARM64 and must remain digest-pinned. |
+| Approved published Squid image | `docker.io/ubuntu/squid:6.6-24.04_beta@sha256:6a097f68bae708cedbabd6188d68c7e2e7a38cedd05a176e1cc0ba29e3bbe029` is published for ARM64 and must remain digest-pinned. |
 | OpenBao recovery material and first-install seed | Initialization and unseal are operator ceremonies, never normal startup. |
 | External-provider credentials | Model, video, mail, and delivery APIs stay external by design. |
 | `age` recipient and escrowed decrypt identities | Loss of all identities makes encrypted backups unrecoverable. |
@@ -161,6 +161,11 @@ GX10_APP_IMAGE=registry.example/aca:<approved-tag>@sha256:<64-hex-digest>
 GX10_SQUID_DIGEST=<64-hex-digest>
 GX10_LANGFUSE_WORKER_DIGEST=<64-hex-digest>
 ```
+
+Every image reference, including this one, must name its registry host. The
+rootful host defines no unqualified-search registries, and Podman does not apply
+short-name aliases to digested references, so `ubuntu/squid@sha256:...` is
+refused while `docker.io/ubuntu/squid:...@sha256:...` pulls.
 
 The image validation implementation must identify an approved **published**
 Squid tag and prove it resolves to the configured digest. Do not insert an

@@ -68,11 +68,11 @@ def test_all_runtime_images_are_immutable_and_squid_uses_reviewed_release() -> N
     squid_image = _service(compose, "squid")["image"]
     assert isinstance(squid_image, str)
     assert squid_image == (
-        "ubuntu/squid:6.6-24.04_beta@sha256:"
+        "docker.io/ubuntu/squid:6.6-24.04_beta@sha256:"
         "${GX10_SQUID_DIGEST:?set the reviewed published manifest digest}"
     )
     assert _service(compose, "langfuse-worker")["image"] == (
-        "langfuse/langfuse-worker:3@sha256:"
+        "docker.io/langfuse/langfuse-worker:3@sha256:"
         "${GX10_LANGFUSE_WORKER_DIGEST:?set the reviewed worker manifest digest}"
     )
 
@@ -305,7 +305,7 @@ def test_graph_backend_is_falkordb_end_to_end() -> None:
     compose = _compose()
     assert "neo4j" not in compose["services"]
     falkordb = _service(compose, "falkordb")
-    assert falkordb["image"].startswith("falkordb/falkordb:v4.18.1@sha256:")
+    assert falkordb["image"].startswith("docker.io/falkordb/falkordb:v4.18.1@sha256:")
     assert DIGEST_PIN.match(falkordb["image"])
     assert falkordb["user"] == "999:999"
     assert falkordb["environment"]["BROWSER"] == "0"
@@ -331,6 +331,26 @@ def test_graph_backend_is_falkordb_end_to_end() -> None:
                 continue
             text = file.read_text(encoding="utf-8", errors="ignore")
             assert "neo4j" not in text.lower(), file.relative_to(ROOT)
+
+
+def test_every_image_names_its_registry_explicitly() -> None:
+    """Rootful Podman on the GX-10 host has no unqualified-search registries,
+    so a short name such as ``ubuntu/squid@sha256:...`` is refused at pull
+    time. Short-name aliases do not apply to digested references either, so
+    every reviewed image carries its registry host."""
+    for name, service in _compose()["services"].items():
+        image = service["image"]
+        if name in APPLICATION_SERVICES:
+            continue
+        registry = image.split("/", 1)[0]
+        assert "." in registry or registry == "localhost", (
+            f"{name}: {image} is not registry-qualified"
+        )
+    pins = (ROOT / "scripts/gx10/verify_image_pins.sh").read_text(encoding="utf-8")
+    assert 'SQUID_TAG="docker.io/ubuntu/squid:6.6-24.04_beta"' in pins
+    assert 'LANGFUSE_WORKER_TAG="docker.io/langfuse/langfuse-worker:3"' in pins
+    component = (ROOT / "scripts/gx10/backup/component.sh").read_text(encoding="utf-8")
+    assert 'POSTGRES_IMAGE="docker.io/library/postgres:17@sha256:' in component
 
 
 def test_application_namespaces_have_no_direct_internet_route() -> None:

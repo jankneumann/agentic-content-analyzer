@@ -80,15 +80,19 @@ def check_images(compose: dict[str, Any], errors: list[str]) -> None:
             if image != "${GX10_APP_IMAGE:?set a reviewed application tag@sha256 digest}":
                 errors.append(f"{name}: protected application image input required")
         elif name == "squid":
-            expected = "ubuntu/squid:6.6-24.04_beta@sha256:${GX10_SQUID_DIGEST:?set the reviewed published manifest digest}"
+            expected = "docker.io/ubuntu/squid:6.6-24.04_beta@sha256:${GX10_SQUID_DIGEST:?set the reviewed published manifest digest}"
             if image != expected:
                 errors.append("squid: frozen tag plus protected digest input required")
         elif name == "langfuse-worker":
-            expected = "langfuse/langfuse-worker:3@sha256:${GX10_LANGFUSE_WORKER_DIGEST:?set the reviewed worker manifest digest}"
+            expected = "docker.io/langfuse/langfuse-worker:3@sha256:${GX10_LANGFUSE_WORKER_DIGEST:?set the reviewed worker manifest digest}"
             if image != expected:
                 errors.append("langfuse-worker: dedicated protected worker image required")
         elif not DIGEST_PIN.fullmatch(image):
             errors.append(f"{name}: image is not immutable")
+        if name not in APPLICATION_SERVICES:
+            registry = image.split("/", 1)[0]
+            if "." not in registry and registry != "localhost":
+                errors.append(f"{name}: image must name its registry explicitly")
 
 
 def check_topology(compose: dict[str, Any], errors: list[str]) -> None:
@@ -204,7 +208,7 @@ def rendered_validate(path: Path, evidence: Path | None) -> list[str]:
         elif sentinel(match.group(1)):
             errors.append(f"rendered {name}: sentinel digest denied")
     squid = compose["services"]["squid"]["image"]
-    if not squid.startswith("ubuntu/squid:6.6-24.04_beta@sha256:"):
+    if not squid.startswith("docker.io/ubuntu/squid:6.6-24.04_beta@sha256:"):
         errors.append("rendered Squid tag provenance changed")
     if evidence is None or not evidence.is_file():
         errors.append("registry verified image-pins evidence required")

@@ -59,6 +59,8 @@ x-application:
   tmpfs: &id012
   - /tmp:rw,noexec,nosuid,size=256m
   stop_grace_period: 45s
+# Every image names its registry: the rootful host defines no unqualified-search
+# registries, and short-name aliases never apply to digested references.
 services:
   app-postgres:
     restart: on-failure:5
@@ -69,7 +71,7 @@ services:
     deploy: *id003
     networks: *id004
     tmpfs: *id005
-    image: postgres:17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
+    image: docker.io/library/postgres:17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
     env_file:
     - /run/aca/gx10/app-postgres.env
     environment:
@@ -94,7 +96,7 @@ services:
     deploy: *id003
     networks: *id004
     tmpfs: *id005
-    image: postgres:17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
+    image: docker.io/library/postgres:17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
     env_file:
     - /run/aca/gx10/langfuse-postgres.env
     environment:
@@ -119,7 +121,7 @@ services:
     deploy: *id003
     networks: *id004
     tmpfs: *id005
-    image: redis:7.4-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    image: docker.io/library/redis:7.4-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
     env_file:
     - /run/aca/gx10/redis.env
     command:
@@ -151,7 +153,7 @@ services:
     deploy: *id003
     networks: *id004
     tmpfs: *id005
-    image: falkordb/falkordb:v4.18.1@sha256:d6aa9598b79cd54935864d56f971f3916156399a9ca38a5fae6c029ab1f2bce9
+    image: docker.io/falkordb/falkordb:v4.18.1@sha256:d6aa9598b79cd54935864d56f971f3916156399a9ca38a5fae6c029ab1f2bce9
     # run.sh execs redis-server with $REDIS_ARGS; the ACL file is copied onto
     # the /tmp tmpfs so the read-only rendered secret never has to be writable.
     # No browser: BROWSER=0 skips the bundled node UI.
@@ -190,7 +192,7 @@ services:
     deploy: *id003
     networks: *id004
     tmpfs: *id005
-    image: clickhouse/clickhouse-server:25.3.6.56-alpine@sha256:157423fca52f596b62a1bf301b037b9f74bfca38089aa57d1bd36c9025f7ecef
+    image: docker.io/clickhouse/clickhouse-server:25.3.6.56-alpine@sha256:157423fca52f596b62a1bf301b037b9f74bfca38089aa57d1bd36c9025f7ecef
     env_file:
     - /run/aca/gx10/clickhouse.env
     environment:
@@ -220,7 +222,7 @@ services:
     deploy: *id003
     networks: *id004
     tmpfs: *id005
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
+    image: docker.io/minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
     env_file:
     - /run/aca/gx10/minio.env
     command:
@@ -277,7 +279,7 @@ services:
     security_opt: *id001
     cap_drop: *id002
     deploy: *id003
-    image: langfuse/langfuse:3@sha256:a921990b3cf6f62e9452eaf8ab9bea045852375a6883abd1fdbe63afa08defa0
+    image: docker.io/langfuse/langfuse:3@sha256:a921990b3cf6f62e9452eaf8ab9bea045852375a6883abd1fdbe63afa08defa0
     env_file:
     - /run/aca/gx10/langfuse.env
     networks:
@@ -308,7 +310,7 @@ services:
     security_opt: *id001
     cap_drop: *id002
     deploy: *id003
-    image: langfuse/langfuse-worker:3@sha256:${GX10_LANGFUSE_WORKER_DIGEST:?set the reviewed worker manifest digest}
+    image: docker.io/langfuse/langfuse-worker:3@sha256:${GX10_LANGFUSE_WORKER_DIGEST:?set the reviewed worker manifest digest}
     env_file:
     - /run/aca/gx10/langfuse.env
     networks:
@@ -337,7 +339,7 @@ services:
     security_opt: *id001
     cap_drop: *id002
     deploy: *id003
-    image: ubuntu/squid:6.6-24.04_beta@sha256:${GX10_SQUID_DIGEST:?set the reviewed
+    image: docker.io/ubuntu/squid:6.6-24.04_beta@sha256:${GX10_SQUID_DIGEST:?set the reviewed
       published manifest digest}
     networks:
     - application
@@ -539,7 +541,7 @@ services:
     security_opt: *id001
     cap_drop: *id002
     deploy: *id003
-    image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    image: docker.io/library/caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
     env_file:
     - /run/aca/gx10/caddy.env
     # The caddy binary carries file capabilities; with every capability dropped

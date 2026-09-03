@@ -11,7 +11,7 @@ The following live checks remain incomplete in this environment:
 - initialized, authenticated, and unsealed OpenBao lifecycle checks;
 - live authenticated Squid CONNECT, denied direct route, and failure matrix;
 - persistent-mount survival and post-start dependency-loss readiness;
-- registry provenance for the approved ARM64 `ubuntu/squid:6.6-24.04_beta`
+- registry provenance for the approved ARM64 `docker.io/ubuntu/squid:6.6-24.04_beta`
   manifest during a real rootful Podman run.
 
 ## Explicit first-install OpenBao ceremony
