@@ -255,6 +255,15 @@ compatible with image extraction because container layers legitimately contain
 `/home`, `/usr`, and other root-level paths. A fail-closed post-start check
 requires the OpenBao container to exist and be running before provisioning.
 
+Several containers bind-mount single files from `/opt/aca` (`openbao.hcl`,
+`squid.conf`, `allowed-domains.txt`, the Caddyfile, and the two readiness
+scripts). `git pull` writes a changed file as a new inode, but a running
+container keeps the inode it mounted, so it continues to execute the old
+content. After pulling a change to any bind-mounted file, remove the affected
+container and let its unit recreate it, for example
+`sudo podman rm -f aca-gx10_squid_1` before restarting
+`aca-gx10-proxy-policy.service`.
+
 After reinstalling a changed copy of `aca-gx10-openbao-container.service`,
 restart it explicitly. It is a `oneshot` unit with `RemainAfterExit=yes`, so a
 previous run that exited successfully leaves it `active (exited)` and
