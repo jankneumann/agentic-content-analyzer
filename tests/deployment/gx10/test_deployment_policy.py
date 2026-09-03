@@ -325,7 +325,9 @@ def test_graph_backend_is_falkordb_end_to_end() -> None:
         path = ROOT / relative
         files = [path] if path.is_file() else sorted(path.rglob("*"))
         for file in files:
-            if not file.is_file() or (file.suffix in {".age", ".json"} and "evidence" in file.parts):
+            if not file.is_file() or (
+                file.suffix in {".age", ".json"} and "evidence" in file.parts
+            ):
                 continue
             text = file.read_text(encoding="utf-8", errors="ignore")
             assert "neo4j" not in text.lower(), file.relative_to(ROOT)

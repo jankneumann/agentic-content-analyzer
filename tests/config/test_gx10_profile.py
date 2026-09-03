@@ -31,7 +31,7 @@ def _secret_environment() -> dict[str, str]:
         "GX10_PROXY_PASSWORD": "f" * 48,
         "GX10_LANGFUSE_PUBLIC_KEY": "pk-lf-placeholder",
         "GX10_LANGFUSE_SECRET_KEY": "g" * 48,
-        "GX10_NEO4J_PASSWORD": "h" * 48,
+        "GX10_FALKORDB_PASSWORD": "h" * 48,
         "GX10_RELEASE_REVISION": "1" * 40,
         "GX10_AUTHORITY_FINGERPRINT": "2" * 64,
         "GX10_PROCESS_ROLE": "api",
@@ -50,14 +50,16 @@ def test_gx10_profile_declares_complete_local_observability_topology() -> None:
 
     assert profile.settings.environment == "production"
     assert profile.providers.database == "local"
-    assert profile.providers.graphdb == "neo4j"
+    assert profile.providers.graphdb == "falkordb"
     assert profile.providers.storage == "local"
     assert profile.providers.observability == "langfuse"
     assert validate_profile(profile, secrets={}, check_secrets=False) == []
 
     settings = profile.settings.model_dump(mode="json")
     assert settings["database"]["database_url"].split("@", 1)[1].startswith("app-postgres:")
-    assert settings["neo4j"]["neo4j_uri"] == "bolt://neo4j:7687"
+    assert settings["graphdb"]["graphdb_mode"] == "local"
+    assert settings["graphdb"]["falkordb_host"] == "falkordb"
+    assert settings["graphdb"]["falkordb_port"] == 6379
     assert settings["storage"]["storage_provider"] == "local"
     assert settings["observability"]["otel_exporter_otlp_endpoint"] == (
         "http://langfuse-web:3000/api/public/otel"
@@ -89,7 +91,7 @@ def test_gx10_profile_uses_unique_process_identities_and_external_secret_referen
         "GX10_PROXY_PASSWORD",
         "GX10_LANGFUSE_PUBLIC_KEY",
         "GX10_LANGFUSE_SECRET_KEY",
-        "GX10_NEO4J_PASSWORD",
+        "GX10_FALKORDB_PASSWORD",
         "GX10_RELEASE_REVISION",
         "GX10_AUTHORITY_FINGERPRINT",
     }
