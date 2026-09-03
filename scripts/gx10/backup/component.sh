@@ -6,7 +6,7 @@ mode="${1:-}"
 component="${2:-}"
 target="${3:-}"
 COMPOSE=(/opt/aca/scripts/gx10/podman-compose.sh)
-POSTGRES_IMAGE="docker.io/library/postgres:17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675"
+POSTGRES_IMAGE="docker.io/library/postgres:17.11@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675"
 
 offline_tar() {
   local service="$1" source="$2" status=0

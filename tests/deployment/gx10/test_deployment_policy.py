@@ -355,7 +355,7 @@ def test_every_image_names_its_registry_explicitly() -> None:
     assert 'SQUID_TAG="docker.io/ubuntu/squid:6.6-24.04_beta"' in pins
     assert 'LANGFUSE_WORKER_TAG="docker.io/langfuse/langfuse-worker:3.225.5"' in pins
     component = (ROOT / "scripts/gx10/backup/component.sh").read_text(encoding="utf-8")
-    assert 'POSTGRES_IMAGE="docker.io/library/postgres:17@sha256:' in component
+    assert 'POSTGRES_IMAGE="docker.io/library/postgres:17.11@sha256:' in component
 
 
 def test_application_namespaces_have_no_direct_internet_route() -> None:
