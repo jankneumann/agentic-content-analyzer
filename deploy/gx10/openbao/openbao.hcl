@@ -1,5 +1,6 @@
 ui = false
-disable_mlock = false
+# OpenBao 2.x dropped mlock support and refuses to start if disable_mlock is
+# set at all. Harden swap on the host instead (see openbao.org post-install).
 api_addr = "http://openbao:8200"
 cluster_addr = "https://openbao:8201"
 

@@ -92,6 +92,22 @@ def test_stateful_ports_are_private_and_ingress_is_loopback_bound() -> None:
     assert caddy_ports == ["127.0.0.1:8443:443"]
 
 
+def test_openbao_runs_as_image_user_without_capabilities() -> None:
+    """The pinned OpenBao image drops root via su-exec, which needs CAP_SETGID.
+
+    The stack drops every capability, so the container must start directly as
+    the image's own ``openbao`` user (uid 100, gid 1000 in the pinned digest)
+    and the entrypoint's privilege drop never runs. OpenBao 2.2 also refuses to
+    boot when ``disable_mlock`` appears in the config at all, so the config must
+    not mention it and ``IPC_LOCK`` is not required.
+    """
+    service = _service(_compose(), "openbao")
+    assert service.get("user") == "100:1000"
+    assert "cap_add" not in service, "openbao must not add capabilities"
+    config = (ROOT / "deploy/gx10/openbao/openbao.hcl").read_text(encoding="utf-8")
+    assert re.search(r"^\s*disable_mlock\s*=", config, re.MULTILINE) is None
+
+
 def test_application_namespaces_have_no_direct_internet_route() -> None:
     compose = _compose()
     networks = compose["networks"]

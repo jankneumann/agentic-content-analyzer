@@ -238,8 +238,11 @@ services:
     command:
     - server
     - -config=/openbao/config/openbao.hcl
-    cap_add:
-    - IPC_LOCK
+    # The image entrypoint drops root via su-exec, which needs CAP_SETGID; with
+    # every capability dropped it dies at startup. Start as the image's own
+    # openbao user (uid 100 / gid 1000 in the pinned digest) so no drop happens.
+    # /srv/aca/openbao must be owned 100:1000 on the host.
+    user: "100:1000"
     volumes:
     - /srv/aca/openbao:/openbao/data:rw
     - ./deploy/gx10/openbao/openbao.hcl:/openbao/config/openbao.hcl:ro

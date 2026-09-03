@@ -58,12 +58,17 @@ sudo install -d -o root -g root -m 0700 /etc/aca/gx10 /run/aca/gx10 /srv/aca /sr
 sudo install -d -o root -g root -m 0700 \
   /srv/aca/application /srv/aca/postgres /srv/aca/langfuse-postgres /srv/aca/redis \
   /srv/aca/neo4j /srv/aca/neo4j-logs /srv/aca/clickhouse /srv/aca/clickhouse-logs \
-  /srv/aca/minio /srv/aca/openbao /srv/aca/caddy-data /srv/aca/caddy-config /srv/aca/squid-logs
+  /srv/aca/minio /srv/aca/caddy-data /srv/aca/caddy-config /srv/aca/squid-logs
+sudo install -d -o 100 -g 1000 -m 0700 /srv/aca/openbao
 ```
 
 Container images select their own users. If a bind mount fails permission checks,
 inspect that image's user and initialization contract; do not recursively chmod
-or chown `/srv/aca` to a guessed UID.
+or chown `/srv/aca` to a guessed UID. OpenBao is the documented exception: the
+pinned `quay.io/openbao/openbao:2.2` image ships user `openbao` as uid 100 /
+gid 1000 and its entrypoint drops root with `su-exec`, which needs `CAP_SETGID`.
+Because the stack drops every capability, the Compose service starts directly
+as `user: "100:1000"` and the data directory must already carry that ownership.
 
 ## 3. Install and verify host prerequisites
 
@@ -215,6 +220,17 @@ the main rootful Podman runtime. `ProtectHome` and `ProtectSystem` are not
 compatible with image extraction because container layers legitimately contain
 `/home`, `/usr`, and other root-level paths. A fail-closed post-start check
 requires the OpenBao container to exist and be running before provisioning.
+
+After reinstalling a changed copy of `aca-gx10-openbao-container.service`,
+restart it explicitly. It is a `oneshot` unit with `RemainAfterExit=yes`, so a
+previous run that exited successfully leaves it `active (exited)` and
+`systemctl reset-failed` does not touch it; starting the provision unit then
+treats the stale dependency as satisfied and never re-executes the container
+start:
+
+```bash
+sudo systemctl restart aca-gx10-openbao-container.service
+```
 
 ## 6. OpenBao, secrets, and network policy
 
