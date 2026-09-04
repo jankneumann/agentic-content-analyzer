@@ -341,6 +341,16 @@ services:
     deploy: *id003
     image: docker.io/ubuntu/squid:6.6-24.04_beta@sha256:${GX10_SQUID_DIGEST:?set the reviewed
       published manifest digest}
+    # The image entrypoint is a bash script at PID 1 that never forwards
+    # SIGTERM, so every stop ran into the kill timeout. Squid itself as PID 1
+    # shuts down cleanly within shutdown_lifetime; the grace period covers it.
+    entrypoint:
+    - /usr/sbin/squid
+    command:
+    - -f
+    - /etc/squid/squid.conf
+    - -NYC
+    stop_grace_period: 20s
     networks:
     - application
     - egress

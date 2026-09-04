@@ -358,6 +358,16 @@ def test_every_image_names_its_registry_explicitly() -> None:
     assert 'POSTGRES_IMAGE="docker.io/library/postgres:17.11@sha256:' in component
 
 
+def test_squid_is_pid_one_and_stops_within_its_grace_period() -> None:
+    """The image entrypoint (bash at PID 1) never forwards SIGTERM, so every
+    stop hit the kill timeout and podman-compose's stop-then-rm left the
+    container stuck in "stopping". Squid itself as PID 1 exits cleanly."""
+    squid = _service(_compose(), "squid")
+    assert squid["entrypoint"] == ["/usr/sbin/squid"]
+    assert squid["command"] == ["-f", "/etc/squid/squid.conf", "-NYC"]
+    assert squid["stop_grace_period"] == "20s"
+
+
 def test_application_namespaces_have_no_direct_internet_route() -> None:
     compose = _compose()
     networks = compose["networks"]

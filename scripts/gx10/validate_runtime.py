@@ -180,6 +180,7 @@ def static_validate(runtime: Path | None) -> list[str]:
         ROOT / "scripts/gx10/verify_image_pins.sh",
         ROOT / "scripts/gx10/check_openbao_container_started.sh",
         ROOT / "scripts/gx10/check_persistence_ownership.py",
+        ROOT / "scripts/gx10/ensure_service.sh",
         ROOT / "deploy/gx10/systemd/aca-gx10-proxy-policy.timer",
         ROOT / "scripts/gx10/check_proxy_ready.sh",
         ROOT / "scripts/gx10/persistence_sentinels.sh",

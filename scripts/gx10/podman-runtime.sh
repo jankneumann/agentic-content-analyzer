@@ -24,7 +24,21 @@ SERVICES=(
   maintenance
 )
 
+PODMAN="${GX10_PODMAN_BIN:-/usr/bin/podman}"
+DOWN_TIMEOUT="${GX10_RUNTIME_DOWN_TIMEOUT_SECONDS:-45}"
+
 compose() { "${COMPOSE[@]}" "$@"; }
+
+# Remove every container of the project, dependents first, killing after the
+# grace period. podman-compose's own down stops with a short grace and then
+# removes without --force, which leaves a slow-stopping container stuck in
+# "stopping" and every later start failing on it.
+sweep_project_containers() {
+  local ids=()
+  mapfile -t ids < <("$PODMAN" ps -aq --filter "label=io.podman.compose.project=$PROJECT")
+  (( ${#ids[@]} )) || return 0
+  "$PODMAN" rm -f --depend -t "$DOWN_TIMEOUT" "${ids[@]}" >/dev/null
+}
 
 wait_for_runtime() {
   local deadline service container status
@@ -55,11 +69,13 @@ case "${1:-}" in
     # recreated stack (an OpenBao or Squid container replaced by its own unit)
     # leaves dependents pointing at IDs that no longer exist. A cold start
     # therefore recreates every container; all state lives on bind mounts.
-    compose up -d --force-recreate
+    sweep_project_containers
+    compose up -d
     wait_for_runtime
     ;;
   down)
-    compose down --timeout "${GX10_RUNTIME_DOWN_TIMEOUT_SECONDS:-45}"
+    compose down --timeout "$DOWN_TIMEOUT"
+    sweep_project_containers
     ;;
   *)
     echo "usage: podman-runtime.sh up|down" >&2

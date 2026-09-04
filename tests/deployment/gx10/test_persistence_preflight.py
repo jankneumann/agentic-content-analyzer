@@ -44,7 +44,7 @@ def test_preflight_is_wired_before_every_hardened_start() -> None:
     )
     proxy = (ROOT / "deploy/gx10/systemd/aca-gx10-proxy-policy.service").read_text()
     assert proxy.index("check_persistence_ownership.py --service squid") < proxy.index(
-        "up -d squid"
+        "ensure_service.sh squid"
     )
 
 

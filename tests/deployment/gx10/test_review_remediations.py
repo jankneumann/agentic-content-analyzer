@@ -361,7 +361,9 @@ def test_gx10_runtime_uses_a_pinned_rootful_podman_compose_provider() -> None:
     # and a cold start recreates the stack so depends_on IDs are never stale.
     assert "compose ps -q" not in runtime_source
     assert "label=com.docker.compose.service=$service" in runtime_source
-    assert "compose up -d --force-recreate" in runtime_source
+    assert "sweep_project_containers" in runtime_source
+    assert "rm -f --depend" in runtime_source
+    assert "sweep_project_containers\n    compose up -d" in runtime_source
     recovery = (ROOT / "scripts/gx10/verify_dependency_recovery.sh").read_text()
     assert "--wait" not in recovery
 
