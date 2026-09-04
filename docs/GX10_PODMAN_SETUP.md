@@ -285,16 +285,12 @@ container and let its unit recreate it, for example
 `sudo podman rm -f aca-gx10_squid_1` before restarting
 `aca-gx10-proxy-policy.service`.
 
-After reinstalling a changed copy of `aca-gx10-openbao-container.service`,
-restart it explicitly. It is a `oneshot` unit with `RemainAfterExit=yes`, so a
-previous run that exited successfully leaves it `active (exited)` and
-`systemctl reset-failed` does not touch it; starting the provision unit then
-treats the stale dependency as satisfied and never re-executes the container
-start:
-
-```bash
-sudo systemctl restart aca-gx10-openbao-container.service
-```
+`aca-gx10-openbao-container.service` is a `oneshot` that does not stay
+`active` after success: its start is idempotent (`ensure_service.sh`), so every
+dependent start re-runs it and recreates the container if the runtime's sweep
+removed it. `systemctl status` therefore shows it `inactive (dead)` between
+runs; that is expected. The secrets, provision, and runtime chains all pull it
+in through `Requires=`.
 
 ## 6. OpenBao, secrets, and network policy
 

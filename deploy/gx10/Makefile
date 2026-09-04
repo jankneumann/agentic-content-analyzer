@@ -58,7 +58,8 @@ provision: require-root ## Run the explicit first-install OpenBao ceremony (idem
 	test -s /etc/aca/gx10/openbao-provisioned.ready
 	@echo "provisioned"
 
-secrets: require-root ## Re-render runtime secrets from OpenBao
+secrets: require-root install ## Ensure OpenBao runs, then re-render runtime secrets
+	systemctl restart aca-gx10-openbao-container.service
 	systemctl restart aca-gx10-secrets.service
 
 image: require-root ## Build gx10-<sha> from the checked-out commit, push, print the pin line

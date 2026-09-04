@@ -6,8 +6,9 @@ After=network-online.target aca-gx10-image-pins.service
 Before=aca-gx10-openbao-provision.service aca-gx10-secrets.service
 
 [Service]
+# Not latched: ensure_service.sh is idempotent, so every dependent start re-runs
+# this unit and recreates the container if the runtime's sweep removed it.
 Type=oneshot
-RemainAfterExit=yes
 WorkingDirectory=/opt/aca
 EnvironmentFile=/etc/aca/gx10-images.env
 ExecStartPre=/opt/aca/scripts/gx10/check_persistence_ownership.py --service openbao

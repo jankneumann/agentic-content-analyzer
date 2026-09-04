@@ -74,3 +74,17 @@ def test_stuck_container_fails_closed_with_the_fix(tmp_path: Path) -> None:
     result = subprocess.run([SCRIPT, "squid"], env=env, capture_output=True, text=True)
     assert result.returncode == 1
     assert "podman rm -f --depend aca-gx10_squid_1" in result.stderr
+
+
+def test_openbao_container_unit_is_not_latched() -> None:
+    """A latched oneshot stayed active(exited) after the runtime's sweep
+    removed its container, so dependents never recreated OpenBao. With an
+    idempotent ExecStart the latch has no purpose."""
+    openbao = (ROOT / "deploy/gx10/systemd/aca-gx10-openbao-container.service").read_text()
+    assert "RemainAfterExit" not in openbao
+    assert "Type=oneshot" in openbao
+    makefile = (ROOT / "deploy/gx10/Makefile").read_text()
+    assert (
+        "systemctl restart aca-gx10-openbao-container.service\n\tsystemctl restart aca-gx10-secrets.service"
+        in makefile
+    )
