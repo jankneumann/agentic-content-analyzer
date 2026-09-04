@@ -10,9 +10,18 @@ BAO_ADDR="${GX10_BAO_ADDR:-http://10.89.0.250:8200/v1}"
 BAO_TOKEN_FILE="${GX10_BAO_TOKEN_FILE:-$RUNTIME_DIR/openbao-token}"
 
 [[ -s "$BAO_TOKEN_FILE" ]] || { echo "gx10 OpenBao token is unavailable" >&2; exit 1; }
-PUBLIC_LANGFUSE_URL="${GX10_PUBLIC_LANGFUSE_URL:-https://gx10.local/langfuse}"
-PUBLIC_ORIGIN="${GX10_PUBLIC_ORIGIN:-${PUBLIC_LANGFUSE_URL%/langfuse}}"
+# The application refuses a Langfuse public URL whose host is localhost, .local
+# or .internal, so there is no safe default: the operator sets the origin in
+# /etc/aca/gx10-public.env and the same rule is enforced here, at render time.
+PUBLIC_ORIGIN="${GX10_PUBLIC_ORIGIN:-${GX10_PUBLIC_LANGFUSE_URL:+${GX10_PUBLIC_LANGFUSE_URL%/langfuse}}}"
+[[ -n "$PUBLIC_ORIGIN" ]] || { echo "gx10 public origin is unset: set GX10_PUBLIC_ORIGIN in /etc/aca/gx10-public.env to the https origin operators will browse" >&2; exit 1; }
+PUBLIC_LANGFUSE_URL="${GX10_PUBLIC_LANGFUSE_URL:-$PUBLIC_ORIGIN/langfuse}"
 [[ "$PUBLIC_ORIGIN" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || { echo "gx10 public origin is invalid" >&2; exit 1; }
+origin_host="${PUBLIC_ORIGIN#https://}"; origin_host="${origin_host%%:*}"; origin_host="${origin_host,,}"
+case "$origin_host" in
+  localhost|*.localhost|*.local|*.internal)
+    echo "gx10 public origin host '$origin_host' is internal; the application rejects localhost, .local and .internal" >&2; exit 1 ;;
+esac
 [[ "$PUBLIC_LANGFUSE_URL" == "$PUBLIC_ORIGIN/langfuse" ]] || { echo "gx10 public Langfuse URL must be the public origin plus /langfuse" >&2; exit 1; }
 # Squid bind-mounts the proxy directory itself and runs as the image user 13,
 # so that one directory is root:13 0710; everything else stays 0700 root.

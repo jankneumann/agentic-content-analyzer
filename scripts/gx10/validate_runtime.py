@@ -29,8 +29,10 @@ STATEFUL_SERVICES = (
 )
 OPENBAO_STATEFUL_ADDRESS = "10.89.0.250"
 STATEFUL_SUBNET = "10.89.0.0/24"
+STATEFUL_DYNAMIC_RANGE = "10.89.0.0/25"
 CADDY_APPLICATION_ADDRESS = "10.89.1.250"
 APPLICATION_SUBNET = "10.89.1.0/24"
+APPLICATION_DYNAMIC_RANGE = "10.89.1.0/25"
 FAILURE_SCENARIOS = (
     "unknown_destination",
     "stale_policy",
@@ -119,7 +121,7 @@ def check_topology(compose: dict[str, Any], errors: list[str]) -> None:
     ):
         errors.append("openbao: management API must sit on the fixed stateful address")
     stateful_ipam = compose["networks"]["stateful"].get("ipam", {}).get("config", [])
-    if stateful_ipam != [{"subnet": STATEFUL_SUBNET}]:
+    if stateful_ipam != [{"subnet": STATEFUL_SUBNET, "ip_range": STATEFUL_DYNAMIC_RANGE}]:
         errors.append("stateful: subnet must be declared for the fixed OpenBao address")
     caddy_nets = services["caddy"].get("networks")
     if services["caddy"].get("ports"):
@@ -130,7 +132,7 @@ def check_topology(compose: dict[str, Any], errors: list[str]) -> None:
     ):
         errors.append("caddy: ingress must sit on the fixed application address")
     application_ipam = compose["networks"]["application"].get("ipam", {}).get("config", [])
-    if application_ipam != [{"subnet": APPLICATION_SUBNET}]:
+    if application_ipam != [{"subnet": APPLICATION_SUBNET, "ip_range": APPLICATION_DYNAMIC_RANGE}]:
         errors.append("application: subnet must be declared for the fixed Caddy address")
     for name, service in services.items():
         if service.get("cap_drop") != ["ALL"]:

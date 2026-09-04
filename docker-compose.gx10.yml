@@ -282,6 +282,10 @@ services:
     image: docker.io/langfuse/langfuse:3.225.5@sha256:a921990b3cf6f62e9452eaf8ab9bea045852375a6883abd1fdbe63afa08defa0
     env_file:
     - /run/aca/gx10/langfuse.env
+    environment:
+      # Single ClickHouse node: without this Langfuse's migrations expect a
+      # cluster with ZooKeeper and fail with "no Zookeeper configuration".
+      CLICKHOUSE_CLUSTER_ENABLED: 'false'
     networks:
     - application
     - stateful
@@ -313,6 +317,10 @@ services:
     image: docker.io/langfuse/langfuse-worker:3.225.5@sha256:${GX10_LANGFUSE_WORKER_DIGEST:?set the reviewed worker manifest digest}
     env_file:
     - /run/aca/gx10/langfuse.env
+    environment:
+      # Single ClickHouse node: without this Langfuse's migrations expect a
+      # cluster with ZooKeeper and fail with "no Zookeeper configuration".
+      CLICKHOUSE_CLUSTER_ENABLED: 'false'
     networks:
     - stateful
     depends_on:
@@ -592,6 +600,8 @@ networks:
     ipam:
       config:
       - subnet: 10.89.1.0/24
+        # Dynamic leases stay below .128; the fixed Caddy address is .250.
+        ip_range: 10.89.1.0/25
   stateful:
     internal: true
     driver: bridge
@@ -601,6 +611,8 @@ networks:
     ipam:
       config:
       - subnet: 10.89.0.0/24
+        # Dynamic leases stay below .128; the fixed OpenBao address is .250.
+        ip_range: 10.89.0.0/25
   egress:
     internal: false
     driver: bridge

@@ -67,6 +67,7 @@ def test_renderer_outputs_profile_compatible_least_privilege_role_envs(tmp_path:
         "GX10_BAO_TOKEN_FILE": str(token),
         "GX10_OPENSSL_ARGS": str(tmp_path / "openssl.args"),
         "GX10_OPENSSL_STDIN": str(tmp_path / "openssl.stdin"),
+        "GX10_PUBLIC_ORIGIN": "https://gx10.example.com",
     }
     result = subprocess.run(
         [RUNTIME / "openbao/render-secrets.sh"], env=env, capture_output=True, text=True
@@ -272,12 +273,14 @@ def test_public_langfuse_path_and_generated_trace_url_are_aligned(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     profile = yaml.safe_load((ROOT / "profiles/gx10.yaml").read_text())
-    assert profile["settings"]["observability"]["langfuse_public_url"].endswith("/langfuse}")
+    assert (
+        profile["settings"]["observability"]["langfuse_public_url"] == "${GX10_PUBLIC_LANGFUSE_URL}"
+    )
     caddy = (RUNTIME / "Caddyfile").read_text()
     renderer = (RUNTIME / "openbao/render-secrets.sh").read_text()
     assert "path /langfuse/*" in caddy
     assert "strip_prefix /langfuse" in caddy
-    assert "{$GX10_PUBLIC_ORIGIN:https://gx10.local}" in caddy
+    assert "{$GX10_PUBLIC_ORIGIN} {" in caddy
     assert "NEXTAUTH_URL=%s" in renderer
     assert '"$PUBLIC_LANGFUSE_URL"' in renderer
 
@@ -363,7 +366,12 @@ def test_gx10_runtime_uses_a_pinned_rootful_podman_compose_provider() -> None:
     assert "label=com.docker.compose.service=$service" in runtime_source
     assert "sweep_project_containers" in runtime_source
     assert "rm -f --depend" in runtime_source
-    assert "sweep_project_containers\n    compose up -d" in runtime_source
+    assert (
+        runtime_source.index(
+            "sweep_project_containers\n    recreate_project_networks\n    compose up -d"
+        )
+        > 0
+    )
     recovery = (ROOT / "scripts/gx10/verify_dependency_recovery.sh").read_text()
     assert "--wait" not in recovery
 

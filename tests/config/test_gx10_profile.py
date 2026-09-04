@@ -32,6 +32,8 @@ def _secret_environment() -> dict[str, str]:
         "GX10_LANGFUSE_PUBLIC_KEY": "pk-lf-placeholder",
         "GX10_LANGFUSE_SECRET_KEY": "g" * 48,
         "GX10_FALKORDB_PASSWORD": "h" * 48,
+        "GX10_PUBLIC_ORIGIN": "https://gx10.home.arpa",
+        "GX10_PUBLIC_LANGFUSE_URL": "https://gx10.home.arpa/langfuse",
         "GX10_RELEASE_REVISION": "1" * 40,
         "GX10_AUTHORITY_FINGERPRINT": "2" * 64,
         "GX10_PROCESS_ROLE": "api",

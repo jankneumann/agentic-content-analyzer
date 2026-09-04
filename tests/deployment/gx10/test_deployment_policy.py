@@ -127,7 +127,7 @@ def test_openbao_is_reached_on_a_fixed_stateful_address_not_a_host_port() -> Non
     compose = _compose()
     stateful = compose["networks"]["stateful"]
     assert stateful["internal"] is True
-    assert stateful["ipam"]["config"] == [{"subnet": "10.89.0.0/24"}]
+    assert stateful["ipam"]["config"] == [{"subnet": "10.89.0.0/24", "ip_range": "10.89.0.0/25"}]
 
     openbao = _service(compose, "openbao")
     assert "ports" not in openbao
@@ -190,7 +190,7 @@ def test_caddy_ingress_sits_on_a_fixed_application_address() -> None:
     compose = _compose()
     application = compose["networks"]["application"]
     assert application["internal"] is True
-    assert application["ipam"]["config"] == [{"subnet": "10.89.1.0/24"}]
+    assert application["ipam"]["config"] == [{"subnet": "10.89.1.0/24", "ip_range": "10.89.1.0/25"}]
     caddy = _service(compose, "caddy")
     assert "ports" not in caddy
     assert caddy["networks"] == {"application": {"ipv4_address": CADDY_APPLICATION_ADDRESS}}
@@ -366,6 +366,43 @@ def test_squid_is_pid_one_and_stops_within_its_grace_period() -> None:
     assert squid["entrypoint"] == ["/usr/sbin/squid"]
     assert squid["command"] == ["-f", "/etc/squid/squid.conf", "-NYC"]
     assert squid["stop_grace_period"] == "20s"
+
+
+def test_fixed_addresses_sit_outside_the_dynamic_pools_and_networks_are_recreated() -> None:
+    """Podman's allocator cursor eventually reaches any address inside the
+    dynamic range, and an application container took Caddy's .250 on a real
+    start. Fixed addresses live above the ip_range, and the runtime recreates
+    project networks on cold start so stale leases and options cannot persist."""
+    compose = _compose()
+    for network, fixed in (
+        ("application", CADDY_APPLICATION_ADDRESS),
+        ("stateful", OPENBAO_STATEFUL_ADDRESS),
+    ):
+        config = compose["networks"][network]["ipam"]["config"][0]
+        assert config["ip_range"].endswith("/25")
+        assert int(fixed.rsplit(".", 1)[1]) >= 128
+    runtime = (ROOT / "scripts/gx10/podman-runtime.sh").read_text(encoding="utf-8")
+    assert runtime.index("recreate_project_networks\n    compose up -d") > 0
+    assert "network rm" in runtime
+
+
+def test_langfuse_runs_against_a_single_clickhouse_node() -> None:
+    compose = _compose()
+    for name in ("langfuse-web", "langfuse-worker"):
+        assert _service(compose, name)["environment"]["CLICKHOUSE_CLUSTER_ENABLED"] == "false"
+
+
+def test_public_origin_is_required_and_never_an_internal_host() -> None:
+    """The application rejects LANGFUSE_PUBLIC_URL hosts under localhost,
+    .local and .internal; the old gx10.local default could never boot."""
+    renderer = (ROOT / "deploy/gx10/openbao/render-secrets.sh").read_text(encoding="utf-8")
+    assert "gx10 public origin is unset" in renderer
+    assert "localhost|*.localhost|*.local|*.internal)" in renderer
+    assert "gx10.local" not in renderer
+    assert "gx10.local" not in (ROOT / "deploy/gx10/Caddyfile").read_text(encoding="utf-8")
+    profile = (ROOT / "profiles/gx10.yaml").read_text(encoding="utf-8")
+    assert "gx10.local" not in profile
+    assert '"${GX10_PUBLIC_ORIGIN}"' in profile and '"${GX10_PUBLIC_LANGFUSE_URL}"' in profile
 
 
 def test_application_namespaces_have_no_direct_internet_route() -> None:

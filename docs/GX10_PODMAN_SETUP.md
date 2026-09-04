@@ -298,11 +298,23 @@ sudo systemctl restart aca-gx10-openbao-container.service
 
 ## 6. OpenBao, secrets, and network policy
 
+The public origin has no default. Create `/etc/aca/gx10-public.env` (root,
+`0600`) with the https origin operators will browse, for example:
+
+```text
+GX10_PUBLIC_ORIGIN=https://gx10.home.arpa
+```
+
+The application refuses a Langfuse public URL whose host is `localhost`,
+`.local`, or `.internal`, and the secrets renderer enforces the same rule, so
+pick a name outside those suffixes (`home.arpa` is reserved for exactly this).
+Re-run `make secrets` after changing it.
+
 No service publishes a host port. Caddy holds the fixed address `10.89.1.250`
 on the declared `10.89.1.0/24` application subnet and listens on 443 there.
 Map the host of `GX10_PUBLIC_ORIGIN` to that address in `/etc/hosts` on the
-GX-10 host (for example `10.89.1.250 gx10.local`) and open
-`https://gx10.local/`; from another machine, tunnel with
+GX-10 host (for example `10.89.1.250 gx10.home.arpa`) and open
+`https://gx10.home.arpa/`; from another machine, tunnel with
 `ssh -L 8443:10.89.1.250:443 gx10` and map the name to `127.0.0.1` locally.
 
 OpenBao publishes no host port. The stateful network is `internal: true`, and

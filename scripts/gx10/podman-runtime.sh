@@ -40,6 +40,17 @@ sweep_project_containers() {
   "$PODMAN" rm -f --depend -t "$DOWN_TIMEOUT" "${ids[@]}" >/dev/null
 }
 
+# Recreate the project's networks from the current overlay: Podman keeps IPAM
+# leases and network options from the run that created them, so a changed
+# subnet or ip_range (and a leaked lease on a fixed address) would otherwise
+# survive every cold start. Runs after the sweep, so no endpoint is attached.
+recreate_project_networks() {
+  local nets=()
+  mapfile -t nets < <("$PODMAN" network ls -q --filter "label=io.podman.compose.project=$PROJECT")
+  (( ${#nets[@]} )) || return 0
+  "$PODMAN" network rm "${nets[@]}" >/dev/null
+}
+
 wait_for_runtime() {
   local deadline service container status
   deadline=$((SECONDS + TIMEOUT_SECONDS))
@@ -70,6 +81,7 @@ case "${1:-}" in
     # leaves dependents pointing at IDs that no longer exist. A cold start
     # therefore recreates every container; all state lives on bind mounts.
     sweep_project_containers
+    recreate_project_networks
     compose up -d
     wait_for_runtime
     ;;

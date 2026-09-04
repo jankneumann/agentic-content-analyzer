@@ -11,7 +11,7 @@ providers:
 settings:
   environment: production
   log_level: INFO
-  allowed_origins: "${GX10_PUBLIC_ORIGIN:-https://gx10.local}"
+  allowed_origins: "${GX10_PUBLIC_ORIGIN}"
 
   database:
     database_url: "${GX10_APP_DATABASE_URL}"
@@ -42,7 +42,7 @@ settings:
     langfuse_public_key: "${GX10_LANGFUSE_PUBLIC_KEY}"
     langfuse_secret_key: "${GX10_LANGFUSE_SECRET_KEY}"
     langfuse_base_url: "http://langfuse-web:3000"
-    langfuse_public_url: "${GX10_PUBLIC_LANGFUSE_URL:-https://gx10.local/langfuse}"
+    langfuse_public_url: "${GX10_PUBLIC_LANGFUSE_URL}"
     langfuse_sample_rate: 1.0
     langfuse_environment: production
 

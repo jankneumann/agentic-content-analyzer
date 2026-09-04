@@ -334,8 +334,12 @@ def test_public_environment_is_optional_and_renderer_defaults_remain_protected()
     unit = (DEPLOY / "systemd/aca-gx10-secrets.service").read_text()
     assert "EnvironmentFile=-/etc/aca/gx10-public.env" in unit
     renderer = (DEPLOY / "openbao/render-secrets.sh").read_text()
-    assert "${GX10_PUBLIC_LANGFUSE_URL:-https://gx10.local/langfuse}" in renderer
-    assert "${GX10_PUBLIC_ORIGIN:-${PUBLIC_LANGFUSE_URL%/langfuse}}" in renderer
+    assert "${GX10_PUBLIC_LANGFUSE_URL:-$PUBLIC_ORIGIN/langfuse}" in renderer
+    assert (
+        "${GX10_PUBLIC_ORIGIN:-${GX10_PUBLIC_LANGFUSE_URL:+${GX10_PUBLIC_LANGFUSE_URL%/langfuse}}}"
+        in renderer
+    )
+    assert "gx10 public origin is unset" in renderer
 
 
 def test_clean_stack_evidence_survives_cleanup_with_checksum() -> None:
