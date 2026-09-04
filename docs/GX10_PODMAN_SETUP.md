@@ -38,6 +38,24 @@ have systemd execute rootful Podman commands directly.
 Never put secrets in Git, Compose files, shell history, unit command lines, or
 chat transcripts.
 
+## Operator targets
+
+`deploy/gx10/Makefile` sequences the reviewed scripts and units so the
+recurring host procedures are one command each. It never pulls; run
+`sudo git -C /opt/aca pull --ff-only` first, deliberately.
+
+```bash
+sudo make -C /opt/aca/deploy/gx10 help
+sudo make -C /opt/aca/deploy/gx10 ownership   # data-directory owners, then the preflight
+sudo make -C /opt/aca/deploy/gx10 provision   # first-install OpenBao ceremony
+sudo make -C /opt/aca/deploy/gx10 image       # build gx10-<sha>, push, print the pin line
+sudo make -C /opt/aca/deploy/gx10 start       # install units, sweep containers, start
+sudo make -C /opt/aca/deploy/gx10 status
+sudo make -C /opt/aca/deploy/gx10 logs SINCE="1 hour ago"
+```
+
+The manual blocks below remain the reference for what each target does.
+
 ## 2. Host layout
 
 | Path | Mode | Purpose |
