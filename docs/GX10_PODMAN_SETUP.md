@@ -285,12 +285,13 @@ container and let its unit recreate it, for example
 `sudo podman rm -f aca-gx10_squid_1` before restarting
 `aca-gx10-proxy-policy.service`.
 
-`aca-gx10-openbao-container.service` is a `oneshot` that does not stay
-`active` after success: its start is idempotent (`ensure_service.sh`), so every
-dependent start re-runs it and recreates the container if the runtime's sweep
-removed it. `systemctl status` therefore shows it `inactive (dead)` between
-runs; that is expected. The secrets, provision, and runtime chains all pull it
-in through `Requires=`.
+`aca-gx10-openbao-container.service` stays `active (exited)` after success on
+purpose: the container's `conmon` lives in the unit's cgroup, and systemd
+terminates that cgroup the moment a `oneshot` goes inactive, which stops
+OpenBao. The runtime's sweep can remove the container while the unit stays
+active, and a latched unit is not re-run by its dependents, so `make secrets`
+and `make provision` restart it explicitly first. Its start is idempotent, so
+that restart is a no-op when OpenBao already runs inside the runtime.
 
 ## 6. OpenBao, secrets, and network policy
 

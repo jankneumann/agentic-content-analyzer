@@ -53,7 +53,8 @@ ownership: require-root ## Apply data-directory ownership, then run the prefligh
 preflight: require-root ## Fail closed unless every bind mount is owned by its container user
 	$(SCRIPTS)/check_persistence_ownership.py --compose $(ROOT)/docker-compose.gx10.yml
 
-provision: require-root ## Run the explicit first-install OpenBao ceremony (idempotent)
+provision: require-root install ## Ensure OpenBao runs, then the first-install ceremony (idempotent)
+	systemctl restart aca-gx10-openbao-container.service
 	systemctl start aca-gx10-openbao-provision.service
 	test -s /etc/aca/gx10/openbao-provisioned.ready
 	@echo "provisioned"

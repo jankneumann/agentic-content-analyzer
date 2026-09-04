@@ -76,15 +76,18 @@ def test_stuck_container_fails_closed_with_the_fix(tmp_path: Path) -> None:
     assert "podman rm -f --depend aca-gx10_squid_1" in result.stderr
 
 
-def test_openbao_container_unit_is_not_latched() -> None:
-    """A latched oneshot stayed active(exited) after the runtime's sweep
-    removed its container, so dependents never recreated OpenBao. With an
-    idempotent ExecStart the latch has no purpose."""
+def test_openbao_container_unit_stays_active_and_operator_flows_restart_it() -> None:
+    """systemd terminates a oneshot's cgroup when it goes inactive, and the
+    container's conmon lives there, so the unit must stay active. Because the
+    runtime's sweep can remove the container while the unit stays active, the
+    secrets and provision targets restart it explicitly before depending on it."""
     openbao = (ROOT / "deploy/gx10/systemd/aca-gx10-openbao-container.service").read_text()
-    assert "RemainAfterExit" not in openbao
-    assert "Type=oneshot" in openbao
+    assert "Type=oneshot\nRemainAfterExit=yes\n" in openbao
     makefile = (ROOT / "deploy/gx10/Makefile").read_text()
-    assert (
-        "systemctl restart aca-gx10-openbao-container.service\n\tsystemctl restart aca-gx10-secrets.service"
-        in makefile
-    )
+    for target, follow in (
+        ("secrets", "aca-gx10-secrets.service"),
+        ("provision", "aca-gx10-openbao-provision.service"),
+    ):
+        recipe = makefile.split(f"\n{target}:", 1)[1].split("\n\n", 1)[0]
+        assert "systemctl restart aca-gx10-openbao-container.service" in recipe, target
+        assert recipe.index("aca-gx10-openbao-container.service") < recipe.index(follow), target
