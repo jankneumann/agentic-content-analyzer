@@ -1,0 +1,315 @@
+openapi: 3.1.0
+info:
+  title: agent-ergonomic-retrieval-surface contract delta
+  version: 2.1.0
+  description: >-
+    Delta against openspec/contracts/content-workflows/openapi/v1.yaml. Adds PipelinePlan and
+    PipelineRequest.dry_run to the canonical contract, and records the search, graph, and
+    insights shapes that are FastAPI-only today so generated clients can be produced from one
+    source. Merge via wp-contracts; never hand-edit generated models.
+
+paths:
+  /api/v1/pipeline-runs:
+    post:
+      operationId: submitPipelineRun
+      summary: Submit a pipeline run, or return its plan when dry_run is true
+      tags: [pipeline]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PipelineRequest" }
+      responses:
+        "200":
+          description: Dry run; the plan the workflow would execute. Nothing was enqueued.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PipelinePlan" }
+        "202":
+          description: Durable operation accepted or existing idempotent operation returned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationHandle" }
+        "422":
+          description: Validation failure, including pipeline_no_sources on an empty plan
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /api/v1/search:
+    post:
+      operationId: searchContent
+      tags: [search]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SearchQuery" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchResponse" }
+        "422":
+          description: Validation failure, including invalid_cursor
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /api/v1/graph/query:
+    post:
+      operationId: knowledge_graph
+      tags: [graph]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string, minLength: 1 }
+                limit: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GraphQueryResponse" }
+
+  /api/v1/agent/insights:
+    get:
+      operationId: listInsights
+      tags: [agent]
+      parameters:
+        - { name: type, in: query, schema: { type: string } }
+        - { name: persona, in: query, schema: { type: string } }
+        - { name: since, in: query, schema: { type: string, format: date-time } }
+        - { name: min_confidence, in: query, schema: { type: number, minimum: 0, maximum: 1 } }
+        - { name: tags, in: query, schema: { type: string }, description: Comma-separated; all must match }
+        - { name: maturity, in: query, schema: { type: string }, description: Comma-separated InsightMaturity values; default excludes superseded and withdrawn }
+        - $ref: "#/components/parameters/PageLimit"
+        - $ref: "#/components/parameters/PageCursor"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InsightPage" }
+
+  /api/v1/agent/insights/{insight_id}:
+    patch:
+      operationId: updateInsightLifecycle
+      tags: [agent]
+      parameters:
+        - { name: insight_id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InsightLifecyclePatch" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InsightResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationProblem" }
+
+components:
+  parameters:
+    IdempotencyKey: { $ref: "../../../../contracts/content-workflows/openapi/v1.yaml#/components/parameters/IdempotencyKey" }
+    PageLimit: { $ref: "../../../../contracts/content-workflows/openapi/v1.yaml#/components/parameters/PageLimit" }
+    PageCursor: { $ref: "../../../../contracts/content-workflows/openapi/v1.yaml#/components/parameters/PageCursor" }
+  responses:
+    NotFound: { $ref: "../../../../contracts/content-workflows/openapi/v1.yaml#/components/responses/NotFound" }
+    ValidationProblem: { $ref: "../../../../contracts/content-workflows/openapi/v1.yaml#/components/responses/ValidationProblem" }
+  schemas:
+    OperationHandle: { $ref: "../../../../contracts/content-workflows/openapi/v1.yaml#/components/schemas/OperationHandle" }
+    Problem: { $ref: "../../../../contracts/content-workflows/openapi/v1.yaml#/components/schemas/Problem" }
+
+    # MODIFIED: add dry_run to the existing StrictModel
+    PipelineRequest:
+      type: object
+      additionalProperties: false
+      required: [period, period_start, period_end]
+      properties:
+        period: { type: string, enum: [daily, weekly] }
+        period_start: { type: string, format: date-time }
+        period_end: { type: string, format: date-time }
+        sources: { type: [array, "null"], items: { type: string } }
+        continue_on_source_error: { type: boolean, default: true }
+        dry_run: { type: boolean, default: false }
+
+    PlannedChildOperation:
+      type: object
+      additionalProperties: false
+      required: [operation_type, ordinal]
+      properties:
+        operation_type: { type: string, enum: [ingestion.execute, summarization.run, digest.create] }
+        ordinal: { type: integer, minimum: 1 }
+        source_key: { type: [string, "null"], pattern: "^src_[a-f0-9]{20}$" }
+        source_kind: { type: [string, "null"] }
+
+    CostEstimateStep:
+      type: object
+      additionalProperties: false
+      required: [step, model_id, provider, calls, usd]
+      properties:
+        step: { type: string, enum: [summarization, theme_analysis, digest_creation] }
+        model_id: { type: string }
+        provider: { type: string }
+        calls: { type: integer, minimum: 0 }
+        usd: { type: number, minimum: 0 }
+
+    CostEstimate:
+      type: object
+      additionalProperties: false
+      required: [total_usd, basis, steps]
+      properties:
+        total_usd: { type: number, minimum: 0 }
+        basis:
+          type: object
+          additionalProperties: false
+          required: [content_count, avg_input_tokens, avg_output_tokens, pricing_source]
+          properties:
+            content_count: { type: integer, minimum: 0 }
+            avg_input_tokens: { type: integer, minimum: 0 }
+            avg_output_tokens: { type: integer, minimum: 0 }
+            pricing_source: { type: string, const: models.yaml }
+            token_basis: { type: string, enum: [observed_30d, registry_default] }
+        steps:
+          type: array
+          items: { $ref: "#/components/schemas/CostEstimateStep" }
+
+    PipelinePlan:
+      type: object
+      additionalProperties: false
+      required: [schema_version, request, idempotency_key, source_commands, child_operations, estimated_cost]
+      properties:
+        schema_version: { type: integer, const: 1 }
+        request: { $ref: "#/components/schemas/PipelineRequest" }
+        idempotency_key: { type: string }
+        source_commands:
+          type: array
+          items: { type: object, additionalProperties: true, description: Serialized IngestCommand }
+        child_operations:
+          type: array
+          items: { $ref: "#/components/schemas/PlannedChildOperation" }
+        estimated_cost: { $ref: "#/components/schemas/CostEstimate" }
+      example:
+        schema_version: 1
+        request: { period: daily, period_start: "2026-09-05T00:00:00Z", period_end: "2026-09-06T00:00:00Z", dry_run: true }
+        idempotency_key: "operation:pipeline.run:3f9c…"
+        source_commands: [{ kind: rss, max_items: 50 }]
+        child_operations:
+          - { operation_type: ingestion.execute, ordinal: 1, source_key: src_0123456789abcdef0123, source_kind: rss }
+          - { operation_type: summarization.run, ordinal: 2 }
+          - { operation_type: digest.create, ordinal: 3 }
+        estimated_cost:
+          total_usd: 0.41
+          basis: { content_count: 38, avg_input_tokens: 2100, avg_output_tokens: 350, pricing_source: models.yaml, token_basis: observed_30d }
+          steps:
+            - { step: summarization, model_id: claude-haiku-4-5, provider: anthropic, calls: 38, usd: 0.15 }
+            - { step: digest_creation, model_id: claude-sonnet-4-5, provider: anthropic, calls: 1, usd: 0.26 }
+
+    SearchOmission:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          enum: [candidate_window_truncated, rerank_failed, rerank_partial, vector_unavailable, tree_search_fallback, filter_excluded]
+        detail: { type: [string, "null"] }
+        affected: { type: [integer, "null"], minimum: 0 }
+
+    SearchMeta:
+      type: object
+      additionalProperties: false
+      required: [completeness, omissions, bm25_strategy, query_time_ms, backend]
+      properties:
+        completeness: { type: string, enum: [complete, truncated, degraded] }
+        omissions: { type: array, items: { $ref: "#/components/schemas/SearchOmission" } }
+        bm25_strategy: { type: string, enum: [paradedb_bm25, postgres_native_fts] }
+        embedding_provider: { type: [string, "null"] }
+        embedding_model: { type: [string, "null"] }
+        rerank_provider: { type: [string, "null"] }
+        rerank_model: { type: [string, "null"] }
+        query_time_ms: { type: integer, minimum: 0 }
+        backend: { type: string }
+
+    SearchQuery:
+      type: object
+      additionalProperties: false
+      required: [query]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 500 }
+        type: { type: string, enum: [hybrid, bm25, vector], default: hybrid }
+        filters: { type: [object, "null"], additionalProperties: true }
+        bm25_weight: { type: [number, "null"] }
+        vector_weight: { type: [number, "null"] }
+        limit: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        cursor: { type: [string, "null"], maxLength: 2048 }
+
+    SearchResponse:
+      type: object
+      additionalProperties: false
+      required: [results, total, next_cursor, meta]
+      properties:
+        results: { type: array, items: { type: object, additionalProperties: true } }
+        total: { type: integer, minimum: 0, description: Exact count of documents satisfying the predicate and filters }
+        next_cursor: { type: [string, "null"], maxLength: 2048 }
+        meta: { $ref: "#/components/schemas/SearchMeta" }
+
+    GraphQueryResponse:
+      type: object
+      additionalProperties: false
+      required: [entities, relationships, total_hits, truncated]
+      properties:
+        entities: { type: array, items: { type: object, additionalProperties: true } }
+        relationships: { type: array, items: { type: object, additionalProperties: true } }
+        total_hits: { type: integer, minimum: 0, description: Hits observed, capped at limit + 1 }
+        truncated: { type: boolean }
+
+    InsightMaturity:
+      type: string
+      enum: [candidate, active, stale, superseded, withdrawn]
+
+    InsightResponse:
+      type: object
+      additionalProperties: false
+      required: [id, insight_type, title, content, confidence, tags, related_content_ids, related_theme_ids, metadata, maturity, superseded_by, persona_name, task_id, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        insight_type: { type: string, enum: [trend, connection, anomaly, prediction, summary] }
+        title: { type: string }
+        content: { type: string }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        tags: { type: array, items: { type: string } }
+        related_content_ids: { type: array, items: { type: integer } }
+        related_theme_ids: { type: array, items: { type: integer } }
+        metadata: { type: object, additionalProperties: true }
+        maturity: { $ref: "#/components/schemas/InsightMaturity" }
+        superseded_by: { type: [string, "null"], format: uuid }
+        persona_name: { type: [string, "null"] }
+        task_id: { type: [string, "null"], format: uuid }
+        created_at: { type: string, format: date-time }
+
+    InsightPage:
+      type: object
+      additionalProperties: false
+      required: [data, total, next_cursor]
+      properties:
+        data: { type: array, maxItems: 200, items: { $ref: "#/components/schemas/InsightResponse" } }
+        total: { type: integer, minimum: 0 }
+        next_cursor: { type: [string, "null"], maxLength: 2048 }
+
+    InsightLifecyclePatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      maxProperties: 1
+      properties:
+        maturity: { type: string, enum: [candidate, active, stale, withdrawn] }
+        superseded_by: { type: string, format: uuid }

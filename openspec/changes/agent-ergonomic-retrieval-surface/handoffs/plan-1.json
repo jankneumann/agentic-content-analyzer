@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-09-05T11:03:19.849909+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "claude_code",
+    "session_id": null,
+    "summary": "Planned the agent-ergonomic retrieval surface change. The review concluded the memory platform's multi-step operating loop is not the ergonomic gain for a single-owner system; four response-level properties are. Gate 1 selected Approach 1, clean contracts with cursors everywhere: exact search total with completeness and typed omissions, signed keyset cursors on search, insights, and MCP, a graph truncation flag, insight evidence plus maturity and single store, a pipeline dry run with a cost estimate, and the 19 ingest_* MCP tools collapsed into one registry-driven ingest tool. Owner confirmed a single consumer, so five breaking points are accepted. Coordinated tier, seven packages.",
+    "completed_work": [],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Search responses state completeness and typed omissions",
+        "rationale": "Rerank, embedding, tree-search, and filter degradations were logged and dropped; an agent read a partial page as the corpus. SearchExecution threads facts into meta; providers are reported only when they contributed.",
+        "capability": "document-search",
+        "supersedes": null
+      },
+      {
+        "title": "Exact total and signed keyset cursors replace offset",
+        "rationale": "total was the fused candidate-window size and deep pages reshuffled; one deterministic ranking with an HMAC-signed cursor keyed by query digest gives stable pages across HTTP, MCP, and the frontend.",
+        "capability": "document-search",
+        "supersedes": null
+      },
+      {
+        "title": "Insights carry maturity and supersession and are stored once",
+        "rationale": "Regenerated digests made stale insights indistinguishable; the same insight was written to two tables. Memory holds a pointer and recall filters by maturity.",
+        "capability": "agent-db-integration",
+        "supersedes": null
+      },
+      {
+        "title": "Pipeline dry run returns a PipelinePlan, not a persisted operation",
+        "rationale": "plan_scheduled_commands is already pure; the plan carries the child manifest, the derived idempotency key, and a cost estimate that names its basis and uses ModelConfig.calculate_cost only.",
+        "capability": "pipeline",
+        "supersedes": null
+      },
+      {
+        "title": "One registry-driven ingest tool replaces 19 ingest_* tools",
+        "rationale": "Schema tokens are paid every turn; the hand-written variants duplicated COMMAND_FIELD_SCHEMAS that get_capabilities already publishes. Manifest shrinks from 41 to 23 and cannot drift from SOURCE_REGISTRY.",
+        "capability": "mcp-http-client",
+        "supersedes": null
+      },
+      {
+        "title": "Tier: coordinated",
+        "rationale": "Coordinator reachable; packages split by boundary (search, insights, pipeline, MCP, frontend).",
+        "capability": null,
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Start with wp-contracts; then wp-search, wp-insights, and wp-pipeline-plan in parallel; wp-mcp after wp-search; wp-frontend after wp-search and wp-insights."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/agent-ergonomic-retrieval-surface/proposal.md",
+        "description": "approved proposal, Approach 1"
+      },
+      {
+        "path": "openspec/changes/agent-ergonomic-retrieval-surface/design.md",
+        "description": "decisions D1 to D8"
+      },
+      {
+        "path": "openspec/changes/agent-ergonomic-retrieval-surface/work-packages.yaml",
+        "description": "seven-package DAG"
+      }
+    ]
+  }
+}
