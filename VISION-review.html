@@ -1,0 +1,195 @@
+<!doctype html>
+<!--
+  /vision review board TEMPLATE (ships as skills/vision/assets/review-template.html).
+  Fill ONLY the slots agentic-content-analyzer, from-scratch draft, round 1, {{DRAFT_MARKDOWN}}, and CARDS,
+  per SKILL.md step 6: copy next to review.css, change nothing else.
+  The in-page ledger is a convenience for the author, never the channel of record;
+  verdicts of record return through the host's question tool (SKILL.md step 6c).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>/vision review - agentic-content-analyzer</title>
+<link rel="stylesheet" href="review.css">
+</head>
+<body class="vr">
+
+<header class="vr-head">
+  <div class="vr-title">/vision review</div>
+  <div class="vr-meta">agentic-content-analyzer · from-scratch draft, round 1</div>
+</header>
+
+<main class="vr-main">
+
+  <section class="vr-draft">
+    <span class="vr-label">latest draft · full text</span>
+    <article class="vr-doc" id="vr-doc"></article>
+  </section>
+
+  <aside class="vr-side">
+    <div class="vr-progress"><span>hypotheticals</span><b id="vr-progress"></b></div>
+    <div class="vr-stack" id="vr-stack"></div>
+    <div class="vr-done" id="vr-done" hidden>
+      <h2>All verdicts recorded</h2>
+      <ul class="vr-ledger" id="vr-ledger"></ul>
+    </div>
+  </aside>
+
+</main>
+
+<script>
+// {{DRAFT_MARKDOWN}} - replace the whole placeholder (quotes included) with the
+// full VISION.md text as ONE JSON string literal, i.e. JSON.stringify(markdown).
+// A raw template literal would break on the backticks the vision's own output
+// format mandates.
+const DRAFT = "# Vision\n\nagentic-content-analyzer exists so that people tracking AI and data developments get a digest they can trust, built from newsletters, feeds, video, search, and papers it ingests on their behalf.\nIt serves technical leaders and practitioners who need signal without reading every source themselves.\nIt owns exactly one thing: turning scattered external content into durably stored, verifiably summarized knowledge.\n\n## A claim of success must be provable, not reported\n\nA backup, a workflow submission, or a digest run is not done because a process exited zero.\nIt is done when the artifact it was supposed to produce is checked back, byte for byte.\nA shell pipeline that reports only its last stage's exit code is treated as a defect, not a shortcut.\nA test that mocks a subprocess's output into the shape the code expects, rather than the bytes the real tool emits, does not count as coverage.\nA 5xx response is a claim about this system's own health, and mapping every exception to one blindly misdirects an operator's response.\nEvery path that can reject or fail a workflow lands somewhere an operator can see it, because a rejection that fails silently is worse than one that crashes loudly.\n\n## Every mutation is durable by construction\n\nCLI, HTTP, MCP, and the frontend submit the same operation types to one durable queue.\nNone of them executes ingestion, summarization, digest, or audio work inline.\nAn in-memory queue, a background task, or a direct execution path is a durability regression, not an optimization.\nA feature that cannot survive a restart mid-run is not finished.\n\n## No layer of the stack locks the project to one vendor\n\nDatabase, object storage, graph database, and observability each ship at least two interchangeable backends, selected by configuration, not by code branch.\nA design that trades a portable option for a vendor's proprietary feature is rejected unless the portable option is proven not viable.\nMoving off a host is a planned capability, not a fire drill.\n\n## The project holds its own history to the evidence standard it demands of its infrastructure\n\nSpecs describe current, evidenced behavior.\nA checked requirement that contradicts running behavior gets reclassified, not left checked.\nArchived decisions are never rewritten.\nA later change supersedes a decision in the open, in a new document, rather than editing history.\nA roadmap idea with no bounded proposal, task plan, or spec delta does not get promoted into a feature because it sounds compelling.\n\n## A process that can delete never runs unattended, and a compromised credential never unlocks everything\n\nRetention against the backup target is dry run by default and cannot delete.\nOnly a human-run command can delete a backup.\nA backup host's own credentials are sufficient to write a new backup and never sufficient to decrypt an old one.\nIndependently deployed API consumers get a compatibility window stated in writing.\nRetired contract shapes do not quietly come back as an adapter.\n\n## Scope\n\nIt is not a general-purpose agent platform, a CI system, or a place to bolt on every integration a source could plausibly offer.\nIt is not a system that silently decides which content is precious and which is disposable; that line is drawn explicitly, in writing, and revisited as ingestion grows.\nIt is not a marketing surface: digest quality is measured against a written content guideline, not against enthusiasm.\n\nA change aligns when it can prove the artifact it claims to produce, survives a restart, keeps a vendor swappable, and states its evidence.\nA change should be resisted when it reports success without checking, executes a mutation inline just this once, hardcodes a single vendor's feature, rewrites archived history, or hands delete authority to an unattended process.\n";
+
+const CARDS = [
+  {
+    "id": "H-1",
+    "title": "Drop the Comcast-leadership framing and name it a general platform",
+    "body": "A stakeholder asks to formally rewrite openspec/project.md's mission from 'help technical leaders and developers at Comcast stay informed' to a vendor-neutral 'AI content intelligence platform for any organization,' arguing every later architectural document (ACA-AGENTS.md, GOTCHAS.md, all the docs/decisions ADRs) already stopped mentioning Comcast entirely, so the rewrite would just be admitting what already shipped.",
+    "tests": "Tests: \"It serves technical leaders and practitioners who need signal without reading every source themselves.\"",
+    "why": "Yes: the draft's own identity line already dropped Comcast to match the evidence, and a mission statement nobody reads twice is dead weight. No: the original scoping wasn't cosmetic, it implied an internal, single-tenant audience with different data-handling and retention obligations than a multi-tenant public platform; renaming the mission without deciding those obligations papers over a real gap rather than closing it."
+  },
+  {
+    "id": "H-2",
+    "title": "Reach for the specialist-agent framework inside a narrow feature",
+    "body": "A future feature proposal for topic Q&A over the knowledge base wants to route the question through the full persona/specialist agent framework (docs/ACA-AGENTS.md) instead of a small deterministic retrieval pipeline, arguing the framework already exists, is tested, and reuse beats a second bespoke code path.",
+    "tests": "Tests: \"It owns exactly one thing: turning scattered external content into durably stored, verifiably summarized knowledge.\"",
+    "why": "Yes: not every feature needs a bespoke pipeline, and routing through one shared framework is exactly the kind of consolidation this project's own history rewards elsewhere (one operation queue, one provider protocol). No: the obsidian-knowledge-base design.md rejected exactly this move once already, calling the agent framework 'for multi-step analysis tasks,' not deterministic Q&A, precisely because non-determinism and per-call LLM cost are the wrong trade for a focused lookup."
+  },
+  {
+    "id": "H-3",
+    "title": "Add WAL archiving now for near-zero recovery point objective",
+    "body": "An engineer proposes adding continuous WAL archiving on top of the daily gx-10 backup, citing the design doc's own admission that it 'gives a genuinely better number' for recovery point objective, and offering to build it as a self-contained add-on that doesn't touch the existing daily job.",
+    "tests": "Tests: \"A change aligns when it can prove the artifact it claims to produce, survives a restart, keeps a vendor swappable, and states its evidence.\"",
+    "why": "Yes: durability is the project's most evidenced value, and rejecting a strictly better recovery number seems to contradict it. No: the original rejection was 'walk before running,' a deliberate sequencing call to prove the simple restore path before adding a stateful daemon with its own retention model and a longer restore runbook; accepting complexity before its prerequisite is proven is the same mistake the pg_cron backup made."
+  },
+  {
+    "id": "H-4",
+    "title": "Prefer explicit provider configuration over auto-detection",
+    "body": "A reviewer proposes requiring an explicit DATABASE_PROVIDER=neon-style setting everywhere a provider is currently auto-detected from other environment variables, arguing a provable, explicit value is safer than inferring intent from unrelated settings, matching this project's stated preference for provable claims over reports.",
+    "tests": "Tests: \"A claim of success must be provable, not reported.\"",
+    "why": "Yes: the project's loudest value is refusing to infer things it can instead verify, and provider auto-detection is exactly an inference. No: the add-neon-provider design explicitly rejected mandatory explicit config for being 'more verbose, less DX-friendly,' and convenience for a low-stakes, easily-overridden default was judged worth more than provability that provides no real safety margin here."
+  },
+  {
+    "id": "H-5",
+    "title": "Build a compatibility adapter for a specific broken external consumer",
+    "body": "agentic-assistant, the one independently deployed consumer, is now broken against a shipped MCP contract change and its maintainer asks for a small adapter shim to keep it running for a few more weeks while they finish their migration, rather than being told 'no window' as API_CONSUMERS.md states for a retired shape.",
+    "tests": "Tests: \"Independently deployed API consumers get a compatibility window stated in writing.\"",
+    "why": "Yes: the compatibility policy exists to give consumers a fair migration path, and a real team stuck mid-migration is the exact case a documented window should cover, not an excuse to ignore. No: the cloud-db-source-of-truth design explicitly rejected an adapter layer as throwaway code and ongoing maintenance burden, and a policy that bends under the first real request isn't a policy, it's a suggestion."
+  },
+  {
+    "id": "H-6",
+    "title": "Accept a vendor-specific build risk to avoid a heavier self-hosted service",
+    "body": "A proposal to move a second dependency onto Railway's build-from-Dockerfile path is raised, following the ParadeDB precedent where slower, source-built deploys were accepted specifically to avoid standing up a second self-hosted service, even though it means depending on Railway's build behavior at deploy time.",
+    "tests": "Tests: \"No layer of the stack locks the project to one vendor... Moving off a host is a planned capability, not a fire drill.\"",
+    "why": "Yes: the project already made exactly this trade once for ParadeDB, so refusing to repeat it is inconsistent, and operational simplicity has a real cost too. No: doing it twice turns a one-off pragmatic exception into a pattern, and each repetition of 'accept vendor build coupling for simplicity' quietly erodes how portable a host move actually is when it's finally needed."
+  },
+  {
+    "id": "H-7",
+    "title": "Back up ingested content itself, not just human decisions",
+    "body": "A stakeholder points out that the backup scheme's 're-derivable, so not backed up' reasoning for ingested content assumes the source stays available, but newsletters get unsubscribed, YouTube videos get taken down, and tweets get deleted, so some ingested content is not actually recoverable from its source months later; they ask to extend the backed-up set to cover it.",
+    "tests": "Tests: \"the real exposure is human-authored data\" (backup design), which the vision currently narrows the backup story around.",
+    "why": "Yes: 'ingested content is re-derivable' was a bet on source availability that this project's own history shows is not always true, and a backup scheme should protect against real, not assumed, recoverability. No: the design doc explicitly flagged this as an accepted trade-off to be revisited only if human-authored volume grows, and backing up the entire ingested corpus multiplies storage cost for content whose loss is a re-ingestion inconvenience, not a data-loss event, in the common case."
+  },
+  {
+    "id": "H-8",
+    "title": "Let the specialist agent subsystem grow toward open-ended research",
+    "body": "The specialist/persona framework has matured enough that a proposal suggests letting it take on broader, less-scoped research tasks (the kind the feynman-inspired-features idea sketched and was declined for lacking a bounded proposal), now that the underlying framework is real and has approval gates.",
+    "tests": "Tests: \"It owns exactly one thing.\" (identity line) and the scope section's refusal of a general-purpose agent platform.",
+    "why": "Yes: the earlier rejection was about process (no bounded proposal existed yet), not about substance, and now a bounded proposal could exist; refusing forever what was only deferred once misreads the record. No: 'it owns exactly one thing' is the draft's own identity claim, and an open-ended research agent is a second product riding on the first one's infrastructure, exactly the scope the earlier decision was protecting against even if it didn't say so explicitly."
+  },
+  {
+    "id": "H-9",
+    "title": "Loosen approval gates as the agent subsystem earns trust",
+    "body": "After months with no incident, a proposal argues the risk-tiered human approval gates on specialist-agent actions should auto-loosen for actions with a long clean track record, so a human isn't rubber-stamping the same low-risk action for the hundredth time.",
+    "tests": "Tests: \"A claim of success must be provable, not reported\" and \"a rejection that fails silently is worse than one that crashes loudly.\"",
+    "why": "Yes: a gate nobody meaningfully reviews anymore is theater, not safety, and earned trust based on a real track record is a legitimate basis for less friction. No: 'no incidents yet' is an absence of observed failure, not proof of safety, exactly the distinction this project's own backup-and-alerting history was built to catch, and an approval gate that quietly loosens itself is the same shape of failure as a check that silently stops running."
+  },
+  {
+    "id": "H-10",
+    "title": "Ship a valuable breaking API change ahead of consumer migration",
+    "body": "A genuinely valuable API redesign is ready, but agentic-assistant's migration is behind schedule for reasons outside this project's control; the team debates shipping the breaking change on the stated deadline anyway, versus holding it until the consumer is confirmed ready.",
+    "tests": "Tests: \"Independently deployed API consumers get a compatibility window stated in writing.\"",
+    "why": "Yes: a window stated in writing is a deadline, not an open-ended wait, and holding valuable work hostage to another team's unrelated delays rewards slow migration. No: a compatibility policy that ships on the calendar date regardless of the consumer's actual state is really just a unilateral break with extra paperwork, and the whole point of naming the window was to give the consumer a real, not nominal, chance to move."
+  },
+  {
+    "id": "H-11",
+    "title": "Ship an experimental feature behind a flag with only mocked tests",
+    "body": "An engineer wants to ship a low-risk, internal-only, feature-flagged prototype with unit tests that mock the external tool calls it makes, planning to backfill full end-to-end verification once the prototype proves useful enough to invest further in.",
+    "tests": "Tests: \"A test that mocks a subprocess's output into the shape the code expects, rather than the bytes the real tool emits, does not count as coverage.\"",
+    "why": "Yes: demanding full end-to-end proof before a feature is even validated as worth building is a tax on exploration, and a flag-gated, internal-only surface has a small enough blast radius that a mocked test is a reasonable temporary stand-in. No: the project's sharpest lessons, the 13-point widening and the backup verify bug, both came from a mock that returned the shape the code expected instead of what the real tool produces; 'backfill it later' is exactly the deferral that let those bugs ship unnoticed in the first place."
+  }
+];
+
+const VERDICTS = ['In vision','Off mission','Conditional'];
+
+/* ------- no changes below this line ------- */
+
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function inline(s){ return esc(s).replace(/`([^`]+)`/g,'<code>$1</code>'); }
+const out=[]; let para=[];
+const flush=()=>{ if(para.length){ out.push('<p>'+para.map(inline).join(' ')+'</p>'); para=[]; } };
+for(const line of DRAFT.split('\n')){
+  if(line.startsWith('## ')){ flush(); out.push('<h2>'+inline(line.slice(3))+'</h2>'); }
+  else if(line.startsWith('# ')){ flush(); out.push('<h1>'+inline(line.slice(2))+'</h1>'); }
+  else if(line.trim()===''){ flush(); }
+  else para.push(line);
+}
+flush();
+document.getElementById('vr-doc').innerHTML = out.join('\n');
+
+const stack = document.getElementById('vr-stack');
+let topIdx = 0; const ledger = [];
+stack.innerHTML = CARDS.map((c,i) => `
+  <div class="vr-card" id="vrc-${i}">
+    <span class="vr-card-id">${esc(c.id)} · ${i+1}/${CARDS.length}</span>
+    <h3 class="vr-card-title">${esc(c.title)}</h3>
+    <p class="vr-card-body">${esc(c.body)}</p>
+    <div class="vr-card-tests">${esc(c.tests)}</div>
+    <div class="vr-why"><span class="vr-why-label">Why the answer is not obvious</span><p>${esc(c.why)}</p></div>
+    <div class="vr-verdicts">${VERDICTS.map(v => `<button type="button" aria-pressed="false" onclick="pick(${i}, this)">${v}</button>`).join('')}</div>
+    <textarea class="vr-reason" placeholder="reasoning (this is what the vision gets rebuilt from)"></textarea>
+    <button type="button" class="vr-commit" disabled onclick="commit(${i})">Record verdict</button>
+  </div>`).join('');
+
+function layout(){
+  CARDS.forEach((c,i) => {
+    const el = document.getElementById('vrc-'+i);
+    if (el.classList.contains('vr-gone')) return;
+    const depth = i - topIdx;
+    if (depth < 0 || depth > 2) { el.hidden = depth !== 0; }
+    if (depth >= 0 && depth <= 2) { el.hidden = false; el.dataset.depth = String(depth); }
+  });
+  const n = Math.min(topIdx+1, CARDS.length);
+  document.getElementById('vr-progress').textContent = `${n} / ${CARDS.length}`;
+}
+function pick(i, btn){
+  const card = document.getElementById('vrc-'+i);
+  card.querySelectorAll('.vr-verdicts button').forEach(b => b.setAttribute('aria-pressed','false'));
+  btn.setAttribute('aria-pressed','true');
+  card.querySelector('.vr-commit').disabled = false;
+}
+function commit(i){
+  const card = document.getElementById('vrc-'+i);
+  const verdict = card.querySelector('.vr-verdicts button[aria-pressed="true"]')?.textContent;
+  if(!verdict) return;
+  const notes = card.querySelector('.vr-reason').value.trim();
+  ledger.push({ id: CARDS[i].id, verdict, notes });
+  card.classList.add('vr-gone');
+  topIdx += 1;
+  layout();
+  setTimeout(() => { card.hidden = true; layout(); }, 360);
+  if (topIdx >= CARDS.length) {
+    document.getElementById('vr-ledger').innerHTML =
+      ledger.map(l => `<li><b>${esc(l.id)}</b> ${esc(l.verdict)}${l.notes ? ' - ' + esc(l.notes) : ''}</li>`).join('');
+    setTimeout(() => { document.getElementById('vr-done').hidden = false; }, 400);
+  }
+}
+layout();
+</script>
+</body>
+</html>
