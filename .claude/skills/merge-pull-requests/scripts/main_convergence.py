@@ -84,11 +84,6 @@ CONVERGENCE_TRAILER = "Context-Refresh-Operation"
 #: repository diff); this record pins it by digest instead (D9).
 CONVERGENCE_RECORD_PATH = "docs/merge-logs/context-convergence.jsonl"
 
-#: Runtime project-context manifests. Must stay untracked; the JSONL record
-#: pins them by path and SHA-256. A bare ``git add -A`` will stage them if
-#: the ignore rule is missing (issue #502).
-GIT_CONTEXT_PREFIX = ".git-context"
-
 #: Coordinator lock key for the whole of Step 11.6 (guard layer 2, D5).
 COORDINATOR_LOCK_KEY = "sync-point:main-convergence"
 
@@ -190,62 +185,6 @@ def reverses_merge(argv: Sequence[str]) -> bool:
             if tuple(parts[start : start + window]) == forbidden:
                 return True
     return False
-
-
-def git_context_is_ignored(root: Path, runner: CommandRunner) -> bool:
-    """Return whether ``.git-context/`` is covered by an ignore rule.
-
-    ``git check-ignore`` exits 0 when the path is ignored, 1 when it is not.
-    The probe path does not need to exist.
-    """
-    probe = f"{GIT_CONTEXT_PREFIX}/context-refresh-manifest.json"
-    return runner(["git", "check-ignore", "-q", "--", probe], root).returncode == 0
-
-
-def stage_convergence_tree(
-    root: Path,
-    runner: CommandRunner,
-    *,
-    record_path: str,
-    sweepable: bool,
-) -> None:
-    """Stage cleanup and producer output without runtime manifests.
-
-    Fails closed when ``.git-context/`` is not ignored. Pathspec excludes plus a
-    post-stage cached-diff check keep the runtime directory out of the index
-    even if the ignore rule is later removed.
-    """
-    if not git_context_is_ignored(root, runner):
-        raise ConvergenceApparatusError(
-            ".git-context/ is not gitignored; refusing to stage a convergence "
-            "commit. Add a `.git-context/` ignore rule so the runtime manifest "
-            "stays untracked and is pinned only by digest in "
-            f"{CONVERGENCE_RECORD_PATH}."
-        )
-    if sweepable:
-        runner(
-            [
-                "git",
-                "add",
-                "-A",
-                "--",
-                ".",
-                f":(exclude){GIT_CONTEXT_PREFIX}",
-                f":(exclude){GIT_CONTEXT_PREFIX}/**",
-            ],
-            root,
-        )
-    runner(["git", "add", "--", record_path], root)
-    cached = runner(
-        ["git", "diff", "--cached", "--name-only", "-z", "--", GIT_CONTEXT_PREFIX],
-        root,
-    )
-    staged = [name for name in cached.stdout.split("\0") if name]
-    if staged:
-        runner(["git", "reset", "-q", "--", GIT_CONTEXT_PREFIX], root)
-        raise ConvergenceApparatusError(
-            "refusing to commit runtime state under .git-context/: " + ", ".join(staged)
-        )
 
 
 def guarded_runner(runner: CommandRunner) -> CommandRunner:
@@ -1639,12 +1578,9 @@ def _converge_under_guard(
     validate_record(in_flight, repository=root)
     append_record(root, in_flight, path=record_path)
 
-    stage_convergence_tree(
-        root,
-        guarded,
-        record_path=record_path,
-        sweepable=refresh.sweepable,
-    )
+    if refresh.sweepable:
+        guarded(["git", "add", "-A"], root)
+    guarded(["git", "add", "--", record_path], root)
 
     staged = guarded(["git", "diff", "--cached", "--quiet"], root)
     if staged.returncode == 0:

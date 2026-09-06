@@ -19,7 +19,7 @@ When no proposal yet exists, the skill scaffolds one from the template at `opens
 
 ## Arguments
 
-`$ARGUMENTS` accepts three invocation forms:
+`$ARGUMENTS` accepts four invocation forms:
 
 1. **Decompose existing proposal** — `<path-to-proposal.md>`
    Decompose the proposal at the given path. The path may be inside or outside `openspec/roadmaps/`.
@@ -29,6 +29,11 @@ When no proposal yet exists, the skill scaffolds one from the template at `opens
 
 3. **Scaffold an LLM-drafted proposal** — `--new <slug> "<short pitch>" --draft`
    Same as form 2, but the agent expands the pitch into a full draft (Capabilities, Constraints, Phases) using its own reasoning rather than leaving placeholders. The operator still reviews before re-running for decomposition.
+
+4. **Re-decompose after a failure** — `--replan <roadmap-id>`
+   Re-plan only the subgraph an `/autopilot-roadmap` failure invalidated. Driven by
+   `<workspace>/replan-request.json`, which that skill writes when its `replan_required`
+   gate proceeds; without the request file this form is refused. See **Replan Mode**.
 
 Optional flags:
 - `--vendor <claude|codex|gemini>` — Choose the generator. Default `claude` dispatches a Claude subagent via the Agent tool. `codex` / `gemini` route through the shared CLI dispatcher to the external vendor (`gpt-5.5` / `gemini-3.1-pro`).
@@ -61,14 +66,16 @@ python3 "<skill-base-dir>/../shared/checkout_policy.py" require-mutation
 ```
 
 If the invocation only reads a proposal and returns advice in chat, no worktree
-is required.
+is required. `--replan` rewrites `roadmap.yaml`, so it is a mutation mode: set up the
+worktree the same way before R2.
 
 ## Output
 
 - `openspec/roadmaps/<roadmap_id>/roadmap.yaml` conforming to the roadmap schema
 - `openspec/roadmaps/<roadmap_id>/proposal.md` co-located with the roadmap (when scaffolded via `--new`)
-- Each item in the roadmap has: `item_id`, `title`, `description`, `effort`, `priority`, `depends_on`, `acceptance_outcomes`
+- Each item in the roadmap has: `item_id`, `title`, `description`, `effort`, `priority`, `depends_on`, `acceptance_outcomes`, and a derived `change_id`
 - Dependency DAG is acyclic (validated before output)
+- One `openspec/changes/<change-id>/` per approved item, each a preliminary sketch that passes `openspec validate --strict` (see Step 8)
 
 ### Workspace Layout
 
@@ -110,6 +117,7 @@ Parse `$ARGUMENTS` to determine which form was used:
 
 - **`--new <slug> "<pitch>"`** without `--draft`: copy the template file to `openspec/roadmaps/<slug>/proposal.md`, replace the `<Epic Title>` placeholder with a slug-derived title, replace the `<motivation prose>` placeholder with the pitch. Print the path and exit with "edit the proposal and re-run `/plan-roadmap openspec/roadmaps/<slug>/proposal.md`."
 - **`--new <slug> "<pitch>" --draft`**: same scaffold, but the agent expands the pitch into full Capabilities, Constraints, and Phases sections using its own reasoning, then writes the result. Print the path and exit with "review the draft and re-run for decomposition."
+- **`--replan <roadmap-id>`**: skip Steps 1–8 entirely and follow **Replan Mode** below. A replan re-decomposes part of an existing roadmap; it never regenerates the whole file.
 - **`<path>`** (existing proposal): proceed to Step 1.
 
 For `--new` modes: if `openspec/roadmaps/<slug>/` already exists, abort unless `--force` is set.
@@ -161,23 +169,94 @@ Determine the output location:
 - If `--workspace <path>` was supplied, use it (directory → `<path>/roadmap.yaml`, or explicit `.yaml` file path).
 - Otherwise, default to `openspec/roadmaps/<roadmap_id>/roadmap.yaml`.
 
+**Populate `change_id` before saving.** The generation contract does not ask the model for `change_id` and the schema leaves it optional, so a generated roadmap carries none. Call `populate_change_ids(roadmap)` from `<skill-base-dir>/scripts/scaffolder.py` first — it derives each id deterministically using the same function `scaffold_change()` uses, so the id recorded in `roadmap.yaml` is always the id of the directory later created for that item. It is idempotent and preserves any id an operator set by hand.
+
 Print the resolved path, then call `save_roadmap(roadmap, path, overwrite=<force_flag>)` from `<skill-base-dir>/../roadmap-runtime/scripts/models.py`. The helper creates parent directories and raises `FileExistsError` on collision unless `overwrite=True`. On collision, surface the error verbatim and instruct the operator to re-invoke with `--force` or `--workspace`.
 
 If `--new` was used in Step 0, the proposal.md already lives at `openspec/roadmaps/<roadmap_id>/proposal.md` — leave it in place. If decomposing an existing proposal from elsewhere, the `source_proposal` field in `roadmap.yaml` records the original path.
 
 ### 8. Scaffold Approved Changes as OpenSpec Change Directories
 
-For each approved item, create an OpenSpec change directory under `openspec/changes/` via `scaffold_changes()` from `scaffolder.py`, containing:
+For each approved item, create an OpenSpec change directory under `openspec/changes/` via `scaffold_changes(roadmap, repo_root)` from `<skill-base-dir>/scripts/scaffolder.py`. Each contains:
+
 - `proposal.md` with a `parent_roadmap` field linking back to the roadmap
 - `tasks.md` skeleton
-- `specs/` directory
+- `specs/<change-id>/spec.md` — a spec delta sketched from the item's `acceptance_outcomes`, one `### Requirement:` per item and one `#### Scenario:` per outcome
 
-These directories always live at `openspec/changes/<change-id>/` — they are not nested under the roadmap workspace, because `/implement-feature` expects that canonical path.
+**The scaffold must validate.** `openspec validate --strict` rejects a change with no delta carrying a `#### Scenario:` block, and Git does not track empty directories — so a `specs/` directory with nothing written into it arrives at CI as a change with no specs at all. CI runs `openspec validate --strict --all` on every push, so an N-item roadmap that scaffolds without deltas lands N failures. Verify with `openspec validate --strict --all` before committing a freshly scaffolded roadmap.
+
+What the scaffold produces is a **preliminary sketch, not a finished plan**. The `WHEN` clauses are generic because the roadmap does not yet know each item's trigger. That is the intended shape: the OpenSpec setup exists and validates from day one, and each item's plan is refined by `/plan-feature` and `/iterate-on-plan` when it is picked up — using what the item's completed dependencies taught.
+
+Change directories always live at `openspec/changes/<change-id>/`, never nested under the roadmap workspace, because `/implement-feature` expects that canonical path. `scaffold_change(roadmap, repo_root, item_id)` scaffolds a single item for re-scaffolding or repair.
+
+## Replan Mode
+
+`--replan <roadmap-id>` is the consumer of the handoff `/autopilot-roadmap` writes
+when its `replan_required` gate proceeds. The two deterministic ends are scripts; the
+re-decomposition in the middle is the model's work, exactly as in Step 3.
+
+### R1. Emit the scope (deterministic)
+
+```bash
+python3 "<skill-base-dir>/scripts/decomposer.py" replan-scope <roadmap-id> [--repo-root <path>]
+```
+
+Accepts either a workspace directory or a bare `<roadmap-id>` (resolved under
+`openspec/roadmaps/`). It reads `<workspace>/replan-request.json` and prints JSON:
+
+- `seed_items` — the items the request parked in `replan_required`
+- `scope_items` — the seeds plus their transitive non-preserved dependents: **the only
+  items you may rewrite**
+- `preserved_items` — everything the replan must copy through untouched
+- `items[]` — title, status, effort, `depends_on`, and `change_id` per scoped item
+- `failed_item_id`, `failure_reason`, `learning_entry`, `source_proposal`
+
+`completed`, `superseded`, and `in_progress` are *preserved statuses* (as is any item
+carrying a `superseded_by` edge, whatever its status): they are excluded
+from the scope **and act as traversal barriers**, so the walk stops at them rather than
+sweeping their dependents in. Work already done, already migrated, or in flight under
+another agent is never re-planned out from under it.
+
+Exit 2 with a message naming the file when `replan-request.json` is absent — a replan
+with no request has no trigger and nothing to bound it.
+
+### R2. Re-decompose the subgraph (host-executed)
+
+Dispatch the re-decomposition the same way Step 3 does (`--vendor` applies), with a
+prompt bounded to the emitted scope:
+
+- **Read** the `source_proposal` and the failed item's `learning_entry` — the learning
+  entry is *why* this replan exists; a re-decomposition that ignores it will reproduce
+  the same failure.
+- **Rewrite only `scope_items`.** Items may be split, merged, re-scoped, re-ordered, or
+  dropped within that set.
+- **Leave `preserved_items` byte-identical**, and never touch `learnings/` or
+  `learning-log.md` — the failure record is the input to this replan and the audit
+  trail for the next one.
+- Edit `roadmap.yaml` in place. Do not regenerate the file: `status`, `priority`, and
+  operator edits outside the scope must survive.
+
+### R3. Close it out (deterministic)
+
+```bash
+python3 "<skill-base-dir>/scripts/decomposer.py" replan-finish <roadmap-id> [--repo-root <path>]
+```
+
+Flips every remaining `status: replan_required` to `approved`, validates the roadmap
+(schema, ids, DAG — Step 4's checks), and deletes `replan-request.json`. On validation
+failure it **restores the original `roadmap.yaml` and keeps the request file**, so a
+broken replan stays retryable rather than consuming its own trigger; fix the
+re-decomposition and re-run R2–R3.
+
+Re-scaffold any newly created item's change directory with `scaffold_change(roadmap,
+repo_root, item_id)` (Step 8) once `replan-finish` reports OK.
 
 ## Lifecycle
 
 ```
 Ingestion:     pitch / proposal.md  →  roadmap.yaml      (this skill)
+Replan:        replan-request.json  →  re-scoped items   (this skill, --replan)
+Refinement:    active roadmap       →  safe item edits   (/refine-roadmap)
 Execution:     roadmap.yaml         →  item completion   (/autopilot-roadmap)
 Maintenance:   roadmap.yaml         →  roadmap.md        (renderer; check_roadmap_sync)
 Archival:      workspace/           →  archive/<date>-<id>/  (/archive-roadmap)
@@ -193,7 +272,7 @@ Shared models and utilities are in `<skill-base-dir>/../roadmap-runtime/scripts/
 
 | Script | Role |
 |---|---|
-| `<skill-base-dir>/scripts/decomposer.py` | Deterministic validation only: `validate_proposal()` (readiness), `validate_roadmap()` (schema + ids + DAG), `scan_archive_state()`, `make_repo_relative()`, and a `validate` CLI. Contains no keyword extraction and no LLM calls. |
-| `<skill-base-dir>/scripts/scaffolder.py` | Scaffolds OpenSpec change directories from approved items. |
+| `<skill-base-dir>/scripts/decomposer.py` | Deterministic validation only: `validate_proposal()` (readiness), `validate_roadmap()` (schema + ids + DAG), `scan_archive_state()`, `make_repo_relative()`, and the `validate` / `validate-repo` / `replan-scope` / `replan-finish` CLIs. Contains no keyword extraction and no LLM calls. |
+| `<skill-base-dir>/scripts/scaffolder.py` | `populate_change_ids(roadmap)` — derives and persists each item's `change_id`; called in Step 7 before `save_roadmap`. `scaffold_changes(roadmap, repo_root)` — scaffolds every approved item into a change directory that validates (Step 8). `scaffold_change(..., item_id)` — the single-item form, for re-scaffolding or repair. |
 | `<skill-base-dir>/scripts/renderer.py` | Renders `roadmap.yaml` → human-readable `roadmap.md` (maintenance direction). |
 | `templates/generation-prompt.md` | The model-facing generation contract dispatched in Step 3. |
