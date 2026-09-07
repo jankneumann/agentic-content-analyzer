@@ -22,6 +22,9 @@ A feature that cannot survive a restart mid-run is not finished.
 Inside that structure, agentic specialists supply the judgment that has to scale: ranking, synthesis, analysis, and the questions a deterministic step cannot answer.
 Judgment a specialist should not make alone escalates to a human decision through an approval gate, and the gate is a recorded step, not a suggestion.
 A focused lookup does not go through the specialist framework; the framework exists for multi-step analysis, not for work a deterministic pipeline does better.
+Agents with distinct goals, such as independent research or an AI tutor, use the system as a tool, and each is defined by clear goals and clear limits before it runs.
+Risk tiers change only with human approval.
+A gate may learn from observation and empirical evidence, but the agent subject to a gate is never the source of a change to it; that change is always a separate process.
 
 ## Built for today's scale, behind abstractions that can carry tomorrow's
 
@@ -53,13 +56,15 @@ A retired contract shape does not come back unversioned, undated, or by accident
 Retention against the backup target is dry run by default and cannot delete.
 Only a human-run command can delete a backup.
 A backup host's own credentials are sufficient to write a new backup and never sufficient to decrypt an old one.
+Ingested content is precious, not re-derivable: it carries the provenance behind every claim, and it is reprocessed as models and the system improve, so it is kept and backed up alongside human decisions.
 
 ## Scope
 
 It is not a system whose domain is fixed in code: what it pays attention to, the voice it writes in, and which personas analyze it live in prompts, personas, and source lists.
-It is not a general-purpose agent platform, a CI system, or a place to bolt on every integration a source could plausibly offer.
-It is not a system that silently decides which content is precious and which is disposable; that line is drawn explicitly, in writing, and revisited as ingestion grows.
+It is not a general-purpose agent platform: it is a tool that agents with a defined goal and defined limits use, and an agent without both does not run here.
+It is not a CI system, or a place to bolt on every integration a source could plausibly offer.
+It is not a cache: what it ingests it keeps, with provenance, because a better model will read it again.
 It is not a marketing surface: digest quality is measured against a written content guideline, not against enthusiasm.
 
-A change aligns when it can prove the artifact it claims to produce, survives a restart, keeps a provider behind its abstraction, is sized to the scale that exists, and states its evidence.
-A change should be resisted when it reports success without checking, executes a mutation inline just this once, lets a model decide what the pipeline runs next, adds a subsystem for a scale that has not arrived, infers a provider instead of naming it, teaches the stack a vendor's name outside its adapter, rewrites archived history, or hands delete authority to an unattended process.
+A change aligns when it can prove the artifact it claims to produce, survives a restart, keeps a provider behind its abstraction, is sized to the scale that exists, defines an agent's goals and limits before it runs, and states its evidence.
+A change should be resisted when it reports success without checking, executes a mutation inline just this once, lets a model decide what the pipeline runs next, adds a subsystem for a scale that has not arrived, infers a provider instead of naming it, teaches the stack a vendor's name outside its adapter, treats ingested content as disposable, lets an agent change the gate it is subject to, rewrites archived history, or hands delete authority to an unattended process.

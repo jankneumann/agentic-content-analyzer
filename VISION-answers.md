@@ -72,6 +72,41 @@ Principles distilled:
 - Thin abstractions are what make the trade between provider-specific capability and portable, repeatable patterns decidable case by case.
 - Vendor neutrality means the stack outside the adapter does not learn the provider's name; it does not mean refusing provider-specific capability.
 
+## Round 3 (H-7, H-8, H-9)
+
+### H-7 - Back up ingested content itself, not just human decisions
+
+Verdict: **In vision**
+
+Reasoning (verbatim): "content is precious for provenance and to be able to effectively reprocess it as model and system capabilities increase"
+
+Principles distilled:
+- Ingested content is precious, not re-derivable.
+- It carries provenance.
+- It is reprocessed as model and system capabilities increase, so it must be kept.
+
+### H-8 - Let the specialist agent subsystem grow toward open-ended research
+
+Verdict: **In vision**
+
+Reasoning (verbatim): "we want to be able to define and run agents with distinct goals that use this system as an effective tool, independent research and creating ai tutors are some of the first agents I envision. Bounded proposal refers to the definition of clear goals and limits for the agent"
+
+Principles distilled:
+- Agents with distinct goals use the system as a tool.
+- Independent research and AI tutors are the first envisioned agents.
+- "Bounded" means clear goals and clear limits defined for the agent before it runs.
+
+### H-9 - Loosen approval gates as the agent subsystem earns trust
+
+Verdict: **Conditional**
+
+Reasoning (verbatim): "risk tiering needs human approval though we want to use gates that learn from observations and empirical evidence, though the agent being subject to gates and controls should never be the source of changes, this always needs to be a separate process"
+
+Principles distilled:
+- Risk tiers change only with human approval.
+- Gates may learn from observation and empirical evidence.
+- The agent subject to a gate is never the source of a change to that gate; gate changes are a separate process.
+
 ## Changelog
 
 - H-1 In vision -> identity opener rewritten: purpose is "trend analysis and leadership advice"; audience is "technical leaders and practitioners first, and anyone who points it at their own sources and prompts"; the owned surface now includes "external content, memories, and observations"; Scope gains "It is not a system whose domain is fixed in code".
@@ -80,3 +115,6 @@ Principles distilled:
 - H-4 In vision -> vendor section retitled "Providers are chosen explicitly and held behind thin abstractions"; new line "A provider that shapes capabilities or the build is named explicitly in configuration, never inferred from other settings"; closing test gains "infers a provider instead of naming it".
 - H-5 In vision -> the compatibility line in the history section now reads "served through standard revision and upgrade mechanisms: versioned contracts, compatibility windows stated in writing, and thin adapters that carry a retirement date", and "retired contract shapes do not quietly come back as an adapter" becomes "does not come back unversioned, undated, or by accident"; scale section gains "Boundaries between modules are thin abstraction layers with a contract".
 - H-6 In vision -> "A design that trades a portable option for a vendor's proprietary feature is rejected unless the portable option is proven not viable" is replaced by "Each provider gets a dedicated build path behind the same thin abstraction, so a provider-specific capability can be used where it earns its place without the rest of the stack learning that provider's name"; closing tests swap "keeps a vendor swappable" for "keeps a provider behind its abstraction" and "hardcodes a single vendor's feature" for "teaches the stack a vendor's name outside its adapter".
+- H-7 In vision -> delete/credential section gains "Ingested content is precious, not re-derivable: it carries the provenance behind every claim, and it is reprocessed as models and the system improve, so it is kept and backed up alongside human decisions"; the Scope line about silently deciding what is precious becomes "It is not a cache: what it ingests it keeps, with provenance, because a better model will read it again"; closing test gains "treats ingested content as disposable".
+- H-8 In vision -> agentic section gains "Agents with distinct goals, such as independent research or an AI tutor, use the system as a tool, and each is defined by clear goals and clear limits before it runs"; Scope's "not a general-purpose agent platform" now continues "it is a tool that agents with a defined goal and defined limits use, and an agent without both does not run here"; closing test gains "defines an agent's goals and limits before it runs".
+- H-9 Conditional -> agentic section gains "Risk tiers change only with human approval" and "A gate may learn from observation and empirical evidence, but the agent subject to a gate is never the source of a change to it; that change is always a separate process"; closing test gains "lets an agent change the gate it is subject to".
