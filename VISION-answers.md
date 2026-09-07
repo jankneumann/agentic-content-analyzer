@@ -107,6 +107,30 @@ Principles distilled:
 - Gates may learn from observation and empirical evidence.
 - The agent subject to a gate is never the source of a change to that gate; gate changes are a separate process.
 
+## Round 4 (H-10, H-11)
+
+### H-10 - Ship a valuable breaking API change ahead of consumer migration
+
+Verdict: **Off mission**
+
+Reasoning (verbatim): "currently we are moving fast but as a project we are evolving continuously not on a fixed release cadence. Reprioritization happens frequently as we are learning like in startups"
+
+Principles distilled:
+- The project evolves continuously, with no fixed release cadence.
+- Reprioritization is frequent and driven by learning.
+- A stated compatibility window is coordination, not a calendar cutoff; a breaking change lands when consumers can take it.
+
+### H-11 - Ship an experimental feature behind a flag with only mocked tests
+
+Verdict: **In vision**
+
+Reasoning (verbatim): "what I mean that it is ok to try limited ideas with a verification effort aligned with their blast radius. Generally given how e2e integration of features has been an issue we need testing to be as comprehensive as needed to show that something is truly working, but sometimes ideas can be best quickly explored in a simulated and mocked environment so we need that flexibility too"
+
+Principles distilled:
+- Verification effort is aligned with blast radius.
+- End-to-end integration has been the recurring problem, so proof that a shipped feature truly works is as comprehensive as needed.
+- A limited idea may be explored in a simulated or mocked environment; that flexibility is deliberate.
+
 ## Changelog
 
 - H-1 In vision -> identity opener rewritten: purpose is "trend analysis and leadership advice"; audience is "technical leaders and practitioners first, and anyone who points it at their own sources and prompts"; the owned surface now includes "external content, memories, and observations"; Scope gains "It is not a system whose domain is fixed in code".
@@ -118,3 +142,6 @@ Principles distilled:
 - H-7 In vision -> delete/credential section gains "Ingested content is precious, not re-derivable: it carries the provenance behind every claim, and it is reprocessed as models and the system improve, so it is kept and backed up alongside human decisions"; the Scope line about silently deciding what is precious becomes "It is not a cache: what it ingests it keeps, with provenance, because a better model will read it again"; closing test gains "treats ingested content as disposable".
 - H-8 In vision -> agentic section gains "Agents with distinct goals, such as independent research or an AI tutor, use the system as a tool, and each is defined by clear goals and clear limits before it runs"; Scope's "not a general-purpose agent platform" now continues "it is a tool that agents with a defined goal and defined limits use, and an agent without both does not run here"; closing test gains "defines an agent's goals and limits before it runs".
 - H-9 Conditional -> agentic section gains "Risk tiers change only with human approval" and "A gate may learn from observation and empirical evidence, but the agent subject to a gate is never the source of a change to it; that change is always a separate process"; closing test gains "lets an agent change the gate it is subject to".
+- H-10 Off mission -> scale section gains "The project evolves continuously and reprioritizes as it learns; it has no fixed release cadence"; history section gains "A stated window is a coordination promise, not a cutoff: a breaking change lands when its consumers can take it, not when a calendar says so".
+- H-11 In vision -> the mock line now ends "does not count as proof that a feature works end to end"; provable section gains "Verification effort is sized to blast radius: a limited idea may be explored in a simulated or mocked environment, and the moment it touches the durable path or a user it is proven against the real mechanism" and "End-to-end integration is where this project has been bitten most, so proof of a shipped feature is as comprehensive as it needs to be to show the feature truly works"; closing tests gain "sizes its verification to its blast radius" and "reaches the durable path or a user on a mock".
+- Length trim (no verdict) -> "Archived decisions are never rewritten" and the supersede line merged into one; the two retention lines merged into one.
