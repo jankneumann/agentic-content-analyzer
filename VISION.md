@@ -29,11 +29,13 @@ Designs are sized to the scale the project actually runs at, not to the scale it
 Complexity is added when a need is demonstrated, not when it is imagined, and it arrives inside an existing abstraction rather than as a new subsystem.
 The abstractions stay clean enough that the next step up in complexity is an addition, not a rewrite.
 A simpler mechanism that is proven to work is preferred over a stronger one that is not yet proven here.
+Boundaries between modules are thin abstraction layers with a contract, so a module can be replaced in line with its contract without touching its neighbors.
 
-## No layer of the stack locks the project to one vendor
+## Providers are chosen explicitly and held behind thin abstractions
 
 Database, object storage, graph database, and observability each ship at least two interchangeable backends, selected by configuration, not by code branch.
-A design that trades a portable option for a vendor's proprietary feature is rejected unless the portable option is proven not viable.
+A provider that shapes capabilities or the build is named explicitly in configuration, never inferred from other settings, because an explicit choice is what keeps the whole stack aligned around it.
+Each provider gets a dedicated build path behind the same thin abstraction, so a provider-specific capability can be used where it earns its place without the rest of the stack learning that provider's name.
 Moving off a host is a planned capability, not a fire drill.
 
 ## The project holds its own history to the evidence standard it demands of its infrastructure
@@ -43,7 +45,8 @@ A checked requirement that contradicts running behavior gets reclassified, not l
 Archived decisions are never rewritten.
 A later change supersedes a decision in the open, in a new document, rather than editing history.
 A roadmap idea with no bounded proposal, task plan, or spec delta does not get promoted into a feature because it sounds compelling.
-Independently deployed API consumers get a compatibility window stated in writing, and retired contract shapes do not quietly come back as an adapter.
+Independently deployed consumers are served through standard revision and upgrade mechanisms: versioned contracts, compatibility windows stated in writing, and thin adapters that carry a retirement date.
+A retired contract shape does not come back unversioned, undated, or by accident.
 
 ## A process that can delete never runs unattended, and a compromised credential never unlocks everything
 
@@ -58,5 +61,5 @@ It is not a general-purpose agent platform, a CI system, or a place to bolt on e
 It is not a system that silently decides which content is precious and which is disposable; that line is drawn explicitly, in writing, and revisited as ingestion grows.
 It is not a marketing surface: digest quality is measured against a written content guideline, not against enthusiasm.
 
-A change aligns when it can prove the artifact it claims to produce, survives a restart, keeps a vendor swappable, is sized to the scale that exists, and states its evidence.
-A change should be resisted when it reports success without checking, executes a mutation inline just this once, lets a model decide what the pipeline runs next, adds a subsystem for a scale that has not arrived, hardcodes a single vendor's feature, rewrites archived history, or hands delete authority to an unattended process.
+A change aligns when it can prove the artifact it claims to produce, survives a restart, keeps a provider behind its abstraction, is sized to the scale that exists, and states its evidence.
+A change should be resisted when it reports success without checking, executes a mutation inline just this once, lets a model decide what the pipeline runs next, adds a subsystem for a scale that has not arrived, infers a provider instead of naming it, teaches the stack a vendor's name outside its adapter, rewrites archived history, or hands delete authority to an unattended process.
