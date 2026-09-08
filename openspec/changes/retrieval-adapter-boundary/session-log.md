@@ -44,3 +44,24 @@
 ### Context
 Planned a provider-adapter boundary for retrieval with write, search, read, and improve actions over content chunks and agent memories. Decided on protocol extraction with a composition layer (Approach 1): Postgres adapter with a parity golden test, LanceDB as the flagged secondary with fail-safe dual-write and post-response shadow read, and retrieval metrics added to aca evaluate. Tier: coordinated. Gate 1 approved Approach 1 with no modifications.
 
+---
+
+## Phase: Plan approval gates (2026-09-08)
+
+**Agent**: claude | **Session**: N/A
+
+### Completed Work
+- Gate 1 approved: Approach 1 selected
+- Gate 2 approved: proceed to implementation
+- openspec validate --strict, work-package schema, and parallel-zone checks all pass
+- Coordinator lock and feature registration returned unauthorized; claims recorded in work-packages.yaml only
+
+### Next Steps
+- /implement-feature retrieval-adapter-boundary
+
+### Relevant Files
+- `openspec/changes/retrieval-adapter-boundary/work-packages.yaml` — execution plan
+
+### Context
+Gate 1 (direction): user selected Approach 1, protocol extraction with a composition layer, with no modifications. Gate 2 (plan): user approved the complete plan; next step is /implement-feature retrieval-adapter-boundary.
+
