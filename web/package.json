@@ -95,6 +95,8 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.1",
+    "@coldtea/pr-lens-renderer": "0.2.2",
+    "@coldtea/pr-lens-schema": "0.2.1",
     "@eslint/js": "^9.39.4",
     "@playwright/test": "^1.59.1",
     "@tailwindcss/typography": "^0.5.19",
