@@ -131,6 +131,10 @@ Principles distilled:
 - End-to-end integration has been the recurring problem, so proof that a shipped feature truly works is as comprehensive as needed.
 - A limited idea may be explored in a simulated or mocked environment; that flexibility is deliberate.
 
+## Approval
+
+Verdict: **Approved** (2026-09-09). After the round-4 draft was delivered with all eleven verdicts folded in, the author's instruction was "Create PR"; that instruction is recorded here as approval of the draft as delivered, with no further edits requested.
+
 ## Changelog
 
 - H-1 In vision -> identity opener rewritten: purpose is "trend analysis and leadership advice"; audience is "technical leaders and practitioners first, and anyone who points it at their own sources and prompts"; the owned surface now includes "external content, memories, and observations"; Scope gains "It is not a system whose domain is fixed in code".
@@ -145,3 +149,4 @@ Principles distilled:
 - H-10 Off mission -> scale section gains "The project evolves continuously and reprioritizes as it learns; it has no fixed release cadence"; history section gains "A stated window is a coordination promise, not a cutoff: a breaking change lands when its consumers can take it, not when a calendar says so".
 - H-11 In vision -> the mock line now ends "does not count as proof that a feature works end to end"; provable section gains "Verification effort is sized to blast radius: a limited idea may be explored in a simulated or mocked environment, and the moment it touches the durable path or a user it is proven against the real mechanism" and "End-to-end integration is where this project has been bitten most, so proof of a shipped feature is as comprehensive as it needs to be to show the feature truly works"; closing tests gain "sizes its verification to its blast radius" and "reaches the durable path or a user on a mock".
 - Length trim (no verdict) -> "Archived decisions are never rewritten" and the supersede line merged into one; the two retention lines merged into one.
+- Approval -> no text change; `VISION-review.html` and `review.css` (the transient reading surface) removed from the repository; `VISION.md` and `VISION-answers.md` are the deliverables.
