@@ -19,6 +19,13 @@ CSS = """
   --in: #c2410c; --out: #0f766e; --warn-bg: #fff8e6; --warn-border: #e8c675;
   --warn-text: #6b4e00; --shadow: 0 1px 3px rgba(20,22,28,.09);
   --py: #3b5bdb; --sql: #b1479c; --ts: #1a7f8c; --unknown: #8b93a3;
+  /* Change deltas. Removed is drawn ghosted as well as red, so the meaning
+     survives for a reader who cannot distinguish it from amber. */
+  --d-added: #2f9e44; --d-modified: #c77700; --d-removed: #d63a3a; --d-unchanged: #9aa1ae;
+  /* Test coverage. `unknown` is deliberately not on the red-to-green ramp:
+     unmeasured is a different fact from untested. */
+  --cov-0: #d63a3a; --cov-1: #c77700; --cov-2: #8a9a1f; --cov-3: #2f9e44;
+  --cov-unknown: #7c8494;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -27,6 +34,9 @@ CSS = """
     --in: #ff9d66; --out: #4fd1c5; --warn-bg: #2e2617; --warn-border: #6b5a2c;
     --warn-text: #f0d99a; --shadow: 0 1px 3px rgba(0,0,0,.4);
     --py: #8ea6ff; --sql: #e59ad4; --ts: #5fd4e0; --unknown: #7d8595;
+    --d-added: #5fce7f; --d-modified: #e8a33d; --d-removed: #f0736f; --d-unchanged: #79808d;
+    --cov-0: #f0736f; --cov-1: #e8a33d; --cov-2: #b9cb4a; --cov-3: #5fce7f;
+    --cov-unknown: #6d7482;
   }
 }
 :root[data-theme="light"] {
@@ -34,12 +44,18 @@ CSS = """
   --muted: #6b7180; --accent: #3b5bdb; --accent-soft: #e7ecfd;
   --in: #c2410c; --out: #0f766e; --warn-bg: #fff8e6; --warn-border: #e8c675;
   --warn-text: #6b4e00; --py: #3b5bdb; --sql: #b1479c; --ts: #1a7f8c; --unknown: #8b93a3;
+  --d-added: #2f9e44; --d-modified: #c77700; --d-removed: #d63a3a; --d-unchanged: #9aa1ae;
+  --cov-0: #d63a3a; --cov-1: #c77700; --cov-2: #8a9a1f; --cov-3: #2f9e44;
+  --cov-unknown: #7c8494;
 }
 :root[data-theme="dark"] {
   --bg: #14161a; --panel: #1b1e24; --border: #2c313a; --text: #e6e8ee;
   --muted: #9aa2b1; --accent: #8ea6ff; --accent-soft: #22283a;
   --in: #ff9d66; --out: #4fd1c5; --warn-bg: #2e2617; --warn-border: #6b5a2c;
   --warn-text: #f0d99a; --py: #8ea6ff; --sql: #e59ad4; --ts: #5fd4e0; --unknown: #7d8595;
+  --d-added: #5fce7f; --d-modified: #e8a33d; --d-removed: #f0736f; --d-unchanged: #79808d;
+  --cov-0: #f0736f; --cov-1: #e8a33d; --cov-2: #b9cb4a; --cov-3: #5fce7f;
+  --cov-unknown: #6d7482;
 }
 
 * { box-sizing: border-box; }
@@ -224,6 +240,13 @@ JS = """
     edgeTypes: {},           // edge type -> enabled
     query: "",
     expanded: {},            // tree node key -> bool
+    // Colour by language (the default), by what a change touched, or by how
+    // well tests reach the code. Only the first is always available.
+    colorMode: "language",
+    // Test files are 57% of this graph's nodes and TEST_COVERS 96% of its
+    // edges, so drawing them turns a picture of the application into a picture
+    // of its test suite. Coverage rides on the covered node instead.
+    showTests: false,
   };
   M.forEach(function (m) { state.langs[m.language] = true; });
   ME.forEach(function (e) { state.edgeTypes[e.type] = true; });
@@ -233,6 +256,64 @@ JS = """
   function isSymbol(id) { return id != null && !!symbolById[id]; }
   function moduleOf(id) { return isSymbol(id) ? symbolById[id].module : id; }
   function langOk(m) { return !!state.langs[m.language]; }
+
+  // A module is a test file when every symbol in it is a test, or when its
+  // path says so. Both are needed: the Python analyzer marks test symbols with
+  // a `test_` kind, ts-morph does not, so a kind-only rule would hide Python
+  // tests and quietly leave TypeScript ones on the canvas -- a toggle that
+  // looks like it works being worse than one that plainly does not.
+  var TEST_PATH = /(^|[/])tests?[/]|[.](test|spec)[.][jt]sx?$|(^|[/])__tests__[/]/;
+  function isTestModule(m) {
+    var kinds = Object.keys(m.kinds || {});
+    if (kinds.length > 0 && kinds.every(function (k) { return k.indexOf("test_") === 0; })) {
+      return true;
+    }
+    return TEST_PATH.test(m.file || "");
+  }
+  function moduleVisible(m) {
+    return langOk(m) && (state.showTests || !isTestModule(m));
+  }
+
+  // ------------------------------------------------------------- colouring
+  var DELTA_VAR = {
+    added: "--d-added", modified: "--d-modified",
+    removed: "--d-removed", unchanged: "--d-unchanged",
+  };
+
+  function coverageColor(m) {
+    // A measured fraction wins when a report was loaded; otherwise the count
+    // of tests reaching the file, bucketed. Neither is a substitute for the
+    // other, so the legend always says which one is in use.
+    if (DATA.meta.testCoverage.source === "line") {
+      if (m.cov == null) return css("--cov-unknown");
+      if (m.cov <= 0) return css("--cov-0");
+      if (m.cov < 0.5) return css("--cov-1");
+      if (m.cov < 0.8) return css("--cov-2");
+      return css("--cov-3");
+    }
+    var n = m.tests || 0;
+    if (n === 0) return css("--cov-0");
+    if (n === 1) return css("--cov-1");
+    if (n <= 4) return css("--cov-2");
+    return css("--cov-3");
+  }
+
+  function nodeColor(m, langCol) {
+    if (state.colorMode === "delta") {
+      // A file the change document never names is not unchanged, it is
+      // out of frame; it gets the neutral rather than a delta colour.
+      return m.delta ? css(DELTA_VAR[m.delta]) : css("--cov-unknown");
+    }
+    if (state.colorMode === "coverage") return coverageColor(m);
+    return langCol[m.language] || css("--unknown");
+  }
+
+  function colorModes() {
+    var modes = ["language"];
+    if (DATA.meta.change && DATA.meta.change.loaded) modes.push("delta");
+    modes.push("coverage");
+    return modes;
+  }
 
   // ---------------------------------------------------- neighbourhood (BFS)
   // Returns {key: hopDistance} over MODULE nodes, following only enabled edge
@@ -295,7 +376,7 @@ JS = """
 
   function buildGraph() {
     nodes = []; nodeByKey = {};
-    M.filter(langOk).forEach(function (m, i) {
+    M.filter(moduleVisible).forEach(function (m, i) {
       var h = seedHash(m.key);
       var ang = (h % 10000) / 10000 * Math.PI * 2;
       var rad = 120 + ((h >>> 13) % 1000) / 1000 * 220;
@@ -415,6 +496,9 @@ JS = """
         else if (sOut && tOut) hi = "out";
       }
       ctx.globalAlpha = sets ? (hi ? 0.95 : 0.06) : 0.3;
+      if (state.colorMode === "delta" && !sets && !(e.s.mod.delta || e.t.mod.delta)) {
+        ctx.globalAlpha = 0.05;
+      }
       ctx.strokeStyle = hi === "in" ? colIn : hi === "out" ? colOut : colMuted;
       ctx.lineWidth = (hi ? 1.5 : 0.8) + Math.min(2.4, Math.log(1 + e.w) * 0.6);
       // Quadratic curve keeps reciprocal edges visually distinct.
@@ -449,7 +533,15 @@ JS = """
       ctx.globalAlpha = sets ? (role ? 1 : 0.13) : 1;
       ctx.beginPath();
       ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-      ctx.fillStyle = langCol[n.mod.language] || css("--unknown");
+      ctx.fillStyle = nodeColor(n.mod, langCol);
+      if (state.colorMode === "delta") {
+        // Twelve changed files among eleven hundred are invisible at equal
+        // weight, so what the document never names recedes.
+        if (!n.mod.delta) ctx.globalAlpha *= 0.22;
+        // A removed file is ghosted as well as coloured, so the meaning does
+        // not rest on telling red from amber.
+        else if (n.mod.delta === "removed") ctx.globalAlpha *= 0.45;
+      }
       ctx.fill();
       if (role === "root" || n === hovered) {
         ctx.strokeStyle = colText; ctx.lineWidth = 2.2; ctx.stroke();
@@ -483,7 +575,8 @@ JS = """
       var forced = item.role === "root" || n === hovered;
       // When nothing is selected, small peripheral nodes stay unlabelled until
       // the user zooms in; that keeps the default view legible.
-      if (!forced && view.k < 0.55 && n.r < 9) continue;
+      var isSubject = state.colorMode === "delta" && !!n.mod.delta;
+      if (!forced && !isSubject && view.k < 0.55 && n.r < 9) continue;
       if (!forced && sets && !item.role) continue;
 
       var sx = rect.width / 2 + view.x + n.x * view.k;
@@ -514,6 +607,10 @@ JS = """
     if (item.role === "root") return 1e6;
     if (item.n === hovered) return 9e5;
     if (item.role) return 5e5 - item.dist * 1000 + item.n.r;
+    // In delta mode the changed files are the subject, so they are labelled
+    // ahead of the hubs. Ranking by size alone names the busiest unchanged
+    // module and leaves the twelve that changed anonymous.
+    if (state.colorMode === "delta" && item.n.mod.delta) return 4e5 + item.n.r;
     return item.n.r;
   }
 
@@ -833,6 +930,8 @@ JS = """
     if (offLangs.length) p.set("nolang", offLangs.join(","));
     var offTypes = Object.keys(state.edgeTypes).filter(function (t) { return !state.edgeTypes[t]; });
     if (offTypes.length) p.set("noedge", offTypes.join(","));
+    if (state.colorMode !== "language") p.set("mode", state.colorMode);
+    if (state.showTests) p.set("tests", "1");
     var h = p.toString();
     history.replaceState(null, "", h ? "#" + h : location.pathname);
   }
@@ -844,9 +943,64 @@ JS = """
     state.depth = Math.max(1, Math.min(4, parseInt(p.get("depth") || "1", 10) || 1));
     state.query = p.get("q") || "";
     state.selected = p.get("sel") || null;
+    var mode = p.get("mode");
+    if (mode && colorModes().indexOf(mode) >= 0) state.colorMode = mode;
+    state.showTests = p.get("tests") === "1";
   }
 
   // ============================================================== CONTROLS
+  function renderLegend() {
+    var rows = [
+      ['<span class="swatch" style="background:var(--in)"></span> callers (inbound)'],
+      ['<span class="swatch" style="background:var(--out)"></span> dependencies (outbound)'],
+    ];
+    function row(varName, label) {
+      return ['<span class="swatch" style="background:var(' + varName + ')"></span> ' + esc(label)];
+    }
+    if (state.colorMode === "delta") {
+      rows.push(row("--d-added", "added"), row("--d-modified", "modified"),
+                row("--d-removed", "removed (ghosted)"), row("--d-unchanged", "unchanged"),
+                row("--cov-unknown", "not in this change"));
+    } else if (state.colorMode === "coverage") {
+      // Which source is in use is part of the legend, because the two scales
+      // mean different things and the colours alone cannot say which.
+      if (DATA.meta.testCoverage.source === "line") {
+        rows.push(row("--cov-0", "0% of lines"), row("--cov-1", "under 50%"),
+                  row("--cov-2", "50-80%"), row("--cov-3", "over 80%"),
+                  row("--cov-unknown", "not in the report"));
+        rows.push(["from " + esc(DATA.meta.testCoverage.report || "a line report")]);
+      } else {
+        rows.push(row("--cov-0", "no test reaches it"), row("--cov-1", "1 test"),
+                  row("--cov-2", "2-4 tests"), row("--cov-3", "5 or more"));
+        rows.push(["from test linkage, not a line report"]);
+      }
+    }
+    el("legend").innerHTML = rows.map(function (r) { return "<div>" + r[0] + "</div>"; }).join("");
+  }
+
+  function renderColorChips() {
+    el("color-chips").innerHTML = colorModes().map(function (m) {
+      return '<button class="chip" data-mode="' + esc(m) + '" aria-pressed="' +
+        (state.colorMode === m) + '">' + esc(m) + "</button>";
+    }).join("");
+    var tests = el("show-tests");
+    tests.setAttribute("aria-pressed", String(state.showTests));
+  }
+
+  el("color-chips").addEventListener("click", function (ev) {
+    var b = ev.target.closest("[data-mode]"); if (!b) return;
+    state.colorMode = b.getAttribute("data-mode");
+    renderColorChips(); renderLegend(); syncHash();
+    // Recolouring moves nothing, so the layout is left exactly as it was.
+    draw();
+  });
+
+  el("show-tests").addEventListener("click", function () {
+    state.showTests = !state.showTests;
+    renderColorChips(); syncHash();
+    buildGraph(); applyTreeFilter();
+  });
+
   function renderChips() {
     el("lang-chips").innerHTML = Object.keys(state.langs).sort().map(function (l) {
       return '<button class="chip" data-lang="' + esc(l) + '" aria-pressed="' +
@@ -908,6 +1062,20 @@ JS = """
 
   // ================================================================== BOOT
   readHash();
+  renderColorChips();
+  renderLegend();
+
+  // A deliberate, read-only inspection surface. This page is a developer tool
+  // with no build step, so a browser test has no other way to ask where the
+  // layout put things; exposing it is cheaper than a test-only build.
+  window.__atlas = {
+    nodes: function () {
+      return nodes.map(function (n) {
+        return { key: n.key, x: n.x, y: n.y, r: n.r };
+      });
+    },
+    state: function () { return JSON.parse(JSON.stringify(state)); },
+  };
   renderChips();
   buildTree();
   el("depth").value = String(state.depth);

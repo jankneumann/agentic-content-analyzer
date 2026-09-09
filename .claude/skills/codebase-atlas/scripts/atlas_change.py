@@ -153,6 +153,52 @@ def module_coverage(symbols: Iterable[tuple[int, int]]) -> float | None:
 # ---------------------------------------------------------------------------
 
 
+class ContractUnavailableError(Exception):
+    """The change-graph contract module could not be located."""
+
+
+def _contract() -> Any:
+    """Import the contract module, reaching the sibling skill if need be.
+
+    The atlas renders; the contract belongs to the skill that produces change
+    documents.  Rather than keep a second copy of it here -- two copies of an
+    id rewrite drifting apart would silently stop matching anything -- the
+    module is imported, and the sibling skill's scripts directory is added to
+    the path when it is not already there.
+
+    A repository with the atlas installed and not the projector simply cannot
+    load a change document, and is told so rather than shown a page that
+    quietly colours nothing.
+    """
+    import sys  # noqa: PLC0415
+
+    try:
+        from arch_utils import change_graph  # noqa: PLC0415
+
+        return change_graph
+    except ImportError:
+        pass
+
+    sibling = (
+        Path(__file__).resolve().parents[2] / "refresh-architecture" / "scripts"
+    )
+    if sibling.is_dir():
+        if str(sibling) not in sys.path:
+            sys.path.insert(0, str(sibling))
+        try:
+            from arch_utils import change_graph  # noqa: PLC0415
+
+            return change_graph
+        except ImportError:
+            pass
+
+    raise ContractUnavailableError(
+        "reading a change document needs the refresh-architecture skill, which "
+        f"was not found at {sibling}; the atlas renders without it, but cannot "
+        "colour by change"
+    )
+
+
 def delta_index(
     document: dict[str, Any],
     graph_node_ids: Iterable[str],
@@ -171,7 +217,7 @@ def delta_index(
     -- reported rather than dropped, because a document naming nodes this graph
     does not have usually means the two were built from different commits.
     """
-    from arch_utils import change_graph  # noqa: PLC0415 - optional dependency
+    change_graph = _contract()
 
     if validate:
         change_graph.validate_document(document)

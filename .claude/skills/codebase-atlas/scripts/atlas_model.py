@@ -132,6 +132,23 @@ class Module:
         return sorted({t for s in self.symbols for t in s.get("tags", ())})
 
 
+#: Precedence when a module's symbols disagree.  A module counts as added or
+#: removed only when every symbol in it agrees -- that is a file arriving or
+#: leaving.  Anything mixed is a modification, which is what a reader means by
+#: "this file changed".
+def module_delta(deltas: list[str]) -> str | None:
+    known = [d for d in deltas if d]
+    if not known:
+        return None
+    if all(d == "added" for d in known):
+        return "added"
+    if all(d == "removed" for d in known):
+        return "removed"
+    if any(d != "unchanged" for d in known):
+        return "modified"
+    return "unchanged"
+
+
 def load_graph(path: Path) -> dict[str, Any]:
     """Load and structurally validate the architecture graph."""
     if not path.is_file():
@@ -179,6 +196,7 @@ def group_modules(nodes: list[dict[str, Any]]) -> list[Module]:
                 "name": node.get("name") or node_id,
                 "kind": node.get("kind") or "unknown",
                 "line": span.get("start") or 0,
+                "endLine": span.get("end") or span.get("start") or 0,
                 "tags": tuple(sorted(node.get("tags") or ())),
                 "signature": node.get("signatures") or {},
             }
@@ -323,8 +341,17 @@ def build_view_model(
     repo_root: Path,
     *,
     measure: bool = True,
+    change: dict[str, Any] | None = None,
+    line_coverage: Any | None = None,
+    source_prefixes: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Assemble the complete JSON payload embedded into the rendered page."""
+    """Assemble the complete JSON payload embedded into the rendered page.
+
+    ``change`` stamps a delta on every symbol a change document names.
+    ``line_coverage`` supplies measured coverage; without it the page falls
+    back to linkage counts, which the graph always carries.  Both are optional
+    and absent by default, so the page keeps working with neither.
+    """
     nodes: list[dict[str, Any]] = graph["nodes"]
     edges: list[dict[str, Any]] = graph["edges"]
 
@@ -336,8 +363,69 @@ def build_view_model(
     snapshot = (graph.get("snapshots") or [{}])[0]
     entrypoints = {e for e in graph.get("entrypoints") or [] if isinstance(e, str)}
 
-    module_payload = [
-        {
+    module_payload_pending = modules  # filled in below, once symbols are read
+
+    from atlas_change import (
+        delta_index,
+        linkage_counts,
+        module_coverage,
+        symbol_coverage,
+    )
+
+    tests_by_node = linkage_counts(edges)
+    prefixes = source_prefixes or {}
+    deltas: dict[str, str] = {}
+    unmatched: list[str] = []
+    if change is not None:
+        deltas, unmatched = delta_index(
+            change, [node["id"] for node in nodes], validate=True
+        )
+
+    def repo_path(module: Module) -> str:
+        """The analyzer records paths under each language's source root.
+
+        Coverage reports are written relative to the repository, so the two
+        have to be reconciled before any line number is compared.
+        """
+        prefix = prefixes.get(module.language, "")
+        file = module.file.lstrip("/")
+        if prefix and not file.startswith(prefix):
+            return f"{prefix.rstrip('/')}/{file}"
+        return file
+
+    symbol_payload = []
+    module_stats: dict[str, list[tuple[int, int]]] = {}
+    module_deltas: dict[str, list[str]] = {}
+    for module in modules:
+        path = repo_path(module)
+        for symbol in module.symbols:
+            measured = symbol_coverage(
+                line_coverage, path, symbol["line"], symbol["endLine"]
+            )
+            if measured is not None:
+                module_stats.setdefault(module.key, []).append(measured)
+            entry = {
+                "id": symbol["id"],
+                "name": symbol["name"],
+                "kind": symbol["kind"],
+                "module": module.key,
+                "line": symbol["line"],
+                "tags": list(symbol["tags"]),
+                "entry": symbol["id"] in entrypoints,
+                "tests": tests_by_node.get(symbol["id"], 0),
+                # None means unmeasured, and the page must not paint it as
+                # zero: absence of data is not absence of tests.
+                "cov": (measured[0] / measured[1]) if measured else None,
+            }
+            delta = deltas.get(symbol["id"])
+            if delta is not None:
+                entry["delta"] = delta
+                module_deltas.setdefault(module.key, []).append(delta)
+            symbol_payload.append(entry)
+
+    module_payload = []
+    for module in module_payload_pending:
+        entry = {
             "key": module.key,
             "file": module.file,
             "language": module.language,
@@ -345,23 +433,15 @@ def build_view_model(
             "kinds": module.kind_counts,
             "tags": module.tags,
             "tree": nest_symbols(module.symbols),
+            "tests": sum(
+                tests_by_node.get(symbol["id"], 0) for symbol in module.symbols
+            ),
+            "cov": module_coverage(module_stats.get(module.key, [])),
         }
-        for module in modules
-    ]
-
-    symbol_payload = [
-        {
-            "id": symbol["id"],
-            "name": symbol["name"],
-            "kind": symbol["kind"],
-            "module": module.key,
-            "line": symbol["line"],
-            "tags": list(symbol["tags"]),
-            "entry": symbol["id"] in entrypoints,
-        }
-        for module in modules
-        for symbol in module.symbols
-    ]
+        delta = module_delta(module_deltas.get(module.key, []))
+        if delta is not None:
+            entry["delta"] = delta
+        module_payload.append(entry)
 
     symbol_edges = sorted(
         (
@@ -388,6 +468,18 @@ def build_view_model(
             "edgeCount": len(edges),
             "moduleCount": len(modules),
             "danglingEdges": dropped,
+            # Two different numbers share the word coverage, so neither uses it
+            # bare: `coverage` below is how much of the repository the graph
+            # saw, and this is how much of the code the tests exercise.
+            "testCoverage": {
+                "source": "line" if line_coverage is not None else "linkage",
+                "report": getattr(line_coverage, "source", None),
+            },
+            "change": {
+                "loaded": change is not None,
+                "title": (change or {}).get("title"),
+                "unmatched": unmatched,
+            },
         },
         "coverage": [c.to_dict() for c in (measure_coverage(repo_root, nodes) if measure else [])],
         "modules": module_payload,

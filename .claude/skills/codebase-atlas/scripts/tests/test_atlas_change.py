@@ -221,3 +221,154 @@ def test_an_invalid_document_is_refused(document: dict) -> None:
 
     with pytest.raises(change_graph.DocumentInvalidError):
         delta_index(document, set(), validate=True)
+
+
+# ---------------------------------------------------------------------------
+# View-model wiring
+# ---------------------------------------------------------------------------
+
+
+def _graph(tmp_path: Path) -> dict:
+    def node(node_id: str, file: str, start: int, end: int, kind: str = "function") -> dict:
+        return {
+            "id": node_id,
+            "kind": kind,
+            "language": "python",
+            "name": node_id.split(".")[-1],
+            "file": file,
+            "span": {"start": start, "end": end},
+            "tags": [],
+            "signatures": {},
+        }
+
+    return {
+        "nodes": [
+            node("py:services.user.create", "services/user.py", 1, 3),
+            node("py:services.user.audit", "services/user.py", 40, 40),
+            node("py:tests.test_user.test_create", "tests/test_user.py", 1, 5, "test_function"),
+        ],
+        "edges": [
+            {
+                "from": "py:tests.test_user.test_create",
+                "to": "py:services.user.create",
+                "type": "TEST_COVERS",
+            }
+        ],
+        "snapshots": [{"git_sha": "0" * 40}],
+    }
+
+
+def test_view_model_carries_linkage_counts_without_any_report(tmp_path: Path) -> None:
+    from atlas_model import build_view_model
+
+    model = build_view_model(_graph(tmp_path), tmp_path, measure=False)
+    symbols = {symbol["id"]: symbol for symbol in model["symbols"]}
+
+    assert symbols["py:services.user.create"]["tests"] == 1
+    assert symbols["py:services.user.audit"]["tests"] == 0
+    assert model["meta"]["testCoverage"]["source"] == "linkage"
+
+
+def test_view_model_carries_line_coverage_when_a_fresh_report_exists(
+    tmp_path: Path,
+) -> None:
+    from atlas_model import build_view_model
+
+    report = tmp_path / "coverage.xml"
+    report.write_text(COVERAGE_XML)
+
+    model = build_view_model(
+        _graph(tmp_path),
+        tmp_path,
+        measure=False,
+        line_coverage=load_line_coverage(report),
+        source_prefixes={"python": "src"},
+    )
+    symbols = {symbol["id"]: symbol for symbol in model["symbols"]}
+
+    assert symbols["py:services.user.create"]["cov"] == pytest.approx(2 / 3)
+    # Line 40 is in the report and never hit.
+    assert symbols["py:services.user.audit"]["cov"] == 0.0
+    assert model["meta"]["testCoverage"]["source"] == "line"
+
+
+def test_a_symbol_outside_the_report_is_null_rather_than_zero(tmp_path: Path) -> None:
+    from atlas_model import build_view_model
+
+    report = tmp_path / "coverage.xml"
+    report.write_text(COVERAGE_XML)
+    graph = _graph(tmp_path)
+    graph["nodes"].append(
+        {
+            "id": "py:elsewhere.thing",
+            "kind": "function",
+            "language": "python",
+            "name": "thing",
+            "file": "elsewhere.py",
+            "span": {"start": 1, "end": 2},
+            "tags": [],
+            "signatures": {},
+        }
+    )
+
+    model = build_view_model(
+        graph,
+        tmp_path,
+        measure=False,
+        line_coverage=load_line_coverage(report),
+        source_prefixes={"python": "src"},
+    )
+    symbols = {symbol["id"]: symbol for symbol in model["symbols"]}
+
+    assert symbols["py:elsewhere.thing"]["cov"] is None
+
+
+def test_the_view_model_stamps_deltas_and_reports_unmatched_ids(
+    tmp_path: Path,
+) -> None:
+    from atlas_model import build_view_model
+    from project_change_graph import Hunk, project
+
+    graph = _graph(tmp_path)
+    base = {"nodes": graph["nodes"][:1], "edges": []}
+    document = project(
+        base_graph=base,
+        head_graph={"nodes": graph["nodes"][:2], "edges": []},
+        hunks={"services/user.py": [Hunk(start=1, end=2)]},
+        flows={"flows": []},
+        impact={"high_impact_nodes": []},
+        provenance={
+            "repo": {"owner": "a", "name": "b"},
+            "base": {"sha": "0000000"},
+            "head": {"sha": "1111111"},
+        },
+        stats={"filesChanged": 1, "additions": 1, "deletions": 0},
+    )
+
+    model = build_view_model(graph, tmp_path, measure=False, change=document)
+    symbols = {symbol["id"]: symbol for symbol in model["symbols"]}
+
+    assert symbols["py:services.user.audit"]["delta"] == "added"
+    assert symbols["py:services.user.create"]["delta"] == "modified"
+    assert "delta" not in symbols["py:tests.test_user.test_create"]
+    assert model["meta"]["change"]["unmatched"] == []
+
+
+def test_the_view_model_is_byte_stable_with_the_new_fields(tmp_path: Path) -> None:
+    from atlas_model import build_view_model
+
+    graph = _graph(tmp_path)
+    first = json.dumps(build_view_model(graph, tmp_path, measure=False), sort_keys=True)
+    second = json.dumps(build_view_model(graph, tmp_path, measure=False), sort_keys=True)
+
+    assert first == second
+
+
+def test_a_module_is_added_only_when_every_symbol_in_it_is(tmp_path: Path) -> None:
+    from atlas_model import module_delta
+
+    assert module_delta(["added", "added"]) == "added"
+    assert module_delta(["added", "unchanged"]) == "modified"
+    assert module_delta(["removed", "removed"]) == "removed"
+    assert module_delta(["unchanged", "unchanged"]) == "unchanged"
+    assert module_delta([]) is None

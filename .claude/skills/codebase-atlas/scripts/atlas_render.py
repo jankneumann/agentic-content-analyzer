@@ -172,17 +172,17 @@ def render_page(payload: dict[str, Any]) -> str:
   <section class="pane" aria-label="Dependency graph">
     <div class="pane-head">
       Dependencies
+      <div class="chips" id="color-chips" role="group" aria-label="Colour by"></div>
       <span class="spacer"></span>
+      <button class="chip" id="show-tests" aria-pressed="false"
+        title="Test files are the majority of this graph's nodes, so they are hidden by default">tests</button>
       <label class="row" for="depth">hops <input type="range" id="depth" min="1" max="4"
         step="1" value="1" style="width:70px"><output id="depth-val">1</output></label>
     </div>
     <div class="canvas-wrap">
       <canvas id="graph" aria-label="Force-directed file dependency graph"></canvas>
       <div class="tooltip" id="tip" role="tooltip"></div>
-      <div class="legend">
-        <div><span class="swatch" style="background:var(--in)"></span> callers (inbound)</div>
-        <div><span class="swatch" style="background:var(--out)"></span> dependencies (outbound)</div>
-      </div>
+      <div class="legend" id="legend"></div>
     </div>
   </section>
 
