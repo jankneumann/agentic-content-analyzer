@@ -107,7 +107,7 @@ def _delta_of(document: dict, graph_id: str) -> str | None:
 
 
 def test_document_ids_are_legal_under_the_contract() -> None:
-    """Graph ids carry underscores, which the contract's id pattern forbids."""
+    """Whatever the analyzer emits must come out legal and within the limit."""
     import re
 
     pattern = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$")
@@ -121,10 +121,19 @@ def test_document_ids_are_legal_under_the_contract() -> None:
         assert len(rendered) <= 128
 
 
-def test_document_ids_are_stable_and_injective() -> None:
-    assert document_id("py:a_b") == document_id("py:a_b")
-    # Sanitisation alone would collapse these two onto the same id.
-    assert document_id("py:a_b") != document_id("py:a-b")
+def test_ids_the_contract_already_accepts_pass_through_unchanged() -> None:
+    """Underscores are legal, so the common case stays readable."""
+    assert document_id("py:pkg.Class.__init__") == "py:pkg.Class.__init__"
+
+
+def test_ids_the_contract_rejects_are_rewritten_injectively() -> None:
+    """An edge id carries `>`, which is illegal; rewriting must not collide."""
+    rewritten = document_id("py:a->py:b")
+
+    assert ">" not in rewritten
+    assert rewritten == document_id("py:a->py:b")
+    # Slugging alone would collapse these two onto the same id.
+    assert document_id("py:a_>py:b") != document_id("py:a->py:b")
 
 
 # ---------------------------------------------------------------------------

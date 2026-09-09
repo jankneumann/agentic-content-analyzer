@@ -16,10 +16,12 @@ across it turns every change into a picture of the test suite.  Coverage
 travels as a badge on the covered node instead, and a test appears as a node
 only when the change edited it.
 
-Graph ids are not document ids.  The graph uses ids like
-``py:pkg.Class.__init__``, and the contract's id pattern allows no underscore,
-so ids are rewritten -- deterministically, and with a digest whenever the
-rewrite could collide.
+Graph ids are mostly document ids.  The contract's id pattern accepts what the
+analyzer emits for symbols, underscores included, so those pass through
+unchanged and stay readable in URLs and SVG ids.  Edge ids do not: this
+codebase spells one ``<from>-><to>`` and the ``>`` is illegal, as is any id
+past 128 characters.  Those are rewritten deterministically, carrying a digest
+so the rewrite cannot collide.
 
 Usage:
     python3 scripts/project_change_graph.py --base origin/main \\
@@ -109,7 +111,6 @@ EDGE_KIND_MAP = {
     "component_child": "render",
 }
 
-_ID_ILLEGAL = re.compile(r"[^A-Za-z0-9._:/-]")
 _HUNK_HEADER = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 
@@ -177,23 +178,9 @@ def parse_unified_diff(text: str) -> dict[str, list[Hunk]]:
 # ---------------------------------------------------------------------------
 
 
-def document_id(graph_id: str) -> str:
-    """Rewrite a graph id into one the contract accepts.
-
-    The contract allows ``[A-Za-z0-9._:/-]`` only, so ``__init__`` and every
-    other underscore has to go.  Sanitising alone is not injective -- ``a_b``
-    and ``a-b`` would collide -- so any id that had to change, or that is too
-    long, carries a digest of the original.  The result is stable across runs,
-    which is what keeps SVG ids and comment anchors from moving.
-    """
-    slug = _ID_ILLEGAL.sub("-", graph_id)
-    if slug and not slug[0].isalnum():
-        slug = f"n{slug}"
-    if slug == graph_id and len(slug) <= 128:
-        return slug
-    digest = hashlib.blake2b(graph_id.encode("utf-8"), digest_size=4).hexdigest()
-    budget = 128 - len(digest) - 1
-    return f"{slug[:budget]}-{digest}"
+#: Re-exported: the contract module owns it, because every reader that matches
+#: a document back onto the graph needs the same function.
+document_id = change_graph.document_id
 
 
 def edge_graph_id(source: str, target: str) -> str:

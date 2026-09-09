@@ -116,7 +116,7 @@
 
 ## 6. Atlas delta overlay and walkthrough
 
-- [ ] 6.1 [M] Write view-model tests: `--change` stamps `delta` on matched nodes and edges, unmatched ids listed, invalid document refused with the first error, output still byte-stable; verify with `atlas` test module
+- [ ] 6.1 [M] (partial: `delta_index` matching, unmatched reporting and invalid-document refusal are done in `atlas_change.py`; the `--change` flag and byte-stability assertions are not) Write view-model tests: `--change` stamps `delta` on matched nodes and edges, unmatched ids listed, invalid document refused with the first error, output still byte-stable; verify with `atlas` test module
   **Spec scenarios**: Overlay loads from the hash; Overlay names an unknown node; Invalid document is refused; Re-render without upstream change
   **Design decisions**: D6
   **Dependencies**: 1.3, 2.7
@@ -129,7 +129,7 @@
 - [ ] 6.4 [S] Add the coverage banner assertions and the undismissable check to the Playwright smoke test; verify it passes
   **Spec scenarios**: Graph outlived its source; Check mode detects drift
   **Dependencies**: 6.2
-- [ ] 6.5 [M] Write coverage-source tests: linkage counts from `TEST_COVERS` edges, ordinal buckets, line percentages parsed from `coverage.xml`, statement-weighted module aggregate, `unknown` for unmentioned nodes, stale report refused by timestamp against the newest analyzed source file; verify with `test_atlas_coverage.py`
+- [x] 6.5 [M] Write coverage-source tests: linkage counts from `TEST_COVERS` edges, ordinal buckets, line percentages parsed from `coverage.xml`, statement-weighted module aggregate, `unknown` for unmentioned nodes, stale report refused by timestamp against the newest analyzed source file; verify with `test_atlas_coverage.py`
   **Spec scenarios**: Unlinked code is visibly distinct from unmeasured code; Stale coverage report is refused; Module coverage is statement-weighted
   **Design decisions**: D10
   **Dependencies**: 6.1

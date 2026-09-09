@@ -19,7 +19,9 @@ id, to CI at render time, where it does not.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -37,6 +39,38 @@ CORRECTIONS_SCHEMA_PATH = CONTRACTS_DIR / "corrections.schema.json"
 
 #: Message kinds whose endpoints must differ, and the one that requires them equal.
 _SELF_KIND = "self"
+
+
+_ID_ILLEGAL = re.compile(r"[^A-Za-z0-9._:/-]")
+
+
+def document_id(graph_id: str) -> str:
+    """Rewrite an architecture-graph id into one the contract accepts.
+
+    The contract allows ``[A-Za-z0-9._:/-]``, which most symbol ids already
+    satisfy -- underscores included, so ``py:pkg.Class.__init__`` passes
+    through unchanged.  Two things do not: an edge id, which this codebase
+    spells ``<from>-><to>`` and whose ``>`` is illegal, and any id past the
+    contract's 128-character limit, which deeply nested symbols reach.
+
+    Rewriting alone is not injective, since ``a_b`` and ``a-b`` would collapse
+    onto the same slug, so anything that had to change carries a digest of the
+    original.  An id that needed no change is returned as it is, which keeps
+    the common case readable in URLs and SVG ids.
+
+    It lives here rather than in the projector because it is how a document
+    addresses graph nodes: every reader matching a document back onto the
+    graph needs exactly this function, and two copies of it drifting would
+    silently stop matching anything.
+    """
+    slug = _ID_ILLEGAL.sub("-", graph_id)
+    if slug and not slug[0].isalnum():
+        slug = f"n{slug}"
+    if slug == graph_id and len(slug) <= 128:
+        return slug
+    digest = hashlib.blake2b(graph_id.encode("utf-8"), digest_size=4).hexdigest()
+    budget = 128 - len(digest) - 1
+    return f"{slug[:budget]}-{digest}"
 
 
 class ChangeGraphError(Exception):
