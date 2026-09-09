@@ -125,25 +125,50 @@
 - [ ] 6.4 [S] Add the coverage banner assertions and the undismissable check to the Playwright smoke test; verify it passes
   **Spec scenarios**: Graph outlived its source; Check mode detects drift
   **Dependencies**: 6.2
+- [ ] 6.5 [M] Write coverage-source tests: linkage counts from `TEST_COVERS` edges, ordinal buckets, line percentages parsed from `coverage.xml`, statement-weighted module aggregate, `unknown` for unmentioned nodes, stale report refused by timestamp against the newest analyzed source file; verify with `test_atlas_coverage.py`
+  **Spec scenarios**: Unlinked code is visibly distinct from unmeasured code; Stale coverage report is refused; Module coverage is statement-weighted
+  **Design decisions**: D10
+  **Dependencies**: 6.1
+- [ ] 6.6 [M] Implement the coverage source loader in `atlas_model.py` (linkage always, optional `coverage.xml`, per-symbol line-range mapping) and the `coverage` colour mode, legend with source name, and `unknown` neutral in `atlas_assets.py`; verify 6.5 passes and a Playwright assertion shows distinct zero and unknown colours
+  **Dependencies**: 6.5
+- [ ] 6.7 [S] Implement the `show-test-nodes` toggle, off by default, muted style, hash round-trip, and assert enabling it moves no non-test node; verify with a Playwright test
+  **Spec scenarios**: Test nodes are off until asked for
+  **Design decisions**: D10
+  **Dependencies**: 6.6
+- [ ] 6.8 [L] Implement semantic node-level zoom: expand a module into its symbols past a zoom threshold without re-heating the simulation or moving module centres, colour symbols under the active mode, list covering tests for a selected symbol, and carry the grain in the hash; verify with Playwright tests that module centres are unchanged across expansion and that a captured URL reopens expanded
+  **Spec scenarios**: Zooming in changes grain, not layout; Covering tests are reachable from a symbol; Grain is part of the shared view
+  **Design decisions**: D10
+  **Dependencies**: 6.6
 
-- [ ] Checkpoint: open the atlas on a 2.7 fixture, play the walkthrough end to end, paste a step URL into a fresh tab
+- [ ] Checkpoint: open the atlas on a 2.7 fixture, play the walkthrough end to end, paste a step URL into a fresh tab, zoom into one module and confirm nothing else moved
 
-## 7. Integration evidence and documentation
+## 7. Obsidian canvas spike (timeboxed, ships no pipeline code)
 
-- [ ] 7.1 [S] Write `docs/CHANGE_VISUALIZATION.md` covering the document, the projector, corrections, narration, the comment, the atlas overlay and troubleshooting; add it to the `CLAUDE.md` documentation index; verify the markdown link check passes
-  **Dependencies**: 5.4, 6.3
-- [ ] 7.2 [S] Update `refresh-architecture/SKILL.md` and `codebase-atlas/SKILL.md` with the new scripts, flags and Make targets; verify the 1.5 path test still passes
+- [ ] 7.1 [S] Render one 2.7 fixture document as a `.canvas` file via the `json-canvas` skill and open it beside the atlas view of the same document; capture both
+  **Design decisions**: D11
+  **Dependencies**: 6.3
+- [ ] 7.2 [S] Record the decision in `docs/decisions/` against the fixed criteria (hand placement surviving regeneration, delta and coverage colour under the six-colour preset palette, edge labels, and what is gained over an atlas URL), with a recommendation; verify the ADR follows the repository's capability-timeline format
+  **Design decisions**: D11
   **Dependencies**: 7.1
-- [ ] 7.3 [M] Run the full local gate: projector, corrections, narration, renderer goldens, atlas and Playwright tests, plus `make architecture-check` and `make atlas-check`; record results in the change's session log
-  **Dependencies**: 7.2
+
+- [ ] Checkpoint: timebox is one day; if the criteria are not settled by then, record "not worth it" with the evidence gathered and stop
+
+## 8. Integration evidence and documentation
+
+- [ ] 8.1 [S] Write `docs/CHANGE_VISUALIZATION.md` covering the document, the projector, corrections, narration, the comment, the atlas overlay and troubleshooting; add it to the `CLAUDE.md` documentation index; verify the markdown link check passes
+  **Dependencies**: 5.4, 6.3
+- [ ] 8.2 [S] Update `refresh-architecture/SKILL.md` and `codebase-atlas/SKILL.md` with the new scripts, flags and Make targets; verify the 1.5 path test still passes
+  **Dependencies**: 8.1
+- [ ] 8.3 [M] Run the full local gate: projector, corrections, narration, renderer goldens, atlas coverage and zoom tests, Playwright suite, plus `make architecture-check` and `make atlas-check`; record results in the change's session log
+  **Dependencies**: 8.2
 
 - [ ] Checkpoint: review the cumulative diff for anything under `src/` or `web/src/` (there should be none), confirm task to scenario traceability
 
 ## Dependency Summary
 
 - Independent roots: 1.1, 1.4, 4.1
-- Sequential chains: contract -> projector -> corrections -> workflow; projector fixtures -> renderer goldens; projector fixtures -> atlas overlay -> walkthrough
-- Parallel branches: after 2.7, groups 3, 4, 5.1 to 5.3 and 6 can proceed in parallel; group 5.4 waits on 3.2 and 5.3
+- Sequential chains: contract -> projector -> corrections -> workflow; projector fixtures -> renderer goldens; projector fixtures -> atlas overlay -> walkthrough; atlas overlay -> coverage mode -> test-node toggle and semantic zoom
+- Parallel branches: after 2.7, groups 3, 4, 5.1 to 5.3 and 6 can proceed in parallel; group 5.4 waits on 3.2 and 5.3; 6.7 and 6.8 are parallel after 6.6; group 7 is independent of group 5
 - Maximum package parallel width: 3
-- Shared-file conflicts: `atlas_assets.py` is touched only by group 6; `project_change_graph.py` by groups 2 and 3 in sequence; Makefile by 1.4 only
-- Task sizes: S=15, M=13, L=1, XL=0
+- Shared-file conflicts: `atlas_assets.py` is touched only by group 6 and must be sequenced 6.2 -> 6.3 -> 6.6 -> (6.7 | 6.8); `atlas_model.py` by 6.2 then 6.6; `project_change_graph.py` by groups 2 and 3 in sequence; Makefile by 1.4 only
+- Task sizes: S=19, M=15, L=2, XL=0

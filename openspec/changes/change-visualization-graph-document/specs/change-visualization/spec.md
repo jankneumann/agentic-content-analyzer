@@ -66,6 +66,12 @@ Lanes SHALL be the container classification the architecture views already use (
 - **THEN** the projector SHALL merge by container and express the finer split as node `group`
 - **AND** the document SHALL still validate
 
+#### Scenario: Changed tests appear, covering tests do not
+
+- **WHEN** a change edits a test file and also touches source that other tests cover
+- **THEN** the edited test SHALL appear as a node in the `tests` lane with its own delta
+- **AND** the covering tests SHALL NOT be added as nodes; each covered node SHALL instead carry a coverage badge
+
 #### Scenario: Views never repeat their parent
 
 - **WHEN** a child view would select the same nodes and edges as its parent

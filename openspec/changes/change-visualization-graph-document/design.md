@@ -212,6 +212,60 @@ reference to the non-existent proposal document from the atlas skill and point
 its "later phases" line at this change. Add a test that every repository path
 named in the two skill documents exists.
 
+### D10: Coverage is a node property with semantic zoom, not a second graph
+
+Test nodes are NOT drawn as graph nodes by default. `test_linker.py` links tests
+to source by direct import, so drawing them roughly doubles the node count and
+forces the reader to mentally join two graphs. Instead the atlas gains a third
+colour mode, `coverage`, alongside `language` and `delta`, and a
+`show-test-nodes` toggle that is off by default and, when on, draws test nodes
+and their `TEST_COVERS` edges in a muted style.
+
+Coverage has two sources, both optional-degrading:
+
+| Source | Availability | Grain |
+|---|---|---|
+| `TEST_COVERS` edges in the architecture graph | always, no extra run | linkage: how many distinct tests import this node, `0` meaning unlinked |
+| `coverage.xml` when present in the repository root | after `pytest --cov-report=xml` | line: covered and total statements per file, mapped to symbols by line range |
+
+When only linkage is available the scale is ordinal (`unlinked`, `1 test`,
+`2 to 4`, `5 or more`). When a line report is present the scale is a sequential
+ramp over percentage, and the legend says which source is in use. A node the
+report does not mention is `unknown` and rendered neutral, never zero: absence
+of data must not look like absence of tests.
+
+Zoom carries the grain. Below the semantic-zoom threshold a node is one module
+card coloured by its aggregate coverage. Above it, the card expands in place
+into its symbols, each coloured by its own coverage, and the cross-connections
+pane lists the covering tests for whichever symbol is selected. Expansion is
+purely visual: the force simulation is not re-heated and no module position
+changes, which is the same rule that already governs selection.
+
+Why aggregate by statements rather than by symbol count: a module of twenty
+one-line accessors and one hundred-line handler is not 95% covered when only
+the accessors are tested. Weighting by statements makes the colour mean what a
+reader assumes it means.
+
+Alternative considered: a fourth view listing test nodes. Rejected because it
+answers "which tests exist" when the question a reviewer actually has is "is
+the code I am looking at tested", which a colour answers without navigation.
+
+### D11: The Obsidian canvas export is a timeboxed spike, not a deliverable
+
+The dormant `json-canvas` skill could emit a `.canvas` file from the same
+document. Whether that is worth maintaining is unknown, so the change funds a
+one-day spike, not an implementation. The spike renders one fixture document
+both ways, then records a decision in `docs/decisions/` against fixed criteria:
+whether the canvas survives regeneration without losing hand placement, whether
+delta and coverage colour survive the format (JSON Canvas has a six-colour
+preset palette and no per-node style), whether edges carry labels, and whether
+anything is gained over a URL that opens the atlas at the same view.
+
+The default outcome is "not worth it": the atlas already gives pan, zoom,
+tracing and shareable views, and a `.canvas` file cannot animate, cannot host a
+walkthrough, and drifts the moment the graph is regenerated. The spike exists
+to disprove that cheaply, and it ships no code into the pipeline either way.
+
 ## Risks / Trade-offs
 
 - [Upstream contract bump breaks the vendored schema] → versions are pinned;
@@ -230,6 +284,13 @@ named in the two skill documents exists.
   degrades to broken images, which is acceptable.
 - [Basename matching over-reports coverage] → inherited from the atlas; the
   coverage block states it is an upper bound.
+- [Two senses of the word coverage] → the graph's file coverage (what the
+  analyzer saw) and test coverage (what the tests exercise) are different
+  numbers with the same name. The banner owns the first, the colour legend owns
+  the second, and neither uses the bare word without a qualifier.
+- [A stale `coverage.xml` colours the graph confidently and wrongly] → the
+  loader reads the report's own timestamp, refuses one older than the newest
+  changed source file, and falls back to linkage colouring with a legend note.
 
 ## Migration Plan
 
@@ -245,8 +306,5 @@ Rollback is deleting the workflow file; nothing else has a runtime consumer.
 
 ## Open Questions
 
-- Whether the feature-slice view should include test nodes from `TEST_COVERS`
-  edges by default or only in a fourth view. Either answer changes one scope
-  rule in the projector and no spec.
-- Whether to add an Obsidian `.canvas` export from the same document using the
-  dormant `json-canvas` skill. Additive and deferrable.
+None. The two questions this design opened during planning are resolved above:
+test node display and coverage colouring in D10, the Obsidian canvas in D11.

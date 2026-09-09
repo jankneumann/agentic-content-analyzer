@@ -48,6 +48,13 @@ that is not in the repository.
   content-addressed light and dark SVGs via the pinned pr-lens renderer for pull
   request comments, and a delta overlay plus walkthrough playback inside the
   existing atlas page.
+- Add **test coverage as a colour mode** in the atlas, sourced from the graph's
+  `TEST_COVERS` edges and, when present and fresh, from a line-coverage report.
+  Test nodes stay off by default behind a toggle, because coverage answers "is
+  this tested" without doubling the node count.
+- Add **node-level semantic zoom**: past a threshold a module expands in place
+  into its symbols, each carrying its own colour, without moving anything. One
+  view then serves both the monorepo scale and the single-function scale.
 - Post one idempotent, marker-identified pull request comment with the nested
   disclosure tree (blast radius open, drill-downs collapsed) from CI.
 - Bring `/codebase-atlas` under specification: add the missing `make atlas` and
@@ -107,3 +114,10 @@ that is not in the repository.
 - The atlas opens a change document from its URL hash, colours by delta, plays
   the walkthrough from the keyboard, and never moves a node the reader did not
   drag.
+- Coverage colouring distinguishes untested code from unmeasured code, refuses a
+  stale report rather than colouring confidently from it, and aggregates a
+  module by statements rather than by symbol count.
+- Zooming into a module reveals its symbols at their own coverage without moving
+  any module, and the resulting grain is part of the shareable URL.
+- A timeboxed spike records a decision on the Obsidian canvas export in
+  `docs/decisions/` and ships no pipeline code either way.

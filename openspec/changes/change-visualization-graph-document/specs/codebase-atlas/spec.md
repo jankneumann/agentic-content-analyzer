@@ -87,3 +87,51 @@ In this repository the Makefile SHALL provide `atlas` (write the page), `atlas-c
 
 - **WHEN** the atlas skill document is checked for referenced repository paths
 - **THEN** every referenced path SHALL exist
+
+### Requirement: Coverage is a colour mode, test nodes are an option
+
+The page SHALL offer `coverage` as a third colour mode alongside `language` and `delta`, and SHALL persist the active mode in the location hash. Coverage SHALL be read from `TEST_COVERS` edges in the architecture graph, and, when a line-coverage report is present and not older than the newest analyzed source file, from that report instead. The legend SHALL name which source is in use. A node the active source does not mention SHALL render as `unknown` in a neutral colour distinct from the zero-coverage colour. Aggregate coverage for a module SHALL be weighted by statements when a line report is in use, not by symbol count.
+
+Test nodes SHALL NOT be drawn as graph nodes by default. A `show-test-nodes` toggle SHALL draw them with their `TEST_COVERS` edges in a muted style, and SHALL round-trip through the location hash.
+
+#### Scenario: Unlinked code is visibly distinct from unmeasured code
+
+- **WHEN** one node has no `TEST_COVERS` edge and another is absent from the loaded line-coverage report
+- **THEN** the first SHALL render in the zero-coverage colour and the second SHALL render as `unknown`
+- **AND** the legend SHALL distinguish the two
+
+#### Scenario: Stale coverage report is refused
+
+- **WHEN** the line-coverage report is older than the newest analyzed source file
+- **THEN** the page SHALL fall back to linkage colouring and state in the legend that the report was stale
+
+#### Scenario: Test nodes are off until asked for
+
+- **WHEN** the page opens with no explicit toggle in the hash
+- **THEN** no test node SHALL be drawn
+- **AND** enabling the toggle SHALL draw test nodes and their edges without changing the position of any non-test node
+
+#### Scenario: Module coverage is statement-weighted
+
+- **WHEN** a module holds twenty fully covered one-statement symbols and one uncovered hundred-statement symbol
+- **THEN** its aggregate coverage SHALL be below 25 percent
+
+### Requirement: Node-level zoom reveals symbol detail in place
+
+Beyond a zoom threshold a module node SHALL expand in place into its symbols, each carrying its own colour under the active colour mode, and SHALL collapse back below that threshold. Expansion SHALL NOT re-heat the layout simulation or move any module. Selecting an expanded symbol SHALL show its covering tests in the cross-connections pane when coverage data is available. The expansion state SHALL follow from the zoom level in the hash so that a shared URL reopens at the same grain.
+
+#### Scenario: Zooming in changes grain, not layout
+
+- **WHEN** the reader zooms past the expansion threshold
+- **THEN** module nodes in view SHALL show their symbols
+- **AND** no module centre SHALL move
+
+#### Scenario: Covering tests are reachable from a symbol
+
+- **WHEN** an expanded symbol with at least one `TEST_COVERS` edge is selected
+- **THEN** the cross-connections pane SHALL list the covering tests, each clickable
+
+#### Scenario: Grain is part of the shared view
+
+- **WHEN** a URL captured at an expanded zoom level is opened elsewhere
+- **THEN** the page SHALL open with the same nodes expanded
