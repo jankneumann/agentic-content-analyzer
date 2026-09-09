@@ -79,14 +79,14 @@
 
 ## 4. Narration
 
-- [ ] 4.1 [S] Add a `change_narration` pipeline step to `settings/models.yaml` with a small default model and `MODEL_CHANGE_NARRATION` override; verify settings tests pass and `aca models` lists the step
+- [x] 4.1 [S] Add a `change_narration` entry to `settings/models.yaml` `default_models` with a small default model and `MODEL_CHANGE_NARRATION` override, read directly by the skill script; verify `ModelConfig` still builds and the step resolves. Not added to the `ModelStep` enum: narration is developer tooling, and a member there would make product code carry a dependency on this skill, so `aca models` does not list it
   **Design decisions**: D4
   **Dependencies**: None
-- [ ] 4.2 [M] Write narration tests with a stubbed router: text fields merged, non-text keys ignored, structural difference discards output and logs the first path, over-long text truncated at a word boundary, missing provider leaves template text and exits 0; verify with `test_narrate_change_graph.py`
+- [x] 4.2 [M] Write narration tests with a stubbed router: text fields merged, non-text keys ignored, structural difference discards output and logs the first path, over-long text truncated at a word boundary, missing provider leaves template text and exits 0; verify with `test_narrate_change_graph.py`
   **Spec scenarios**: Narration cannot change structure; Offline projection succeeds; Narration text is bounded
   **Design decisions**: D4
   **Dependencies**: 2.4, 4.1
-- [ ] 4.3 [M] Implement `narrate_change_graph.py` with the text-only merge, structural comparison and re-validation; verify 4.2 passes
+- [x] 4.3 [M] Implement `narrate_change_graph.py` with the text-only merge, structural comparison and re-validation; verify 4.2 passes
   **Dependencies**: 4.2
 
 - [ ] Checkpoint: narrate one fixture with a real key locally, read the captions, confirm no id changed
