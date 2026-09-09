@@ -14,14 +14,14 @@
 
 ## 1. Contract and governance
 
-- [ ] 1.1 [S] Write a contract test asserting the vendored `graph-doc.schema.json` is byte-identical to both the OpenSpec contract record and the installed `@coldtea/pr-lens-schema`, and that upstream example documents validate under Python `jsonschema` draft 2020-12; verify with `pytest .claude/skills/refresh-architecture/scripts/tests/test_change_graph_contract.py --no-cov` (placed with the architecture-script suite, not `tests/contract/`, whose conftest boots the API and a seeded database this schema test does not need)
+- [x] 1.1 [S] Write a contract test asserting the vendored `graph-doc.schema.json` is byte-identical to both the OpenSpec contract record and the installed `@coldtea/pr-lens-schema`, and that upstream example documents validate under Python `jsonschema` draft 2020-12; verify with `pytest .claude/skills/refresh-architecture/scripts/tests/test_change_graph_contract.py --no-cov` (placed with the architecture-script suite, not `tests/contract/`, whose conftest boots the API and a seeded database this schema test does not need)
   **Spec scenarios**: Contract version mismatch is refused; Document validates before any rendering
   **Contracts**: `contracts/graph-doc.schema.json`, `contracts/corrections.schema.json`
   **Design decisions**: D1
   **Dependencies**: None
 - [x] 1.2 [S] Add `@coldtea/pr-lens-schema` and `@coldtea/pr-lens-renderer` as pinned `devDependencies` in `web/package.json`; verify `pnpm install --frozen-lockfile` succeeds and 1.1 passes
   **Dependencies**: 1.1
-- [ ] 1.3 [S] Add a Python validation helper in `refresh-architecture/scripts/arch_utils/change_graph.py` that loads the vendored schema, validates a document in two passes (JSON Schema for shape, then the referential rules the exported schema cannot express because they are zod refinements upstream), and writes `*.rejected.json` with errors on failure; verify with unit tests for a valid, an unknown-field, a wrong-version and a dangling-reference document
+- [x] 1.3 [S] Add a Python validation helper in `refresh-architecture/scripts/arch_utils/change_graph.py` that loads the vendored schema, validates a document in two passes (JSON Schema for shape, then the referential rules the exported schema cannot express because they are zod refinements upstream), and writes `*.rejected.json` with errors on failure; verify with unit tests for a valid, an unknown-field, a wrong-version and a dangling-reference document
   **Spec scenarios**: Document validates before any rendering; Contract version mismatch is refused
   **Design decisions**: D1
   **Dependencies**: 1.1
