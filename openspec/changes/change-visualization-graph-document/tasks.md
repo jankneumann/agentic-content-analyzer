@@ -139,7 +139,7 @@
   **Spec scenarios**: Test nodes are off until asked for
   **Design decisions**: D10
   **Dependencies**: 6.6
-- [ ] 6.8 [L] Implement semantic node-level zoom: expand a module into its symbols past a zoom threshold without re-heating the simulation or moving module centres, colour symbols under the active mode, list covering tests for a selected symbol, and carry the grain in the hash; verify with Playwright tests that module centres are unchanged across expansion and that a captured URL reopens expanded
+- [x] 6.8 [L] Implement semantic node-level zoom: expand a module into its symbols past a zoom threshold without re-heating the simulation or moving module centres, colour symbols under the active mode, list covering tests for a selected symbol, and carry the grain in the hash; verify with Playwright tests that module centres are unchanged across expansion and that a captured URL reopens expanded
   **Spec scenarios**: Zooming in changes grain, not layout; Covering tests are reachable from a symbol; Grain is part of the shared view
   **Design decisions**: D10
   **Dependencies**: 6.6

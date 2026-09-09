@@ -214,3 +214,70 @@ test.describe("the coverage banner", () => {
     }
   });
 });
+
+const drawnSymbols = (page: Page) =>
+  page.evaluate(() => {
+    const atlas = (globalThis as Record<string, any>).__atlas;
+    return atlas.symbols() as string[];
+  });
+
+const setZoom = (page: Page, k: number) =>
+  page.evaluate((z) => {
+    (globalThis as Record<string, any>).__atlas.setZoom(z);
+  }, k);
+
+test.describe("node-level zoom", () => {
+  test("expands a module into its symbols past the threshold", async ({
+    page,
+  }) => {
+    await open(page, PLAIN);
+    await settled(page);
+
+    // A graph this small fits at a zoom that is already past the threshold,
+    // which is the behaviour we want; step back out to test the threshold.
+    await setZoom(page, 1);
+    expect(await drawnSymbols(page)).toEqual([]);
+
+    await setZoom(page, 3);
+    const symbols = await drawnSymbols(page);
+
+    expect(symbols.length).toBeGreaterThan(0);
+    expect(symbols.some((id) => id.includes("services.user.create"))).toBe(true);
+  });
+
+  test("expanding changes the grain, not the layout", async ({ page }) => {
+    await open(page, PLAIN);
+    await settled(page);
+    await setZoom(page, 1);
+    const before = await positions(page);
+
+    await setZoom(page, 3);
+    const after = await positions(page);
+
+    // Symbols are placed around the centre their module already had, so no
+    // module moves to make room for them.
+    expect(after).toEqual(before);
+  });
+
+  test("collapses again below the threshold", async ({ page }) => {
+    await open(page, PLAIN);
+    await settled(page);
+    await setZoom(page, 3);
+    expect((await drawnSymbols(page)).length).toBeGreaterThan(0);
+
+    await setZoom(page, 1.0);
+
+    expect(await drawnSymbols(page)).toEqual([]);
+  });
+
+  test("the grain travels in the URL", async ({ page }) => {
+    await open(page, PLAIN, "#z=3.000");
+    await page.waitForTimeout(300);
+
+    const view = await page.evaluate(
+      () => (globalThis as Record<string, any>).__atlas.view().k as number,
+    );
+    expect(view).toBeCloseTo(3, 2);
+    expect((await drawnSymbols(page)).length).toBeGreaterThan(0);
+  });
+});

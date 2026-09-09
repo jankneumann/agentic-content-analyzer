@@ -308,6 +308,86 @@ JS = """
     return langCol[m.language] || css("--unknown");
   }
 
+  // ------------------------------------------------------- semantic zoom
+  // Past this scale a module card stops being one dot and becomes its symbols.
+  // The same view then answers "which parts of the system changed" zoomed out
+  // and "which function did" zoomed in, without a mode to switch.
+  var EXPAND_K = 2.2;
+  var SYMBOL_R = 3.4;
+  var symbolsByModule = {};
+  SY.forEach(function (sym) {
+    (symbolsByModule[sym.module] || (symbolsByModule[sym.module] = [])).push(sym);
+  });
+
+  function expanding() { return view.k >= EXPAND_K; }
+
+  /** Whether a node is near enough the viewport to be worth expanding. */
+  function onScreen(n, rect) {
+    var sx = rect.width / 2 + view.x + n.x * view.k;
+    var sy = rect.height / 2 + view.y + n.y * view.k;
+    var margin = 140;
+    return sx > -margin && sy > -margin && sx < rect.width + margin && sy < rect.height + margin;
+  }
+
+  /**
+   * Where a module's symbols sit, relative to the module's own centre.
+   *
+   * A golden-angle spiral: deterministic, evenly spread, and anchored on the
+   * centre the module already has. Expansion therefore adds detail without
+   * moving anything -- the reader's map of the graph survives the zoom.
+   */
+  function symbolLayout(n) {
+    var syms = symbolsByModule[n.key] || [];
+    var golden = Math.PI * (3 - Math.sqrt(5));
+    var out = [];
+    for (var i = 0; i < syms.length; i++) {
+      var ang = i * golden;
+      var rad = n.r + 3 + Math.sqrt(i + 0.6) * 6.2;
+      out.push({
+        sym: syms[i],
+        x: n.x + Math.cos(ang) * rad,
+        y: n.y + Math.sin(ang) * rad,
+        r: SYMBOL_R,
+        node: n,
+      });
+    }
+    return out;
+  }
+
+  function symbolColor(sym, langCol, mod) {
+    if (state.colorMode === "delta") {
+      return sym.delta ? css(DELTA_VAR[sym.delta]) : css("--cov-unknown");
+    }
+    if (state.colorMode === "coverage") {
+      if (DATA.meta.testCoverage.source === "line") {
+        if (sym.cov == null) return css("--cov-unknown");
+        if (sym.cov <= 0) return css("--cov-0");
+        if (sym.cov < 0.5) return css("--cov-1");
+        if (sym.cov < 0.8) return css("--cov-2");
+        return css("--cov-3");
+      }
+      var t = sym.tests || 0;
+      if (t === 0) return css("--cov-0");
+      if (t === 1) return css("--cov-1");
+      if (t <= 4) return css("--cov-2");
+      return css("--cov-3");
+    }
+    return langCol[mod.language] || css("--unknown");
+  }
+
+  function coveragePhrase(sym) {
+    if (DATA.meta.testCoverage.source === "line") {
+      if (sym.cov == null) return "not in the coverage report";
+      return Math.round(sym.cov * 100) + "% of lines covered";
+    }
+    var t = sym.tests || 0;
+    if (t === 0) return "no test reaches it";
+    return t === 1 ? "1 test reaches it" : t + " tests reach it";
+  }
+
+  /** The symbols currently drawn, for hit testing and for tests. */
+  var drawnSymbols = [];
+
   function colorModes() {
     var modes = ["language"];
     if (DATA.meta.change && DATA.meta.change.loaded) modes.push("delta");
@@ -363,6 +443,10 @@ JS = """
   var canvas = el("graph"), ctx = canvas.getContext("2d");
   var nodes = [], edges = [], nodeByKey = {};
   var view = { x: 0, y: 0, k: 1 };
+  // A zoom the reader chose -- restored from a shared URL, or reached by
+  // scrolling -- outranks the automatic fit, which otherwise throws away the
+  // grain the link was sent to show. Double-clicking to re-frame clears it.
+  var zoomLock = null;
   var alpha = 1, running = true, fitted = false;
   var hovered = null, dragging = null, panning = null;
 
@@ -523,6 +607,8 @@ JS = """
     });
 
     var annotated = [];
+    drawnSymbols = [];
+    var expand = expanding();
     nodes.forEach(function (n) {
       var role = null, dist = 0;
       if (sets) {
@@ -530,7 +616,12 @@ JS = """
         else if (n.key in sets.outgoing) { role = "out"; dist = sets.outgoing[n.key]; }
         else if (n.key in sets.incoming) { role = "in"; dist = sets.incoming[n.key]; }
       }
+      var opens = expand && (!sets || role) && onScreen(n, r);
       ctx.globalAlpha = sets ? (role ? 1 : 0.13) : 1;
+      // An opened card becomes a container: its own fill drops back so the
+      // symbols inside it are what the reader sees. Drawing both at full
+      // weight hides the symbols behind the disc they belong to.
+      if (opens) ctx.globalAlpha *= 0.22;
       ctx.beginPath();
       ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
       ctx.fillStyle = nodeColor(n.mod, langCol);
@@ -548,6 +639,27 @@ JS = """
       } else if (role === "in" || role === "out") {
         ctx.strokeStyle = role === "in" ? colIn : colOut;
         ctx.lineWidth = 2.2; ctx.stroke();
+      }
+      if (opens) {
+        // A thin rim marks the file the symbols belong to, so a cluster still
+        // reads as one module rather than loose dots.
+        ctx.globalAlpha = sets ? (role ? 0.5 : 0.1) : 0.5;
+        ctx.strokeStyle = nodeColor(n.mod, langCol);
+        ctx.lineWidth = 1.2 / view.k;
+        ctx.stroke();
+
+        symbolLayout(n).forEach(function (item) {
+          ctx.globalAlpha = sets ? (role ? 1 : 0.13) : 1;
+          if (state.colorMode === "delta" && !item.sym.delta) ctx.globalAlpha *= 0.3;
+          ctx.beginPath();
+          ctx.arc(item.x, item.y, item.r, 0, Math.PI * 2);
+          ctx.fillStyle = symbolColor(item.sym, langCol, n.mod);
+          ctx.fill();
+          if (state.selected === item.sym.id) {
+            ctx.strokeStyle = colText; ctx.lineWidth = 1.6 / view.k; ctx.stroke();
+          }
+          drawnSymbols.push(item);
+        });
       }
       annotated.push({ n: n, role: role, dist: dist });
     });
@@ -634,7 +746,7 @@ JS = """
     var rect = canvas.getBoundingClientRect();
     var pad = padding == null ? 46 : padding;
     var w = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
-    view.k = Math.max(0.18, Math.min(2.4,
+    view.k = zoomLock != null ? zoomLock : Math.max(0.18, Math.min(2.4,
       Math.min((rect.width - pad * 2) / w, (rect.height - pad * 2) / h)));
     view.x = -((minX + maxX) / 2) * view.k;
     view.y = -((minY + maxY) / 2) * view.k;
@@ -655,6 +767,17 @@ JS = """
     return null;
   }
 
+  // Symbols are hit before modules, because at this zoom the symbol is what
+  // the reader is pointing at; the module underneath is context.
+  function hitSymbol(p) {
+    var reach = (SYMBOL_R + 2.5) * (SYMBOL_R + 2.5);
+    for (var i = drawnSymbols.length - 1; i >= 0; i--) {
+      var it = drawnSymbols[i], dx = p.x - it.x, dy = p.y - it.y;
+      if (dx * dx + dy * dy <= reach) return it;
+    }
+    return null;
+  }
+
   // ------------------------------------------------------------ interaction
   var tip = el("tip");
   canvas.addEventListener("mousemove", function (ev) {
@@ -667,7 +790,21 @@ JS = """
       view.x += ev.clientX - panning.x; view.y += ev.clientY - panning.y;
       panning = { x: ev.clientX, y: ev.clientY }; draw(); return;
     }
-    var n = hit(toWorld(ev));
+    var world = toWorld(ev);
+    var sym = expanding() ? hitSymbol(world) : null;
+    if (sym) {
+      if (hovered !== sym.node) { hovered = sym.node; draw(); }
+      tip.innerHTML = "<strong>" + esc(sym.sym.name) + "</strong><br>" +
+        esc(sym.sym.kind) + " &middot; line " + sym.sym.line + "<br>" +
+        esc(coveragePhrase(sym.sym)) +
+        (sym.sym.delta ? "<br>" + esc(sym.sym.delta) + " by this change" : "");
+      tip.classList.add("show");
+      var rs = canvas.getBoundingClientRect();
+      tip.style.left = Math.min(rs.width - 270, ev.clientX - rs.left + 12) + "px";
+      tip.style.top = (ev.clientY - rs.top + 12) + "px";
+      return;
+    }
+    var n = hit(world);
     if (n !== hovered) { hovered = n; draw(); }
     if (n) {
       var kinds = Object.keys(n.mod.kinds).map(function (k) { return n.mod.kinds[k] + " " + k; });
@@ -694,18 +831,26 @@ JS = """
     dragging = null; panning = null; canvas.classList.remove("dragging");
   });
   canvas.addEventListener("click", function (ev) {
-    var n = hit(toWorld(ev));
+    var world = toWorld(ev);
+    var sym = expanding() ? hitSymbol(world) : null;
+    if (sym) { select(sym.sym.id); return; }
+    var n = hit(world);
     select(n ? n.key : null);
   });
   canvas.addEventListener("dblclick", function () {
     nodes.forEach(function (n) { n.pinned = false; });
-    alpha = 0.7; fitted = false; wake();
+    // An explicit re-frame is the one thing that gives the zoom back to the fit.
+    zoomLock = null;
+    alpha = 0.7; fitted = false; wake(); syncHash();
   });
+  var zoomSettle = null;
   canvas.addEventListener("wheel", function (ev) {
     ev.preventDefault();
     var f = Math.exp(-ev.deltaY * 0.0016);
-    view.k = Math.max(0.18, Math.min(5, view.k * f));
+    view.k = zoomLock = Math.max(0.18, Math.min(5, view.k * f));
     draw();
+    if (zoomSettle) clearTimeout(zoomSettle);
+    zoomSettle = setTimeout(syncHash, 220);
   }, { passive: false });
 
   function wake() { if (!running) { running = true; requestAnimationFrame(tick); } }
@@ -932,6 +1077,9 @@ JS = """
     if (offTypes.length) p.set("noedge", offTypes.join(","));
     if (state.colorMode !== "language") p.set("mode", state.colorMode);
     if (state.showTests) p.set("tests", "1");
+    // Grain is part of the view: a URL captured while expanded must reopen
+    // expanded, or the link shows a different picture than the one shared.
+    if (Math.abs(view.k - 1) > 0.02) p.set("z", view.k.toFixed(3));
     var h = p.toString();
     history.replaceState(null, "", h ? "#" + h : location.pathname);
   }
@@ -946,6 +1094,10 @@ JS = """
     var mode = p.get("mode");
     if (mode && colorModes().indexOf(mode) >= 0) state.colorMode = mode;
     state.showTests = p.get("tests") === "1";
+    var zoom = parseFloat(p.get("z") || "");
+    if (isFinite(zoom) && zoom > 0) {
+      view.k = zoomLock = Math.max(0.18, Math.min(5, zoom));
+    }
   }
 
   // ============================================================== CONTROLS
@@ -1075,6 +1227,11 @@ JS = """
       });
     },
     state: function () { return JSON.parse(JSON.stringify(state)); },
+    view: function () { return { k: view.k, x: view.x, y: view.y }; },
+    setZoom: function (k) { view.k = zoomLock = k; draw(); },
+    symbols: function () {
+      return drawnSymbols.map(function (s) { return s.sym.id; });
+    },
   };
   renderChips();
   buildTree();
