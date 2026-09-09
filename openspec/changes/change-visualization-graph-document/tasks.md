@@ -67,12 +67,12 @@
 
 ## 3. Corrections overlay
 
-- [ ] 3.1 [S] Write overlay tests: rename by id, rename by glob after a file rename, exclude cascading to edges, flow steps, view selections and walkthrough focus, walkthrough dropped below two steps, unmatched selector warning; verify with `test_change_graph_corrections.py`
+- [x] 3.1 [S] Write overlay tests: rename by id, rename by glob after a file rename, exclude cascading to edges, flow steps, view selections and walkthrough focus, walkthrough dropped below two steps, unmatched selector warning; verify with `test_change_graph_corrections.py`
   **Spec scenarios**: Correction survives a rename; Excluded node takes its references with it; Unmatched selector is reported
   **Contracts**: `contracts/corrections.schema.json`
   **Design decisions**: D7
   **Dependencies**: 2.4
-- [ ] 3.2 [M] Implement `settings/change-graph.yaml` loading, validation against the vendored corrections schema, and application inside the projector before narration; verify 3.1 passes and the document still validates after exclusion
+- [x] 3.2 [M] Implement `settings/change-graph.yaml` loading, validation against the vendored corrections schema, and application inside the projector before narration; verify 3.1 passes and the document still validates after exclusion
   **Dependencies**: 3.1
 
 - [ ] Checkpoint: apply a sample overlay to a 2.7 fixture and confirm the rendered picture changes only where addressed

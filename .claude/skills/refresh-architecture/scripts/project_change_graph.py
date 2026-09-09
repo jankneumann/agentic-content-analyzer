@@ -30,6 +30,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import logging
@@ -37,9 +38,11 @@ import re
 import subprocess
 import sys
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+import jsonschema
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from arch_utils import change_graph  # noqa: E402
@@ -113,6 +116,17 @@ _HUNK_HEADER = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 # ---------------------------------------------------------------------------
 # Diff
 # ---------------------------------------------------------------------------
+
+
+class NothingToDraw(Exception):
+    """The change leaves no node to draw.
+
+    Either it touches nothing under the analyzed roots, or corrections excluded
+    everything it did touch.  The contract requires at least one node, so no
+    document can express this; inventing a placeholder would put a claim on the
+    page that no artifact supports.  Callers report it and exit successfully:
+    a tooling-only change is legitimate, and must not fail CI for being one.
+    """
 
 
 @dataclass(frozen=True, order=True)
@@ -253,6 +267,134 @@ def _adjacency(edges: list[dict[str, Any]]) -> dict[str, set[str]]:
 
 
 # ---------------------------------------------------------------------------
+# Corrections overlay
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Corrections:
+    """Human corrections to the inferred map.
+
+    An overlay, never a destination: inference does not write here, and every
+    run re-applies it over fresh inference.  That is what makes a correction
+    keep holding as the code moves, instead of being erased by the next
+    projection.
+    """
+
+    renames: list[tuple[str, str]] = field(default_factory=list)
+    excludes: list[str] = field(default_factory=list)
+    lanes: list[tuple[str, str]] = field(default_factory=list)
+    groups: list[tuple[str, str]] = field(default_factory=list)
+
+    def is_empty(self) -> bool:
+        return not (self.renames or self.excludes or self.lanes or self.groups)
+
+
+@dataclass(frozen=True)
+class Resolution:
+    """Corrections resolved against the nodes actually present."""
+
+    excluded: set[str] = field(default_factory=set)
+    renames: dict[str, str] = field(default_factory=dict)
+    lanes: dict[str, str] = field(default_factory=dict)
+    groups: dict[str, str] = field(default_factory=dict)
+    unmatched: list[str] = field(default_factory=list)
+
+
+def load_corrections(path: Path) -> Corrections:
+    """Read and validate an overlay file, or return no corrections.
+
+    A missing overlay is the ordinary case, not an error.  A malformed one is
+    refused whole rather than half-applied: corrections that silently drop are
+    worse than corrections that fail loudly, because the picture still looks
+    plausible.
+    """
+    path = Path(path)
+    if not path.exists():
+        return Corrections()
+
+    import yaml  # local: only the overlay path needs it
+
+    raw = yaml.safe_load(path.read_text()) or {}
+    raw.setdefault("schemaVersion", change_graph.CONTRACT_VERSION)
+    validator = jsonschema.Draft202012Validator(change_graph.load_corrections_schema())
+    errors = sorted(
+        f"{'.'.join(str(part) for part in error.absolute_path) or '<overlay>'}: "
+        f"{error.message}"
+        for error in validator.iter_errors(raw)
+    )
+    if errors:
+        raise change_graph.DocumentInvalidError(errors)
+
+    mapping = raw.get("map", {})
+    return Corrections(
+        renames=[(item["match"], item["to"]) for item in mapping.get("rename", [])],
+        excludes=list(mapping.get("exclude", [])),
+        lanes=[(item["match"], item["lane"]) for item in mapping.get("lane", [])],
+        groups=[(item["match"], item["group"]) for item in mapping.get("group", [])],
+    )
+
+
+def _selector_matches(
+    selector: str, graph_id: str, node: dict[str, Any], prefixes: dict[str, str]
+) -> bool:
+    """`id:<graph-id>` addresses one node; anything else is a path glob.
+
+    The glob is matched against the node's backing file so that a correction
+    outlives the analyzer renaming the symbol.
+    """
+    if selector.startswith("id:"):
+        return graph_id == selector[3:]
+    path = _repo_path(node, prefixes)
+    return fnmatch.fnmatch(path, selector) or fnmatch.fnmatch(path, f"*/{selector}")
+
+
+def resolve_corrections(
+    corrections: Corrections,
+    nodes: dict[str, dict[str, Any]],
+    prefixes: dict[str, str],
+) -> Resolution:
+    """Bind each selector to the nodes it names, reporting the ones that miss."""
+    excluded: set[str] = set()
+    renames: dict[str, str] = {}
+    lanes: dict[str, str] = {}
+    groups: dict[str, str] = {}
+    unmatched: list[str] = []
+
+    def apply(selector: str, sink: Any, value: str | None) -> None:
+        hits = [
+            graph_id
+            for graph_id, node in nodes.items()
+            if _selector_matches(selector, graph_id, node, prefixes)
+        ]
+        if not hits:
+            unmatched.append(selector)
+            return
+        for graph_id in hits:
+            if value is None:
+                sink.add(graph_id)
+            else:
+                sink[graph_id] = value
+
+    for selector in corrections.excludes:
+        apply(selector, excluded, None)
+    for selector, label in corrections.renames:
+        apply(selector, renames, label)
+    for selector, lane in corrections.lanes:
+        apply(selector, lanes, lane)
+    for selector, group in corrections.groups:
+        apply(selector, groups, group)
+
+    return Resolution(
+        excluded=excluded,
+        renames=renames,
+        lanes=lanes,
+        groups=groups,
+        unmatched=sorted(set(unmatched)),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Projection
 # ---------------------------------------------------------------------------
 
@@ -270,6 +412,7 @@ def project(
     coverage: dict[str, Any] | None = None,
     title: str | None = None,
     summary: str | None = None,
+    corrections: Corrections | None = None,
 ) -> dict[str, Any]:
     """Return a change document describing head relative to base."""
     prefixes = path_prefixes or {}
@@ -280,13 +423,35 @@ def project(
     changed = {nid for nid, delta in deltas.items() if delta != "unchanged"}
 
     kept = _select_nodes(changed, deltas, head_graph, base_graph)
+
+    # Corrections land after derivation and before anything reads the result,
+    # so an exclusion takes its edges, view selections and walkthrough focus
+    # with it rather than leaving half an arrow behind.
+    resolution = Resolution()
+    if corrections and not corrections.is_empty():
+        resolution = resolve_corrections(
+            corrections, {**base_nodes, **head_nodes}, prefixes
+        )
+        kept -= resolution.excluded
+        changed -= resolution.excluded
+        for graph_id in resolution.excluded:
+            deltas.pop(graph_id, None)
+        for selector in resolution.unmatched:
+            logger.warning("correction selector matched nothing: %s", selector)
+
     coverage_counts = _coverage_counts(head_graph.get("edges", []))
 
     nodes, lanes = _build_nodes(
-        kept, deltas, base_nodes, head_nodes, coverage_counts, prefixes
+        kept, deltas, base_nodes, head_nodes, coverage_counts, prefixes, resolution
     )
     edges = _build_edges(kept, deltas, base_graph, head_graph, impact)
     document_flows = _build_flows(flows, kept, deltas)
+
+    if not nodes:
+        raise NothingToDraw(
+            "no node survives: the change touches nothing in the architecture "
+            "graph, or corrections excluded everything it touched"
+        )
 
     lenses = ["architecture"] + (["data-flow"] if document_flows else [])
     views = _build_views(nodes, changed, lenses)
@@ -370,7 +535,9 @@ def _build_nodes(
     head_nodes: dict[str, dict],
     coverage_counts: dict[str, int],
     prefixes: dict[str, str],
+    resolution: Resolution | None = None,
 ) -> tuple[list[dict], list[dict]]:
+    resolution = resolution or Resolution()
     nodes: list[dict] = []
     lanes_used: dict[str, tuple[str, int]] = {}
 
@@ -379,20 +546,29 @@ def _build_nodes(
         if node is None:
             continue
         lane_id, lane_label, lane_order = _lane_of(node)
+        corrected_lane = resolution.lanes.get(graph_id)
+        if corrected_lane:
+            # A lane correction may name a band inference never declared; it is
+            # created, with its id for a label, so an author writes a name
+            # rather than looking one up.
+            lane_id, lane_label, lane_order = corrected_lane, corrected_lane, 9
         lanes_used[lane_id] = (lane_label, lane_order)
 
         path = _repo_path(node, prefixes)
         span = node.get("span") or {}
         entry: dict[str, Any] = {
             "id": document_id(graph_id),
-            "label": _clip(str(node.get("name") or graph_id), LABEL_MAX),
+            "label": _clip(
+                resolution.renames.get(graph_id) or str(node.get("name") or graph_id),
+                LABEL_MAX,
+            ),
             "kind": KIND_MAP.get(str(node.get("kind")), "other"),
             "delta": deltas.get(graph_id, "unchanged"),
             "lane": lane_id,
             "files": [],
             "badges": [],
         }
-        group = _group_of(path)
+        group = resolution.groups.get(graph_id) or _group_of(path)
         if group:
             entry["group"] = document_id(group)
         if path:
@@ -828,6 +1004,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--ts-src-dir", default="web", help="TypeScript source root (default: web)"
     )
+    parser.add_argument(
+        "--corrections",
+        default="settings/change-graph.yaml",
+        help="Corrections overlay (default: settings/change-graph.yaml)",
+    )
     return parser
 
 
@@ -878,40 +1059,38 @@ def main(argv: list[str] | None = None) -> int:
     slug = f"{merge_base[:7]}..{head_sha[:7]}"
     out = Path(args.out) if args.out else artifacts / "change" / slug / "graph.json"
 
-    if coverage["uncovered_files"] == coverage["changed_files"]:
-        # The contract requires at least one node, so "a document showing that
-        # nothing is covered" cannot exist, and inventing a node to satisfy the
-        # schema would put a claim on the page that no artifact supports.
-        # Exit 0: a tooling or documentation change covers no analyzed source
-        # by definition, and must not fail CI for being what it is.
+    try:
+        document = project(
+            base_graph=base_graph,
+            head_graph=head_graph,
+            hunks=hunks,
+            flows=flows,
+            impact=impact,
+            provenance={
+                "repo": _repo_slug(repo),
+                "base": {"sha": merge_base[:40]},
+                "head": {"sha": head_sha[:40]},
+                "generator": {"name": "project_change_graph", "version": "0.1.0"},
+            },
+            stats=_diff_stats(repo, merge_base, head_sha),
+            path_prefixes=prefixes,
+            coverage=coverage,
+            corrections=load_corrections(repo / args.corrections),
+        )
+    except NothingToDraw as reason:
         out.parent.mkdir(parents=True, exist_ok=True)
         (out.parent / "coverage.json").write_text(change_graph.serialize(coverage))
         roots = ", ".join(sorted(set(prefixes.values())))
         logger.warning(
-            "none of the %d changed files lie under the analyzed roots (%s), "
-            "so there is nothing to draw; wrote %s",
+            "%s; %d of %d changed files lie under the analyzed roots (%s). "
+            "Wrote %s",
+            reason,
+            coverage["changed_files"] - coverage["uncovered_files"],
             coverage["changed_files"],
             roots,
             out.parent / "coverage.json",
         )
         return 0
-
-    document = project(
-        base_graph=base_graph,
-        head_graph=head_graph,
-        hunks=hunks,
-        flows=flows,
-        impact=impact,
-        provenance={
-            "repo": _repo_slug(repo),
-            "base": {"sha": merge_base[:40]},
-            "head": {"sha": head_sha[:40]},
-            "generator": {"name": "project_change_graph", "version": "0.1.0"},
-        },
-        stats=_diff_stats(repo, merge_base, head_sha),
-        path_prefixes=prefixes,
-        coverage=coverage,
-    )
 
     try:
         written = change_graph.write_document(out, document)
