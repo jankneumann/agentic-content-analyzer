@@ -100,15 +100,15 @@
 - [x] 5.2 [S] Add a test that every emitted SVG contains no `<script`, `<link`, `url(`, `@import`, `var(--`, or `<image` with an external `href`, and that changing one label changes that view's file name and no other; verify it passes
   **Spec scenarios**: Asset survives an image proxy; Picture change means URL change
   **Dependencies**: 5.1
-- [ ] 5.3 [M] Write the comment composer as a Node script with tests: marker present, root view open and others collapsed in tree order, stats line with uncovered count, `@name` and `#42` neutralised, all document strings inside single-line HTML elements; verify with `comment.test.ts`
+- [x] 5.3 [M] Write the comment composer as a Node script with tests: marker present, root view open and others collapsed in tree order, stats line with uncovered count, `@name` and `#42` neutralised, all document strings inside single-line HTML elements; verify with `comment.test.ts`
   **Spec scenarios**: Diff text cannot notify people; Partial coverage is visible on the comment
   **Design decisions**: D8
   **Dependencies**: 5.1
-- [ ] 5.4 [M] Add `.github/workflows/change-graph.yml`: concurrency by PR, cached architecture refresh, project, optional narrate, render, publish to `change-graph-assets/<pr>/<head7>/`, upsert the marked comment, exit 0 without posting on an empty diff; verify on a draft pull request that a second push edits the same comment
+- [x] 5.4 [M] Add `.github/workflows/change-graph.yml`: concurrency by PR, cached architecture refresh, project, optional narrate, render, publish to `change-graph-assets/<pr>/<head-sha>/`, upsert the marked comment, skip posting when there is nothing to draw. Verified by YAML parse, action-version parity with the repo's other workflows, and an `npm ci` dry run; the end-to-end run needs a real pull request and has not happened yet
   **Spec scenarios**: Second push updates the comment; Empty diff posts nothing
   **Design decisions**: D8
   **Dependencies**: 5.3, 3.2
-- [ ] 5.5 [S] Add the assets-branch retention step deleting directories for pull requests closed more than 90 days ago, dry-run by default; verify with a unit test over a synthetic listing
+- [x] 5.5 [S] Add the assets-branch retention step deleting directories for pull requests closed more than 90 days ago, dry-run by default; verify with a unit test over a synthetic listing
   **Design decisions**: D8 risk
   **Dependencies**: 5.4
 

@@ -24,6 +24,8 @@ import { parseConfig, parseGraphDoc } from "@coldtea/pr-lens-schema";
 import type { Config, GraphDoc } from "@coldtea/pr-lens-schema";
 import { renderAll } from "@coldtea/pr-lens-renderer";
 
+import { buildComment } from "./change-graph-comment.mts";
+
 /**
  * The overlay is YAML in this repository and JSON to the schema package, so it
  * is converted here rather than kept in two formats. Only `map` is read: the
@@ -49,6 +51,7 @@ const main = async (): Promise<number> => {
       out: { type: "string", short: "o" },
       corrections: { type: "string" },
       "asset-base-url": { type: "string" },
+      comment: { type: "string" },
     },
   });
 
@@ -90,6 +93,26 @@ const main = async (): Promise<number> => {
     `${JSON.stringify(manifest, null, 2)}\n`,
     "utf8",
   );
+
+  if (values.comment) {
+    if (!values["asset-base-url"]) {
+      console.error(
+        "--comment needs --asset-base-url: the comment has to point somewhere " +
+          "the images are actually published",
+      );
+      return 2;
+    }
+    writeFileSync(
+      values.comment,
+      buildComment({
+        document,
+        manifest,
+        assetBaseUrl: values["asset-base-url"],
+      }),
+      "utf8",
+    );
+    console.log(`✓ ${values.comment} — comment body`);
+  }
 
   console.log(
     `✓ ${outDir} — ${assets.length} assets across ${assets.length / 2} views`,
