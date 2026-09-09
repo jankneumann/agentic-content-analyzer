@@ -93,11 +93,11 @@
 
 ## 5. Rendering and pull request comment
 
-- [ ] 5.1 [M] Write `web/scripts/render-change-graph.mts` producing light and dark SVGs and `manifest.json` via `renderAll`, applying the same overlay file; add golden SVGs for two 2.7 fixtures compared byte for byte; verify with `pnpm --dir web vitest run scripts/render-change-graph.test.ts`
+- [x] 5.1 [M] Write `web/scripts/render-change-graph.mts` producing light and dark SVGs and `manifest.json` via `renderAll`, applying the same overlay file; add golden SVGs for two 2.7 fixtures compared byte for byte; verify with `pnpm --dir web vitest run scripts/render-change-graph.test.ts`
   **Spec scenarios**: Asset survives an image proxy; Picture change means URL change
   **Design decisions**: D5
   **Dependencies**: 1.2, 2.7
-- [ ] 5.2 [S] Add a test that every emitted SVG contains no `<script`, `<link`, `url(`, `@import`, `var(--`, or `<image` with an external `href`, and that changing one label changes that view's file name and no other; verify it passes
+- [x] 5.2 [S] Add a test that every emitted SVG contains no `<script`, `<link`, `url(`, `@import`, `var(--`, or `<image` with an external `href`, and that changing one label changes that view's file name and no other; verify it passes
   **Spec scenarios**: Asset survives an image proxy; Picture change means URL change
   **Dependencies**: 5.1
 - [ ] 5.3 [M] Write the comment composer as a Node script with tests: marker present, root view open and others collapsed in tree order, stats line with uncovered count, `@name` and `#42` neutralised, all document strings inside single-line HTML elements; verify with `comment.test.ts`
