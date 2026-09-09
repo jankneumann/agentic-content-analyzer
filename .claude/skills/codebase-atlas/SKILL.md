@@ -121,13 +121,18 @@ not move because it was clicked, or the reader loses their mental map.
   (`documentation.inventory`, `api.contracts`). The atlas is the visual
   counterpart and shares its generate/check exit-code contract
   (`0` fresh · `1` error · `2` drift).
-- The generated HTML is **gitignored**: it is derived, ~650 KB, and not
-  meaningfully diffable. Regenerate it with `make atlas` instead of committing it.
+- The generated HTML is **gitignored**: it is derived, large, and not
+  meaningfully diffable. Regenerate it with `make atlas` instead of committing
+  it. On this repository it is roughly 18 MB, because test functions are 57% of
+  the graph's nodes and `TEST_COVERS` is 96% of its edges.
 
 ## Scope
 
 This skill renders what the graph contains: files, symbols, call edges, and
 import edges. It does not add extraction, a graph database, a server, or an
-LLM-backed query surface. Those are later phases of
-`docs/proposals/codebase-visualization-tool.md`, deliberately not prerequisites
-for the page existing.
+LLM-backed query surface, and it never invokes a model.
+
+Change visualization -- colouring the graph by what a diff touched, test
+coverage as a colour mode, node-level zoom, and guided walkthroughs -- is
+specified by the OpenSpec change `change-visualization-graph-document` and
+builds on this page rather than replacing it.

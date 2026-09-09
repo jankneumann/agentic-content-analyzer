@@ -25,11 +25,11 @@
   **Spec scenarios**: Document validates before any rendering; Contract version mismatch is refused
   **Design decisions**: D1
   **Dependencies**: 1.1
-- [ ] 1.4 [S] Add `atlas`, `atlas-check` and `change-graph` Makefile targets wrapping the existing and new scripts; verify `make atlas-check` exits 2 on a stale page and 0 after `make atlas`
+- [x] 1.4 [S] Add `atlas` and `atlas-check` Makefile targets wrapping the existing script; verify `make atlas-check` exits 2 on a stale page and 0 after `make atlas`. The `change-graph` target moved to task 2.8, because a target invoking a script that does not exist yet would ship broken
   **Spec scenarios**: Documented targets exist
   **Design decisions**: D9
   **Dependencies**: None
-- [ ] 1.5 [S] Fix the atlas skill document: remove the missing proposal reference, describe the new targets and flags, and add a test that every repository path named in `codebase-atlas/SKILL.md` and `refresh-architecture/SKILL.md` exists; verify the test passes
+- [x] 1.5 [S] Fix the atlas skill document: remove the missing proposal reference, correct the stale page-size claim, and add a test that every repository path and `make` target named in `codebase-atlas/SKILL.md` and `refresh-architecture/SKILL.md` exists; verify the test passes
   **Spec scenarios**: Skill document references resolve
   **Design decisions**: D9
   **Dependencies**: 1.4
@@ -56,6 +56,10 @@
   **Dependencies**: 2.2
 - [ ] 2.6 [S] Implement coverage counting against graph basenames and the warning chip; verify 2.5 passes
   **Dependencies**: 2.5
+- [ ] 2.8 [S] Add the `change-graph` Makefile target invoking the projector for a given `BASE` (default `origin/main`); verify `make change-graph BASE=<ref>` writes a validating document
+  **Spec scenarios**: Documented targets exist
+  **Design decisions**: D9
+  **Dependencies**: 2.4, 2.6
 - [ ] 2.7 [S] Run the projector on three recent merged pull requests and store the outputs as fixtures under `refresh-architecture/scripts/tests/fixtures/change/`; verify each validates and each renders in 5.x
   **Dependencies**: 2.4, 2.6
 
