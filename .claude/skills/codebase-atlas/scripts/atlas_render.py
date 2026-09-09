@@ -184,6 +184,15 @@ def render_page(payload: dict[str, Any]) -> str:
       <div class="tooltip" id="tip" role="tooltip"></div>
       <div class="legend" id="legend"></div>
     </div>
+    <div class="walk hidden" id="walk" role="group" aria-label="Change walkthrough">
+      <button class="chip" id="walk-prev" aria-label="Previous step">&larr;</button>
+      <div class="walk-body">
+        <strong id="walk-heading"></strong>
+        <span id="walk-body"></span>
+      </div>
+      <span class="walk-count" id="walk-count"></span>
+      <button class="chip" id="walk-next" aria-label="Next step">&rarr;</button>
+    </div>
   </section>
 
   <section class="pane" aria-label="Selection details">

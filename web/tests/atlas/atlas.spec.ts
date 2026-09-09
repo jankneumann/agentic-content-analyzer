@@ -281,3 +281,58 @@ test.describe("node-level zoom", () => {
     expect((await drawnSymbols(page)).length).toBeGreaterThan(0);
   });
 });
+
+test.describe("the walkthrough", () => {
+  test("is offered only when the document carries one", async ({ page }) => {
+    await open(page, PLAIN);
+    await expect(page.locator("#walk")).toBeHidden();
+
+    await open(page, WITH_CHANGE);
+    await expect(page.locator("#walk")).toBeVisible();
+    await expect(page.locator("#walk-count")).toContainText("1 /");
+  });
+
+  test("steps forward and back, and says where it is", async ({ page }) => {
+    await open(page, WITH_CHANGE);
+    const first = await page.locator("#walk-heading").textContent();
+
+    await page.locator("#walk-next").click();
+    const second = await page.locator("#walk-heading").textContent();
+    expect(second).not.toBe(first);
+    await expect(page.locator("#walk-count")).toContainText("2 /");
+
+    await page.locator("#walk-prev").click();
+    await expect(page.locator("#walk-heading")).toHaveText(first ?? "");
+  });
+
+  test("the step travels in the URL", async ({ page }) => {
+    await open(page, WITH_CHANGE);
+    await page.locator("#walk-next").click();
+    expect(page.url()).toContain("step=2");
+
+    await open(page, WITH_CHANGE, "#step=2");
+    await expect(page.locator("#walk-count")).toContainText("2 /");
+  });
+
+  test("playing a step frames the view without moving a node", async ({
+    page,
+  }) => {
+    await open(page, WITH_CHANGE);
+    const before = await settled(page);
+
+    await page.locator("#walk-next").click();
+    const after = await positions(page);
+
+    // A step changes the viewport, never the layout.
+    expect(after).toEqual(before);
+  });
+
+  test("advances on the keyboard", async ({ page }) => {
+    await open(page, WITH_CHANGE);
+    const first = await page.locator("#walk-heading").textContent();
+
+    await page.keyboard.press("w");
+
+    expect(await page.locator("#walk-heading").textContent()).not.toBe(first);
+  });
+});

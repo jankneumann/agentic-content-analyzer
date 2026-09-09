@@ -199,6 +199,54 @@ def _contract() -> Any:
     )
 
 
+def walkthrough_steps(
+    document: dict[str, Any], graph_node_ids: Iterable[str]
+) -> list[dict[str, Any]]:
+    """Translate a document's walkthrough into steps the atlas can play.
+
+    A step names its focus by document id; the atlas knows graph ids.  The
+    mapping is done here, next to the function that produces those ids, so the
+    page never has to guess at it.
+
+    A step whose focus survives nothing is dropped, and a walkthrough left with
+    fewer than two steps goes whole: one step is a caption, not a tour.  That
+    is the contract's own rule, applied again here because pruning can empty a
+    step that the document itself considered full.
+    """
+    walkthrough = document.get("walkthrough")
+    if not walkthrough:
+        return []
+
+    change_graph = _contract()
+    by_document_id: dict[str, str] = {}
+    for graph_id in graph_node_ids:
+        by_document_id.setdefault(change_graph.document_id(graph_id), graph_id)
+
+    steps: list[dict[str, Any]] = []
+    for step in walkthrough.get("steps", []):
+        focus = step.get("focus") or {"kind": "all"}
+        if focus.get("kind") == "all":
+            nodes = sorted(by_document_id.values())
+        else:
+            nodes = sorted(
+                by_document_id[identifier]
+                for identifier in focus.get("nodes", [])
+                if identifier in by_document_id
+            )
+        if not nodes:
+            continue
+        steps.append(
+            {
+                "id": step["id"],
+                "heading": step["heading"],
+                "body": step["body"],
+                "nodes": nodes,
+            }
+        )
+
+    return steps if len(steps) >= 2 else []
+
+
 def delta_index(
     document: dict[str, Any],
     graph_node_ids: Iterable[str],

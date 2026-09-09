@@ -122,7 +122,7 @@
   **Dependencies**: 1.3, 2.7
 - [x] 6.2 [M] Implement `delta` in `atlas_model.py` and the `change=` hash loader, delta palette, legend, colour-mode toggle and ghosting in `atlas_assets.py`; verify 6.1 passes and a Playwright smoke test opens a fixture with the overlay and asserts node colours
   **Dependencies**: 6.1
-- [ ] 6.3 [M] Implement the walkthrough rail: step list, keyboard and button navigation, `step=` in the hash, focus applied as selection with hops 0, frame-to-selection without re-heating; verify with a Playwright test that step three restores from a pasted URL and that node positions are unchanged before and after a step
+- [x] 6.3 [M] Implement the walkthrough rail: step list, keyboard and button navigation, `step=` in the hash, focus applied as selection with hops 0, frame-to-selection without re-heating; verify with a Playwright test that step three restores from a pasted URL and that node positions are unchanged before and after a step
   **Spec scenarios**: Step focus becomes the view; Step URL is shareable; Click does not move nodes
   **Design decisions**: D6
   **Dependencies**: 6.2

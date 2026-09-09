@@ -372,3 +372,48 @@ def test_a_module_is_added_only_when_every_symbol_in_it_is(tmp_path: Path) -> No
     assert module_delta(["removed", "removed"]) == "removed"
     assert module_delta(["unchanged", "unchanged"]) == "unchanged"
     assert module_delta([]) is None
+
+
+# ---------------------------------------------------------------------------
+# Walkthrough
+# ---------------------------------------------------------------------------
+
+
+def test_walkthrough_steps_are_translated_into_graph_ids(document: dict) -> None:
+    from atlas_change import walkthrough_steps
+
+    graph_ids = _document_graph_ids(document)
+    steps = walkthrough_steps(document, graph_ids)
+
+    assert len(steps) >= 2
+    assert all(step["heading"] and step["body"] for step in steps)
+    assert all(node in graph_ids for step in steps for node in step["nodes"])
+
+
+def test_a_step_whose_focus_survives_nothing_is_dropped(document: dict) -> None:
+    from atlas_change import walkthrough_steps
+
+    # The atlas graph shares no node with the document.
+    assert walkthrough_steps(document, {"py:unrelated"}) == []
+
+
+def test_a_walkthrough_cut_below_two_steps_goes_whole(document: dict) -> None:
+    """One step is a caption, not a tour."""
+    from atlas_change import walkthrough_steps
+
+    document["walkthrough"]["steps"] = document["walkthrough"]["steps"][:1]
+
+    assert walkthrough_steps(document, _document_graph_ids(document)) == []
+
+
+def test_a_document_without_a_walkthrough_offers_none(document: dict) -> None:
+    from atlas_change import walkthrough_steps
+
+    document.pop("walkthrough", None)
+
+    assert walkthrough_steps(document, _document_graph_ids(document)) == []
+
+
+def _document_graph_ids(document: dict) -> set[str]:
+    """The fixture was projected from ids that needed no rewriting."""
+    return {node["id"] for node in document["nodes"]}

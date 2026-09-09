@@ -145,6 +145,13 @@ input[type="search"]:focus-visible, button:focus-visible, summary:focus-visible 
   padding: 0 3px; flex: none;
 }
 .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.walk {
+  display: flex; gap: 10px; align-items: center; padding: 8px 12px;
+  border-top: 1px solid var(--border); background: var(--panel); font-size: 12px;
+}
+.walk-body { flex: 1; min-width: 0; }
+.walk-body strong { margin-right: 8px; }
+.walk-count { color: var(--muted-text, #7c8494); font-variant-numeric: tabular-nums; }
 .lang-python { background: var(--py); } .lang-sql { background: var(--sql); }
 .lang-typescript { background: var(--ts); } .lang-unknown { background: var(--unknown); }
 .hidden { display: none !important; }
@@ -247,6 +254,7 @@ JS = """
     // edges, so drawing them turns a picture of the application into a picture
     // of its test suite. Coverage rides on the covered node instead.
     showTests: false,
+    step: 0,                 // index into the document's walkthrough
   };
   M.forEach(function (m) { state.langs[m.language] = true; });
   ME.forEach(function (e) { state.edgeTypes[e.type] = true; });
@@ -1080,6 +1088,7 @@ JS = """
     // Grain is part of the view: a URL captured while expanded must reopen
     // expanded, or the link shows a different picture than the one shared.
     if (Math.abs(view.k - 1) > 0.02) p.set("z", view.k.toFixed(3));
+    if (state.step) p.set("step", String(state.step + 1));
     var h = p.toString();
     history.replaceState(null, "", h ? "#" + h : location.pathname);
   }
@@ -1094,11 +1103,79 @@ JS = """
     var mode = p.get("mode");
     if (mode && colorModes().indexOf(mode) >= 0) state.colorMode = mode;
     state.showTests = p.get("tests") === "1";
+    var step = parseInt(p.get("step") || "1", 10);
+    state.step = isFinite(step) && step > 0 ? step - 1 : 0;
     var zoom = parseFloat(p.get("z") || "");
     if (isFinite(zoom) && zoom > 0) {
       view.k = zoomLock = Math.max(0.18, Math.min(5, zoom));
     }
   }
+
+  // ========================================================== WALKTHROUGH
+  // An ordered tour the document authored. The page only plays it: each step
+  // is the same view state a reader could reach by hand, so nothing here can
+  // show something the graph does not.
+  var WALK = (DATA.meta.change && DATA.meta.change.walkthrough) || [];
+
+  function playStep(index) {
+    if (!WALK.length) return;
+    state.step = Math.max(0, Math.min(WALK.length - 1, index));
+    var step = WALK[state.step];
+
+    el("walk-heading").textContent = step.heading;
+    el("walk-body").textContent = step.body;
+    el("walk-count").textContent = (state.step + 1) + " / " + WALK.length;
+
+    // Focus becomes the selection, so the existing highlight-and-dim does the
+    // work, and the framing moves the viewport rather than any node.
+    var keys = {};
+    step.nodes.forEach(function (id) {
+      var key = moduleOf(id);
+      if (nodeByKey[key]) keys[key] = true;
+    });
+    state.selected = step.nodes.length === 1 ? step.nodes[0] : null;
+    frameKeys(Object.keys(keys));
+    renderDetails();
+    syncHash();
+    draw();
+  }
+
+  /** Pan and zoom so the named modules fill the view. Nothing is moved. */
+  function frameKeys(keys) {
+    if (!keys.length) return;
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    keys.forEach(function (k) {
+      var n = nodeByKey[k];
+      if (!n) return;
+      minX = Math.min(minX, n.x - n.r); maxX = Math.max(maxX, n.x + n.r);
+      minY = Math.min(minY, n.y - n.r); maxY = Math.max(maxY, n.y + n.r);
+    });
+    if (!isFinite(minX)) return;
+    var rect = canvas.getBoundingClientRect();
+    var pad = 90;
+    var w = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
+    view.k = zoomLock = Math.max(0.18, Math.min(5,
+      Math.min((rect.width - pad * 2) / w, (rect.height - pad * 2) / h)));
+    view.x = -((minX + maxX) / 2) * view.k;
+    view.y = -((minY + maxY) / 2) * view.k;
+  }
+
+  function renderWalk() {
+    if (!WALK.length) return;
+    el("walk").classList.remove("hidden");
+    playStep(state.step || 0);
+  }
+
+  el("walk-prev").addEventListener("click", function () { playStep(state.step - 1); });
+  el("walk-next").addEventListener("click", function () { playStep(state.step + 1); });
+  document.addEventListener("keydown", function (ev) {
+    if (!WALK.length) return;
+    if (ev.target && /^(INPUT|TEXTAREA)$/.test(ev.target.tagName)) return;
+    // `w` plays the tour from wherever it stands; the arrows step it.
+    if (ev.key === "w" || ev.key === "W") playStep((state.step + 1) % WALK.length);
+    else if (ev.key === "]") playStep(state.step + 1);
+    else if (ev.key === "[") playStep(state.step - 1);
+  });
 
   // ============================================================== CONTROLS
   function renderLegend() {
@@ -1242,6 +1319,8 @@ JS = """
   buildGraph();
   revealAndMark(state.selected);
   renderDetails();
+  // After the graph exists, so a step can frame the nodes it names.
+  renderWalk();
   window.addEventListener("resize", resize);
   resize();
   requestAnimationFrame(tick);

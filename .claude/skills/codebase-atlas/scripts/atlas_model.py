@@ -370,16 +370,18 @@ def build_view_model(
         linkage_counts,
         module_coverage,
         symbol_coverage,
+        walkthrough_steps,
     )
 
     tests_by_node = linkage_counts(edges)
     prefixes = source_prefixes or {}
     deltas: dict[str, str] = {}
     unmatched: list[str] = []
+    steps: list[dict[str, Any]] = []
     if change is not None:
-        deltas, unmatched = delta_index(
-            change, [node["id"] for node in nodes], validate=True
-        )
+        graph_ids = [node["id"] for node in nodes]
+        deltas, unmatched = delta_index(change, graph_ids, validate=True)
+        steps = walkthrough_steps(change, graph_ids)
 
     def repo_path(module: Module) -> str:
         """The analyzer records paths under each language's source root.
@@ -478,7 +480,9 @@ def build_view_model(
             "change": {
                 "loaded": change is not None,
                 "title": (change or {}).get("title"),
+                "summary": (change or {}).get("summary"),
                 "unmatched": unmatched,
+                "walkthrough": steps,
             },
         },
         "coverage": [c.to_dict() for c in (measure_coverage(repo_root, nodes) if measure else [])],
