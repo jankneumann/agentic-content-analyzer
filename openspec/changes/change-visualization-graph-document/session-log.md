@@ -51,3 +51,29 @@
 ### Context
 Built change visualization end to end on the pr-lens graph document contract: a deterministic projector over the architecture artifacts, a corrections overlay, structure-preserving narration, self-contained SVG rendering with a pull request comment and its workflow, and an atlas that colours by change or by test coverage with node-level semantic zoom and walkthrough playback. Deltas are derived from the repository's own call graph rather than inferred by a model.
 
+---
+
+## Phase: Validation (2026-09-09)
+
+**Agent**: claude_code | **Session**: N/A
+
+### Open Questions
+- [ ] The change-graph workflow has never run on a real pull request; whether a second push updates the one comment rather than adding a second is unverified.
+- [ ] eslint reports 66 pre-existing errors in src/components, unrelated to this change and failing on main as well.
+
+### Completed Work
+- pytest over both skill suites: 240 passed, 27 skipped
+- vitest in web: 84 passed across 10 files, including renderer goldens and comment escaping
+- Playwright against the real atlas page: 19 passed, covering colour modes, the test toggle, semantic zoom and the walkthrough
+- tsc --noEmit clean; eslint clean on every file this change touches
+- openspec validate --strict: valid
+- make architecture-check and make atlas-check: both fresh
+- End to end on a real range: 101 nodes, 79 edges, 23 of 380 changed files covered
+
+### Next Steps
+- Open a pull request and watch the workflow post, then push again and confirm the same comment is edited
+- Consider whether the assets branch should be created ahead of the first run rather than by it
+
+### Context
+Local gate green across both languages and a real browser. Docker-dependent phases were not run; the CI workflow has not executed against a real pull request, so the comment upsert remains the one unverified path.
+

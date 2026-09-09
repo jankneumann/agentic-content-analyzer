@@ -41,6 +41,21 @@ const buildPage = (args: string[] = []): string => {
   return out;
 };
 
+/**
+ * The page's read-only inspection surface. A developer tool with no build step
+ * gives a browser test no other way to ask where the layout put things.
+ */
+type AtlasNode = { key: string; x: number; y: number; r: number };
+type AtlasWindow = typeof globalThis & {
+  __atlas: {
+    nodes: () => AtlasNode[];
+    state: () => Record<string, unknown>;
+    view: () => { k: number; x: number; y: number };
+    setZoom: (k: number) => void;
+    symbols: () => string[];
+  };
+};
+
 const PLAIN = buildPage();
 const WITH_CHANGE = buildPage(["--change", join(FIXTURES, "small.change.json")]);
 
@@ -51,10 +66,7 @@ const open = async (page: Page, file: string, hash = ""): Promise<void> => {
 
 /** Read the canvas node positions the page is currently drawing. */
 const positions = (page: Page) =>
-  page.evaluate(() => {
-    const atlas = (globalThis as Record<string, any>).__atlas;
-    return atlas.nodes() as { key: string; x: number; y: number }[];
-  });
+  page.evaluate(() => (globalThis as AtlasWindow).__atlas.nodes());
 
 test.describe("colour modes", () => {
   test("offers language and coverage, and delta only with a change", async ({
@@ -96,10 +108,9 @@ test.describe("colour modes", () => {
 });
 
 const drawnKeys = (page: Page) =>
-  page.evaluate(() => {
-    const atlas = (globalThis as Record<string, any>).__atlas;
-    return atlas.nodes().map((n: { key: string }) => n.key);
-  });
+  page.evaluate(() =>
+    (globalThis as AtlasWindow).__atlas.nodes().map((node) => node.key),
+  );
 
 test.describe("test files", () => {
   test("are not drawn until asked for", async ({ page }) => {
@@ -166,7 +177,7 @@ test.describe("a view is a URL", () => {
  * comparing before it has is measuring residual physics rather than the
  * interaction under test.
  */
-const settled = async (page: Page): Promise<{ x: number; y: number }[]> => {
+const settled = async (page: Page): Promise<AtlasNode[]> => {
   let previous = JSON.stringify(await positions(page));
   for (let attempt = 0; attempt < 40; attempt += 1) {
     await page.waitForTimeout(150);
@@ -216,14 +227,11 @@ test.describe("the coverage banner", () => {
 });
 
 const drawnSymbols = (page: Page) =>
-  page.evaluate(() => {
-    const atlas = (globalThis as Record<string, any>).__atlas;
-    return atlas.symbols() as string[];
-  });
+  page.evaluate(() => (globalThis as AtlasWindow).__atlas.symbols());
 
 const setZoom = (page: Page, k: number) =>
   page.evaluate((z) => {
-    (globalThis as Record<string, any>).__atlas.setZoom(z);
+    (globalThis as AtlasWindow).__atlas.setZoom(z);
   }, k);
 
 test.describe("node-level zoom", () => {
@@ -275,7 +283,7 @@ test.describe("node-level zoom", () => {
     await page.waitForTimeout(300);
 
     const view = await page.evaluate(
-      () => (globalThis as Record<string, any>).__atlas.view().k as number,
+      () => (globalThis as AtlasWindow).__atlas.view().k,
     );
     expect(view).toBeCloseTo(3, 2);
     expect((await drawnSymbols(page)).length).toBeGreaterThan(0);

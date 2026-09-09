@@ -159,11 +159,11 @@
 
 ## 8. Integration evidence and documentation
 
-- [ ] 8.1 [S] Write `docs/CHANGE_VISUALIZATION.md` covering the document, the projector, corrections, narration, the comment, the atlas overlay and troubleshooting; add it to the `CLAUDE.md` documentation index; verify the markdown link check passes
+- [x] 8.1 [S] Write `docs/CHANGE_VISUALIZATION.md` covering the document, the projector, corrections, narration, the comment, the atlas overlay and troubleshooting; add it to the `CLAUDE.md` documentation index; verify the markdown link check passes
   **Dependencies**: 5.4, 6.3
-- [ ] 8.2 [S] Update `refresh-architecture/SKILL.md` and `codebase-atlas/SKILL.md` with the new scripts, flags and Make targets; verify the 1.5 path test still passes
+- [x] 8.2 [S] Update `refresh-architecture/SKILL.md` and `codebase-atlas/SKILL.md` with the new scripts, flags and Make targets; verify the 1.5 path test still passes
   **Dependencies**: 8.1
-- [ ] 8.3 [M] Run the full local gate: projector, corrections, narration, renderer goldens, atlas coverage and zoom tests, Playwright suite, plus `make architecture-check` and `make atlas-check`; record results in the change's session log
+- [x] 8.3 [M] Run the full local gate: projector, corrections, narration, renderer goldens, atlas coverage and zoom tests, Playwright suite, plus `make architecture-check` and `make atlas-check`; record results in the change's session log
   **Dependencies**: 8.2
 
 - [ ] Checkpoint: review the cumulative diff for anything under `src/` or `web/src/` (there should be none), confirm task to scenario traceability
