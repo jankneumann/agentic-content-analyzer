@@ -38,29 +38,29 @@
 
 ## 2. Projector core
 
-- [ ] 2.1 [M] Write projector tests over the fixtures in `refresh-architecture/scripts/tests/fixtures/` plus a synthetic baseline graph and a synthetic `-U0` diff: added, removed, modified by intersecting hunk, unchanged by non-intersecting hunk, one-hop neighbours, hero edge selection with tie-break, and byte-identical output across two runs; verify with `pytest .claude/skills/refresh-architecture/scripts/tests/test_project_change_graph.py`
+- [x] 2.1 [M] Write projector tests over the fixtures in `refresh-architecture/scripts/tests/fixtures/` plus a synthetic baseline graph and a synthetic `-U0` diff: added, removed, modified by intersecting hunk, unchanged by non-intersecting hunk, one-hop neighbours, hero edge selection with tie-break, and byte-identical output across two runs; verify with `pytest .claude/skills/refresh-architecture/scripts/tests/test_project_change_graph.py`
   **Spec scenarios**: Same inputs, same bytes; Unchanged neighbours are always present; Modified is line-range precise; Hero edge is the highest-impact addition
   **Design decisions**: D2
   **Dependencies**: 1.3
-- [ ] 2.2 [L] Implement `project_change_graph.py`: merge-base resolution, baseline graph via `git show`, reuse of `diff_architecture.py`, hunk intersection, one-hop expansion through `arch_utils.traversal`, provenance and stats from git, validation through 1.3, deterministic serialisation; verify 2.1 passes
+- [x] 2.2 [L] Implement `project_change_graph.py`: merge-base resolution, baseline graph via `git show`, reuse of `diff_architecture.py`, hunk intersection, one-hop expansion through `arch_utils.traversal`, provenance and stats from git, validation through 1.3, deterministic serialisation; verify 2.1 passes
   **Dependencies**: 2.1
-- [ ] 2.3 [M] Write tests for lanes, views and flows: container lanes, six-lane fold into `group`, root view open, package child scoped with neighbours, feature-slice grandchild, duplicate child dropped, flows only through changed nodes with edge-type to message-kind mapping, lens declaration with and without flows; verify with the same test module
+- [x] 2.3 [M] Write tests for lanes, views and flows: container lanes, six-lane fold into `group`, root view open, package child scoped with neighbours, feature-slice grandchild, duplicate child dropped, flows only through changed nodes with edge-type to message-kind mapping, lens declaration with and without flows; verify with the same test module
   **Spec scenarios**: A change with no cross-layer path has no flows; Lane budget is enforced; Views never repeat their parent
   **Design decisions**: D3
   **Dependencies**: 2.2
-- [ ] 2.4 [M] Implement lane classification reuse from `generate_views.py`, the view tree, flow mapping from `cross_layer_flows.json`, and the structural walkthrough skeleton with template text; verify 2.3 passes
+- [x] 2.4 [M] Implement lane classification reuse from `generate_views.py`, the view tree, flow mapping from `cross_layer_flows.json`, and the structural walkthrough skeleton with template text; verify 2.3 passes
   **Dependencies**: 2.3
-- [ ] 2.5 [S] Write coverage tests: all changed files uncovered, some uncovered, all covered; verify the `coverage` block and stat chip values
+- [x] 2.5 [S] Write coverage tests: all changed files uncovered, some uncovered, all covered; verify the `coverage` block and stat chip values
   **Spec scenarios**: Change outside analyzed roots; Partial coverage is visible on the comment
   **Design decisions**: D2
   **Dependencies**: 2.2
-- [ ] 2.6 [S] Implement coverage counting against graph basenames and the warning chip; verify 2.5 passes
+- [x] 2.6 [S] Implement coverage counting against graph basenames and the warning chip; verify 2.5 passes
   **Dependencies**: 2.5
-- [ ] 2.8 [S] Add the `change-graph` Makefile target invoking the projector for a given `BASE` (default `origin/main`); verify `make change-graph BASE=<ref>` writes a validating document
+- [x] 2.8 [S] Add the `change-graph` Makefile target invoking the projector for a given `BASE` (default `origin/main`); verify `make change-graph BASE=<ref>` writes a validating document
   **Spec scenarios**: Documented targets exist
   **Design decisions**: D9
   **Dependencies**: 2.4, 2.6
-- [ ] 2.7 [S] Run the projector on three recent merged pull requests and store the outputs as fixtures under `refresh-architecture/scripts/tests/fixtures/change/`; verify each validates and each renders in 5.x
+- [x] 2.7 [S] Run the projector on real commit ranges from this repository and store the outputs as fixtures under `refresh-architecture/scripts/tests/fixtures/change/`; verify each validates and each renders in 5.x. Two ranges rather than three: one large (100 nodes, 79 edges) and one small (26 nodes, 11 edges) give the renderer goldens their range, and a third of the same shape would only add bytes
   **Dependencies**: 2.4, 2.6
 
 - [ ] Checkpoint: run the projector test module twice and diff outputs; review one fixture by hand for lane sanity

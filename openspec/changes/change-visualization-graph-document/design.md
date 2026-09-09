@@ -266,6 +266,24 @@ tracing and shareable views, and a `.canvas` file cannot animate, cannot host a
 walkthrough, and drifts the moment the graph is regenerated. The spike exists
 to disprove that cheaply, and it ships no code into the pipeline either way.
 
+### D12: A change that covers nothing produces no document
+
+The contract requires at least one node and one lane, so "a document showing
+that nothing is covered" cannot exist.  The two ways to satisfy the schema are
+both worse than refusing: a placeholder node puts a claim on the page that no
+artifact supports, and a relaxed local schema would let the Python and Node
+validators disagree, which is the failure D1 exists to prevent.
+
+So the projector writes the coverage report, names the roots it searched, and
+exits 0 without a document.  Exit 0 rather than 1 because the change is
+legitimate -- a documentation or tooling commit covers no analyzed source by
+definition -- and a tooling-only pull request must not fail CI for being
+tooling-only.  No rejection sidecar is written either: nothing was rejected,
+there was simply nothing to draw.
+
+This was found by running the projector on this change itself, which touches
+only `.claude/skills/` and `openspec/`.
+
 ## Risks / Trade-offs
 
 - [Upstream contract bump breaks the vendored schema] → versions are pinned;

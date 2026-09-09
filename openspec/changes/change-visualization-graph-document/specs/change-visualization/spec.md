@@ -152,12 +152,14 @@ CI SHALL post exactly one comment per pull request, identified by a hidden marke
 
 ### Requirement: Coverage is reported, never assumed
 
-The projector SHALL count changed files that the architecture graph does not cover and SHALL write that count as a stat chip and as a `coverage` block beside the document. A change whose covered fraction is below a configurable floor SHALL still render, with a warning chip, so a reviewer knows the picture is partial.
+The projector SHALL count changed files that the architecture graph does not cover and SHALL write that count as a stat chip and as a `coverage` report beside the document. A change whose covered fraction is above zero SHALL still render, with a warning chip, so a reviewer knows the picture is partial. A change that covers nothing SHALL produce no document at all: the contract requires at least one node, and inventing one to satisfy it would put a claim on the page that no artifact supports.
 
 #### Scenario: Change outside analyzed roots
 
 - **WHEN** every changed file lies outside the analyzed source roots
-- **THEN** the document SHALL contain no changed nodes, a coverage chip reading that zero of N files are covered, and the run SHALL exit successfully with a warning
+- **THEN** no document SHALL be written and no rejection sidecar SHALL be written
+- **AND** the coverage report SHALL record that zero of N changed files are covered
+- **AND** the run SHALL exit successfully, naming the roots it searched
 
 #### Scenario: Partial coverage is visible on the comment
 
