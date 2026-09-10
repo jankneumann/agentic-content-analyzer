@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-09-09T12:08:36.278423+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "claude_code",
+    "session_id": null,
+    "summary": "Local gate green across both languages and a real browser. Docker-dependent phases were not run; the CI workflow has not executed against a real pull request, so the comment upsert remains the one unverified path.",
+    "completed_work": [
+      "pytest over both skill suites: 240 passed, 27 skipped",
+      "vitest in web: 84 passed across 10 files, including renderer goldens and comment escaping",
+      "Playwright against the real atlas page: 19 passed, covering colour modes, the test toggle, semantic zoom and the walkthrough",
+      "tsc --noEmit clean; eslint clean on every file this change touches",
+      "openspec validate --strict: valid",
+      "make architecture-check and make atlas-check: both fresh",
+      "End to end on a real range: 101 nodes, 79 edges, 23 of 380 changed files covered"
+    ],
+    "in_progress": [],
+    "decisions": [],
+    "next_steps": [
+      "Open a pull request and watch the workflow post, then push again and confirm the same comment is edited",
+      "Consider whether the assets branch should be created ahead of the first run rather than by it"
+    ],
+    "relevant_files": []
+  }
+}

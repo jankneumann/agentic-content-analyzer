@@ -19,6 +19,13 @@ CSS = """
   --in: #c2410c; --out: #0f766e; --warn-bg: #fff8e6; --warn-border: #e8c675;
   --warn-text: #6b4e00; --shadow: 0 1px 3px rgba(20,22,28,.09);
   --py: #3b5bdb; --sql: #b1479c; --ts: #1a7f8c; --unknown: #8b93a3;
+  /* Change deltas. Removed is drawn ghosted as well as red, so the meaning
+     survives for a reader who cannot distinguish it from amber. */
+  --d-added: #2f9e44; --d-modified: #c77700; --d-removed: #d63a3a; --d-unchanged: #9aa1ae;
+  /* Test coverage. `unknown` is deliberately not on the red-to-green ramp:
+     unmeasured is a different fact from untested. */
+  --cov-0: #d63a3a; --cov-1: #c77700; --cov-2: #8a9a1f; --cov-3: #2f9e44;
+  --cov-unknown: #7c8494;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -27,6 +34,9 @@ CSS = """
     --in: #ff9d66; --out: #4fd1c5; --warn-bg: #2e2617; --warn-border: #6b5a2c;
     --warn-text: #f0d99a; --shadow: 0 1px 3px rgba(0,0,0,.4);
     --py: #8ea6ff; --sql: #e59ad4; --ts: #5fd4e0; --unknown: #7d8595;
+    --d-added: #5fce7f; --d-modified: #e8a33d; --d-removed: #f0736f; --d-unchanged: #79808d;
+    --cov-0: #f0736f; --cov-1: #e8a33d; --cov-2: #b9cb4a; --cov-3: #5fce7f;
+    --cov-unknown: #6d7482;
   }
 }
 :root[data-theme="light"] {
@@ -34,12 +44,18 @@ CSS = """
   --muted: #6b7180; --accent: #3b5bdb; --accent-soft: #e7ecfd;
   --in: #c2410c; --out: #0f766e; --warn-bg: #fff8e6; --warn-border: #e8c675;
   --warn-text: #6b4e00; --py: #3b5bdb; --sql: #b1479c; --ts: #1a7f8c; --unknown: #8b93a3;
+  --d-added: #2f9e44; --d-modified: #c77700; --d-removed: #d63a3a; --d-unchanged: #9aa1ae;
+  --cov-0: #d63a3a; --cov-1: #c77700; --cov-2: #8a9a1f; --cov-3: #2f9e44;
+  --cov-unknown: #7c8494;
 }
 :root[data-theme="dark"] {
   --bg: #14161a; --panel: #1b1e24; --border: #2c313a; --text: #e6e8ee;
   --muted: #9aa2b1; --accent: #8ea6ff; --accent-soft: #22283a;
   --in: #ff9d66; --out: #4fd1c5; --warn-bg: #2e2617; --warn-border: #6b5a2c;
   --warn-text: #f0d99a; --py: #8ea6ff; --sql: #e59ad4; --ts: #5fd4e0; --unknown: #7d8595;
+  --d-added: #5fce7f; --d-modified: #e8a33d; --d-removed: #f0736f; --d-unchanged: #79808d;
+  --cov-0: #f0736f; --cov-1: #e8a33d; --cov-2: #b9cb4a; --cov-3: #5fce7f;
+  --cov-unknown: #6d7482;
 }
 
 * { box-sizing: border-box; }
@@ -129,6 +145,13 @@ input[type="search"]:focus-visible, button:focus-visible, summary:focus-visible 
   padding: 0 3px; flex: none;
 }
 .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.walk {
+  display: flex; gap: 10px; align-items: center; padding: 8px 12px;
+  border-top: 1px solid var(--border); background: var(--panel); font-size: 12px;
+}
+.walk-body { flex: 1; min-width: 0; }
+.walk-body strong { margin-right: 8px; }
+.walk-count { color: var(--muted-text, #7c8494); font-variant-numeric: tabular-nums; }
 .lang-python { background: var(--py); } .lang-sql { background: var(--sql); }
 .lang-typescript { background: var(--ts); } .lang-unknown { background: var(--unknown); }
 .hidden { display: none !important; }
@@ -224,6 +247,14 @@ JS = """
     edgeTypes: {},           // edge type -> enabled
     query: "",
     expanded: {},            // tree node key -> bool
+    // Colour by language (the default), by what a change touched, or by how
+    // well tests reach the code. Only the first is always available.
+    colorMode: "language",
+    // Test files are 57% of this graph's nodes and TEST_COVERS 96% of its
+    // edges, so drawing them turns a picture of the application into a picture
+    // of its test suite. Coverage rides on the covered node instead.
+    showTests: false,
+    step: 0,                 // index into the document's walkthrough
   };
   M.forEach(function (m) { state.langs[m.language] = true; });
   ME.forEach(function (e) { state.edgeTypes[e.type] = true; });
@@ -233,6 +264,144 @@ JS = """
   function isSymbol(id) { return id != null && !!symbolById[id]; }
   function moduleOf(id) { return isSymbol(id) ? symbolById[id].module : id; }
   function langOk(m) { return !!state.langs[m.language]; }
+
+  // A module is a test file when every symbol in it is a test, or when its
+  // path says so. Both are needed: the Python analyzer marks test symbols with
+  // a `test_` kind, ts-morph does not, so a kind-only rule would hide Python
+  // tests and quietly leave TypeScript ones on the canvas -- a toggle that
+  // looks like it works being worse than one that plainly does not.
+  var TEST_PATH = /(^|[/])tests?[/]|[.](test|spec)[.][jt]sx?$|(^|[/])__tests__[/]/;
+  function isTestModule(m) {
+    var kinds = Object.keys(m.kinds || {});
+    if (kinds.length > 0 && kinds.every(function (k) { return k.indexOf("test_") === 0; })) {
+      return true;
+    }
+    return TEST_PATH.test(m.file || "");
+  }
+  function moduleVisible(m) {
+    return langOk(m) && (state.showTests || !isTestModule(m));
+  }
+
+  // ------------------------------------------------------------- colouring
+  var DELTA_VAR = {
+    added: "--d-added", modified: "--d-modified",
+    removed: "--d-removed", unchanged: "--d-unchanged",
+  };
+
+  function coverageColor(m) {
+    // A measured fraction wins when a report was loaded; otherwise the count
+    // of tests reaching the file, bucketed. Neither is a substitute for the
+    // other, so the legend always says which one is in use.
+    if (DATA.meta.testCoverage.source === "line") {
+      if (m.cov == null) return css("--cov-unknown");
+      if (m.cov <= 0) return css("--cov-0");
+      if (m.cov < 0.5) return css("--cov-1");
+      if (m.cov < 0.8) return css("--cov-2");
+      return css("--cov-3");
+    }
+    var n = m.tests || 0;
+    if (n === 0) return css("--cov-0");
+    if (n === 1) return css("--cov-1");
+    if (n <= 4) return css("--cov-2");
+    return css("--cov-3");
+  }
+
+  function nodeColor(m, langCol) {
+    if (state.colorMode === "delta") {
+      // A file the change document never names is not unchanged, it is
+      // out of frame; it gets the neutral rather than a delta colour.
+      return m.delta ? css(DELTA_VAR[m.delta]) : css("--cov-unknown");
+    }
+    if (state.colorMode === "coverage") return coverageColor(m);
+    return langCol[m.language] || css("--unknown");
+  }
+
+  // ------------------------------------------------------- semantic zoom
+  // Past this scale a module card stops being one dot and becomes its symbols.
+  // The same view then answers "which parts of the system changed" zoomed out
+  // and "which function did" zoomed in, without a mode to switch.
+  var EXPAND_K = 2.2;
+  var SYMBOL_R = 3.4;
+  var symbolsByModule = {};
+  SY.forEach(function (sym) {
+    (symbolsByModule[sym.module] || (symbolsByModule[sym.module] = [])).push(sym);
+  });
+
+  function expanding() { return view.k >= EXPAND_K; }
+
+  /** Whether a node is near enough the viewport to be worth expanding. */
+  function onScreen(n, rect) {
+    var sx = rect.width / 2 + view.x + n.x * view.k;
+    var sy = rect.height / 2 + view.y + n.y * view.k;
+    var margin = 140;
+    return sx > -margin && sy > -margin && sx < rect.width + margin && sy < rect.height + margin;
+  }
+
+  /**
+   * Where a module's symbols sit, relative to the module's own centre.
+   *
+   * A golden-angle spiral: deterministic, evenly spread, and anchored on the
+   * centre the module already has. Expansion therefore adds detail without
+   * moving anything -- the reader's map of the graph survives the zoom.
+   */
+  function symbolLayout(n) {
+    var syms = symbolsByModule[n.key] || [];
+    var golden = Math.PI * (3 - Math.sqrt(5));
+    var out = [];
+    for (var i = 0; i < syms.length; i++) {
+      var ang = i * golden;
+      var rad = n.r + 3 + Math.sqrt(i + 0.6) * 6.2;
+      out.push({
+        sym: syms[i],
+        x: n.x + Math.cos(ang) * rad,
+        y: n.y + Math.sin(ang) * rad,
+        r: SYMBOL_R,
+        node: n,
+      });
+    }
+    return out;
+  }
+
+  function symbolColor(sym, langCol, mod) {
+    if (state.colorMode === "delta") {
+      return sym.delta ? css(DELTA_VAR[sym.delta]) : css("--cov-unknown");
+    }
+    if (state.colorMode === "coverage") {
+      if (DATA.meta.testCoverage.source === "line") {
+        if (sym.cov == null) return css("--cov-unknown");
+        if (sym.cov <= 0) return css("--cov-0");
+        if (sym.cov < 0.5) return css("--cov-1");
+        if (sym.cov < 0.8) return css("--cov-2");
+        return css("--cov-3");
+      }
+      var t = sym.tests || 0;
+      if (t === 0) return css("--cov-0");
+      if (t === 1) return css("--cov-1");
+      if (t <= 4) return css("--cov-2");
+      return css("--cov-3");
+    }
+    return langCol[mod.language] || css("--unknown");
+  }
+
+  function coveragePhrase(sym) {
+    if (DATA.meta.testCoverage.source === "line") {
+      if (sym.cov == null) return "not in the coverage report";
+      return Math.round(sym.cov * 100) + "% of lines covered";
+    }
+    var t = sym.tests || 0;
+    if (t === 0) return "no test reaches it";
+    return t === 1 ? "1 test reaches it" : t + " tests reach it";
+  }
+
+  /** The symbols currently drawn, for hit testing and for tests. */
+  var drawnSymbols = [];
+
+  function colorModes() {
+    var modes = ["language"];
+    if (DATA.meta.change && DATA.meta.change.loaded) modes.push("delta");
+    modes.push("coverage");
+    return modes;
+  }
 
   // ---------------------------------------------------- neighbourhood (BFS)
   // Returns {key: hopDistance} over MODULE nodes, following only enabled edge
@@ -282,6 +451,10 @@ JS = """
   var canvas = el("graph"), ctx = canvas.getContext("2d");
   var nodes = [], edges = [], nodeByKey = {};
   var view = { x: 0, y: 0, k: 1 };
+  // A zoom the reader chose -- restored from a shared URL, or reached by
+  // scrolling -- outranks the automatic fit, which otherwise throws away the
+  // grain the link was sent to show. Double-clicking to re-frame clears it.
+  var zoomLock = null;
   var alpha = 1, running = true, fitted = false;
   var hovered = null, dragging = null, panning = null;
 
@@ -295,7 +468,7 @@ JS = """
 
   function buildGraph() {
     nodes = []; nodeByKey = {};
-    M.filter(langOk).forEach(function (m, i) {
+    M.filter(moduleVisible).forEach(function (m, i) {
       var h = seedHash(m.key);
       var ang = (h % 10000) / 10000 * Math.PI * 2;
       var rad = 120 + ((h >>> 13) % 1000) / 1000 * 220;
@@ -415,6 +588,9 @@ JS = """
         else if (sOut && tOut) hi = "out";
       }
       ctx.globalAlpha = sets ? (hi ? 0.95 : 0.06) : 0.3;
+      if (state.colorMode === "delta" && !sets && !(e.s.mod.delta || e.t.mod.delta)) {
+        ctx.globalAlpha = 0.05;
+      }
       ctx.strokeStyle = hi === "in" ? colIn : hi === "out" ? colOut : colMuted;
       ctx.lineWidth = (hi ? 1.5 : 0.8) + Math.min(2.4, Math.log(1 + e.w) * 0.6);
       // Quadratic curve keeps reciprocal edges visually distinct.
@@ -439,6 +615,8 @@ JS = """
     });
 
     var annotated = [];
+    drawnSymbols = [];
+    var expand = expanding();
     nodes.forEach(function (n) {
       var role = null, dist = 0;
       if (sets) {
@@ -446,16 +624,50 @@ JS = """
         else if (n.key in sets.outgoing) { role = "out"; dist = sets.outgoing[n.key]; }
         else if (n.key in sets.incoming) { role = "in"; dist = sets.incoming[n.key]; }
       }
+      var opens = expand && (!sets || role) && onScreen(n, r);
       ctx.globalAlpha = sets ? (role ? 1 : 0.13) : 1;
+      // An opened card becomes a container: its own fill drops back so the
+      // symbols inside it are what the reader sees. Drawing both at full
+      // weight hides the symbols behind the disc they belong to.
+      if (opens) ctx.globalAlpha *= 0.22;
       ctx.beginPath();
       ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-      ctx.fillStyle = langCol[n.mod.language] || css("--unknown");
+      ctx.fillStyle = nodeColor(n.mod, langCol);
+      if (state.colorMode === "delta") {
+        // Twelve changed files among eleven hundred are invisible at equal
+        // weight, so what the document never names recedes.
+        if (!n.mod.delta) ctx.globalAlpha *= 0.22;
+        // A removed file is ghosted as well as coloured, so the meaning does
+        // not rest on telling red from amber.
+        else if (n.mod.delta === "removed") ctx.globalAlpha *= 0.45;
+      }
       ctx.fill();
       if (role === "root" || n === hovered) {
         ctx.strokeStyle = colText; ctx.lineWidth = 2.2; ctx.stroke();
       } else if (role === "in" || role === "out") {
         ctx.strokeStyle = role === "in" ? colIn : colOut;
         ctx.lineWidth = 2.2; ctx.stroke();
+      }
+      if (opens) {
+        // A thin rim marks the file the symbols belong to, so a cluster still
+        // reads as one module rather than loose dots.
+        ctx.globalAlpha = sets ? (role ? 0.5 : 0.1) : 0.5;
+        ctx.strokeStyle = nodeColor(n.mod, langCol);
+        ctx.lineWidth = 1.2 / view.k;
+        ctx.stroke();
+
+        symbolLayout(n).forEach(function (item) {
+          ctx.globalAlpha = sets ? (role ? 1 : 0.13) : 1;
+          if (state.colorMode === "delta" && !item.sym.delta) ctx.globalAlpha *= 0.3;
+          ctx.beginPath();
+          ctx.arc(item.x, item.y, item.r, 0, Math.PI * 2);
+          ctx.fillStyle = symbolColor(item.sym, langCol, n.mod);
+          ctx.fill();
+          if (state.selected === item.sym.id) {
+            ctx.strokeStyle = colText; ctx.lineWidth = 1.6 / view.k; ctx.stroke();
+          }
+          drawnSymbols.push(item);
+        });
       }
       annotated.push({ n: n, role: role, dist: dist });
     });
@@ -483,7 +695,8 @@ JS = """
       var forced = item.role === "root" || n === hovered;
       // When nothing is selected, small peripheral nodes stay unlabelled until
       // the user zooms in; that keeps the default view legible.
-      if (!forced && view.k < 0.55 && n.r < 9) continue;
+      var isSubject = state.colorMode === "delta" && !!n.mod.delta;
+      if (!forced && !isSubject && view.k < 0.55 && n.r < 9) continue;
       if (!forced && sets && !item.role) continue;
 
       var sx = rect.width / 2 + view.x + n.x * view.k;
@@ -514,6 +727,10 @@ JS = """
     if (item.role === "root") return 1e6;
     if (item.n === hovered) return 9e5;
     if (item.role) return 5e5 - item.dist * 1000 + item.n.r;
+    // In delta mode the changed files are the subject, so they are labelled
+    // ahead of the hubs. Ranking by size alone names the busiest unchanged
+    // module and leaves the twelve that changed anonymous.
+    if (state.colorMode === "delta" && item.n.mod.delta) return 4e5 + item.n.r;
     return item.n.r;
   }
 
@@ -537,7 +754,7 @@ JS = """
     var rect = canvas.getBoundingClientRect();
     var pad = padding == null ? 46 : padding;
     var w = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
-    view.k = Math.max(0.18, Math.min(2.4,
+    view.k = zoomLock != null ? zoomLock : Math.max(0.18, Math.min(2.4,
       Math.min((rect.width - pad * 2) / w, (rect.height - pad * 2) / h)));
     view.x = -((minX + maxX) / 2) * view.k;
     view.y = -((minY + maxY) / 2) * view.k;
@@ -558,6 +775,17 @@ JS = """
     return null;
   }
 
+  // Symbols are hit before modules, because at this zoom the symbol is what
+  // the reader is pointing at; the module underneath is context.
+  function hitSymbol(p) {
+    var reach = (SYMBOL_R + 2.5) * (SYMBOL_R + 2.5);
+    for (var i = drawnSymbols.length - 1; i >= 0; i--) {
+      var it = drawnSymbols[i], dx = p.x - it.x, dy = p.y - it.y;
+      if (dx * dx + dy * dy <= reach) return it;
+    }
+    return null;
+  }
+
   // ------------------------------------------------------------ interaction
   var tip = el("tip");
   canvas.addEventListener("mousemove", function (ev) {
@@ -570,7 +798,21 @@ JS = """
       view.x += ev.clientX - panning.x; view.y += ev.clientY - panning.y;
       panning = { x: ev.clientX, y: ev.clientY }; draw(); return;
     }
-    var n = hit(toWorld(ev));
+    var world = toWorld(ev);
+    var sym = expanding() ? hitSymbol(world) : null;
+    if (sym) {
+      if (hovered !== sym.node) { hovered = sym.node; draw(); }
+      tip.innerHTML = "<strong>" + esc(sym.sym.name) + "</strong><br>" +
+        esc(sym.sym.kind) + " &middot; line " + sym.sym.line + "<br>" +
+        esc(coveragePhrase(sym.sym)) +
+        (sym.sym.delta ? "<br>" + esc(sym.sym.delta) + " by this change" : "");
+      tip.classList.add("show");
+      var rs = canvas.getBoundingClientRect();
+      tip.style.left = Math.min(rs.width - 270, ev.clientX - rs.left + 12) + "px";
+      tip.style.top = (ev.clientY - rs.top + 12) + "px";
+      return;
+    }
+    var n = hit(world);
     if (n !== hovered) { hovered = n; draw(); }
     if (n) {
       var kinds = Object.keys(n.mod.kinds).map(function (k) { return n.mod.kinds[k] + " " + k; });
@@ -597,18 +839,26 @@ JS = """
     dragging = null; panning = null; canvas.classList.remove("dragging");
   });
   canvas.addEventListener("click", function (ev) {
-    var n = hit(toWorld(ev));
+    var world = toWorld(ev);
+    var sym = expanding() ? hitSymbol(world) : null;
+    if (sym) { select(sym.sym.id); return; }
+    var n = hit(world);
     select(n ? n.key : null);
   });
   canvas.addEventListener("dblclick", function () {
     nodes.forEach(function (n) { n.pinned = false; });
-    alpha = 0.7; fitted = false; wake();
+    // An explicit re-frame is the one thing that gives the zoom back to the fit.
+    zoomLock = null;
+    alpha = 0.7; fitted = false; wake(); syncHash();
   });
+  var zoomSettle = null;
   canvas.addEventListener("wheel", function (ev) {
     ev.preventDefault();
     var f = Math.exp(-ev.deltaY * 0.0016);
-    view.k = Math.max(0.18, Math.min(5, view.k * f));
+    view.k = zoomLock = Math.max(0.18, Math.min(5, view.k * f));
     draw();
+    if (zoomSettle) clearTimeout(zoomSettle);
+    zoomSettle = setTimeout(syncHash, 220);
   }, { passive: false });
 
   function wake() { if (!running) { running = true; requestAnimationFrame(tick); } }
@@ -833,6 +1083,12 @@ JS = """
     if (offLangs.length) p.set("nolang", offLangs.join(","));
     var offTypes = Object.keys(state.edgeTypes).filter(function (t) { return !state.edgeTypes[t]; });
     if (offTypes.length) p.set("noedge", offTypes.join(","));
+    if (state.colorMode !== "language") p.set("mode", state.colorMode);
+    if (state.showTests) p.set("tests", "1");
+    // Grain is part of the view: a URL captured while expanded must reopen
+    // expanded, or the link shows a different picture than the one shared.
+    if (Math.abs(view.k - 1) > 0.02) p.set("z", view.k.toFixed(3));
+    if (state.step) p.set("step", String(state.step + 1));
     var h = p.toString();
     history.replaceState(null, "", h ? "#" + h : location.pathname);
   }
@@ -844,9 +1100,136 @@ JS = """
     state.depth = Math.max(1, Math.min(4, parseInt(p.get("depth") || "1", 10) || 1));
     state.query = p.get("q") || "";
     state.selected = p.get("sel") || null;
+    var mode = p.get("mode");
+    if (mode && colorModes().indexOf(mode) >= 0) state.colorMode = mode;
+    state.showTests = p.get("tests") === "1";
+    var step = parseInt(p.get("step") || "1", 10);
+    state.step = isFinite(step) && step > 0 ? step - 1 : 0;
+    var zoom = parseFloat(p.get("z") || "");
+    if (isFinite(zoom) && zoom > 0) {
+      view.k = zoomLock = Math.max(0.18, Math.min(5, zoom));
+    }
   }
 
+  // ========================================================== WALKTHROUGH
+  // An ordered tour the document authored. The page only plays it: each step
+  // is the same view state a reader could reach by hand, so nothing here can
+  // show something the graph does not.
+  var WALK = (DATA.meta.change && DATA.meta.change.walkthrough) || [];
+
+  function playStep(index) {
+    if (!WALK.length) return;
+    state.step = Math.max(0, Math.min(WALK.length - 1, index));
+    var step = WALK[state.step];
+
+    el("walk-heading").textContent = step.heading;
+    el("walk-body").textContent = step.body;
+    el("walk-count").textContent = (state.step + 1) + " / " + WALK.length;
+
+    // Focus becomes the selection, so the existing highlight-and-dim does the
+    // work, and the framing moves the viewport rather than any node.
+    var keys = {};
+    step.nodes.forEach(function (id) {
+      var key = moduleOf(id);
+      if (nodeByKey[key]) keys[key] = true;
+    });
+    state.selected = step.nodes.length === 1 ? step.nodes[0] : null;
+    frameKeys(Object.keys(keys));
+    renderDetails();
+    syncHash();
+    draw();
+  }
+
+  /** Pan and zoom so the named modules fill the view. Nothing is moved. */
+  function frameKeys(keys) {
+    if (!keys.length) return;
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    keys.forEach(function (k) {
+      var n = nodeByKey[k];
+      if (!n) return;
+      minX = Math.min(minX, n.x - n.r); maxX = Math.max(maxX, n.x + n.r);
+      minY = Math.min(minY, n.y - n.r); maxY = Math.max(maxY, n.y + n.r);
+    });
+    if (!isFinite(minX)) return;
+    var rect = canvas.getBoundingClientRect();
+    var pad = 90;
+    var w = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
+    view.k = zoomLock = Math.max(0.18, Math.min(5,
+      Math.min((rect.width - pad * 2) / w, (rect.height - pad * 2) / h)));
+    view.x = -((minX + maxX) / 2) * view.k;
+    view.y = -((minY + maxY) / 2) * view.k;
+  }
+
+  function renderWalk() {
+    if (!WALK.length) return;
+    el("walk").classList.remove("hidden");
+    playStep(state.step || 0);
+  }
+
+  el("walk-prev").addEventListener("click", function () { playStep(state.step - 1); });
+  el("walk-next").addEventListener("click", function () { playStep(state.step + 1); });
+  document.addEventListener("keydown", function (ev) {
+    if (!WALK.length) return;
+    if (ev.target && /^(INPUT|TEXTAREA)$/.test(ev.target.tagName)) return;
+    // `w` plays the tour from wherever it stands; the arrows step it.
+    if (ev.key === "w" || ev.key === "W") playStep((state.step + 1) % WALK.length);
+    else if (ev.key === "]") playStep(state.step + 1);
+    else if (ev.key === "[") playStep(state.step - 1);
+  });
+
   // ============================================================== CONTROLS
+  function renderLegend() {
+    var rows = [
+      ['<span class="swatch" style="background:var(--in)"></span> callers (inbound)'],
+      ['<span class="swatch" style="background:var(--out)"></span> dependencies (outbound)'],
+    ];
+    function row(varName, label) {
+      return ['<span class="swatch" style="background:var(' + varName + ')"></span> ' + esc(label)];
+    }
+    if (state.colorMode === "delta") {
+      rows.push(row("--d-added", "added"), row("--d-modified", "modified"),
+                row("--d-removed", "removed (ghosted)"), row("--d-unchanged", "unchanged"),
+                row("--cov-unknown", "not in this change"));
+    } else if (state.colorMode === "coverage") {
+      // Which source is in use is part of the legend, because the two scales
+      // mean different things and the colours alone cannot say which.
+      if (DATA.meta.testCoverage.source === "line") {
+        rows.push(row("--cov-0", "0% of lines"), row("--cov-1", "under 50%"),
+                  row("--cov-2", "50-80%"), row("--cov-3", "over 80%"),
+                  row("--cov-unknown", "not in the report"));
+        rows.push(["from " + esc(DATA.meta.testCoverage.report || "a line report")]);
+      } else {
+        rows.push(row("--cov-0", "no test reaches it"), row("--cov-1", "1 test"),
+                  row("--cov-2", "2-4 tests"), row("--cov-3", "5 or more"));
+        rows.push(["from test linkage, not a line report"]);
+      }
+    }
+    el("legend").innerHTML = rows.map(function (r) { return "<div>" + r[0] + "</div>"; }).join("");
+  }
+
+  function renderColorChips() {
+    el("color-chips").innerHTML = colorModes().map(function (m) {
+      return '<button class="chip" data-mode="' + esc(m) + '" aria-pressed="' +
+        (state.colorMode === m) + '">' + esc(m) + "</button>";
+    }).join("");
+    var tests = el("show-tests");
+    tests.setAttribute("aria-pressed", String(state.showTests));
+  }
+
+  el("color-chips").addEventListener("click", function (ev) {
+    var b = ev.target.closest("[data-mode]"); if (!b) return;
+    state.colorMode = b.getAttribute("data-mode");
+    renderColorChips(); renderLegend(); syncHash();
+    // Recolouring moves nothing, so the layout is left exactly as it was.
+    draw();
+  });
+
+  el("show-tests").addEventListener("click", function () {
+    state.showTests = !state.showTests;
+    renderColorChips(); syncHash();
+    buildGraph(); applyTreeFilter();
+  });
+
   function renderChips() {
     el("lang-chips").innerHTML = Object.keys(state.langs).sort().map(function (l) {
       return '<button class="chip" data-lang="' + esc(l) + '" aria-pressed="' +
@@ -908,6 +1291,25 @@ JS = """
 
   // ================================================================== BOOT
   readHash();
+  renderColorChips();
+  renderLegend();
+
+  // A deliberate, read-only inspection surface. This page is a developer tool
+  // with no build step, so a browser test has no other way to ask where the
+  // layout put things; exposing it is cheaper than a test-only build.
+  window.__atlas = {
+    nodes: function () {
+      return nodes.map(function (n) {
+        return { key: n.key, x: n.x, y: n.y, r: n.r };
+      });
+    },
+    state: function () { return JSON.parse(JSON.stringify(state)); },
+    view: function () { return { k: view.k, x: view.x, y: view.y }; },
+    setZoom: function (k) { view.k = zoomLock = k; draw(); },
+    symbols: function () {
+      return drawnSymbols.map(function (s) { return s.sym.id; });
+    },
+  };
   renderChips();
   buildTree();
   el("depth").value = String(state.depth);
@@ -917,6 +1319,8 @@ JS = """
   buildGraph();
   revealAndMark(state.selected);
   renderDetails();
+  // After the graph exists, so a step can frame the nodes it names.
+  renderWalk();
   window.addEventListener("resize", resize);
   resize();
   requestAnimationFrame(tick);

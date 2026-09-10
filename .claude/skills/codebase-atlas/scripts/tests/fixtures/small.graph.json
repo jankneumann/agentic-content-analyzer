@@ -1,0 +1,131 @@
+{
+  "edges": [
+    {
+      "confidence": "high",
+      "from": "py:api.routes.signup",
+      "to": "py:services.user.create",
+      "type": "call"
+    },
+    {
+      "confidence": "high",
+      "from": "py:services.user.create",
+      "to": "py:services.mail.send",
+      "type": "call"
+    },
+    {
+      "confidence": "high",
+      "from": "py:tests.test_user.test_create",
+      "to": "py:services.user.create",
+      "type": "TEST_COVERS"
+    },
+    {
+      "confidence": "high",
+      "from": "py:tests.test_user.test_audit",
+      "to": "py:services.user.create",
+      "type": "TEST_COVERS"
+    }
+  ],
+  "entrypoints": [
+    "py:api.routes.signup"
+  ],
+  "nodes": [
+    {
+      "file": "api/routes.py",
+      "id": "py:api.routes.signup",
+      "kind": "function",
+      "language": "python",
+      "name": "signup",
+      "signatures": {},
+      "span": {
+        "end": 40,
+        "start": 5
+      },
+      "tags": []
+    },
+    {
+      "file": "services/mail.py",
+      "id": "py:services.mail.send",
+      "kind": "function",
+      "language": "python",
+      "name": "send",
+      "signatures": {},
+      "span": {
+        "end": 25,
+        "start": 1
+      },
+      "tags": []
+    },
+    {
+      "file": "services/user.py",
+      "id": "py:services.user.audit",
+      "kind": "function",
+      "language": "python",
+      "name": "audit",
+      "signatures": {},
+      "span": {
+        "end": 45,
+        "start": 30
+      },
+      "tags": []
+    },
+    {
+      "file": "services/user.py",
+      "id": "py:services.user.create",
+      "kind": "function",
+      "language": "python",
+      "name": "create",
+      "signatures": {},
+      "span": {
+        "end": 20,
+        "start": 1
+      },
+      "tags": []
+    },
+    {
+      "file": "tests/test_user.py",
+      "id": "py:tests.test_user.test_audit",
+      "kind": "test_function",
+      "language": "python",
+      "name": "test_audit",
+      "signatures": {},
+      "span": {
+        "end": 30,
+        "start": 20
+      },
+      "tags": []
+    },
+    {
+      "file": "tests/test_user.py",
+      "id": "py:tests.test_user.test_create",
+      "kind": "test_function",
+      "language": "python",
+      "name": "test_create",
+      "signatures": {},
+      "span": {
+        "end": 12,
+        "start": 1
+      },
+      "tags": []
+    },
+    {
+      "file": "src/lib/user.test.ts",
+      "id": "ts:web/src/lib/user.test.ts:describes",
+      "kind": "function",
+      "language": "typescript",
+      "name": "describes",
+      "signatures": {},
+      "span": {
+        "end": 10,
+        "start": 1
+      },
+      "tags": []
+    }
+  ],
+  "snapshots": [
+    {
+      "generated_at": "2026-01-01T00:00:00+00:00",
+      "git_sha": "0000000000000000000000000000000000000000",
+      "tool_versions": {}
+    }
+  ]
+}

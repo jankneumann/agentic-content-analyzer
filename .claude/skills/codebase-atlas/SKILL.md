@@ -39,6 +39,8 @@ graph is wrong or narrow, the atlas says so rather than hiding it.
 | `--json-only` | Print the view-model as JSON; render nothing |
 | `--no-coverage` | Skip the on-disk coverage scan (faster, drops the banner) |
 | `--graph PATH` | Read a different graph artifact |
+| `--change PATH` | Colour by a change document (see `/refresh-architecture`) |
+| `--test-coverage PATH` | Read measured line coverage, e.g. `coverage.xml` |
 
 ## Usage
 
@@ -83,9 +85,30 @@ Every entry is clickable, so you can walk the call graph without leaving the
 page. Selecting a symbol gives symbol-level precision; selecting a file gives
 the aggregated module view.
 
-Any view is a URL: selection, hop depth, filter text, and disabled
-language/edge-type filters all round-trip through the location hash, so a view
-can be pasted into a PR or an issue.
+**Colour modes** — `language` by default. `coverage` colours by how well tests
+reach the code, from `TEST_COVERS` linkage or from a line report when
+`--test-coverage` supplies one newer than the sources; a stale report is refused
+rather than trusted, and the legend always names the source in use. A symbol no
+test reaches and a symbol the report never mentions get different colours,
+because absence of data is not absence of tests. `delta` appears when `--change`
+supplies a change document, colouring what it names and receding everything
+else.
+
+**Test files are hidden** until the `tests` toggle asks for them. They are the
+majority of this graph's nodes, so drawing them turns a picture of the
+application into a picture of its test suite.
+
+**Node-level zoom** — past a threshold a file opens in place into its symbols,
+each carrying its own colour, and collapses again below it. No module moves when
+it opens.
+
+**Walkthrough** — a change document carrying one gets a step rail; steps advance
+with the arrows or `w`, and each frames the view on the files it names.
+
+Any view is a URL: selection, hop depth, filter text, disabled language and
+edge-type filters, colour mode, test visibility, zoom and walkthrough step all
+round-trip through the location hash, so a view can be pasted into a PR or an
+issue.
 
 ## Coverage honesty
 
@@ -121,13 +144,18 @@ not move because it was clicked, or the reader loses their mental map.
   (`documentation.inventory`, `api.contracts`). The atlas is the visual
   counterpart and shares its generate/check exit-code contract
   (`0` fresh · `1` error · `2` drift).
-- The generated HTML is **gitignored**: it is derived, ~650 KB, and not
-  meaningfully diffable. Regenerate it with `make atlas` instead of committing it.
+- The generated HTML is **gitignored**: it is derived, large, and not
+  meaningfully diffable. Regenerate it with `make atlas` instead of committing
+  it. On this repository it is roughly 18 MB, because test functions are 57% of
+  the graph's nodes and `TEST_COVERS` is 96% of its edges.
 
 ## Scope
 
 This skill renders what the graph contains: files, symbols, call edges, and
 import edges. It does not add extraction, a graph database, a server, or an
-LLM-backed query surface. Those are later phases of
-`docs/proposals/codebase-visualization-tool.md`, deliberately not prerequisites
-for the page existing.
+LLM-backed query surface, and it never invokes a model.
+
+Change visualization -- colouring the graph by what a diff touched, test
+coverage as a colour mode, node-level zoom, and guided walkthroughs -- is
+specified by the OpenSpec change `change-visualization-graph-document` and
+builds on this page rather than replacing it.

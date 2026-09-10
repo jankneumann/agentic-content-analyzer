@@ -1,6 +1,6 @@
 # Makefile for common development tasks
 
-.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format workflow-contracts workflow-contracts-check db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai falkordb-up falkordb-down test-e2e-live tauri-setup tauri-dev tauri-build tauri-icons test-tauri mcp-install mcp-install-claude mcp-install-codex mcp-install-desktop mcp-install-claude-desktop mcp-install-codex-desktop mcp-uninstall mcp-uninstall-desktop mcp-uninstall-claude-desktop mcp-uninstall-codex-desktop architecture-refresh architecture-check context-drift-gate context-refresh decisions decisions-check lint-ci
+.PHONY: help install dev-install setup start stop restart logs clean test lint type-check format workflow-contracts workflow-contracts-check db-migrate db-upgrade db-downgrade api web dev dev-bg dev-logs dev-stop ensure-services opik-up opik-down opik-logs supabase-up supabase-down supabase-logs langfuse-up langfuse-down langfuse-logs dev-local dev-opik dev-supabase dev-staging dev-langfuse full-up full-down verify-profile verify-opik verify-staging verify-langfuse hoverfly-up hoverfly-down hoverfly-status test-hoverfly test-langfuse neon-list neon-create neon-delete neon-clean test-neon crawl4ai-up crawl4ai-down crawl4ai-logs test-crawl4ai falkordb-up falkordb-down test-e2e-live tauri-setup tauri-dev tauri-build tauri-icons test-tauri mcp-install mcp-install-claude mcp-install-codex mcp-install-desktop mcp-install-claude-desktop mcp-install-codex-desktop mcp-uninstall mcp-uninstall-desktop mcp-uninstall-claude-desktop mcp-uninstall-codex-desktop architecture-refresh architecture-check atlas atlas-check change-graph context-drift-gate context-refresh decisions decisions-check lint-ci
 
 help:  ## Show this help message
 	@echo "Available commands:"
@@ -1011,6 +1011,27 @@ architecture-refresh:  ## Refresh architecture artifacts via the STAGED, provena
 
 architecture-check:  ## Read-only architecture freshness check (writes nothing; exit 0 only when fresh)
 	@$(PYTHON) $(SKILLS_DIR)/refresh-architecture/scripts/run_architecture.py --check
+
+atlas:  ## Render the interactive architecture atlas (self-contained HTML, gitignored)
+	@# Rendering only: every fact on the page comes from artifacts
+	@# architecture-refresh already produced. Run that first if the atlas
+	@# reports staleness.
+	@$(PYTHON) $(SKILLS_DIR)/codebase-atlas/scripts/build_atlas.py
+
+atlas-check:  ## Read-only atlas freshness check (0 = fresh, 2 = stale, 1 = error)
+	@# Shares the generate/check exit-code contract used by the deterministic
+	@# context producers, so CI can treat drift and failure differently.
+	@$(PYTHON) $(SKILLS_DIR)/codebase-atlas/scripts/build_atlas.py --check
+
+change-graph:  ## Project a change onto the architecture graph (BASE=<ref>, default origin/main)
+	@# Derives every delta from the architecture artifacts and the git diff.
+	@# No model participates; narration is a separate, optional step.
+	@# Pass BASE_GRAPH=<path> to distinguish added and removed symbols: the
+	@# architecture graph is gitignored, so there is no committed history to
+	@# compare against without one.
+	@$(PYTHON) $(SKILLS_DIR)/refresh-architecture/scripts/project_change_graph.py \
+		--base $(or $(BASE),origin/main) \
+		$(if $(BASE_GRAPH),--base-graph $(BASE_GRAPH),)
 
 context-drift-gate:  ## Read-only deterministic drift gate (0 = fresh, 2 = blocking drift, 1 = apparatus failure)
 	@# Read-only by contract: this must never mutate the tree, because

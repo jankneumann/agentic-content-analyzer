@@ -24,6 +24,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | [Unified workflow cutover](docs/UNIFIED_WORKFLOW_CUTOVER.md) | July 2026 `/api/v1` contract 2.0.0 production evidence |
 | [Obsidian Vault Ingest](docs/OBSIDIAN_VAULT_INGEST.md) | Web Clipper vault ingress: allowed roots, clip contract, privacy, troubleshooting |
 | [Search](docs/SEARCH.md) | Hybrid BM25+vector search, embedding providers, chunking |
+| [**Change Visualization**](docs/CHANGE_VISUALIZATION.md) | Draw what a change touches: `make change-graph`, the vendored contract, corrections, narration, the PR comment, and the atlas delta and coverage colour modes |
 | [Deployment](docs/MOBILE_DEPLOYMENT.md) | Railway deployment, Docker, migrations, CORS |
 | [**Backup & Restore**](docs/BACKUP_RESTORE.md) | gx-10 off-site backup: `aca backup`, age encryption, key escrow, multi-store restore runbook |
 | [Deploy Secrets](docs/DEPLOY_SECRETS.md) | `aca deploy sync-secrets`: push local secrets to Railway (allowlist, dry-run) |
