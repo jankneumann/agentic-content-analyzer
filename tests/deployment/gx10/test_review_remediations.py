@@ -379,6 +379,11 @@ def test_gx10_runtime_uses_a_pinned_rootful_podman_compose_provider() -> None:
     assert 'OPENBAO_NAME="${PROJECT}_openbao_1"' in runtime_source
     assert "require_openbao_current" in runtime_source
     assert "compose down" not in runtime_source
+    # The sweep stops first, removes with --force, and fails loudly if anything is left.
+    assert "could not remove project containers" in runtime_source
+    assert runtime_source.index('"$PODMAN" stop -t "$DOWN_TIMEOUT"') < runtime_source.index(
+        "rm -f --depend -t 0"
+    )
     # Schema migration runs from a throwaway api container after the
     # infrastructure is healthy and before any application role is created.
     assert "compose run --rm --no-deps -T api alembic upgrade head" in runtime_source

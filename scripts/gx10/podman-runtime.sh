@@ -40,7 +40,7 @@ INFRASTRUCTURE=(
 
 PODMAN="${GX10_PODMAN_BIN:-/usr/bin/podman}"
 OPENBAO_NAME="${PROJECT}_openbao_1"
-DOWN_TIMEOUT="${GX10_RUNTIME_DOWN_TIMEOUT_SECONDS:-45}"
+DOWN_TIMEOUT="${GX10_RUNTIME_DOWN_TIMEOUT_SECONDS:-30}"
 
 compose() { "${COMPOSE[@]}" "$@"; }
 
@@ -53,13 +53,27 @@ compose() { "${COMPOSE[@]}" "$@"; }
 # secrets chain; recreating it here would leave it sealed (its healthcheck is
 # `bao status`, which reports sealed as unhealthy) with nothing left in the
 # chain that holds the unseal key.
-sweep_project_containers() {
-  local ids=() line
+project_containers_except_openbao() {
+  local line
   while read -r line; do
-    [[ "${line#* }" == "$OPENBAO_NAME" ]] || ids+=("${line%% *}")
+    [[ "${line#* }" == "$OPENBAO_NAME" ]] || printf '%s\n' "${line%% *}"
   done < <("$PODMAN" ps -a --filter "label=io.podman.compose.project=$PROJECT" --format '{{.ID}} {{.Names}}')
+}
+
+sweep_project_containers() {
+  local ids=() attempt
+  mapfile -t ids < <(project_containers_except_openbao)
   (( ${#ids[@]} )) || return 0
-  "$PODMAN" rm -f --depend -t "$DOWN_TIMEOUT" "${ids[@]}" >/dev/null
+  # Stop everything first so no container waits on a client that is itself
+  # waiting to stop (PostgreSQL's smart shutdown), then remove with --force.
+  "$PODMAN" stop -t "$DOWN_TIMEOUT" "${ids[@]}" >/dev/null 2>&1 || true
+  for attempt in 1 2; do
+    mapfile -t ids < <(project_containers_except_openbao)
+    (( ${#ids[@]} )) || return 0
+    "$PODMAN" rm -f --depend -t 0 "${ids[@]}" >/dev/null 2>&1 || true
+  done
+  mapfile -t ids < <(project_containers_except_openbao)
+  (( ${#ids[@]} == 0 )) || { echo "gx10 could not remove project containers: ${ids[*]}" >&2; return 1; }
 }
 
 # The runtime never touches OpenBao, so it must already run and match the

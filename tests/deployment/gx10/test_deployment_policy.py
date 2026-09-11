@@ -419,6 +419,8 @@ def test_memory_hungry_services_get_more_than_the_default_cap() -> None:
     web = _service(compose, "langfuse-web")
     assert gib(web["deploy"]["resources"]["limits"]["memory"]) >= 4
     assert web["environment"]["NODE_OPTIONS"] == "--max-old-space-size=3072"
+    # Podman sets HOSTNAME to the container id and Next.js binds to it.
+    assert web["environment"]["HOSTNAME"] == "0.0.0.0"  # noqa: S104 - this is the point
     worker = _service(compose, "langfuse-worker")
     assert gib(worker["deploy"]["resources"]["limits"]["memory"]) >= 2
     assert worker["environment"]["NODE_OPTIONS"] == "--max-old-space-size=1536"

@@ -20,7 +20,9 @@ ExecStop=/opt/aca/scripts/gx10/podman-runtime.sh down
 Restart=on-failure
 RestartSec=15s
 TimeoutStartSec=360
-TimeoutStopSec=120
+# A full sweep stops every container in parallel with a 30s grace, then
+# force-removes; the budget covers a slow PostgreSQL shutdown with margin.
+TimeoutStopSec=300
 NoNewPrivileges=yes
 
 [Install]
