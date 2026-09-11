@@ -23,6 +23,20 @@ SERVICES=(
   scheduler
   maintenance
 )
+# Everything the application needs; started and proven healthy before the
+# schema migration runs and the application roles are created.
+INFRASTRUCTURE=(
+  app-postgres
+  langfuse-postgres
+  redis
+  falkordb
+  clickhouse
+  minio
+  openbao
+  squid
+  langfuse-web
+  langfuse-worker
+)
 
 PODMAN="${GX10_PODMAN_BIN:-/usr/bin/podman}"
 DOWN_TIMEOUT="${GX10_RUNTIME_DOWN_TIMEOUT_SECONDS:-45}"
@@ -51,10 +65,10 @@ recreate_project_networks() {
   "$PODMAN" network rm "${nets[@]}" >/dev/null
 }
 
-wait_for_runtime() {
+wait_for_services() {
   local deadline service container status
   deadline=$((SECONDS + TIMEOUT_SECONDS))
-  for service in "${SERVICES[@]}"; do
+  for service in "$@"; do
     while true; do
       # podman-compose 1.0.6 has no per-service `ps -q`; resolve through labels.
       container="$(/usr/bin/podman ps -a --filter "label=io.podman.compose.project=$PROJECT" --filter "label=com.docker.compose.service=$service" --format '{{.ID}}' | head -n 1)"
@@ -73,6 +87,16 @@ wait_for_runtime() {
   done
 }
 
+wait_for_runtime() { wait_for_services "${SERVICES[@]}"; }
+
+# The image entrypoint runs `alembic upgrade head` on Railway; this overlay
+# starts uvicorn and the workers directly, and the workers fail closed on a
+# stale schema with only five restarts. Migrate from a throwaway api container
+# (same image, env, and networks) before any application role exists.
+run_migrations() {
+  compose run --rm --no-deps -T api alembic upgrade head
+}
+
 case "${1:-}" in
   up)
     "$ROOT_DIR/scripts/gx10/check_persistence_ownership.py" --compose "$COMPOSE_FILE"
@@ -82,6 +106,9 @@ case "${1:-}" in
     # therefore recreates every container; all state lives on bind mounts.
     sweep_project_containers
     recreate_project_networks
+    compose up -d "${INFRASTRUCTURE[@]}"
+    wait_for_services "${INFRASTRUCTURE[@]}"
+    run_migrations
     compose up -d
     wait_for_runtime
     ;;
