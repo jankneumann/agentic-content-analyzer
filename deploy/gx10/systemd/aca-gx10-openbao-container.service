@@ -15,10 +15,14 @@ Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/opt/aca
 EnvironmentFile=/etc/aca/gx10-images.env
+# Recreate OpenBao when the overlay changed; this unit runs before any dependent.
+Environment=GX10_ENSURE_RECREATE_STALE=1
 ExecStartPre=/opt/aca/scripts/gx10/check_persistence_ownership.py --service openbao
 ExecStart=/opt/aca/scripts/gx10/ensure_service.sh openbao
 ExecStartPost=/opt/aca/scripts/gx10/check_openbao_container_started.sh
 UMask=0077
 NoNewPrivileges=yes
 
-# Dependency-driven only. The main GX-10 runtime owns normal stack shutdown.
+# Dependency-driven only. The main GX-10 runtime owns every other container's
+# lifecycle and leaves OpenBao to this unit, so it stays unsealed across
+# runtime restarts for the secrets and backup chains.

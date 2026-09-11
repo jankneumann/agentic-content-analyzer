@@ -81,3 +81,16 @@ def test_ownership_recipe_matches_compose_users() -> None:
                     f"{host} shared by differing users"
                 )
     assert declared == expected
+
+
+def test_start_keeps_openbao_and_unseals_before_the_runtime() -> None:
+    source = MAKEFILE.read_text(encoding="utf-8")
+    recipe = source.split("\nstart:", 1)[1].split("\n\n", 1)[0]
+    assert '$$2 != "$(PROJECT)_openbao_1"' in recipe
+    order = [
+        recipe.index("podman rm -f --depend"),
+        recipe.index("systemctl restart aca-gx10-openbao-container.service"),
+        recipe.index("systemctl restart aca-gx10-secrets.service"),
+        recipe.index("systemctl start aca-gx10.service"),
+    ]
+    assert order == sorted(order)

@@ -39,19 +39,47 @@ INFRASTRUCTURE=(
 )
 
 PODMAN="${GX10_PODMAN_BIN:-/usr/bin/podman}"
+OPENBAO_NAME="${PROJECT}_openbao_1"
 DOWN_TIMEOUT="${GX10_RUNTIME_DOWN_TIMEOUT_SECONDS:-45}"
 
 compose() { "${COMPOSE[@]}" "$@"; }
 
-# Remove every container of the project, dependents first, killing after the
-# grace period. podman-compose's own down stops with a short grace and then
-# removes without --force, which leaves a slow-stopping container stuck in
-# "stopping" and every later start failing on it.
+# Remove every container of the project except OpenBao, dependents first,
+# killing after the grace period. podman-compose's own down stops with a short
+# grace and then removes without --force, which leaves a slow-stopping
+# container stuck in "stopping" and every later start failing on it.
+#
+# OpenBao is owned by aca-gx10-openbao-container.service and unsealed by the
+# secrets chain; recreating it here would leave it sealed (its healthcheck is
+# `bao status`, which reports sealed as unhealthy) with nothing left in the
+# chain that holds the unseal key.
 sweep_project_containers() {
-  local ids=()
-  mapfile -t ids < <("$PODMAN" ps -aq --filter "label=io.podman.compose.project=$PROJECT")
+  local ids=() line
+  while read -r line; do
+    [[ "${line#* }" == "$OPENBAO_NAME" ]] || ids+=("${line%% *}")
+  done < <("$PODMAN" ps -a --filter "label=io.podman.compose.project=$PROJECT" --format '{{.ID}} {{.Names}}')
   (( ${#ids[@]} )) || return 0
   "$PODMAN" rm -f --depend -t "$DOWN_TIMEOUT" "${ids[@]}" >/dev/null
+}
+
+# The runtime never touches OpenBao, so it must already run and match the
+# current overlay; otherwise podman-compose would recreate it sealed.
+require_openbao_current() {
+  local state current created
+  state="$("$PODMAN" inspect --format '{{.State.Status}}' "$OPENBAO_NAME" 2>/dev/null)" || {
+    echo "gx10 OpenBao container is missing; run: make -C $ROOT_DIR/deploy/gx10 secrets" >&2
+    return 1
+  }
+  [[ "$state" == running ]] || {
+    echo "gx10 OpenBao container is $state; run: make -C $ROOT_DIR/deploy/gx10 secrets" >&2
+    return 1
+  }
+  current="$("$ROOT_DIR/scripts/gx10/compose_hash.sh" current openbao)"
+  created="$("$ROOT_DIR/scripts/gx10/compose_hash.sh" container "$OPENBAO_NAME")"
+  [[ -n "$current" && "$current" == "$created" ]] || {
+    echo "gx10 OpenBao container was created from an older overlay; run: make -C $ROOT_DIR/deploy/gx10 secrets" >&2
+    return 1
+  }
 }
 
 # Recreate the project's networks from the current overlay: Podman keeps IPAM
@@ -59,10 +87,13 @@ sweep_project_containers() {
 # subnet or ip_range (and a leaked lease on a fixed address) would otherwise
 # survive every cold start. Runs after the sweep, so no endpoint is attached.
 recreate_project_networks() {
-  local nets=()
+  local nets=() net
   mapfile -t nets < <("$PODMAN" network ls -q --filter "label=io.podman.compose.project=$PROJECT")
-  (( ${#nets[@]} )) || return 0
-  "$PODMAN" network rm "${nets[@]}" >/dev/null
+  for net in "${nets[@]}"; do
+    # A network with an attached container (OpenBao on stateful) is kept.
+    [[ -z "$("$PODMAN" ps -aq --filter "network=$net")" ]] || continue
+    "$PODMAN" network rm "$net" >/dev/null
+  done
 }
 
 wait_for_services() {
@@ -106,6 +137,7 @@ case "${1:-}" in
     # therefore recreates every container; all state lives on bind mounts.
     sweep_project_containers
     recreate_project_networks
+    require_openbao_current
     compose up -d "${INFRASTRUCTURE[@]}"
     wait_for_services "${INFRASTRUCTURE[@]}"
     run_migrations
@@ -113,7 +145,7 @@ case "${1:-}" in
     wait_for_runtime
     ;;
   down)
-    compose down --timeout "$DOWN_TIMEOUT"
+    # Everything but OpenBao; podman-compose's down would take OpenBao with it.
     sweep_project_containers
     ;;
   *)

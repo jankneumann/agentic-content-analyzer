@@ -368,12 +368,17 @@ def test_gx10_runtime_uses_a_pinned_rootful_podman_compose_provider() -> None:
     assert "rm -f --depend" in runtime_source
     assert (
         runtime_source.index(
-            "sweep_project_containers\n    recreate_project_networks\n    compose up -d"
+            "sweep_project_containers\n    recreate_project_networks\n    require_openbao_current\n    compose up -d"
         )
         > 0
     )
     recovery = (ROOT / "scripts/gx10/verify_dependency_recovery.sh").read_text()
     assert "--wait" not in recovery
+    # OpenBao is external to the runtime: never swept, never recreated by it,
+    # and required to be running from the current overlay before compose runs.
+    assert 'OPENBAO_NAME="${PROJECT}_openbao_1"' in runtime_source
+    assert "require_openbao_current" in runtime_source
+    assert "compose down" not in runtime_source
     # Schema migration runs from a throwaway api container after the
     # infrastructure is healthy and before any application role is created.
     assert "compose run --rm --no-deps -T api alembic upgrade head" in runtime_source

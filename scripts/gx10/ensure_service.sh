@@ -23,6 +23,17 @@ if "$PODMAN" container exists "$NAME"; then
   state="$("$PODMAN" inspect --format '{{.State.Status}}' "$NAME")"
   case "$state" in
     running)
+      # Only the OpenBao unit asks for this: it runs before the application
+      # roles exist, so removing dependents is safe there and nowhere else.
+      if [[ "${GX10_ENSURE_RECREATE_STALE:-0}" == 1 ]]; then
+        current="$("$ROOT_DIR/scripts/gx10/compose_hash.sh" current "$SERVICE")"
+        created="$("$ROOT_DIR/scripts/gx10/compose_hash.sh" container "$NAME")"
+        if [[ -n "$current" && "$current" != "$created" ]]; then
+          echo "gx10 $SERVICE was created from an older overlay; recreating" >&2
+          "$PODMAN" rm -f --depend -t 15 "$NAME" >/dev/null
+          exec "$ROOT_DIR/scripts/gx10/podman-compose.sh" up -d "$SERVICE"
+        fi
+      fi
       echo "gx10 $SERVICE already running" >&2
       exit 0
       ;;

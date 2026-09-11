@@ -91,3 +91,48 @@ def test_openbao_container_unit_stays_active_and_operator_flows_restart_it() -> 
         recipe = makefile.split(f"\n{target}:", 1)[1].split("\n\n", 1)[0]
         assert "systemctl restart aca-gx10-openbao-container.service" in recipe, target
         assert recipe.index("aca-gx10-openbao-container.service") < recipe.index(follow), target
+
+
+def test_openbao_unit_recreates_a_stale_container_and_nothing_else_does(tmp_path: Path) -> None:
+    """Only the OpenBao unit opts into stale recreation; it runs before any
+    dependent exists. The compose hash comes from podman-compose's own dry-run."""
+    openbao = (ROOT / "deploy/gx10/systemd/aca-gx10-openbao-container.service").read_text()
+    assert "Environment=GX10_ENSURE_RECREATE_STALE=1" in openbao
+    proxy = (ROOT / "deploy/gx10/systemd/aca-gx10-proxy-policy.service").read_text()
+    assert "GX10_ENSURE_RECREATE_STALE" not in proxy
+
+    env = _fixture(tmp_path, exists=True, state="running")
+    compose = Path(env["GX10_ROOT_DIR"]) / "scripts/gx10/podman-compose.sh"
+    compose.write_text(
+        "#!/usr/bin/env bash\n"
+        f'echo "compose $*" >> "{tmp_path / "calls.log"}"\n'
+        '[[ "$1" == --dry-run ]] && echo "--label io.podman.compose.config-hash=' + "b" * 64 + '"\n'
+        "exit 0\n"
+    )
+    podman = Path(env["GX10_PODMAN_BIN"])
+    podman.write_text(
+        "#!/usr/bin/env bash\n"
+        f'echo "podman $*" >> "{tmp_path / "calls.log"}"\n'
+        'case "$1" in container) exit 0;; inspect) [[ "$*" == *config-hash* ]] && echo "'
+        + "a" * 64
+        + '" || echo running;; rm) exit 0;; esac\n'
+    )
+    (ROOT / "scripts/gx10/compose_hash.sh").read_text()
+    fake_hash = Path(env["GX10_ROOT_DIR"]) / "scripts/gx10/compose_hash.sh"
+    fake_hash.write_text((ROOT / "scripts/gx10/compose_hash.sh").read_text())
+    fake_hash.chmod(0o700)
+
+    untouched = subprocess.run([SCRIPT, "openbao"], env=env, capture_output=True, text=True)
+    assert untouched.returncode == 0 and "compose up" not in _calls(env)
+
+    stale = subprocess.run(
+        [SCRIPT, "openbao"],
+        env={**env, "GX10_ENSURE_RECREATE_STALE": "1"},
+        capture_output=True,
+        text=True,
+    )
+    assert stale.returncode == 0, stale.stderr
+    assert "older overlay" in stale.stderr
+    calls = _calls(env)
+    assert "podman rm -f --depend -t 15 aca-gx10_openbao_1" in calls
+    assert calls.index("podman rm -f --depend") < calls.index("compose up -d openbao")

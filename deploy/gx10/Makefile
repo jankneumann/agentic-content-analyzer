@@ -74,13 +74,16 @@ image: require-root ## Build gx10-<sha> from the checked-out commit, push, print
 image-pins: require-root ## Re-run the registry provenance gate after editing the images file
 	systemctl restart aca-gx10-image-pins.service
 
-start: require-root install ## Install units, remove every project container, start the runtime
-	podman ps -aq --filter label=io.podman.compose.project=$(PROJECT) | xargs -r podman rm -f --depend -t $(STOP_TIMEOUT)
+start: require-root install ## Install units, remove every container but OpenBao, unseal, start the runtime
+	podman ps -a --filter label=io.podman.compose.project=$(PROJECT) --format '{{.ID}} {{.Names}}' \
+	  | awk '$$2 != "$(PROJECT)_openbao_1" {print $$1}' | xargs -r podman rm -f --depend -t $(STOP_TIMEOUT)
 	systemctl reset-failed 'aca-gx10*'
+	systemctl restart aca-gx10-openbao-container.service
+	systemctl restart aca-gx10-secrets.service
 	systemctl start aca-gx10.service
 	$(MAKE) status
 
-stop: require-root ## Stop the runtime; its ExecStop sweeps the containers
+stop: require-root ## Stop the runtime; its ExecStop removes every container but OpenBao
 	systemctl stop aca-gx10.service
 
 status: ## Unit states and containers on one screen

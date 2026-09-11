@@ -382,7 +382,10 @@ def test_fixed_addresses_sit_outside_the_dynamic_pools_and_networks_are_recreate
         assert config["ip_range"].endswith("/25")
         assert int(fixed.rsplit(".", 1)[1]) >= 128
     runtime = (ROOT / "scripts/gx10/podman-runtime.sh").read_text(encoding="utf-8")
-    assert runtime.index("recreate_project_networks\n    compose up -d") > 0
+    assert (
+        runtime.index("recreate_project_networks\n    require_openbao_current\n    compose up -d")
+        > 0
+    )
     assert "network rm" in runtime
 
 

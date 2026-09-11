@@ -243,7 +243,7 @@ sudo chmod 0600 /run/aca/gx10/rendered-compose.yml
 ```
 
 The runtime calls `podman-runtime.sh up`, which recreates every container
-(Podman stores `depends_on` by container ID, so a stack that was partially
+except OpenBao (Podman stores `depends_on` by container ID, so a stack that was partially
 recreated cannot be started incrementally; all state lives under `/srv/aca`),
 starts the infrastructure services and waits for their health, runs
 `alembic upgrade head` from a throwaway `api` container, then creates the
@@ -291,8 +291,13 @@ container and let its unit recreate it, for example
 purpose: the container's `conmon` lives in the unit's cgroup, and systemd
 terminates that cgroup the moment a `oneshot` goes inactive, which stops
 OpenBao. The runtime's sweep can remove the container while the unit stays
-active, and a latched unit is not re-run by its dependents, so `make secrets`
-and `make provision` restart it explicitly first. Its start is idempotent, so
+active, and a latched unit is not re-run by its dependents, so `make secrets`,
+`make provision`, and `make start` restart it explicitly first. The runtime
+never removes or recreates OpenBao: its healthcheck reports sealed as
+unhealthy and nothing after the secrets chain holds the unseal key, so the
+runtime refuses to start if OpenBao is missing, stopped, or was created from
+an older overlay, naming `make secrets` as the fix. That unit recreates a
+stale OpenBao itself, before any dependent exists. Its start is idempotent, so
 that restart is a no-op when OpenBao already runs inside the runtime.
 
 ## 6. OpenBao, secrets, and network policy
