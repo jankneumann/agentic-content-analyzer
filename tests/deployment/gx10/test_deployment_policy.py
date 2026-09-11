@@ -405,6 +405,23 @@ def test_public_origin_is_required_and_never_an_internal_host() -> None:
     assert '"${GX10_PUBLIC_ORIGIN}"' in profile and '"${GX10_PUBLIC_LANGFUSE_URL}"' in profile
 
 
+def test_memory_hungry_services_get_more_than_the_default_cap() -> None:
+    """Langfuse web crash-looped on V8's heap limit under the flat 1G cap
+    ("JavaScript heap out of memory" eleven seconds after every start)."""
+    compose = _compose()
+
+    def gib(value: str) -> int:
+        return int(value.rstrip("G"))
+
+    web = _service(compose, "langfuse-web")
+    assert gib(web["deploy"]["resources"]["limits"]["memory"]) >= 4
+    assert web["environment"]["NODE_OPTIONS"] == "--max-old-space-size=3072"
+    worker = _service(compose, "langfuse-worker")
+    assert gib(worker["deploy"]["resources"]["limits"]["memory"]) >= 2
+    assert worker["environment"]["NODE_OPTIONS"] == "--max-old-space-size=1536"
+    assert gib(_service(compose, "clickhouse")["deploy"]["resources"]["limits"]["memory"]) >= 4
+
+
 def test_application_namespaces_have_no_direct_internet_route() -> None:
     compose = _compose()
     networks = compose["networks"]

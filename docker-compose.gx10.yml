@@ -189,7 +189,12 @@ services:
     read_only: false
     security_opt: *id001
     cap_drop: *id002
-    deploy: *id003
+    # ClickHouse serves Langfuse analytics; 1G is below its documented minimum.
+    deploy:
+      resources:
+        limits:
+          cpus: '2.00'
+          memory: 4G
     networks: *id004
     tmpfs: *id005
     image: docker.io/clickhouse/clickhouse-server:25.3.6.56-alpine@sha256:157423fca52f596b62a1bf301b037b9f74bfca38089aa57d1bd36c9025f7ecef
@@ -278,7 +283,12 @@ services:
     read_only: true
     security_opt: *id001
     cap_drop: *id002
-    deploy: *id003
+    # Langfuse web died on V8's heap limit at 1G; NODE_OPTIONS below sizes the heap to this cap.
+    deploy:
+      resources:
+        limits:
+          cpus: '2.00'
+          memory: 4G
     image: docker.io/langfuse/langfuse:3.225.5@sha256:a921990b3cf6f62e9452eaf8ab9bea045852375a6883abd1fdbe63afa08defa0
     env_file:
     - /run/aca/gx10/langfuse.env
@@ -286,6 +296,7 @@ services:
       # Single ClickHouse node: without this Langfuse's migrations expect a
       # cluster with ZooKeeper and fail with "no Zookeeper configuration".
       CLICKHOUSE_CLUSTER_ENABLED: 'false'
+      NODE_OPTIONS: --max-old-space-size=3072
     networks:
     - application
     - stateful
@@ -313,7 +324,12 @@ services:
     read_only: true
     security_opt: *id001
     cap_drop: *id002
-    deploy: *id003
+    # Langfuse worker: same runtime, smaller working set.
+    deploy:
+      resources:
+        limits:
+          cpus: '2.00'
+          memory: 2G
     image: docker.io/langfuse/langfuse-worker:3.225.5@sha256:${GX10_LANGFUSE_WORKER_DIGEST:?set the reviewed worker manifest digest}
     env_file:
     - /run/aca/gx10/langfuse.env
@@ -321,6 +337,7 @@ services:
       # Single ClickHouse node: without this Langfuse's migrations expect a
       # cluster with ZooKeeper and fail with "no Zookeeper configuration".
       CLICKHOUSE_CLUSTER_ENABLED: 'false'
+      NODE_OPTIONS: --max-old-space-size=1536
     networks:
     - stateful
     depends_on:
