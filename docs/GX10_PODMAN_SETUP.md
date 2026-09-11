@@ -244,9 +244,11 @@ sudo chmod 0600 /run/aca/gx10/rendered-compose.yml
 
 The runtime calls `podman-runtime.sh up`, which recreates every container
 (Podman stores `depends_on` by container ID, so a stack that was partially
-recreated cannot be started incrementally; all state lives under `/srv/aca`)
-and then polls every required container's health with a bounded timeout.
-Never replace that readiness proof with sleeps.
+recreated cannot be started incrementally; all state lives under `/srv/aca`),
+starts the infrastructure services and waits for their health, runs
+`alembic upgrade head` from a throwaway `api` container, then creates the
+application roles and polls every required container's health with a bounded
+timeout. Never replace that readiness proof with sleeps.
 
 ### 5.2 Convert units and verify them
 

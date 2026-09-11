@@ -374,6 +374,12 @@ def test_gx10_runtime_uses_a_pinned_rootful_podman_compose_provider() -> None:
     )
     recovery = (ROOT / "scripts/gx10/verify_dependency_recovery.sh").read_text()
     assert "--wait" not in recovery
+    # Schema migration runs from a throwaway api container after the
+    # infrastructure is healthy and before any application role is created.
+    assert "compose run --rm --no-deps -T api alembic upgrade head" in runtime_source
+    assert runtime_source.index(
+        "run_migrations\n    compose up -d\n    wait_for_runtime"
+    ) > runtime_source.index('wait_for_services "${INFRASTRUCTURE[@]}"')
 
     sources = [
         *(ROOT / "scripts/gx10").rglob("*.sh"),
