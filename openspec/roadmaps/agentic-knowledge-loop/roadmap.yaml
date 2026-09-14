@@ -1,0 +1,540 @@
+schema_version: 1
+roadmap_id: agentic-knowledge-loop
+source_proposal: openspec/roadmaps/agentic-knowledge-loop/proposal.md
+status: planning
+policy:
+  default_action: wait_if_budget_exceeded
+  max_switch_attempts_per_item: 2
+items:
+- item_id: ri-01
+  title: Add knowledge load ledger for agent tasks
+  status: candidate
+  priority: 1
+  effort: M
+  depends_on: []
+  description: Create the knowledge_load_events table (Alembic migration, single head)
+    keyed by task id with loaded entity type, id, version, and selection reason, and
+    make Conductor._query_memory record every memory entry it injects plus the persona
+    snapshot, or an explicit nothing-loaded marker.
+  rationale: Phase 0 plumbing. The attribution test, the routing layer, and the evaluation
+    gate all need to know what the agent actually read; today the conductor loads
+    ten memories and forgets which.
+  change_id: add-knowledge-load-ledger-for-agent-tasks
+  acceptance_outcomes:
+  - Every completed agent_tasks row has at least one knowledge_load_events row or
+    an explicit nothing-loaded marker row.
+  - Each ledger row for a memory entry carries entity_type, entity_id, version, and
+    a selection_reason with the fused similarity score.
+  - The persona snapshot from ConductorResult.persona_snapshot is recorded as a ledger
+    row with its version.
+  - alembic heads reports a single head after the migration is added.
+- item_id: ri-02
+  title: Record digest knowledge loads in the ledger
+  status: candidate
+  priority: 1
+  effort: M
+  depends_on:
+  - ri-01
+  description: Extend the ledger so every digest created through OperationService
+    records the ResolvedContentSet content and summary identifiers, the topic article
+    versions, and the prompt override versions rendered into the digest prompt, keyed
+    by digest id.
+  rationale: Digest review rejections can only be attributed to a topic or prompt
+    if the digest generation path records which versions it rendered.
+  change_id: record-digest-knowledge-loads-in-the-ledger
+  acceptance_outcomes:
+  - Every digest created through OperationService has ledger rows naming each prompt
+    override key and version rendered into its prompt.
+  - Every digest ledger includes the topic slugs and article_version values rendered,
+    with selection_reason explicit_include or search_fallback.
+  - The ResolvedContentSet content and summary ids consumed by the digest are recorded
+    and match the persisted digest inputs.
+- item_id: ri-03
+  title: Surface load ledger in CLI status and kb show
+  status: candidate
+  priority: 2
+  effort: S
+  depends_on:
+  - ri-01
+  - ri-02
+  description: Add ledger read endpoints and extend aca agent status <task-id> and
+    aca kb show <slug> to print what loaded and why, including the selection reason
+    and version for each entry.
+  rationale: The ledger is only useful for the correction loop if a reviewer can inspect
+    it without querying the database directly.
+  change_id: surface-load-ledger-in-cli-status-and-kb-show
+  acceptance_outcomes:
+  - aca agent status <task-id> prints a table of loaded entities with type, id, version,
+    and selection reason.
+  - aca kb show <slug> lists the tasks and digests that loaded the topic and at which
+    article_version.
+  - Existing aca agent status and aca kb show output remains unchanged when no ledger
+    rows exist, apart from an additive section.
+- item_id: ri-04
+  title: Add versioned history for topic articles and prompt overrides
+  status: candidate
+  priority: 1
+  effort: L
+  depends_on: []
+  description: Add topic_article_versions and prompt_override_versions tables written
+    on every recompile and set_override, each row carrying the full prior text, the
+    author (system, agent persona, or user), the triggering correction or task id,
+    and a unified diff against the previous version.
+  rationale: A bad compile or override cannot be diffed or reverted today because
+    the prior text is overwritten. Every later gate and revert path stores its results
+    on these version rows.
+  change_id: add-versioned-history-for-topic-articles-and-prompt-overrides
+  acceptance_outcomes:
+  - Recompiling a topic or saving a prompt override never deletes the previous text;
+    the prior version is retrievable by version number through the service layer.
+  - Each version row stores author, triggering correction or task id, and a unified
+    diff that applies cleanly to the previous text to produce the new text.
+  - A test asserts that no code path in KnowledgeBaseService or PromptService updates
+    article_md or override text without inserting a version row.
+  - alembic heads reports a single head after the migrations are added.
+- item_id: ri-05
+  title: Expose diff and revert operations for topics and prompts
+  status: candidate
+  priority: 2
+  effort: M
+  depends_on:
+  - ri-04
+  description: Add diff and revert operations to the KB and prompt APIs and CLI, with
+    revert submitted as a durable OperationService operation that restores the target
+    text and records the revert as a new version authored as user.
+  rationale: Reversibility from stored history is a hard constraint of the epic; diffs
+    make each landed change reviewable.
+  change_id: expose-diff-and-revert-operations-for-topics-and-prompts
+  acceptance_outcomes:
+  - aca kb diff <slug> --from N --to M and aca prompts diff <key> --from N --to M
+    print a unified diff between the two versions.
+  - aca kb revert <slug> --to N restores the article and creates a new version row
+    with author user; the same holds for aca prompts revert <key> --to N.
+  - Revert is executed by OperationService, not inline in the CLI process or request
+    handler, and is visible in aca operations list.
+  - Existing KB and prompt API routes and CLI command names continue to respond unchanged.
+- item_id: ri-06
+  title: Feed unfiled correction notes into KB compilation
+  status: candidate
+  priority: 1
+  effort: L
+  depends_on:
+  - ri-04
+  description: Include unfiled TopicNote rows of type correction and question in KnowledgeBaseService._gather_evidence,
+    render them into the kb_compilation user template as a distinct Corrections block,
+    flip filed_back to true in the same transaction as the article write, and add
+    aca kb notes --unfiled.
+  rationale: Corrections filed by reviewers are a dead end today because nothing sets
+    filed_back and the compiler never reads notes.
+  change_id: feed-unfiled-correction-notes-into-kb-compilation
+  acceptance_outcomes:
+  - A correction note on an active topic appears in the Corrections block of that
+    topic's next compile prompt, asserted by a unit test on the rendered prompt.
+  - filed_back flips to true in the same transaction as the article_md update and
+    version row insert.
+  - A failed compile leaves filed_back false so the correction is retried on the next
+    cycle.
+  - aca kb notes --unfiled lists correction and question notes still waiting to land,
+    with topic slug and author.
+- item_id: ri-07
+  title: Emit correction notes from digest review rejections
+  status: candidate
+  priority: 2
+  effort: M
+  depends_on:
+  - ri-02
+  - ri-06
+  description: Add a correction emitter to the digest review flow so that rejecting
+    or revising a section files a correction note, authored as user, on each topic
+    the section drew from according to the digest load ledger.
+  rationale: Review outcomes currently live in free-text review_notes and a revision_history
+    blob that nothing learns from; this turns them into compile input.
+  change_id: emit-correction-notes-from-digest-review-rejections
+  acceptance_outcomes:
+  - Rejecting a digest section in review creates one correction note per topic the
+    section referenced in the ledger, authored as user, in the same review transaction.
+  - Revising a section files a correction note carrying the reviewer's revised text
+    and the original section text.
+  - Rejecting a section whose ledger references no topics creates no notes and records
+    that fact on the review outcome.
+- item_id: ri-08
+  title: Introduce pending knowledge change records
+  status: candidate
+  priority: 2
+  effort: L
+  depends_on:
+  - ri-04
+  description: Add a pending knowledge change record for candidate topic compiles
+    and prompt overrides with status (pending, landed, rejected, needs_human), gate
+    results, and the resulting version row, plus a durable OperationService landing
+    operation and aca kb pending to list parked changes.
+  rationale: The linter, validator, regression gate, and ambiguity triage all need
+    somewhere to record why a change did not land and a review list humans can work
+    through.
+  change_id: introduce-pending-knowledge-change-records
+  acceptance_outcomes:
+  - Every topic compile and prompt override save creates a pending change record that
+    transitions to landed with a pointer to the version row it produced.
+  - aca kb pending lists changes in rejected or needs_human status with the recorded
+    reason.
+  - Landing a pending change runs as an OperationService operation; no compile or
+    override is written inline in a request handler or CLI process.
+  - PromptService.set_override and the existing KB API routes keep their signatures
+    and status codes.
+- item_id: ri-09
+  title: Add correction triage storage and ledger pre-check
+  status: candidate
+  priority: 2
+  effort: M
+  depends_on:
+  - ri-01
+  - ri-02
+  description: Add triage_verdict and a ledger pointer to correction notes, and implement
+    the deterministic pre-check that confirms whether the referenced topic or content
+    appeared in the ledger of the task or digest the correction refers to.
+  rationale: The attribution test hinges on the question of whether the right information
+    was loaded; that check must be deterministic and stored before any LLM classification
+    runs.
+  change_id: add-correction-triage-storage-and-ledger-pre-check
+  acceptance_outcomes:
+  - Every correction row carries a triage_verdict column (nullable until triaged)
+    and a pointer to the ledger entry set it was judged against.
+  - The pre-check returns present or absent for the referenced topic or content and
+    stores that result on the correction.
+  - A correction referencing a task or digest with no ledger rows is marked untriageable
+    rather than classified.
+- item_id: ri-10
+  title: Implement attribution classifier and verdict routing
+  status: candidate
+  priority: 2
+  effort: L
+  depends_on:
+  - ri-06
+  - ri-08
+  - ri-09
+  description: 'Add an LLM classifier through the router with a fixed output schema
+    that labels a correction procedure_fault, knowledge_gap, or ambiguity, constrained
+    by the pre-check, and route the verdict: procedure faults open a prompt override
+    pending change, knowledge gaps open a topic compile with the correction attached,
+    ambiguity creates a review item and edits nothing.'
+  rationale: This is the diagnose step of the four-phase pipeline; without it every
+    correction is treated as a topic edit regardless of cause.
+  change_id: implement-attribution-classifier-and-verdict-routing
+  acceptance_outcomes:
+  - A correction whose referenced content is absent from the ledger cannot be classified
+    procedure_fault; a unit test proves the verdict is coerced to knowledge_gap or
+    ambiguity.
+  - ambiguity verdicts create a needs_human pending change and never produce an article
+    or prompt write.
+  - procedure_fault verdicts create a prompt override pending change and knowledge_gap
+    verdicts submit a topic compile with the correction attached, both via OperationService.
+  - aca kb triage stats reports the count of each verdict over a time window so the
+    procedure-fault to knowledge-gap ratio can be tracked.
+- item_id: ri-11
+  title: Add structural linter gate for compiles and overrides
+  status: candidate
+  priority: 2
+  effort: L
+  depends_on:
+  - ri-06
+  - ri-08
+  description: Turn the KBHealthService checks into a deterministic pre-landing gate
+    that rejects a candidate article or override when a related topic slug does not
+    resolve, the article exceeds a configurable size budget, a new topic exceeds kb_merge_similarity_threshold
+    against an active topic, an override template references an undeclared variable,
+    or a routing rule references a missing topic.
+  rationale: Cheap non-probabilistic checks must fail first so LLM validation and
+    regression replay are only spent on structurally valid changes.
+  change_id: add-structural-linter-gate-for-compiles-and-overrides
+  acceptance_outcomes:
+  - A compiled article with a dangling related-topic slug is not persisted; the pending
+    change records the rule and the compile summary names the slug.
+  - A prompt override whose template uses an undeclared variable is rejected with
+    the variable name.
+  - The linter contains no LLM call and a test asserts the router is never invoked
+    during a lint run.
+  - aca kb health continues to produce its existing report unchanged.
+  - Lint failure counts per rule appear in the compile summary.
+- item_id: ri-12
+  title: Add regression evaluation gate for prompt overrides
+  status: candidate
+  priority: 2
+  effort: L
+  depends_on:
+  - ri-08
+  - ri-11
+  description: Wire the evaluation framework into the landing path so saving a prompt
+    override replays the step's evaluation dataset against the new prompt and blocks
+    the write when the judged pass rate drops below the calibrated threshold, with
+    an explicit force flag recorded on the version row.
+  rationale: The evaluation framework exists but is never invoked when an override
+    is saved; this makes the regression set the last gate before landing.
+  change_id: add-regression-evaluation-gate-for-prompt-overrides
+  acceptance_outcomes:
+  - Saving an override for a step with a dataset refuses the write when the judged
+    pass rate regresses below the calibrated threshold and reports the failing sample
+    ids.
+  - A gate error (judge failure, missing dataset lookup error) blocks the change rather
+    than skipping the check.
+  - The gate can be bypassed only with an explicit --force flag whose use is recorded
+    on the prompt_override_versions row.
+  - aca evaluate report shows the last gate result per step.
+- item_id: ri-13
+  title: Grow regression datasets from review and triage
+  status: candidate
+  priority: 3
+  effort: M
+  depends_on:
+  - ri-07
+  - ri-10
+  - ri-12
+  description: Add every rejected or revised digest section as a sample to the digest_creation
+    dataset within the review transaction, and add every correction classified as
+    procedure_fault as a sample to the responsible step's dataset.
+  rationale: The bar rises with every fix only if failing cases become regression
+    samples automatically.
+  change_id: grow-regression-datasets-from-review-and-triage
+  acceptance_outcomes:
+  - A rejected digest section appears as a new sample in the digest_creation dataset
+    committed in the same review transaction.
+  - A correction with triage_verdict procedure_fault produces a sample in the dataset
+    of the step whose prompt it targets.
+  - aca evaluate report shows regression suite size per step over time.
+- item_id: ri-14
+  title: Replay topic Q&A samples on recompile
+  status: candidate
+  priority: 3
+  effort: M
+  depends_on:
+  - ri-12
+  description: Extend the regression gate so recompiling a topic replays any stored
+    Q&A samples that reference the topic against the candidate article and blocks
+    the landing when the judged pass rate regresses.
+  rationale: Topic compiles need the same regression protection as prompt overrides;
+    the proposal names this replay explicitly.
+  change_id: replay-topic-qa-samples-on-recompile
+  acceptance_outcomes:
+  - A topic recompile with stored Q&A samples referencing the slug runs the judge
+    against the candidate article before landing.
+  - A regressed pass rate parks the pending change as rejected with the failing sample
+    ids.
+  - Topics with no referencing samples land without invoking the judge and the gate
+    result records samples_replayed zero.
+- item_id: ri-15
+  title: Add adversarial validator with fresh context
+  status: candidate
+  priority: 2
+  effort: L
+  depends_on:
+  - ri-08
+  - ri-11
+  description: Dispatch a second LLM call through the router that receives only the
+    unified diff and the target file type's structural contract and returns a fixed-schema
+    verdict (accept, reject, needs-human) with a reason; run it after the linter and
+    before the regression gate, recompile at most once on rejection, and park needs-human
+    in the review list.
+  rationale: An independent judge with no rationale or history catches compiles that
+    satisfy the correction but damage the article.
+  change_id: add-adversarial-validator-with-fresh-context
+  acceptance_outcomes:
+  - A unit test on the rendered validator prompt asserts it contains the diff and
+    the file-type contract and no correction text, rationale, or conversation history.
+  - A validator rejection triggers at most one automatic recompile with the reason
+    attached before the change is parked as needs_human.
+  - Validator verdict and reason are stored on the version row of the landed or parked
+    change.
+  - The validator runs only after a passing lint result and before the regression
+    gate, asserted by an ordering test.
+- item_id: ri-16
+  title: Record and report per-change gate cost
+  status: candidate
+  priority: 3
+  effort: M
+  depends_on:
+  - ri-12
+  - ri-15
+  description: Record validator and regression replay token usage and cost per pending
+    change alongside compile token usage, expose it in the compile summary and aca
+    evaluate report, and enable the gates by default only once the cost is visible.
+  rationale: The constraints require per-change LLM cost to be recorded and visible
+    before gates are on by default.
+  change_id: record-and-report-per-change-gate-cost
+  acceptance_outcomes:
+  - Each landed change records validator cost and regression replay cost next to compile
+    token usage.
+  - aca evaluate report shows average gate cost per landed change per step.
+  - Gate default enablement is a setting that flips to on in the same change that
+    ships the cost report, with the prior default documented.
+- item_id: ri-17
+  title: Define routing metadata for topics and personas
+  status: candidate
+  priority: 3
+  effort: M
+  depends_on:
+  - ri-04
+  - ri-11
+  description: Add an applies_when block to topic frontmatter (persona names, task
+    types, category, keyword patterns) and let persona YAML declare the topics and
+    positions they always load, validated on load and versioned through the article
+    history.
+  rationale: The deterministic router needs declared rules to resolve; this ships
+    the schema and validation before the resolver.
+  change_id: define-routing-metadata-for-topics-and-personas
+  acceptance_outcomes:
+  - A topic article with an applies_when block round-trips through compile and export
+    with the block intact and a version row recorded.
+  - Persona YAML in settings/personas accepts an always_load list of topic slugs and
+    position ids and rejects unknown slugs at load time.
+  - The structural linter rejects an applies_when or always_load rule that references
+    a missing topic.
+- item_id: ri-18
+  title: Implement deterministic knowledge router
+  status: candidate
+  priority: 3
+  effort: L
+  depends_on:
+  - ri-01
+  - ri-17
+  description: Build a routing index that resolves the deterministic set from applies_when
+    rules and persona defaults, records each selection reason in the load ledger,
+    then fills the remaining configurable token budget from hybrid search, and add
+    aca kb route --persona X --task-type Y to preview the result.
+  rationale: Replaces nearest-ten-by-similarity and substring top-fifty with auditable
+    selection while keeping search as the long-tail fallback.
+  change_id: implement-deterministic-knowledge-router
+  acceptance_outcomes:
+  - Two calls with the same persona, task type, and prompt return the same deterministic
+    set, asserted by a property test.
+  - Every entry the router returns carries a selection reason of routing_rule, persona_default,
+    or search_fallback.
+  - Search-fallback entries stop when the configurable per-step token budget is reached.
+  - aca kb route --persona X --task-type Y <prompt> prints what would load and why
+    without running a task.
+- item_id: ri-19
+  title: Consume router in conductor and KB Q&A
+  status: candidate
+  priority: 3
+  effort: M
+  depends_on:
+  - ri-03
+  - ri-18
+  description: Replace Conductor._query_memory topic selection and the kb_qa substring
+    match with the router so both paths load the deterministic set first and record
+    every selection in the ledger.
+  rationale: The router only changes agent behaviour once the two existing consumers
+    use it; the ledger lets the effect be measured.
+  change_id: consume-router-in-conductor-and-kb-qa
+  acceptance_outcomes:
+  - Agent task ledger rows show routing_rule and persona_default reasons ahead of
+    search_fallback for a persona with always_load topics.
+  - KB Q&A answers cite topics selected by the router and no code path performs the
+    old substring match.
+  - Existing aca agent task and Q&A API routes keep their request and response contracts.
+- item_id: ri-20
+  title: Add positions as a knowledge file type
+  status: candidate
+  priority: 3
+  effort: L
+  depends_on:
+  - ri-05
+  - ri-08
+  - ri-17
+  description: Add a Position model with statement, applies-when and does-not-apply
+    conditions, supporting topic references, owner, and routing rules, versioned through
+    the history tables, edited through OperationService with linter and validator
+    gates, and exposed via aca kb position commands and the KB API.
+  rationale: Authoritative stances with boundary conditions are distinct from evidence
+    summaries and persona weighting; the proposal adds them as a first-class type.
+  change_id: add-positions-as-a-knowledge-file-type
+  acceptance_outcomes:
+  - A position can be created, edited, and reverted via aca kb position create|edit|revert
+    and the KB API, each producing a version row.
+  - Position edits run as OperationService operations and pass through the structural
+    linter, which rejects unresolvable supporting topic references.
+  - aca kb diff works for positions with the same flags as topics.
+  - alembic heads reports a single head after the migration.
+- item_id: ri-21
+  title: Route positions into digest and synthesis prompts
+  status: candidate
+  priority: 4
+  effort: M
+  depends_on:
+  - ri-02
+  - ri-18
+  - ri-20
+  description: Let the router resolve positions from persona defaults and applies_when
+    rules and render the statement and boundary conditions into digest creation and
+    synthesis prompts, recording each in the load ledger.
+  rationale: Positions shape output only if they reach the prompt; the ledger makes
+    their influence attributable.
+  change_id: route-positions-into-digest-and-synthesis-prompts
+  acceptance_outcomes:
+  - A digest generated under a persona that routes a position renders the statement
+    and boundary conditions into the prompt, asserted on the rendered prompt.
+  - The digest ledger records the position id and version with a routing_rule or persona_default
+    reason.
+  - Agent synthesis prompts include routed positions with the same rendering and ledger
+    rows.
+- item_id: ri-22
+  title: Add position_fault triage subtype
+  status: candidate
+  priority: 4
+  effort: S
+  depends_on:
+  - ri-10
+  - ri-20
+  description: Extend the attribution classifier so corrections of the form we hold
+    that X return position_fault as a sub-type of procedure_fault and route the edit
+    to a position pending change instead of a topic or prompt.
+  rationale: Once positions exist, stance corrections must land on the position rather
+    than distorting a topic article.
+  change_id: add-position-fault-triage-subtype
+  acceptance_outcomes:
+  - A correction stating a stance is classified position_fault and creates a position
+    pending change referencing the routed position.
+  - position_fault counts appear under procedure_fault in aca kb triage stats.
+  - A position_fault correction whose position is absent from the ledger is coerced
+    to knowledge_gap or ambiguity.
+- item_id: ri-23
+  title: Extend vault export with positions, routing rules, and overrides
+  status: candidate
+  priority: 4
+  effort: M
+  depends_on:
+  - ri-04
+  - ri-17
+  - ri-20
+  description: Extend the Obsidian exporter so positions, routing rules, and prompt
+    overrides export alongside topic articles into a git-trackable directory as files
+    with YAML frontmatter naming their version and dependencies.
+  rationale: Gives an external audit trail of every landed change without moving the
+    source of truth away from the database.
+  change_id: extend-vault-export-with-positions-routing-rules-and-overrides
+  acceptance_outcomes:
+  - The vault export directory contains topic articles, positions, routing rules,
+    and prompt overrides as files whose frontmatter names version and dependencies.
+  - Running the export twice without database changes produces no file diffs.
+  - No code path reads the exported files back as authority; a test asserts the exporter
+    module has no import path into KnowledgeBaseService or PromptService writes.
+- item_id: ri-24
+  title: Retire meta_learning and repurpose preference memory types
+  status: candidate
+  priority: 5
+  effort: M
+  depends_on:
+  - ri-20
+  description: Audit existing rows, remove MemoryType.META_LEARNING from the enum,
+    redefine PREFERENCE as a transient signal consumed by the position compile and
+    then marked filed, and update docs/ACA-AGENTS.md and tests.
+  rationale: Two enum members have no writers; retiring one and giving the other a
+    consumer keeps the memory model honest now that positions exist.
+  change_id: retire-meta-learning-and-repurpose-preference-memory-types
+  acceptance_outcomes:
+  - No MemoryType enum member lacks at least one writer in src/, asserted by a test
+    that greps writers per member.
+  - The memory type table in docs/ACA-AGENTS.md matches the enum exactly.
+  - A test proves a preference row is consumed by a position compile and marked filed
+    in the same transaction.
+  - An audit script reports the count of existing meta_learning rows before removal
+    and the removal is documented.
+updated_at: '2026-09-04T04:37:42.319321+00:00'
