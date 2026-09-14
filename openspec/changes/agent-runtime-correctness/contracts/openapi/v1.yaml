@@ -1,0 +1,190 @@
+openapi: 3.1.0
+info:
+  title: agent-runtime-correctness contract delta
+  version: 2.1.0
+  description: >-
+    Delta against openspec/contracts/content-workflows/openapi/v1.yaml (contract 2.0.0).
+    Adds two operation types, moves agent task submission onto the canonical OperationHandle,
+    and adds the approvals listing. Merge into the canonical file via wp-contracts; never
+    hand-edit generated models.
+
+paths:
+  /api/v1/agent/task:
+    post:
+      operationId: submitAgentTask
+      summary: Submit an agent task as a durable agent_task.execute operation
+      tags: [agent]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentTaskSubmission" }
+            example:
+              prompt: "What are the key developments in multimodal AI this week?"
+              task_type: research
+              persona: ai-ml-technology
+              params: { lookback_days: 7 }
+      responses:
+        "202":
+          description: Durable operation accepted or existing idempotent operation returned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationHandle" }
+              example:
+                schema_version: 2
+                operation_id: "4711"
+                operation_type: agent_task.execute
+                status: queued
+                progress: 0
+                message: Queued
+                cancellable: true
+                retry_count: 0
+                status_url: /api/v1/operations/4711
+                events_url: /api/v1/operations/4711/events
+                resource: { type: agent_task, id: "0b6f0c2e-7a3e-4b8b-9e1d-2f1a1c9a7d10", url: /api/v1/agent/task/0b6f0c2e-7a3e-4b8b-9e1d-2f1a1c9a7d10 }
+                created_at: "2026-09-05T12:00:00Z"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationProblem" }
+
+  /api/v1/agent/approvals:
+    get:
+      operationId: listApprovalRequests
+      summary: List approval requests by status with keyset paging
+      tags: [agent]
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/ApprovalStatus" }
+        - $ref: "#/components/parameters/PageLimit"
+        - $ref: "#/components/parameters/PageCursor"
+      responses:
+        "200":
+          description: Approval request page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApprovalRequestPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/v1/agent/approvals/{approval_id}:
+    get:
+      operationId: getApprovalRequest
+      tags: [agent]
+      parameters:
+        - name: approval_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApprovalRequestResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/agent/approval/{approval_id}:
+    post:
+      operationId: decideApprovalRequest
+      summary: Approve or deny a pending request and wake its approval.wait operation
+      tags: [agent]
+      parameters:
+        - name: approval_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApprovalDecision" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApprovalRequestResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Request already decided or its operation was cancelled
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+              example:
+                type: https://aca.dev/problems/approval-already-decided
+                title: Approval already decided
+                status: 409
+                code: approval_already_decided
+                detail: Request 0b6f… was approved at 2026-09-05T12:03:00Z
+
+components:
+  parameters:
+    IdempotencyKey: { $ref: "../../../../contracts/content-workflows/openapi/v1.yaml#/components/parameters/IdempotencyKey" }
+    PageLimit: { $ref: "../../../../contracts/content-workflows/openapi/v1.yaml#/components/parameters/PageLimit" }
+    PageCursor: { $ref: "../../../../contracts/content-workflows/openapi/v1.yaml#/components/parameters/PageCursor" }
+  responses:
+    Unauthorized: { $ref: "../../../../contracts/content-workflows/openapi/v1.yaml#/components/responses/Unauthorized" }
+    NotFound: { $ref: "../../../../contracts/content-workflows/openapi/v1.yaml#/components/responses/NotFound" }
+    ValidationProblem: { $ref: "../../../../contracts/content-workflows/openapi/v1.yaml#/components/responses/ValidationProblem" }
+  schemas:
+    OperationHandle: { $ref: "../../../../contracts/content-workflows/openapi/v1.yaml#/components/schemas/OperationHandle" }
+    Problem: { $ref: "../../../../contracts/content-workflows/openapi/v1.yaml#/components/schemas/Problem" }
+
+    # MODIFIED in the canonical file: append to every copy of the operation_type enum
+    # (OperationHandle, OperationSummary, OperationEvent).
+    OperationTypeDelta:
+      type: string
+      enum: [agent_task.execute, approval.wait]
+      description: New members of the closed operation_type enum.
+
+    AgentTaskSubmission:
+      type: object
+      additionalProperties: false
+      required: [prompt]
+      properties:
+        prompt: { type: string, minLength: 1, maxLength: 8000 }
+        task_type: { type: string, enum: [research, analysis, synthesis, ingestion], default: research }
+        persona: { type: string, default: default }
+        params: { type: object, additionalProperties: true, default: {} }
+
+    ApprovalStatus:
+      type: string
+      enum: [pending, approved, denied, expired]
+
+    RiskLevel:
+      type: string
+      enum: [low, medium, high, critical]
+
+    ApprovalDecision:
+      type: object
+      additionalProperties: false
+      required: [approved]
+      properties:
+        approved: { type: boolean }
+        reason: { type: [string, "null"], maxLength: 2000 }
+
+    ApprovalRequestResponse:
+      type: object
+      additionalProperties: false
+      required: [id, task_id, operation_id, action, risk_level, context, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        task_id: { type: string, format: uuid }
+        operation_id: { type: string, description: The approval.wait operation }
+        action: { type: string, example: delegate.ingestion }
+        risk_level: { $ref: "#/components/schemas/RiskLevel" }
+        context: { type: object, additionalProperties: true }
+        status: { $ref: "#/components/schemas/ApprovalStatus" }
+        decision_reason: { type: [string, "null"] }
+        decided_at: { type: [string, "null"], format: date-time }
+        created_at: { type: string, format: date-time }
+
+    ApprovalRequestPage:
+      type: object
+      additionalProperties: false
+      required: [data, next_cursor]
+      properties:
+        data:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/ApprovalRequestResponse" }
+        next_cursor: { type: [string, "null"], maxLength: 2048 }
