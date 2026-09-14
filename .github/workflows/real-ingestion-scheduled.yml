@@ -75,7 +75,10 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           READWISE_API_KEY: ${{ secrets.READWISE_API_KEY }}
         run: |
-          pytest tests/real_ingestion/ -m real_ingest --no-cov -v --tb=short
+          # Per-test timeout: live RSS previously walked the full sources.d
+          # catalog and the 30-minute job cap cancelled pytest with no name.
+          pytest tests/real_ingestion/ -m real_ingest --no-cov -v --tb=short \
+            --timeout=180 --timeout-method=signal -o faulthandler_timeout=60
 
       - name: Upload failure-class evidence summary
         if: always()

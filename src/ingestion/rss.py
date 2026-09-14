@@ -44,6 +44,21 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# sources.d/rss.yaml has hundreds of enabled feeds. Sequential 30s timeouts on
+# a cluster of dead hosts exhaust the 30-minute scheduled live job. Stop the
+# remainder after this many consecutive transport failures; HTTP 4xx/5xx still
+# continue so one broken feed does not skip the catalog.
+MAX_CONSECUTIVE_TRANSPORT_FAILURES = 8
+_TRANSPORT_ERROR_TYPES = frozenset(
+    {
+        "ConnectTimeout",
+        "ReadTimeout",
+        "WriteTimeout",
+        "PoolTimeout",
+        "TimeoutException",
+    }
+)
+
 
 class RSSClient:
     """Client for fetching newsletters from RSS feeds."""
@@ -566,11 +581,28 @@ class RSSContentIngestionService:
             f"({len(sources) - len(enabled_sources)} disabled)"
         )
 
-        # Fetch content from all enabled sources with per-source settings
+        # Fetch content from all enabled sources with per-source settings.
+        # A cluster of dead hosts otherwise burns the full HTTP timeout on
+        # every remaining feed and never finishes a large catalog.
         contents: list[ContentData] = []
+        consecutive_transport_failures = 0
+        skip_remaining = False
         for source in enabled_sources:
-            max_entries = source.max_entries or max_entries_per_feed
             public_key = public_source_key_for(source)
+            if skip_remaining:
+                skipped = SourceFetchResult(url=source.url, name=source.name)
+                skipped.success = False
+                skipped.error_type = "ingest_budget_exhausted"
+                skipped.error = (
+                    f"Skipped after {MAX_CONSECUTIVE_TRANSPORT_FAILURES} "
+                    "consecutive feed transport timeouts"
+                )
+                skipped.public_source_key = public_key
+                source_results_by_feed[source.url] = skipped
+                source_results.append(skipped)
+                continue
+
+            max_entries = source.max_entries or max_entries_per_feed
             fetched, fetch_result = self.client.fetch_content(
                 feed_url=source.url,
                 max_entries=max_entries,
@@ -584,6 +616,16 @@ class RSSContentIngestionService:
             fetch_result.items_fetched = 0
             source_results_by_feed[source.url] = fetch_result
             source_results.append(fetch_result)
+            if fetch_result.error_type in _TRANSPORT_ERROR_TYPES:
+                consecutive_transport_failures += 1
+                if consecutive_transport_failures >= MAX_CONSECUTIVE_TRANSPORT_FAILURES:
+                    skip_remaining = True
+                    logger.warning(
+                        "RSS ingest stopping remaining feeds after consecutive transport timeouts",
+                        extra={"consecutive": consecutive_transport_failures},
+                    )
+            else:
+                consecutive_transport_failures = 0
 
         if not contents:
             logger.info("No content found")

@@ -35,6 +35,18 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Match RSS: do not walk the rest of blogs.yaml after a cluster of dead hosts.
+MAX_CONSECUTIVE_TRANSPORT_FAILURES = 8
+_TRANSPORT_ERROR_TYPES = frozenset(
+    {
+        "ConnectTimeout",
+        "ReadTimeout",
+        "WriteTimeout",
+        "PoolTimeout",
+        "TimeoutException",
+    }
+)
+
 
 # --- Link Discovery ---
 
@@ -452,9 +464,24 @@ class BlogContentIngestionService:
 
         source_results: list[SourceFetchResult] = []
         items_ingested = 0
+        consecutive_transport_failures = 0
 
         for source in sources:
             if not source.enabled:
+                continue
+
+            if consecutive_transport_failures >= MAX_CONSECUTIVE_TRANSPORT_FAILURES:
+                skipped = SourceFetchResult(
+                    url=getattr(source, "url", ""),
+                    name=getattr(source, "name", None),
+                )
+                skipped.success = False
+                skipped.error_type = "ingest_budget_exhausted"
+                skipped.error = (
+                    f"Skipped after {MAX_CONSECUTIVE_TRANSPORT_FAILURES} "
+                    "consecutive blog transport timeouts"
+                )
+                source_results.append(skipped)
                 continue
 
             source_result = self._ingest_source(
@@ -465,6 +492,10 @@ class BlogContentIngestionService:
             )
             source_results.append(source_result)
             items_ingested += source_result.items_fetched
+            if source_result.error_type in _TRANSPORT_ERROR_TYPES:
+                consecutive_transport_failures += 1
+            elif source_result.success:
+                consecutive_transport_failures = 0
 
         return build_response_from_source_results(
             command="ingest.blog",

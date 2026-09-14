@@ -77,19 +77,56 @@ SOURCE_FIXTURES: dict[str, SourceFixture] = {
         response_source="gmail",
     ),
     "rss": SourceFixture(
-        command={"kind": "rss", "max_items": 2},
+        command={
+            "kind": "rss",
+            "max_items": 2,
+            # Live ingest must not walk sources.d/rss.yaml (~400 feeds).
+            "configured_sources": [
+                {
+                    "type": "rss",
+                    "name": "Latent Space",
+                    "url": "https://www.latent.space/feed",
+                    "enabled": True,
+                }
+            ],
+        },
         title="RSS agent update",
         response_command="ingest.rss",
         response_source="rss",
     ),
     "blog": SourceFixture(
-        command={"kind": "blog", "max_items": 2},
+        command={
+            "kind": "blog",
+            "max_items": 2,
+            # Live ingest must not scrape every JS-heavy index in blogs.yaml.
+            "configured_sources": [
+                {
+                    "type": "blog",
+                    "name": "Anthropic Research",
+                    "url": "https://www.anthropic.com/research",
+                    "enabled": True,
+                    "max_entries": 2,
+                    "content_filter_strategy": "none",
+                }
+            ],
+        },
         title="Blog agent update",
         response_command="ingest.blog",
         response_source="blog",
     ),
     "substack": SourceFixture(
-        command={"kind": "substack", "max_items": 2},
+        command={
+            "kind": "substack",
+            "max_items": 2,
+            "configured_sources": [
+                {
+                    "type": "substack",
+                    "name": "TheSequence",
+                    "url": "https://thesequence.substack.com",
+                    "enabled": True,
+                }
+            ],
+        },
         title="Substack agent update",
         response_command="ingest.substack",
         response_source="substack",

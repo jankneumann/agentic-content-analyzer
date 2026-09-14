@@ -20,6 +20,7 @@ from src.ingestion.real_ingest_policy import (
     evaluate_live_adapter,
 )
 from src.ingestion.registry import SOURCE_REGISTRY
+from tests.fixtures.sources.library import SOURCE_FIXTURES
 
 pytestmark = pytest.mark.real_ingest
 
@@ -161,3 +162,13 @@ def test_no_paid_source_is_live_eligible() -> None:
     for policy in LIVE_ADAPTER_POLICIES.values():
         if policy.paid:
             assert not policy.live_eligible, f"Paid source {policy.key} must not be live-eligible"
+
+
+def test_live_catalog_sources_pin_configured_sources() -> None:
+    """Live RSS/blog/substack must not walk the full sources.d catalogs."""
+
+    for key in ("rss", "blog", "substack"):
+        command = SOURCE_FIXTURES[key].command
+        snapshot = command.get("configured_sources")
+        assert snapshot, f"{key} live fixture must pin configured_sources"
+        assert len(snapshot) == 1

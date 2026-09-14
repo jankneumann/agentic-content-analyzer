@@ -10,7 +10,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.config.sources import RSSSource
-from src.ingestion.rss import RSSClient, RSSContentIngestionService, SourceFetchResult
+from src.ingestion.rss import (
+    MAX_CONSECUTIVE_TRANSPORT_FAILURES,
+    RSSClient,
+    RSSContentIngestionService,
+    SourceFetchResult,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -290,3 +295,37 @@ class TestRSSPerSourceSettings:
             service.ingest_content(sources=sources)
 
         assert mock_fetch.call_args.kwargs["source_tags"] is None
+
+
+class TestRSSIngestBudget:
+    """Large catalogs must not walk every remaining feed after a timeout cluster."""
+
+    @patch("src.ingestion.rss.get_db")
+    @patch("src.ingestion.rss.settings")
+    def test_stops_after_consecutive_transport_timeouts(self, mock_settings, mock_db):
+        sources = [
+            RSSSource(url=f"https://feed-{i}.example/rss", name=f"Feed {i}") for i in range(12)
+        ]
+        timeout = SourceFetchResult(url="mock", success=False, error_type="TimeoutException")
+
+        with patch.object(RSSClient, "fetch_content", return_value=([], timeout)) as mock_fetch:
+            service = RSSContentIngestionService()
+            result = service.ingest_content(sources=sources)
+
+        assert mock_fetch.call_count == MAX_CONSECUTIVE_TRANSPORT_FAILURES
+        assert result.status == "error"
+        assert any(err.code == "ingest_budget_exhausted" for err in result.errors)
+
+    @patch("src.ingestion.rss.get_db")
+    @patch("src.ingestion.rss.settings")
+    def test_http_errors_do_not_trip_the_budget(self, mock_settings, mock_db):
+        sources = [
+            RSSSource(url=f"https://feed-{i}.example/rss", name=f"Feed {i}") for i in range(12)
+        ]
+        missing = SourceFetchResult(url="mock", success=False, error_type="HTTP 404")
+
+        with patch.object(RSSClient, "fetch_content", return_value=([], missing)) as mock_fetch:
+            service = RSSContentIngestionService()
+            service.ingest_content(sources=sources)
+
+        assert mock_fetch.call_count == 12
