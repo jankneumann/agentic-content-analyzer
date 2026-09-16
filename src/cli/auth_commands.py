@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 from importlib import import_module
 from pathlib import Path
 from typing import Annotated
@@ -109,16 +110,55 @@ def _get_paths(provider: str) -> tuple[Path, Path]:
     return cred_path, token_path
 
 
-def _hydrate_credentials_file(provider: str, cred_path: Path) -> None:
-    """Write client secrets from env JSON when the file is missing."""
+def _parse_oauth_client_json(raw: str) -> str:
+    """Validate Google OAuth client JSON without logging secrets."""
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Credentials JSON is not valid JSON") from exc
+    if not isinstance(data, dict) or ("installed" not in data and "web" not in data):
+        raise ValueError(
+            "OAuth client JSON must be a Desktop (installed) or web client download "
+            "from Google Cloud Console"
+        )
+    return json.dumps(data)
+
+
+def _read_credentials_json_arg(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if value.strip() == "-":
+        return sys.stdin.read()
+    return value
+
+
+def _hydrate_credentials_file(
+    provider: str,
+    cred_path: Path,
+    *,
+    credentials_json: str | None = None,
+) -> None:
+    """Write client secrets from an explicit paste, env JSON, or an existing file."""
     from src.config import settings
 
-    if cred_path.exists():
+    raw = _read_credentials_json_arg(credentials_json)
+    source = "--credentials-json"
+    if raw is None:
+        if cred_path.exists():
+            return
+        env_raw = getattr(settings, str(PROVIDERS[provider]["credentials_json_setting"]), None)
+        if isinstance(env_raw, str) and env_raw.strip():
+            raw = env_raw
+            source = str(PROVIDERS[provider]["credentials_env"])
+    if raw is None:
         return
-    raw = getattr(settings, str(PROVIDERS[provider]["credentials_json_setting"]), None)
-    if isinstance(raw, str) and raw.strip():
-        cred_path.write_text(raw)
-        typer.echo(f"Wrote {cred_path} from {PROVIDERS[provider]['credentials_env']}")
+    try:
+        normalized = _parse_oauth_client_json(raw)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    cred_path.write_text(normalized)
+    typer.echo(f"Wrote {cred_path} from {source}")
 
 
 def _existing_token_json(token_path: Path, scopes: list[str]) -> str | None:
@@ -161,6 +201,7 @@ def _run_oauth_flow(
     *,
     force: bool = False,
     open_browser: bool = True,
+    credentials_json: str | None = None,
 ) -> tuple[Path, str]:
     """Run the local OAuth flow and return (token_path, token_json).
 
@@ -172,7 +213,7 @@ def _run_oauth_flow(
 
     cred_path, token_path = _get_paths(provider)
     scopes = _provider_scopes(provider)
-    _hydrate_credentials_file(provider, cred_path)
+    _hydrate_credentials_file(provider, cred_path, credentials_json=credentials_json)
 
     if not force:
         existing = _existing_token_json(token_path, scopes)
@@ -185,7 +226,10 @@ def _run_oauth_flow(
             f"Credentials file not found at {cred_path}.\n"
             f"  1. Go to https://console.cloud.google.com/apis/credentials\n"
             f"  2. Create or download an OAuth 2.0 Client ID (Desktop type)\n"
-            f"  3. Save the downloaded JSON as {cred_path}\n"
+            f"  3. Paste it (no SCP required):\n"
+            f"       aca auth {provider} --credentials-json - --no-browser\n"
+            f"     then paste the JSON and press Ctrl-D\n"
+            f"  Or save the downloaded JSON as {cred_path}\n"
             f"  Or set {PROVIDERS[provider]['credentials_env']} and re-run.",
             err=True,
         )
@@ -255,9 +299,15 @@ def _do_auth(
     service: str | None,
     force: bool = False,
     open_browser: bool = True,
+    credentials_json: str | None = None,
 ) -> None:
     """Shared implementation for `aca auth gmail|youtube`."""
-    _token_path, token_json = _run_oauth_flow(provider, force=force, open_browser=open_browser)
+    _token_path, token_json = _run_oauth_flow(
+        provider,
+        force=force,
+        open_browser=open_browser,
+        credentials_json=credentials_json,
+    )
     if not deploy:
         typer.echo(
             f"\nNot deploying. To upload this token to Railway, re-run with --deploy.\n"
@@ -309,6 +359,16 @@ def gmail_auth(
         bool,
         typer.Option("--force", help="Re-consent even if a valid token already exists"),
     ] = False,
+    credentials_json: Annotated[
+        str | None,
+        typer.Option(
+            "--credentials-json",
+            help=(
+                "Google Desktop OAuth client JSON (the downloaded credentials.json). "
+                "Pass '-' to read from stdin so you can paste instead of copying a file."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Log in to Gmail (browser or printed URL). With --deploy, push the token to Railway."""
     _do_auth(
@@ -318,6 +378,7 @@ def gmail_auth(
         service=service,
         force=force,
         open_browser=not no_browser,
+        credentials_json=credentials_json,
     )
 
 
@@ -354,6 +415,16 @@ def youtube_auth(
         bool,
         typer.Option("--force", help="Re-consent even if a valid token already exists"),
     ] = False,
+    credentials_json: Annotated[
+        str | None,
+        typer.Option(
+            "--credentials-json",
+            help=(
+                "Google Desktop OAuth client JSON (the downloaded credentials.json). "
+                "Pass '-' to read from stdin so you can paste instead of copying a file."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Log in to YouTube (browser or printed URL). With --deploy, push the token to Railway."""
     _do_auth(
@@ -363,6 +434,7 @@ def youtube_auth(
         service=service,
         force=force,
         open_browser=not no_browser,
+        credentials_json=credentials_json,
     )
 
 

@@ -1483,6 +1483,9 @@ See [Model Configuration](MODEL_CONFIGURATION.md) for detailed model selection o
 ### 3. First-Time Authorization
 
 ```bash
+# Paste the Desktop client JSON (no SCP). End with Ctrl-D:
+aca auth gmail --credentials-json - --no-browser
+
 # Log in locally (opens a browser, or prints a URL)
 aca auth gmail
 

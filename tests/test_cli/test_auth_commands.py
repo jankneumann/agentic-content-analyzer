@@ -126,6 +126,7 @@ def test_gmail_command_missing_credentials_fails_clearly(runner, monkeypatch, tm
     result = runner.invoke(app, ["gmail"])
     assert result.exit_code == 1
     assert "console.cloud.google.com" in result.output
+    assert "--credentials-json" in result.output
 
 
 @patch("src.cli.auth_commands.InstalledAppFlow", create=True)
@@ -389,6 +390,62 @@ def test_gmail_auth_force_reopens_oauth_when_token_exists(runner, monkeypatch, t
     assert result.exit_code == 0, result.output
     fake_flow.run_local_server.assert_called_once()
     assert json.loads(fake_token.read_text())["token"] == "new"
+
+
+def test_gmail_auth_accepts_credentials_json_flag(runner, monkeypatch, tmp_path):
+    fake_creds = tmp_path / "credentials.json"
+    fake_token = tmp_path / "token.json"
+    from src.config import settings
+
+    monkeypatch.setattr(settings, "gmail_credentials_file", str(fake_creds))
+    monkeypatch.setattr(settings, "gmail_token_file", str(fake_token))
+    payload = json.dumps({"installed": {"client_id": "pasted", "client_secret": "s"}})
+
+    fake_creds_obj = MagicMock()
+    fake_creds_obj.to_json.return_value = json.dumps({"token": "abc", "refresh_token": "xyz"})
+    fake_flow = MagicMock()
+    fake_flow.run_local_server.return_value = fake_creds_obj
+    with patch("google_auth_oauthlib.flow.InstalledAppFlow") as mock_flow_cls:
+        mock_flow_cls.from_client_secrets_file.return_value = fake_flow
+        result = runner.invoke(app, ["gmail", "--credentials-json", payload])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(fake_creds.read_text())["installed"]["client_id"] == "pasted"
+    mock_flow_cls.from_client_secrets_file.assert_called_once()
+
+
+def test_gmail_auth_reads_credentials_json_from_stdin(runner, monkeypatch, tmp_path):
+    fake_creds = tmp_path / "credentials.json"
+    fake_token = tmp_path / "token.json"
+    from src.config import settings
+
+    monkeypatch.setattr(settings, "gmail_credentials_file", str(fake_creds))
+    monkeypatch.setattr(settings, "gmail_token_file", str(fake_token))
+    payload = json.dumps({"installed": {"client_id": "stdin-client"}})
+
+    fake_creds_obj = MagicMock()
+    fake_creds_obj.to_json.return_value = json.dumps({"token": "abc", "refresh_token": "xyz"})
+    fake_flow = MagicMock()
+    fake_flow.run_local_server.return_value = fake_creds_obj
+    with patch("google_auth_oauthlib.flow.InstalledAppFlow") as mock_flow_cls:
+        mock_flow_cls.from_client_secrets_file.return_value = fake_flow
+        result = runner.invoke(app, ["gmail", "--credentials-json", "-"], input=payload)
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(fake_creds.read_text())["installed"]["client_id"] == "stdin-client"
+
+
+def test_gmail_auth_rejects_invalid_credentials_json(runner, monkeypatch, tmp_path):
+    fake_creds = tmp_path / "credentials.json"
+    fake_token = tmp_path / "token.json"
+    from src.config import settings
+
+    monkeypatch.setattr(settings, "gmail_credentials_file", str(fake_creds))
+    monkeypatch.setattr(settings, "gmail_token_file", str(fake_token))
+    result = runner.invoke(app, ["gmail", "--credentials-json", '{"not":"an-oauth-client"}'])
+    assert result.exit_code == 1
+    assert "installed" in result.output.lower() or "desktop" in result.output.lower()
+    assert not fake_creds.exists()
 
 
 def test_status_reports_refresh_token_presence(runner, monkeypatch, tmp_path):
