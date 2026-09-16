@@ -1,0 +1,197 @@
+{
+  "edges": [
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.routes.signup",
+      "id": "py:api.routes.signup--py:services.user.create-55e10f3d",
+      "kind": "call",
+      "to": "py:services.user.create"
+    },
+    {
+      "animated": true,
+      "delta": "added",
+      "emphasis": "hero",
+      "files": [],
+      "from": "py:services.user.create",
+      "id": "py:services.user.create--py:services.mail.send-f940efdb",
+      "kind": "call",
+      "to": "py:services.mail.send"
+    }
+  ],
+  "flows": [],
+  "kind": "graph",
+  "lanes": [
+    {
+      "id": "backend",
+      "label": "Backend",
+      "order": 1
+    }
+  ],
+  "lenses": [
+    "architecture"
+  ],
+  "nodes": [
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 40,
+          "path": "src/api/routes.py",
+          "startLine": 5
+        }
+      ],
+      "group": "src/api",
+      "id": "py:api.routes.signup",
+      "kind": "function",
+      "label": "signup",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "added",
+      "files": [
+        {
+          "endLine": 25,
+          "path": "src/services/mail.py",
+          "startLine": 1
+        }
+      ],
+      "group": "src/services",
+      "id": "py:services.mail.send",
+      "kind": "function",
+      "label": "send",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "2 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 20,
+          "path": "src/services/user.py",
+          "startLine": 1
+        }
+      ],
+      "group": "src/services",
+      "id": "py:services.user.create",
+      "kind": "function",
+      "label": "create",
+      "lane": "backend"
+    }
+  ],
+  "provenance": {
+    "base": {
+      "sha": "0000000"
+    },
+    "head": {
+      "sha": "1111111"
+    },
+    "repo": {
+      "name": "webapp",
+      "owner": "acme"
+    }
+  },
+  "schemaVersion": "0.1.1",
+  "stats": {
+    "additions": 30,
+    "chips": [
+      {
+        "label": "Symbols added",
+        "tone": "added",
+        "value": "1"
+      }
+    ],
+    "deletions": 2,
+    "filesChanged": 2
+  },
+  "summary": "This change touches 1 added, 1 modified, 0 removed symbols in the architecture graph, drawn against the code one dependency hop away.",
+  "title": "2 symbols across 2 files",
+  "views": [
+    {
+      "children": [
+        {
+          "children": [],
+          "defaultOpen": false,
+          "id": "group-src/services",
+          "lens": "architecture",
+          "scope": {
+            "kind": "selection",
+            "nodes": [
+              "py:services.mail.send",
+              "py:services.user.create"
+            ]
+          },
+          "title": "src/services"
+        }
+      ],
+      "defaultOpen": true,
+      "id": "blast-radius",
+      "lens": "architecture",
+      "scope": {
+        "kind": "all"
+      },
+      "title": "Blast radius"
+    }
+  ],
+  "walkthrough": {
+    "steps": [
+      {
+        "body": "2 symbols changed, shown against the code around them.",
+        "focus": {
+          "kind": "selection",
+          "nodes": [
+            "py:services.mail.send",
+            "py:services.user.create"
+          ]
+        },
+        "heading": "What this change touches",
+        "id": "what-changed",
+        "stage": {
+          "kind": "view",
+          "view": "blast-radius"
+        }
+      },
+      {
+        "body": "2 changed symbols here.",
+        "focus": {
+          "kind": "selection",
+          "nodes": [
+            "py:services.mail.send",
+            "py:services.user.create"
+          ]
+        },
+        "heading": "src/services",
+        "id": "tour-group-src/services",
+        "stage": {
+          "kind": "view",
+          "view": "group-src/services"
+        }
+      },
+      {
+        "body": "The new edge reaching the most depended-upon code in view.",
+        "focus": {
+          "edges": [
+            "py:services.user.create--py:services.mail.send-f940efdb"
+          ],
+          "kind": "selection"
+        },
+        "heading": "The connection it turns on",
+        "id": "the-new-path",
+        "stage": {
+          "kind": "view",
+          "view": "blast-radius"
+        }
+      }
+    ]
+  }
+}

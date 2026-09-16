@@ -67,7 +67,41 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--no-coverage", action="store_true",
         help="Skip the on-disk coverage scan (faster; drops the coverage banner).",
     )
+    parser.add_argument(
+        "--change", type=Path, default=None,
+        help="Change document to colour the graph by (see /refresh-architecture).",
+    )
+    parser.add_argument(
+        "--test-coverage", type=Path, default=None,
+        help="Line-coverage report (coverage.xml). Ignored when older than the "
+             "newest analyzed source file; the page falls back to test linkage.",
+    )
+    parser.add_argument(
+        "--python-src-dir", default="src",
+        help="Python source root, to match graph paths against the report.",
+    )
+    parser.add_argument(
+        "--ts-src-dir", default="web",
+        help="TypeScript source root, to match graph paths against the report.",
+    )
     return parser.parse_args(argv)
+
+
+def newest_source_mtime(repo_root: Path, roots: list[str]) -> float:
+    """When the analyzed sources were last touched.
+
+    A coverage report older than this describes code that has since moved, and
+    colouring from it would be confident and wrong.
+    """
+    newest = 0.0
+    for root in roots:
+        base = repo_root / root
+        if not base.is_dir():
+            continue
+        for path in base.rglob("*"):
+            if path.is_file() and path.suffix in {".py", ".ts", ".tsx"}:
+                newest = max(newest, path.stat().st_mtime)
+    return newest
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -77,10 +111,47 @@ def main(argv: list[str] | None = None) -> int:
     graph_path = args.graph or (repo_root / DEFAULT_GRAPH)
     output_path = args.output or (repo_root / DEFAULT_OUTPUT)
 
+    prefixes = {"python": args.python_src_dir, "typescript": args.ts_src_dir}
+
+    change = None
+    if args.change is not None:
+        try:
+            change = json.loads(args.change.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"error: cannot read {args.change}: {exc}", file=sys.stderr)
+            return 1
+
+    line_coverage = None
+    if args.test_coverage is not None:
+        from atlas_change import load_line_coverage
+
+        line_coverage = load_line_coverage(
+            args.test_coverage,
+            newest_source_mtime=newest_source_mtime(
+                repo_root, sorted(set(prefixes.values()))
+            ),
+        )
+        if line_coverage is None:
+            print(
+                f"note: {args.test_coverage} is missing or older than the sources "
+                "it measures; colouring by test linkage instead",
+                file=sys.stderr,
+            )
+
     try:
         graph = load_graph(graph_path)
-        payload = build_view_model(graph, repo_root, measure=not args.no_coverage)
+        payload = build_view_model(
+            graph,
+            repo_root,
+            measure=not args.no_coverage,
+            change=change,
+            line_coverage=line_coverage,
+            source_prefixes=prefixes,
+        )
     except AtlasInputError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:  # noqa: BLE001 - a bad change document is user input
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

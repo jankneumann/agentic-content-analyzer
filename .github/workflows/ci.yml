@@ -42,6 +42,16 @@ jobs:
         working-directory: web
         run: npm audit --omit=dev --audit-level=high
 
+      - name: Lint the frontend surfaces that are clean
+        working-directory: web
+        # Scoped on purpose, in the same spirit as `ruff check src/ tests/`
+        # above. `eslint .` currently reports 66 errors across 34 files, none
+        # of which this job could have caught because the frontend linter has
+        # never run in CI. Gating the directories that already pass stops that
+        # count growing while the rest is triaged; widen the scope in
+        # web/package.json as directories are cleaned.
+        run: npm run lint:ci
+
       - name: Check generated workflow contracts
         working-directory: web
         run: npm run contracts:check

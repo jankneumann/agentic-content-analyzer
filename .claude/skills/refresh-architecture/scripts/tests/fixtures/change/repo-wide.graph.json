@@ -1,0 +1,3092 @@
+{
+  "edges": [
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool",
+      "id": "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool--py:agents.specialists.analysis.AnalysisSpecialist._exe-3a38c199",
+      "kind": "call",
+      "to": "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool._parse_period"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool",
+      "id": "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool--py:storage.database.get_db-2b999d45",
+      "kind": "call",
+      "to": "py:storage.database.get_db"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:agents.specialists.research.ResearchSpecialist._execute_tool",
+      "id": "py:agents.specialists.research.ResearchSpecialist._execute_tool--py:services.web_search.get_web_search_provider-6f4e2b4a",
+      "kind": "call",
+      "to": "py:services.web_search.get_web_search_provider"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:agents.specialists.research.ResearchSpecialist._execute_tool",
+      "id": "py:agents.specialists.research.ResearchSpecialist._execute_tool--py:utils.html_parser.html_to_text-bd972eaa",
+      "kind": "call",
+      "to": "py:utils.html_parser.html_to_text"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.app.lifespan",
+      "id": "py:api.app.lifespan--py:config.config_registry.register_all_domains-d2cf245b",
+      "kind": "call",
+      "to": "py:config.config_registry.register_all_domains"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.app.lifespan",
+      "id": "py:api.app.lifespan--py:queue.setup.close_queue-42224067",
+      "kind": "call",
+      "to": "py:queue.setup.close_queue"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.app.lifespan",
+      "id": "py:api.app.lifespan--py:queue.setup.ensure_queue_schema_compatible-a27958a5",
+      "kind": "call",
+      "to": "py:queue.setup.ensure_queue_schema_compatible"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.app.lifespan",
+      "id": "py:api.app.lifespan--py:queue.worker.register_all_handlers-e86cb97e",
+      "kind": "call",
+      "to": "py:queue.worker.register_all_handlers"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.app.lifespan",
+      "id": "py:api.app.lifespan--py:queue.worker.run_worker-43683e86",
+      "kind": "call",
+      "to": "py:queue.worker.run_worker"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.app.lifespan",
+      "id": "py:api.app.lifespan--py:services.embedding_check.check_embedding_config_mismatch-749ec33a",
+      "kind": "call",
+      "to": "py:services.embedding_check.check_embedding_config_mismatch"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.app.lifespan",
+      "id": "py:api.app.lifespan--py:services.notification_cleanup.auto_cleanup_notifications-44d18b6b",
+      "kind": "call",
+      "to": "py:services.notification_cleanup.auto_cleanup_notifications"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.app.lifespan",
+      "id": "py:api.app.lifespan--py:storage.database.get_db_session-dc137102",
+      "kind": "call",
+      "to": "py:storage.database.get_db_session"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.app.lifespan",
+      "id": "py:api.app.lifespan--py:telemetry.setup_telemetry-dd3a1eac",
+      "kind": "call",
+      "to": "py:telemetry.setup_telemetry"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.app.lifespan",
+      "id": "py:api.app.lifespan--py:telemetry.shutdown_telemetry-990e6de1",
+      "kind": "call",
+      "to": "py:telemetry.shutdown_telemetry"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.app.lifespan",
+      "id": "py:api.app.lifespan--py:utils.logging.get_logger-84afbc85",
+      "kind": "call",
+      "to": "py:utils.logging.get_logger"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.app.lifespan",
+      "id": "py:api.app.lifespan--py:utils.logging.setup_logging-8b75a499",
+      "kind": "call",
+      "to": "py:utils.logging.setup_logging"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.image_generation_routes.generate_image",
+      "id": "py:api.image_generation_routes.generate_image--py:services.image_generator.get_image_generator-8a1746b0",
+      "kind": "call",
+      "to": "py:services.image_generator.get_image_generator"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.image_generation_routes.generate_image",
+      "id": "py:api.image_generation_routes.generate_image--py:storage.database.get_db-539beffb",
+      "kind": "call",
+      "to": "py:storage.database.get_db"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.image_generation_routes.regenerate_image",
+      "id": "py:api.image_generation_routes.regenerate_image--py:services.image_generator.get_image_generator-ada0ec82",
+      "kind": "call",
+      "to": "py:services.image_generator.get_image_generator"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.image_generation_routes.regenerate_image",
+      "id": "py:api.image_generation_routes.regenerate_image--py:storage.database.get_db-c2d45eb9",
+      "kind": "call",
+      "to": "py:storage.database.get_db"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.kb_routes.compile_kb",
+      "id": "py:api.kb_routes.compile_kb--py:storage.database.get_db-89e80e39",
+      "kind": "call",
+      "to": "py:storage.database.get_db"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:cli.app.main_callback",
+      "id": "py:cli.app.main_callback--py:utils.logging.setup_logging-b9e1cd0a",
+      "kind": "call",
+      "to": "py:utils.logging.setup_logging"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:config.bao_secrets.BaoSettingsSource._load_once",
+      "id": "py:config.bao_secrets.BaoSettingsSource._load_once--py:config.bao_secrets._load_bao_secrets-432b0257",
+      "kind": "call",
+      "to": "py:config.bao_secrets._load_bao_secrets"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:config.bao_secrets._load_bao_secrets",
+      "id": "py:config.bao_secrets._load_bao_secrets--py:config.bao_secrets._authenticate_client-1b04f445",
+      "kind": "call",
+      "to": "py:config.bao_secrets._authenticate_client"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:config.bao_secrets._load_bao_secrets",
+      "id": "py:config.bao_secrets._load_bao_secrets--py:config.bao_secrets._fetch_secrets-2a4fdde2",
+      "kind": "call",
+      "to": "py:config.bao_secrets._fetch_secrets"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:config.bao_secrets._load_bao_secrets",
+      "id": "py:config.bao_secrets._load_bao_secrets--py:config.bao_secrets._is_bao_configured-a95ace19",
+      "kind": "call",
+      "to": "py:config.bao_secrets._is_bao_configured"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:config.bao_secrets.get_bao_secret",
+      "id": "py:config.bao_secrets.get_bao_secret--py:config.bao_secrets._load_bao_secrets-f4f58417",
+      "kind": "call",
+      "to": "py:config.bao_secrets._load_bao_secrets"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.log_redaction.adapter_log_extra",
+      "id": "py:ingestion.log_redaction.adapter_log_extra--py:ingestion.log_redaction.log_diagnostic_code-69f33c12",
+      "kind": "call",
+      "to": "py:ingestion.log_redaction.log_diagnostic_code"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.log_redaction.adapter_log_extra",
+      "id": "py:ingestion.log_redaction.adapter_log_extra--py:ingestion.log_redaction.log_error_type-386b203d",
+      "kind": "call",
+      "to": "py:ingestion.log_redaction.log_error_type"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.log_redaction.adapter_log_extra",
+      "id": "py:ingestion.log_redaction.adapter_log_extra--py:ingestion.log_redaction.log_source_key-87b3e4af",
+      "kind": "call",
+      "to": "py:ingestion.log_redaction.log_source_key"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.log_redaction.log_diagnostic_code",
+      "id": "py:ingestion.log_redaction.log_diagnostic_code--py:ingestion.result_sanitizer.sanitize_ingestion_diagnostic_code-a264937b",
+      "kind": "call",
+      "to": "py:ingestion.result_sanitizer.sanitize_ingestion_diagnostic_code"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.rss.RSSClient.fetch_content",
+      "id": "py:ingestion.rss.RSSClient.fetch_content--py:ingestion.log_redaction.adapter_log_extra-5f101d8d",
+      "kind": "call",
+      "to": "py:ingestion.log_redaction.adapter_log_extra"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.rss.RSSContentIngestionService.ingest_content",
+      "id": "py:ingestion.rss.RSSContentIngestionService.ingest_content--py:ingestion.result.build_response_from_source_results-2c49b3b8",
+      "kind": "call",
+      "to": "py:ingestion.result.build_response_from_source_results"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.rss.RSSContentIngestionService.ingest_content",
+      "id": "py:ingestion.rss.RSSContentIngestionService.ingest_content--py:ingestion.result.public_source_key_for-566198f3",
+      "kind": "call",
+      "to": "py:ingestion.result.public_source_key_for"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.rss.RSSContentIngestionService.ingest_content",
+      "id": "py:ingestion.rss.RSSContentIngestionService.ingest_content--py:ingestion.rss.RSSContentIngestionService.ingest_content.-0b4c9e16",
+      "kind": "call",
+      "to": "py:ingestion.rss.RSSContentIngestionService.ingest_content.source_result_for"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.rss.RSSContentIngestionService.ingest_content",
+      "id": "py:ingestion.rss.RSSContentIngestionService.ingest_content--py:ingestion.rss.RSSContentIngestionService.ingest_content.-32441328",
+      "kind": "call",
+      "to": "py:ingestion.rss.RSSContentIngestionService.ingest_content.record_persisted"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.rss.RSSContentIngestionService.ingest_content",
+      "id": "py:ingestion.rss.RSSContentIngestionService.ingest_content--py:services.indexing.index_content-d29a12c2",
+      "kind": "call",
+      "to": "py:services.indexing.index_content"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.rss.RSSContentIngestionService.ingest_content",
+      "id": "py:ingestion.rss.RSSContentIngestionService.ingest_content--py:storage.database.get_db-4c96386c",
+      "kind": "call",
+      "to": "py:storage.database.get_db"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.rss.RSSContentIngestionService.ingest_content",
+      "id": "py:ingestion.rss.RSSContentIngestionService.ingest_content--py:utils.substack.find_existing_substack_content-164643a8",
+      "kind": "call",
+      "to": "py:utils.substack.find_existing_substack_content"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.rss.RSSContentIngestionService.ingest_content",
+      "id": "py:ingestion.rss.RSSContentIngestionService.ingest_content--py:utils.substack.normalize_substack_url-c7e94964",
+      "kind": "call",
+      "to": "py:utils.substack.normalize_substack_url"
+    },
+    {
+      "animated": false,
+      "delta": "unchanged",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.rss.RSSContentIngestionService.ingest_content.record_persisted",
+      "id": "py:ingestion.rss.RSSContentIngestionService.ingest_content.record_persisted--py:ingestion.rss.RSSContentIngestionServic-3d66070b",
+      "kind": "call",
+      "to": "py:ingestion.rss.RSSContentIngestionService.ingest_content.source_result_for"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists--py:config.sources.has_active_sources_config-53ec3a0f",
+      "kind": "call",
+      "to": "py:config.sources.has_active_sources_config"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists--py:ingestion.log_redaction.adapter_log_extra-a8288ac8",
+      "kind": "call",
+      "to": "py:ingestion.log_redaction.adapter_log_extra"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists--py:ingestion.result.build_response_from_sourc-979a8437",
+      "kind": "call",
+      "to": "py:ingestion.result.build_response_from_source_results"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists--py:ingestion.result.public_source_key_for-dfef6781",
+      "kind": "call",
+      "to": "py:ingestion.result.public_source_key_for"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists--py:ingestion.youtube.YouTubeContentIngestionS-5197299d",
+      "kind": "call",
+      "to": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists.ingest_one"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists--py:ingestion.youtube._content_filter_from_sou-84bbe41c",
+      "kind": "call",
+      "to": "py:ingestion.youtube._content_filter_from_source"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists.ingest_one",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists.ingest_one--py:ingestion.log_redaction.adapter-2b2d3b5a",
+      "kind": "call",
+      "to": "py:ingestion.log_redaction.adapter_log_extra"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists.ingest_one",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists.ingest_one--py:ingestion.result.public_source_-e8e917bf",
+      "kind": "call",
+      "to": "py:ingestion.result.public_source_key_for"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists.ingest_one",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists.ingest_one--py:ingestion.youtube._content_filt-a8629acf",
+      "kind": "call",
+      "to": "py:ingestion.youtube._content_filter_from_source"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels--py:ingestion.log_redaction.adapter_log_extra-22bd199d",
+      "kind": "call",
+      "to": "py:ingestion.log_redaction.adapter_log_extra"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels--py:ingestion.result.build_response_from_source_res-b9c1d392",
+      "kind": "call",
+      "to": "py:ingestion.result.build_response_from_source_results"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels--py:ingestion.result.public_source_key_for-324f0d34",
+      "kind": "call",
+      "to": "py:ingestion.result.public_source_key_for"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels--py:ingestion.youtube.YouTubeContentIngestionServic-822cf950",
+      "kind": "call",
+      "to": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists.ingest_one"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels--py:ingestion.youtube._content_filter_from_source-85658dc4",
+      "kind": "call",
+      "to": "py:ingestion.youtube._content_filter_from_source"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels.ingest_one",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels.ingest_one--py:ingestion.log_redaction.adapter_log_-b43319ea",
+      "kind": "call",
+      "to": "py:ingestion.log_redaction.adapter_log_extra"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels.ingest_one",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels.ingest_one--py:ingestion.result.public_source_key_f-225cd3dd",
+      "kind": "call",
+      "to": "py:ingestion.result.public_source_key_for"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels.ingest_one",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels.ingest_one--py:ingestion.youtube._content_filter_fr-aa9cd264",
+      "kind": "call",
+      "to": "py:ingestion.youtube._content_filter_from_source"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds",
+      "id": "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds--py:ingestion.log_redaction.adapter_log_extra-0c5fe978",
+      "kind": "call",
+      "to": "py:ingestion.log_redaction.adapter_log_extra"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds",
+      "id": "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds--py:ingestion.result.build_response_from_source_result-13f569e9",
+      "kind": "call",
+      "to": "py:ingestion.result.build_response_from_source_results"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds",
+      "id": "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds--py:ingestion.result.public_source_key_for-03e92d1c",
+      "kind": "call",
+      "to": "py:ingestion.result.public_source_key_for"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds",
+      "id": "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds--py:ingestion.youtube.YouTubeContentIngestionService.i-b9bf2b61",
+      "kind": "call",
+      "to": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists.ingest_one"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds",
+      "id": "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds--py:ingestion.youtube._content_filter_from_source-8860b0b3",
+      "kind": "call",
+      "to": "py:ingestion.youtube._content_filter_from_source"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds.ingest_one",
+      "id": "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds.ingest_one--py:ingestion.log_redaction.adapter_log_ext-dfee5c6c",
+      "kind": "call",
+      "to": "py:ingestion.log_redaction.adapter_log_extra"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds.ingest_one",
+      "id": "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds.ingest_one--py:ingestion.result.public_source_key_for-908ba0d0",
+      "kind": "call",
+      "to": "py:ingestion.result.public_source_key_for"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds.ingest_one",
+      "id": "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds.ingest_one--py:ingestion.youtube._content_filter_from_-a6b11de6",
+      "kind": "call",
+      "to": "py:ingestion.youtube._content_filter_from_source"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:processors.summarizer.ContentSummarizer._summarize_content_guarded",
+      "id": "py:processors.summarizer.ContentSummarizer._summarize_content_guarded--py:processors.summarizer._record_summarization_f-3c2dbd24",
+      "kind": "call",
+      "to": "py:processors.summarizer._record_summarization_failure"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:processors.summarizer.ContentSummarizer._summarize_content_guarded",
+      "id": "py:processors.summarizer.ContentSummarizer._summarize_content_guarded--py:queue.execution_claim.acquire_content_executi-38d13b6c",
+      "kind": "call",
+      "to": "py:queue.execution_claim.acquire_content_execution"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:processors.summarizer.ContentSummarizer._summarize_content_guarded",
+      "id": "py:processors.summarizer.ContentSummarizer._summarize_content_guarded--py:queue.execution_claim.current_execution_claim-2304336a",
+      "kind": "call",
+      "to": "py:queue.execution_claim.current_execution_claim"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:processors.summarizer.ContentSummarizer._summarize_content_guarded",
+      "id": "py:processors.summarizer.ContentSummarizer._summarize_content_guarded--py:queue.execution_claim.guard_content_execution-1817b58f",
+      "kind": "call",
+      "to": "py:queue.execution_claim.guard_content_execution"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:processors.summarizer.ContentSummarizer._summarize_content_guarded",
+      "id": "py:processors.summarizer.ContentSummarizer._summarize_content_guarded--py:storage.database.get_db-66ac58d8",
+      "kind": "call",
+      "to": "py:storage.database.get_db"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:processors.summarizer.ContentSummarizer._summarize_content_guarded",
+      "id": "py:processors.summarizer.ContentSummarizer._summarize_content_guarded--py:utils.summary_markdown.extract_summary_theme_-b2d35d53",
+      "kind": "call",
+      "to": "py:utils.summary_markdown.extract_summary_theme_tags"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:processors.summarizer.ContentSummarizer._summarize_content_guarded",
+      "id": "py:processors.summarizer.ContentSummarizer._summarize_content_guarded--py:utils.summary_markdown.generate_summary_markd-e61b4a90",
+      "kind": "call",
+      "to": "py:utils.summary_markdown.generate_summary_markdown"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:processors.summarizer.ContentSummarizer._summarize_content_legacy",
+      "id": "py:processors.summarizer.ContentSummarizer._summarize_content_legacy--py:processors.summarizer._record_summarization_fa-24bcc03f",
+      "kind": "call",
+      "to": "py:processors.summarizer._record_summarization_failure"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:processors.summarizer.ContentSummarizer._summarize_content_legacy",
+      "id": "py:processors.summarizer.ContentSummarizer._summarize_content_legacy--py:storage.database.get_db-73b65d8e",
+      "kind": "call",
+      "to": "py:storage.database.get_db"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:processors.summarizer.ContentSummarizer._summarize_content_legacy",
+      "id": "py:processors.summarizer.ContentSummarizer._summarize_content_legacy--py:utils.summary_markdown.extract_summary_theme_t-97b0e4fe",
+      "kind": "call",
+      "to": "py:utils.summary_markdown.extract_summary_theme_tags"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:processors.summarizer.ContentSummarizer._summarize_content_legacy",
+      "id": "py:processors.summarizer.ContentSummarizer._summarize_content_legacy--py:utils.summary_markdown.generate_summary_markdo-42269f39",
+      "kind": "call",
+      "to": "py:utils.summary_markdown.generate_summary_markdown"
+    },
+    {
+      "animated": false,
+      "delta": "unchanged",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:queue.worker.run_worker",
+      "id": "py:queue.worker.run_worker--py:queue.setup.ensure_queue_schema_compatible-4ea42882",
+      "kind": "call",
+      "to": "py:queue.setup.ensure_queue_schema_compatible"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:services.image_generator.ImageGenerator.refine_prompt",
+      "id": "py:services.image_generator.ImageGenerator.refine_prompt--py:config.models.get_model_config-89a76e2d",
+      "kind": "call",
+      "to": "py:config.models.get_model_config"
+    }
+  ],
+  "flows": [],
+  "kind": "graph",
+  "lanes": [
+    {
+      "id": "frontend",
+      "label": "Frontend",
+      "order": 0
+    },
+    {
+      "id": "backend",
+      "label": "Backend",
+      "order": 1
+    }
+  ],
+  "lenses": [
+    "architecture"
+  ],
+  "nodes": [
+    {
+      "badges": [
+        "55 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 95,
+          "path": "src/agents/registry.py",
+          "startLine": 20
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.registry.SpecialistRegistry",
+      "kind": "other",
+      "label": "SpecialistRegistry",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 38,
+          "path": "src/agents/registry.py",
+          "startLine": 26
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.registry.SpecialistRegistry.register",
+      "kind": "function",
+      "label": "register",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 268,
+          "path": "src/agents/specialists/analysis.py",
+          "startLine": 19
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.specialists.analysis.AnalysisSpecialist",
+      "kind": "other",
+      "label": "AnalysisSpecialist",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 256,
+          "path": "src/agents/specialists/analysis.py",
+          "startLine": 134
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool",
+      "kind": "function",
+      "label": "_execute_tool",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 212,
+          "path": "src/agents/specialists/analysis.py",
+          "startLine": 207
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool._parse_period",
+      "kind": "function",
+      "label": "_parse_period",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 169,
+          "path": "src/agents/specialists/ingestion.py",
+          "startLine": 16
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.specialists.ingestion.IngestionSpecialist",
+      "kind": "other",
+      "label": "IngestionSpecialist",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 160,
+          "path": "src/agents/specialists/ingestion.py",
+          "startLine": 120
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.specialists.ingestion.IngestionSpecialist._execute_tool",
+      "kind": "function",
+      "label": "_execute_tool",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 205,
+          "path": "src/agents/specialists/research.py",
+          "startLine": 16
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.specialists.research.ResearchSpecialist",
+      "kind": "other",
+      "label": "ResearchSpecialist",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 193,
+          "path": "src/agents/specialists/research.py",
+          "startLine": 130
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.specialists.research.ResearchSpecialist._execute_tool",
+      "kind": "function",
+      "label": "_execute_tool",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 203,
+          "path": "src/agents/specialists/synthesis.py",
+          "startLine": 16
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.specialists.synthesis.SynthesisSpecialist",
+      "kind": "other",
+      "label": "SynthesisSpecialist",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 191,
+          "path": "src/agents/specialists/synthesis.py",
+          "startLine": 144
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.specialists.synthesis.SynthesisSpecialist._execute_tool",
+      "kind": "function",
+      "label": "_execute_tool",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 156,
+          "path": "src/api/app.py",
+          "startLine": 69
+        }
+      ],
+      "group": "src/api",
+      "id": "py:api.app.lifespan",
+      "kind": "function",
+      "label": "lifespan",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 175,
+          "path": "src/api/image_generation_routes.py",
+          "startLine": 109
+        }
+      ],
+      "group": "src/api",
+      "id": "py:api.image_generation_routes.generate_image",
+      "kind": "function",
+      "label": "generate_image",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 304,
+          "path": "src/api/image_generation_routes.py",
+          "startLine": 226
+        }
+      ],
+      "group": "src/api",
+      "id": "py:api.image_generation_routes.regenerate_image",
+      "kind": "function",
+      "label": "regenerate_image",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 478,
+          "path": "src/api/kb_routes.py",
+          "startLine": 460
+        }
+      ],
+      "group": "src/api",
+      "id": "py:api.kb_routes.compile_kb",
+      "kind": "function",
+      "label": "compile_kb",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 234,
+          "path": "src/cli/app.py",
+          "startLine": 163
+        }
+      ],
+      "group": "src/cli",
+      "id": "py:cli.app.main_callback",
+      "kind": "function",
+      "label": "main_callback",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 331,
+          "path": "src/config/bao_secrets.py",
+          "startLine": 320
+        }
+      ],
+      "group": "src/config",
+      "id": "py:config.bao_secrets.BaoSettingsSource._load_once",
+      "kind": "function",
+      "label": "_load_once",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 88,
+          "path": "src/config/bao_secrets.py",
+          "startLine": 56
+        }
+      ],
+      "group": "src/config",
+      "id": "py:config.bao_secrets._authenticate_client",
+      "kind": "function",
+      "label": "_authenticate_client",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 98,
+          "path": "src/config/bao_secrets.py",
+          "startLine": 91
+        }
+      ],
+      "group": "src/config",
+      "id": "py:config.bao_secrets._fetch_secrets",
+      "kind": "function",
+      "label": "_fetch_secrets",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 53,
+          "path": "src/config/bao_secrets.py",
+          "startLine": 51
+        }
+      ],
+      "group": "src/config",
+      "id": "py:config.bao_secrets._is_bao_configured",
+      "kind": "function",
+      "label": "_is_bao_configured",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "34 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 185,
+          "path": "src/config/bao_secrets.py",
+          "startLine": 101
+        }
+      ],
+      "group": "src/config",
+      "id": "py:config.bao_secrets._load_bao_secrets",
+      "kind": "function",
+      "label": "_load_bao_secrets",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "34 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 198,
+          "path": "src/config/bao_secrets.py",
+          "startLine": 188
+        }
+      ],
+      "group": "src/config",
+      "id": "py:config.bao_secrets.get_bao_secret",
+      "kind": "function",
+      "label": "get_bao_secret",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 207,
+          "path": "src/config/config_registry.py",
+          "startLine": 182
+        }
+      ],
+      "group": "src/config",
+      "id": "py:config.config_registry.register_all_domains",
+      "kind": "function",
+      "label": "register_all_domains",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "50 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 904,
+          "path": "src/config/models.py",
+          "startLine": 888
+        }
+      ],
+      "group": "src/config",
+      "id": "py:config.models.get_model_config",
+      "kind": "function",
+      "label": "get_model_config",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "504 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 1946,
+          "path": "src/config/settings.py",
+          "startLine": 277
+        }
+      ],
+      "group": "src/config",
+      "id": "py:config.settings.Settings",
+      "kind": "other",
+      "label": "Settings",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 397,
+          "path": "src/config/sources.py",
+          "startLine": 395
+        }
+      ],
+      "group": "src/config",
+      "id": "py:config.sources.has_active_sources_config",
+      "kind": "function",
+      "label": "has_active_sources_config",
+      "lane": "backend"
+    },
+    {
+      "badges": [],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 1,
+          "path": "src/ingestion/log_redaction.py",
+          "startLine": 1
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.log_redaction",
+      "kind": "module",
+      "label": "ingestion.log_redaction",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "8 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 59,
+          "path": "src/ingestion/log_redaction.py",
+          "startLine": 46
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.log_redaction.adapter_log_extra",
+      "kind": "function",
+      "label": "adapter_log_extra",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 43,
+          "path": "src/ingestion/log_redaction.py",
+          "startLine": 40
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.log_redaction.log_diagnostic_code",
+      "kind": "function",
+      "label": "log_diagnostic_code",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "8 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 37,
+          "path": "src/ingestion/log_redaction.py",
+          "startLine": 28
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.log_redaction.log_error_type",
+      "kind": "function",
+      "label": "log_error_type",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "8 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 25,
+          "path": "src/ingestion/log_redaction.py",
+          "startLine": 20
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.log_redaction.log_source_key",
+      "kind": "function",
+      "label": "log_source_key",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "32 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 553,
+          "path": "src/ingestion/result.py",
+          "startLine": 450
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.result.build_response_from_source_results",
+      "kind": "function",
+      "label": "build_response_from_source_results",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "23 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 122,
+          "path": "src/ingestion/result.py",
+          "startLine": 112
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.result.public_source_key_for",
+      "kind": "function",
+      "label": "public_source_key_for",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "5 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 103,
+          "path": "src/ingestion/result_sanitizer.py",
+          "startLine": 98
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.result_sanitizer.sanitize_ingestion_diagnostic_code",
+      "kind": "function",
+      "label": "sanitize_ingestion_diagnostic_code",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "36 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 473,
+          "path": "src/ingestion/rss.py",
+          "startLine": 48
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.rss.RSSClient",
+      "kind": "other",
+      "label": "RSSClient",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 200,
+          "path": "src/ingestion/rss.py",
+          "startLine": 67
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.rss.RSSClient.fetch_content",
+      "kind": "function",
+      "label": "fetch_content",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "32 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 795,
+          "path": "src/ingestion/rss.py",
+          "startLine": 476
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.rss.RSSContentIngestionService",
+      "kind": "other",
+      "label": "RSSContentIngestionService",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 791,
+          "path": "src/ingestion/rss.py",
+          "startLine": 488
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.rss.RSSContentIngestionService.ingest_content",
+      "kind": "function",
+      "label": "ingest_content",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 529,
+          "path": "src/ingestion/rss.py",
+          "startLine": 526
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.rss.RSSContentIngestionService.ingest_content.record_persisted",
+      "kind": "function",
+      "label": "record_persisted",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 524,
+          "path": "src/ingestion/rss.py",
+          "startLine": 519
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.rss.RSSContentIngestionService.ingest_content.source_result_for",
+      "kind": "function",
+      "label": "source_result_for",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "94 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 1841,
+          "path": "src/ingestion/youtube.py",
+          "startLine": 849
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService",
+      "kind": "other",
+      "label": "YouTubeContentIngestionService",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 1598,
+          "path": "src/ingestion/youtube.py",
+          "startLine": 1425
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists",
+      "kind": "function",
+      "label": "ingest_all_playlists",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 1559,
+          "path": "src/ingestion/youtube.py",
+          "startLine": 1515
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists.ingest_one",
+      "kind": "function",
+      "label": "ingest_one",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 1776,
+          "path": "src/ingestion/youtube.py",
+          "startLine": 1600
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels",
+      "kind": "function",
+      "label": "ingest_channels",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 1737,
+          "path": "src/ingestion/youtube.py",
+          "startLine": 1671
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels.ingest_one",
+      "kind": "function",
+      "label": "ingest_one",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "43 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 2325,
+          "path": "src/ingestion/youtube.py",
+          "startLine": 1844
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.youtube.YouTubeRSSIngestionService",
+      "kind": "other",
+      "label": "YouTubeRSSIngestionService",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 2325,
+          "path": "src/ingestion/youtube.py",
+          "startLine": 2199
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds",
+      "kind": "function",
+      "label": "ingest_all_feeds",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 2286,
+          "path": "src/ingestion/youtube.py",
+          "startLine": 2241
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds.ingest_one",
+      "kind": "function",
+      "label": "ingest_one",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 704,
+          "path": "src/ingestion/youtube.py",
+          "startLine": 688
+        }
+      ],
+      "group": "src/ingestion",
+      "id": "py:ingestion.youtube._content_filter_from_source",
+      "kind": "function",
+      "label": "_content_filter_from_source",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "28 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 400,
+          "path": "src/parsers/docling_parser.py",
+          "startLine": 26
+        }
+      ],
+      "group": "src/parsers",
+      "id": "py:parsers.docling_parser.DoclingParser",
+      "kind": "other",
+      "label": "DoclingParser",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 92,
+          "path": "src/parsers/docling_parser.py",
+          "startLine": 76
+        }
+      ],
+      "group": "src/parsers",
+      "id": "py:parsers.docling_parser.DoclingParser.__init__",
+      "kind": "function",
+      "label": "__init__",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 304,
+          "path": "src/parsers/docling_parser.py",
+          "startLine": 246
+        }
+      ],
+      "group": "src/parsers",
+      "id": "py:parsers.docling_parser.DoclingParser._extract_tables",
+      "kind": "function",
+      "label": "_extract_tables",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "14 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 541,
+          "path": "src/processors/summarizer.py",
+          "startLine": 55
+        }
+      ],
+      "group": "src/processors",
+      "id": "py:processors.summarizer.ContentSummarizer",
+      "kind": "other",
+      "label": "ContentSummarizer",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 201,
+          "path": "src/processors/summarizer.py",
+          "startLine": 101
+        }
+      ],
+      "group": "src/processors",
+      "id": "py:processors.summarizer.ContentSummarizer._summarize_content_guarded",
+      "kind": "function",
+      "label": "_summarize_content_guarded",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 297,
+          "path": "src/processors/summarizer.py",
+          "startLine": 203
+        }
+      ],
+      "group": "src/processors",
+      "id": "py:processors.summarizer.ContentSummarizer._summarize_content_legacy",
+      "kind": "function",
+      "label": "_summarize_content_legacy",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 52,
+          "path": "src/processors/summarizer.py",
+          "startLine": 43
+        }
+      ],
+      "group": "src/processors",
+      "id": "py:processors.summarizer._record_summarization_failure",
+      "kind": "function",
+      "label": "_record_summarization_failure",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "11 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 220,
+          "path": "src/queue/execution_claim.py",
+          "startLine": 169
+        }
+      ],
+      "group": "src/queue",
+      "id": "py:queue.execution_claim.acquire_content_execution",
+      "kind": "function",
+      "label": "acquire_content_execution",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 56,
+          "path": "src/queue/execution_claim.py",
+          "startLine": 53
+        }
+      ],
+      "group": "src/queue",
+      "id": "py:queue.execution_claim.current_execution_claim",
+      "kind": "function",
+      "label": "current_execution_claim",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "11 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 242,
+          "path": "src/queue/execution_claim.py",
+          "startLine": 223
+        }
+      ],
+      "group": "src/queue",
+      "id": "py:queue.execution_claim.guard_content_execution",
+      "kind": "function",
+      "label": "guard_content_execution",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 487,
+          "path": "src/queue/setup.py",
+          "startLine": 476
+        }
+      ],
+      "group": "src/queue",
+      "id": "py:queue.setup.close_queue",
+      "kind": "function",
+      "label": "close_queue",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "26 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 551,
+          "path": "src/queue/setup.py",
+          "startLine": 490
+        }
+      ],
+      "group": "src/queue",
+      "id": "py:queue.setup.ensure_queue_schema_compatible",
+      "kind": "function",
+      "label": "ensure_queue_schema_compatible",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "55 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 1026,
+          "path": "src/queue/worker.py",
+          "startLine": 1013
+        }
+      ],
+      "group": "src/queue",
+      "id": "py:queue.worker.register_all_handlers",
+      "kind": "function",
+      "label": "register_all_handlers",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 992,
+          "path": "src/queue/worker.py",
+          "startLine": 830
+        }
+      ],
+      "group": "src/queue",
+      "id": "py:queue.worker.run_worker",
+      "kind": "function",
+      "label": "run_worker",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "20 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 951,
+          "path": "src/services/content_reconciliation_service.py",
+          "startLine": 285
+        }
+      ],
+      "group": "src/services",
+      "id": "py:services.content_reconciliation_service.ContentReconciliationService",
+      "kind": "other",
+      "label": "ContentReconciliationService",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 396,
+          "path": "src/services/content_reconciliation_service.py",
+          "startLine": 350
+        }
+      ],
+      "group": "src/services",
+      "id": "py:services.content_reconciliation_service.ContentReconciliationService._apply_page",
+      "kind": "function",
+      "label": "_apply_page",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 87,
+          "path": "src/services/embedding_check.py",
+          "startLine": 23
+        }
+      ],
+      "group": "src/services",
+      "id": "py:services.embedding_check.check_embedding_config_mismatch",
+      "kind": "function",
+      "label": "check_embedding_config_mismatch",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "34 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 488,
+          "path": "src/services/image_generator.py",
+          "startLine": 200
+        }
+      ],
+      "group": "src/services",
+      "id": "py:services.image_generator.ImageGenerator",
+      "kind": "other",
+      "label": "ImageGenerator",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 336,
+          "path": "src/services/image_generator.py",
+          "startLine": 291
+        }
+      ],
+      "group": "src/services",
+      "id": "py:services.image_generator.ImageGenerator.generate_for_digest",
+      "kind": "function",
+      "label": "generate_for_digest",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 289,
+          "path": "src/services/image_generator.py",
+          "startLine": 244
+        }
+      ],
+      "group": "src/services",
+      "id": "py:services.image_generator.ImageGenerator.generate_for_summary",
+      "kind": "function",
+      "label": "generate_for_summary",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 442,
+          "path": "src/services/image_generator.py",
+          "startLine": 431
+        }
+      ],
+      "group": "src/services",
+      "id": "py:services.image_generator.ImageGenerator.generate_image_bytes",
+      "kind": "function",
+      "label": "generate_image_bytes",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 427,
+          "path": "src/services/image_generator.py",
+          "startLine": 380
+        }
+      ],
+      "group": "src/services",
+      "id": "py:services.image_generator.ImageGenerator.refine_prompt",
+      "kind": "function",
+      "label": "refine_prompt",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "53 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 58,
+          "path": "src/services/image_generator.py",
+          "startLine": 50
+        }
+      ],
+      "group": "src/services",
+      "id": "py:services.image_generator.ImageProviderError",
+      "kind": "other",
+      "label": "ImageProviderError",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "34 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 527,
+          "path": "src/services/image_generator.py",
+          "startLine": 496
+        }
+      ],
+      "group": "src/services",
+      "id": "py:services.image_generator.get_image_generator",
+      "kind": "function",
+      "label": "get_image_generator",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "40 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 74,
+          "path": "src/services/indexing.py",
+          "startLine": 45
+        }
+      ],
+      "group": "src/services",
+      "id": "py:services.indexing.index_content",
+      "kind": "function",
+      "label": "index_content",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "4 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 43,
+          "path": "src/services/notification_cleanup.py",
+          "startLine": 38
+        }
+      ],
+      "group": "src/services",
+      "id": "py:services.notification_cleanup.auto_cleanup_notifications",
+      "kind": "function",
+      "label": "auto_cleanup_notifications",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "64 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 381,
+          "path": "src/services/web_search.py",
+          "startLine": 350
+        }
+      ],
+      "group": "src/services",
+      "id": "py:services.web_search.get_web_search_provider",
+      "kind": "function",
+      "label": "get_web_search_provider",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 144,
+          "path": "src/storage/database.py",
+          "startLine": 134
+        }
+      ],
+      "group": "src/storage",
+      "id": "py:storage.database.get_db",
+      "kind": "function",
+      "label": "get_db",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 149,
+          "path": "src/storage/database.py",
+          "startLine": 147
+        }
+      ],
+      "group": "src/storage",
+      "id": "py:storage.database.get_db_session",
+      "kind": "function",
+      "label": "get_db_session",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "23 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 59,
+          "path": "src/telemetry/__init__.py",
+          "startLine": 41
+        }
+      ],
+      "group": "src/telemetry",
+      "id": "py:telemetry.setup_telemetry",
+      "kind": "function",
+      "label": "setup_telemetry",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "23 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 78,
+          "path": "src/telemetry/__init__.py",
+          "startLine": 62
+        }
+      ],
+      "group": "src/telemetry",
+      "id": "py:telemetry.shutdown_telemetry",
+      "kind": "function",
+      "label": "shutdown_telemetry",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "8 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 44,
+          "path": "src/utils/html_parser.py",
+          "startLine": 12
+        }
+      ],
+      "group": "src/utils",
+      "id": "py:utils.html_parser.html_to_text",
+      "kind": "function",
+      "label": "html_to_text",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 141,
+          "path": "src/utils/logging.py",
+          "startLine": 119
+        }
+      ],
+      "group": "src/utils",
+      "id": "py:utils.logging._AppLogHandler",
+      "kind": "other",
+      "label": "_AppLogHandler",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 137,
+          "path": "src/utils/logging.py",
+          "startLine": 136
+        }
+      ],
+      "group": "src/utils",
+      "id": "py:utils.logging._AppLogHandler.__init__",
+      "kind": "function",
+      "label": "__init__",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 141,
+          "path": "src/utils/logging.py",
+          "startLine": 140
+        }
+      ],
+      "group": "src/utils",
+      "id": "py:utils.logging._AppLogHandler.stream",
+      "kind": "function",
+      "label": "stream",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "1 test"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 198,
+          "path": "src/utils/logging.py",
+          "startLine": 196
+        }
+      ],
+      "group": "src/utils",
+      "id": "py:utils.logging.get_logger",
+      "kind": "function",
+      "label": "get_logger",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "35 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 193,
+          "path": "src/utils/logging.py",
+          "startLine": 144
+        }
+      ],
+      "group": "src/utils",
+      "id": "py:utils.logging.setup_logging",
+      "kind": "function",
+      "label": "setup_logging",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 77,
+          "path": "src/utils/substack.py",
+          "startLine": 63
+        }
+      ],
+      "group": "src/utils",
+      "id": "py:utils.substack.find_existing_substack_content",
+      "kind": "function",
+      "label": "find_existing_substack_content",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "3 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 41,
+          "path": "src/utils/substack.py",
+          "startLine": 14
+        }
+      ],
+      "group": "src/utils",
+      "id": "py:utils.substack.normalize_substack_url",
+      "kind": "function",
+      "label": "normalize_substack_url",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "45 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 147,
+          "path": "src/utils/summary_markdown.py",
+          "startLine": 120
+        }
+      ],
+      "group": "src/utils",
+      "id": "py:utils.summary_markdown.extract_summary_theme_tags",
+      "kind": "function",
+      "label": "extract_summary_theme_tags",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "45 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 117,
+          "path": "src/utils/summary_markdown.py",
+          "startLine": 16
+        }
+      ],
+      "group": "src/utils",
+      "id": "py:utils.summary_markdown.generate_summary_markdown",
+      "kind": "function",
+      "label": "generate_summary_markdown",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 206,
+          "path": "web/src/routes/ingest.tsx",
+          "startLine": 68
+        }
+      ],
+      "group": "web/src",
+      "id": "ts:InputField",
+      "kind": "ui",
+      "label": "InputField",
+      "lane": "frontend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 61,
+          "path": "web/src/lib/capability-form-values.ts",
+          "startLine": 51
+        }
+      ],
+      "group": "web/src",
+      "id": "ts:capabilityInputValue",
+      "kind": "function",
+      "label": "capabilityInputValue",
+      "lane": "frontend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 30,
+          "path": "web/src/lib/capability-form-values.ts",
+          "startLine": 25
+        }
+      ],
+      "group": "web/src",
+      "id": "ts:dateControlValue",
+      "kind": "function",
+      "label": "dateControlValue",
+      "lane": "frontend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 42,
+          "path": "web/src/lib/capability-form-values.ts",
+          "startLine": 32
+        }
+      ],
+      "group": "web/src",
+      "id": "ts:datetimeLocalControlValue",
+      "kind": "function",
+      "label": "datetimeLocalControlValue",
+      "lane": "frontend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 75,
+          "path": "web/src/lib/capability-form-values.ts",
+          "startLine": 63
+        }
+      ],
+      "group": "web/src",
+      "id": "ts:initialCapabilityValues",
+      "kind": "function",
+      "label": "initialCapabilityValues",
+      "lane": "frontend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 66,
+          "path": "web/src/routes/ingest.tsx",
+          "startLine": 51
+        }
+      ],
+      "group": "web/src",
+      "id": "ts:initialValues",
+      "kind": "function",
+      "label": "initialValues",
+      "lane": "frontend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 13,
+          "path": "web/src/lib/capability-form-values.ts",
+          "startLine": 11
+        }
+      ],
+      "group": "web/src",
+      "id": "ts:isMissingControlValue",
+      "kind": "function",
+      "label": "isMissingControlValue",
+      "lane": "frontend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 23,
+          "path": "web/src/lib/capability-form-values.ts",
+          "startLine": 15
+        }
+      ],
+      "group": "web/src",
+      "id": "ts:numberControlValue",
+      "kind": "function",
+      "label": "numberControlValue",
+      "lane": "frontend"
+    },
+    {
+      "badges": [],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 1,
+          "path": "web/src/lib/capability-form-values.ts",
+          "startLine": 1
+        }
+      ],
+      "group": "web/src",
+      "id": "ts:src/lib/capability-form-values",
+      "kind": "module",
+      "label": "src/lib/capability-form-values",
+      "lane": "frontend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 49,
+          "path": "web/src/lib/capability-form-values.ts",
+          "startLine": 44
+        }
+      ],
+      "group": "web/src",
+      "id": "ts:textControlValue",
+      "kind": "function",
+      "label": "textControlValue",
+      "lane": "frontend"
+    }
+  ],
+  "provenance": {
+    "base": {
+      "sha": "248a306656ab8099d14b38312c86ecbc6ec17139"
+    },
+    "generator": {
+      "name": "project_change_graph",
+      "version": "0.1.0"
+    },
+    "head": {
+      "sha": "80e983322dcdbce4ad75598d27bcee9e6d86459b"
+    },
+    "repo": {
+      "host": "github.com",
+      "name": "agentic-content-analyzer",
+      "owner": "jankneumann"
+    }
+  },
+  "schemaVersion": "0.1.1",
+  "stats": {
+    "additions": 43122,
+    "chips": [
+      {
+        "label": "Files outside the graph",
+        "tone": "neutral",
+        "value": "329 of 350"
+      }
+    ],
+    "deletions": 3902,
+    "filesChanged": 372
+  },
+  "summary": "This change touches 0 added, 62 modified, 0 removed symbols in the architecture graph, drawn against the code one dependency hop away. 329 changed files are outside the analyzed roots and do not appear here.",
+  "title": "62 symbols across 372 files",
+  "views": [
+    {
+      "children": [
+        {
+          "children": [],
+          "defaultOpen": false,
+          "id": "group-src/agents",
+          "lens": "architecture",
+          "scope": {
+            "kind": "selection",
+            "nodes": [
+              "py:agents.registry.SpecialistRegistry",
+              "py:agents.registry.SpecialistRegistry.register",
+              "py:agents.specialists.analysis.AnalysisSpecialist",
+              "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool",
+              "py:agents.specialists.ingestion.IngestionSpecialist",
+              "py:agents.specialists.ingestion.IngestionSpecialist._execute_tool",
+              "py:agents.specialists.research.ResearchSpecialist",
+              "py:agents.specialists.research.ResearchSpecialist._execute_tool",
+              "py:agents.specialists.synthesis.SynthesisSpecialist",
+              "py:agents.specialists.synthesis.SynthesisSpecialist._execute_tool"
+            ]
+          },
+          "title": "src/agents"
+        },
+        {
+          "children": [],
+          "defaultOpen": false,
+          "id": "group-src/api",
+          "lens": "architecture",
+          "scope": {
+            "kind": "selection",
+            "nodes": [
+              "py:api.app.lifespan",
+              "py:api.image_generation_routes.generate_image",
+              "py:api.image_generation_routes.regenerate_image",
+              "py:api.kb_routes.compile_kb"
+            ]
+          },
+          "title": "src/api"
+        },
+        {
+          "children": [],
+          "defaultOpen": false,
+          "id": "group-src/config",
+          "lens": "architecture",
+          "scope": {
+            "kind": "selection",
+            "nodes": [
+              "py:config.bao_secrets._load_bao_secrets",
+              "py:config.settings.Settings"
+            ]
+          },
+          "title": "src/config"
+        },
+        {
+          "children": [],
+          "defaultOpen": false,
+          "id": "group-src/ingestion",
+          "lens": "architecture",
+          "scope": {
+            "kind": "selection",
+            "nodes": [
+              "py:ingestion.log_redaction",
+              "py:ingestion.log_redaction.adapter_log_extra",
+              "py:ingestion.log_redaction.log_diagnostic_code",
+              "py:ingestion.log_redaction.log_error_type",
+              "py:ingestion.log_redaction.log_source_key",
+              "py:ingestion.rss.RSSClient",
+              "py:ingestion.rss.RSSClient.fetch_content",
+              "py:ingestion.rss.RSSContentIngestionService",
+              "py:ingestion.rss.RSSContentIngestionService.ingest_content",
+              "py:ingestion.youtube.YouTubeContentIngestionService",
+              "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists",
+              "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists.ingest_one",
+              "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels",
+              "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels.ingest_one",
+              "py:ingestion.youtube.YouTubeRSSIngestionService",
+              "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds",
+              "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds.ingest_one"
+            ]
+          },
+          "title": "src/ingestion"
+        },
+        {
+          "children": [],
+          "defaultOpen": false,
+          "id": "group-src/parsers",
+          "lens": "architecture",
+          "scope": {
+            "kind": "selection",
+            "nodes": [
+              "py:parsers.docling_parser.DoclingParser",
+              "py:parsers.docling_parser.DoclingParser.__init__",
+              "py:parsers.docling_parser.DoclingParser._extract_tables"
+            ]
+          },
+          "title": "src/parsers"
+        },
+        {
+          "children": [],
+          "defaultOpen": false,
+          "id": "group-src/processors",
+          "lens": "architecture",
+          "scope": {
+            "kind": "selection",
+            "nodes": [
+              "py:processors.summarizer.ContentSummarizer",
+              "py:processors.summarizer.ContentSummarizer._summarize_content_guarded",
+              "py:processors.summarizer.ContentSummarizer._summarize_content_legacy",
+              "py:processors.summarizer._record_summarization_failure"
+            ]
+          },
+          "title": "src/processors"
+        },
+        {
+          "children": [],
+          "defaultOpen": false,
+          "id": "group-src/services",
+          "lens": "architecture",
+          "scope": {
+            "kind": "selection",
+            "nodes": [
+              "py:services.content_reconciliation_service.ContentReconciliationService",
+              "py:services.content_reconciliation_service.ContentReconciliationService._apply_page",
+              "py:services.image_generator.ImageGenerator",
+              "py:services.image_generator.ImageGenerator.generate_for_digest",
+              "py:services.image_generator.ImageGenerator.generate_for_summary",
+              "py:services.image_generator.ImageGenerator.generate_image_bytes",
+              "py:services.image_generator.ImageGenerator.refine_prompt",
+              "py:services.image_generator.ImageProviderError"
+            ]
+          },
+          "title": "src/services"
+        },
+        {
+          "children": [],
+          "defaultOpen": false,
+          "id": "group-src/utils",
+          "lens": "architecture",
+          "scope": {
+            "kind": "selection",
+            "nodes": [
+              "py:utils.logging._AppLogHandler",
+              "py:utils.logging._AppLogHandler.__init__",
+              "py:utils.logging._AppLogHandler.stream",
+              "py:utils.logging.setup_logging"
+            ]
+          },
+          "title": "src/utils"
+        },
+        {
+          "children": [],
+          "defaultOpen": false,
+          "id": "group-web/src",
+          "lens": "architecture",
+          "scope": {
+            "kind": "selection",
+            "nodes": [
+              "ts:InputField",
+              "ts:capabilityInputValue",
+              "ts:dateControlValue",
+              "ts:datetimeLocalControlValue",
+              "ts:initialCapabilityValues",
+              "ts:initialValues",
+              "ts:isMissingControlValue",
+              "ts:numberControlValue",
+              "ts:src/lib/capability-form-values",
+              "ts:textControlValue"
+            ]
+          },
+          "title": "web/src"
+        }
+      ],
+      "defaultOpen": true,
+      "id": "blast-radius",
+      "lens": "architecture",
+      "scope": {
+        "kind": "all"
+      },
+      "title": "Blast radius"
+    }
+  ],
+  "walkthrough": {
+    "steps": [
+      {
+        "body": "62 symbols changed, shown against the code around them.",
+        "focus": {
+          "kind": "selection",
+          "nodes": [
+            "py:agents.registry.SpecialistRegistry",
+            "py:agents.registry.SpecialistRegistry.register",
+            "py:agents.specialists.analysis.AnalysisSpecialist",
+            "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool",
+            "py:agents.specialists.ingestion.IngestionSpecialist",
+            "py:agents.specialists.ingestion.IngestionSpecialist._execute_tool",
+            "py:agents.specialists.research.ResearchSpecialist",
+            "py:agents.specialists.research.ResearchSpecialist._execute_tool",
+            "py:agents.specialists.synthesis.SynthesisSpecialist",
+            "py:agents.specialists.synthesis.SynthesisSpecialist._execute_tool",
+            "py:api.app.lifespan",
+            "py:api.image_generation_routes.generate_image",
+            "py:api.image_generation_routes.regenerate_image",
+            "py:api.kb_routes.compile_kb",
+            "py:config.bao_secrets._load_bao_secrets",
+            "py:config.settings.Settings",
+            "py:ingestion.log_redaction",
+            "py:ingestion.log_redaction.adapter_log_extra",
+            "py:ingestion.log_redaction.log_diagnostic_code",
+            "py:ingestion.log_redaction.log_error_type",
+            "py:ingestion.log_redaction.log_source_key",
+            "py:ingestion.rss.RSSClient",
+            "py:ingestion.rss.RSSClient.fetch_content",
+            "py:ingestion.rss.RSSContentIngestionService",
+            "py:ingestion.rss.RSSContentIngestionService.ingest_content",
+            "py:ingestion.youtube.YouTubeContentIngestionService",
+            "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists",
+            "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists.ingest_one",
+            "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels",
+            "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels.ingest_one",
+            "py:ingestion.youtube.YouTubeRSSIngestionService",
+            "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds",
+            "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds.ingest_one",
+            "py:parsers.docling_parser.DoclingParser",
+            "py:parsers.docling_parser.DoclingParser.__init__",
+            "py:parsers.docling_parser.DoclingParser._extract_tables",
+            "py:processors.summarizer.ContentSummarizer",
+            "py:processors.summarizer.ContentSummarizer._summarize_content_guarded",
+            "py:processors.summarizer.ContentSummarizer._summarize_content_legacy",
+            "py:processors.summarizer._record_summarization_failure",
+            "py:services.content_reconciliation_service.ContentReconciliationService",
+            "py:services.content_reconciliation_service.ContentReconciliationService._apply_page",
+            "py:services.image_generator.ImageGenerator",
+            "py:services.image_generator.ImageGenerator.generate_for_digest",
+            "py:services.image_generator.ImageGenerator.generate_for_summary",
+            "py:services.image_generator.ImageGenerator.generate_image_bytes",
+            "py:services.image_generator.ImageGenerator.refine_prompt",
+            "py:services.image_generator.ImageProviderError",
+            "py:utils.logging._AppLogHandler",
+            "py:utils.logging._AppLogHandler.__init__",
+            "py:utils.logging._AppLogHandler.stream",
+            "py:utils.logging.setup_logging",
+            "ts:InputField",
+            "ts:capabilityInputValue",
+            "ts:dateControlValue",
+            "ts:datetimeLocalControlValue",
+            "ts:initialCapabilityValues",
+            "ts:initialValues",
+            "ts:isMissingControlValue",
+            "ts:numberControlValue",
+            "ts:src/lib/capability-form-values",
+            "ts:textControlValue"
+          ]
+        },
+        "heading": "What this change touches",
+        "id": "what-changed",
+        "stage": {
+          "kind": "view",
+          "view": "blast-radius"
+        }
+      },
+      {
+        "body": "10 changed symbols here.",
+        "focus": {
+          "kind": "selection",
+          "nodes": [
+            "py:agents.registry.SpecialistRegistry",
+            "py:agents.registry.SpecialistRegistry.register",
+            "py:agents.specialists.analysis.AnalysisSpecialist",
+            "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool",
+            "py:agents.specialists.ingestion.IngestionSpecialist",
+            "py:agents.specialists.ingestion.IngestionSpecialist._execute_tool",
+            "py:agents.specialists.research.ResearchSpecialist",
+            "py:agents.specialists.research.ResearchSpecialist._execute_tool",
+            "py:agents.specialists.synthesis.SynthesisSpecialist",
+            "py:agents.specialists.synthesis.SynthesisSpecialist._execute_tool"
+          ]
+        },
+        "heading": "src/agents",
+        "id": "tour-group-src/agents",
+        "stage": {
+          "kind": "view",
+          "view": "group-src/agents"
+        }
+      },
+      {
+        "body": "4 changed symbols here.",
+        "focus": {
+          "kind": "selection",
+          "nodes": [
+            "py:api.app.lifespan",
+            "py:api.image_generation_routes.generate_image",
+            "py:api.image_generation_routes.regenerate_image",
+            "py:api.kb_routes.compile_kb"
+          ]
+        },
+        "heading": "src/api",
+        "id": "tour-group-src/api",
+        "stage": {
+          "kind": "view",
+          "view": "group-src/api"
+        }
+      },
+      {
+        "body": "2 changed symbols here.",
+        "focus": {
+          "kind": "selection",
+          "nodes": [
+            "py:config.bao_secrets._load_bao_secrets",
+            "py:config.settings.Settings"
+          ]
+        },
+        "heading": "src/config",
+        "id": "tour-group-src/config",
+        "stage": {
+          "kind": "view",
+          "view": "group-src/config"
+        }
+      },
+      {
+        "body": "17 changed symbols here.",
+        "focus": {
+          "kind": "selection",
+          "nodes": [
+            "py:ingestion.log_redaction",
+            "py:ingestion.log_redaction.adapter_log_extra",
+            "py:ingestion.log_redaction.log_diagnostic_code",
+            "py:ingestion.log_redaction.log_error_type",
+            "py:ingestion.log_redaction.log_source_key",
+            "py:ingestion.rss.RSSClient",
+            "py:ingestion.rss.RSSClient.fetch_content",
+            "py:ingestion.rss.RSSContentIngestionService",
+            "py:ingestion.rss.RSSContentIngestionService.ingest_content",
+            "py:ingestion.youtube.YouTubeContentIngestionService",
+            "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists",
+            "py:ingestion.youtube.YouTubeContentIngestionService.ingest_all_playlists.ingest_one",
+            "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels",
+            "py:ingestion.youtube.YouTubeContentIngestionService.ingest_channels.ingest_one",
+            "py:ingestion.youtube.YouTubeRSSIngestionService",
+            "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds",
+            "py:ingestion.youtube.YouTubeRSSIngestionService.ingest_all_feeds.ingest_one"
+          ]
+        },
+        "heading": "src/ingestion",
+        "id": "tour-group-src/ingestion",
+        "stage": {
+          "kind": "view",
+          "view": "group-src/ingestion"
+        }
+      },
+      {
+        "body": "3 changed symbols here.",
+        "focus": {
+          "kind": "selection",
+          "nodes": [
+            "py:parsers.docling_parser.DoclingParser",
+            "py:parsers.docling_parser.DoclingParser.__init__",
+            "py:parsers.docling_parser.DoclingParser._extract_tables"
+          ]
+        },
+        "heading": "src/parsers",
+        "id": "tour-group-src/parsers",
+        "stage": {
+          "kind": "view",
+          "view": "group-src/parsers"
+        }
+      },
+      {
+        "body": "4 changed symbols here.",
+        "focus": {
+          "kind": "selection",
+          "nodes": [
+            "py:processors.summarizer.ContentSummarizer",
+            "py:processors.summarizer.ContentSummarizer._summarize_content_guarded",
+            "py:processors.summarizer.ContentSummarizer._summarize_content_legacy",
+            "py:processors.summarizer._record_summarization_failure"
+          ]
+        },
+        "heading": "src/processors",
+        "id": "tour-group-src/processors",
+        "stage": {
+          "kind": "view",
+          "view": "group-src/processors"
+        }
+      },
+      {
+        "body": "8 changed symbols here.",
+        "focus": {
+          "kind": "selection",
+          "nodes": [
+            "py:services.content_reconciliation_service.ContentReconciliationService",
+            "py:services.content_reconciliation_service.ContentReconciliationService._apply_page",
+            "py:services.image_generator.ImageGenerator",
+            "py:services.image_generator.ImageGenerator.generate_for_digest",
+            "py:services.image_generator.ImageGenerator.generate_for_summary",
+            "py:services.image_generator.ImageGenerator.generate_image_bytes",
+            "py:services.image_generator.ImageGenerator.refine_prompt",
+            "py:services.image_generator.ImageProviderError"
+          ]
+        },
+        "heading": "src/services",
+        "id": "tour-group-src/services",
+        "stage": {
+          "kind": "view",
+          "view": "group-src/services"
+        }
+      },
+      {
+        "body": "4 changed symbols here.",
+        "focus": {
+          "kind": "selection",
+          "nodes": [
+            "py:utils.logging._AppLogHandler",
+            "py:utils.logging._AppLogHandler.__init__",
+            "py:utils.logging._AppLogHandler.stream",
+            "py:utils.logging.setup_logging"
+          ]
+        },
+        "heading": "src/utils",
+        "id": "tour-group-src/utils",
+        "stage": {
+          "kind": "view",
+          "view": "group-src/utils"
+        }
+      },
+      {
+        "body": "10 changed symbols here.",
+        "focus": {
+          "kind": "selection",
+          "nodes": [
+            "ts:InputField",
+            "ts:capabilityInputValue",
+            "ts:dateControlValue",
+            "ts:datetimeLocalControlValue",
+            "ts:initialCapabilityValues",
+            "ts:initialValues",
+            "ts:isMissingControlValue",
+            "ts:numberControlValue",
+            "ts:src/lib/capability-form-values",
+            "ts:textControlValue"
+          ]
+        },
+        "heading": "web/src",
+        "id": "tour-group-web/src",
+        "stage": {
+          "kind": "view",
+          "view": "group-web/src"
+        }
+      }
+    ]
+  }
+}

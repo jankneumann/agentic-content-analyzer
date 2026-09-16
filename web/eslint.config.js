@@ -23,7 +23,15 @@ export default tseslint.config(
 
   // Main configuration for TypeScript React files
   {
-    files: ["**/*.{ts,tsx}"],
+    // Build-time scripts are linted too, and both extensions had to be named
+    // for different reasons. Without `mts`, eslint reports "no matching
+    // configuration" and skips those files silently, so a directory whose main
+    // files it never opened comes back clean. `.mjs` is visited by the base
+    // JavaScript config, but under rules laxer than this block's: an unused
+    // variable there is not an error until it is named here. Both were
+    // established by adding a deliberate unused variable and watching whether
+    // the run failed.
+    files: ["**/*.{ts,tsx,mts,mjs}"],
     extends: [
       // Base JavaScript recommended rules
       js.configs.recommended,

@@ -1,0 +1,77 @@
+name: Change graph retention
+
+# The assets branch gains a directory per push and nothing ever removes them.
+# This prunes the ones belonging to pull requests that closed long ago.
+#
+# Dry run unless someone asks for a deletion. A retention job that deletes on
+# its own schedule, before anyone has read what it would delete, is how a
+# retention job removes something it should not have.
+
+on:
+  schedule:
+    # Monthly, off the hour so it does not queue behind everything else.
+    - cron: "23 4 1 * *"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Actually delete, rather than listing what would go"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  prune:
+    name: prune
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Check out the assets branch
+        id: assets
+        run: |
+          set -euo pipefail
+          if ! git ls-remote --exit-code origin change-graph-assets >/dev/null; then
+            echo "no assets branch yet"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git worktree add ../assets origin/change-graph-assets
+          echo "present=true" >> "$GITHUB_OUTPUT"
+
+      - name: List closed pull requests
+        if: steps.assets.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate \
+            "repos/${{ github.repository }}/pulls?state=closed&per_page=100" \
+            --jq '[.[] | {number, closed_at}]' > closed.json
+
+      - name: Prune
+        if: steps.assets.outputs.present == 'true'
+        run: |
+          python3 .claude/skills/refresh-architecture/scripts/prune_change_graph_assets.py \
+            --root ../assets \
+            --closed closed.json \
+            ${{ (github.event_name == 'workflow_dispatch' && inputs.apply) && '--apply' || '' }}
+
+      - name: Commit the deletions
+        if: steps.assets.outputs.present == 'true' && github.event_name == 'workflow_dispatch' && inputs.apply
+        working-directory: ../assets
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit --quiet -m "prune change-graph assets for long-closed pull requests" || exit 0
+          git push origin HEAD:change-graph-assets

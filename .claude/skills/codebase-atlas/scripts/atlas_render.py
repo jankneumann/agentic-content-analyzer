@@ -172,17 +172,26 @@ def render_page(payload: dict[str, Any]) -> str:
   <section class="pane" aria-label="Dependency graph">
     <div class="pane-head">
       Dependencies
+      <div class="chips" id="color-chips" role="group" aria-label="Colour by"></div>
       <span class="spacer"></span>
+      <button class="chip" id="show-tests" aria-pressed="false"
+        title="Test files are the majority of this graph's nodes, so they are hidden by default">tests</button>
       <label class="row" for="depth">hops <input type="range" id="depth" min="1" max="4"
         step="1" value="1" style="width:70px"><output id="depth-val">1</output></label>
     </div>
     <div class="canvas-wrap">
       <canvas id="graph" aria-label="Force-directed file dependency graph"></canvas>
       <div class="tooltip" id="tip" role="tooltip"></div>
-      <div class="legend">
-        <div><span class="swatch" style="background:var(--in)"></span> callers (inbound)</div>
-        <div><span class="swatch" style="background:var(--out)"></span> dependencies (outbound)</div>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="walk hidden" id="walk" role="group" aria-label="Change walkthrough">
+      <button class="chip" id="walk-prev" aria-label="Previous step">&larr;</button>
+      <div class="walk-body">
+        <strong id="walk-heading"></strong>
+        <span id="walk-body"></span>
       </div>
+      <span class="walk-count" id="walk-count"></span>
+      <button class="chip" id="walk-next" aria-label="Next step">&rarr;</button>
     </div>
   </section>
 

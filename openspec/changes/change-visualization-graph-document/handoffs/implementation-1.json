@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-09-09T12:00:56.770799+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "claude_code",
+    "session_id": null,
+    "summary": "Built change visualization end to end on the pr-lens graph document contract: a deterministic projector over the architecture artifacts, a corrections overlay, structure-preserving narration, self-contained SVG rendering with a pull request comment and its workflow, and an atlas that colours by change or by test coverage with node-level semantic zoom and walkthrough playback. Deltas are derived from the repository's own call graph rather than inferred by a model.",
+    "completed_work": [
+      "Vendored contract and two-pass validator with byte-parity tests against the installed package",
+      "project_change_graph.py: deltas from artifacts and diff hunks, one-hop blast radius, view tree, walkthrough",
+      "Corrections overlay at settings/change-graph.yaml, applied over inference and never written back",
+      "narrate_change_graph.py: text-only merge with a structural guard",
+      "web/scripts/render-change-graph.mts and the comment composer, with goldens and escaping tests",
+      "CI workflow and assets retention",
+      "Atlas: delta and coverage colour modes, test-file toggle, semantic zoom, walkthrough rail",
+      "Fixed two documentation bugs the atlas skill had carried: missing make targets and a dangling proposal reference"
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Vendor the change-graph contract and validate it in two passes",
+        "rationale": "The exported JSON Schema covers shape only. The upstream contract is authored in zod, where referential rules such as 'every edge endpoint is a declared node' live in refinements that do not survive export, so a document with a dangling edge passes the schema and is then rejected by the renderer. Python reimplements those rules so the two validators agree and the failure surfaces at projection, naming the offending id, rather than in CI at render time.",
+        "capability": "change-visualization",
+        "supersedes": null
+      },
+      {
+        "title": "Coverage is a node property; test nodes are not drawn",
+        "rationale": "Test functions are 57% of this repository's graph nodes and TEST_COVERS is 96% of its edges, so drawing them turns a picture of the application into a picture of its test suite, and expanding a neighbourhood across them does the same. Coverage rides as a colour and a badge on the covered node instead, which answers 'is this tested' without doubling the graph.",
+        "capability": "codebase-atlas",
+        "supersedes": null
+      },
+      {
+        "title": "A change that covers nothing produces no document",
+        "rationale": "The contract requires at least one node, so a document showing that nothing is covered cannot exist. A placeholder node would put a claim on the page that no artifact supports, and a relaxed local schema would let the Python and Node validators disagree. The projector writes a coverage report, names the roots it searched, and exits 0, because a tooling-only pull request must not fail CI for being one.",
+        "capability": "change-visualization",
+        "supersedes": null
+      },
+      {
+        "title": "Narration writes prose and cannot write structure",
+        "rationale": "The merge reads a closed set of text keys, so a hallucinated node has no path by which it could be written, and a structural comparison over the document with its prose stripped catches the rest. Stat chips are excluded: a chip is a number beside a diagram, and the comparison can catch an invented id but not an invented quantity.",
+        "capability": "change-visualization",
+        "supersedes": null
+      },
+      {
+        "title": "Defer the Obsidian canvas export, on different grounds than assumed",
+        "rationale": "The spike disproved both stated objections. JSON Canvas takes per-node hex colour, so delta and coverage survive, and it takes edge labels; generated node ids are stable across runs, so hand placement could be preserved by a merge rather than being inherently lost. The real reasons to defer are that it duplicates the atlas with strictly less capability, no animation, no walkthrough, no hop tracing and no semantic zoom, and that nobody has asked for it. Revisit if the team works in a vault day to day, where an editable file beats a URL.",
+        "capability": "codebase-atlas",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Run the workflow on a real pull request and confirm the comment is updated rather than duplicated",
+      "Write docs/CHANGE_VISUALIZATION.md and update the two skill documents"
+    ],
+    "relevant_files": [
+      {
+        "path": ".claude/skills/refresh-architecture/scripts/project_change_graph.py",
+        "description": "The projector"
+      },
+      {
+        "path": ".claude/skills/refresh-architecture/scripts/arch_utils/change_graph.py",
+        "description": "Contract and two-pass validation"
+      },
+      {
+        "path": ".claude/skills/codebase-atlas/scripts/atlas_change.py",
+        "description": "Delta and coverage inputs for the page"
+      },
+      {
+        "path": "web/scripts/render-change-graph.mts",
+        "description": "Document to self-contained SVGs"
+      },
+      {
+        "path": ".github/workflows/change-graph.yml",
+        "description": "Projects, renders and posts on a pull request"
+      }
+    ]
+  }
+}

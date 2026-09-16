@@ -335,3 +335,30 @@ nobody can reproduce.
   committed-tier artifacts on `main` describe `main`. That is what keeps every
   consumer's `--ensure` a no-op for everyone who clones it.
 - **In CI**: `make architecture-check` (content-based) reports; it does not gate.
+
+## Change projection
+
+`scripts/project_change_graph.py` turns a code change into one validated change
+document: lanes, nodes and edges each carrying a delta, plus a structural
+walkthrough. Every delta comes from the architecture artifacts and the git
+diff; no model participates.
+
+```bash
+make change-graph BASE=origin/main
+make change-graph BASE=origin/main BASE_GRAPH=path/to/baseline.graph.json
+```
+
+Two behaviours are worth knowing before reading its output:
+
+- **`TEST_COVERS` is not a dependency edge.** It is the large majority of this
+  repository's edges, so expanding the neighbourhood across it would make every
+  change a picture of the test suite. Coverage rides as a badge on the covered
+  node, and a test appears as a node only when the change edited it.
+- **Without `BASE_GRAPH`, added and removed symbols cannot be told apart from
+  unchanged ones.** The architecture graph is gitignored, so there is no
+  committed history to compare against; only symbols a diff hunk touches are
+  marked. Pass a baseline graph when the added/removed distinction matters.
+
+A change touching nothing under the analyzed roots produces no document at all,
+only a coverage report saying so: the contract requires at least one node, and
+inventing one would put a claim on the page that no artifact supports.

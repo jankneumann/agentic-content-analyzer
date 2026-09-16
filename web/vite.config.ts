@@ -150,7 +150,12 @@ function releaseMetadataPlugin(): Plugin {
  */
 export default defineConfig({
   test: {
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    include: [
+      'src/**/*.{test,spec}.{ts,tsx}',
+      // Build-time scripts are real code and carry real tests; the
+      // change-graph renderer's goldens live beside it.
+      'scripts/**/*.{test,spec}.{ts,mts}',
+    ],
     exclude: ['tests/e2e/**', 'node_modules/**', 'dist/**'],
   },
   plugins: [

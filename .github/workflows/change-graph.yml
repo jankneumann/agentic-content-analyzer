@@ -1,0 +1,176 @@
+name: Change graph
+
+# Draws what a pull request touches, against the code around it, and posts one
+# comment carrying the diagrams.
+#
+# Nothing here infers structure. The deltas come from the architecture graph
+# the analyzer computes from AST, tree-sitter and ts-morph, intersected with
+# the diff. Narration is a separate, optional step that can write prose and
+# provably cannot write structure; it stays off until CHANGE_NARRATION_ENABLED
+# is set, so this workflow needs no model credentials to be useful.
+
+on:
+  pull_request:
+    branches: [main]
+
+# One run per pull request: a superseded push has nothing worth finishing.
+concurrency:
+  group: change-graph-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  draw:
+    name: draw
+    runs-on: ubuntu-latest
+    permissions:
+      # The assets branch, and the one comment.
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The projector needs the merge base, which a shallow clone lacks.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Python dependencies
+        run: uv sync --frozen
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci
+
+      # The graph is derived and gitignored, so it is cached rather than
+      # committed. A stale cache costs a full refresh; it never yields a wrong
+      # picture, because the key covers every input the analyzer reads.
+      - name: Cache architecture artifacts
+        uses: actions/cache@v4
+        with:
+          path: docs/architecture-analysis
+          key: >-
+            architecture-${{ runner.os }}-${{
+              hashFiles('src/**/*.py', 'web/src/**/*.ts', 'web/src/**/*.tsx',
+                        '.claude/skills/refresh-architecture/scripts/**')
+            }}
+
+      - name: Refresh the architecture graph
+        run: make architecture-refresh
+
+      - name: Project the change
+        id: project
+        run: |
+          set -euo pipefail
+          make change-graph BASE="origin/${{ github.base_ref }}"
+          # A change touching nothing under the analyzed roots writes a coverage
+          # report and no document. That is a legitimate tooling-only pull
+          # request, not a failure, so the job stops without a comment.
+          document="$(find docs/architecture-analysis/change -name graph.json | head -1)"
+          if [ -z "$document" ]; then
+            echo "nothing to draw"
+            echo "drawn=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "document=$document" >> "$GITHUB_OUTPUT"
+            echo "drawn=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Narrate
+        if: steps.project.outputs.drawn == 'true' && vars.CHANGE_NARRATION_ENABLED == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python3 .claude/skills/refresh-architecture/scripts/narrate_change_graph.py \
+            "${{ steps.project.outputs.document }}" \
+            -o "${{ steps.project.outputs.document }}"
+
+      - name: Render
+        if: steps.project.outputs.drawn == 'true'
+        working-directory: web
+        env:
+          # Content-addressed, so a changed diagram arrives at a new URL rather
+          # than as new bytes at an old one that the image proxy has cached.
+          ASSET_BASE: >-
+            https://raw.githubusercontent.com/${{ github.repository }}/change-graph-assets/${{
+              github.event.pull_request.number }}/${{ github.event.pull_request.head.sha }}
+        run: |
+          node --experimental-strip-types scripts/render-change-graph.mts \
+            "../${{ steps.project.outputs.document }}" \
+            --out ../.change-graph \
+            --corrections ../settings/change-graph.yaml \
+            --asset-base-url "$ASSET_BASE" \
+            --comment ../.change-graph/comment.md
+
+      # An orphan branch, never the pull request's own: committing SVGs to the
+      # branch under review would dirty every reviewer's diff.
+      - name: Publish the assets
+        if: steps.project.outputs.drawn == 'true'
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          target="$(mktemp -d)"
+          git worktree add --detach "$target"
+          cd "$target"
+          git checkout --orphan change-graph-assets
+          git fetch origin change-graph-assets && git reset --hard origin/change-graph-assets || git rm -rf --quiet . || true
+          mkdir -p "$PR/$SHA"
+          cp "$GITHUB_WORKSPACE"/.change-graph/*.svg "$PR/$SHA/"
+          git add "$PR/$SHA"
+          git commit --quiet -m "change graph for #$PR at $SHA" || exit 0
+          git push origin change-graph-assets
+
+      - name: Post or update the one comment
+        if: steps.project.outputs.drawn == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("node:fs");
+            const body = fs.readFileSync(".change-graph/comment.md", "utf8");
+            const marker = "<!-- change-graph -->";
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find(
+              (comment) => comment.body && comment.body.startsWith(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

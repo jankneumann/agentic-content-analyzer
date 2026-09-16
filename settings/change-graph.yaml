@@ -1,0 +1,46 @@
+# Corrections for the change-graph projector (`make change-graph`).
+#
+# This file is an overlay, not a destination. Inference never writes here, and
+# every projection re-applies it over freshly derived output. That is what lets
+# a correction keep holding as the code moves, instead of being erased by the
+# next run.
+#
+# Every correction addresses nodes one of two ways:
+#
+#   id:<graph-id>   exactly one node, by its architecture-graph id
+#                   (for example `id:py:services.user.create`)
+#   <path glob>     every node backed by a matching file
+#                   (for example `src/services/*.py`)
+#
+# Prefer the glob form. It survives the analyzer renaming the symbol, which is
+# the case a correction most often has to outlive.
+#
+# Ships with no corrections on purpose: an overlay that changed the picture the
+# day it landed would be a silent change to everyone's output. Uncomment what
+# you need.
+
+schemaVersion: 0.1.1
+
+map:
+  # Replace an inferred label.
+  rename: []
+  #   - match: src/services/legacy_mailer.py
+  #     to: Postmark sender
+
+  # Drop matching nodes, and every edge, flow step, view selection and
+  # walkthrough focus that referenced them. Excluding everything a change
+  # touches leaves nothing to draw, and the projector says so rather than
+  # emitting a document that cannot render.
+  exclude: []
+  #   - "**/*.test.ts"
+
+  # Move nodes into a lane. A lane named here need not already exist; it is
+  # created, with its id for a label.
+  lane: []
+  #   - match: src/telemetry/*.py
+  #     lane: infrastructure
+
+  # Cluster nodes inside their lane.
+  group: []
+  #   - match: src/ingestion/*.py
+  #     group: ingestion

@@ -380,6 +380,11 @@ default_models:
   kb_compilation: claude-sonnet-4-5  # Capable model for topic article synthesis from multiple sources
   kb_index: claude-haiku-4-5  # Fast, cheap for index summary generation
 
+  # Prose for change-graph diagrams (`make change-graph` + narrate_change_graph.py).
+  # A developer-tooling step, read directly from this file by the skill script rather
+  # than through ModelStep, so no product code depends on it. Override with
+  # MODEL_CHANGE_NARRATION. Writes words only; every number stays derived.
+  change_narration: claude-haiku-4-5
 # Routing Configuration
 # Per-step routing mode: 'fixed' uses default_models above; 'dynamic' routes by complexity
 # All steps default to fixed mode with routing disabled for safety

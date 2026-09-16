@@ -1,0 +1,782 @@
+{
+  "edges": [
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool",
+      "id": "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool--py:agents.specialists.analysis.AnalysisSpecialist._exe-3a38c199",
+      "kind": "call",
+      "to": "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool._parse_period"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool",
+      "id": "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool--py:storage.database.get_db-2b999d45",
+      "kind": "call",
+      "to": "py:storage.database.get_db"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:agents.specialists.research.ResearchSpecialist._execute_tool",
+      "id": "py:agents.specialists.research.ResearchSpecialist._execute_tool--py:services.web_search.get_web_search_provider-6f4e2b4a",
+      "kind": "call",
+      "to": "py:services.web_search.get_web_search_provider"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:agents.specialists.research.ResearchSpecialist._execute_tool",
+      "id": "py:agents.specialists.research.ResearchSpecialist._execute_tool--py:utils.html_parser.html_to_text-bd972eaa",
+      "kind": "call",
+      "to": "py:utils.html_parser.html_to_text"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:api.app.lifespan",
+      "id": "py:api.app.lifespan--py:utils.logging.setup_logging-8b75a499",
+      "kind": "call",
+      "to": "py:utils.logging.setup_logging"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:cli.app.main_callback",
+      "id": "py:cli.app.main_callback--py:utils.logging.setup_logging-b9e1cd0a",
+      "kind": "call",
+      "to": "py:utils.logging.setup_logging"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:config.bao_secrets.BaoSettingsSource._load_once",
+      "id": "py:config.bao_secrets.BaoSettingsSource._load_once--py:config.bao_secrets._load_bao_secrets-432b0257",
+      "kind": "call",
+      "to": "py:config.bao_secrets._load_bao_secrets"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:config.bao_secrets._load_bao_secrets",
+      "id": "py:config.bao_secrets._load_bao_secrets--py:config.bao_secrets._authenticate_client-1b04f445",
+      "kind": "call",
+      "to": "py:config.bao_secrets._authenticate_client"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:config.bao_secrets._load_bao_secrets",
+      "id": "py:config.bao_secrets._load_bao_secrets--py:config.bao_secrets._fetch_secrets-2a4fdde2",
+      "kind": "call",
+      "to": "py:config.bao_secrets._fetch_secrets"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:config.bao_secrets._load_bao_secrets",
+      "id": "py:config.bao_secrets._load_bao_secrets--py:config.bao_secrets._is_bao_configured-a95ace19",
+      "kind": "call",
+      "to": "py:config.bao_secrets._is_bao_configured"
+    },
+    {
+      "animated": false,
+      "delta": "modified",
+      "emphasis": "normal",
+      "files": [],
+      "from": "py:config.bao_secrets.get_bao_secret",
+      "id": "py:config.bao_secrets.get_bao_secret--py:config.bao_secrets._load_bao_secrets-f4f58417",
+      "kind": "call",
+      "to": "py:config.bao_secrets._load_bao_secrets"
+    }
+  ],
+  "flows": [],
+  "kind": "graph",
+  "lanes": [
+    {
+      "id": "backend",
+      "label": "Backend",
+      "order": 1
+    }
+  ],
+  "lenses": [
+    "architecture"
+  ],
+  "nodes": [
+    {
+      "badges": [
+        "55 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 95,
+          "path": "src/agents/registry.py",
+          "startLine": 20
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.registry.SpecialistRegistry",
+      "kind": "other",
+      "label": "SpecialistRegistry",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 38,
+          "path": "src/agents/registry.py",
+          "startLine": 26
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.registry.SpecialistRegistry.register",
+      "kind": "function",
+      "label": "register",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 268,
+          "path": "src/agents/specialists/analysis.py",
+          "startLine": 19
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.specialists.analysis.AnalysisSpecialist",
+      "kind": "other",
+      "label": "AnalysisSpecialist",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 256,
+          "path": "src/agents/specialists/analysis.py",
+          "startLine": 134
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool",
+      "kind": "function",
+      "label": "_execute_tool",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 212,
+          "path": "src/agents/specialists/analysis.py",
+          "startLine": 207
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool._parse_period",
+      "kind": "function",
+      "label": "_parse_period",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 169,
+          "path": "src/agents/specialists/ingestion.py",
+          "startLine": 16
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.specialists.ingestion.IngestionSpecialist",
+      "kind": "other",
+      "label": "IngestionSpecialist",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 160,
+          "path": "src/agents/specialists/ingestion.py",
+          "startLine": 120
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.specialists.ingestion.IngestionSpecialist._execute_tool",
+      "kind": "function",
+      "label": "_execute_tool",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 205,
+          "path": "src/agents/specialists/research.py",
+          "startLine": 16
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.specialists.research.ResearchSpecialist",
+      "kind": "other",
+      "label": "ResearchSpecialist",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 193,
+          "path": "src/agents/specialists/research.py",
+          "startLine": 130
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.specialists.research.ResearchSpecialist._execute_tool",
+      "kind": "function",
+      "label": "_execute_tool",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 203,
+          "path": "src/agents/specialists/synthesis.py",
+          "startLine": 16
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.specialists.synthesis.SynthesisSpecialist",
+      "kind": "other",
+      "label": "SynthesisSpecialist",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 191,
+          "path": "src/agents/specialists/synthesis.py",
+          "startLine": 144
+        }
+      ],
+      "group": "src/agents",
+      "id": "py:agents.specialists.synthesis.SynthesisSpecialist._execute_tool",
+      "kind": "function",
+      "label": "_execute_tool",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 156,
+          "path": "src/api/app.py",
+          "startLine": 69
+        }
+      ],
+      "group": "src/api",
+      "id": "py:api.app.lifespan",
+      "kind": "function",
+      "label": "lifespan",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 234,
+          "path": "src/cli/app.py",
+          "startLine": 163
+        }
+      ],
+      "group": "src/cli",
+      "id": "py:cli.app.main_callback",
+      "kind": "function",
+      "label": "main_callback",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 331,
+          "path": "src/config/bao_secrets.py",
+          "startLine": 320
+        }
+      ],
+      "group": "src/config",
+      "id": "py:config.bao_secrets.BaoSettingsSource._load_once",
+      "kind": "function",
+      "label": "_load_once",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 88,
+          "path": "src/config/bao_secrets.py",
+          "startLine": 56
+        }
+      ],
+      "group": "src/config",
+      "id": "py:config.bao_secrets._authenticate_client",
+      "kind": "function",
+      "label": "_authenticate_client",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 98,
+          "path": "src/config/bao_secrets.py",
+          "startLine": 91
+        }
+      ],
+      "group": "src/config",
+      "id": "py:config.bao_secrets._fetch_secrets",
+      "kind": "function",
+      "label": "_fetch_secrets",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 53,
+          "path": "src/config/bao_secrets.py",
+          "startLine": 51
+        }
+      ],
+      "group": "src/config",
+      "id": "py:config.bao_secrets._is_bao_configured",
+      "kind": "function",
+      "label": "_is_bao_configured",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "34 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 185,
+          "path": "src/config/bao_secrets.py",
+          "startLine": 101
+        }
+      ],
+      "group": "src/config",
+      "id": "py:config.bao_secrets._load_bao_secrets",
+      "kind": "function",
+      "label": "_load_bao_secrets",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "34 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 198,
+          "path": "src/config/bao_secrets.py",
+          "startLine": 188
+        }
+      ],
+      "group": "src/config",
+      "id": "py:config.bao_secrets.get_bao_secret",
+      "kind": "function",
+      "label": "get_bao_secret",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "64 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 381,
+          "path": "src/services/web_search.py",
+          "startLine": 350
+        }
+      ],
+      "group": "src/services",
+      "id": "py:services.web_search.get_web_search_provider",
+      "kind": "function",
+      "label": "get_web_search_provider",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 144,
+          "path": "src/storage/database.py",
+          "startLine": 134
+        }
+      ],
+      "group": "src/storage",
+      "id": "py:storage.database.get_db",
+      "kind": "function",
+      "label": "get_db",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "8 tests"
+      ],
+      "delta": "unchanged",
+      "files": [
+        {
+          "endLine": 44,
+          "path": "src/utils/html_parser.py",
+          "startLine": 12
+        }
+      ],
+      "group": "src/utils",
+      "id": "py:utils.html_parser.html_to_text",
+      "kind": "function",
+      "label": "html_to_text",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 141,
+          "path": "src/utils/logging.py",
+          "startLine": 119
+        }
+      ],
+      "group": "src/utils",
+      "id": "py:utils.logging._AppLogHandler",
+      "kind": "other",
+      "label": "_AppLogHandler",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 137,
+          "path": "src/utils/logging.py",
+          "startLine": 136
+        }
+      ],
+      "group": "src/utils",
+      "id": "py:utils.logging._AppLogHandler.__init__",
+      "kind": "function",
+      "label": "__init__",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "untested"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 141,
+          "path": "src/utils/logging.py",
+          "startLine": 140
+        }
+      ],
+      "group": "src/utils",
+      "id": "py:utils.logging._AppLogHandler.stream",
+      "kind": "function",
+      "label": "stream",
+      "lane": "backend"
+    },
+    {
+      "badges": [
+        "35 tests"
+      ],
+      "delta": "modified",
+      "files": [
+        {
+          "endLine": 193,
+          "path": "src/utils/logging.py",
+          "startLine": 144
+        }
+      ],
+      "group": "src/utils",
+      "id": "py:utils.logging.setup_logging",
+      "kind": "function",
+      "label": "setup_logging",
+      "lane": "backend"
+    }
+  ],
+  "provenance": {
+    "base": {
+      "sha": "172b4dea7cf308ca47b5c70820953d3b0aef98a5"
+    },
+    "generator": {
+      "name": "project_change_graph",
+      "version": "0.1.0"
+    },
+    "head": {
+      "sha": "80e983322dcdbce4ad75598d27bcee9e6d86459b"
+    },
+    "repo": {
+      "host": "github.com",
+      "name": "agentic-content-analyzer",
+      "owner": "jankneumann"
+    }
+  },
+  "schemaVersion": "0.1.1",
+  "stats": {
+    "additions": 40061,
+    "chips": [
+      {
+        "label": "Files outside the graph",
+        "tone": "neutral",
+        "value": "298 of 305"
+      }
+    ],
+    "deletions": 3277,
+    "filesChanged": 305
+  },
+  "summary": "This change touches 0 added, 15 modified, 0 removed symbols in the architecture graph, drawn against the code one dependency hop away. 298 changed files are outside the analyzed roots and do not appear here.",
+  "title": "15 symbols across 305 files",
+  "views": [
+    {
+      "children": [
+        {
+          "children": [],
+          "defaultOpen": false,
+          "id": "group-src/agents",
+          "lens": "architecture",
+          "scope": {
+            "kind": "selection",
+            "nodes": [
+              "py:agents.registry.SpecialistRegistry",
+              "py:agents.registry.SpecialistRegistry.register",
+              "py:agents.specialists.analysis.AnalysisSpecialist",
+              "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool",
+              "py:agents.specialists.ingestion.IngestionSpecialist",
+              "py:agents.specialists.ingestion.IngestionSpecialist._execute_tool",
+              "py:agents.specialists.research.ResearchSpecialist",
+              "py:agents.specialists.research.ResearchSpecialist._execute_tool",
+              "py:agents.specialists.synthesis.SynthesisSpecialist",
+              "py:agents.specialists.synthesis.SynthesisSpecialist._execute_tool"
+            ]
+          },
+          "title": "src/agents"
+        },
+        {
+          "children": [],
+          "defaultOpen": false,
+          "id": "group-src/config",
+          "lens": "architecture",
+          "scope": {
+            "kind": "selection",
+            "nodes": [
+              "py:config.bao_secrets._load_bao_secrets"
+            ]
+          },
+          "title": "src/config"
+        },
+        {
+          "children": [],
+          "defaultOpen": false,
+          "id": "group-src/utils",
+          "lens": "architecture",
+          "scope": {
+            "kind": "selection",
+            "nodes": [
+              "py:utils.logging._AppLogHandler",
+              "py:utils.logging._AppLogHandler.__init__",
+              "py:utils.logging._AppLogHandler.stream",
+              "py:utils.logging.setup_logging"
+            ]
+          },
+          "title": "src/utils"
+        }
+      ],
+      "defaultOpen": true,
+      "id": "blast-radius",
+      "lens": "architecture",
+      "scope": {
+        "kind": "all"
+      },
+      "title": "Blast radius"
+    }
+  ],
+  "walkthrough": {
+    "steps": [
+      {
+        "body": "15 symbols changed, shown against the code around them.",
+        "focus": {
+          "kind": "selection",
+          "nodes": [
+            "py:agents.registry.SpecialistRegistry",
+            "py:agents.registry.SpecialistRegistry.register",
+            "py:agents.specialists.analysis.AnalysisSpecialist",
+            "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool",
+            "py:agents.specialists.ingestion.IngestionSpecialist",
+            "py:agents.specialists.ingestion.IngestionSpecialist._execute_tool",
+            "py:agents.specialists.research.ResearchSpecialist",
+            "py:agents.specialists.research.ResearchSpecialist._execute_tool",
+            "py:agents.specialists.synthesis.SynthesisSpecialist",
+            "py:agents.specialists.synthesis.SynthesisSpecialist._execute_tool",
+            "py:config.bao_secrets._load_bao_secrets",
+            "py:utils.logging._AppLogHandler",
+            "py:utils.logging._AppLogHandler.__init__",
+            "py:utils.logging._AppLogHandler.stream",
+            "py:utils.logging.setup_logging"
+          ]
+        },
+        "heading": "What this change touches",
+        "id": "what-changed",
+        "stage": {
+          "kind": "view",
+          "view": "blast-radius"
+        }
+      },
+      {
+        "body": "10 changed symbols here.",
+        "focus": {
+          "kind": "selection",
+          "nodes": [
+            "py:agents.registry.SpecialistRegistry",
+            "py:agents.registry.SpecialistRegistry.register",
+            "py:agents.specialists.analysis.AnalysisSpecialist",
+            "py:agents.specialists.analysis.AnalysisSpecialist._execute_tool",
+            "py:agents.specialists.ingestion.IngestionSpecialist",
+            "py:agents.specialists.ingestion.IngestionSpecialist._execute_tool",
+            "py:agents.specialists.research.ResearchSpecialist",
+            "py:agents.specialists.research.ResearchSpecialist._execute_tool",
+            "py:agents.specialists.synthesis.SynthesisSpecialist",
+            "py:agents.specialists.synthesis.SynthesisSpecialist._execute_tool"
+          ]
+        },
+        "heading": "src/agents",
+        "id": "tour-group-src/agents",
+        "stage": {
+          "kind": "view",
+          "view": "group-src/agents"
+        }
+      },
+      {
+        "body": "1 changed symbol here.",
+        "focus": {
+          "kind": "selection",
+          "nodes": [
+            "py:config.bao_secrets._load_bao_secrets"
+          ]
+        },
+        "heading": "src/config",
+        "id": "tour-group-src/config",
+        "stage": {
+          "kind": "view",
+          "view": "group-src/config"
+        }
+      },
+      {
+        "body": "4 changed symbols here.",
+        "focus": {
+          "kind": "selection",
+          "nodes": [
+            "py:utils.logging._AppLogHandler",
+            "py:utils.logging._AppLogHandler.__init__",
+            "py:utils.logging._AppLogHandler.stream",
+            "py:utils.logging.setup_logging"
+          ]
+        },
+        "heading": "src/utils",
+        "id": "tour-group-src/utils",
+        "stage": {
+          "kind": "view",
+          "view": "group-src/utils"
+        }
+      }
+    ]
+  }
+}
