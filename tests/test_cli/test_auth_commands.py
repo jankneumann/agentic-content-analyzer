@@ -289,8 +289,36 @@ def test_gmail_auth_prints_url_and_uses_fixed_callback_port(runner, monkeypatch,
     assert kwargs["port"] == 8091
     assert kwargs["open_browser"] is True
     assert "{url}" in kwargs["authorization_prompt_message"]
-    assert "ssh -L 8091" in kwargs["authorization_prompt_message"]
+    assert "Open this URL" in kwargs["authorization_prompt_message"]
     assert kwargs.get("access_type") == "offline"
+
+
+def test_gmail_auth_echoes_library_url_even_when_print_is_buffered(runner, monkeypatch, tmp_path):
+    fake_creds = tmp_path / "credentials.json"
+    fake_creds.write_text('{"installed": {"client_id": "test"}}')
+    fake_token = tmp_path / "token.json"
+    from src.config import settings
+
+    monkeypatch.setattr(settings, "gmail_credentials_file", str(fake_creds))
+    monkeypatch.setattr(settings, "gmail_token_file", str(fake_token))
+
+    fake_creds_obj = MagicMock()
+    fake_creds_obj.to_json.return_value = json.dumps({"token": "abc", "refresh_token": "xyz"})
+    auth_url = "https://accounts.google.com/o/oauth2/auth?client_id=test&redirect_uri=http://127.0.0.1:8091/"
+    fake_flow = MagicMock()
+
+    def _run_local_server(**kwargs):
+        print(kwargs["authorization_prompt_message"].format(url=auth_url))
+        return fake_creds_obj
+
+    fake_flow.run_local_server.side_effect = _run_local_server
+    with patch("google_auth_oauthlib.flow.InstalledAppFlow") as mock_flow_cls:
+        mock_flow_cls.from_client_secrets_file.return_value = fake_flow
+        result = runner.invoke(app, ["gmail", "--no-browser"])
+
+    assert result.exit_code == 0, result.output
+    assert "Open this URL" in result.output
+    assert auth_url in result.output
 
 
 def test_gmail_auth_no_browser_does_not_open_browser(runner, monkeypatch, tmp_path):

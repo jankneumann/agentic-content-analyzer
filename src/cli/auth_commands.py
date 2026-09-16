@@ -186,14 +186,19 @@ def _existing_token_json(token_path: Path, scopes: list[str]) -> str | None:
 
 def _login_prompt(provider: str) -> str:
     """Codex-style instructions. ``{url}`` is filled by InstalledAppFlow."""
-    return (
-        f"Starting {provider} login.\n\n"
-        "1. Open this URL in a browser (this machine or any other):\n"
-        "   {url}\n\n"
-        "2. Sign in and approve access, then return here.\n\n"
-        f"SSH/headless: keep this command running and forward the callback:\n"
-        f"  ssh -L {OAUTH_CALLBACK_PORT}:127.0.0.1:{OAUTH_CALLBACK_PORT} <this-host>\n"
-    )
+    return f"\n=== {provider} login ===\nOpen this URL:\n{{url}}\n"
+
+
+def _print_auth_message(*args: object, **kwargs: object) -> None:
+    """Flush Google's login prompt to stderr so a piped/SSH TTY still shows the URL."""
+    text = " ".join(str(arg) for arg in args)
+    sys.stderr.write(text)
+    if not text.endswith("\n"):
+        sys.stderr.write("\n")
+    sys.stderr.flush()
+    for token in text.replace("\n", " ").split():
+        if token.startswith("https://"):
+            typer.echo("\nOpen this URL:\n" + token + "\n", err=True)
 
 
 def _run_oauth_flow(
@@ -240,8 +245,9 @@ def _run_oauth_flow(
         + (
             "A browser window will open if this host can open one."
             if open_browser
-            else "Browser auto-open is off; copy the URL below."
-        )
+            else "Browser auto-open is off; the authorization URL prints next."
+        ),
+        err=True,
     )
     flow = InstalledAppFlow.from_client_secrets_file(str(cred_path), scopes)
     server_kwargs = {
@@ -252,14 +258,22 @@ def _run_oauth_flow(
         "access_type": "offline",
         "prompt": "consent",
     }
+    import builtins
+
+    orig_print = builtins.print
+    builtins.print = _print_auth_message  # type: ignore[assignment]
     try:
-        creds = flow.run_local_server(port=OAUTH_CALLBACK_PORT, **server_kwargs)
-    except OSError as exc:
-        typer.echo(
-            f"Port {OAUTH_CALLBACK_PORT} is in use ({exc}). Retrying on an ephemeral port.",
-            err=True,
-        )
-        creds = flow.run_local_server(port=0, **server_kwargs)
+        try:
+            creds = flow.run_local_server(port=OAUTH_CALLBACK_PORT, **server_kwargs)
+        except OSError as exc:
+            typer.echo(
+                f"Port {OAUTH_CALLBACK_PORT} is in use ({exc}). "
+                "Retrying on an ephemeral port — use the port in the URL, not 8091.",
+                err=True,
+            )
+            creds = flow.run_local_server(port=0, **server_kwargs)
+    finally:
+        builtins.print = orig_print
     token_json: str = creds.to_json()
     token_path.write_text(token_json)
     typer.echo(f"Token saved to {token_path}")
