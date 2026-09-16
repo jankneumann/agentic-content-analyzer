@@ -120,24 +120,18 @@ def _flatten_dict(d: dict[str, Any], parent_key: str = "", sep: str = ".") -> di
 
 @app.command("setup-gmail")
 def setup_gmail() -> None:
-    """Initiate Gmail OAuth setup.
+    """Log in to Gmail (alias for ``aca auth gmail``).
 
-    Opens a browser window for Gmail OAuth authorization.
-    Follow the prompts to grant access to your Gmail account
-    for newsletter ingestion.
+    Canonical command: ``aca auth gmail``. Use ``--no-browser`` on SSH hosts
+    and ``--deploy`` to push the token to Railway.
     """
-    typer.echo("Initiating Gmail OAuth setup...")
-
+    typer.echo("Canonical Gmail login is `aca auth gmail`. Running it now...")
     try:
-        from src.ingestion.gmail import GmailClient
+        from src.cli.auth_commands import gmail_auth
 
-        GmailClient()
-        typer.echo(
-            typer.style(
-                "Gmail OAuth setup initiated. Follow the browser prompts.",
-                fg=typer.colors.GREEN,
-            )
-        )
+        gmail_auth()
+    except typer.Exit:
+        raise
     except Exception as e:
         typer.echo(typer.style(f"Error during Gmail setup: {e}", fg=typer.colors.RED))
         raise typer.Exit(1)

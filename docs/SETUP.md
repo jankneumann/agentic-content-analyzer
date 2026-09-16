@@ -1483,14 +1483,26 @@ See [Model Configuration](MODEL_CONFIGURATION.md) for detailed model selection o
 ### 3. First-Time Authorization
 
 ```bash
-# Set up Gmail OAuth (or run ingestion to trigger auth flow)
-aca manage setup-gmail
-# Or directly ingest (will trigger OAuth flow on first run)
-aca ingest gmail
+# Log in locally (opens a browser, or prints a URL)
+aca auth gmail
 
-# Browser will open for authorization
-# After auth, token.json will be saved for future use
+# SSH / no browser: print the URL and wait on localhost:8091
+aca auth gmail --no-browser
+# From your laptop: ssh -L 8091:127.0.0.1:8091 <this-host>
+
+# Re-consent / replace an existing token
+aca auth gmail --force
+
+# Push the token to Railway after login
+aca auth gmail --deploy
+
+# Check local + Railway token state
+aca auth status
 ```
+
+`aca ingest gmail` will **not** open a browser. Workers are headless: they
+use `token.json` or `GMAIL_OAUTH_TOKEN_JSON`. `aca manage setup-gmail` is an
+alias for `aca auth gmail`.
 
 ## Substack API Setup
 

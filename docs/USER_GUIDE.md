@@ -1118,7 +1118,7 @@ alembic upgrade head
 
 ### Content ingestion fails
 
-- **Gmail**: Run `aca manage setup-gmail` to (re)authorize OAuth
+- **Gmail**: Run `aca auth gmail` to (re)authorize OAuth (`--no-browser` on SSH, `--force` to replace a token, `--deploy` to push to Railway)
 - **YouTube playlists**: Ensure Google OAuth is configured; use `--public-only` to skip private playlists
 - **X/Twitter**: Verify `XAI_API_KEY` is set
 - **Perplexity**: Verify `PERPLEXITY_API_KEY` is set

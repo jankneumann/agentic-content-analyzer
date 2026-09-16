@@ -37,7 +37,8 @@ from src.utils.substack import (
 
 logger = get_logger(__name__)
 
-# Gmail API scopes
+# Gmail API scopes — ingest needs readonly; digest email delivery needs send.
+# ``aca auth gmail`` must request this exact set so the saved token works.
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.send",

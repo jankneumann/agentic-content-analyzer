@@ -12,21 +12,19 @@ runner = CliRunner()
 
 
 class TestSetupGmail:
-    @patch("src.ingestion.gmail.GmailClient")
-    def test_setup_gmail_success(self, mock_cls):
-        mock_cls.return_value = MagicMock()
-
+    @patch("src.cli.auth_commands._run_oauth_flow", return_value=("token.json", "{}"))
+    def test_setup_gmail_delegates_to_auth_login(self, mock_flow):
         result = runner.invoke(app, ["manage", "setup-gmail"])
-        assert result.exit_code == 0
-        assert "Gmail OAuth setup initiated" in result.output
+        assert result.exit_code == 0, result.output
+        mock_flow.assert_called_once()
+        assert mock_flow.call_args.args[0] == "gmail"
+        assert "aca auth gmail" in result.output
 
-    @patch("src.ingestion.gmail.GmailClient")
-    def test_setup_gmail_failure(self, mock_cls):
-        mock_cls.side_effect = RuntimeError("No credentials")
-
+    @patch("src.cli.auth_commands._run_oauth_flow", side_effect=RuntimeError("No credentials"))
+    def test_setup_gmail_failure(self, _mock_flow):
         result = runner.invoke(app, ["manage", "setup-gmail"])
         assert result.exit_code == 1
-        assert "Error" in result.output
+        assert "Error" in result.output or "error" in result.output.lower()
 
 
 class TestVerifySetup:

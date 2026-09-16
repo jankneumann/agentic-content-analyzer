@@ -6,6 +6,8 @@ so headless cloud deployments don't need filesystem access for OAuth.
 
 Usage:
     aca auth gmail                              # Local OAuth, save token.json
+    aca auth gmail --no-browser                 # Print URL; wait on localhost callback
+    aca auth gmail --force                      # Re-consent even if a token exists
     aca auth gmail --deploy                     # + upload token to Railway
     aca auth gmail --deploy --include-credentials  # + upload credentials.json
     aca auth youtube                            # Same, for YouTube
@@ -24,8 +26,10 @@ ssh in and write a file.
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
+from importlib import import_module
 from pathlib import Path
 from typing import Annotated
 
@@ -50,22 +54,49 @@ app = typer.Typer(
 # Per-provider configuration. Keeping all per-provider knowledge in one place
 # means new providers (Drive, Calendar) can be added by extending this dict
 # rather than copy-pasting two near-identical command bodies.
+# Fixed loopback port so SSH users can forward one well-known callback,
+# the same idea as `codex login` on localhost:1455.
+OAUTH_CALLBACK_PORT = 8091
+
 PROVIDERS: dict[str, dict[str, object]] = {
     "gmail": {
-        "scopes": ["https://www.googleapis.com/auth/gmail.readonly"],
+        "scopes_attr": "src.ingestion.gmail.SCOPES",
         "credentials_setting": "gmail_credentials_file",
         "token_setting": "gmail_token_file",
+        "credentials_json_setting": "gmail_credentials_json",
         "credentials_env": "GMAIL_CREDENTIALS_JSON",
         "token_env": "GMAIL_OAUTH_TOKEN_JSON",
     },
     "youtube": {
-        "scopes": ["https://www.googleapis.com/auth/youtube.readonly"],
+        "scopes_attr": "src.ingestion.youtube.SCOPES",
         "credentials_setting": "youtube_credentials_file",
         "token_setting": "youtube_token_file",
+        "credentials_json_setting": "youtube_credentials_json",
         "credentials_env": "YOUTUBE_CREDENTIALS_JSON",
         "token_env": "YOUTUBE_OAUTH_TOKEN_JSON",
     },
 }
+
+
+def _provider_scopes(provider: str) -> list[str]:
+    module_path, attr = str(PROVIDERS[provider]["scopes_attr"]).rsplit(".", 1)
+    return list(getattr(import_module(module_path), attr))
+
+
+def _describe_token_file(token_path: Path) -> str | None:
+    """Human summary of a local OAuth token. Never prints secret values."""
+    if not token_path.exists():
+        return None
+    try:
+        data = json.loads(token_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return "token: unreadable"
+    if not isinstance(data, dict):
+        return "token: unreadable"
+    refresh = "present" if data.get("refresh_token") else "missing"
+    expiry = data.get("expiry")
+    expiry_bit = f", expiry {expiry}" if isinstance(expiry, str) and expiry else ""
+    return f"refresh token: {refresh}{expiry_bit}"
 
 
 def _get_paths(provider: str) -> tuple[Path, Path]:
@@ -78,34 +109,113 @@ def _get_paths(provider: str) -> tuple[Path, Path]:
     return cred_path, token_path
 
 
-def _run_oauth_flow(provider: str) -> tuple[Path, str]:
+def _hydrate_credentials_file(provider: str, cred_path: Path) -> None:
+    """Write client secrets from env JSON when the file is missing."""
+    from src.config import settings
+
+    if cred_path.exists():
+        return
+    raw = getattr(settings, str(PROVIDERS[provider]["credentials_json_setting"]), None)
+    if isinstance(raw, str) and raw.strip():
+        cred_path.write_text(raw)
+        typer.echo(f"Wrote {cred_path} from {PROVIDERS[provider]['credentials_env']}")
+
+
+def _existing_token_json(token_path: Path, scopes: list[str]) -> str | None:
+    """Return a still-usable token JSON, refreshing if needed. None = must re-login."""
+    if not token_path.exists():
+        return None
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+
+    try:
+        creds = Credentials.from_authorized_user_file(str(token_path), scopes)
+    except (ValueError, OSError):
+        return None
+    if creds.valid:
+        return creds.to_json()
+    if creds.expired and creds.refresh_token:
+        try:
+            creds.refresh(Request())
+        except Exception:
+            return None
+        token_path.write_text(creds.to_json())
+        return creds.to_json()
+    return None
+
+
+def _login_prompt(provider: str) -> str:
+    """Codex-style instructions. ``{url}`` is filled by InstalledAppFlow."""
+    return (
+        f"Starting {provider} login.\n\n"
+        "1. Open this URL in a browser (this machine or any other):\n"
+        "   {url}\n\n"
+        "2. Sign in and approve access, then return here.\n\n"
+        f"SSH/headless: keep this command running and forward the callback:\n"
+        f"  ssh -L {OAUTH_CALLBACK_PORT}:127.0.0.1:{OAUTH_CALLBACK_PORT} <this-host>\n"
+    )
+
+
+def _run_oauth_flow(
+    provider: str,
+    *,
+    force: bool = False,
+    open_browser: bool = True,
+) -> tuple[Path, str]:
     """Run the local OAuth flow and return (token_path, token_json).
 
-    The OAuth flow opens a browser for the user to authorize the app, then
-    receives the redirect on a local port. The resulting token (with refresh
-    token) is written to disk and returned as a JSON string.
+    Prints the authorization URL (Codex/Grok login style). The callback
+    listens on a fixed localhost port so SSH users can forward it. Interactive
+    browser OAuth is CLI-only — workers never call this.
     """
     from google_auth_oauthlib.flow import InstalledAppFlow
 
-    cfg = PROVIDERS[provider]
     cred_path, token_path = _get_paths(provider)
+    scopes = _provider_scopes(provider)
+    _hydrate_credentials_file(provider, cred_path)
+
+    if not force:
+        existing = _existing_token_json(token_path, scopes)
+        if existing is not None:
+            typer.echo(f"{provider} already has a valid token at {token_path}")
+            return token_path, existing
 
     if not cred_path.exists():
         typer.echo(
             f"Credentials file not found at {cred_path}.\n"
             f"  1. Go to https://console.cloud.google.com/apis/credentials\n"
             f"  2. Create or download an OAuth 2.0 Client ID (Desktop type)\n"
-            f"  3. Save the downloaded JSON as {cred_path}",
+            f"  3. Save the downloaded JSON as {cred_path}\n"
+            f"  Or set {PROVIDERS[provider]['credentials_env']} and re-run.",
             err=True,
         )
         raise typer.Exit(1)
 
     typer.echo(
-        f"Starting {provider} OAuth flow — a browser window will open. "
-        "Sign in with the Google account that owns the data you want to ingest."
+        f"Starting {provider} login. "
+        + (
+            "A browser window will open if this host can open one."
+            if open_browser
+            else "Browser auto-open is off; copy the URL below."
+        )
     )
-    flow = InstalledAppFlow.from_client_secrets_file(str(cred_path), cfg["scopes"])  # type: ignore[arg-type]
-    creds = flow.run_local_server(port=0)
+    flow = InstalledAppFlow.from_client_secrets_file(str(cred_path), scopes)
+    server_kwargs = {
+        "host": "127.0.0.1",
+        "open_browser": open_browser,
+        "authorization_prompt_message": _login_prompt(provider),
+        "success_message": "Authorization complete. You can close this tab.",
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+    try:
+        creds = flow.run_local_server(port=OAUTH_CALLBACK_PORT, **server_kwargs)
+    except OSError as exc:
+        typer.echo(
+            f"Port {OAUTH_CALLBACK_PORT} is in use ({exc}). Retrying on an ephemeral port.",
+            err=True,
+        )
+        creds = flow.run_local_server(port=0, **server_kwargs)
     token_json: str = creds.to_json()
     token_path.write_text(token_json)
     typer.echo(f"Token saved to {token_path}")
@@ -143,9 +253,11 @@ def _do_auth(
     deploy: bool,
     include_credentials: bool,
     service: str | None,
+    force: bool = False,
+    open_browser: bool = True,
 ) -> None:
     """Shared implementation for `aca auth gmail|youtube`."""
-    _token_path, token_json = _run_oauth_flow(provider)
+    _token_path, token_json = _run_oauth_flow(provider, force=force, open_browser=open_browser)
     if not deploy:
         typer.echo(
             f"\nNot deploying. To upload this token to Railway, re-run with --deploy.\n"
@@ -186,9 +298,27 @@ def gmail_auth(
         str | None,
         typer.Option("--service", help="Railway service name (if your project has multiple)"),
     ] = None,
+    no_browser: Annotated[
+        bool,
+        typer.Option(
+            "--no-browser",
+            help="Do not open a browser; print the URL (use with SSH port-forward of 8091)",
+        ),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Re-consent even if a valid token already exists"),
+    ] = False,
 ) -> None:
-    """Run Gmail OAuth flow locally. With --deploy, also push the token to Railway."""
-    _do_auth("gmail", deploy=deploy, include_credentials=include_credentials, service=service)
+    """Log in to Gmail (browser or printed URL). With --deploy, push the token to Railway."""
+    _do_auth(
+        "gmail",
+        deploy=deploy,
+        include_credentials=include_credentials,
+        service=service,
+        force=force,
+        open_browser=not no_browser,
+    )
 
 
 @app.command("youtube")
@@ -213,9 +343,27 @@ def youtube_auth(
         str | None,
         typer.Option("--service", help="Railway service name (if your project has multiple)"),
     ] = None,
+    no_browser: Annotated[
+        bool,
+        typer.Option(
+            "--no-browser",
+            help="Do not open a browser; print the URL (use with SSH port-forward of 8091)",
+        ),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Re-consent even if a valid token already exists"),
+    ] = False,
 ) -> None:
-    """Run YouTube OAuth flow locally. With --deploy, also push the token to Railway."""
-    _do_auth("youtube", deploy=deploy, include_credentials=include_credentials, service=service)
+    """Log in to YouTube (browser or printed URL). With --deploy, push the token to Railway."""
+    _do_auth(
+        "youtube",
+        deploy=deploy,
+        include_credentials=include_credentials,
+        service=service,
+        force=force,
+        open_browser=not no_browser,
+    )
 
 
 @app.command("status")
@@ -252,6 +400,9 @@ def auth_status() -> None:
             f"    token file:       {token_path} "
             f"[{'present' if token_path.exists() else 'missing'}]"
         )
+        token_detail = _describe_token_file(token_path)
+        if token_detail:
+            typer.echo(f"    {token_detail}")
         if railway_vars is not None:
             token_present = str(cfg["token_env"]) in railway_vars
             cred_present = str(cfg["credentials_env"]) in railway_vars
