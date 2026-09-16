@@ -33,6 +33,7 @@ class FailureClass(StrEnum):
     ADAPTER = "adapter"
     QUEUE = "queue"
     PERSISTENCE = "persistence"
+    SKIPPED = "skipped"
 
 
 def classify_source_outcome(
@@ -140,7 +141,8 @@ def render_failure_summary(evidence: Sequence[SourceEvidence]) -> str:
         f"success: {counts['success']} | "
         f"adapter: {counts['adapter']} | "
         f"queue: {counts['queue']} | "
-        f"persistence: {counts['persistence']}"
+        f"persistence: {counts['persistence']} | "
+        f"skipped: {counts['skipped']}"
     )
     lines = ["## Real-ingestion failure-class evidence", "", header]
 

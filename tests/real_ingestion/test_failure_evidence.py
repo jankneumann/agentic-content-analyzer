@@ -140,6 +140,24 @@ def test_summary_reports_all_success_when_no_failures() -> None:
     assert "adapter" not in summary.lower() or "0" in summary
 
 
+def test_summary_records_skipped_credential_gaps() -> None:
+    evidence = [
+        SourceEvidence("rss", "1", FailureClass.SUCCESS, claimed=1, delta=1, detail=None),
+        SourceEvidence(
+            "gmail",
+            "skipped",
+            FailureClass.SKIPPED,
+            claimed=0,
+            delta=0,
+            detail="Skipped: missing credential (GMAIL_OAUTH_TOKEN_JSON or GMAIL_CREDENTIALS_JSON)",
+        ),
+    ]
+    summary = render_failure_summary(evidence)
+    assert "skipped: 1" in summary
+    assert "gmail" in summary
+    assert "GMAIL_OAUTH_TOKEN_JSON" in summary
+
+
 @pytest.mark.asyncio
 async def test_real_completed_operation_classifies_as_success(
     real_ingestion_harness,

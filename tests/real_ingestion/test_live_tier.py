@@ -86,6 +86,7 @@ async def test_live_source_reaches_terminal_state(real_ingestion_harness, key: s
         worker_local_mount_ready=_worker_local_mount_ready(key),
     )
     if decision.decision is not LiveDecision.LIVE:
+        evidence_sink.record_skip(key, reason=decision.reason)
         pytest.skip(decision.reason)
 
     outcome = await real_ingestion_harness.submit_live(key)
@@ -94,3 +95,24 @@ async def test_live_source_reaches_terminal_state(real_ingestion_harness, key: s
 
     assert outcome.status in {"completed", "failed"}, outcome.problem_detail
     assert evidence.failure_class in set(FailureClass)
+
+
+async def test_missing_live_credential_is_recorded_before_skip() -> None:
+    """A silent pytest.skip hid empty Gmail/YouTube secrets in the scheduled job."""
+
+    collected = list(evidence_sink.COLLECTED)
+    evidence_sink.COLLECTED.clear()
+    try:
+        with pytest.raises(pytest.skip.Exception, match="GMAIL_OAUTH_TOKEN_JSON"):
+            decision = evaluate_live_adapter("gmail", live_enabled=True, env={})
+            if decision.decision is not LiveDecision.LIVE:
+                evidence_sink.record_skip("gmail", reason=decision.reason)
+                pytest.skip(decision.reason)
+        assert len(evidence_sink.COLLECTED) == 1
+        skip = evidence_sink.COLLECTED[0]
+        assert skip.key == "gmail"
+        assert skip.failure_class is FailureClass.SKIPPED
+        assert skip.operation_id == "skipped"
+        assert "GMAIL_OAUTH_TOKEN_JSON" in (skip.detail or "")
+    finally:
+        evidence_sink.COLLECTED[:] = collected

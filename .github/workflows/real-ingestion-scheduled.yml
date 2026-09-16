@@ -55,6 +55,22 @@ jobs:
         run: |
           uv pip install --system -e ".[dev]"
 
+      - name: Surface missing live credentials
+        env:
+          GMAIL_OAUTH_TOKEN_JSON: ${{ secrets.GMAIL_OAUTH_TOKEN_JSON }}
+          GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: |
+          # GitHub injects empty strings for unset secrets; pytest.skip then hid
+          # Gmail/YouTube from the evidence artifact. Annotate the job instead.
+          if [ -z "${GMAIL_OAUTH_TOKEN_JSON}${GMAIL_CREDENTIALS_JSON}" ]; then
+            echo "::warning title=Gmail live ingest skipped::GMAIL_OAUTH_TOKEN_JSON and GMAIL_CREDENTIALS_JSON are empty. The gmail live adapter will skip."
+          fi
+          if [ -z "${YOUTUBE_API_KEY}${GOOGLE_API_KEY}" ]; then
+            echo "::warning title=YouTube live ingest skipped::YOUTUBE_API_KEY and GOOGLE_API_KEY are empty. The youtube_playlist live adapter will skip."
+          fi
+
       - name: Run real-ingestion scheduled tier (live where policy permits)
         env:
           # Live persistence must land in the same database the harness reads,
@@ -71,6 +87,7 @@ jobs:
           # Optional live credentials — absent secrets degrade to skip-with-reason
           # via the live-adapter policy; paid providers are never live-eligible.
           GMAIL_OAUTH_TOKEN_JSON: ${{ secrets.GMAIL_OAUTH_TOKEN_JSON }}
+          GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           READWISE_API_KEY: ${{ secrets.READWISE_API_KEY }}

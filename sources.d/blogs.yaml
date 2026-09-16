@@ -97,6 +97,7 @@ sources:
     max_entries: 10
 
   # Microsoft Source — AI features hub. Largely JS-rendered; static yield is thin (~2).
+  # When scrape finds 0 links, BlogSource.rss_url / <link rel=alternate> / /feed are used.
   - name: "Microsoft AI News"
     url: "https://news.microsoft.com/source/topics/ai/"
     tags: [ai, microsoft]
@@ -122,8 +123,10 @@ sources:
 
   # NOTE: Cohere (cohere.com/blog), Mistral (mistral.ai/news), Google Gemini blog, and
   # the Microsoft Source AI page are client-rendered SPAs — static-HTML discovery yields
-  # ~1-2 links. Cohere/Mistral need JS rendering (Crawl4AI) to crawl; OpenAI and Gemini
-  # are served via RSS instead (see sources.d/rss.yaml). Tracked as a follow-up.
+  # ~1-2 links. Set `rss_url` on those entries when a feed is known; otherwise the
+  # scraper discovers <link rel="alternate"> then probes /feed,/rss,/feed.xml.
+  # Cohere/Mistral still need JS rendering (Crawl4AI) if they have no feed; OpenAI
+  # and Gemini are served via RSS instead (see sources.d/rss.yaml).
 
   # Example with heuristic mode (no link_selector) and URL pattern filter
   # - name: "Example Engineering Blog"

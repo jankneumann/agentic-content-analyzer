@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.ingestion.real_ingest_evidence import SourceEvidence, render_failure_summary
+from src.ingestion.real_ingest_evidence import FailureClass, SourceEvidence, render_failure_summary
 
 COLLECTED: list[SourceEvidence] = []
 
@@ -18,6 +18,21 @@ def record(evidence: SourceEvidence) -> None:
     """Record one source's classified outcome for the run summary."""
 
     COLLECTED.append(evidence)
+
+
+def record_skip(key: str, *, reason: str) -> None:
+    """Record a live-policy skip (missing credential / unavailable source)."""
+
+    record(
+        SourceEvidence(
+            key=key,
+            operation_id="skipped",
+            failure_class=FailureClass.SKIPPED,
+            claimed=0,
+            delta=0,
+            detail=reason,
+        )
+    )
 
 
 def flush_to(path: str) -> None:

@@ -26,6 +26,7 @@ from src.ingestion.result import (
     SourceFetchResult,
     build_response_from_source_results,
 )
+from src.ingestion.rss import RSSClient
 from src.models.content import Content, ContentSource, ContentStatus
 from src.parsers.html_markdown import convert_html_to_markdown
 from src.storage.database import get_db
@@ -46,6 +47,10 @@ _TRANSPORT_ERROR_TYPES = frozenset(
         "TimeoutException",
     }
 )
+
+# Same guesses the source curator uses when a listing page has no <link rel=alternate>.
+FEED_CANDIDATE_PATHS = ("/feed", "/rss", "/feed.xml", "/rss.xml", "/index.xml", "/atom.xml")
+MAX_FEED_CANDIDATES = 6
 
 
 # --- Link Discovery ---
@@ -81,6 +86,58 @@ _DEFAULT_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
 }
+
+
+def feed_candidate_urls(index_url: str) -> list[str]:
+    """Guess common feed URLs from a blog index URL.
+
+    Path-prefixed candidates (``/blog/feed``) are listed before origin-level
+    ones (``/feed``). Callers cap how many are probed.
+    """
+    parsed = urlparse(index_url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return []
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    path = parsed.path.rstrip("/")
+    bases = [f"{origin}{path}"] if path else []
+    bases.append(origin)
+    urls: list[str] = []
+    seen: set[str] = set()
+    for base in bases:
+        for suffix in FEED_CANDIDATE_PATHS:
+            candidate = base + suffix
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            urls.append(candidate)
+    return urls
+
+
+def _optional_str(value: object) -> str | None:
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            return stripped
+    return None
+
+
+def _optional_str_list(value: object) -> list[str] | None:
+    if isinstance(value, list) and value and all(isinstance(item, str) for item in value):
+        return value
+    return None
+
+
+def _as_blog_content(content: ContentData, *, source_name: str | None) -> ContentData:
+    """Re-home an RSS entry as a blog post so scrape and feed fallback share identity."""
+    content.source_type = ContentSource.BLOG
+    if content.source_url:
+        content.source_id = f"blog:{content.source_url}"
+    if source_name:
+        content.publication = source_name
+    metadata = dict(content.metadata_json or {})
+    metadata["rss_fallback"] = True
+    content.metadata_json = metadata
+    return content
 
 
 @dataclass
@@ -210,6 +267,30 @@ class BlogScrapingClient:
                 break
 
         return filtered
+
+    def discover_alternate_feeds(self, html: str, base_url: str) -> list[str]:
+        """Return RSS/Atom URLs advertised as ``<link rel="alternate">`` on the index."""
+        soup = BeautifulSoup(html, "html.parser")
+        feeds: list[str] = []
+        seen: set[str] = set()
+        for tag in soup.find_all("link"):
+            rels = [str(rel).lower() for rel in tag.get("rel") or []]
+            if "alternate" not in rels:
+                continue
+            type_ = str(tag.get("type") or "").lower()
+            if "rss" not in type_ and "atom" not in type_:
+                continue
+            href = tag.get("href")
+            if not href:
+                continue
+            absolute, _ = urldefrag(urljoin(base_url, str(href)))
+            if urlparse(absolute).scheme not in ("http", "https"):
+                continue
+            if absolute in seen:
+                continue
+            seen.add(absolute)
+            feeds.append(absolute)
+        return feeds
 
     def extract_post_content(self, url: str) -> ContentData | None:
         """Fetch and extract content from a single blog post URL.
@@ -517,89 +598,56 @@ class BlogContentIngestionService:
         source_name = getattr(source, "name", None)
         fetch_result = SourceFetchResult(url=source_url, name=source_name)
 
-        try:
-            # Phase 1: Link discovery
-            html = self.client.fetch_index_page(source_url)
-            links = self.client.discover_post_links(
-                html,
-                source_url,
-                link_selector=getattr(source, "link_selector", None),
-                link_pattern=getattr(source, "link_pattern", None),
-                max_links=max_entries,
-            )
+        rss_url = _optional_str(getattr(source, "rss_url", None))
+        html = ""
+        links: list[DiscoveredLink] = []
 
-            if not links:
+        try:
+            try:
+                html = self.client.fetch_index_page(source_url)
+                links = self.client.discover_post_links(
+                    html,
+                    source_url,
+                    link_selector=getattr(source, "link_selector", None),
+                    link_pattern=getattr(source, "link_pattern", None),
+                    max_links=max_entries,
+                )
+            except httpx.HTTPError:
+                if not rss_url:
+                    raise
+                logger.info(
+                    "Index fetch failed for %s; falling back to rss_url",
+                    source_url,
+                )
+
+            if links:
+                logger.info(f"Discovered {len(links)} links from {source_name or source_url}")
+                self._ingest_discovered_links(
+                    links,
+                    fetch_result,
+                    source=source,
+                    source_url=source_url,
+                    source_name=source_name if isinstance(source_name, str) else None,
+                    after_date=after_date,
+                    force_reprocess=force_reprocess,
+                )
+                return fetch_result
+
+            feed_urls = self._resolve_feed_urls(source_url, html=html, rss_url=rss_url)
+            if not feed_urls:
                 logger.info(f"No post links found on {source_url}")
                 return fetch_result
 
-            logger.info(f"Discovered {len(links)} links from {source_name or source_url}")
-
-            # Phase 2: Content extraction with optional filtering
-            content_filter = None
-            try:
-                from src.services.content_filter import create_content_filter
-
-                content_filter = create_content_filter(source)
-            except Exception:
-                logger.debug("Content filter not available, proceeding without filtering")
-
-            request_delay = getattr(source, "request_delay", 1.0)
-            contents: list[ContentData] = []
-
-            for i, link in enumerate(links):
-                if i > 0 and request_delay > 0:
-                    time.sleep(request_delay)
-
-                content_data = self.client.extract_post_content(link.url)
-                if content_data is None:
-                    fetch_result.items_failed += 1
-                    fetch_result.item_errors.append(
-                        IngestionError(
-                            code="extraction_failed",
-                            message="Failed to extract post content (HTTP error or insufficient content)",
-                            url=link.url,
-                        )
-                    )
-                    continue
-
-                # Use title hint from link if extraction didn't find one
-                if link.title_hint and content_data.title == "Untitled":
-                    content_data.title = link.title_hint
-
-                # Set publication from source name
-                content_data.publication = source_name or urlparse(source_url).netloc
-
-                # Date filtering
-                if after_date and content_data.published_date:
-                    if content_data.published_date < after_date:
-                        logger.debug(f"Skipping old post: {content_data.title}")
-                        continue
-
-                # Content relevance filtering
-                if content_filter:
-                    try:
-                        filter_result = content_filter.is_relevant(
-                            content_data.title,
-                            content_data.markdown_content[:1000],
-                        )
-                        if not filter_result.relevant:
-                            logger.debug(
-                                f"Filtered out: {content_data.title} "
-                                f"(strategy: {filter_result.strategy_used})"
-                            )
-                            continue
-                    except Exception as e:
-                        logger.debug(f"Content filter error, keeping post: {e}")
-
-                contents.append(content_data)
-
-            # Phase 3: Database persistence with deduplication
-            count, persist_errors = self._persist_contents(
-                contents, force_reprocess=force_reprocess
+            self._ingest_from_feeds(
+                feed_urls,
+                fetch_result,
+                source=source,
+                source_name=source_name if isinstance(source_name, str) else None,
+                max_entries=max_entries,
+                after_date=after_date,
+                force_reprocess=force_reprocess,
+                explicit_feed=rss_url is not None,
             )
-            fetch_result.items_fetched = count
-            fetch_result.items_failed += len(persist_errors)
-            fetch_result.item_errors.extend(persist_errors)
 
         except httpx.HTTPError as e:
             logger.error(f"HTTP error fetching {source_url}: {e}")
@@ -613,6 +661,165 @@ class BlogContentIngestionService:
             fetch_result.error_type = type(e).__name__
 
         return fetch_result
+
+    def _resolve_feed_urls(self, source_url: str, *, html: str, rss_url: str | None) -> list[str]:
+        """Prefer an explicit rss_url, then <link rel=alternate>, then common paths."""
+        if rss_url:
+            return [rss_url]
+        discovered = self.client.discover_alternate_feeds(html, source_url) if html else []
+        if discovered:
+            return discovered
+        return feed_candidate_urls(source_url)
+
+    def _ingest_discovered_links(
+        self,
+        links: list[DiscoveredLink],
+        fetch_result: SourceFetchResult,
+        *,
+        source: object,
+        source_url: str,
+        source_name: str | None,
+        after_date: datetime | None,
+        force_reprocess: bool,
+    ) -> None:
+        content_filter = None
+        try:
+            from src.services.content_filter import create_content_filter
+
+            content_filter = create_content_filter(source)
+        except Exception:
+            logger.debug("Content filter not available, proceeding without filtering")
+
+        request_delay = getattr(source, "request_delay", 1.0)
+        if not isinstance(request_delay, (int, float)):
+            request_delay = 0
+        contents: list[ContentData] = []
+
+        for i, link in enumerate(links):
+            if i > 0 and request_delay > 0:
+                time.sleep(request_delay)
+
+            content_data = self.client.extract_post_content(link.url)
+            if content_data is None:
+                fetch_result.items_failed += 1
+                fetch_result.item_errors.append(
+                    IngestionError(
+                        code="extraction_failed",
+                        message="Failed to extract post content (HTTP error or insufficient content)",
+                        url=link.url,
+                    )
+                )
+                continue
+
+            if link.title_hint and content_data.title == "Untitled":
+                content_data.title = link.title_hint
+
+            content_data.publication = source_name or urlparse(source_url).netloc
+
+            if after_date and content_data.published_date:
+                if content_data.published_date < after_date:
+                    logger.debug(f"Skipping old post: {content_data.title}")
+                    continue
+
+            if content_filter:
+                try:
+                    filter_result = content_filter.is_relevant(
+                        content_data.title,
+                        content_data.markdown_content[:1000],
+                    )
+                    if not filter_result.relevant:
+                        logger.debug(
+                            f"Filtered out: {content_data.title} "
+                            f"(strategy: {filter_result.strategy_used})"
+                        )
+                        continue
+                except Exception as e:
+                    logger.debug(f"Content filter error, keeping post: {e}")
+
+            contents.append(content_data)
+
+        count, persist_errors = self._persist_contents(contents, force_reprocess=force_reprocess)
+        fetch_result.items_fetched = count
+        fetch_result.items_failed += len(persist_errors)
+        fetch_result.item_errors.extend(persist_errors)
+
+    def _ingest_from_feeds(
+        self,
+        feed_urls: list[str],
+        fetch_result: SourceFetchResult,
+        *,
+        source: object,
+        source_name: str | None,
+        max_entries: int,
+        after_date: datetime | None,
+        force_reprocess: bool,
+        explicit_feed: bool = False,
+    ) -> None:
+        content_filter = None
+        try:
+            from src.services.content_filter import create_content_filter
+
+            content_filter = create_content_filter(source)
+        except Exception:
+            logger.debug("Content filter not available, proceeding without filtering")
+
+        rss_client = RSSClient(timeout=int(self.client.timeout) or 30)
+        last_error: SourceFetchResult | None = None
+        try:
+            for feed_url in feed_urls[:MAX_FEED_CANDIDATES]:
+                contents, rss_result = rss_client.fetch_content(
+                    feed_url=feed_url,
+                    max_entries=max_entries,
+                    after_date=after_date,
+                    source_name=source_name,
+                    source_tags=_optional_str_list(getattr(source, "tags", None)),
+                )
+                if not contents:
+                    if rss_result.success:
+                        logger.info("Feed %s returned no posts", feed_url)
+                        return
+                    last_error = rss_result
+                    continue
+
+                blog_contents: list[ContentData] = []
+                for content_data in contents:
+                    remapped = _as_blog_content(content_data, source_name=source_name)
+                    if content_filter:
+                        try:
+                            filter_result = content_filter.is_relevant(
+                                remapped.title,
+                                remapped.markdown_content[:1000],
+                            )
+                            if not filter_result.relevant:
+                                continue
+                        except Exception as e:
+                            logger.debug(f"Content filter error, keeping post: {e}")
+                    blog_contents.append(remapped)
+
+                count, persist_errors = self._persist_contents(
+                    blog_contents, force_reprocess=force_reprocess
+                )
+                fetch_result.items_fetched = count
+                fetch_result.items_failed += len(persist_errors) + rss_result.items_failed
+                fetch_result.item_errors.extend(persist_errors)
+                fetch_result.item_errors.extend(rss_result.item_errors)
+                if rss_result.redirected_to:
+                    fetch_result.redirected_to = rss_result.redirected_to
+                logger.info(
+                    "RSS fallback ingested %s posts from %s",
+                    count,
+                    feed_url,
+                )
+                return
+
+            if last_error is not None and explicit_feed:
+                fetch_result.success = last_error.success
+                fetch_result.error = last_error.error
+                fetch_result.error_type = last_error.error_type
+            else:
+                logger.info("No post links or usable feed found for %s", fetch_result.url)
+        finally:
+            rss_client.close()
 
     def _persist_contents(
         self,
