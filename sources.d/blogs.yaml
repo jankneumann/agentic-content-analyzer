@@ -53,11 +53,12 @@ sources:
     content_filter_strategy: none
     max_entries: 10
 
-  # Together AI — inference infra & model engineering (RSS feed is dead, scrape instead)
+  # Together AI — inference infra & model engineering. rss.xml is live; scrape is backup.
   - name: "Together AI"
     url: "https://www.together.ai/blog"
     tags: [ai, infrastructure, inference]
     link_selector: "a[href*='/blog/']"
+    rss_url: "https://www.together.ai/blog/rss.xml"
     content_filter_strategy: none
     max_entries: 10
 
@@ -96,20 +97,21 @@ sources:
       - databases
     max_entries: 10
 
-  # Microsoft Source — AI features hub. Largely JS-rendered; static yield is thin (~2).
-  # When scrape finds 0 links, BlogSource.rss_url / <link rel=alternate> / /feed are used.
+  # Microsoft Source — AI hub is JS-rendered (~2 chrome links). Topic feed is live.
   - name: "Microsoft AI News"
     url: "https://news.microsoft.com/source/topics/ai/"
     tags: [ai, microsoft]
     link_selector: "a[href*='/source/features/']"
+    rss_url: "https://news.microsoft.com/source/topics/ai/feed"
     content_filter_strategy: none
     max_entries: 10
 
-  # Microsoft Copilot blog — date-stamped post URLs; pattern excludes topic/category pages
+  # Microsoft Copilot blog — date-stamped post URLs; WordPress /feed is live.
   - name: "Microsoft Copilot"
     url: "https://www.microsoft.com/en-us/microsoft-copilot/blog/"
     tags: [ai, microsoft, copilot]
     link_pattern: "/blog/\\d{4}/\\d{2}/"
+    rss_url: "https://www.microsoft.com/en-us/microsoft-copilot/blog/feed"
     content_filter_strategy: none
     max_entries: 10
 
@@ -118,15 +120,14 @@ sources:
     url: "https://deepmind.google/blog/"
     tags: [ai, deepmind, research]
     link_selector: "a[href*='/blog/']"
+    rss_url: "https://deepmind.google/blog/rss.xml"
     content_filter_strategy: none
     max_entries: 10
 
-  # NOTE: Cohere (cohere.com/blog), Mistral (mistral.ai/news), Google Gemini blog, and
-  # the Microsoft Source AI page are client-rendered SPAs — static-HTML discovery yields
-  # ~1-2 links. Set `rss_url` on those entries when a feed is known; otherwise the
-  # scraper discovers <link rel="alternate"> then probes /feed,/rss,/feed.xml.
-  # Cohere/Mistral still need JS rendering (Crawl4AI) if they have no feed; OpenAI
-  # and Gemini are served via RSS instead (see sources.d/rss.yaml).
+  # Thin scrape (<3 post links) falls back to rss_url, then <link rel=alternate>, then
+  # /feed,/rss,/feed.xml. Cohere (cohere.com/blog) and Mistral (mistral.ai/news) have no
+  # public feed — they still need JS rendering. OpenAI and Gemini are served via RSS
+  # (see sources.d/rss.yaml).
 
   # Example with heuristic mode (no link_selector) and URL pattern filter
   # - name: "Example Engineering Blog"

@@ -12,6 +12,7 @@ from src.ingestion.blog_scraper import (
     BlogScrapingClient,
     DiscoveredLink,
     feed_candidate_urls,
+    scrape_yield_is_trusted,
 )
 from src.ingestion.gmail import ContentData
 from src.ingestion.result import SourceFetchResult
@@ -458,7 +459,8 @@ class TestBlogContentIngestionService:
         """Ingests posts from a single configured source."""
         mock_fetch.return_value = "<html></html>"
         mock_discover.return_value = [
-            DiscoveredLink(url="https://example.com/post-1", title_hint="Post 1"),
+            DiscoveredLink(url=f"https://example.com/post-{i}", title_hint=f"Post {i}")
+            for i in range(1, 4)
         ]
 
         mock_content = MagicMock()
@@ -584,8 +586,22 @@ class TestFeedCandidateUrls:
         assert len(urls) <= 12
 
 
+class TestScrapeYieldIsTrusted:
+    """SPA shells leak 1-2 chrome links; that must not count as a healthy scrape."""
+
+    def test_two_links_are_not_trusted_for_default_max_entries(self):
+        assert scrape_yield_is_trusted(2, 10) is False
+
+    def test_three_links_are_trusted(self):
+        assert scrape_yield_is_trusted(3, 10) is True
+
+    def test_threshold_shrinks_to_requested_max_entries(self):
+        assert scrape_yield_is_trusted(1, 1) is True
+        assert scrape_yield_is_trusted(0, 1) is False
+
+
 class TestBlogRssFallback:
-    """JS SPA indexes yield 0 scrape links; ingest from RSS instead of giving up."""
+    """JS SPA indexes yield 0 or 1-2 chrome links; ingest from RSS instead of giving up."""
 
     @patch("src.ingestion.blog_scraper.get_db")
     @patch("src.ingestion.blog_scraper.RSSClient")
@@ -681,11 +697,12 @@ class TestBlogRssFallback:
     @patch.object(BlogScrapingClient, "extract_post_content")
     @patch.object(BlogScrapingClient, "discover_post_links")
     @patch.object(BlogScrapingClient, "fetch_index_page", return_value="<html></html>")
-    def test_scrape_wins_when_links_are_found(
+    def test_healthy_scrape_wins_when_enough_links_are_found(
         self, _fetch, mock_discover, mock_extract, mock_rss_cls, mock_db
     ):
         mock_discover.return_value = [
-            DiscoveredLink(url="https://example.com/post-1", title_hint="Post 1"),
+            DiscoveredLink(url=f"https://example.com/post-{i}", title_hint=f"Post {i}")
+            for i in range(1, 4)
         ]
         mock_content = MagicMock()
         mock_content.source_type = "blog"
@@ -709,8 +726,155 @@ class TestBlogRssFallback:
         )
         BlogContentIngestionService().ingest_content(sources=[source])
 
-        mock_extract.assert_called_once()
+        assert mock_extract.call_count == 3
         mock_rss_cls.return_value.fetch_content.assert_not_called()
+
+    @patch("src.ingestion.blog_scraper.get_db")
+    @patch("src.ingestion.blog_scraper.RSSClient")
+    @patch.object(BlogScrapingClient, "extract_post_content")
+    @patch.object(BlogScrapingClient, "discover_post_links")
+    @patch.object(BlogScrapingClient, "fetch_index_page", return_value="<html></html>")
+    def test_thin_scrape_falls_back_to_rss(
+        self, _fetch, mock_discover, mock_extract, mock_rss_cls, mock_db
+    ):
+        mock_discover.return_value = [
+            DiscoveredLink(url="https://example.com/nav", title_hint="Home"),
+            DiscoveredLink(url="https://example.com/about", title_hint="About"),
+        ]
+        mock_rss_cls.return_value.fetch_content.return_value = (
+            [_rss_item()],
+            SourceFetchResult(url="https://example.com/feed.xml", items_fetched=1),
+        )
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = None
+        mock_db.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_db.return_value.__exit__ = MagicMock(return_value=False)
+
+        source = BlogSource(
+            url="https://example.com/news",
+            name="SPA News",
+            rss_url="https://example.com/feed.xml",
+            request_delay=0,
+        )
+        result = BlogContentIngestionService().ingest_content(sources=[source])
+
+        mock_rss_cls.return_value.fetch_content.assert_called_once()
+        mock_extract.assert_not_called()
+        assert result.status in {"ok", "partial"}
+        persisted = mock_session.add.call_args.args[0]
+        assert persisted.source_type == ContentSource.BLOG
+        assert persisted.source_id == "blog:https://example.com/posts/hello"
+
+    @patch("src.ingestion.blog_scraper.get_db")
+    @patch("src.ingestion.blog_scraper.RSSClient")
+    @patch.object(BlogScrapingClient, "extract_post_content")
+    @patch.object(BlogScrapingClient, "discover_post_links")
+    @patch.object(BlogScrapingClient, "fetch_index_page", return_value="<html></html>")
+    def test_thin_scrape_used_when_feeds_are_unusable(
+        self, _fetch, mock_discover, mock_extract, mock_rss_cls, mock_db
+    ):
+        mock_discover.return_value = [
+            DiscoveredLink(url="https://example.com/post-1", title_hint="Post 1"),
+        ]
+        mock_rss_cls.return_value.fetch_content.return_value = (
+            [],
+            SourceFetchResult(
+                url="https://example.com/feed.xml",
+                success=False,
+                error="404",
+                error_type="HTTPStatusError",
+            ),
+        )
+        mock_content = MagicMock()
+        mock_content.source_type = "blog"
+        mock_content.source_id = "blog:https://example.com/post-1"
+        mock_content.source_url = "https://example.com/post-1"
+        mock_content.title = "Post 1"
+        mock_content.content_hash = "hash123"
+        mock_content.markdown_content = "Content"
+        mock_content.publication = None
+        mock_extract.return_value = mock_content
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = None
+        mock_db.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_db.return_value.__exit__ = MagicMock(return_value=False)
+
+        source = BlogSource(
+            url="https://example.com/news",
+            name="Thin Blog",
+            rss_url="https://example.com/feed.xml",
+            request_delay=0,
+        )
+        BlogContentIngestionService().ingest_content(sources=[source])
+
+        mock_rss_cls.return_value.fetch_content.assert_called_once()
+        mock_extract.assert_called_once()
+
+    @patch("src.ingestion.blog_scraper.get_db")
+    @patch("src.ingestion.blog_scraper.RSSClient")
+    @patch.object(BlogScrapingClient, "discover_alternate_feeds", return_value=[])
+    @patch.object(BlogScrapingClient, "discover_post_links", return_value=[])
+    @patch.object(BlogScrapingClient, "fetch_index_page", return_value="<html></html>")
+    def test_empty_success_feed_continues_to_next_candidate(
+        self, _fetch, _discover, _alts, mock_rss_cls, mock_db
+    ):
+        empty_ok = SourceFetchResult(url="x", success=True, items_fetched=0)
+        hit = SourceFetchResult(url="https://example.com/news/rss", items_fetched=1)
+
+        def _fetch_content(*, feed_url: str, **_kwargs):
+            if feed_url.endswith("/news/rss"):
+                return [_rss_item()], hit
+            if feed_url.endswith("/news/feed"):
+                return [], empty_ok
+            return [], SourceFetchResult(url=feed_url, success=False, error_type="HTTP 404")
+
+        mock_rss_cls.return_value.fetch_content.side_effect = _fetch_content
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = None
+        mock_db.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_db.return_value.__exit__ = MagicMock(return_value=False)
+
+        source = BlogSource(url="https://example.com/news", name="SPA", request_delay=0)
+        BlogContentIngestionService().ingest_content(sources=[source])
+
+        called = [
+            call.kwargs["feed_url"]
+            for call in mock_rss_cls.return_value.fetch_content.call_args_list
+        ]
+        assert any(url.endswith("/news/feed") for url in called)
+        assert any(url.endswith("/news/rss") for url in called)
+        persisted = mock_session.add.call_args.args[0]
+        assert persisted.source_id == "blog:https://example.com/posts/hello"
+
+    @patch("src.ingestion.blog_scraper.get_db")
+    @patch("src.ingestion.blog_scraper.RSSClient")
+    @patch.object(BlogScrapingClient, "discover_post_links", return_value=[])
+    @patch.object(BlogScrapingClient, "fetch_index_page", return_value="<html></html>")
+    def test_explicit_empty_feed_does_not_probe_further(
+        self, _fetch, _discover, mock_rss_cls, mock_db
+    ):
+        mock_rss_cls.return_value.fetch_content.return_value = (
+            [],
+            SourceFetchResult(url="https://example.com/feed.xml", success=True, items_fetched=0),
+        )
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = None
+        mock_db.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_db.return_value.__exit__ = MagicMock(return_value=False)
+
+        source = BlogSource(
+            url="https://example.com/news",
+            name="SPA",
+            rss_url="https://example.com/feed.xml",
+            request_delay=0,
+        )
+        BlogContentIngestionService().ingest_content(sources=[source])
+
+        mock_rss_cls.return_value.fetch_content.assert_called_once()
+        assert (
+            mock_rss_cls.return_value.fetch_content.call_args.kwargs["feed_url"]
+            == "https://example.com/feed.xml"
+        )
 
     @patch("src.ingestion.blog_scraper.get_db")
     @patch("src.ingestion.blog_scraper.RSSClient")

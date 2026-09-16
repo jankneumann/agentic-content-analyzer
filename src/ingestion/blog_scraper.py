@@ -51,6 +51,9 @@ _TRANSPORT_ERROR_TYPES = frozenset(
 # Same guesses the source curator uses when a listing page has no <link rel=alternate>.
 FEED_CANDIDATE_PATHS = ("/feed", "/rss", "/feed.xml", "/rss.xml", "/index.xml", "/atom.xml")
 MAX_FEED_CANDIDATES = 6
+# JS shells often leak a couple of nav/chrome links. Fewer than this is not a
+# healthy scrape; try RSS before treating those links as the catalog.
+MIN_TRUSTED_SCRAPE_LINKS = 3
 
 
 # --- Link Discovery ---
@@ -111,6 +114,12 @@ def feed_candidate_urls(index_url: str) -> list[str]:
             seen.add(candidate)
             urls.append(candidate)
     return urls
+
+
+def scrape_yield_is_trusted(link_count: int, max_entries: int) -> bool:
+    """True when scrape discovery looks like a real post listing, not SPA chrome."""
+    threshold = min(MIN_TRUSTED_SCRAPE_LINKS, max(1, max_entries))
+    return link_count >= threshold
 
 
 def _optional_str(value: object) -> str | None:
@@ -620,7 +629,8 @@ class BlogContentIngestionService:
                     source_url,
                 )
 
-            if links:
+            trusted_scrape = scrape_yield_is_trusted(len(links), max_entries)
+            if trusted_scrape:
                 logger.info(f"Discovered {len(links)} links from {source_name or source_url}")
                 self._ingest_discovered_links(
                     links,
@@ -633,21 +643,50 @@ class BlogContentIngestionService:
                 )
                 return fetch_result
 
+            if links:
+                logger.info(
+                    "Thin scrape (%s links) for %s; trying RSS before using discovered links",
+                    len(links),
+                    source_name or source_url,
+                )
+
             feed_urls = self._resolve_feed_urls(source_url, html=html, rss_url=rss_url)
-            if not feed_urls:
-                logger.info(f"No post links found on {source_url}")
+            if feed_urls:
+                used_feed = self._ingest_from_feeds(
+                    feed_urls,
+                    fetch_result,
+                    source=source,
+                    source_name=source_name if isinstance(source_name, str) else None,
+                    max_entries=max_entries,
+                    after_date=after_date,
+                    force_reprocess=force_reprocess,
+                    explicit_feed=rss_url is not None,
+                )
+                if used_feed:
+                    return fetch_result
+                fetch_result.success = True
+                fetch_result.error = None
+                fetch_result.error_type = None
+
+            if links:
+                logger.info(
+                    "RSS fallback empty for %s; ingesting %s scraped links",
+                    source_name or source_url,
+                    len(links),
+                )
+                self._ingest_discovered_links(
+                    links,
+                    fetch_result,
+                    source=source,
+                    source_url=source_url,
+                    source_name=source_name if isinstance(source_name, str) else None,
+                    after_date=after_date,
+                    force_reprocess=force_reprocess,
+                )
                 return fetch_result
 
-            self._ingest_from_feeds(
-                feed_urls,
-                fetch_result,
-                source=source,
-                source_name=source_name if isinstance(source_name, str) else None,
-                max_entries=max_entries,
-                after_date=after_date,
-                force_reprocess=force_reprocess,
-                explicit_feed=rss_url is not None,
-            )
+            if not feed_urls:
+                logger.info(f"No post links found on {source_url}")
 
         except httpx.HTTPError as e:
             logger.error(f"HTTP error fetching {source_url}: {e}")
@@ -754,7 +793,7 @@ class BlogContentIngestionService:
         after_date: datetime | None,
         force_reprocess: bool,
         explicit_feed: bool = False,
-    ) -> None:
+    ) -> bool:
         content_filter = None
         try:
             from src.services.content_filter import create_content_filter
@@ -777,7 +816,9 @@ class BlogContentIngestionService:
                 if not contents:
                     if rss_result.success:
                         logger.info("Feed %s returned no posts", feed_url)
-                        return
+                        if explicit_feed:
+                            return False
+                        continue
                     last_error = rss_result
                     continue
 
@@ -810,7 +851,7 @@ class BlogContentIngestionService:
                     count,
                     feed_url,
                 )
-                return
+                return True
 
             if last_error is not None and explicit_feed:
                 fetch_result.success = last_error.success
@@ -818,6 +859,7 @@ class BlogContentIngestionService:
                 fetch_result.error_type = last_error.error_type
             else:
                 logger.info("No post links or usable feed found for %s", fetch_result.url)
+            return False
         finally:
             rss_client.close()
 

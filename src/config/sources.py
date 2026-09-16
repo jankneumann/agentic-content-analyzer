@@ -187,7 +187,7 @@ class BlogSource(SourceBase):
     link_selector: str | None = None
     link_pattern: str | None = None
     request_delay: float = 1.0
-    # When the index is a JS shell (0 scrape links), ingest this feed instead.
+    # When scrape yield is empty or thin (SPA chrome), ingest this feed instead.
     rss_url: str | None = None
 
 
