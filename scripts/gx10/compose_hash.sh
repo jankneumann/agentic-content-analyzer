@@ -12,8 +12,13 @@ PODMAN="${GX10_PODMAN_BIN:-/usr/bin/podman}"
 case "${1:-}" in
   current)
     service="${2:?usage: compose_hash.sh current <service>}"
-    "$ROOT_DIR/scripts/gx10/podman-compose.sh" --dry-run up -d "$service" 2>&1 \
-      | grep -oE 'io\.podman\.compose\.config-hash=[0-9a-f]{64}' | head -n 1 | cut -d= -f2
+    # No match must print nothing and succeed: `grep` exits 1 when it finds
+    # none, and under `set -o pipefail` that would abort the CALLER inside its
+    # command substitution with no message at all. Callers distinguish an
+    # empty answer from a mismatch themselves.
+    hash="$("$ROOT_DIR/scripts/gx10/podman-compose.sh" --dry-run up -d "$service" 2>&1 \
+      | grep -oE 'io\.podman\.compose\.config-hash=[0-9a-f]{64}' | head -n 1 | cut -d= -f2 || true)"
+    printf '%s\n' "$hash"
     ;;
   container)
     name="${2:?usage: compose_hash.sh container <name>}"

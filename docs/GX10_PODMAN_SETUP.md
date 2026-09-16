@@ -300,6 +300,17 @@ an older overlay, naming `make secrets` as the fix. That unit recreates a
 stale OpenBao itself, before any dependent exists. Its start is idempotent, so
 that restart is a no-op when OpenBao already runs inside the runtime.
 
+That staleness check compares podman-compose's config hash, which covers the
+whole merged document, so editing `docker-compose.gx10.yml` at all marks every
+container stale. The check runs whatever state the container is in, and that
+detail is the whole point: `systemctl restart` kills the unit's cgroup and
+with it the container, so `ExecStart` nearly always meets an *exited* OpenBao.
+A check that only looked at a running container would never fire, OpenBao
+would keep its old hash forever, and the runtime's refusal could not be
+cleared by `make secrets`, `make start`, or anything else. If the hash probe
+itself returns nothing, both the unit and the runtime say so in those words
+and leave the container alone rather than treating silence as staleness.
+
 ## 6. OpenBao, secrets, and network policy
 
 The public origin has no default. Create `/etc/aca/gx10-public.env` (root,

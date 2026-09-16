@@ -90,7 +90,11 @@ require_openbao_current() {
   }
   current="$("$ROOT_DIR/scripts/gx10/compose_hash.sh" current openbao)"
   created="$("$ROOT_DIR/scripts/gx10/compose_hash.sh" container "$OPENBAO_NAME")"
-  [[ -n "$current" && "$current" == "$created" ]] || {
+  [[ -n "$current" ]] || {
+    echo "gx10 could not read the current compose hash from podman-compose; the overlay may not parse" >&2
+    return 1
+  }
+  [[ "$current" == "$created" ]] || {
     echo "gx10 OpenBao container was created from an older overlay; run: make -C $ROOT_DIR/deploy/gx10 secrets" >&2
     return 1
   }
