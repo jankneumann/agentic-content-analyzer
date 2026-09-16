@@ -143,6 +143,18 @@ class TestIngestGmail:
         assert result.items_ingested == 0
         assert result.errors == []
 
+    @patch(
+        "src.ingestion.gmail.GmailContentIngestionService",
+        side_effect=FileNotFoundError("Gmail OAuth token is not available. Run `aca auth gmail`."),
+    )
+    def test_missing_token_returns_oauth_unavailable_envelope(self, _mock_cls):
+        from src.ingestion.orchestrator import ingest_gmail
+
+        result = ingest_gmail()
+        assert result.status == "error"
+        assert result.items_ingested == 0
+        assert result.errors[0].code == "oauth_unavailable"
+
 
 class TestIngestRss:
     @patch("src.ingestion.rss.RSSContentIngestionService")

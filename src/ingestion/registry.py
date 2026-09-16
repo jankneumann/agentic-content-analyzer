@@ -532,6 +532,14 @@ def _obsidian_plan(
     )
 
 
+def _gmail_readiness(_source: SourceBase) -> ConfiguredSourceReadiness:
+    from src.ingestion.gmail import gmail_credentials_ready
+
+    if gmail_credentials_ready():
+        return ConfiguredSourceReadiness(ready=True)
+    return ConfiguredSourceReadiness(ready=False, code="oauth_unavailable")
+
+
 def _obsidian_readiness(source: SourceBase) -> ConfiguredSourceReadiness:
     try:
         from src.ingestion.orchestrator import obsidian_adapter_config
@@ -571,6 +579,7 @@ def _default_descriptors() -> tuple[SourceDescriptor, ...]:
             ),
             config_matcher=_is(GmailSource),
             config_accessor=_get("get_gmail_sources"),
+            readiness_resolver=_gmail_readiness,
             options=force_date,
         ),
         SourceDescriptor(

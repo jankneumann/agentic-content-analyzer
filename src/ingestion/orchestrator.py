@@ -80,10 +80,10 @@ def ingest_gmail(
     """Ingest newsletters from Gmail.
 
     When query or max_results are None, reads defaults from
-    sources.d/gmail.yaml via get_gmail_sources(). The Gmail service still
-    returns a bare int internally (its API surface predates the envelope);
-    we wrap that count at the orchestrator boundary into the canonical
-    envelope so all transports see the same shape.
+    sources.d/gmail.yaml via get_gmail_sources(). Missing OAuth tokens
+    return ``status=error`` with ``oauth_unavailable`` instead of opening
+    a browser flow. The service returns the canonical envelope; a bare
+    int from older callers is still wrapped.
 
     Args:
         query: Gmail search query. None = use sources.d config.
@@ -96,7 +96,7 @@ def ingest_gmail(
         source='gmail').
     """
     from src.ingestion.gmail import GmailContentIngestionService
-    from src.ingestion.result import IngestionResponse
+    from src.ingestion.result import IngestionError, IngestionResponse
 
     # Apply sources.d/gmail.yaml defaults when params not explicitly set
     if query is None or max_results is None:
@@ -118,13 +118,29 @@ def ingest_gmail(
     query = query or "label:newsletters-ai"
     max_results = max_results or 50
 
-    service = GmailContentIngestionService()
+    try:
+        service = GmailContentIngestionService()
+    except FileNotFoundError as exc:
+        return IngestionResponse(
+            command="ingest.gmail",
+            source="gmail",
+            status="error",
+            items_ingested=0,
+            errors=[
+                IngestionError(
+                    code="oauth_unavailable",
+                    message=str(exc) or "Gmail OAuth token is not available",
+                )
+            ],
+        )
     count = service.ingest_content(
         query=query,
         max_results=max_results,
         after_date=after_date,
         force_reprocess=force_reprocess,
     )
+    if isinstance(count, IngestionResponse):
+        return count
     return IngestionResponse(
         command="ingest.gmail",
         source="gmail",

@@ -139,10 +139,11 @@ def register_content_tasks(pgq: PgQueuer) -> None:
 
             service = GmailContentIngestionService()
             if labels is None:
-                count = service.ingest_content()
+                result = service.ingest_content()
             else:
                 label_query = " OR ".join(f"label:{label}" for label in labels) if labels else ""
-                count = service.ingest_content(query=label_query)
+                result = service.ingest_content(query=label_query)
+            count = result.items_ingested
 
             logger.info(f"Newsletter scan completed: {count} new items")
 

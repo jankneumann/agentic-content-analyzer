@@ -13,12 +13,17 @@ from typing import Any
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from pydantic import BaseModel
 
 from src.config import settings
+from src.ingestion.result import (
+    IngestionError,
+    IngestionResponse,
+    SourceFetchResult,
+    build_response_from_source_results,
+)
 from src.models.content import Content, ContentSource, ContentStatus
 from src.storage.database import get_db
 from src.utils.content_hash import generate_markdown_hash
@@ -37,6 +42,17 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.send",
 ]
+
+
+def gmail_credentials_ready() -> bool:
+    """True when a headless Gmail token is present (file or env JSON).
+
+    Client secrets alone are not enough: ``aca auth gmail`` must mint a
+    refresh token. Ingest must never open a browser OAuth flow.
+    """
+    if (settings.gmail_oauth_token_json or "").strip():
+        return True
+    return os.path.exists(settings.gmail_token_file)
 
 
 class ContentData(BaseModel):
@@ -173,28 +189,20 @@ class GmailClient:
         if os.path.exists(settings.gmail_token_file):
             creds = Credentials.from_authorized_user_file(settings.gmail_token_file, SCOPES)
 
-        # Refresh or get new credentials
+        # Refresh or get new credentials. Interactive OAuth belongs only in
+        # ``aca auth gmail``; a worker that opens a browser hangs the pipeline.
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 logger.info("Refreshing Gmail credentials...")
                 creds.refresh(Request())
+                with open(settings.gmail_token_file, "w") as token:
+                    token.write(creds.to_json())
+                logger.info("Gmail credentials saved")
             else:
-                if not os.path.exists(settings.gmail_credentials_file):
-                    raise FileNotFoundError(
-                        f"Gmail credentials file not found: {settings.gmail_credentials_file}. "
-                        "Run `aca auth gmail` locally to generate it, or set "
-                        "GMAIL_CREDENTIALS_JSON env var for headless deployments."
-                    )
-                logger.info("Starting Gmail OAuth flow...")
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    settings.gmail_credentials_file, SCOPES
+                raise FileNotFoundError(
+                    "Gmail OAuth token is not available. Run `aca auth gmail` "
+                    "locally, or set GMAIL_OAUTH_TOKEN_JSON for headless deployments."
                 )
-                creds = flow.run_local_server(port=0)
-
-            # Save credentials
-            with open(settings.gmail_token_file, "w") as token:
-                token.write(creds.to_json())
-            logger.info("Gmail credentials saved")
 
         self.service = build("gmail", "v1", credentials=creds)
         logger.info("Gmail API client initialized")
@@ -493,7 +501,7 @@ class GmailContentIngestionService:
         max_results: int = 10,
         after_date: datetime | None = None,
         force_reprocess: bool = False,
-    ) -> int:
+    ) -> IngestionResponse:
         """
         Ingest newsletters from Gmail and store as Content records.
 
@@ -504,7 +512,7 @@ class GmailContentIngestionService:
             force_reprocess: If True, reprocess existing content (updates data and resets status)
 
         Returns:
-            Number of content items ingested
+            Canonical IngestionResponse envelope.
         """
         logger.info("Starting Gmail content ingestion (unified Content model)...")
 
@@ -513,12 +521,19 @@ class GmailContentIngestionService:
             query=query, max_results=max_results, after_date=after_date
         )
 
+        fetch_result = SourceFetchResult(url=query, name="gmail")
         if not contents:
             logger.info("No content found")
-            return 0
+            return build_response_from_source_results(
+                command="ingest.gmail",
+                source="gmail",
+                items_ingested=0,
+                source_results=[fetch_result],
+            )
 
         # Store in database
         count = 0
+        persist_errors: list[IngestionError] = []
         with get_db() as db:
             # --- Bulk query optimization ---
             source_ids = [c.source_id for c in contents if c.source_id]
@@ -671,9 +686,12 @@ class GmailContentIngestionService:
                     db.flush()  # Ensure content.id is assigned for indexing
 
                     # Index for search (fail-safe — never blocks ingestion)
-                    from src.services.indexing import index_content
+                    try:
+                        from src.services.indexing import index_content
 
-                    index_content(content, db)
+                        index_content(content, db)
+                    except Exception:
+                        pass
 
                     count += 1
                     logger.info(f"Ingested: {content_data.title}")
@@ -681,7 +699,22 @@ class GmailContentIngestionService:
                 except Exception as e:
                     logger.error(f"Error storing content: {e}")
                     db.rollback()
+                    persist_errors.append(
+                        IngestionError(
+                            code="persistence_error",
+                            message="A Gmail message could not be persisted",
+                            url=content_data.source_url,
+                        )
+                    )
                     continue
 
+        fetch_result.items_fetched = count
+        fetch_result.items_failed = len(persist_errors)
+        fetch_result.item_errors.extend(persist_errors)
         logger.info(f"Successfully ingested {count} content items")
-        return count
+        return build_response_from_source_results(
+            command="ingest.gmail",
+            source="gmail",
+            items_ingested=count,
+            source_results=[fetch_result],
+        )
