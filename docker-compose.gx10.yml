@@ -71,7 +71,20 @@ services:
     deploy: *id003
     networks: *id004
     tmpfs: *id005
-    image: docker.io/library/postgres:17.11@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
+    # ParadeDB is PostgreSQL 17.11 (same server version, so the existing data
+    # directory stays compatible) with pgvector and pg_search built in. The
+    # schema creates the `vector` extension, which the stock image cannot
+    # provide, and pg_search is what BM25 search indexes with.
+    image: docker.io/paradedb/paradedb:0.25.9-pg17@sha256:8da5d202fe31875af32a49e802ce17cfbc146b0672306f4109809efee1e6f916
+    # pg_search and pg_cron must be preloaded, and the image ships that only in
+    # the postgresql.conf that initdb writes -- a cluster initialised by the
+    # stock image carries no such line and would refuse `CREATE EXTENSION
+    # pg_search`. Naming the libraries here covers both cases; the list matches
+    # the image's own sample, so a first-time init still bootstraps pg_cron.
+    command:
+    - postgres
+    - -c
+    - shared_preload_libraries=pg_search,pg_cron,pg_stat_statements
     env_file:
     - /run/aca/gx10/app-postgres.env
     environment:

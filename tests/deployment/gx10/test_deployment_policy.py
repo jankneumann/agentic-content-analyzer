@@ -562,3 +562,32 @@ def test_runtime_validator_accepts_the_reviewed_squid_source_contract() -> None:
     errors: list[str] = []
     validate_runtime.check_images(_compose(), errors)
     assert errors == []
+
+
+def test_the_application_database_ships_the_extensions_the_schema_needs() -> None:
+    """The first migration runs `CREATE EXTENSION IF NOT EXISTS vector`, which
+    the stock PostgreSQL image answers with "extension \\"vector\\" is not
+    available" and fails the whole start. ParadeDB carries pgvector and
+    pg_search on the same 17.11 server, so the data directory is unchanged.
+
+    pg_search only loads when it is preloaded, and the image writes that line
+    into postgresql.conf at initdb time alone. A cluster initialised by the
+    stock image therefore has no preload, so the overlay names the libraries
+    on the command line, where it holds for an existing and a fresh cluster
+    alike. Dropping pg_cron from that list would break a first-time init: the
+    image's own bootstrap creates that extension before the server is ready
+    for connections."""
+    compose = _compose()
+    app = _service(compose, "app-postgres")
+    assert app["image"].startswith("docker.io/paradedb/paradedb:")
+    assert "@sha256:" in app["image"]
+    preload = [arg for arg in app["command"] if arg.startswith("shared_preload_libraries=")]
+    assert len(preload) == 1, app["command"]
+    libraries = preload[0].split("=", 1)[1].split(",")
+    assert "pg_search" in libraries and "pg_cron" in libraries
+
+    # Langfuse owns its schema and needs no extension; it stays on the stock
+    # image rather than inherit ParadeDB's much larger surface.
+    assert _service(compose, "langfuse-postgres")["image"].startswith(
+        "docker.io/library/postgres:"
+    )

@@ -301,6 +301,17 @@ rather than let the default cgroup kill SIGTERM every `conmon` and wait out
 `TimeoutStopSec` for the ones that ignore it. Inspect the wreckage with
 `podman ps -a` and `podman logs`; the next `make start` sweeps it away.
 
+The application database runs the ParadeDB image, which is the same PostgreSQL
+17.11 server with pgvector and pg_search compiled in. The schema's first
+migration creates the `vector` extension, and the stock image has no such
+extension to create. Both libraries need preloading and the image writes that
+line only when `initdb` runs, so the overlay passes
+`shared_preload_libraries=pg_search,pg_cron,pg_stat_statements` on the command
+line; that covers a cluster the stock image initialised as well as a fresh
+one. Keep `pg_cron` in the list: the image bootstraps that extension on a
+first-time init and fails without it. Langfuse keeps the stock image, since it
+owns its own schema and needs no extension.
+
 `aca-gx10-openbao-container.service` stays `active (exited)` after success on
 purpose: the container's `conmon` lives in the unit's cgroup, and systemd
 terminates that cgroup the moment a `oneshot` goes inactive, which stops
