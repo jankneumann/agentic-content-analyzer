@@ -341,6 +341,10 @@ services:
       # cluster with ZooKeeper and fail with "no Zookeeper configuration".
       CLICKHOUSE_CLUSTER_ENABLED: 'false'
       NODE_OPTIONS: --max-old-space-size=1536
+      # `app.listen(env.PORT, env.HOSTNAME)`: Podman sets HOSTNAME to the
+      # container id, so the worker would bind that address alone and its own
+      # healthcheck on 127.0.0.1 would be refused forever.
+      HOSTNAME: 0.0.0.0
     networks:
     - stateful
     depends_on:

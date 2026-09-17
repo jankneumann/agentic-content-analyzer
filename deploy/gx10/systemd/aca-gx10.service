@@ -23,6 +23,13 @@ TimeoutStartSec=360
 # A full sweep stops every container in parallel with a 30s grace, then
 # force-removes; the budget covers a slow PostgreSQL shutdown with margin.
 TimeoutStopSec=300
+# A failed ExecStart skips ExecStop for a oneshot, and the default
+# KillMode=control-group then SIGTERMs every conmon left in the cgroup and
+# waits out TimeoutStopSec for the ones that do not exit -- five minutes of
+# nothing on top of each failed start. Container lifetime is the script's job:
+# ExecStop sweeps, and a failed start leaves the stack in place for a
+# post-mortem until the next start's sweep removes it.
+KillMode=process
 NoNewPrivileges=yes
 
 [Install]

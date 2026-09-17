@@ -287,6 +287,20 @@ container and let its unit recreate it, for example
 `sudo podman rm -f aca-gx10_squid_1` before restarting
 `aca-gx10-proxy-policy.service`.
 
+Both Langfuse processes bind whatever `HOSTNAME` holds, and Podman sets that
+variable to the container id. Left alone, each one serves other containers
+normally while refusing its own healthcheck on `127.0.0.1`, so the runtime
+waits the full timeout and fails against a service whose log says it is
+ready. The overlay sets `HOSTNAME=0.0.0.0` on both. When a wait does fail, the
+runtime prints the last probe attempts with their exit code and output: the
+health log lives in the container and the next start's sweep destroys it.
+
+A failed start leaves its containers in place. systemd skips `ExecStop` for a
+`oneshot` whose `ExecStart` failed, so the unit runs with `KillMode=process`
+rather than let the default cgroup kill SIGTERM every `conmon` and wait out
+`TimeoutStopSec` for the ones that ignore it. Inspect the wreckage with
+`podman ps -a` and `podman logs`; the next `make start` sweeps it away.
+
 `aca-gx10-openbao-container.service` stays `active (exited)` after success on
 purpose: the container's `conmon` lives in the unit's cgroup, and systemd
 terminates that cgroup the moment a `oneshot` goes inactive, which stops

@@ -427,6 +427,18 @@ def test_memory_hungry_services_get_more_than_the_default_cap() -> None:
     assert gib(_service(compose, "clickhouse")["deploy"]["resources"]["limits"]["memory"]) >= 4
 
 
+def test_both_langfuse_processes_bind_every_interface() -> None:
+    """Each Langfuse process binds the HOSTNAME env var -- Next.js implicitly,
+    the worker through `app.listen(env.PORT, env.HOSTNAME)` -- and Podman sets
+    HOSTNAME to the container id. Bound there, a process serves other
+    containers fine while its own healthcheck on 127.0.0.1 is refused forever,
+    so the runtime waits it out and fails with the service looking alive."""
+    compose = _compose()
+    for name in ("langfuse-web", "langfuse-worker"):
+        environment = _service(compose, name)["environment"]
+        assert environment["HOSTNAME"] == "0.0.0.0", name  # noqa: S104 - this is the point
+
+
 def test_application_namespaces_have_no_direct_internet_route() -> None:
     compose = _compose()
     networks = compose["networks"]

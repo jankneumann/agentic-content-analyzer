@@ -128,7 +128,14 @@ wait_for_services() {
         fi
       fi
       if (( SECONDS >= deadline )); then
-        echo "gx10 runtime service did not become healthy: $service" >&2
+        echo "gx10 runtime service did not become healthy: $service (status: ${status:-no container})" >&2
+        # The probe's own output is the diagnosis and it lives only in the
+        # container's health log, which the next start's sweep destroys.
+        if [[ -n "$container" ]]; then
+          /usr/bin/podman inspect \
+            --format '{{range .State.Health.Log}}gx10 probe exit={{.ExitCode}} output={{printf "%q" .Output}}{{"\n"}}{{end}}' \
+            "$container" 2>/dev/null | tail -n 3 >&2 || true
+        fi
         return 1
       fi
       sleep 2

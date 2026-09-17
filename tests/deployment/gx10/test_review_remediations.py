@@ -399,3 +399,20 @@ def test_gx10_runtime_uses_a_pinned_rootful_podman_compose_provider() -> None:
     for source in sources:
         text = source.read_text()
         assert not any(token in text for token in forbidden), source
+
+
+def test_a_failed_start_neither_hangs_the_stop_nor_hides_the_probe_output() -> None:
+    """A oneshot skips ExecStop when ExecStart fails, so the default
+    KillMode=control-group SIGTERMs the containers' conmons and waits out
+    TimeoutStopSec for whichever ignores it: five idle minutes on every failed
+    start. And the reason a healthcheck failed lives only in the container's
+    health log, which the next start's sweep destroys, so the wait must print
+    it before giving up."""
+    unit = (ROOT / "deploy/gx10/systemd/aca-gx10.service").read_text(encoding="utf-8")
+    assert "KillMode=process" in unit
+
+    runtime = (ROOT / "scripts/gx10/podman-runtime.sh").read_text(encoding="utf-8")
+    wait = runtime.split("wait_for_services()", 1)[1].split("\n}", 1)[0]
+    assert "did not become healthy" in wait
+    assert ".State.Health.Log" in wait
+    assert "ExitCode" in wait
