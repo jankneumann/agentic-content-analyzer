@@ -588,6 +588,4 @@ def test_the_application_database_ships_the_extensions_the_schema_needs() -> Non
 
     # Langfuse owns its schema and needs no extension; it stays on the stock
     # image rather than inherit ParadeDB's much larger surface.
-    assert _service(compose, "langfuse-postgres")["image"].startswith(
-        "docker.io/library/postgres:"
-    )
+    assert _service(compose, "langfuse-postgres")["image"].startswith("docker.io/library/postgres:")
