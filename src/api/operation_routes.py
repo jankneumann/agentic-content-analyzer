@@ -108,13 +108,13 @@ async def _observability_summary(
     try:
         async with queue_setup._queue_connection() as connection:
             row = await connection.fetchrow(
-                "SELECT root_operation_id, trace_id FROM pgqueuer_jobs WHERE id = $1",
+                "SELECT root_job_id, trace_id FROM pgqueuer_jobs WHERE id = $1",
                 operation_id,
             )
             if row is None or row["trace_id"] is None:
                 return None
             trace_id = str(row["trace_id"])
-            root_operation_id = int(row["root_operation_id"] or operation_id)
+            root_operation_id = int(row["root_job_id"] or operation_id)
             attempt_count = int(
                 await connection.fetchval(
                     "SELECT COUNT(*) FROM operation_observation_attempts WHERE operation_id = $1",
@@ -317,12 +317,12 @@ async def get_operation_attempts(
         raise HTTPException(status_code=422, detail="Invalid attempt cursor")
     async with queue_setup._queue_connection() as connection:
         row = await connection.fetchrow(
-            "SELECT root_operation_id, trace_id FROM pgqueuer_jobs WHERE id = $1",
+            "SELECT root_job_id, trace_id FROM pgqueuer_jobs WHERE id = $1",
             numeric_id,
         )
         if row is None:
             raise HTTPException(status_code=404, detail="Not found")
-        root_id = int(row["root_operation_id"] or numeric_id)
+        root_id = int(row["root_job_id"] or numeric_id)
         attempts = await list_attempts(
             connection,
             numeric_id,

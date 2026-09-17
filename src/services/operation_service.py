@@ -379,7 +379,7 @@ class OperationService:
             result = await conn.execute(
                 """
                 UPDATE pgqueuer_jobs
-                SET root_operation_id = $2,
+                SET root_job_id = $2,
                     submission_context = $3::jsonb,
                     submission_traceparent = $4,
                     submission_tracestate = $5,

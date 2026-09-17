@@ -80,7 +80,7 @@ class _OperationService:
 class _Connection:
     async def fetchrow(self, _query: str, operation_id: int):
         assert operation_id == 42
-        return {"root_operation_id": 42, "trace_id": TRACE_ID}
+        return {"root_job_id": 42, "trace_id": TRACE_ID}
 
     async def fetchval(self, query: str, operation_id: int, *args):
         assert operation_id == 42
@@ -162,7 +162,7 @@ def test_legacy_exact_operation_remains_readable_without_fabricated_trace(monkey
     class LegacyConnection(_Connection):
         async def fetchrow(self, _query: str, operation_id: int):
             assert operation_id == 42
-            return {"root_operation_id": None, "trace_id": None}
+            return {"root_job_id": None, "trace_id": None}
 
         async def fetchval(self, _query: str, operation_id: int, *_args):
             return 0

@@ -91,7 +91,7 @@ def test_attempt_span_continues_stored_trace_and_submission_parent() -> None:
                         "submission_traceparent": stored["traceparent"],
                         "submission_tracestate": None,
                         "trace_id": trace_id,
-                        "root_operation_id": 41,
+                        "root_job_id": 41,
                     }
                 ),
                 span,

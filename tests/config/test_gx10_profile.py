@@ -197,3 +197,15 @@ def test_gx10_ownership_epoch_is_optional_and_bounded() -> None:
             _env_file=None,
             **{**common, "gx10_ownership_epoch": -1},
         )
+
+
+def test_gx10_does_not_ship_logs_to_an_endpoint_that_refuses_them() -> None:
+    """Langfuse's OTLP endpoint takes traces, not logs. With the bridge on,
+    every batch posted to /v1/logs returned a Next.js 404 page, which each
+    role logged again at the next export interval: constant noise in the very
+    journal used to diagnose the stack, and not one log line delivered."""
+    observability = yaml.safe_load(PROFILE_PATH.read_text(encoding="utf-8"))["settings"][
+        "observability"
+    ]
+    assert observability["otel_enabled"] is True
+    assert observability["otel_logs_enabled"] is False

@@ -341,7 +341,7 @@ async def _claim_jobs(
             FOR UPDATE SKIP LOCKED
         )
         RETURNING id, entrypoint, payload, claim_generation, claim_protocol_version,
-                  root_operation_id, submission_context, submission_traceparent,
+                  root_job_id, submission_context, submission_traceparent,
                   submission_tracestate, trace_id, created_at
         """,
         batch_size,
@@ -536,7 +536,7 @@ def _attempt_context_from_job(job: dict[str, Any]):
         submission = OperationContext(
             schema_version=1,
             operation_id=operation_id,
-            root_operation_id=str(job.get("root_operation_id") or operation_id),
+            root_operation_id=str(job.get("root_job_id") or operation_id),
             parent_operation_id=None,
             traceparent=f"00-{trace_id}-{submission_span_id}-01",
             tracestate=None,
@@ -565,7 +565,7 @@ def _attempt_context_from_job(job: dict[str, Any]):
         submission = parse_operation_context(raw)
         if (
             submission.operation_id != str(job["id"])
-            or submission.root_operation_id != str(job["root_operation_id"])
+            or submission.root_operation_id != str(job["root_job_id"])
             or submission.traceparent != job["submission_traceparent"]
             or submission.tracestate != job.get("submission_tracestate")
             or submission.trace_id != job["trace_id"]

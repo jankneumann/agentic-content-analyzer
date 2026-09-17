@@ -36,6 +36,10 @@ settings:
     telemetry_service_instance_id: "${TELEMETRY_SERVICE_INSTANCE_ID}"
     telemetry_release_revision: "${GX10_RELEASE_REVISION}"
     otel_exporter_otlp_endpoint: "http://langfuse-web:3000/api/public/otel"
+    # Langfuse's OTLP endpoint accepts traces, not logs: every batch the log
+    # bridge posts to /v1/logs comes back as a Next.js 404 page, which each
+    # role then logs, at the export interval, forever. Traces still ship.
+    otel_logs_enabled: false
     otel_log_prompts: false
     otel_traces_sampler: always_on
     otel_traces_sampler_arg: 1.0
