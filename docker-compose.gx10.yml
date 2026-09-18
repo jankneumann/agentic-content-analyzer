@@ -243,11 +243,18 @@ services:
     image: docker.io/minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
     env_file:
     - /run/aca/gx10/minio.env
+    # Langfuse uploads every trace batch to `langfuse-events` and will not
+    # create the bucket itself: without it each export fails with NoSuchBucket
+    # and the trace is lost. MinIO serves a top-level directory of its data
+    # root as a bucket, so the server makes it on the way up, exactly as
+    # Langfuse's own compose file does. `exec` keeps MinIO at PID 1, where it
+    # receives SIGTERM; a shell there would ignore it and every stop would wait
+    # out the kill timeout.
+    entrypoint:
+    - /bin/sh
+    - -c
     command:
-    - server
-    - --console-address
-    - :9090
-    - /data
+    - mkdir -p /data/langfuse-events && exec minio server --console-address :9090 /data
     volumes:
     - /srv/aca/minio:/data:rw
     healthcheck:

@@ -589,3 +589,24 @@ def test_the_application_database_ships_the_extensions_the_schema_needs() -> Non
     # Langfuse owns its schema and needs no extension; it stays on the stock
     # image rather than inherit ParadeDB's much larger surface.
     assert _service(compose, "langfuse-postgres")["image"].startswith("docker.io/library/postgres:")
+
+
+def test_minio_creates_the_bucket_langfuse_uploads_to() -> None:
+    """Langfuse writes every trace batch to its event bucket and never creates
+    it. Without the bucket each export failed with NoSuchBucket, the API
+    answered 500 to the OTLP endpoint, and the trace was dropped: the stack
+    looked healthy while the observability it exists for recorded nothing.
+    MinIO serves a top-level directory of its data root as a bucket, so the
+    server creates it on the way up, as Langfuse's own compose file does.
+
+    The name is read from the secret renderer, so renaming the bucket in one
+    place and not the other fails here rather than at the first export."""
+    minio = _service(_compose(), "minio")
+    renderer = (ROOT / "deploy/gx10/openbao/render-secrets.sh").read_text(encoding="utf-8")
+    bucket = re.search(r"LANGFUSE_S3_EVENT_UPLOAD_BUCKET=([A-Za-z0-9._-]+)", renderer)
+    assert bucket is not None
+    command = " ".join(minio["command"])
+    assert f"mkdir -p /data/{bucket.group(1)}" in command
+    # A shell left at PID 1 ignores SIGTERM, so every stop would wait out the
+    # kill timeout; `exec` hands the slot to MinIO itself.
+    assert "exec minio server" in command
