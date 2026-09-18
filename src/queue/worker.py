@@ -250,6 +250,7 @@ _BATCH_MAINTENANCE_ADVISORY_LOCK = 2_104_711_915
 _BATCH_MAINTENANCE_INTERVAL_SECONDS = 60.0
 _RETENTION_MAINTENANCE_ADVISORY_LOCK = 2_104_711_916
 _WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK = 2_104_711_917
+_STALE_CLAIM_ADVISORY_LOCK = 2_104_711_918
 _WORKFLOW_ALERT_MAINTENANCE_INTERVAL_SECONDS = 5.0
 _WORKFLOW_ALERT_MAX_CONCURRENT_DELIVERIES = 8
 
@@ -1139,6 +1140,50 @@ async def _run_retention_maintenance_tick(
         )
 
 
+async def _run_stale_claim_tick(
+    conn: asyncpg.Connection,
+    *,
+    stale_threshold_hours: int,
+) -> int:
+    """Fail claims whose worker died, when this process wins leader election.
+
+    Kill a worker mid-job and its row stays ``in_progress`` forever: claims
+    only take ``queued`` rows, so no restart recovers it and the submitter
+    waits on an operation nobody is running. The reaper existed and nothing
+    called it, which is why a container restart stranded an ingest for hours.
+
+    One process does this at a time. The sweep is a single UPDATE, but running
+    it from every worker at once would have them all report the same rows.
+    """
+
+    acquired = await conn.fetchval(
+        "SELECT pg_try_advisory_lock($1::bigint)",
+        _STALE_CLAIM_ADVISORY_LOCK,
+    )
+    if not acquired:
+        logger.debug("stale claim tick skipped; advisory lock held")
+        return 0
+
+    try:
+        from src.queue.setup import mark_stale_jobs_failed
+
+        failed_count = await mark_stale_jobs_failed(stale_threshold_hours, conn=conn)
+        if failed_count:
+            logger.warning(
+                "stale operation claims failed",
+                extra={
+                    "stale_claim_failed_count": failed_count,
+                    "stale_claim_threshold_hours": stale_threshold_hours,
+                },
+            )
+        return failed_count
+    finally:
+        await conn.execute(
+            "SELECT pg_advisory_unlock($1::bigint)",
+            _STALE_CLAIM_ADVISORY_LOCK,
+        )
+
+
 def _build_workflow_alert_sink(alert_settings: Any) -> Any:
     """Construct the configured safe sink from validated process settings."""
 
@@ -1492,6 +1537,7 @@ async def run_worker(
     conn = await asyncpg.connect(asyncpg_url)
     maintenance_conn = await asyncpg.connect(asyncpg_url)
     retention_conn = await asyncpg.connect(asyncpg_url)
+    stale_claim_conn = await asyncpg.connect(asyncpg_url)
     alert_conn = await asyncpg.connect(asyncpg_url)
     from src.config.settings import get_settings
 
@@ -1513,9 +1559,11 @@ async def run_worker(
     active_tasks: set[asyncio.Task] = set()
     maintenance_task: asyncio.Task[bool] | None = None
     retention_task: asyncio.Task[bool] | None = None
+    stale_claim_task: asyncio.Task[int] | None = None
     alert_task: asyncio.Task[bool] | None = None
     last_maintenance_at = float("-inf")
     last_retention_at: float | None = None
+    last_stale_claim_at: float | None = None
     last_alert_at = float("-inf")
     loop = asyncio.get_running_loop()
     logger.info(f"Embedded worker started (concurrency={concurrency})")
@@ -1535,6 +1583,13 @@ async def run_worker(
                 except Exception:
                     logger.exception("operation retention maintenance tick failed")
                 retention_task = None
+
+            if stale_claim_task is not None and stale_claim_task.done():
+                try:
+                    stale_claim_task.result()
+                except Exception:
+                    logger.exception("stale claim tick failed")
+                stale_claim_task = None
 
             if alert_task is not None and alert_task.done():
                 try:
@@ -1564,6 +1619,21 @@ async def run_worker(
                     )
                 )
                 last_retention_at = loop.time()
+
+            # Runs at startup too: the claims worth reaping are usually the ones
+            # this very process lost when it was killed.
+            if stale_claim_task is None and _retention_tick_due(
+                now=loop.time(),
+                last_run_at=last_stale_claim_at,
+                interval_seconds=retention_settings.job_stale_claim_interval_seconds,
+            ):
+                stale_claim_task = asyncio.create_task(
+                    _run_stale_claim_tick(
+                        stale_claim_conn,
+                        stale_threshold_hours=retention_settings.job_stale_claim_hours,
+                    )
+                )
+                last_stale_claim_at = loop.time()
 
             if (
                 alert_task is None
@@ -1620,6 +1690,9 @@ async def run_worker(
         if retention_task is not None:
             retention_task.cancel()
             await asyncio.gather(retention_task, return_exceptions=True)
+        if stale_claim_task is not None:
+            stale_claim_task.cancel()
+            await asyncio.gather(stale_claim_task, return_exceptions=True)
         if alert_task is not None:
             alert_task.cancel()
             await asyncio.gather(alert_task, return_exceptions=True)
@@ -1627,6 +1700,7 @@ async def run_worker(
         await conn.close()
         await maintenance_conn.close()
         await retention_conn.close()
+        await stale_claim_conn.close()
         await alert_conn.close()
 
 

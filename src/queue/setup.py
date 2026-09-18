@@ -1245,19 +1245,29 @@ async def cleanup_old_jobs(
 
 async def mark_stale_jobs_failed(
     stale_threshold_hours: int = DEFAULT_STALE_THRESHOLD_HOURS,
+    *,
+    conn: asyncpg.Connection | None = None,
 ) -> int:
     """Mark stale in_progress jobs as failed.
 
-    Jobs stuck in 'in_progress' for longer than the threshold
-    are assumed to have crashed and are marked failed.
+    A claim outlives its worker whenever a container is killed mid-job. The row
+    keeps ``status='in_progress'`` and claims only ever take ``queued`` rows, so
+    without this the operation waits forever and its submitter never learns why.
+
+    Terminal status is the fence here: ``_complete_job`` requires the row to
+    still be ``in_progress`` with a matching claim generation, so a worker that
+    comes back from the dead cannot overwrite the failure recorded below. The
+    status change also fires the terminal-event trigger, which is what makes a
+    reaped operation alertable rather than silent.
 
     Args:
         stale_threshold_hours: Hours before a job is considered stale
+        conn: Reuse a caller's connection; the periodic tick holds one open.
 
     Returns:
         Number of jobs marked as failed
     """
-    async with _queue_connection() as conn:
+    async with _queue_connection(conn) as conn:
         cutoff = datetime.now(UTC) - timedelta(hours=stale_threshold_hours)
 
         result = await conn.execute(

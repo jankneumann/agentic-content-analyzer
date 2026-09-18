@@ -393,6 +393,11 @@ class Settings(BaseSettings):
     failed_job_retention_days: int = Field(default=90, ge=1, le=3650)
     job_retention_interval_seconds: int = Field(default=3600, ge=60, le=86_400)
     job_retention_batch_size: int = Field(default=100, ge=1, le=1000)
+    # A claim outlives its worker whenever a container is killed mid-job: the
+    # row stays in_progress, and claims only ever take queued rows, so nothing
+    # reclaims it. These bound how long such an operation can sit there.
+    job_stale_claim_hours: int = Field(default=1, ge=1, le=168)
+    job_stale_claim_interval_seconds: int = Field(default=300, ge=30, le=86_400)
     content_reconciliation_stale_seconds: int = Field(default=3600, ge=60, le=604_800)
     content_reconciliation_max_retries: int = Field(default=3, ge=0, le=20)
     content_reconciliation_batch_size: int = Field(default=50, ge=1, le=100)
