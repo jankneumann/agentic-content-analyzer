@@ -132,9 +132,9 @@ def test_the_submission_write_sets_every_column_the_identity_check_requires() ->
     required = set(re.findall(r"\b(?:root_job_id|trace_id|submission_[a-z_]+)\b", identity))
     assert "submission_span_id" in required  # the one that was missing
 
-    service = (
-        Path(__file__).resolve().parents[2] / "src/services/operation_service.py"
-    ).read_text(encoding="utf-8")
+    service = (Path(__file__).resolve().parents[2] / "src/services/operation_service.py").read_text(
+        encoding="utf-8"
+    )
     written: set[str] = set()
     for statement in _statements_on_the_queue_table(service):
         if "submission_context" not in statement or "UPDATE" not in statement.upper():
