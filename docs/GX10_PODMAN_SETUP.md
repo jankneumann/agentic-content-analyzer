@@ -288,6 +288,15 @@ attacker-influenced input, so that last rule is the one doing the security
 work, and it is checked after name resolution. Plain `http://` sources stay
 blocked, since the policy permits `CONNECT` only.
 
+Host-side units that run `/opt/aca/.venv/bin/python` use
+`ProtectHome=read-only` rather than `yes`. That interpreter is a symlink into
+uv's install under `/root`, and `ProtectHome=yes` empties `/root` for the
+unit, so the exec fails with `203/EXEC` before any code runs. The unit then
+reports a failure with nothing in its journal to explain it, which is how the
+storage monitor, the backup, and the restore drill all sat failing once a
+minute. `read-only` keeps `/home` and `/root` unwritable and the interpreter
+reachable.
+
 Several containers bind-mount single files from `/opt/aca` (`openbao.hcl`,
 `squid.conf`, the Caddyfile, and the two readiness scripts). `git pull` writes a changed file as a new inode, but a running
 container keeps the inode it mounted, so it continues to execute the old

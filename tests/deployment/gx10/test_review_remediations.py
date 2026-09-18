@@ -416,3 +416,24 @@ def test_a_failed_start_neither_hangs_the_stop_nor_hides_the_probe_output() -> N
     assert "did not become healthy" in wait
     assert ".State.Health.Log" in wait
     assert "ExitCode" in wait
+
+
+def test_units_that_run_the_venv_interpreter_can_reach_it() -> None:
+    """`/opt/aca/.venv/bin/python` is a symlink into uv's interpreter under
+    /root. `ProtectHome=yes` empties /root for the unit, so the exec fails with
+    203/EXEC before a line of Python runs: the unit reports a failure, the
+    journal carries no reason, and on this host the storage monitor, the
+    backup, and the restore drill were all failing that way once a minute.
+    `read-only` keeps /home and /root unwritable while leaving the interpreter
+    reachable."""
+    for unit in sorted((ROOT / "deploy/gx10/systemd").glob("*.service")):
+        text = unit.read_text(encoding="utf-8")
+        if "/opt/aca/.venv/bin/python" not in text:
+            continue
+        directives = [
+            line.strip()
+            for line in text.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        assert "ProtectHome=yes" not in directives, unit.name
+        assert "ProtectHome=read-only" in directives, unit.name

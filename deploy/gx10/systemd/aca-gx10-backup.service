@@ -17,7 +17,11 @@ UMask=0077
 PrivateTmp=yes
 NoNewPrivileges=yes
 ProtectSystem=strict
-ProtectHome=yes
+# read-only, not yes: ExecStart runs /opt/aca/.venv/bin/python, which is a
+# symlink into uv's interpreter under /root. ProtectHome=yes empties /root,
+# so the exec fails with 203/EXEC before any code runs -- the unit reports a
+# failure with nothing in the journal to explain it.
+ProtectHome=read-only
 ReadOnlyPaths=/run/aca/gx10/backup/backup-age.json
 ReadWritePaths=/var/lib/aca/gx10/backups
 RestrictSUIDSGID=yes
