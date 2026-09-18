@@ -476,3 +476,21 @@ def test_operation_span_propagates_bounded_ownership_identity() -> None:
     attributes = provider.calls[0][1]
     assert attributes["operation.authority_fingerprint"] == "a" * 64
     assert attributes["operation.ownership_epoch"] == "17"
+
+
+def test_the_masker_matches_the_langfuse_sdk_calling_convention() -> None:
+    """The provider hands ``TelemetryMasker.mask`` to the Langfuse SDK, which
+    calls it as ``mask(data=...)``. With the parameter named anything else the
+    SDK caught a TypeError on every export, logged "Custom mask function threw
+    exception", and silently used its own masking instead: the configured
+    canaries were never redacted, and the roles' journals filled with that one
+    line at export rate."""
+    import inspect
+
+    from src.telemetry.safety import REDACTED, TelemetryMasker
+
+    masker = TelemetryMasker(canaries=("super-secret",))
+    parameters = list(inspect.signature(masker.mask).parameters)
+    assert parameters == ["data"]
+    assert masker.mask(data="a super-secret value") == f"a {REDACTED} value"
+    assert masker.mask(data={"api_key": "x"})["api_key"] == REDACTED

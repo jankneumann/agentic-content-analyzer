@@ -124,25 +124,33 @@ class TelemetryMasker:
         )
         return cls(canaries=tuple(item for group in configured for item in group.split(",")))
 
-    def mask(self, value: Any) -> Any:
-        """Return an export-safe copy of a nested telemetry value."""
-        if isinstance(value, Mapping):
+    def mask(self, data: Any) -> Any:
+        """Return an export-safe copy of a nested telemetry value.
+
+        The parameter is named ``data`` because this method is handed to the
+        Langfuse SDK as its mask callable, and the SDK invokes it as
+        ``mask(data=...)``. Under any other name every call raises, the SDK
+        catches it, logs "Custom mask function threw exception", and falls
+        back to its own masking -- so the canaries never get redacted and the
+        journal fills with the same line at export rate.
+        """
+        if isinstance(data, Mapping):
             result: dict[Any, Any] = {}
-            for key, item in value.items():
+            for key, item in data.items():
                 if _SENSITIVE_KEY.search(str(key)):
                     result[key] = REDACTED
                 else:
                     result[key] = self.mask(item)
             return result
-        if isinstance(value, tuple):
-            return tuple(self.mask(item) for item in value)
-        if isinstance(value, list):
-            return [self.mask(item) for item in value]
-        if isinstance(value, set):
-            return {self.mask(item) for item in value}
-        if isinstance(value, str):
-            return self._mask_text(value)
-        return value
+        if isinstance(data, tuple):
+            return tuple(self.mask(item) for item in data)
+        if isinstance(data, list):
+            return [self.mask(item) for item in data]
+        if isinstance(data, set):
+            return {self.mask(item) for item in data}
+        if isinstance(data, str):
+            return self._mask_text(data)
+        return data
 
     def _mask_text(self, value: str) -> str:
         masked = value

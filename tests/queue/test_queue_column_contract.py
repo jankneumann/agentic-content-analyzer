@@ -88,3 +88,28 @@ def test_no_source_file_names_a_column_pgqueuer_jobs_does_not_have() -> None:
         if columns - REQUIRED_QUEUE_COLUMNS
     }
     assert not unknown, f"columns absent from the queue schema: {unknown}"
+
+
+def test_the_submission_context_constraint_admits_exactly_the_envelope_fields() -> None:
+    """``OperationContextEnvelope`` is a closed contract in two places at once:
+    Pydantic requires every field to be present, and a CHECK constraint on
+    ``pgqueuer_jobs.submission_context`` refuses any key outside its list. The
+    GX-10 work added ``authority_fingerprint`` and ``ownership_epoch`` to the
+    model and not to the constraint, so once submissions reached the column
+    every one of them was refused by the database. Adding a field to the
+    envelope means writing a migration; this test is what says so."""
+    import importlib.util
+
+    from src.contracts.workflow_models import OperationContextEnvelope
+
+    migration = (
+        Path(__file__).resolve().parents[2]
+        / "alembic/versions/f3a91c5d7e28_admit_gx10_authority_in_submission_context.py"
+    )
+    spec = importlib.util.spec_from_file_location("_submission_context_migration", migration)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    allowed = set(module._ENVELOPE_KEYS) | set(module._AUTHORITY_KEYS)
+    assert allowed == set(OperationContextEnvelope.model_fields)
