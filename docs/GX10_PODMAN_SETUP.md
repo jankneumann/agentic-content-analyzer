@@ -278,9 +278,18 @@ compatible with image extraction because container layers legitimately contain
 `/home`, `/usr`, and other root-level paths. A fail-closed post-start check
 requires the OpenBao container to exist and be running before provisioning.
 
+The proxy carries no destination allow-list. This host ingests articles,
+feeds, and videos from wherever a newsletter or a user link points, so the set
+of reachable hosts cannot be enumerated in advance. What it does enforce is
+the part that holds regardless: only an authenticated container may leave at
+all, only over TLS on 443, and never toward this machine, the container
+networks, the LAN, or a cloud metadata address. A link out of a feed is
+attacker-influenced input, so that last rule is the one doing the security
+work, and it is checked after name resolution. Plain `http://` sources stay
+blocked, since the policy permits `CONNECT` only.
+
 Several containers bind-mount single files from `/opt/aca` (`openbao.hcl`,
-`squid.conf`, `allowed-domains.txt`, the Caddyfile, and the two readiness
-scripts). `git pull` writes a changed file as a new inode, but a running
+`squid.conf`, the Caddyfile, and the two readiness scripts). `git pull` writes a changed file as a new inode, but a running
 container keeps the inode it mounted, so it continues to execute the old
 content. After pulling a change to any bind-mounted file, remove the affected
 container and let its unit recreate it, for example

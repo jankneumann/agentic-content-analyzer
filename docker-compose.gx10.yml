@@ -410,7 +410,6 @@ services:
     - /tmp:rw,noexec,nosuid,nodev,size=8m
     volumes:
     - ./deploy/gx10/squid/squid.conf:/etc/squid/squid.conf:ro
-    - ./deploy/gx10/squid/allowed-domains.txt:/etc/squid/allowed-domains.txt:ro
     - /run/aca/gx10/proxy:/run/aca/gx10/proxy:ro
     - /srv/aca/squid-logs:/var/log/squid:rw
     - ./scripts/gx10/check_proxy_ready.sh:/usr/local/bin/gx10-proxy-ready:ro

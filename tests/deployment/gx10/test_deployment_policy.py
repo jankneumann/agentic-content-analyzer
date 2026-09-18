@@ -203,14 +203,6 @@ def test_caddy_ingress_sits_on_a_fixed_application_address() -> None:
 def test_squid_runs_unprivileged_on_a_read_only_root() -> None:
     config = (ROOT / "deploy/gx10/squid/squid.conf").read_text(encoding="utf-8")
     assert re.search(r"^pid_filename /tmp/squid\.pid$", config, re.MULTILINE)
-    domains = [
-        line.strip()
-        for line in (ROOT / "deploy/gx10/squid/allowed-domains.txt").read_text().splitlines()
-        if line.strip() and not line.startswith("#")
-    ]
-    for domain in domains:
-        parents = [other for other in domains if other != domain and domain.endswith(other)]
-        assert not parents, f"squid 6 rejects {domain}: already covered by {parents}"
 
 
 def test_renderer_hands_container_read_secrets_to_the_consuming_image_user() -> None:
@@ -478,15 +470,13 @@ def test_proxy_policy_is_read_only_authenticated_masked_and_fail_closed() -> Non
     squid = _service(compose, "squid")
     mounts = squid["volumes"]
     assert any("squid.conf:/etc/squid/squid.conf:ro" in mount for mount in mounts)
-    assert any("allowed-domains.txt:/etc/squid/allowed-domains.txt:ro" in mount for mount in mounts)
     assert any("/run/aca/gx10/proxy" in mount and mount.endswith(":ro") for mount in mounts)
 
     config = (ROOT / "deploy/gx10/squid/squid.conf").read_text(encoding="utf-8")
     assert "auth_param basic" in config
     assert "acl authenticated proxy_auth REQUIRED" in config
-    assert "acl allowed_domains dstdomain" in config
     assert "acl SSL_ports port 443" in config
-    assert "http_access allow authenticated allowed_domains SSL_ports CONNECT" in config
+    assert "http_access allow authenticated SSL_ports CONNECT" in config
     assert config.rstrip().endswith("http_access deny all")
     assert "logformat gx10_connect" in config
     assert "%>a" not in config and "%ru" not in config
@@ -610,3 +600,34 @@ def test_minio_creates_the_bucket_langfuse_uploads_to() -> None:
     # A shell left at PID 1 ignores SIGTERM, so every stop would wait out the
     # kill timeout; `exec` hands the slot to MinIO itself.
     assert "exec minio server" in command
+
+
+def test_the_proxy_blocks_this_machine_and_its_networks_not_the_public_web() -> None:
+    """A destination allow-list cannot work for this host: it ingests whatever
+    a newsletter, feed, or user link points at, so the list would be either
+    permanently incomplete or wide enough to prove nothing. It is replaced by
+    the restriction that does hold. A link is attacker-influenced input, so
+    the proxy refuses to resolve it toward the container networks, the host
+    itself, the LAN, or a cloud metadata address, and still requires an
+    authenticated client speaking TLS on 443. Every private range below has
+    reached a real SSRF advisory; 169.254.0.0/16 is the metadata one."""
+    config = (ROOT / "deploy/gx10/squid/squid.conf").read_text(encoding="utf-8")
+    for network in (
+        "10.0.0.0/8",
+        "127.0.0.0/8",
+        "169.254.0.0/16",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "::1/128",
+        "fc00::/7",
+    ):
+        assert network in config, network
+
+    lines = [line.strip() for line in config.splitlines() if line.startswith("http_access")]
+    assert "http_access deny internal_dst" in lines
+    assert lines.index("http_access deny internal_dst") < lines.index(
+        "http_access allow authenticated SSL_ports CONNECT"
+    ), "a deny placed after the allow never runs"
+    assert lines[-1] == "http_access deny all"
+    assert "dstdomain" not in config, "the destination allow-list is gone on purpose"
+    assert not (ROOT / "deploy/gx10/squid/allowed-domains.txt").exists()

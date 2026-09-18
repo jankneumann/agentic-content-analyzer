@@ -30,7 +30,6 @@ gx10_proxy_policy_audit_exit() {
 trap gx10_proxy_policy_audit_exit EXIT
 COMPOSE=("$ROOT_DIR/scripts/gx10/podman-compose.sh")
 POLICY="$ROOT_DIR/deploy/gx10/squid/squid.conf"
-DOMAINS="$ROOT_DIR/deploy/gx10/squid/allowed-domains.txt"
 RUNTIME_DIR="${GX10_RUNTIME_DIR:-/run/aca/gx10}"
 READY="$RUNTIME_DIR/proxy/policy.ready"
 
@@ -40,7 +39,7 @@ if [[ "$(id -u)" == 0 ]]; then PROXY_DIR_OWNER=(-o 0 -g 13); PROXY_DIR_MODE=0710
 install -d "${PROXY_DIR_OWNER[@]}" -m "$PROXY_DIR_MODE" "$RUNTIME_DIR/proxy"
 rm -f -- "$READY"
 
-if [[ ! -s "$POLICY" || ! -s "$DOMAINS" ]]; then
+if [[ ! -s "$POLICY" ]]; then
   echo "gx10 proxy policy missing; refusing reload" >&2
   exit 1
 fi

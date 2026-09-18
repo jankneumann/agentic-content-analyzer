@@ -19,7 +19,6 @@ def test_gx10_baseline_includes_compose_systemd_caddy_and_openbao() -> None:
         "deploy/gx10/systemd/aca-gx10-proxy-policy.service",
         "deploy/gx10/systemd/aca-gx10-firewall.service",
         "deploy/gx10/squid/squid.conf",
-        "deploy/gx10/squid/allowed-domains.txt",
         "scripts/gx10/validate_runtime.py",
     }
 
@@ -47,7 +46,7 @@ def test_squid_policy_is_pinned_fail_closed_and_masks_connect_logs() -> None:
     reload_script = (ROOT / "scripts/gx10/reload_proxy_policy.sh").read_text(encoding="utf-8")
 
     assert "docker.io/ubuntu/squid:6.6-24.04_beta@sha256:" in compose
-    assert "acl allowed_domains dstdomain" in policy
+    assert "acl internal_dst dst" in policy
     assert "acl SSL_ports port 443" in policy
     assert "http_access deny all" in policy
     assert "logformat gx10_connect" in policy
