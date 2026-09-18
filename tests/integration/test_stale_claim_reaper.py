@@ -59,9 +59,10 @@ async def test_an_abandoned_claim_fails_and_a_live_one_keeps_running(pg_conn) ->
     assert reaped["status"] == "failed"
     assert reaped["error"] == "stale_timeout"
     assert reaped["completed_at"] is not None
-    assert await pg_conn.fetchval(
-        "SELECT status FROM pgqueuer_jobs WHERE id = $1", live
-    ) == "in_progress"
+    assert (
+        await pg_conn.fetchval("SELECT status FROM pgqueuer_jobs WHERE id = $1", live)
+        == "in_progress"
+    )
 
 
 @pytest.mark.asyncio
