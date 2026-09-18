@@ -113,3 +113,32 @@ def test_the_submission_context_constraint_admits_exactly_the_envelope_fields() 
 
     allowed = set(module._ENVELOPE_KEYS) | set(module._AUTHORITY_KEYS)
     assert allowed == set(OperationContextEnvelope.model_fields)
+
+
+def test_the_submission_write_sets_every_column_the_identity_check_requires() -> None:
+    """``ck_pgqueuer_jobs_context_identity`` refuses a stored context whose
+    correlation columns do not mirror it, and it names six of them. The
+    submission write set five: ``submission_span_id`` stayed NULL, so the
+    database rejected every submission and the API answered 500 on ingest.
+    The required list is read from the migration, so widening the constraint
+    without widening the write fails here rather than in production."""
+    migration = (
+        Path(__file__).resolve().parents[2]
+        / "alembic/versions/e4b7c9d2a610_add_operation_observability.py"
+    ).read_text(encoding="utf-8")
+    identity = migration.split("ADD CONSTRAINT ck_pgqueuer_jobs_context_identity CHECK (", 1)[
+        1
+    ].split("\n            ),", 1)[0]
+    required = set(re.findall(r"\b(?:root_job_id|trace_id|submission_[a-z_]+)\b", identity))
+    assert "submission_span_id" in required  # the one that was missing
+
+    service = (
+        Path(__file__).resolve().parents[2] / "src/services/operation_service.py"
+    ).read_text(encoding="utf-8")
+    written: set[str] = set()
+    for statement in _statements_on_the_queue_table(service):
+        if "submission_context" not in statement or "UPDATE" not in statement.upper():
+            continue
+        for hit in _SET.finditer(statement):
+            written |= _columns(hit.group(1))
+    assert required <= written, f"never written: {sorted(required - written)}"

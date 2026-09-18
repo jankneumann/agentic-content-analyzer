@@ -383,7 +383,8 @@ class OperationService:
                     submission_context = $3::jsonb,
                     submission_traceparent = $4,
                     submission_tracestate = $5,
-                    trace_id = $6
+                    trace_id = $6,
+                    submission_span_id = $7
                 WHERE id = $1
                   AND status = 'queued'
                   AND submission_context IS NULL
@@ -394,6 +395,7 @@ class OperationService:
                 context.traceparent,
                 context.tracestate,
                 context.trace_id,
+                context.span_id,
             )
             if not result.endswith(" 1"):
                 raise RuntimeError("Unable to atomically persist operation submission context")
