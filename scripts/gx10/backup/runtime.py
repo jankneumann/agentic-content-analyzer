@@ -45,6 +45,28 @@ _OPERATION_ID = TypeAdapter(OperationId)
 _TRACE_ID = TypeAdapter(TraceId)
 
 
+_STDERR_EVIDENCE_LIMIT = 400
+
+
+def _command_evidence(stderr: bytes) -> str:
+    """The tail of a failed command's stderr, bounded and masked.
+
+    Without this a failed component reports `component_backup_failed` and
+    nothing else: the manifest carries a diagnostic code by design, the
+    exception named only the program, and the reason died with the subprocess.
+    Every store failing for an unknown reason is indistinguishable from every
+    store failing for six different ones.
+    """
+
+    from src.telemetry.safety import TelemetryMasker
+
+    text = stderr.decode("utf-8", errors="replace").strip()
+    if not text:
+        return "no stderr"
+    tail = text[-_STDERR_EVIDENCE_LIMIT:]
+    return str(TelemetryMasker.from_environment().mask(tail))
+
+
 def _safe_command(argv: Sequence[str], *, payload: bytes | None = None) -> bytes:
     if not argv:
         raise ValueError("component command argv must not be empty")
@@ -56,7 +78,10 @@ def _safe_command(argv: Sequence[str], *, payload: bytes | None = None) -> bytes
         env={"PATH": os.environ.get("PATH", "/usr/bin:/bin")},
     )
     if completed.returncode != 0:
-        raise RuntimeError(f"component command failed: {argv[0]}")
+        raise RuntimeError(
+            f"component command failed: {argv[0]} "
+            f"exit={completed.returncode} stderr={_command_evidence(completed.stderr)}"
+        )
     return completed.stdout or b""
 
 

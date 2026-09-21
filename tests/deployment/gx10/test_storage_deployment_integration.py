@@ -127,7 +127,13 @@ def test_storage_services_fail_closed_and_are_hardened(unit: str) -> None:
     assert "OnFailure=aca-gx10-maintenance-alert@%n.service" in source
     assert "TimeoutStartSec=" in source
     assert "NoNewPrivileges=yes" in source
-    assert "ProtectSystem=strict" in source
+    # `strict` was asserted here and it is what broke these units: each drives
+    # rootful Podman, which writes container state under /var/lib/containers
+    # and /run, and strict mounts the whole hierarchy read-only. Five of six
+    # backup components failed; the one that only tars a directory succeeded.
+    # `full` keeps /usr, /boot, and /etc read-only, which is the part that
+    # protects the reviewed code these units execute.
+    assert "ProtectSystem=full" in source
     assert "PrivateTmp=yes" in source
     assert "UMask=0077" in source
     assert "SuccessExitStatus" not in source

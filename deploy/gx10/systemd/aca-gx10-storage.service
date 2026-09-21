@@ -20,7 +20,16 @@ TimeoutStartSec=50
 UMask=0077
 PrivateTmp=yes
 NoNewPrivileges=yes
-ProtectSystem=strict
+# full, not strict: this unit drives rootful Podman, which writes container
+# state under /var/lib/containers and /run. `strict` mounts the whole
+# hierarchy read-only, so every producer that touches a container failed
+# while the one that only tars a directory succeeded. /usr and /etc stay
+# read-only.
+ProtectSystem=full
+# Containers this unit restarts -- the stores are stopped for a consistent
+# copy -- put their conmon in this unit's cgroup. A oneshot's default kill
+# would take them down again the moment the backup finished.
+KillMode=process
 # read-only, not yes: ExecStart runs /opt/aca/.venv/bin/python, which is a
 # symlink into uv's interpreter under /root. ProtectHome=yes empties /root,
 # so the exec fails with 203/EXEC before any code runs -- the unit reports a

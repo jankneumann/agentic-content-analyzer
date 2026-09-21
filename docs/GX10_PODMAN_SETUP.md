@@ -288,6 +288,17 @@ attacker-influenced input, so that last rule is the one doing the security
 work, and it is checked after name resolution. Plain `http://` sources stay
 blocked, since the policy permits `CONNECT` only.
 
+Those units run with `ProtectSystem=full`, not `strict`. Each drives rootful
+Podman, which writes container state under `/var/lib/containers` and `/run`,
+and `strict` mounts the whole hierarchy read-only: every backup component that
+touches a container failed while the one that only tars a directory succeeded.
+They also use `KillMode=process`, because a store stopped for a consistent
+copy is restarted by the same script, and the restarted container's `conmon`
+lands in the unit's cgroup where a oneshot's default kill would take it down
+again. When a component does fail, the reason is logged: the manifest carries
+only a diagnostic code, so the command's exit status and a bounded, masked
+tail of its stderr go to the journal.
+
 The same three units reach the application database at its fixed stateful
 address, `10.89.0.251`, through `EnvironmentFile=/run/aca/gx10/host-maintenance.env`.
 Each reserves its operation in that database before doing any work, and the

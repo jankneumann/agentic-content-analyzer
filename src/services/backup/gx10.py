@@ -16,6 +16,9 @@ from typing import Any, Literal, cast
 
 from src.clients.operational_observability import operational_stage
 from src.config.bao_secrets import get_bao_secret
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 _AGE_RECIPIENT = re.compile(r"^age1[0-9a-z]{20,100}$")
 _AGE_ENVELOPE = b"age-encryption.org/v1\n"
@@ -392,7 +395,14 @@ class GX10BackupController:
                             encryption_recipient=recipient,
                         )
                     )
-                except Exception:
+                except Exception as exc:
+                    # The manifest carries a diagnostic code and nothing else,
+                    # by design. Log the reason or the operator is left with
+                    # six identical failures and no way to tell them apart.
+                    logger.error(
+                        "gx10 component backup failed",
+                        extra={"backup_component": str(component), "backup_failure": str(exc)},
+                    )
                     results.append(
                         _failed_component(component, correlation, "component_backup_failed")
                     )
@@ -579,7 +589,14 @@ class GX10RestoreDrill:
                         "component_restore_validation_failed",
                         restore_started_at,
                     )
-            except Exception:
+            except Exception as exc:
+                logger.error(
+                    "gx10 component restore failed",
+                    extra={
+                        "restore_component": str(artifact.component),
+                        "restore_failure": str(exc),
+                    },
+                )
                 return self._restore_failure_measured(
                     artifact, correlation, "component_restore_failed", restore_started_at
                 )
