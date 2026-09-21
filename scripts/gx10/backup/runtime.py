@@ -20,6 +20,7 @@ from typing import Any, Literal, cast
 
 from pydantic import TypeAdapter, ValidationError
 
+from scripts.gx10.maintenance_env import component_environment
 from scripts.gx10.storage.runtime import StorageRuntime
 from src.clients.operational_observability import operational_entrypoint, operational_stage
 from src.contracts.operation_context import get_current_operation_context
@@ -75,7 +76,7 @@ def _safe_command(argv: Sequence[str], *, payload: bytes | None = None) -> bytes
         input=payload,
         capture_output=True,
         check=False,
-        env={"PATH": os.environ.get("PATH", "/usr/bin:/bin")},
+        env=component_environment(),
     )
     if completed.returncode != 0:
         raise RuntimeError(

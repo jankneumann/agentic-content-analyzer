@@ -130,3 +130,39 @@ def test_units_that_drive_podman_can_parse_the_overlay(name: str) -> None:
 
     unit = (ROOT / f"deploy/gx10/systemd/{name}.service").read_text(encoding="utf-8")
     assert "EnvironmentFile=/etc/aca/gx10-images.env" in unit, name
+
+
+def test_the_helper_environment_carries_the_pins_and_leaves_secrets_behind(monkeypatch) -> None:
+    """Scrubbing to PATH alone is what broke five producers.
+
+    podman-compose parses the overlay on every call and the overlay makes the
+    image pins mandatory, so a helper with PATH alone fails on "set a reviewed
+    application tag@sha256 digest" before touching a store. The pins are
+    public references; the credentials in the same process environment are
+    not, and must not follow the helper into the container engine.
+    """
+    from scripts.gx10.maintenance_env import component_environment
+
+    monkeypatch.setenv("GX10_APP_IMAGE", "ghcr.io/example/app:gx10-abc@sha256:" + "a" * 64)
+    monkeypatch.setenv("GX10_SQUID_DIGEST", "b" * 64)
+    monkeypatch.setenv("GX10_LANGFUSE_WORKER_DIGEST", "c" * 64)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:secret@10.89.0.251:5432/newsletters")
+    monkeypatch.setenv("GX10_ADMIN_API_KEY", "must-not-travel")
+
+    environment = component_environment()
+
+    compose = (ROOT / "docker-compose.gx10.yml").read_text(encoding="utf-8")
+    for name in set(re.findall(r"\$\{(GX10_[A-Z0-9_]+):\?", compose)):
+        assert name in environment, f"{name} is mandatory in the overlay"
+    assert "DATABASE_URL" not in environment
+    assert "GX10_ADMIN_API_KEY" not in environment
+    assert environment["PATH"]
+
+
+def test_both_maintenance_runtimes_use_that_one_rule() -> None:
+    """The backup and the storage monitor scrubbed identically and broke
+    identically; the rule lives in one module so it cannot drift."""
+    for relative in ("scripts/gx10/backup/runtime.py", "scripts/gx10/storage/runtime.py"):
+        source = (ROOT / relative).read_text(encoding="utf-8")
+        assert "env=component_environment()" in source, relative
+        assert 'env={"PATH"' not in source, relative

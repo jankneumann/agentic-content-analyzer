@@ -19,7 +19,9 @@ from typing import Any, Literal
 
 from pydantic import TypeAdapter, ValidationError
 
+from scripts.gx10.maintenance_env import component_environment
 from src.clients.operational_observability import operational_entrypoint, operational_stage
+from src.utils.logging import get_logger
 from src.contracts.operation_context import get_current_operation_context
 from src.contracts.workflow_models import OperationId, TraceId
 from src.services.storage_governance import (
@@ -29,6 +31,8 @@ from src.services.storage_governance import (
     StorageDecision,
     plan_retention,
 )
+
+logger = get_logger(__name__)
 
 ActionInvoker = Callable[[str, dict[str, object]], bool]
 _MAX_STATE_BYTES = 4096
@@ -184,8 +188,18 @@ class CommandInvoker:
             input=json.dumps(payload, sort_keys=True).encode(),
             capture_output=True,
             check=False,
-            env={"PATH": os.environ.get("PATH", "/usr/bin:/bin")},
+            env=component_environment(),
         )
+        if completed.returncode != 0:
+            # Returning False alone left this unit failing once a minute with
+            # nothing in the journal about which action failed or why.
+            stderr = completed.stderr.decode("utf-8", errors="replace").strip()
+            logger.error(
+                "gx10 storage action failed command=%s exit=%s stderr=%s",
+                argv[0],
+                completed.returncode,
+                stderr[-400:] or "no stderr",
+            )
         return completed.returncode == 0
 
 
