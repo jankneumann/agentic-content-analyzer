@@ -9,6 +9,10 @@ OnFailure=aca-gx10-maintenance-alert@%n.service
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/aca
+# This process reserves its operation in the application database before
+# doing any work, and the host cannot resolve container names. The renderer
+# writes the same credentials against the database's fixed stateful address.
+EnvironmentFile=/run/aca/gx10/host-maintenance.env
 StateDirectory=aca/gx10/backups
 StateDirectoryMode=0700
 ExecStart=/opt/aca/.venv/bin/python -m scripts.gx10.backup backup --plan /etc/aca/gx10/backup-plan.json --output /var/lib/aca/gx10/backups --quota-bytes 1099511627776 --age-material-file /run/aca/gx10/backup/backup-age.json

@@ -9,6 +9,10 @@ OnFailure=aca-gx10-maintenance-alert@%n.service
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/aca
+# This process reserves its operation in the application database before
+# doing any work, and the host cannot resolve container names. The renderer
+# writes the same credentials against the database's fixed stateful address.
+EnvironmentFile=/run/aca/gx10/host-maintenance.env
 StateDirectory=aca/gx10
 StateDirectoryMode=0700
 ExecStart=/opt/aca/.venv/bin/python -m scripts.gx10.storage --filesystem /srv/aca --concurrency 8 --actions /etc/aca/gx10/storage-actions.json --state-file /var/lib/aca/gx10/storage-controller.json --max-cycles 1

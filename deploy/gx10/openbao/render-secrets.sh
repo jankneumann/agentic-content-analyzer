@@ -40,6 +40,7 @@ PROXY_TMP="$(new_env proxy.env)"; APP_POSTGRES_TMP="$(new_env app-postgres.env)"
 LANGFUSE_POSTGRES_TMP="$(new_env langfuse-postgres.env)"; REDIS_TMP="$(new_env redis.env)"
 FALKORDB_TMP="$(new_env falkordb.env)"; CLICKHOUSE_TMP="$(new_env clickhouse.env)"
 MINIO_TMP="$(new_env minio.env)"; LANGFUSE_TMP="$(new_env langfuse.env)"; CADDY_TMP="$(new_env caddy.env)"
+HOST_TMP="$(new_env host-maintenance.env)"
 PASSWD_TMP="$(mktemp "$RUNTIME_DIR/proxy/squid.passwd.XXXXXX")"; TEMPS+=("$PASSWD_TMP")
 REDIS_ACL_TMP="$(mktemp "$RUNTIME_DIR/redis/users.acl.XXXXXX")"; TEMPS+=("$REDIS_ACL_TMP")
 FALKORDB_ACL_TMP="$(mktemp "$RUNTIME_DIR/falkordb/users.acl.XXXXXX")"; TEMPS+=("$FALKORDB_ACL_TMP")
@@ -108,7 +109,17 @@ printf 'CLICKHOUSE_URL=http://clickhouse:8123\nCLICKHOUSE_MIGRATION_URL=clickhou
 emit "$CADDY_TMP" CADDY_USERNAME "$RUNTIME_PATH" caddy_username; emit "$CADDY_TMP" CADDY_PASSWORD_HASH "$RUNTIME_PATH" caddy_password_hash
 printf 'GX10_PUBLIC_ORIGIN=%s\n' "$PUBLIC_ORIGIN" >>"$CADDY_TMP"
 
-for pair in "$COMMON_TMP:common.env" "$API_TMP:api.env" "$WORKER_TMP:worker.env" "$SCHEDULER_TMP:scheduler.env" "$MAINTENANCE_TMP:maintenance.env" "$PROXY_TMP:proxy.env" "$APP_POSTGRES_TMP:app-postgres.env" "$LANGFUSE_POSTGRES_TMP:langfuse-postgres.env" "$REDIS_TMP:redis.env" "$FALKORDB_TMP:falkordb.env" "$CLICKHOUSE_TMP:clickhouse.env" "$MINIO_TMP:minio.env" "$LANGFUSE_TMP:langfuse.env" "$CADDY_TMP:caddy.env"; do source_file="${pair%%:*}"; destination="${pair#*:}"; install -m 0600 "$source_file" "$RUNTIME_DIR/$destination.new"; mv -f "$RUNTIME_DIR/$destination.new" "$RUNTIME_DIR/$destination"; done
+# The backup, the restore drill, and the storage monitor run on the host, not
+# in a container, and each reserves its operation in the application database
+# before doing any work. The host has no container DNS, so the container-side
+# URL's `app-postgres` host is unresolvable there; the service holds a fixed
+# stateful address for exactly this. Same credentials, reachable host.
+APP_DATABASE_URL="$(fetch "$RUNTIME_PATH" database_url)"
+HOST_DATABASE_URL="${APP_DATABASE_URL/@app-postgres:/@10.89.0.251:}"
+[[ "$HOST_DATABASE_URL" != "$APP_DATABASE_URL" ]] || { echo "gx10 application database URL does not name app-postgres; refusing to guess a host route" >&2; exit 1; }
+printf 'DATABASE_URL=%s\n' "$HOST_DATABASE_URL" >"$HOST_TMP"
+
+for pair in "$COMMON_TMP:common.env" "$API_TMP:api.env" "$WORKER_TMP:worker.env" "$SCHEDULER_TMP:scheduler.env" "$MAINTENANCE_TMP:maintenance.env" "$PROXY_TMP:proxy.env" "$APP_POSTGRES_TMP:app-postgres.env" "$LANGFUSE_POSTGRES_TMP:langfuse-postgres.env" "$REDIS_TMP:redis.env" "$FALKORDB_TMP:falkordb.env" "$CLICKHOUSE_TMP:clickhouse.env" "$MINIO_TMP:minio.env" "$LANGFUSE_TMP:langfuse.env" "$CADDY_TMP:caddy.env" "$HOST_TMP:host-maintenance.env"; do source_file="${pair%%:*}"; destination="${pair#*:}"; install -m 0600 "$source_file" "$RUNTIME_DIR/$destination.new"; mv -f "$RUNTIME_DIR/$destination.new" "$RUNTIME_DIR/$destination"; done
 # Files the containers read directly are owned by the image user that reads
 # them (squid proxy 13:13, redis 999:1000, falkordb 999:999); mode stays 0600. Only root can
 # assign ownership; unprivileged test runs keep the invoking user.

@@ -9,6 +9,10 @@ OnFailure=aca-gx10-maintenance-alert@%n.service
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/aca
+# This process reserves its operation in the application database before
+# doing any work, and the host cannot resolve container names. The renderer
+# writes the same credentials against the database's fixed stateful address.
+EnvironmentFile=/run/aca/gx10/host-maintenance.env
 RuntimeDirectory=aca/gx10/restore-drill
 RuntimeDirectoryMode=0700
 StateDirectory=aca/gx10/restore-evidence

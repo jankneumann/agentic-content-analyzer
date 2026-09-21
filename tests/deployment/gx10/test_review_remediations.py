@@ -89,8 +89,13 @@ def test_renderer_outputs_profile_compatible_least_privilege_role_envs(tmp_path:
         "minio.env",
         "langfuse.env",
         "caddy.env",
+        "host-maintenance.env",
     }
     assert expected <= {path.name for path in runtime.glob("*.env")}
+
+    # The host has no container DNS. Same credentials, reachable address.
+    host_database_url = _read_env(runtime / "host-maintenance.env")["DATABASE_URL"]
+    assert host_database_url == "postgresql://newsletter_user:pass@10.89.0.251:5432/newsletters"
     assert "GX10_OPERATOR_API_KEY" in _read_env(runtime / "api.env")
     assert "GX10_ADMIN_API_KEY" in _read_env(runtime / "api.env")
     for role in ("worker", "scheduler", "maintenance"):
@@ -437,3 +442,40 @@ def test_units_that_run_the_venv_interpreter_can_reach_it() -> None:
         ]
         assert "ProtectHome=yes" not in directives, unit.name
         assert "ProtectHome=read-only" in directives, unit.name
+
+
+APP_POSTGRES_STATEFUL_ADDRESS = "10.89.0.251"
+HOST_MAINTENANCE_ENV = "/run/aca/gx10/host-maintenance.env"
+
+
+def test_host_maintenance_units_can_reach_the_application_database() -> None:
+    """The backup, the restore drill, and the storage monitor run on the host.
+
+    Each reserves its operation in the application database before doing any
+    work, and the host resolves no container names: the backup died on
+    ConnectionRefused to 127.0.0.1:5432 having produced nothing, which is the
+    worst way for a backup to fail. The database holds a fixed stateful
+    address like OpenBao does, the renderer rewrites the same credentials
+    against it, and the units read that file.
+    """
+    import yaml
+
+    compose = yaml.safe_load((ROOT / "docker-compose.gx10.yml").read_text(encoding="utf-8"))
+    postgres = compose["services"]["app-postgres"]
+    assert postgres["networks"] == {"stateful": {"ipv4_address": APP_POSTGRES_STATEFUL_ADDRESS}}
+    assert "ports" not in postgres, "reachable from the host, never published"
+
+    # Outside the pool IPAM hands out, or a container takes it first.
+    pool = compose["networks"]["stateful"]["ipam"]["config"][0]["ip_range"]
+    assert pool == "10.89.0.0/25"
+    assert int(APP_POSTGRES_STATEFUL_ADDRESS.rsplit(".", 1)[1]) >= 128
+
+    renderer = (ROOT / "deploy/gx10/openbao/render-secrets.sh").read_text(encoding="utf-8")
+    assert "host-maintenance.env" in renderer
+    assert f"@{APP_POSTGRES_STATEFUL_ADDRESS}:" in renderer
+    # A silent fallback would hand the unit a URL it cannot reach.
+    assert "refusing to guess a host route" in renderer
+
+    for name in ("aca-gx10-backup", "aca-gx10-restore-drill", "aca-gx10-storage"):
+        unit = (ROOT / f"deploy/gx10/systemd/{name}.service").read_text(encoding="utf-8")
+        assert f"EnvironmentFile={HOST_MAINTENANCE_ENV}" in unit, name

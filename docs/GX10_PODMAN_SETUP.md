@@ -288,6 +288,15 @@ attacker-influenced input, so that last rule is the one doing the security
 work, and it is checked after name resolution. Plain `http://` sources stay
 blocked, since the policy permits `CONNECT` only.
 
+The same three units reach the application database at its fixed stateful
+address, `10.89.0.251`, through `EnvironmentFile=/run/aca/gx10/host-maintenance.env`.
+Each reserves its operation in that database before doing any work, and the
+host resolves no container names, so the container-side URL naming
+`app-postgres` is useless there and nothing is published to the host. The
+secret renderer writes that file by rewriting the host of the credentials it
+already holds, and refuses outright if the stored URL does not name
+`app-postgres`, rather than guess a route the unit cannot reach.
+
 Host-side units that run `/opt/aca/.venv/bin/python` use
 `ProtectHome=read-only` rather than `yes`. That interpreter is a symlink into
 uv's install under `/root`, and `ProtectHome=yes` empties `/root` for the

@@ -69,7 +69,14 @@ services:
     security_opt: *id001
     cap_drop: *id002
     deploy: *id003
-    networks: *id004
+    # A fixed stateful address, for the same reason OpenBao has one: the
+    # backup, the restore drill, and the storage monitor run on the host, and
+    # every one of them reserves its operation in this database first. The
+    # host has no container DNS, so `app-postgres:5432` is unresolvable there
+    # and nothing is published. Outside the /25 the IPAM pool hands out.
+    networks:
+      stateful:
+        ipv4_address: 10.89.0.251
     tmpfs: *id005
     # ParadeDB is PostgreSQL 17.11 (same server version, so the existing data
     # directory stays compatible) with pgvector and pg_search built in. The
