@@ -53,7 +53,7 @@ def test_component_inventory_includes_every_required_state_store() -> None:
 
     assert {str(component) for component in backup.BackupComponent} == {
         "application_postgresql",
-        "neo4j",
+        "falkordb",
         "langfuse_postgresql",
         "clickhouse",
         "minio",
@@ -144,8 +144,8 @@ def test_plaintext_is_never_sent_to_storage() -> None:
 def test_one_component_failure_makes_aggregate_partial_not_success() -> None:
     backup = _backup()
     producers = _components(backup)
-    producers[backup.BackupComponent.NEO4J] = lambda: (_ for _ in ()).throw(
-        RuntimeError("neo4j unavailable")
+    producers[backup.BackupComponent.FALKORDB] = lambda: (_ for _ in ()).throw(
+        RuntimeError("falkordb unavailable")
     )
     controller = backup.GX10BackupController(
         producers=producers,
@@ -161,9 +161,9 @@ def test_one_component_failure_makes_aggregate_partial_not_success() -> None:
     )
 
     assert manifest.outcome == "partial"
-    neo4j = next(r for r in manifest.components if r.component is backup.BackupComponent.NEO4J)
-    assert neo4j.outcome == "permanent_failure"
-    assert neo4j.diagnostic_code == "component_backup_failed"
+    falkordb = next(r for r in manifest.components if r.component is backup.BackupComponent.FALKORDB)
+    assert falkordb.outcome == "permanent_failure"
+    assert falkordb.diagnostic_code == "component_backup_failed"
     assert "unavailable" not in manifest.to_json()
 
 
@@ -274,8 +274,8 @@ def test_restore_rejects_missing_rotated_recipient_before_decryption(tmp_path: P
     backup = _backup()
     decrypted: list[bytes] = []
     artifact = backup.EncryptedArtifact(
-        component=backup.BackupComponent.NEO4J,
-        name="neo4j.age",
+        component=backup.BackupComponent.FALKORDB,
+        name="falkordb.age",
         payload=b"ciphertext",
         checksum_sha256=hashlib.sha256(b"ciphertext").hexdigest(),
         encryption_recipient=OLD_RECIPIENT,
@@ -289,9 +289,9 @@ def test_restore_rejects_missing_rotated_recipient_before_decryption(tmp_path: P
 
     result = drill.restore_component(
         artifact=artifact,
-        target=tmp_path / "isolated" / "neo4j",
+        target=tmp_path / "isolated" / "falkordb",
         isolated_root=tmp_path / "isolated",
-        production_sources=(tmp_path / "production" / "neo4j",),
+        production_sources=(tmp_path / "production" / "falkordb",),
         available_recipients=(ACTIVE_RECIPIENT,),
         correlation=_context(backup),
     )
@@ -362,7 +362,7 @@ def test_restore_plan_requires_complete_sources_and_fresh_dedicated_root(
     targets = {
         component: tmp_path / "isolated" / str(component) for component in backup.BackupComponent
     }
-    incomplete_sources = {backup.BackupComponent.NEO4J: tmp_path / "production" / "neo4j"}
+    incomplete_sources = {backup.BackupComponent.FALKORDB: tmp_path / "production" / "falkordb"}
 
     with pytest.raises(backup.ComponentInventoryError, match="production sources"):
         backup.validate_restore_plan(
@@ -392,7 +392,7 @@ def test_restore_plan_rejects_root_containing_production_and_preexisting_target(
     sources = {
         component: tmp_path / "production" / str(component) for component in backup.BackupComponent
     }
-    sources[backup.BackupComponent.NEO4J] = isolated / "production-neo4j"
+    sources[backup.BackupComponent.FALKORDB] = isolated / "production-falkordb"
 
     with pytest.raises(backup.RestoreIsolationError, match="production"):
         backup.validate_restore_plan(
@@ -401,7 +401,7 @@ def test_restore_plan_rejects_root_containing_production_and_preexisting_target(
             production_sources=sources,
         )
 
-    sources[backup.BackupComponent.NEO4J] = tmp_path / "production" / "neo4j"
+    sources[backup.BackupComponent.FALKORDB] = tmp_path / "production" / "falkordb"
     targets[backup.BackupComponent.MINIO].mkdir(parents=True)
     with pytest.raises(backup.RestoreIsolationError, match="already exists"):
         backup.validate_restore_plan(
@@ -554,7 +554,7 @@ def test_retention_never_expires_the_only_successful_component_backup() -> None:
     backup = _backup()
     now = datetime(2026, 8, 29, tzinfo=UTC)
     only = backup.RetainedBackupArtifact(
-        component=backup.BackupComponent.NEO4J,
+        component=backup.BackupComponent.FALKORDB,
         name="only.age",
         completed_at=now - timedelta(days=40),
         outcome="succeeded",
@@ -605,7 +605,7 @@ def test_backup_activation_rejects_empty_or_incomplete_component_inventory() -> 
         )
     with pytest.raises(backup.ComponentInventoryError, match="complete"):
         backup.GX10BackupController(
-            producers={backup.BackupComponent.NEO4J: lambda: b"neo4j"},
+            producers={backup.BackupComponent.FALKORDB: lambda: b"falkordb"},
             encrypt=_encrypt,
             store=lambda _name, _payload: None,
         )
@@ -616,7 +616,7 @@ def test_restore_activation_requires_complete_restore_and_validation_inventories
     complete_restore = {
         component: (lambda _payload, _path: None) for component in backup.BackupComponent
     }
-    incomplete_validate = {backup.BackupComponent.NEO4J: lambda _path: True}
+    incomplete_validate = {backup.BackupComponent.FALKORDB: lambda _path: True}
 
     with pytest.raises(backup.ComponentInventoryError, match="complete"):
         backup.GX10RestoreDrill(

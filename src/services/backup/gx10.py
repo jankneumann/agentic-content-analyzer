@@ -23,7 +23,7 @@ _AGE_ENVELOPE = b"age-encryption.org/v1\n"
 
 class BackupComponent(StrEnum):
     APPLICATION_POSTGRESQL = "application_postgresql"
-    NEO4J = "neo4j"
+    FALKORDB = "falkordb"
     LANGFUSE_POSTGRESQL = "langfuse_postgresql"
     CLICKHOUSE = "clickhouse"
     MINIO = "minio"

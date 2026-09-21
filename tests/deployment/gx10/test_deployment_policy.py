@@ -271,6 +271,13 @@ GX10_SURFACE = (
     "docs/GX10_PODMAN_SETUP.md",
     "deploy/gx10",
     "scripts/gx10",
+    # The sweep once stopped at the deployment surface, and `BackupComponent`
+    # kept a NEO4J member the plans no longer name. The backup demanded a
+    # `producers.neo4j` command, found none, and refused to run at all -- a
+    # migration that looked complete everywhere an operator would look.
+    # `src/services/backup/stores.py` stays out: the Railway path still
+    # supports Neo4j as a graph provider.
+    "src/services/backup/gx10.py",
 )
 
 
