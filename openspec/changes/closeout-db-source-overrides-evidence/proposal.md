@@ -4,27 +4,72 @@
 
 Database-backed source storage, merge precedence, API authentication, and CLI
 management are implemented. The historical change still overclaims completion:
-the OpenAPI request shape and runtime differ, component/browser evidence is
-missing, setup guidance is absent, migration behavior is not executable
-evidence, and the design names obsolete enable/disable endpoints.
+its archived OpenAPI requires a redundant top-level source discriminator that
+the runtime never accepted, the durable contract does not publish the source
+management surface, component/browser evidence is missing, setup guidance is
+incomplete, migration behavior lacks executable PostgreSQL evidence, and the
+architecture guide lists only the read endpoint.
+
+This closeout records and verifies the behavior that already governs `/api/v1`.
+It must not silently reshape the live API or treat tests of a narrower browser
+surface as proof of the historical "every field for every source" promise.
 
 ## Source and completed scope
 
 - Extracted from archived `db-source-overrides`.
 - Completed and excluded: table/model/service, validated source union, natural
-  keys, YAML/DB precedence, disable shadows, fail-open merge, backend CRUD/PATCH
-  behavior, authentication, and CLI commands.
+  keys, YAML/DB precedence, disable shadows, fail-open merge, backend
+  CRUD/PATCH behavior, authentication middleware, and CLI commands.
+- The durable `source-configuration` spec already owns those functional
+  behaviors. This change adds contract, UI, migration, and documentation
+  evidence without duplicating that specification.
 - This closeout SHALL not redesign source resolution or add a second registry.
 
 ## What Changes
 
-- Select one request/response contract that matches source-type discrimination
-  and the runtime PATCH behavior, then regenerate clients if required.
-- Add component/browser coverage for add, toggle, origin badges, and
-  origin-aware deletion controls.
-- Document setup and operations.
-- Add executable migration evidence and update current durable design
-  references or ADRs while leaving the archived source immutable.
+- Publish `GET`/`POST /api/v1/sources` and `PATCH`/`DELETE
+  /api/v1/sources/{key}` in the durable content-workflow OpenAPI. The POST body
+  keeps the discriminator only at `config.type`; PATCH remains the sole
+  enable/disable mutation with `{ "enabled": boolean }`.
+- Generate Python and TypeScript contract models from that OpenAPI and prove
+  parity with the FastAPI models and the hand-maintained CLI/web HTTP clients.
+  This change does not introduce generated HTTP clients.
+- Specify the actual security boundary: source routes require an authenticated
+  owner session or `X-Admin-Key` outside the documented credential-free local
+  development mode. Rejected writes must not mutate an override.
+- Preserve privacy-safe management identity. Ordinary sources use their
+  natural key; private sources such as Obsidian use only an opaque `src_...`
+  public key at HTTP, CLI, browser, log, and error boundaries.
+- Add Readwise to the browser add-source form. Obsidian creation and editing
+  remain worker-local; the browser may display, enable, disable, and delete an
+  existing Obsidian source only through its opaque key. Public-source forms are
+  a reviewed quick-add subset rather than a promise to expose every advanced
+  backend field.
+- Add rendered-component and mocked-browser evidence for add, origin display,
+  enable/disable, database-only deletion, YAML shadow recovery, private-source
+  redaction, and mutation failures.
+- Add executable migration evidence against the repository's disposable
+  PostgreSQL fixture and document setup, precedence, recovery, authentication,
+  and PATCH/delete semantics in current durable documentation.
+
+## Scope boundaries and non-goals
+
+- No browser form for Obsidian filesystem paths, allowed roots, parser limits,
+  or worker-local readiness configuration.
+- No new partial-update endpoint, PUT endpoint, enable/disable subroutes, or
+  incompatible `/api/v1` request shape.
+- No generated HTTP client framework; only generated contract models/types and
+  explicit parity tests for existing transport wrappers.
+- No pagination redesign for `GET /api/v1/sources`. It returns the complete,
+  operator-managed configuration catalog, not unbounded content history. A
+  future measured cardinality problem requires a separate API proposal.
+- No change to database-over-YAML precedence, natural-key derivation, source
+  registry behavior, or ingestion execution.
+- No modification of
+  `openspec/changes/archive/2026-07-23-db-source-overrides/**`.
+- No support promise for manually created, schema-incompatible
+  `source_overrides` tables; operator recovery for that unsupported state is
+  documented instead of rewriting a deployed historical migration.
 
 ## Capability
 
@@ -32,7 +77,33 @@ evidence, and the design names obsolete enable/disable endpoints.
 
 ## Impact
 
-OpenAPI/generated clients, source settings UI tests, migration tests, setup
-documentation, and current durable design/ADR alignment may change. Existing
-database rows and natural keys remain compatible. The dated
-`db-source-overrides` archive remains unchanged.
+- **Contracts**: additive source-management paths and schemas in
+  `openspec/contracts/content-workflows/openapi/v1.yaml`; regenerated Python
+  and TypeScript models; runtime/contract drift tests.
+- **Backend and clients**: source route models and hand-maintained CLI/web
+  wrappers may change only where parity tests expose drift. Existing `/api/v1`
+  payloads remain compatible.
+- **Web**: component-test infrastructure, Readwise quick-add support,
+  privacy-safe management of existing Obsidian rows, and Playwright evidence.
+- **Database**: tests inspect the already-shipped migration on a fresh
+  disposable PostgreSQL database; no destructive migration is planned.
+- **Documentation**: `docs/ARCHITECTURE.md` and `docs/SETUP.md` become the
+  durable design and operations references. The dated archive remains
+  immutable.
+- **Security**: no private Obsidian locator or filesystem field may appear in a
+  read/mutation response, error, browser state derived from a response, or
+  generated public model.
+
+## Acceptance outcomes
+
+- One additive durable OpenAPI contract matches runtime POST/PATCH/DELETE/GET
+  shapes, security, public-key semantics, and stable operation IDs.
+- Contract generation and drift checks fail if backend, CLI, web types, or the
+  durable OpenAPI diverge.
+- Browser evidence proves supported public quick-add behavior and makes the
+  Obsidian worker-local boundary visible rather than silently omitting it.
+- A fresh migrated PostgreSQL database proves the table, JSONB column,
+  defaults, uniqueness, and indexes that production relies on.
+- Operators can add, disable, re-enable, remove, and recover overrides using
+  current CLI/API commands and can distinguish deletion of a DB-only source
+  from deletion of a YAML shadow.
