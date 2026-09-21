@@ -21,7 +21,6 @@ from pydantic import TypeAdapter, ValidationError
 
 from scripts.gx10.maintenance_env import component_environment
 from src.clients.operational_observability import operational_entrypoint, operational_stage
-from src.utils.logging import get_logger
 from src.contracts.operation_context import get_current_operation_context
 from src.contracts.workflow_models import OperationId, TraceId
 from src.services.storage_governance import (
@@ -31,6 +30,7 @@ from src.services.storage_governance import (
     StorageDecision,
     plan_retention,
 )
+from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
