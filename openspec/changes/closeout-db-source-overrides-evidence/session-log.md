@@ -41,3 +41,43 @@
 ### Context
 Resolved contract, security, browser-scope, migration, documentation, testability, and parallel-execution gaps in the closeout proposal.
 
+---
+
+## Phase: Plan refinement iteration 2 (2026-09-21)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Use generic database-override deletion copy** — GET cannot reveal whether an override shadows YAML; backend evidence proves the two post-delete outcomes.
+2. **Preserve ignored unknown request siblings** — Pydantic currently tolerates them, so strict rejection would be an unannounced compatibility change.
+3. **Prohibit only browser Obsidian create/edit** — Trusted API and CLI creation already exist; all public responses remain redacted.
+4. **Exercise the source migration from its predecessor in isolation** — The session-shared head fixture cannot prove sentinel preservation across initial creation.
+
+### Alternatives Considered
+- Add a deletion-effect field to GET: rejected because the closeout can give truthful generic copy without widening the public API.
+- Add a production schema doctor: rejected because the proposal is evidence closeout; test-local detection plus operator recovery is sufficient and honest.
+- Reject all unknown request properties: rejected because that tightens accepted /api/v1 payloads beyond current behavior.
+
+### Trade-offs
+- Accepted generic deletion messaging over pre-action YAML-baseline specificity because the server projection lacks provenance and fabricated browser knowledge would be misleading.
+- Accepted test-local incompatible-schema diagnosis over new production preflight machinery because the unsupported state is documented without expanding runtime scope.
+
+### Completed Work
+- Separated GET, POST/PATCH, DELETE, service, validation, and authentication projections.
+- Corrected Obsidian browser/API scope and narrowed opaque-key invariants to implemented behavior.
+- Reworked migration evidence around an isolated predecessor-to-head sequence.
+- Eliminated frontend ownership collisions, assigned both lockfiles, and corrected the DAG width/dependencies.
+- Added deterministic documentation anchors and archive immutability evidence.
+
+### Next Steps
+- Run iteration-3 convergence review and the required independent vendor-style review.
+
+### Relevant Files
+- `openspec/changes/closeout-db-source-overrides-evidence/design.md` — compatibility and evidence decisions
+- `openspec/changes/closeout-db-source-overrides-evidence/tasks.md` — corrected package ownership and DAG
+- `openspec/changes/closeout-db-source-overrides-evidence/specs/source-override-closeout-evidence/spec.md` — implementable scenarios
+- `openspec/changes/closeout-db-source-overrides-evidence/plan-findings.md` — iteration-2 dispositions
+
+### Context
+Resolved convergence findings about deletion provenance, tolerated request extras, Obsidian transport scope, response/error projections, migration isolation, and package ownership.
+

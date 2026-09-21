@@ -30,3 +30,19 @@ contract/evidence requirements rather than duplicating those behaviors.
 No prototype advisory was triggered: after resolving the product-scope choice,
 the remaining high findings concern explicit contracts and evidence rather than
 three or more unresolved high-severity feasibility questions.
+
+## Iteration 2 — 2026-09-21
+
+| Severity | Dimension | Finding | Disposition |
+|---|---|---|---|
+| high | feasibility | GET cannot distinguish a DB-only row from a DB shadow, so the UI cannot truthfully predict delete effect. | Chose one generic “remove override; YAML may reappear” action; backend tests own the distinct outcomes. |
+| high | compatibility | Current Pydantic models ignore unknown siblings, contradicting rejection scenarios. | Preserved `/api/v1` extra-ignore behavior, made nested `config.type` solely authoritative, and added no-effect tests. |
+| high | consistency | “Worker-local Obsidian creation” wrongly implied trusted HTTP/CLI creation was forbidden. | Limited the prohibition to browser create/edit; trusted API/CLI config remains compatible and responses stay redacted. |
+| high | feasibility | The shared migrated fixture cannot prove sentinel preservation across the source migration. | Added an isolated predecessor→source migration→head sequence and separate revision-chain assertions. |
+| high | testability | An incompatible table cannot produce a production failure without a new validator. | Scoped detection to a test-local schema verifier and documented recovery; no production doctor is claimed. |
+| medium | contract | GET, mutation, deletion, validation, service-error, and auth-error projections were conflated. | Named each success and legacy JSON error shape separately. |
+| medium | security | Design claimed a server length bound that does not exist. | Retained only actual non-empty/no-NUL validation; no new HTTP bound is invented. |
+| medium | scope | The opaque-key promise generalized beyond implemented private-source handling. | Narrowed the normative invariant to Obsidian. |
+| medium | parallelism | WP3 both depended on WP1 and was counted as an independent root. | Made WP3 depend on WP1 and corrected maximum width to five in tasks/design. |
+| medium | ownership | Frontend DTOs and lockfiles had ambiguous or incomplete owners. | Assigned shared DTOs to WP1, component files to WP2b, and both tracked lockfiles to WP2a. |
+| medium | testability | Documentation checkpoints were prose-only. | Added exact section/topic checklists and deterministic anchor/archive checks. |
