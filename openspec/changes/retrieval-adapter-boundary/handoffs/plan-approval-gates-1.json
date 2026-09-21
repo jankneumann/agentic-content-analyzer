@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-09-08T13:35:19.661716+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "claude",
+    "session_id": null,
+    "summary": "Gate 1 (direction): user selected Approach 1, protocol extraction with a composition layer, with no modifications. Gate 2 (plan): user approved the complete plan; next step is /implement-feature retrieval-adapter-boundary.",
+    "completed_work": [
+      "Gate 1 approved: Approach 1 selected",
+      "Gate 2 approved: proceed to implementation",
+      "openspec validate --strict, work-package schema, and parallel-zone checks all pass",
+      "Coordinator lock and feature registration returned unauthorized; claims recorded in work-packages.yaml only"
+    ],
+    "in_progress": [],
+    "decisions": [],
+    "next_steps": [
+      "/implement-feature retrieval-adapter-boundary"
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/retrieval-adapter-boundary/work-packages.yaml",
+        "description": "execution plan"
+      }
+    ]
+  }
+}
