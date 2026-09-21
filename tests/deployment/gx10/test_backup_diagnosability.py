@@ -86,9 +86,7 @@ def test_the_controller_logs_the_reason_it_recorded_a_diagnostic_code_for(caplog
 
     with caplog.at_level(logging.ERROR):
         controller.run(
-            recipient_catalog=backup.AgeRecipientCatalog(
-                active="age1" + "q" * 58, retained=()
-            ),
+            recipient_catalog=backup.AgeRecipientCatalog(active="age1" + "q" * 58, retained=()),
             correlation=backup.MaintenanceCorrelation(operation_id="41", trace_id="a" * 32),
             quota=backup.BackupQuota(limit_bytes=1_000_000, used_bytes=0),
             started_at=datetime(2026, 9, 21, tzinfo=UTC),
