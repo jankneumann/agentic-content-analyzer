@@ -161,7 +161,9 @@ def test_one_component_failure_makes_aggregate_partial_not_success() -> None:
     )
 
     assert manifest.outcome == "partial"
-    falkordb = next(r for r in manifest.components if r.component is backup.BackupComponent.FALKORDB)
+    falkordb = next(
+        r for r in manifest.components if r.component is backup.BackupComponent.FALKORDB
+    )
     assert falkordb.outcome == "permanent_failure"
     assert falkordb.diagnostic_code == "component_backup_failed"
     assert "unavailable" not in manifest.to_json()
