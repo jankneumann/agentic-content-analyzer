@@ -183,7 +183,7 @@ def test_a_timer_fired_unit_refuses_a_stale_installed_definition(name: str, tmp_
 
     unit = f"{name}.service"
     reviewed = ROOT / "deploy/gx10/systemd" / unit
-    assert f"ExecStartPre=/opt/aca/scripts/gx10/check_unit_current.sh %n" in reviewed.read_text(
+    assert "ExecStartPre=/opt/aca/scripts/gx10/check_unit_current.sh %n" in reviewed.read_text(
         encoding="utf-8"
     )
 
