@@ -8,10 +8,12 @@ This change adds source management to the existing durable
 - `PATCH /api/v1/sources/{key}`
 - `DELETE /api/v1/sources/{key}`
 
-POST has one discriminator at `config.type`; PATCH accepts only `{enabled}`.
-The contract records owner-session and `X-Admin-Key` authentication, stable
-response/error shapes, versioning, origin, and privacy-safe opaque keys for
-private sources.
+POST has one meaningful discriminator at `config.type`; PATCH mutates only
+`enabled`. Existing `/api/v1` behavior ignores unknown request siblings, which
+must have no semantic effect. The contract records owner-session and
+`X-Admin-Key` authentication; operation-specific success projections; legacy
+service, validation, and auth error bodies; versioning; origin; and Obsidian's
+privacy-safe opaque key.
 
 The existing generator produces Python and TypeScript contract models/types.
 It does not generate HTTP clients. Contract and transport tests must prove that

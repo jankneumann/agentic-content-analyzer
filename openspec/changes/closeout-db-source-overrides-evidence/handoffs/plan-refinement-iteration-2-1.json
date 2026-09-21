@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-09-21T19:40:35.893397+00:00",
+  "coordinator_error": {
+    "error_type": "unreachable",
+    "message": "coordinator write skipped after policy rejection; using local fallback",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Resolved convergence findings about deletion provenance, tolerated request extras, Obsidian transport scope, response/error projections, migration isolation, and package ownership.",
+    "completed_work": [
+      "Separated GET, POST/PATCH, DELETE, service, validation, and authentication projections.",
+      "Corrected Obsidian browser/API scope and narrowed opaque-key invariants to implemented behavior.",
+      "Reworked migration evidence around an isolated predecessor-to-head sequence.",
+      "Eliminated frontend ownership collisions, assigned both lockfiles, and corrected the DAG width/dependencies.",
+      "Added deterministic documentation anchors and archive immutability evidence."
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Use generic database-override deletion copy",
+        "rationale": "GET cannot reveal whether an override shadows YAML; backend evidence proves the two post-delete outcomes.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Preserve ignored unknown request siblings",
+        "rationale": "Pydantic currently tolerates them, so strict rejection would be an unannounced compatibility change.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Prohibit only browser Obsidian create/edit",
+        "rationale": "Trusted API and CLI creation already exist; all public responses remain redacted.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Exercise the source migration from its predecessor in isolation",
+        "rationale": "The session-shared head fixture cannot prove sentinel preservation across initial creation.",
+        "capability": null,
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Run iteration-3 convergence review and the required independent vendor-style review."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/closeout-db-source-overrides-evidence/design.md",
+        "description": "compatibility and evidence decisions"
+      },
+      {
+        "path": "openspec/changes/closeout-db-source-overrides-evidence/tasks.md",
+        "description": "corrected package ownership and DAG"
+      },
+      {
+        "path": "openspec/changes/closeout-db-source-overrides-evidence/specs/source-override-closeout-evidence/spec.md",
+        "description": "implementable scenarios"
+      },
+      {
+        "path": "openspec/changes/closeout-db-source-overrides-evidence/plan-findings.md",
+        "description": "iteration-2 dispositions"
+      }
+    ]
+  }
+}

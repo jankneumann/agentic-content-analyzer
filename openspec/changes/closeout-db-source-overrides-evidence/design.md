@@ -22,14 +22,16 @@ POST `/api/v1/sources` accepts:
 }
 ```
 
-`config.type` is the single discriminator. There is no duplicate top-level
-`type`. This is the shape already used by FastAPI, CLI, web, and tests and is
-therefore the only compatible `/api/v1` closeout choice.
+`config.type` is the single meaningful discriminator. The published model has
+no top-level `type`. Existing `/api/v1` Pydantic models ignore unknown request
+siblings, so compatibility evidence must prove that a legacy top-level `type`
+cannot override or conflict with the nested value; this closeout does not add
+`extra="forbid"` and turn tolerated input into a 422.
 
-**Rejected alternative:** retain the archived top-level `type` plus nested
-`config.type`. It is redundant, was never accepted by the runtime, permits
-disagreement between two discriminators, and would create a breaking client
-change merely to match stale evidence.
+**Rejected alternatives:** publishing the archived top-level `type` would create
+two potentially conflicting discriminators. Tightening all request models to
+reject unknown siblings would be a separate compatibility change rather than a
+faithful evidence closeout.
 
 ### D2. PATCH is the sole enabled-state mutation
 
@@ -40,7 +42,15 @@ shadow restores the YAML definition; deleting a DB-only source removes it.
 
 Successful POST/PATCH responses carry `source_key`, `version`, `origin`, and
 `enabled`. A new row begins at version 1 and each effective update advances the
-version. DELETE returns `source_key` and `deleted=true`.
+version. DELETE returns `source_key` and `deleted=true`. GET returns the existing
+`SourcesOverview` projection: source key/type/label or URL/origin/enabled plus
+counts, not mutation version.
+
+Source routes preserve their legacy JSON errors: service 400/404 responses are
+`{detail: string}`; body validation is 422 `{detail: ValidationError[]}`; and
+auth middleware returns 401/403 `{error, detail, trace_id?}`. The durable
+OpenAPI names these separately rather than applying the RFC 7807 schemas used by
+newer endpoint families.
 
 **Rejected alternatives:** PUT or generic partial-config PATCH would introduce
 new merge/version semantics; dedicated `/enable` and `/disable` routes are the
@@ -79,11 +89,12 @@ route-only reading would encode the wrong production boundary.
 
 ### D5. Public management keys never expose private locators
 
-Ordinary sources use `<type>:<locator>`. Obsidian and any future private source
-type use an HMAC-derived `src_[a-f0-9]{20}` key at public boundaries. Responses
-and errors never expose `vault_id`, `vault_path`, `ingest_folder`, private tags,
-or a caller-supplied private natural key. Path parameters are URL-encoded by
-clients and bounded/validated by the server.
+Ordinary sources use `<type>:<locator>`. Obsidian uses an HMAC-derived
+`src_[a-f0-9]{20}` key at public boundaries. Responses and errors never expose
+`vault_id`, `vault_path`, `ingest_folder`, private tags, or a caller-supplied
+private natural key. Path parameters are URL-encoded by clients and retain the
+existing server validation (non-empty and no NUL); this closeout does not invent
+a new HTTP length bound.
 
 Write configuration remains distinct from read/mutation projections: an
 authenticated full-config POST may carry worker-local configuration, but no
@@ -94,15 +105,21 @@ the archive does. That would regress the Obsidian privacy boundary.
 
 ### D6. Browser management is intentionally asymmetric
 
-The add dialog supports every public source type, adding Readwise as the one
-currently missing public type. Its fields are a reviewed quick-add subset;
-advanced options remain available through YAML, CLI, or direct API use.
+The add dialog supports every non-worker-filesystem source type, adding
+Readwise as the one currently missing type. Its fields are a reviewed quick-add
+subset; advanced options remain available through YAML, CLI, or direct API use.
 
-Obsidian creation/editing remains worker-local because a browser cannot browse
-or validate the worker mount, allowed roots are deployment policy, and private
-paths cannot be read back to prepopulate an edit form. Existing Obsidian rows
-may be rendered with a generic label plus opaque key and may be enabled,
-disabled, or deleted without exposing private configuration.
+The browser offers no Obsidian creation/editing because it cannot browse or
+validate the worker mount, allowed roots are deployment policy, and private
+paths cannot be read back to prepopulate an edit form. Trusted CLI/API callers
+may still submit full Obsidian configuration. Existing Obsidian rows may be
+rendered with a generic label plus opaque key and may be enabled, disabled, or
+deleted without exposing private configuration.
+
+GET does not distinguish a DB-only override from a DB shadow over YAML: both
+project as `origin="db"`. The delete control therefore uses one truthful message:
+“Remove database override; a YAML definition may reappear.” Backend tests prove
+the two outcomes; browser mocks must not fabricate unavailable provenance.
 
 Component tests render `SourcesConfigurator` with Testing Library and a jsdom
 environment. Playwright tests use deterministic API mocks for browser control
@@ -115,21 +132,24 @@ contract, which is a separate feature rather than evidence closeout.
 
 ### D7. Prove the deployed migration chain on disposable PostgreSQL
 
-The migration test uses the repository fixture that recreates a disposable
-PostgreSQL schema with `alembic upgrade head`. It verifies:
+A migration-local fixture uses an isolated disposable PostgreSQL schema rather
+than the session-shared `test_engine`. It upgrades to the predecessor revision
+`b8f8b5ededed`, creates an unrelated sentinel, upgrades through
+`c3d4e5f6a7b8` to current head, and verifies:
 
-- table and Alembic revision presence;
+- the source migration is present in the revision chain and head is current;
 - PostgreSQL JSONB for `config`;
 - column types, nullability, and server defaults;
 - primary key, unique `source_key`, and `source_type` index;
 - insert/default behavior and JSON round trip;
-- preservation of an unrelated sentinel table/row;
+- preservation of the unrelated sentinel table/row;
 - a second `alembic upgrade head` is a no-op.
 
-A separate assertion documents that the historical migration's table-exists
-guard supports only an already-compatible table. A manually created,
-incompatible table is unsupported and must be backed up, removed or renamed,
-and recreated through Alembic according to the runbook.
+A test-local schema verifier separately demonstrates that the historical
+migration's table-exists guard does not make an incompatible manual table
+supported. This is diagnostic evidence, not a new production preflight. The
+runbook directs an operator to back up, remove or rename, and recreate that table
+through Alembic.
 
 **Rejected alternative:** alter the historical migration to repair arbitrary
 pre-existing schemas. It has already shipped, cannot repair databases that
@@ -164,7 +184,7 @@ an active-change README. Neither remains the live operator/design authority.
   changes.
 - **Component harness dependencies increase frontend test surface.** Use the
   existing Vitest toolchain with only jsdom and Testing Library dependencies;
-  pin through `pnpm-lock.yaml`.
+  update both tracked npm and pnpm lockfiles used by CI/local workflows.
 - **Mocked browser tests can overstate integration.** Pair them with FastAPI,
   client, and PostgreSQL suites and label evidence boundaries explicitly.
 - **Private source data can leak through error strings.** Add negative contract
@@ -174,9 +194,9 @@ an active-change README. Neither remains the live operator/design authority.
 
 ```text
 D1-D9 locked
-  ├─ wp-contract
-  ├─ wp-web-component-harness ── wp-web-component
-  ├─ wp-web-browser
+  ├─ wp-contract ────────────────┬─ wp-web-component
+  │                              └─ wp-web-browser
+  ├─ wp-web-component-harness ───── wp-web-component
   ├─ wp-migration-evidence
   ├─ wp-operator-docs
   └─ wp-architecture-docs
@@ -184,6 +204,6 @@ D1-D9 locked
 all work packages ── wp-integration
 ```
 
-Independent roots after the planning decision: 6 work packages. Maximum
-theoretical parallel width: 6. The component package is the only internal
-two-step chain. Integration waits for all packages.
+Independent roots after the planning decision: WP1, WP2a, WP4, WP5, and WP6.
+Maximum theoretical parallel width: 5. WP2b waits for WP1 and WP2a; WP3 waits
+for WP1. Integration waits for all packages.

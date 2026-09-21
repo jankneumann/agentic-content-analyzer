@@ -29,8 +29,10 @@ surface as proof of the historical "every field for every source" promise.
 
 - Publish `GET`/`POST /api/v1/sources` and `PATCH`/`DELETE
   /api/v1/sources/{key}` in the durable content-workflow OpenAPI. The POST body
-  keeps the discriminator only at `config.type`; PATCH remains the sole
-  enable/disable mutation with `{ "enabled": boolean }`.
+  treats only `config.type` as the discriminator; PATCH remains the sole
+  enable/disable mutation with `{ "enabled": boolean }`. For `/api/v1`
+  compatibility, unknown request siblings remain ignored and have no semantic
+  effect rather than becoming a new strict-validation break.
 - Generate Python and TypeScript contract models from that OpenAPI and prove
   parity with the FastAPI models and the hand-maintained CLI/web HTTP clients.
   This change does not introduce generated HTTP clients.
@@ -40,14 +42,16 @@ surface as proof of the historical "every field for every source" promise.
 - Preserve privacy-safe management identity. Ordinary sources use their
   natural key; private sources such as Obsidian use only an opaque `src_...`
   public key at HTTP, CLI, browser, log, and error boundaries.
-- Add Readwise to the browser add-source form. Obsidian creation and editing
-  remain worker-local; the browser may display, enable, disable, and delete an
-  existing Obsidian source only through its opaque key. Public-source forms are
-  a reviewed quick-add subset rather than a promise to expose every advanced
-  backend field.
+- Add Readwise to the browser add-source form. The browser offers no Obsidian
+  create/edit form; trusted CLI/API callers may still submit worker-local
+  Obsidian configuration, while browser and response projections may display,
+  enable, disable, and delete an existing row only through its opaque key.
+  Public-source forms are a reviewed quick-add subset rather than a promise to
+  expose every advanced backend field.
 - Add rendered-component and mocked-browser evidence for add, origin display,
-  enable/disable, database-only deletion, YAML shadow recovery, private-source
-  redaction, and mutation failures.
+  enable/disable, truthful generic override-removal messaging, private-source
+  redaction, and mutation failures. Backend evidence—not browser inference—
+  proves DB-only removal and YAML-shadow restoration.
 - Add executable migration evidence against the repository's disposable
   PostgreSQL fixture and document setup, precedence, recovery, authentication,
   and PATCH/delete semantics in current durable documentation.
@@ -55,7 +59,7 @@ surface as proof of the historical "every field for every source" promise.
 ## Scope boundaries and non-goals
 
 - No browser form for Obsidian filesystem paths, allowed roots, parser limits,
-  or worker-local readiness configuration.
+  or worker readiness configuration; trusted API/CLI creation remains supported.
 - No new partial-update endpoint, PUT endpoint, enable/disable subroutes, or
   incompatible `/api/v1` request shape.
 - No generated HTTP client framework; only generated contract models/types and
@@ -96,8 +100,9 @@ surface as proof of the historical "every field for every source" promise.
 
 ## Acceptance outcomes
 
-- One additive durable OpenAPI contract matches runtime POST/PATCH/DELETE/GET
-  shapes, security, public-key semantics, and stable operation IDs.
+- One additive durable OpenAPI contract matches each runtime
+  POST/PATCH/DELETE/GET success and legacy error shape, security scheme,
+  public-key semantic, and stable operation ID.
 - Contract generation and drift checks fail if backend, CLI, web types, or the
   durable OpenAPI diverge.
 - Browser evidence proves supported public quick-add behavior and makes the
@@ -105,5 +110,5 @@ surface as proof of the historical "every field for every source" promise.
 - A fresh migrated PostgreSQL database proves the table, JSONB column,
   defaults, uniqueness, and indexes that production relies on.
 - Operators can add, disable, re-enable, remove, and recover overrides using
-  current CLI/API commands and can distinguish deletion of a DB-only source
-  from deletion of a YAML shadow.
+  current CLI/API commands; the UI truthfully warns that removing a database
+  override may reveal a YAML baseline without pretending GET exposes that fact.
