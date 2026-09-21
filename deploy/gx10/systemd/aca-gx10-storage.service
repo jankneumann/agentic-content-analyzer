@@ -20,6 +20,9 @@ EnvironmentFile=/run/aca/gx10/host-maintenance.env
 EnvironmentFile=/etc/aca/gx10-images.env
 StateDirectory=aca/gx10
 StateDirectoryMode=0700
+# A timer fires this unit directly, so a stale installed copy would run
+# old settings indefinitely with nothing to say so.
+ExecStartPre=/opt/aca/scripts/gx10/check_unit_current.sh %n
 ExecStart=/opt/aca/.venv/bin/python -m scripts.gx10.storage --filesystem /srv/aca --concurrency 8 --actions /etc/aca/gx10/storage-actions.json --state-file /var/lib/aca/gx10/storage-controller.json --max-cycles 1
 TimeoutStartSec=50
 UMask=0077

@@ -22,6 +22,9 @@ RuntimeDirectory=aca/gx10/restore-drill
 RuntimeDirectoryMode=0700
 StateDirectory=aca/gx10/restore-evidence
 StateDirectoryMode=0700
+# A timer fires this unit directly, so a stale installed copy would run
+# old settings indefinitely with nothing to say so.
+ExecStartPre=/opt/aca/scripts/gx10/check_unit_current.sh %n
 ExecStart=/opt/aca/.venv/bin/python -m scripts.gx10.backup restore --plan /etc/aca/gx10/restore-plan.json --manifest /var/lib/aca/gx10/backups/manifest.json --artifacts /var/lib/aca/gx10/backups --isolated-root /run/aca/gx10/restore-drill --age-material-file /run/aca/gx10/backup/restore-age.json
 StandardOutput=append:/var/lib/aca/gx10/restore-evidence/drills.jsonl
 TimeoutStartSec=14400

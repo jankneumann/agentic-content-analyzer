@@ -15,6 +15,7 @@ state under /var/lib/containers and /run.
 from __future__ import annotations
 
 import importlib.util
+import os
 import re
 import sys
 from pathlib import Path
@@ -166,3 +167,45 @@ def test_both_maintenance_runtimes_use_that_one_rule() -> None:
         source = (ROOT / relative).read_text(encoding="utf-8")
         assert "env=component_environment()" in source, relative
         assert 'env={"PATH"' not in source, relative
+
+
+@pytest.mark.parametrize("name", PODMAN_UNITS)
+def test_a_timer_fired_unit_refuses_a_stale_installed_definition(name: str, tmp_path) -> None:
+    """`git pull` updates /opt/aca and never /etc/systemd/system.
+
+    Until `make install` runs, systemd keeps executing the definition it
+    loaded earlier: the old sandbox, the old environment files. Three backup
+    runs failed in a row against fixes that were already on disk, and nothing
+    in the journal connected the two. These units are fired by timers, so no
+    operator command necessarily reinstalls them first.
+    """
+    import subprocess
+
+    unit = f"{name}.service"
+    reviewed = ROOT / "deploy/gx10/systemd" / unit
+    assert f"ExecStartPre=/opt/aca/scripts/gx10/check_unit_current.sh %n" in reviewed.read_text(
+        encoding="utf-8"
+    )
+
+    installed = tmp_path / "systemd"
+    installed.mkdir()
+    check = [str(ROOT / "scripts/gx10/check_unit_current.sh"), unit]
+    environment = {
+        "PATH": os.environ["PATH"],
+        "GX10_ROOT_DIR": str(ROOT),
+        "GX10_UNIT_DIR": str(installed),
+    }
+
+    missing = subprocess.run(check, env=environment, capture_output=True, text=True)
+    assert missing.returncode == 1
+    assert "not installed" in missing.stderr
+
+    (installed / unit).write_text(reviewed.read_text(encoding="utf-8"), encoding="utf-8")
+    current = subprocess.run(check, env=environment, capture_output=True, text=True)
+    assert current.returncode == 0, current.stderr
+
+    (installed / unit).write_text("[Service]\nProtectSystem=strict\n", encoding="utf-8")
+    stale = subprocess.run(check, env=environment, capture_output=True, text=True)
+    assert stale.returncode == 1
+    assert "older installed definition" in stale.stderr
+    assert "make -C" in stale.stderr, "the message must carry the fix"

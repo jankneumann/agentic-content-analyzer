@@ -288,6 +288,14 @@ attacker-influenced input, so that last rule is the one doing the security
 work, and it is checked after name resolution. Plain `http://` sources stay
 blocked, since the policy permits `CONNECT` only.
 
+`git pull` updates `/opt/aca` and never `/etc/systemd/system`, so a changed
+unit takes effect only after `sudo make -C /opt/aca/deploy/gx10 install`,
+which reinstalls, verifies, and reloads. Timers fire the storage, backup, and
+restore-drill units directly, so nothing else would reinstall them: each now
+refuses to run when its installed copy differs from the reviewed one, naming
+that command. Three backup runs failed in a row against fixes already sitting
+on disk before this check existed.
+
 Those units run with `ProtectSystem=full`, not `strict`. Each drives rootful
 Podman, which writes container state under `/var/lib/containers` and `/run`,
 and `strict` mounts the whole hierarchy read-only: every backup component that
