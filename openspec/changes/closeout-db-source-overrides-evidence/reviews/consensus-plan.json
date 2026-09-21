@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "review_type": "plan",
+  "target": "closeout-db-source-overrides-evidence",
+  "reviewers": [
+    {
+      "vendor": "codex",
+      "agent_id": "codex",
+      "success": true,
+      "findings_count": 5,
+      "elapsed_seconds": 0.0,
+      "error": null
+    }
+  ],
+  "quorum_met": false,
+  "quorum_requested": 1,
+  "quorum_received": 1,
+  "consensus_findings": [
+    {
+      "id": 1,
+      "status": "unconfirmed",
+      "primary_vendor": "codex",
+      "primary_finding_id": 1,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "architecture",
+      "agreed_axis": "architecture",
+      "agreed_criticality": "low",
+      "recommended_disposition": "accept",
+      "description": "The plan separates durable contract, rendered UI, browser, migration, and documentation evidence into owned packages with an acyclic integration gate."
+    },
+    {
+      "id": 2,
+      "status": "unconfirmed",
+      "primary_vendor": "codex",
+      "primary_finding_id": 2,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "security",
+      "agreed_axis": "security",
+      "agreed_criticality": "low",
+      "recommended_disposition": "accept",
+      "description": "The plan covers response, error, browser, CLI, stored-audit, and audit-failure-log redaction for Obsidian while retaining opaque management identity."
+    },
+    {
+      "id": 3,
+      "status": "unconfirmed",
+      "primary_vendor": "codex",
+      "primary_finding_id": 3,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "compatibility",
+      "agreed_axis": "compatibility",
+      "agreed_criticality": "low",
+      "recommended_disposition": "accept",
+      "description": "The plan preserves nested discriminator semantics, tolerated unknown siblings, trusted API and CLI Obsidian creation, and legacy operation-specific error bodies."
+    },
+    {
+      "id": 4,
+      "status": "unconfirmed",
+      "primary_vendor": "codex",
+      "primary_finding_id": 4,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "performance",
+      "agreed_axis": "performance",
+      "agreed_criticality": "low",
+      "recommended_disposition": "accept",
+      "description": "FYI: GET remains an unpaginated complete configuration catalog by explicit bounded-cardinality decision; measured growth would require a separate compatibility proposal."
+    },
+    {
+      "id": 5,
+      "status": "unconfirmed",
+      "primary_vendor": "codex",
+      "primary_finding_id": 5,
+      "matched_findings": [],
+      "match_score": 0.0,
+      "agreed_type": "observability",
+      "agreed_axis": "observability",
+      "agreed_criticality": "low",
+      "recommended_disposition": "accept",
+      "description": "FYI: the privacy guarantee applies to application-owned source-management and audit logs, not independently configured upstream proxy access logs."
+    }
+  ],
+  "summary": {
+    "total_unique_findings": 5,
+    "confirmed_count": 0,
+    "unconfirmed_count": 5,
+    "disagreement_count": 0,
+    "blocking_count": 0
+  }
+}
