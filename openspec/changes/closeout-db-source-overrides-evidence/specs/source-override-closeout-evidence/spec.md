@@ -79,6 +79,15 @@ not expose its locator or worker-local configuration.
 - **AND** `vault_id`, `vault_path`, `ingest_folder`, private tags, and private
   natural keys SHALL be absent.
 
+#### Scenario: Source-management logs redact private identity
+
+- **WHEN** a valid or rejected Obsidian management request is recorded in an
+  application log, persisted audit row, or audit-writer failure message
+- **THEN** the recorded path SHALL contain the valid opaque key or a fixed
+  redacted token, never a caller-supplied private locator
+- **AND** `vault_id`, `vault_path`, `ingest_folder`, private tags, and an
+  `obsidian_vault:<locator>` natural key SHALL be absent.
+
 ### Requirement: R3 — Supported browser behavior has rendered evidence
 
 The settings UI SHALL support quick-add for non-worker-filesystem source types,
@@ -120,19 +129,21 @@ not infer YAML-baseline provenance that GET does not expose.
 
 ### Requirement: R4 — Migration evidence reflects supported PostgreSQL state
 
-A migration-local fixture SHALL build an isolated disposable PostgreSQL schema
-through the repository Alembic chain and verify the deployed source-override
+A migration-local fixture SHALL build a uniquely named disposable PostgreSQL
+database with its own `public` schema through the repository Alembic chain and verify the deployed source-override
 schema, constraints, defaults, JSON behavior, and non-destructive upgrade.
 
 #### Scenario: The source migration upgrades its predecessor
 
-- **WHEN** an isolated schema is upgraded to `b8f8b5ededed`, receives an
-  unrelated sentinel table/row, and is then upgraded through `c3d4e5f6a7b8` to
+- **WHEN** an isolated disposable database is upgraded to `b8f8b5ededed`,
+  receives an unrelated sentinel table/row, and is then upgraded through `c3d4e5f6a7b8` to
   current head
 - **THEN** `source_overrides` SHALL have the expected columns, PostgreSQL JSONB,
   nullability, server defaults, primary key, unique key, and source-type index
 - **AND** insert/default and JSON round trips SHALL work while the sentinel data
-  remains unchanged and the recorded revision reaches current head.
+  remains unchanged and the recorded revision reaches current head
+- **AND** fixture teardown SHALL drop the disposable database without mutating
+  the session-shared test database.
 
 #### Scenario: The compatible upgrade is repeated
 

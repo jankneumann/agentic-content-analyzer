@@ -98,7 +98,13 @@ a new HTTP length bound.
 
 Write configuration remains distinct from read/mutation projections: an
 authenticated full-config POST may carry worker-local configuration, but no
-public response model echoes it.
+public response model echoes it. Audit middleware normalizes
+`/api/v1/sources/{key}` before persistence or failure logging: a valid public key
+may remain, while a caller-supplied non-public Obsidian locator becomes a fixed
+redacted token. Tests cover success, rejected input, stored audit records, and
+the non-blocking audit-writer failure path. This guarantee covers logs emitted
+by application source-management/audit code, not independently configured
+upstream proxy access logs.
 
 **Rejected alternative:** describe every management key as a natural key, as
 the archive does. That would regress the Obsidian privacy boundary.
@@ -132,9 +138,10 @@ contract, which is a separate feature rather than evidence closeout.
 
 ### D7. Prove the deployed migration chain on disposable PostgreSQL
 
-A migration-local fixture uses an isolated disposable PostgreSQL schema rather
-than the session-shared `test_engine`. It upgrades to the predecessor revision
-`b8f8b5ededed`, creates an unrelated sentinel, upgrades through
+A migration-local fixture provisions a uniquely named, worktree-safe disposable
+PostgreSQL database with its own `public` schema rather than using a temporary
+schema or the session-shared `test_engine`. It upgrades to the predecessor
+revision `b8f8b5ededed`, creates an unrelated sentinel, upgrades through
 `c3d4e5f6a7b8` to current head, and verifies:
 
 - the source migration is present in the revision chain and head is current;
@@ -149,7 +156,7 @@ A test-local schema verifier separately demonstrates that the historical
 migration's table-exists guard does not make an incompatible manual table
 supported. This is diagnostic evidence, not a new production preflight. The
 runbook directs an operator to back up, remove or rename, and recreate that table
-through Alembic.
+through Alembic. Fixture teardown drops the disposable database.
 
 **Rejected alternative:** alter the historical migration to repair arbitrary
 pre-existing schemas. It has already shipped, cannot repair databases that
@@ -187,8 +194,9 @@ an active-change README. Neither remains the live operator/design authority.
   update both tracked npm and pnpm lockfiles used by CI/local workflows.
 - **Mocked browser tests can overstate integration.** Pair them with FastAPI,
   client, and PostgreSQL suites and label evidence boundaries explicitly.
-- **Private source data can leak through error strings.** Add negative contract
-  and API assertions for both success and failure paths.
+- **Private source data can leak through errors or raw audit paths.** Normalize
+  source-management audit paths and add negative assertions for responses,
+  stored audit rows, and audit-writer failure logging.
 
 ## Implementation dependency graph
 

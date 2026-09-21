@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-09-21T19:48:33.352570+00:00",
+  "coordinator_error": {
+    "error_type": "unreachable",
+    "message": "coordinator write skipped after policy rejection; using local fallback",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Closed final cross-spec, audit-log privacy, mutation-failure coverage, and public-schema migration-isolation gaps.",
+    "completed_work": [
+      "Added a MODIFIED source-configuration delta for public keys, auth, CLI output, and disabled-shadow visibility.",
+      "Added explicit audit-row and audit-writer failure-log redaction evidence and ownership.",
+      "Required representative add, toggle, and delete failure tests.",
+      "Moved migration evidence to a uniquely named disposable database with scoped teardown.",
+      "Strict OpenSpec validation passes after the third refinement iteration."
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Amend durable source-configuration management requirements",
+        "rationale": "Public management identity must distinguish opaque Obsidian keys from internal natural identity.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Normalize source-management paths in audit middleware",
+        "rationale": "Response redaction alone does not prevent raw rejected locators from reaching persisted or failure logs.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Use a disposable database, not a temporary schema",
+        "rationale": "The shipped migration explicitly queries the public schema.",
+        "capability": null,
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Run the required independent structured plan review, synthesize any available vendor findings, then publish the branch."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/closeout-db-source-overrides-evidence/specs/source-configuration/spec.md",
+        "description": "durable capability corrections"
+      },
+      {
+        "path": "openspec/changes/closeout-db-source-overrides-evidence/specs/source-override-closeout-evidence/spec.md",
+        "description": "log privacy and database isolation evidence"
+      },
+      {
+        "path": "openspec/changes/closeout-db-source-overrides-evidence/tasks.md",
+        "description": "final implementation ownership and acceptance coverage"
+      },
+      {
+        "path": "openspec/changes/closeout-db-source-overrides-evidence/plan-findings.md",
+        "description": "three-iteration audit trail"
+      }
+    ]
+  }
+}

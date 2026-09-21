@@ -23,3 +23,9 @@ with those generated types.
 The archived source-change contract is historical evidence and intentionally
 remains untouched. Its redundant top-level `type` and obsolete mutation paths
 must not be copied into the durable contract.
+
+The change also carries a targeted `MODIFIED` delta for the durable
+`source-configuration` management API/CLI requirements. It distinguishes the
+internal natural key from the public management key, requires opaque Obsidian
+identity, and clarifies that disabled shadows remain management-visible while
+ingestion selection excludes them.
