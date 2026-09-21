@@ -1,0 +1,14 @@
+{
+  "review_type": "plan",
+  "target": "closeout-db-source-overrides-evidence",
+  "mode": "single-reviewer-fallback",
+  "current_vendor": "codex",
+  "external_dispatch": {
+    "status": "policy_blocked",
+    "reason": "Repository-internal plan artifact egress to third-party vendor CLIs was not authorized."
+  },
+  "inputs": [
+    "../review-findings-plan.json"
+  ],
+  "vendor_findings": []
+}
