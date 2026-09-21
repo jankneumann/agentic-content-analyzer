@@ -15,6 +15,7 @@ state under /var/lib/containers and /run.
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -55,12 +56,53 @@ def test_command_evidence_is_bounded_and_survives_empty_stderr() -> None:
     assert len(bounded) <= runtime._STDERR_EVIDENCE_LIMIT
 
 
-def test_the_controller_logs_the_reason_it_recorded_a_diagnostic_code_for() -> None:
-    """`except Exception:` with no logging is what made the codes opaque."""
+def test_the_controller_logs_the_reason_it_recorded_a_diagnostic_code_for(caplog) -> None:
+    """The reason must be in the message, not in `extra`.
+
+    The first attempt put the component and the failure in structured fields.
+    The host formatter drops those, so the journal received the bare sentence
+    "gx10 component backup failed" five times and the operator was no better
+    off than with five identical diagnostic codes. This reads the line that is
+    actually emitted rather than the source that emits it.
+    """
+    import logging
+    from datetime import UTC, datetime
+
+    from src.services.backup import gx10 as backup
+
     source = (ROOT / "src/services/backup/gx10.py").read_text(encoding="utf-8")
     assert "except Exception:" not in source, "a bare swallow loses the only copy of the reason"
-    assert "gx10 component backup failed" in source
-    assert "gx10 component restore failed" in source
+
+    component = backup.BackupComponent.FALKORDB
+    producers = {
+        item: (lambda: b"payload") if item is not component else _raise_unreachable
+        for item in backup.BackupComponent
+    }
+    controller = backup.GX10BackupController(
+        producers=producers,
+        encrypt=lambda payload, _recipient: b"age-encryption.org/v1\n" + payload,
+        store=lambda _name, _payload: None,
+    )
+
+    with caplog.at_level(logging.ERROR):
+        controller.run(
+            recipient_catalog=backup.AgeRecipientCatalog(
+                active="age1" + "q" * 58, retained=()
+            ),
+            correlation=backup.MaintenanceCorrelation(operation_id="41", trace_id="a" * 32),
+            quota=backup.BackupQuota(limit_bytes=1_000_000, used_bytes=0),
+            started_at=datetime(2026, 9, 21, tzinfo=UTC),
+        )
+
+    logged = [record.getMessage() for record in caplog.records]
+    reason = next((line for line in logged if "component backup failed" in line), None)
+    assert reason is not None, logged
+    assert "falkordb" in reason
+    assert "podman is unreachable" in reason
+
+
+def _raise_unreachable() -> bytes:
+    raise RuntimeError("component command failed: podman-compose exit=1 podman is unreachable")
 
 
 @pytest.mark.parametrize("name", PODMAN_UNITS)
@@ -75,3 +117,18 @@ def test_units_that_drive_podman_can_write_container_state(name: str) -> None:
     # restarted container's conmon lands in this unit's cgroup, and a oneshot's
     # default kill would stop it again the moment the unit finished.
     assert "KillMode=process" in directives, name
+
+
+@pytest.mark.parametrize("name", PODMAN_UNITS)
+def test_units_that_drive_podman_can_parse_the_overlay(name: str) -> None:
+    """podman-compose reads the overlay on every call, and the overlay makes
+    the application image and the reviewed digests mandatory. A unit without
+    them fails at parse time, before touching a container: exactly the shape
+    of five producers failing in a second each while the one that only tars a
+    directory succeeded."""
+    compose = (ROOT / "docker-compose.gx10.yml").read_text(encoding="utf-8")
+    required = set(re.findall(r"\$\{(GX10_[A-Z_]+):\?", compose))
+    assert required, "the overlay should still make its image pins mandatory"
+
+    unit = (ROOT / f"deploy/gx10/systemd/{name}.service").read_text(encoding="utf-8")
+    assert "EnvironmentFile=/etc/aca/gx10-images.env" in unit, name

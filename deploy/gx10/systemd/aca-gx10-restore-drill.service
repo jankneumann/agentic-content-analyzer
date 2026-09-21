@@ -13,6 +13,11 @@ WorkingDirectory=/opt/aca
 # doing any work, and the host cannot resolve container names. The renderer
 # writes the same credentials against the database's fixed stateful address.
 EnvironmentFile=/run/aca/gx10/host-maintenance.env
+# podman-compose parses the overlay on every call, and the overlay demands
+# GX10_APP_IMAGE and the reviewed digests. Without them the parse fails
+# before any container is touched, which is every producer that is not a
+# plain tar.
+EnvironmentFile=/etc/aca/gx10-images.env
 RuntimeDirectory=aca/gx10/restore-drill
 RuntimeDirectoryMode=0700
 StateDirectory=aca/gx10/restore-evidence

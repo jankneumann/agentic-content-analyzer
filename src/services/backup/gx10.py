@@ -397,11 +397,14 @@ class GX10BackupController:
                     )
                 except Exception as exc:
                     # The manifest carries a diagnostic code and nothing else,
-                    # by design. Log the reason or the operator is left with
-                    # six identical failures and no way to tell them apart.
+                    # by design. The reason belongs in the message itself: the
+                    # host formatter drops `extra`, so a structured field here
+                    # reaches the journal as the bare sentence it prefixes and
+                    # the operator is back to six identical failures.
                     logger.error(
-                        "gx10 component backup failed",
-                        extra={"backup_component": str(component), "backup_failure": str(exc)},
+                        "gx10 component backup failed component=%s reason=%s",
+                        component,
+                        exc,
                     )
                     results.append(
                         _failed_component(component, correlation, "component_backup_failed")
@@ -591,11 +594,9 @@ class GX10RestoreDrill:
                     )
             except Exception as exc:
                 logger.error(
-                    "gx10 component restore failed",
-                    extra={
-                        "restore_component": str(artifact.component),
-                        "restore_failure": str(exc),
-                    },
+                    "gx10 component restore failed component=%s reason=%s",
+                    artifact.component,
+                    exc,
                 )
                 return self._restore_failure_measured(
                     artifact, correlation, "component_restore_failed", restore_started_at
