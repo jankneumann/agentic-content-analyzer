@@ -1,0 +1,392 @@
+schema_version: 1
+
+feature:
+  id: agent-runtime-correctness
+  title: Agent runtime correctness (durable agent tasks, approvals, memory, cost)
+  plan_revision: 1
+  created_by: claude-remote
+  created_at: "2026-09-05T00:00:00Z"
+
+contracts:
+  revision: 1
+  openapi:
+    primary: openspec/changes/agent-runtime-correctness/contracts/openapi/v1.yaml
+    files:
+      - openspec/changes/agent-runtime-correctness/contracts/openapi/v1.yaml
+      - openspec/changes/agent-runtime-correctness/contracts/db/schema.sql
+  generated:
+    pydantic_dir: src/contracts
+    typescript_dir: web/src/generated
+
+defaults:
+  priority: 5
+  lock_ttl_minutes: 180
+  timeout_minutes: 180
+  retry_budget: 1
+  verification_tier_required: B
+  min_trust_level: 2
+
+packages:
+  - package_id: wp-contracts
+    title: Operation types and agent contract delta
+    task_type: implement
+    description: >-
+      Add agent_task.execute and approval.wait to every operation_type enum copy, add the
+      agent task submission and approvals schemas and paths to the canonical contract, and
+      regenerate models.
+    role: contract-engineer
+    priority: 1
+    depends_on: []
+    locks:
+      files:
+        - openspec/contracts/content-workflows/openapi/v1.yaml
+        - src/contracts/workflow_models.py
+        - src/models/jobs.py
+        - web/src/generated/workflow-contracts.ts
+      keys:
+        - contract:content-workflows:operation-types
+      ttl_minutes: 180
+      reason: Canonical contract and generated-model ownership.
+    scope:
+      write_allow:
+        - openspec/contracts/content-workflows/**
+        - src/contracts/**
+        - src/models/jobs.py
+        - web/src/generated/**
+        - tests/contract/**
+      read_allow:
+        - src/**
+        - openspec/**
+        - tests/**
+    worktree: { name: wp-contracts, mode: isolated }
+    timeout_minutes: 120
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 180
+      complexity: medium
+      package_kind: data_model
+    context_impact:
+      surfaces: [apis]
+    inputs:
+      tasks: ["1.1", "1.2", "1.3"]
+    verification:
+      tier_required: B
+      steps:
+        - name: workflow-contract-drift
+          kind: command
+          command: make workflow-contracts-check
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-contracts/contracts-check.log]
+            result_keys: [exit_code]
+        - name: contract-tests
+          kind: command
+          command: pytest tests/contract -m contract --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-contracts/pytest.xml]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-queue-wait
+    title: Defer-until-event in the queue
+    task_type: implement
+    description: >-
+      Extend OperationService.defer with wait_on, add OperationService.wake, and wake waiting
+      parents inside every child terminal transition in src/queue/setup.py.
+    role: backend-engineer
+    priority: 2
+    depends_on: [wp-contracts]
+    locks:
+      files:
+        - src/services/operation_service.py
+        - src/queue/setup.py
+      keys:
+        - db:schema:pgqueuer_jobs
+      ttl_minutes: 180
+      reason: Queue deferral and wake semantics.
+    scope:
+      write_allow:
+        - src/services/operation_service.py
+        - src/queue/setup.py
+        - src/config/settings.py
+        - tests/queue/**
+      read_allow:
+        - src/**
+        - tests/**
+        - openspec/changes/agent-runtime-correctness/**
+      deny:
+        - src/queue/worker.py
+        - src/queue/workflow_handlers.py
+    worktree: { name: wp-queue-wait, mode: isolated }
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 260
+      complexity: high
+      package_kind: algorithm
+    context_impact:
+      surfaces: [architecture, semantic_code]
+    inputs:
+      tasks: ["2.1", "2.2", "2.3"]
+    verification:
+      tier_required: B
+      steps:
+        - name: queue-tests
+          kind: command
+          command: pytest tests/queue -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-queue-wait/pytest.xml]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-memory-infra
+    title: Async sessions, memory factory, embedding alignment, store outcome
+    task_type: implement
+    description: >-
+      Add the async session factory, build memory strategies from settings with dimension
+      validation and adapters, migrate the embedding column, and return MemoryStoreOutcome.
+    role: backend-engineer
+    priority: 2
+    depends_on: [wp-contracts]
+    locks:
+      files:
+        - src/agents/memory/provider.py
+        - src/storage/async_session.py
+      keys:
+        - db:schema:agent_memories
+      ttl_minutes: 180
+      reason: Memory persistence ownership.
+    scope:
+      write_allow:
+        - src/storage/async_session.py
+        - src/agents/memory/**
+        - src/telemetry/agent_metrics.py
+        - alembic/versions/*_align_agent_memory_embedding.py
+        - tests/agents/memory/**
+        - tests/test_storage/test_async_session.py
+        - tests/integration/test_agent_memory_migration.py
+      read_allow:
+        - src/**
+        - alembic/**
+        - tests/**
+        - openspec/changes/agent-runtime-correctness/**
+      deny:
+        - src/config/settings.py
+    worktree: { name: wp-memory-infra, mode: isolated }
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 420
+      complexity: high
+      package_kind: migration
+    context_impact:
+      surfaces: [architecture, semantic_code]
+    inputs:
+      tasks: ["5.1", "5.2", "5.3", "5.4", "5.5", "5.6", "6.1", "6.2"]
+    verification:
+      tier_required: B
+      steps:
+        - name: memory-tests
+          kind: command
+          command: pytest tests/agents/memory tests/test_storage/test_async_session.py -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-memory-infra/pytest.xml]
+            result_keys: [test_count, pass_count]
+        - name: alembic-single-head
+          kind: command
+          command: alembic heads
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-memory-infra/alembic-heads.log]
+            result_keys: [head_count]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-cost
+    title: Cost accounting from one pricing source
+    task_type: implement
+    description: >-
+      Specialists populate metadata.cost via BaseAgent.calculate_cost; LLMRouter estimation
+      delegates to ModelConfig.calculate_cost and the hardcoded table is removed.
+    role: backend-engineer
+    priority: 3
+    depends_on: [wp-contracts]
+    locks:
+      files:
+        - src/services/llm_router.py
+      keys:
+        - feature:cost-accounting:pricing
+      ttl_minutes: 120
+      reason: Single pricing source.
+    scope:
+      write_allow:
+        - src/agents/specialists/**
+        - src/agents/base.py
+        - src/services/llm_router.py
+        - tests/agents/test_specialists_cost.py
+        - tests/services/test_llm_router_cost.py
+      read_allow:
+        - src/**
+        - settings/**
+        - tests/**
+    worktree: { name: wp-cost, mode: isolated }
+    timeout_minutes: 90
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 120
+      complexity: low
+      package_kind: algorithm
+    context_impact:
+      surfaces: [semantic_code]
+    inputs:
+      tasks: ["7.1", "7.2"]
+    verification:
+      tier_required: B
+      steps:
+        - name: cost-tests
+          kind: command
+          command: pytest tests/agents/test_specialists_cost.py tests/services/test_llm_router_cost.py -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-cost/pytest.xml]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-agent-operation
+    title: agent_task.execute and approval.wait workflows, conductor checkpoint, routes
+    task_type: implement
+    description: >-
+      Implement AgentTaskWorkflow and ApprovalWaitWorkflow, register them, refactor the
+      conductor for checkpoint resume, add delegate.* risk keys, add ApprovalService.create_request
+      and list_requests, rewrite task submission and the decision route, and delete the legacy
+      worker handler. Settings additions for this package (none beyond queue-wait's) are read-only.
+    role: backend-engineer
+    priority: 2
+    depends_on: [wp-queue-wait, wp-memory-infra, wp-cost]
+    locks:
+      files:
+        - src/agents/conductor.py
+        - src/queue/workflow_handlers.py
+        - src/queue/worker.py
+        - src/api/agent_routes.py
+        - src/services/agent_service.py
+      keys:
+        - api:POST /api/v1/agent/task
+        - api:GET /api/v1/agent/approvals
+        - api:POST /api/v1/agent/approval/{id}
+        - db:schema:approval_requests
+      ttl_minutes: 180
+      reason: Agent operation lifecycle ownership.
+    scope:
+      write_allow:
+        - src/workflows/agent_task.py
+        - src/queue/workflow_handlers.py
+        - src/queue/worker.py
+        - src/agents/conductor.py
+        - src/agents/approval/**
+        - src/agents/scheduler/**
+        - src/services/agent_service.py
+        - src/models/approval_request.py
+        - src/api/agent_routes.py
+        - src/cli/agent_commands.py
+        - settings/approval.yaml
+        - alembic/versions/*_approval_request_operation_id.py
+        - tests/workflows/test_agent_task_workflow.py
+        - tests/workflows/test_approval_wait_workflow.py
+        - tests/agents/test_conductor.py
+        - tests/agents/approval/**
+        - tests/agents/test_api_routes.py
+        - tests/agents/test_approval_service.py
+      read_allow:
+        - src/**
+        - settings/**
+        - alembic/**
+        - tests/**
+        - openspec/changes/agent-runtime-correctness/**
+    worktree: { name: wp-agent-operation, mode: isolated }
+    timeout_minutes: 240
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 700
+      complexity: high
+      package_kind: integration
+    context_impact:
+      surfaces: [apis, architecture, semantic_code]
+    inputs:
+      tasks: ["3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "4.1", "4.2", "4.3"]
+    verification:
+      tier_required: B
+      steps:
+        - name: agent-tests
+          kind: command
+          command: pytest tests/workflows tests/agents -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-agent-operation/pytest.xml]
+            result_keys: [test_count, pass_count]
+        - name: legacy-handler-removed
+          kind: command
+          command: "! grep -q 'register_handler(\"execute_agent_task\")' src/queue/worker.py"
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-agent-operation/grep.log]
+            result_keys: [exit_code]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-integration
+    title: Integration merge, end-to-end approval resume, documentation
+    task_type: integrate
+    description: >-
+      Merge all worktrees, run the end-to-end approval-resume test, update docs, and run the
+      full suite plus the contract drift check.
+    priority: 1
+    depends_on: [wp-agent-operation]
+    locks:
+      files: []
+      keys: []
+    scope:
+      write_allow: ["**"]
+      read_allow: ["**"]
+    worktree: { name: wp-integration, mode: shared }
+    timeout_minutes: 180
+    retry_budget: 0
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 150
+      complexity: medium
+      package_kind: integration
+    context_impact:
+      surfaces: [documentation]
+    inputs:
+      tasks: ["8.1", "8.2", "8.3"]
+    verification:
+      tier_required: A
+      steps:
+        - name: full-test-suite
+          kind: command
+          command: pytest --tb=short -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-integration/pytest.xml]
+            result_keys: [test_count]
+        - name: workflow-contract-drift
+          kind: command
+          command: make workflow-contracts-check
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-integration/contracts-check.log]
+            result_keys: [exit_code]
+    outputs:
+      result_keys: [merge_commit, test_count]
