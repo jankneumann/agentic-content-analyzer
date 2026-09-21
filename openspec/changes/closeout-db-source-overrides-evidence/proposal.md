@@ -5,7 +5,8 @@
 Database-backed source storage, merge precedence, API authentication, and CLI
 management are implemented. The historical change still overclaims completion:
 its archived OpenAPI requires a redundant top-level source discriminator that
-the runtime never accepted, the durable contract does not publish the source
+the runtime accepted only as an ignored unknown sibling and never modeled or
+used semantically, the durable contract does not publish the source
 management surface, component/browser evidence is missing, setup guidance is
 incomplete, migration behavior lacks executable PostgreSQL evidence, and the
 architecture guide lists only the read endpoint.
@@ -40,8 +41,9 @@ surface as proof of the historical "every field for every source" promise.
   owner session or `X-Admin-Key` outside the documented credential-free local
   development mode. Rejected writes must not mutate an override.
 - Preserve privacy-safe management identity. Ordinary sources use their
-  natural key; private sources such as Obsidian use only an opaque `src_...`
-  public key at HTTP, CLI, browser, log, and error boundaries.
+  natural key; Obsidian uses only an opaque `src_...` public management key at
+  HTTP, CLI, browser, application/audit-log, and server-error boundaries. Source
+  path logging redacts a caller-supplied non-public Obsidian locator.
 - Add Readwise to the browser add-source form. The browser offers no Obsidian
   create/edit form; trusted CLI/API callers may still submit worker-local
   Obsidian configuration, while browser and response projections may display,
@@ -52,9 +54,13 @@ surface as proof of the historical "every field for every source" promise.
   enable/disable, truthful generic override-removal messaging, private-source
   redaction, and mutation failures. Backend evidence—not browser inference—
   proves DB-only removal and YAML-shadow restoration.
-- Add executable migration evidence against the repository's disposable
-  PostgreSQL fixture and document setup, precedence, recovery, authentication,
-  and PATCH/delete semantics in current durable documentation.
+- Add executable migration evidence against a uniquely named disposable
+  PostgreSQL database with its own `public` schema, and document setup,
+  precedence, recovery, authentication, and PATCH/delete semantics in current
+  durable documentation.
+- Amend the durable `source-configuration` requirements so public management
+  identity is distinct from internal natural identity and disabled shadows stay
+  management-visible while ingestion selection excludes them.
 
 ## Scope boundaries and non-goals
 
@@ -75,9 +81,10 @@ surface as proof of the historical "every field for every source" promise.
   `source_overrides` tables; operator recovery for that unsupported state is
   documented instead of rewriting a deployed historical migration.
 
-## Capability
+## Capabilities
 
 - `source-override-closeout-evidence`
+- `source-configuration`
 
 ## Impact
 
@@ -89,14 +96,14 @@ surface as proof of the historical "every field for every source" promise.
   payloads remain compatible.
 - **Web**: component-test infrastructure, Readwise quick-add support,
   privacy-safe management of existing Obsidian rows, and Playwright evidence.
-- **Database**: tests inspect the already-shipped migration on a fresh
+- **Database**: tests inspect the already-shipped migration on a uniquely named
   disposable PostgreSQL database; no destructive migration is planned.
 - **Documentation**: `docs/ARCHITECTURE.md` and `docs/SETUP.md` become the
   durable design and operations references. The dated archive remains
   immutable.
 - **Security**: no private Obsidian locator or filesystem field may appear in a
-  read/mutation response, error, browser state derived from a response, or
-  generated public model.
+  read/mutation response, server-produced error, browser state derived from a
+  response, generated public model, or source-management application/audit log.
 
 ## Acceptance outcomes
 

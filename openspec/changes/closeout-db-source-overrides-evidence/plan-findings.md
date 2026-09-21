@@ -46,3 +46,14 @@ three or more unresolved high-severity feasibility questions.
 | medium | parallelism | WP3 both depended on WP1 and was counted as an independent root. | Made WP3 depend on WP1 and corrected maximum width to five in tasks/design. |
 | medium | ownership | Frontend DTOs and lockfiles had ambiguous or incomplete owners. | Assigned shared DTOs to WP1, component files to WP2b, and both tracked lockfiles to WP2a. |
 | medium | testability | Documentation checkpoints were prose-only. | Added exact section/topic checklists and deterministic anchor/archive checks. |
+
+## Iteration 3 — 2026-09-21
+
+| Severity | Dimension | Finding | Disposition |
+|---|---|---|---|
+| high | consistency | Durable `source-configuration` management requirements still universalized natural keys and ambiguous disabled-source resolution. | Added a `MODIFIED` delta for public management identity, opaque Obsidian keys, authentication, and management-visible/ingestion-excluded shadows. |
+| high | security | Audit middleware persisted and printed raw source paths, allowing a rejected Obsidian natural locator to leak. | Assigned path normalization and persisted/failure-log redaction tests to WP1; retained the application/audit log privacy guarantee. |
+| medium | testability | Log privacy had no explicit scenario or test owner. | Added an R2 log-redaction scenario and named audit implementation/tests in WP1. |
+| medium | testability | “A failed mutation” did not cover separate add, toggle, and delete handlers. | Required representative recoverable failure evidence for all three handlers in component and browser suites. |
+| medium | feasibility | Schema-only isolation is unsafe because the migration hard-codes `public`. | Required a uniquely named disposable database with its own `public` schema and scoped teardown. |
+| medium | clarity | Proposal still said the ignored top-level discriminator was never accepted. | Clarified that it was accepted only as an unused unknown sibling. |

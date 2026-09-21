@@ -14,6 +14,7 @@
 **Blocked by:** none. **Owns:**
 `openspec/contracts/content-workflows/openapi/v1.yaml`, generated contract
 outputs, `tests/contract/test_canonical_workflow_contracts.py`, source API tests,
+`src/api/middleware/audit.py`, `tests/api/test_audit_middleware.py`,
 `web/src/types/settings.ts`, and—only where parity tests expose drift—the source
 routes and hand-maintained CLI/web transport wrappers plus their tests.
 
@@ -26,13 +27,18 @@ routes and hand-maintained CLI/web transport wrappers plus their tests.
 - [ ] 1.3 Prove FastAPI, CLI, and web parity: semantic config failure
   (400/no row), malformed body (422/no row), missing/invalid auth
   (401/403/no mutation), unknown PATCH (404), ignored extras, and versioning.
-- [ ] 1.4 Correct stale comments that describe GET as public or every key as a
+- [ ] 1.4 Normalize source-management audit paths before persistence and
+  writer-failure logging. Prove valid opaque keys remain useful while rejected
+  Obsidian natural locators, filesystem fields, tags, and identifiers never
+  appear in stored audit rows or captured application logs.
+- [ ] 1.5 Correct stale comments that describe GET as public or every key as a
   natural key; add Readwise and Obsidian to shared response DTO unions without
   creating a browser Obsidian form.
 
 **Checkpoint:** `make workflow-contracts-check`; `.venv/bin/python -m pytest
  tests/contract/test_canonical_workflow_contracts.py
- tests/api/test_source_write_api.py tests/cli/test_source_commands.py -q`;
+ tests/api/test_source_write_api.py tests/api/test_audit_middleware.py
+ tests/cli/test_source_commands.py -q`;
 `pnpm --dir web test --run src/lib/api/__tests__/sources.test.ts`;
 `pnpm --dir web typecheck`.
 
@@ -61,8 +67,9 @@ WP1-owned.
   allow enable/disable and DB-override removal but expose no create/edit form or
   private configuration.
 - [ ] 2.4 Test mixed origins, states, nested add/toggle payloads, the generic
-  “remove override; YAML may reappear” message, and a failed mutation that
-  surfaces a recoverable error without an optimistic state lie.
+  “remove override; YAML may reappear” message, and representative add, toggle,
+  and delete failures; every independent handler surfaces a recoverable error
+  without an optimistic state lie.
 
 **Checkpoint:** `pnpm --dir web test --run
 src/components/settings/__tests__/SourcesConfigurator.test.tsx` and
@@ -74,10 +81,12 @@ src/components/settings/__tests__/SourcesConfigurator.test.tsx` and
 and the source-settings browser spec; it does not edit production components.
 
 - [ ] 3.1 Add deterministic API mocks for mixed origins, Readwise creation,
-  PATCH success/failure, DB-override deletion, and an opaque Obsidian row.
+  add/PATCH/delete success and representative failures, DB-override deletion,
+  and an opaque Obsidian row.
 - [ ] 3.2 Prove origin badges, enabled state, Readwise add, toggle, generic
-  override-removal copy, Obsidian redaction, and mutation-error recovery. Do not
-  mock unavailable YAML-baseline provenance.
+  override-removal copy, Obsidian redaction, and recoverable add, toggle, and
+  delete failures. Use representative status classes rather than a Cartesian
+  matrix, and do not mock unavailable YAML-baseline provenance.
 
 **Checkpoint:** `pnpm --dir web exec playwright test
  tests/e2e/settings/sources.spec.ts --project=chromium`.
@@ -86,20 +95,22 @@ and the source-settings browser spec; it does not edit production components.
 
 **Blocked by:** none. **Owns:** a new migration-local fixture/helper under
 `tests/migrations/` and `tests/migrations/test_source_overrides.py`; no
-historical migration edit or session-shared schema mutation is expected.
+historical migration edit or session-shared database mutation is expected.
 
-- [ ] 4.1 In an isolated schema, upgrade to `b8f8b5ededed`, create a sentinel,
+- [ ] 4.1 Provision a uniquely named, worktree-safe disposable database with
+  its own `public` schema, upgrade to `b8f8b5ededed`, create a sentinel,
   upgrade through `c3d4e5f6a7b8` to current head, and assert the revision chain,
   columns, PostgreSQL JSONB, nullability, defaults, constraints/indexes, JSON
   round trip, and sentinel preservation.
 - [ ] 4.2 Prove a second head upgrade is a no-op. Separately use a test-local
   verifier to demonstrate that the existing-table guard does not validate an
   incompatible manual schema; this evidence must not be presented as a
-  production doctor.
+  production doctor. Teardown drops only the uniquely named disposable
+  database.
 
 **Checkpoint:** `.venv/bin/python -m pytest
- tests/migrations/test_source_overrides.py -q` against the isolated,
-worktree-safe disposable PostgreSQL fixture.
+ tests/migrations/test_source_overrides.py -q` against the uniquely named,
+worktree-safe disposable PostgreSQL database fixture.
 
 ## WP5 — Operator runbook (R5)
 
@@ -115,15 +126,19 @@ worktree-safe disposable PostgreSQL fixture.
 examples against WP1 tests. This command finds every required topic:
 `rg -n "Database source overrides|X-Admin-Key|may reappear|fail-open|backup" docs/SETUP.md`.
 
-## WP6 — Durable architecture record (R1, R2, R5)
+## WP6 — Durable architecture and source-spec alignment (R1, R2, R5)
 
-**Blocked by:** none. **Owns:** `docs/ARCHITECTURE.md` and a stale source-merge
-docstring only if contract tests identify it.
+**Blocked by:** none. **Owns:** `docs/ARCHITECTURE.md`,
+`openspec/changes/closeout-db-source-overrides-evidence/specs/source-configuration/spec.md`,
+and a stale source-merge docstring only if contract tests identify it.
 
-- [ ] 6.1 Record all four methods, nested discriminator and ignored-sibling
+- [ ] 6.1 Modify the durable source-configuration requirements to distinguish
+  internal natural identity from public management identity and to keep a
+  disabled shadow management-visible while ingestion selection excludes it.
+- [ ] 6.2 Record all four methods, nested discriminator and ignored-sibling
   compatibility, PATCH/shadow behavior, auth, Obsidian opaque keys, exact
-  response families, version/natural-key rules, complete-catalog GET, generic
-  deletion copy, and rejected alternatives.
+  response families, version/identity rules, complete-catalog GET, audit-path
+  redaction, generic deletion copy, and rejected alternatives.
 
 **Checkpoint:** reviewer checks the “Source override management” section in
 `docs/ARCHITECTURE.md` against D1–D9. This command finds the required anchors:

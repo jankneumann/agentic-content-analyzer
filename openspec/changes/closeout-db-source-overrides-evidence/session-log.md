@@ -81,3 +81,40 @@ Resolved contract, security, browser-scope, migration, documentation, testabilit
 ### Context
 Resolved convergence findings about deletion provenance, tolerated request extras, Obsidian transport scope, response/error projections, migration isolation, and package ownership.
 
+---
+
+## Phase: Plan refinement iteration 3 (2026-09-21)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Amend durable source-configuration management requirements** — Public management identity must distinguish opaque Obsidian keys from internal natural identity.
+2. **Normalize source-management paths in audit middleware** — Response redaction alone does not prevent raw rejected locators from reaching persisted or failure logs.
+3. **Use a disposable database, not a temporary schema** — The shipped migration explicitly queries the public schema.
+
+### Alternatives Considered
+- Exclude logs from the privacy guarantee: rejected because application-owned audit persistence and failure logging can and should be normalized.
+- Use search_path schema isolation: rejected because the migration hard-codes table_schema=public and could inspect the shared database instead.
+
+### Trade-offs
+- Accepted fixed redaction for invalid source-path identities over full audit-path fidelity because private worker locators must not be persisted or printed.
+
+### Completed Work
+- Added a MODIFIED source-configuration delta for public keys, auth, CLI output, and disabled-shadow visibility.
+- Added explicit audit-row and audit-writer failure-log redaction evidence and ownership.
+- Required representative add, toggle, and delete failure tests.
+- Moved migration evidence to a uniquely named disposable database with scoped teardown.
+- Strict OpenSpec validation passes after the third refinement iteration.
+
+### Next Steps
+- Run the required independent structured plan review, synthesize any available vendor findings, then publish the branch.
+
+### Relevant Files
+- `openspec/changes/closeout-db-source-overrides-evidence/specs/source-configuration/spec.md` — durable capability corrections
+- `openspec/changes/closeout-db-source-overrides-evidence/specs/source-override-closeout-evidence/spec.md` — log privacy and database isolation evidence
+- `openspec/changes/closeout-db-source-overrides-evidence/tasks.md` — final implementation ownership and acceptance coverage
+- `openspec/changes/closeout-db-source-overrides-evidence/plan-findings.md` — three-iteration audit trail
+
+### Context
+Closed final cross-spec, audit-log privacy, mutation-failure coverage, and public-schema migration-isolation gaps.
+
