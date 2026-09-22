@@ -1,14 +1,14 @@
 schema_version: 1
 roadmap_id: x-bookmarks-session-capture
 source_proposal: openspec/roadmaps/x-bookmarks-session-capture/proposal.md
-status: planning
+status: approved
 policy:
   default_action: wait_if_budget_exceeded
   max_switch_attempts_per_item: 2
 items:
 - item_id: ri-01
   title: Establish tailnet exposure baseline for gx-10 services
-  status: candidate
+  status: approved
   priority: 3
   effort: M
   depends_on: []
@@ -32,7 +32,7 @@ items:
     note.
 - item_id: ri-02
   title: Add secret sink abstraction to the auth CLI
-  status: candidate
+  status: approved
   priority: 1
   effort: M
   depends_on: []
@@ -57,7 +57,7 @@ items:
     and X_CT0.
 - item_id: ri-03
   title: Ship workstation and worker AppRole policies
-  status: candidate
+  status: approved
   priority: 4
   effort: S
   depends_on: []
@@ -76,7 +76,7 @@ items:
   - The seed script is idempotent and re-running it leaves both policies unchanged.
 - item_id: ri-04
   title: Introduce live credential provider for rotating secrets
-  status: candidate
+  status: approved
   priority: 2
   effort: M
   depends_on:
@@ -100,7 +100,7 @@ items:
   - No credential value appears in log output in any provider test.
 - item_id: ri-05
   title: Detect Substack session expiry and fail readiness closed
-  status: candidate
+  status: approved
   priority: 2
   effort: M
   depends_on:
@@ -123,7 +123,7 @@ items:
     value in its message or payload.
 - item_id: ri-06
   title: Add browser-session rows to aca auth status
-  status: candidate
+  status: approved
   priority: 5
   effort: S
   depends_on:
@@ -141,7 +141,7 @@ items:
   - No cookie value appears in either output mode.
 - item_id: ri-07
   title: Exclude browser profile directory from backup and sync
-  status: candidate
+  status: approved
   priority: 6
   effort: S
   depends_on: []
@@ -157,7 +157,7 @@ items:
   - docs/BACKUP_RESTORE.md lists ~/.aca/browser-profiles/ as an excluded path.
 - item_id: ri-08
   title: Add aca auth session capture command
-  status: candidate
+  status: approved
   priority: 3
   effort: L
   depends_on:
@@ -185,7 +185,7 @@ items:
     command.
 - item_id: ri-09
   title: Add x_bookmarks to the workflow contract and ContentSource enum
-  status: candidate
+  status: approved
   priority: 1
   effort: M
   depends_on: []
@@ -204,7 +204,7 @@ items:
   - Contract tests accept ingest.x-bookmarks and x_bookmarks as valid literals.
 - item_id: ri-10
   title: Register the x_bookmarks source descriptor and config
-  status: candidate
+  status: approved
   priority: 2
   effort: M
   depends_on:
@@ -229,7 +229,7 @@ items:
     max_entries default.
 - item_id: ri-11
   title: Implement X GraphQL client with query ID discovery and ct0 write-back
-  status: candidate
+  status: approved
   priority: 1
   effort: M
   depends_on:
@@ -255,7 +255,7 @@ items:
   - No cookie or bearer value appears in logs or test output.
 - item_id: ri-12
   title: Ingest X bookmarks incrementally as Content rows
-  status: candidate
+  status: approved
   priority: 1
   effort: M
   depends_on:
@@ -281,7 +281,7 @@ items:
     any other adapter.
 - item_id: ri-13
   title: Expand linked articles from bookmarked posts
-  status: candidate
+  status: approved
   priority: 4
   effort: S
   depends_on:
@@ -302,7 +302,7 @@ items:
   - Media-only and self-referential x.com URLs never produce a url operation.
 - item_id: ri-14
   title: Add admin endpoint for browser-session sync
-  status: candidate
+  status: approved
   priority: 6
   effort: M
   depends_on:
@@ -323,7 +323,7 @@ items:
   - No cookie value appears in logs, audit rows, or error responses.
 - item_id: ri-15
   title: Add Sync session button to the Chrome extension
-  status: candidate
+  status: approved
   priority: 7
   effort: S
   depends_on:
@@ -342,7 +342,7 @@ items:
   - The extension README documents the tailnet API URL and the sync action.
 - item_id: ri-16
   title: Classify session_expired in the terminal-event outbox
-  status: candidate
+  status: approved
   priority: 5
   effort: S
   depends_on:
@@ -363,7 +363,7 @@ items:
     the session_expired code for the affected source.
 - item_id: ri-17
   title: Document X bookmarks and the credential lifecycle
-  status: candidate
+  status: approved
   priority: 7
   effort: M
   depends_on:
