@@ -6,9 +6,16 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import AnyUrl, BaseModel, ConfigDict, Field
+from pydantic import (
+    AnyUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
-CONTRACT_SHA256 = "72f692d31525ab06e1634d5251192d62687f202fe7ad942df841c62a30909cf3"
+CONTRACT_SHA256 = "4a676697b5d8db6579b6efe1d708a33567d9443152a983ec2cd4dfc0f7eb7536"
 
 OperationStatus = Literal["queued", "in_progress", "completed", "failed", "cancelled"]
 OperationType = Literal[
@@ -85,8 +92,7 @@ SourceManagementType = Literal[
 PublicSourceKey = Annotated[
     str,
     Field(
-        max_length=512,
-        pattern="^(?:src_[a-f0-9]{20}|(?:blog|rss|substack|podcast|youtube_playlist|youtube_channel|youtube_rss|gmail|scholar|arxiv|huggingface_papers|websearch|readwise):.+)$",
+        pattern="^(?:src_[a-f0-9]{20}|(?:blog|rss|substack|podcast|youtube_playlist|youtube_channel|youtube_rss|gmail|scholar|arxiv|huggingface_papers|websearch|readwise):.+)$"
     ),
 ]
 
@@ -97,6 +103,10 @@ class StrictModel(BaseModel):
 
 class ExtensibleModel(BaseModel):
     model_config = ConfigDict(extra="allow")
+
+
+class IgnoredExtraModel(BaseModel):
+    model_config = ConfigDict(extra="ignore")
 
 
 COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
@@ -307,7 +317,15 @@ class LegacyAuthError(StrictModel):
 
 
 class LegacyValidationErrorBody(StrictModel):
-    detail: list[dict[str, Any]]
+    detail: list[LegacyValidationErrorItem]
+
+
+class LegacyValidationErrorItem(ExtensibleModel):
+    type: str
+    loc: list[str | int]
+    msg: str
+    input: Any | None = None
+    ctx: dict[str, Any] | None = None
 
 
 class Problem(StrictModel):
@@ -648,16 +666,224 @@ class CapabilityDocument(StrictModel):
     next_cursor: str | None = None
 
 
-class SourceOverrideConfig(ExtensibleModel):
-    type: SourceManagementType
+class SourceConfigBase(IgnoredExtraModel):
+    name: str | None = None
+    tags: list[str] = []
+    enabled: bool = True
+    max_entries: int | None = None
+    content_filter_strategy: str | None = None
+    content_filter_topics: list[str] | None = None
+    content_filter_excerpt_chars: int | None = None
 
 
-class SourceUpsertRequest(ExtensibleModel):
+class BlogSourceOverrideConfig(SourceConfigBase):
+    type: Literal["blog"] = "blog"
+    url: str
+    link_selector: str | None = None
+    link_pattern: str | None = None
+    request_delay: float = 1.0
+    rss_url: str | None = None
+
+
+class RSSSourceOverrideConfig(SourceConfigBase):
+    type: Literal["rss"] = "rss"
+    url: str
+
+
+class SubstackSourceOverrideConfig(SourceConfigBase):
+    type: Literal["substack"] = "substack"
+    url: str
+
+
+class PodcastSourceOverrideConfig(SourceConfigBase):
+    type: Literal["podcast"] = "podcast"
+    url: str
+    transcribe: bool = True
+    stt_provider: Literal["openai", "local_whisper"] = "openai"
+    languages: list[str] = ["en"]
+
+
+class YouTubeSourceConfigBase(IgnoredExtraModel):
+    min_duration_seconds: int | None = None
+    max_duration_seconds: int | None = None
+    long_video_threshold_seconds: int = 2700
+    long_video_strategy: Literal["grounding", "segments"] = "grounding"
+    video_fps: float | None = 0.1
+    segment_overlap_seconds: int = 15
+    unknown_duration_strategy: Literal["short", "grounding", "segments", "skip"] = (
+        "short"
+    )
+
+
+class YouTubePlaylistSourceOverrideConfig(SourceConfigBase):
+    type: Literal["youtube_playlist"] = "youtube_playlist"
+    id: str
+    visibility: Literal["public", "private"] = "public"
+    min_duration_seconds: int | None = None
+    max_duration_seconds: int | None = None
+    long_video_threshold_seconds: int = 2700
+    long_video_strategy: Literal["grounding", "segments"] = "grounding"
+    video_fps: float | None = 0.1
+    segment_overlap_seconds: int = 15
+    unknown_duration_strategy: Literal["short", "grounding", "segments", "skip"] = (
+        "short"
+    )
+    hint_terms: list[str] = []
+    proofread: bool = True
+    gemini_summary: bool = True
+    gemini_resolution: str = "default"
+
+
+class YouTubeChannelSourceOverrideConfig(SourceConfigBase):
+    type: Literal["youtube_channel"] = "youtube_channel"
+    channel_id: str
+    visibility: Literal["public", "private"] = "public"
+    min_duration_seconds: int | None = None
+    max_duration_seconds: int | None = None
+    long_video_threshold_seconds: int = 2700
+    long_video_strategy: Literal["grounding", "segments"] = "grounding"
+    video_fps: float | None = 0.1
+    segment_overlap_seconds: int = 15
+    unknown_duration_strategy: Literal["short", "grounding", "segments", "skip"] = (
+        "short"
+    )
+    languages: list[str] = ["en"]
+    hint_terms: list[str] = []
+    proofread: bool = True
+    gemini_summary: bool = True
+    gemini_resolution: str = "default"
+
+
+class YouTubeRSSSourceOverrideConfig(SourceConfigBase):
+    type: Literal["youtube_rss"] = "youtube_rss"
+    url: str
+    min_duration_seconds: int | None = None
+    max_duration_seconds: int | None = None
+    long_video_threshold_seconds: int = 2700
+    long_video_strategy: Literal["grounding", "segments"] = "grounding"
+    video_fps: float | None = 0.1
+    segment_overlap_seconds: int = 15
+    unknown_duration_strategy: Literal["short", "grounding", "segments", "skip"] = (
+        "short"
+    )
+    gemini_summary: bool = True
+    gemini_resolution: str = "low"
+
+
+class GmailSourceOverrideConfig(SourceConfigBase):
+    type: Literal["gmail"] = "gmail"
+    query: str = "label:newsletters-ai"
+    max_results: int = 50
+
+
+class ScholarSourceOverrideConfig(SourceConfigBase):
+    type: Literal["scholar"] = "scholar"
+    query: str
+    fields_of_study: list[str] = []
+    paper_types: list[str] = []
+    min_citation_count: int = 0
+    year_range: str = ""
+    venues: list[str] = []
+
+
+class ArxivSourceOverrideConfig(SourceConfigBase):
+    type: Literal["arxiv"] = "arxiv"
+    categories: list[str] = []
+    search_query: str | None = None
+    sort_by: Literal["relevance", "lastUpdatedDate", "submittedDate"] = "submittedDate"
+    pdf_extraction: bool = True
+    max_pdf_pages: int = 80
+
+
+class HuggingFacePapersSourceOverrideConfig(SourceConfigBase):
+    type: Literal["huggingface_papers"] = "huggingface_papers"
+    url: str = "https://huggingface.co/papers"
+    request_delay: float = 1.0
+
+
+class WebSearchSourceOverrideConfig(SourceConfigBase):
+    type: Literal["websearch"] = "websearch"
+    provider: Literal["perplexity", "grok"]
+    prompt: str
+    max_results: int | None = None
+    max_threads: int | None = None
+    recency_filter: str | None = None
+    context_size: str | None = None
+    domain_filter: list[str] | None = None
+
+
+class ReadwiseSourceOverrideConfig(SourceConfigBase):
+    type: Literal["readwise"] = "readwise"
+    source_types: list[str] = []
+    include_deleted: bool = False
+
+
+class ObsidianVaultSourceOverrideConfig(StrictModel):
+    type: Literal["obsidian_vault"] = "obsidian_vault"
+    name: str | None = None
+    tags: list[str] = []
+    enabled: bool = True
+    content_filter_strategy: str | None = None
+    content_filter_topics: list[str] | None = None
+    content_filter_excerpt_chars: int | None = None
+    origin: Literal["yaml", "db"] = "yaml"
+    vault_id: Annotated[
+        str, Field(min_length=1, max_length=128, pattern="^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    ]
+    vault_path: Annotated[str, Field(min_length=1, max_length=4096, pattern="^/")]
+    ingest_folder: str = Field(
+        "Inbox", min_length=1, max_length=1024, pattern="^[^/\\\\\\x00]"
+    )
+    max_files: int = Field(1000, ge=1, le=10000)
+    max_entries: int = Field(10000, ge=1, le=100000)
+    max_total_bytes: int = Field(67108864, ge=1, le=268435456)
+    max_depth: int = Field(8, ge=0, le=32)
+    max_duration_seconds: float = Field(300.0, le=3600, gt=0)
+    max_note_bytes: int = Field(4194304, ge=1, le=16777216)
+    settle_seconds: float = Field(0.0, ge=0, le=60)
+    max_concurrency: int = Field(1, ge=1, le=8)
+    max_frontmatter_bytes: int = Field(16384, ge=1, le=1048576)
+    max_yaml_nodes: int = Field(256, ge=1, le=4096)
+    max_yaml_depth: int = Field(16, ge=1, le=64)
+    max_yaml_aliases: int = Field(8, ge=0, le=64)
+    max_yaml_string_chars: int = Field(4096, ge=1, le=65536)
+
+    @field_validator("vault_path")
+    @classmethod
+    def validate_vault_path(cls, value: str) -> str:
+        from pathlib import PurePosixPath
+
+        path = PurePosixPath(value)
+        if "\x00" in value or "\\" in value or not path.is_absolute():
+            raise ValueError("vault_path must be an absolute Unix path")
+        if any(part in {".", ".."} for part in path.parts):
+            raise ValueError("vault_path cannot contain dot or traversal components")
+        return value
+
+    @field_validator("ingest_folder")
+    @classmethod
+    def validate_ingest_folder(cls, value: str) -> str:
+        if "\x00" in value or "\\" in value or value.startswith("/"):
+            raise ValueError("ingest_folder must be a safe relative path")
+        if any(part in {"", ".", ".."} for part in value.split("/")):
+            raise ValueError("ingest_folder must be a safe relative path")
+        return value
+
+    @model_validator(mode="after")
+    def validate_nested_byte_limits(self) -> "ObsidianVaultSourceOverrideConfig":
+        if self.max_note_bytes > self.max_total_bytes:
+            raise ValueError("max_note_bytes cannot exceed max_total_bytes")
+        if self.max_frontmatter_bytes > self.max_note_bytes:
+            raise ValueError("max_frontmatter_bytes cannot exceed max_note_bytes")
+        return self
+
+
+class SourceUpsertRequest(IgnoredExtraModel):
     config: SourceOverrideConfig
     description: str | None = None
 
 
-class SourceEnabledRequest(ExtensibleModel):
+class SourceEnabledRequest(IgnoredExtraModel):
     enabled: bool
 
 
@@ -992,6 +1218,25 @@ class AudioDigestRequest(StrictModel):
 
 
 IngestionResult = IngestionResultV1 | IngestionResultV2
+
+
+SourceOverrideConfig = Annotated[
+    BlogSourceOverrideConfig
+    | RSSSourceOverrideConfig
+    | SubstackSourceOverrideConfig
+    | PodcastSourceOverrideConfig
+    | YouTubePlaylistSourceOverrideConfig
+    | YouTubeChannelSourceOverrideConfig
+    | YouTubeRSSSourceOverrideConfig
+    | GmailSourceOverrideConfig
+    | ScholarSourceOverrideConfig
+    | ArxivSourceOverrideConfig
+    | HuggingFacePapersSourceOverrideConfig
+    | WebSearchSourceOverrideConfig
+    | ReadwiseSourceOverrideConfig
+    | ObsidianVaultSourceOverrideConfig,
+    Field(discriminator="type"),
+]
 
 
 IngestCommand = Annotated[

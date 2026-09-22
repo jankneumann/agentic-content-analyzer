@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-09-22T03:06:08.855069+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "external coordinator egress disabled by policy",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Convergence achieved after closing package-policy, generated-contract parity, and deeply encoded audit-path findings.",
+    "completed_work": [
+      "Restored pnpm 11 esbuild approval and effective security overrides; canonical frontend commands pass.",
+      "Aligned generated Obsidian configuration with runtime inherited fields, safe paths, exclusive bounds, and nested byte limits.",
+      "Added extreme nested-encoding redaction coverage and completed three independent convergence reviews with no medium-or-higher findings."
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Preserve compatibility siblings in TypeScript",
+        "rationale": "The API intentionally accepts and ignores non-semantic request siblings while generated Python mirrors runtime ignore behavior.",
+        "capability": "source-management-contract",
+        "supersedes": null
+      },
+      {
+        "title": "Fail closed on excessive audit decoding",
+        "rationale": "A private source locator must never survive the bounded normalization loop.",
+        "capability": "audit-privacy",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Run integration validation and validation review."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/contracts/content-workflows/openapi/v1.yaml",
+        "description": "Canonical source-management contract"
+      },
+      {
+        "path": "scripts/generate_workflow_contracts.py",
+        "description": "Python and TypeScript artifact generator"
+      },
+      {
+        "path": "src/api/middleware/audit.py",
+        "description": "Fail-closed source-path redaction"
+      },
+      {
+        "path": "openspec/changes/closeout-db-source-overrides-evidence/impl-findings.md",
+        "description": "Resolved implementation findings"
+      }
+    ]
+  }
+}

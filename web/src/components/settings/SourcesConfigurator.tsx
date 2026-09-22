@@ -45,7 +45,11 @@ import {
   useSetSourceEnabled,
 } from "@/hooks/use-settings"
 import { isApiError } from "@/lib/api/client"
-import type { SourceInfo, SourceType } from "@/types/settings"
+import type {
+  SourceInfo,
+  SourceType,
+  SourceUpsertRequest,
+} from "@/types/settings"
 
 // ── Per-type field definitions ──
 
@@ -338,7 +342,7 @@ function AddSourceDialog() {
 
     setMutationError(null)
     upsert.mutate(
-      { config },
+      { config: config as unknown as SourceUpsertRequest["config"] },
       {
         onSuccess: (result) => {
           toast.success(`Added source ${result.source_key}`)
@@ -486,10 +490,17 @@ function SourceRow({ source }: { source: SourceInfo }) {
   const [mutationError, setMutationError] = useState<string | null>(null)
 
   const key = source.source_key
-  const canMutate = Boolean(key)
   const isObsidian = source.type === "obsidian_vault"
+  const hasPublicObsidianKey =
+    !isObsidian || /^src_[a-f0-9]{20}$/.test(key ?? "")
+  const canMutate = Boolean(key) && hasPublicObsidianKey
+  const rowPending = setEnabled.isPending || deleteSource.isPending
   const displayName = isObsidian ? "Obsidian vault" : source.name || source.url
-  const displayLocator = isObsidian ? key : source.url
+  const displayLocator = isObsidian
+    ? hasPublicObsidianKey
+      ? key
+      : "Private source identifier unavailable"
+    : source.url
 
   const handleToggle = (checked: boolean) => {
     if (!key) return
@@ -549,7 +560,7 @@ function SourceRow({ source }: { source: SourceInfo }) {
           <Switch
             checked={source.enabled}
             onCheckedChange={handleToggle}
-            disabled={!canMutate || setEnabled.isPending}
+            disabled={!canMutate || rowPending}
             aria-label={`Toggle ${displayName}`}
           />
           {source.origin === "db" && (
@@ -559,7 +570,7 @@ function SourceRow({ source }: { source: SourceInfo }) {
                   variant="ghost"
                   size="sm"
                   className="text-destructive hover:text-destructive h-8 w-8 shrink-0 p-0"
-                  disabled={!canMutate || deleteSource.isPending}
+                  disabled={!canMutate || rowPending}
                   aria-label={`Remove database override for ${displayName}`}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -582,7 +593,7 @@ function SourceRow({ source }: { source: SourceInfo }) {
                     variant="outline"
                     size="sm"
                     onClick={() => setDeleteOpen(false)}
-                    disabled={deleteSource.isPending}
+                    disabled={rowPending}
                   >
                     Cancel
                   </Button>
@@ -590,7 +601,7 @@ function SourceRow({ source }: { source: SourceInfo }) {
                     variant="destructive"
                     size="sm"
                     onClick={handleDelete}
-                    disabled={deleteSource.isPending}
+                    disabled={rowPending}
                   >
                     {deleteSource.isPending && (
                       <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />

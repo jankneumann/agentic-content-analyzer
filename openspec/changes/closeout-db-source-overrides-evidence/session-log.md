@@ -118,3 +118,68 @@ Resolved convergence findings about deletion provenance, tolerated request extra
 ### Context
 Closed final cross-spec, audit-log privacy, mutation-failure coverage, and public-schema migration-isolation gaps.
 
+---
+
+## Phase: Implementation Iteration 1 (2026-09-22)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Publish the runtime source discriminator union** — Generated request models now reject source configs that the runtime rejects while preserving ignored top-level sibling compatibility.
+2. **Fail closed when migration evidence lacks PostgreSQL** — The dedicated evidence suite must never turn connection or database-creation failures into a successful skipped checkpoint.
+3. **Treat malformed Obsidian management identities as private** — The browser disables mutations and redacts display, while audit normalization decodes nested encodings before classification.
+
+### Alternatives Considered
+- Retain a generic extensible source config contract: rejected because it accepted payloads such as RSS without a URL that production rejects
+- Allow migration tests to skip when PostgreSQL is unavailable: rejected because that made the core migration requirement appear green with no evidence
+
+### Trade-offs
+- Accepted a narrow type assertion at the dynamic browser form boundary over duplicating the generated source union in UI form code because runtime-required fields are already validated by the field definitions and the generated contract remains authoritative
+
+### Capability Gaps Observed
+- **sandbox_tool_failure**: apply_patch could not initialize its loopback sandbox; tightly scoped git-apply and exact substitutions were required (skill: iterate-on-implementation, severity: medium)
+
+### Completed Work
+- Resolved all medium-or-higher findings from security, frontend, and evidence reviewers.
+- Added generated/runtime config parity, named validation-error models, nested audit decoding, dual-credential write coverage, malformed-key UI redaction, mutation locking, and deterministic global browser mocks.
+- Re-ran focused backend, component, Chromium, and live disposable-PostgreSQL evidence successfully.
+
+### Next Steps
+- Run the full integration validation matrix and populate final requirement evidence.
+
+### Relevant Files
+- `openspec/contracts/content-workflows/openapi/v1.yaml` — source management contract
+- `src/api/middleware/audit.py` — nested identity redaction
+- `web/src/components/settings/SourcesConfigurator.tsx` — private identity and mutation resilience
+- `tests/migrations/postgres_migration_fixture.py` — fail-closed database evidence
+
+### Context
+Independent refinement closed contract, privacy, frontend resilience, authentication, and fail-closed migration-evidence findings.
+
+---
+
+## Phase: Implementation Iteration 2 (2026-09-22)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Preserve compatibility siblings in TypeScript** `architectural: source-management-contract` — The API intentionally accepts and ignores non-semantic request siblings while generated Python mirrors runtime ignore behavior.
+2. **Fail closed on excessive audit decoding** `architectural: audit-privacy` — A private source locator must never survive the bounded normalization loop.
+
+### Completed Work
+- Restored pnpm 11 esbuild approval and effective security overrides; canonical frontend commands pass.
+- Aligned generated Obsidian configuration with runtime inherited fields, safe paths, exclusive bounds, and nested byte limits.
+- Added extreme nested-encoding redaction coverage and completed three independent convergence reviews with no medium-or-higher findings.
+
+### Next Steps
+- Run integration validation and validation review.
+
+### Relevant Files
+- `openspec/contracts/content-workflows/openapi/v1.yaml` — Canonical source-management contract
+- `scripts/generate_workflow_contracts.py` — Python and TypeScript artifact generator
+- `src/api/middleware/audit.py` — Fail-closed source-path redaction
+- `openspec/changes/closeout-db-source-overrides-evidence/impl-findings.md` — Resolved implementation findings
+
+### Context
+Convergence achieved after closing package-policy, generated-contract parity, and deeply encoded audit-path findings.
+

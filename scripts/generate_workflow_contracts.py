@@ -10,6 +10,7 @@ import json
 import pprint
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, cast
 
@@ -120,6 +121,10 @@ def _python_default(schema: dict[str, Any], *, required: bool) -> tuple[str, lis
     ):
         if source in schema:
             constraints.append(f"{target}={schema[source]!r}")
+    if "exclusiveMinimum" in schema:
+        constraints.append(f"gt={schema['exclusiveMinimum']!r}")
+    if "exclusiveMaximum" in schema:
+        constraints.append(f"lt={schema['exclusiveMaximum']!r}")
 
     if required and "const" in schema:
         default = repr(schema["const"])
@@ -144,6 +149,8 @@ def _object_parts(schema: dict[str, Any]) -> tuple[str, dict[str, Any], set[str]
             required.update(part.get("required", []))
     if bases:
         base = bases[0]
+    elif schema.get("x-model-extra") == "ignore":
+        base = "IgnoredExtraModel"
     elif schema.get("additionalProperties") is True:
         base = "ExtensibleModel"
     else:
@@ -176,7 +183,7 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
         "from typing import Annotated, Any, Literal",
         "from uuid import UUID",
         "",
-        "from pydantic import AnyUrl, BaseModel, ConfigDict, Field",
+        "from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_validator, model_validator",
         "",
         f'CONTRACT_SHA256 = "{digest}"',
         "",
@@ -203,6 +210,10 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
         "",
         "class ExtensibleModel(BaseModel):",
         '    model_config = ConfigDict(extra="allow")',
+        "",
+        "",
+        "class IgnoredExtraModel(BaseModel):",
+        '    model_config = ConfigDict(extra="ignore")',
         "",
         "",
         "COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = "
@@ -256,6 +267,39 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
                 lines.append(f"    {field_name}: {field_type} = {value}")
             else:
                 lines.append(f"    {field_name}: {field_type} = {default}")
+        if schema.get("x-model-validators") == "obsidian_vault":
+            lines.extend(
+                [
+                    "",
+                    '    @field_validator("vault_path")',
+                    "    @classmethod",
+                    "    def validate_vault_path(cls, value: str) -> str:",
+                    "        from pathlib import PurePosixPath",
+                    "        path = PurePosixPath(value)",
+                    '        if "\\x00" in value or "\\\\" in value or not path.is_absolute():',
+                    '            raise ValueError("vault_path must be an absolute Unix path")',
+                    '        if any(part in {".", ".."} for part in path.parts):',
+                    '            raise ValueError("vault_path cannot contain dot or traversal components")',
+                    "        return value",
+                    "",
+                    '    @field_validator("ingest_folder")',
+                    "    @classmethod",
+                    "    def validate_ingest_folder(cls, value: str) -> str:",
+                    '        if "\\x00" in value or "\\\\" in value or value.startswith("/"):',
+                    '            raise ValueError("ingest_folder must be a safe relative path")',
+                    '        if any(part in {"", ".", ".."} for part in value.split("/")):',
+                    '            raise ValueError("ingest_folder must be a safe relative path")',
+                    "        return value",
+                    "",
+                    '    @model_validator(mode="after")',
+                    '    def validate_nested_byte_limits(self) -> "ObsidianVaultSourceOverrideConfig":',
+                    "        if self.max_note_bytes > self.max_total_bytes:",
+                    '            raise ValueError("max_note_bytes cannot exceed max_total_bytes")',
+                    "        if self.max_frontmatter_bytes > self.max_note_bytes:",
+                    '            raise ValueError("max_frontmatter_bytes cannot exceed max_note_bytes")',
+                    "        return self",
+                ]
+            )
 
     for name, schema in aliases:
         union = _python_type(schema)
@@ -400,7 +444,7 @@ def _render_typescript(spec: dict[str, Any], digest: str) -> str:
 
         base, properties, required = _object_parts(schema)
         extends = (
-            f" extends {base}" if base not in {"StrictModel", "ExtensibleModel"} else ""
+            f" extends {base}" if base not in {"StrictModel", "ExtensibleModel", "IgnoredExtraModel"} else ""
         )
         lines.extend(["", f"export interface {name}{extends} {{"])
         if schema.get("additionalProperties") is True:
@@ -455,6 +499,9 @@ def _validated_contract() -> dict[str, Any]:
 
 def _format_python(source: str) -> str:
     ruff = shutil.which("ruff")
+    sibling_ruff = Path(sys.executable).with_name("ruff")
+    if ruff is None and sibling_ruff.is_file():
+        ruff = str(sibling_ruff)
     if ruff is None:
         raise RuntimeError(
             "ruff is required for deterministic Python generation; install it or add it to PATH"

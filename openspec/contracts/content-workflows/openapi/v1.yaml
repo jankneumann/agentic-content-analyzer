@@ -803,16 +803,18 @@ components:
       properties:
         detail:
           type: array
-          items:
-            type: object
-            additionalProperties: true
-            required: [type, loc, msg]
-            properties:
-              type: { type: string }
-              loc: { type: array, items: { type: [string, integer] } }
-              msg: { type: string }
-              input: {}
-              ctx: { type: object, additionalProperties: true }
+          items: { $ref: "#/components/schemas/LegacyValidationErrorItem" }
+
+    LegacyValidationErrorItem:
+      type: object
+      additionalProperties: true
+      required: [type, loc, msg]
+      properties:
+        type: { type: string }
+        loc: { type: array, items: { type: [string, integer] } }
+        msg: { type: string }
+        input: {}
+        ctx: { type: object, additionalProperties: true }
 
     Problem:
       type: object
@@ -1594,20 +1596,276 @@ components:
 
     PublicSourceKey:
       type: string
-      maxLength: 512
       description: Ordinary natural key or HMAC-derived opaque Obsidian management key.
       pattern: "^(?:src_[a-f0-9]{20}|(?:blog|rss|substack|podcast|youtube_playlist|youtube_channel|youtube_rss|gmail|scholar|arxiv|huggingface_papers|websearch|readwise):.+)$"
 
     SourceOverrideConfig:
+      oneOf:
+        - { $ref: "#/components/schemas/BlogSourceOverrideConfig" }
+        - { $ref: "#/components/schemas/RSSSourceOverrideConfig" }
+        - { $ref: "#/components/schemas/SubstackSourceOverrideConfig" }
+        - { $ref: "#/components/schemas/PodcastSourceOverrideConfig" }
+        - { $ref: "#/components/schemas/YouTubePlaylistSourceOverrideConfig" }
+        - { $ref: "#/components/schemas/YouTubeChannelSourceOverrideConfig" }
+        - { $ref: "#/components/schemas/YouTubeRSSSourceOverrideConfig" }
+        - { $ref: "#/components/schemas/GmailSourceOverrideConfig" }
+        - { $ref: "#/components/schemas/ScholarSourceOverrideConfig" }
+        - { $ref: "#/components/schemas/ArxivSourceOverrideConfig" }
+        - { $ref: "#/components/schemas/HuggingFacePapersSourceOverrideConfig" }
+        - { $ref: "#/components/schemas/WebSearchSourceOverrideConfig" }
+        - { $ref: "#/components/schemas/ReadwiseSourceOverrideConfig" }
+        - { $ref: "#/components/schemas/ObsidianVaultSourceOverrideConfig" }
+      discriminator:
+        propertyName: type
+
+    SourceConfigBase:
       type: object
       additionalProperties: true
-      required: [type]
+      x-model-extra: ignore
       properties:
-        type: { $ref: "#/components/schemas/SourceManagementType" }
+        name: { type: [string, "null"] }
+        tags: { type: array, items: { type: string }, default: [] }
+        enabled: { type: boolean, default: true }
+        max_entries: { type: [integer, "null"] }
+        content_filter_strategy: { type: [string, "null"] }
+        content_filter_topics: { type: [array, "null"], items: { type: string } }
+        content_filter_excerpt_chars: { type: [integer, "null"] }
+
+    BlogSourceOverrideConfig:
+      allOf:
+        - { $ref: "#/components/schemas/SourceConfigBase" }
+        - type: object
+          required: [type, url]
+          properties:
+            type: { type: string, const: blog }
+            url: { type: string }
+            link_selector: { type: [string, "null"] }
+            link_pattern: { type: [string, "null"] }
+            request_delay: { type: number, default: 1.0 }
+            rss_url: { type: [string, "null"] }
+
+    RSSSourceOverrideConfig:
+      allOf:
+        - { $ref: "#/components/schemas/SourceConfigBase" }
+        - type: object
+          required: [type, url]
+          properties:
+            type: { type: string, const: rss }
+            url: { type: string }
+
+    SubstackSourceOverrideConfig:
+      allOf:
+        - { $ref: "#/components/schemas/SourceConfigBase" }
+        - type: object
+          required: [type, url]
+          properties:
+            type: { type: string, const: substack }
+            url: { type: string }
+
+    PodcastSourceOverrideConfig:
+      allOf:
+        - { $ref: "#/components/schemas/SourceConfigBase" }
+        - type: object
+          required: [type, url]
+          properties:
+            type: { type: string, const: podcast }
+            url: { type: string }
+            transcribe: { type: boolean, default: true }
+            stt_provider: { type: string, enum: [openai, local_whisper], default: openai }
+            languages: { type: array, items: { type: string }, default: [en] }
+
+    YouTubeSourceConfigBase:
+      type: object
+      additionalProperties: true
+      x-model-extra: ignore
+      properties:
+        min_duration_seconds: { type: [integer, "null"] }
+        max_duration_seconds: { type: [integer, "null"] }
+        long_video_threshold_seconds: { type: integer, default: 2700 }
+        long_video_strategy: { type: string, enum: [grounding, segments], default: grounding }
+        video_fps: { type: [number, "null"], default: 0.1 }
+        segment_overlap_seconds: { type: integer, default: 15 }
+        unknown_duration_strategy: { type: string, enum: [short, grounding, segments, skip], default: short }
+
+    YouTubePlaylistSourceOverrideConfig:
+      allOf:
+        - { $ref: "#/components/schemas/SourceConfigBase" }
+        - type: object
+          required: [type, id]
+          properties:
+            type: { type: string, const: youtube_playlist }
+            id: { type: string }
+            visibility: { type: string, enum: [public, private], default: public }
+            min_duration_seconds: { type: [integer, "null"] }
+            max_duration_seconds: { type: [integer, "null"] }
+            long_video_threshold_seconds: { type: integer, default: 2700 }
+            long_video_strategy: { type: string, enum: [grounding, segments], default: grounding }
+            video_fps: { type: [number, "null"], default: 0.1 }
+            segment_overlap_seconds: { type: integer, default: 15 }
+            unknown_duration_strategy: { type: string, enum: [short, grounding, segments, skip], default: short }
+            hint_terms: { type: array, items: { type: string }, default: [] }
+            proofread: { type: boolean, default: true }
+            gemini_summary: { type: boolean, default: true }
+            gemini_resolution: { type: string, default: default }
+
+    YouTubeChannelSourceOverrideConfig:
+      allOf:
+        - { $ref: "#/components/schemas/SourceConfigBase" }
+        - type: object
+          required: [type, channel_id]
+          properties:
+            type: { type: string, const: youtube_channel }
+            channel_id: { type: string }
+            visibility: { type: string, enum: [public, private], default: public }
+            min_duration_seconds: { type: [integer, "null"] }
+            max_duration_seconds: { type: [integer, "null"] }
+            long_video_threshold_seconds: { type: integer, default: 2700 }
+            long_video_strategy: { type: string, enum: [grounding, segments], default: grounding }
+            video_fps: { type: [number, "null"], default: 0.1 }
+            segment_overlap_seconds: { type: integer, default: 15 }
+            unknown_duration_strategy: { type: string, enum: [short, grounding, segments, skip], default: short }
+            languages: { type: array, items: { type: string }, default: [en] }
+            hint_terms: { type: array, items: { type: string }, default: [] }
+            proofread: { type: boolean, default: true }
+            gemini_summary: { type: boolean, default: true }
+            gemini_resolution: { type: string, default: default }
+
+    YouTubeRSSSourceOverrideConfig:
+      allOf:
+        - { $ref: "#/components/schemas/SourceConfigBase" }
+        - type: object
+          required: [type, url]
+          properties:
+            type: { type: string, const: youtube_rss }
+            url: { type: string }
+            min_duration_seconds: { type: [integer, "null"] }
+            max_duration_seconds: { type: [integer, "null"] }
+            long_video_threshold_seconds: { type: integer, default: 2700 }
+            long_video_strategy: { type: string, enum: [grounding, segments], default: grounding }
+            video_fps: { type: [number, "null"], default: 0.1 }
+            segment_overlap_seconds: { type: integer, default: 15 }
+            unknown_duration_strategy: { type: string, enum: [short, grounding, segments, skip], default: short }
+            gemini_summary: { type: boolean, default: true }
+            gemini_resolution: { type: string, default: low }
+
+    GmailSourceOverrideConfig:
+      allOf:
+        - { $ref: "#/components/schemas/SourceConfigBase" }
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, const: gmail }
+            query: { type: string, default: "label:newsletters-ai" }
+            max_results: { type: integer, default: 50 }
+
+    ScholarSourceOverrideConfig:
+      allOf:
+        - { $ref: "#/components/schemas/SourceConfigBase" }
+        - type: object
+          required: [type, query]
+          properties:
+            type: { type: string, const: scholar }
+            query: { type: string }
+            fields_of_study: { type: array, items: { type: string }, default: [] }
+            paper_types: { type: array, items: { type: string }, default: [] }
+            min_citation_count: { type: integer, default: 0 }
+            year_range: { type: string, default: "" }
+            venues: { type: array, items: { type: string }, default: [] }
+
+    ArxivSourceOverrideConfig:
+      allOf:
+        - { $ref: "#/components/schemas/SourceConfigBase" }
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, const: arxiv }
+            categories: { type: array, items: { type: string }, default: [] }
+            search_query: { type: [string, "null"] }
+            sort_by: { type: string, enum: [relevance, lastUpdatedDate, submittedDate], default: submittedDate }
+            pdf_extraction: { type: boolean, default: true }
+            max_pdf_pages: { type: integer, default: 80 }
+
+    HuggingFacePapersSourceOverrideConfig:
+      allOf:
+        - { $ref: "#/components/schemas/SourceConfigBase" }
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, const: huggingface_papers }
+            url: { type: string, default: "https://huggingface.co/papers" }
+            request_delay: { type: number, default: 1.0 }
+
+    WebSearchSourceOverrideConfig:
+      allOf:
+        - { $ref: "#/components/schemas/SourceConfigBase" }
+        - type: object
+          required: [type, provider, prompt]
+          properties:
+            type: { type: string, const: websearch }
+            provider: { type: string, enum: [perplexity, grok] }
+            prompt: { type: string }
+            max_results: { type: [integer, "null"] }
+            max_threads: { type: [integer, "null"] }
+            recency_filter: { type: [string, "null"] }
+            context_size: { type: [string, "null"] }
+            domain_filter: { type: [array, "null"], items: { type: string } }
+
+    ReadwiseSourceOverrideConfig:
+      allOf:
+        - { $ref: "#/components/schemas/SourceConfigBase" }
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, const: readwise }
+            source_types: { type: array, items: { type: string }, default: [] }
+            include_deleted: { type: boolean, default: false }
+
+    ObsidianVaultSourceOverrideConfig:
+      type: object
+      additionalProperties: false
+      x-model-validators: obsidian_vault
+      required: [type, vault_id, vault_path]
+      properties:
+        type: { type: string, const: obsidian_vault }
+        name: { type: [string, "null"] }
+        tags: { type: array, items: { type: string }, default: [] }
+        enabled: { type: boolean, default: true }
+        content_filter_strategy: { type: [string, "null"] }
+        content_filter_topics: { type: [array, "null"], items: { type: string } }
+        content_filter_excerpt_chars: { type: [integer, "null"] }
+        origin: { type: string, enum: [yaml, db], default: yaml }
+        vault_id: { type: string, minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$" }
+        vault_path:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          pattern: "^/"
+          description: Absolute Unix path; generated models also reject NUL, backslash, and dot/traversal components.
+        ingest_folder:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          pattern: '^[^/\\\x00]'
+          default: Inbox
+          description: Safe relative path; generated models also reject empty, dot, traversal, NUL, backslash, and empty components.
+        max_files: { type: integer, minimum: 1, maximum: 10000, default: 1000 }
+        max_entries: { type: integer, minimum: 1, maximum: 100000, default: 10000 }
+        max_total_bytes: { type: integer, minimum: 1, maximum: 268435456, default: 67108864 }
+        max_depth: { type: integer, minimum: 0, maximum: 32, default: 8 }
+        max_duration_seconds: { type: number, exclusiveMinimum: 0, maximum: 3600, default: 300.0 }
+        max_note_bytes: { type: integer, minimum: 1, maximum: 16777216, default: 4194304 }
+        settle_seconds: { type: number, minimum: 0, maximum: 60, default: 0.0 }
+        max_concurrency: { type: integer, minimum: 1, maximum: 8, default: 1 }
+        max_frontmatter_bytes: { type: integer, minimum: 1, maximum: 1048576, default: 16384 }
+        max_yaml_nodes: { type: integer, minimum: 1, maximum: 4096, default: 256 }
+        max_yaml_depth: { type: integer, minimum: 1, maximum: 64, default: 16 }
+        max_yaml_aliases: { type: integer, minimum: 0, maximum: 64, default: 8 }
+        max_yaml_string_chars: { type: integer, minimum: 1, maximum: 65536, default: 4096 }
 
     SourceUpsertRequest:
       type: object
       additionalProperties: true
+      x-model-extra: ignore
       description: Only config.type is semantic; unknown request siblings are ignored by /api/v1.
       required: [config]
       properties:
@@ -1617,6 +1875,7 @@ components:
     SourceEnabledRequest:
       type: object
       additionalProperties: true
+      x-model-extra: ignore
       description: Only enabled is semantic; unknown request siblings are ignored by /api/v1.
       required: [enabled]
       properties:

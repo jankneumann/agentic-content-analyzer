@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 # Shares the /api/v1/sources prefix with the read-only overview router.
 router = APIRouter(prefix="/api/v1/sources", tags=["sources"])
 
-SourceKey = Annotated[str, Path(min_length=1, max_length=512, pattern=r"^[^\x00]+$")]
+SourceKey = Annotated[str, Path(min_length=1, pattern=r"^[^\x00]+$")]
 
 
 # ============================================================================
