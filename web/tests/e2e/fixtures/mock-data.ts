@@ -43,6 +43,57 @@ import type {
 
 import type { ContentQuery, ContentQueryPreview } from "../../../src/types/query"
 import type { ScriptDetail, ScriptSection } from "../../../src/types/review"
+import type { SourceInfo, SourcesOverview } from "../../../src/types/settings"
+
+// ─── Ingestion Sources ────────────────────────────────────
+
+export function createSourceInfo(
+  overrides: Partial<SourceInfo> = {}
+): SourceInfo {
+  return {
+    type: "rss",
+    name: "Release feed",
+    url: "https://example.test/releases.xml",
+    enabled: true,
+    tags: [],
+    origin: "yaml",
+    source_key: "rss:https://example.test/releases.xml",
+    ...overrides,
+  }
+}
+
+export function createSourcesOverview(
+  overrides: Partial<SourcesOverview> = {}
+): SourcesOverview {
+  const sources = overrides.sources ?? [
+    createSourceInfo(),
+    createSourceInfo({
+      type: "readwise",
+      name: "Readwise Reader",
+      url: "readwise",
+      enabled: false,
+      origin: "db",
+      source_key: "readwise:reader",
+    }),
+    createSourceInfo({
+      type: "obsidian_vault",
+      name: "Obsidian vault",
+      url: "src_0123456789abcdefabcd",
+      enabled: true,
+      origin: "db",
+      source_key: "src_0123456789abcdefabcd",
+    }),
+  ]
+
+  return {
+    sources,
+    counts: { rss: 12, readwise: 4, obsidian_vault: 7 },
+    total_sources: sources.length,
+    enabled_sources: sources.filter((source) => source.enabled).length,
+    ...overrides,
+    sources,
+  }
+}
 
 // ─── Content ───────────────────────────────────────────────
 

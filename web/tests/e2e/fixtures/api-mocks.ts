@@ -44,6 +44,7 @@ export class ApiMocks {
       this.mockVoiceSettings(),
       this.mockVoiceCleanup(),
       this.mockConnectionStatus(),
+      this.mockSources(),
       this.mockNotificationEvents(),
       this.mockNotificationUnreadCount(),
       this.mockNotificationPreferences(),
@@ -74,6 +75,7 @@ export class ApiMocks {
       this.mockVoiceSettings(),
       this.mockVoiceCleanup(),
       this.mockConnectionStatus(),
+      this.mockSourcesEmpty(),
       this.mockNotificationEventsEmpty(),
       this.mockNotificationUnreadCountEmpty(),
       this.mockNotificationPreferences(),
@@ -827,6 +829,99 @@ export class ApiMocks {
         body: JSON.stringify(data ?? mockData.createPromptTestResponse()),
       })
     )
+  }
+
+  // ─── Source Management Endpoints ────────────────────────
+
+  async mockSources(
+    initial = mockData.createSourcesOverview(),
+    failures: Partial<Record<"add" | "toggle" | "delete", { status: number; detail: string }>> = {}
+  ): Promise<void> {
+    let sources = initial.sources.map((source) => ({ ...source }))
+
+    await this.page.route(/\/api\/v1\/sources(?:\/[^?]*)?(?:\?.*)?/, async (route) => {
+      const request = route.request()
+      const method = request.method()
+      const path = new URL(request.url()).pathname
+      const operation = method === "POST" ? "add" : method === "PATCH" ? "toggle" : method === "DELETE" ? "delete" : null
+      const failure = operation ? failures[operation] : undefined
+
+      if (failure) {
+        return route.fulfill({
+          status: failure.status,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: failure.detail }),
+        })
+      }
+
+      if (method === "GET" && path.endsWith("/sources")) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ...initial,
+            sources,
+            total_sources: sources.length,
+            enabled_sources: sources.filter((source) => source.enabled).length,
+          }),
+        })
+      }
+
+      if (method === "POST" && path.endsWith("/sources")) {
+        const body = request.postDataJSON() as { config: Record<string, unknown> }
+        const type = String(body.config.type)
+        const sourceKey = type === "readwise" ? "readwise:reader" : type + ":browser-test"
+        sources = sources.filter((source) => source.source_key !== sourceKey)
+        sources.push(mockData.createSourceInfo({
+          type,
+          name: type === "readwise" ? "Readwise Reader" : type,
+          url: type,
+          enabled: true,
+          origin: "db",
+          source_key: sourceKey,
+        }))
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ source_key: sourceKey, version: 1, origin: "db", enabled: true }),
+        })
+      }
+
+      const key = decodeURIComponent(path.slice(path.lastIndexOf("/") + 1))
+      const source = sources.find((candidate) => candidate.source_key === key)
+      if (!source) {
+        return route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Source override not found" }),
+        })
+      }
+
+      if (method === "PATCH") {
+        const { enabled } = request.postDataJSON() as { enabled: boolean }
+        source.enabled = enabled
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ source_key: key, version: 2, origin: "db", enabled }),
+        })
+      }
+
+      if (method === "DELETE") {
+        sources = sources.filter((candidate) => candidate.source_key !== key)
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ source_key: key, deleted: true }),
+        })
+      }
+
+      return route.fallback()
+    })
+  }
+
+  async mockSourcesEmpty(): Promise<void> {
+    await this.mockSources(mockData.createSourcesOverview({ sources: [], counts: {} }))
   }
 
   // ─── Model Settings Endpoints ───────────────────────────
