@@ -50,7 +50,7 @@ routes and hand-maintained CLI/web transport wrappers plus their tests.
 root `pnpm-lock.yaml`, `web/vite.config.ts`, and a new shared component-test
 setup file.
 
-- [ ] 2.1 Add jsdom, Testing Library, and user-event to the existing Vitest
+- [x] 2.1 Add jsdom, Testing Library, and user-event to the existing Vitest
   toolchain with deterministic cleanup and accessible-query support. Update
   both tracked lockfiles because CI and local workflows use different installers.
 
