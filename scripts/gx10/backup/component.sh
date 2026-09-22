@@ -5,14 +5,30 @@ umask 077
 mode="${1:-}"
 component="${2:-}"
 target="${3:-}"
-COMPOSE=(/opt/aca/scripts/gx10/podman-compose.sh)
+# Absolute defaults in production; the overrides exist so the stop-copy-start
+# sequence can be exercised by a test instead of only read.
+COMPOSE=("${GX10_COMPOSE_BIN:-/opt/aca/scripts/gx10/podman-compose.sh}")
+PODMAN="${GX10_PODMAN_BIN:-/usr/bin/podman}"
+PERSIST_ROOT="${GX10_PERSIST_ROOT:-/srv/aca}"
 POSTGRES_IMAGE="docker.io/library/postgres:17.11@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675"
 
+# Stop the store, copy it cold, start the same container again.
+#
+# `compose up -d` is wrong for the restart: the container still exists, so
+# podman-compose runs `podman run`, gets 125 for the name already in use,
+# falls back to `podman start`, and reports failure anyway. The store came
+# back up and the component was recorded as a permanent failure -- with no
+# artifact, which is the outcome that matters. `podman start` on the name
+# does exactly the one thing intended, and fails only when it truly cannot.
+#
+# A failed stop aborts before the copy: tarring a running store yields an
+# artifact that looks fine and restores torn.
 offline_tar() {
-  local service="$1" source="$2" status=0
-  "${COMPOSE[@]}" stop --timeout 120 "$service" >&2
+  local service="$1" source="$2" status=0 name
+  name="${COMPOSE_PROJECT_NAME:-aca-gx10}_${service}_1"
+  "${COMPOSE[@]}" stop --timeout 120 "$service" >&2 || return "$?"
   /usr/bin/tar -C "$source" -cf - . || status=$?
-  "${COMPOSE[@]}" up -d --no-deps "$service" >&2 || status=$?
+  "$PODMAN" start "$name" >&2 || status=$?
   return "$status"
 }
 
@@ -24,9 +40,9 @@ produce() {
     langfuse_postgresql)
       exec "${COMPOSE[@]}" exec -T langfuse-postgres sh -ec 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec pg_dump --format=custom --dbname=langfuse --username=langfuse'
       ;;
-    falkordb) offline_tar falkordb /srv/aca/falkordb ;;
-    clickhouse) offline_tar clickhouse /srv/aca/clickhouse ;;
-    minio) offline_tar minio /srv/aca/minio ;;
+    falkordb) offline_tar falkordb "$PERSIST_ROOT/falkordb" ;;
+    clickhouse) offline_tar clickhouse "$PERSIST_ROOT/clickhouse" ;;
+    minio) offline_tar minio "$PERSIST_ROOT/minio" ;;
     configuration_metadata)
       exec /usr/bin/tar -C /opt/aca -cf - docker-compose.gx10.yml deploy/gx10
       ;;
