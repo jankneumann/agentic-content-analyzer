@@ -909,6 +909,7 @@ RAILWAY_MAX_OVERFLOW=1
 - **Managed PostgreSQL**: Alternative databases (AWS RDS, Google Cloud SQL, etc.)
 - **Managed Redis**: Task queue (Redis Cloud, AWS ElastiCache)
 - **Neo4j Aura**: Managed knowledge graph (or self-hosted Neo4j, or FalkorDB as alternative backend)
+- **Self-hosted gx-10 over Tailscale**: API and OpenBao on loopback behind `tailscale serve` — see [Tailnet Exposure](TAILNET.md)
 
 ### Configuration Strategy
 

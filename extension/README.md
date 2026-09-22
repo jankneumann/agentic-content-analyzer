@@ -29,6 +29,25 @@ Reload the unpacked extension from this directory after pulling `main`.
 3. Enter **API Key** (`ADMIN_API_KEY`, sent as `X-Admin-Key`)
 4. Click **Save Settings**
 
+### Self-hosted API on the tailnet (gx-10)
+
+When the API runs on gx-10 it is reachable only over Tailscale, at its MagicDNS
+name with a Let's Encrypt certificate issued by `tailscale serve`:
+
+- **API URL**: `https://gx-10.<tailnet>.ts.net` (your tailnet name; no port, no
+  trailing slash). The machine running Chrome must be on the tailnet with
+  Tailscale DNS enabled. Use the full name: the certificate is not valid for
+  `gx-10`, the `100.x.y.z` address, or `http://`.
+- **Host permission**: `manifest.json` does not yet declare
+  `host_permissions`, so Chrome applies CORS to the extension's requests. Until
+  it does, add the extension's origin to the API's `ALLOWED_ORIGINS`, e.g.
+  `ALLOWED_ORIGINS=...,chrome-extension://<extension-id>` (the ID is shown on
+  `chrome://extensions`). The matching host permission for the tailnet API is
+  `"host_permissions": ["https://gx-10.<tailnet>.ts.net/*"]`; once the manifest
+  declares it, the `chrome-extension://` origin is no longer needed.
+
+Topology, ACLs, and verification: [docs/TAILNET.md](../docs/TAILNET.md).
+
 ## Usage
 
 1. Navigate to any webpage you want to save

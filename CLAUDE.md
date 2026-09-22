@@ -26,6 +26,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | [Search](docs/SEARCH.md) | Hybrid BM25+vector search, embedding providers, chunking |
 | [Deployment](docs/MOBILE_DEPLOYMENT.md) | Railway deployment, Docker, migrations, CORS |
 | [**Backup & Restore**](docs/BACKUP_RESTORE.md) | gx-10 off-site backup: `aca backup`, age encryption, key escrow, multi-store restore runbook |
+| [**Tailnet Exposure**](docs/TAILNET.md) | gx-10 over Tailscale: loopback binds, `tailscale serve` TLS, ACL sketch, workstation `BAO_ADDR`, listener check |
 | [Deploy Secrets](docs/DEPLOY_SECRETS.md) | `aca deploy sync-secrets`: push local secrets to Railway (allowlist, dry-run) |
 | [Desktop](docs/DESKTOP_DEPLOYMENT.md) | Tauri desktop app: build, distribute, remote backend, CORS |
 | [**ACA Agents**](docs/ACA-AGENTS.md) | Agentic analysis: personas, specialists, memory, approvals, scheduling |

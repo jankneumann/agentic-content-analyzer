@@ -1,0 +1,63 @@
+# ACA API on the gx-10 host — loopback only, reached over the tailnet.
+#
+# The API binds 127.0.0.1. `tailscale serve` terminates TLS on
+# https://gx-10.<tailnet>.ts.net (a Let's Encrypt certificate Chrome trusts) and
+# proxies to it, so the only listener another machine can reach is tailscaled's,
+# gated by the tailnet policy. Topology, ACLs, and the listener check:
+# docs/TAILNET.md.
+#
+# It runs the SAME launch script as the container image (migrate, then
+# uvicorn), so gx-10 cannot drift from Railway/Docker in how the API starts.
+# bash is named explicitly because git tracks the script as 0644.
+#
+# Install:
+#   sudo useradd --system --home /opt/aca --shell /usr/sbin/nologin aca
+#   sudo install -m 0644 deploy/gx10/aca-api.service /etc/systemd/system/
+#   sudo install -m 0600 -o root -g root deploy/gx10/aca-gx10.env.example /etc/aca/aca.env
+#   sudo $EDITOR /etc/aca/aca.env
+#   sudo systemctl daemon-reload && sudo systemctl enable --now aca-api.service
+#   sudo tailscale serve --bg 8000
+
+[Unit]
+Description=ACA API (loopback; exposed via tailscale serve)
+Documentation=file:///opt/aca/docs/TAILNET.md
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=exec
+User=aca
+Group=aca
+WorkingDirectory=/opt/aca
+
+Environment=PROFILE=production
+Environment=PATH=/opt/aca/.venv/bin:/usr/local/bin:/usr/bin:/bin
+
+# Safe defaults. EnvironmentFile= below overrides Environment=, so the direct-
+# bind alternative (the Tailscale IPv4) is chosen in /etc/aca/aca.env, never by
+# editing this unit. Never set ACA_API_HOST to 0.0.0.0 or a LAN address.
+Environment=ACA_API_HOST=127.0.0.1
+Environment=PORT=8000
+# Only the local proxy (tailscale serve) may set X-Forwarded-For; the resolved
+# client IP keys the login rate limiter.
+Environment=ACA_FORWARDED_ALLOW_IPS=127.0.0.1
+
+# Root-owned, 0600. Holds ADMIN_API_KEY, the OpenBao AppRole credentials, and
+# the bind/CORS settings. Template: deploy/gx10/aca-gx10.env.example.
+EnvironmentFile=/etc/aca/aca.env
+
+ExecStart=/bin/bash /opt/aca/docker-entrypoint.sh
+Restart=on-failure
+RestartSec=5s
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

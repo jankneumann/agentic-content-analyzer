@@ -1,0 +1,50 @@
+# OpenBao for the gx-10 host — tailnet-only exposure.
+# ====================================================
+#
+# A STANDALONE compose file, not an overlay on docker-compose.yml /
+# docker-compose.openbao.yml, for two reasons:
+#
+#   1. Compose MERGES `ports` lists across -f files by concatenation. An overlay
+#      that adds "127.0.0.1:8200:8200" on top of the dev overlay's "8200:8200"
+#      would keep the 0.0.0.0 listener it was meant to remove.
+#   2. docker-compose.openbao.yml runs `server -dev` (in-memory, unsealed, fixed
+#      root token). gx-10 needs a real server with persistent raft storage.
+#
+# Usage (on gx-10, from the checkout at /opt/aca):
+#   docker compose -p aca-gx10 --env-file /etc/aca/aca.env \
+#     -f deploy/gx10/docker-compose.gx10.yml up -d
+#   tailscale serve --bg --https=8200 http://127.0.0.1:8200
+#
+# Then init/unseal/seed per docs/OPENBAO.md. Topology, ACLs, and the listener
+# check: docs/TAILNET.md.
+#
+# ACA_BAO_BIND_ADDR is the HOST address the port is published on. Leave it at
+# 127.0.0.1 (the tailscale serve recipe). Setting it to gx-10's Tailscale IPv4
+# (100.x.y.z) is the documented "direct bind" alternative. Never set it to
+# 0.0.0.0 or a LAN address. Docker-published ports bypass ufw/firewalld, so the
+# bind address IS the firewall here.
+
+name: aca-gx10
+
+services:
+  openbao:
+    image: quay.io/openbao/openbao:2.2
+    restart: unless-stopped
+    # `server` makes the image entrypoint load every file in /openbao/config.
+    # No -dev flag and no BAO_DEV_* variables: this is a persistent server.
+    command: server
+    ports:
+      - "${ACA_BAO_BIND_ADDR:-127.0.0.1}:8200:8200"
+    volumes:
+      - ./openbao.hcl:/openbao/config/openbao.hcl:ro
+      - openbao_data:/openbao/file
+    healthcheck:
+      # Exit 0 = unsealed, 2 = sealed: the container reports unhealthy until
+      # an operator unseals it, which is the signal we want after a restart.
+      test: ["CMD", "bao", "status", "-address=http://127.0.0.1:8200"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  openbao_data:
