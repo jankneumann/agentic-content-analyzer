@@ -12,17 +12,12 @@
  */
 
 import { useMemo, useState } from "react"
-import {
-  AlertCircle,
-  RefreshCw,
-  Plus,
-  Trash2,
-  Loader2,
-} from "lucide-react"
+import { AlertCircle, RefreshCw, Plus, Trash2, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -61,16 +56,28 @@ interface FieldDef {
   placeholder?: string
   required?: boolean
   /** "list" inputs accept a comma-separated string split into string[] */
-  kind?: "text" | "number" | "list"
+  kind?: "text" | "number" | "list" | "boolean"
 }
 
+type BrowserSourceType = Exclude<SourceType, "obsidian_vault"> | "readwise"
+
 /** Field forms per source type, exposing the full field set for each. */
-const SOURCE_FIELDS: Record<SourceType, FieldDef[]> = {
+const SOURCE_FIELDS: Record<BrowserSourceType, FieldDef[]> = {
   blog: [
-    { key: "url", label: "URL", placeholder: "https://example.com/blog", required: true },
+    {
+      key: "url",
+      label: "URL",
+      placeholder: "https://example.com/blog",
+      required: true,
+    },
     { key: "name", label: "Name", placeholder: "Example Blog" },
     { key: "tags", label: "Tags", placeholder: "ai, research", kind: "list" },
-    { key: "max_entries", label: "Max entries", placeholder: "10", kind: "number" },
+    {
+      key: "max_entries",
+      label: "Max entries",
+      placeholder: "10",
+      kind: "number",
+    },
     { key: "link_selector", label: "Link selector", placeholder: "article a" },
     { key: "link_pattern", label: "Link pattern", placeholder: "/posts/.*" },
     {
@@ -80,73 +87,191 @@ const SOURCE_FIELDS: Record<SourceType, FieldDef[]> = {
     },
   ],
   rss: [
-    { key: "url", label: "URL", placeholder: "https://example.com/feed.xml", required: true },
+    {
+      key: "url",
+      label: "URL",
+      placeholder: "https://example.com/feed.xml",
+      required: true,
+    },
     { key: "name", label: "Name", placeholder: "Example Feed" },
     { key: "tags", label: "Tags", placeholder: "ai, news", kind: "list" },
-    { key: "max_entries", label: "Max entries", placeholder: "10", kind: "number" },
+    {
+      key: "max_entries",
+      label: "Max entries",
+      placeholder: "10",
+      kind: "number",
+    },
   ],
   substack: [
-    { key: "url", label: "URL", placeholder: "https://example.substack.com/feed", required: true },
+    {
+      key: "url",
+      label: "URL",
+      placeholder: "https://example.substack.com/feed",
+      required: true,
+    },
     { key: "name", label: "Name", placeholder: "Example Substack" },
     { key: "tags", label: "Tags", placeholder: "ai, newsletter", kind: "list" },
-    { key: "max_entries", label: "Max entries", placeholder: "10", kind: "number" },
+    {
+      key: "max_entries",
+      label: "Max entries",
+      placeholder: "10",
+      kind: "number",
+    },
   ],
   podcast: [
-    { key: "url", label: "URL", placeholder: "https://example.com/podcast.rss", required: true },
+    {
+      key: "url",
+      label: "URL",
+      placeholder: "https://example.com/podcast.rss",
+      required: true,
+    },
     { key: "name", label: "Name", placeholder: "Example Podcast" },
     { key: "tags", label: "Tags", placeholder: "ai, audio", kind: "list" },
-    { key: "max_entries", label: "Max entries", placeholder: "10", kind: "number" },
+    {
+      key: "max_entries",
+      label: "Max entries",
+      placeholder: "10",
+      kind: "number",
+    },
   ],
   youtube_rss: [
-    { key: "url", label: "URL", placeholder: "https://www.youtube.com/feeds/...", required: true },
+    {
+      key: "url",
+      label: "URL",
+      placeholder: "https://www.youtube.com/feeds/...",
+      required: true,
+    },
     { key: "name", label: "Name", placeholder: "Example Channel" },
     { key: "tags", label: "Tags", placeholder: "ai, video", kind: "list" },
-    { key: "max_entries", label: "Max entries", placeholder: "10", kind: "number" },
+    {
+      key: "max_entries",
+      label: "Max entries",
+      placeholder: "10",
+      kind: "number",
+    },
   ],
   youtube_playlist: [
-    { key: "id", label: "Playlist ID", placeholder: "PLxxxxxxxx", required: true },
+    {
+      key: "id",
+      label: "Playlist ID",
+      placeholder: "PLxxxxxxxx",
+      required: true,
+    },
     { key: "name", label: "Name", placeholder: "Example Playlist" },
     { key: "tags", label: "Tags", placeholder: "ai, video", kind: "list" },
-    { key: "max_entries", label: "Max entries", placeholder: "10", kind: "number" },
+    {
+      key: "max_entries",
+      label: "Max entries",
+      placeholder: "10",
+      kind: "number",
+    },
   ],
   youtube_channel: [
-    { key: "channel_id", label: "Channel ID", placeholder: "UCxxxxxxxx", required: true },
+    {
+      key: "channel_id",
+      label: "Channel ID",
+      placeholder: "UCxxxxxxxx",
+      required: true,
+    },
     { key: "name", label: "Name", placeholder: "Example Channel" },
     { key: "tags", label: "Tags", placeholder: "ai, video", kind: "list" },
-    { key: "max_entries", label: "Max entries", placeholder: "10", kind: "number" },
+    {
+      key: "max_entries",
+      label: "Max entries",
+      placeholder: "10",
+      kind: "number",
+    },
   ],
   gmail: [
-    { key: "query", label: "Query", placeholder: "label:newsletters", required: true },
+    {
+      key: "query",
+      label: "Query",
+      placeholder: "label:newsletters",
+      required: true,
+    },
     { key: "name", label: "Name", placeholder: "Newsletters" },
     { key: "tags", label: "Tags", placeholder: "ai, email", kind: "list" },
   ],
   scholar: [
-    { key: "query", label: "Query", placeholder: "large language models", required: true },
+    {
+      key: "query",
+      label: "Query",
+      placeholder: "large language models",
+      required: true,
+    },
     { key: "name", label: "Name", placeholder: "LLM Research" },
     { key: "tags", label: "Tags", placeholder: "ai, papers", kind: "list" },
   ],
   arxiv: [
-    { key: "search_query", label: "Search query", placeholder: "cat:cs.CL", required: true },
-    { key: "categories", label: "Categories", placeholder: "cs.CL, cs.AI", kind: "list" },
+    {
+      key: "search_query",
+      label: "Search query",
+      placeholder: "cat:cs.CL",
+      required: true,
+    },
+    {
+      key: "categories",
+      label: "Categories",
+      placeholder: "cs.CL, cs.AI",
+      kind: "list",
+    },
     { key: "name", label: "Name", placeholder: "arXiv CL" },
     { key: "tags", label: "Tags", placeholder: "ai, papers", kind: "list" },
-    { key: "max_entries", label: "Max entries", placeholder: "10", kind: "number" },
+    {
+      key: "max_entries",
+      label: "Max entries",
+      placeholder: "10",
+      kind: "number",
+    },
   ],
   huggingface_papers: [
     { key: "name", label: "Name", placeholder: "HF Daily Papers" },
     { key: "tags", label: "Tags", placeholder: "ai, papers", kind: "list" },
-    { key: "max_entries", label: "Max entries", placeholder: "10", kind: "number" },
+    {
+      key: "max_entries",
+      label: "Max entries",
+      placeholder: "10",
+      kind: "number",
+    },
   ],
   websearch: [
-    { key: "provider", label: "Provider", placeholder: "perplexity or grok", required: true },
-    { key: "prompt", label: "Prompt", placeholder: "latest AI news", required: true },
+    {
+      key: "provider",
+      label: "Provider",
+      placeholder: "perplexity or grok",
+      required: true,
+    },
+    {
+      key: "prompt",
+      label: "Prompt",
+      placeholder: "latest AI news",
+      required: true,
+    },
     { key: "name", label: "Name", placeholder: "AI News Search" },
     { key: "tags", label: "Tags", placeholder: "ai, news", kind: "list" },
-    { key: "max_entries", label: "Max entries", placeholder: "10", kind: "number" },
+    {
+      key: "max_entries",
+      label: "Max entries",
+      placeholder: "10",
+      kind: "number",
+    },
+  ],
+  readwise: [
+    {
+      key: "source_types",
+      label: "Source types",
+      placeholder: "kindle, instapaper, reader",
+      kind: "list",
+    },
+    {
+      key: "include_deleted",
+      label: "Include deleted items",
+      kind: "boolean",
+    },
   ],
 }
 
-const SOURCE_TYPES = Object.keys(SOURCE_FIELDS) as SourceType[]
+const SOURCE_TYPES = Object.keys(SOURCE_FIELDS) as BrowserSourceType[]
 
 /** Format a source type for display (e.g., "youtube_playlist" -> "Youtube Playlist") */
 function formatType(type: string): string {
@@ -167,21 +292,25 @@ const ORIGIN_BADGE_CLASSES: Record<SourceInfo["origin"], string> = {
 function AddSourceDialog() {
   const upsert = useUpsertSource()
   const [open, setOpen] = useState(false)
-  const [type, setType] = useState<SourceType>("rss")
+  const [type, setType] = useState<BrowserSourceType>("rss")
   const [values, setValues] = useState<Record<string, string>>({})
+  const [mutationError, setMutationError] = useState<string | null>(null)
 
   const fields = SOURCE_FIELDS[type]
 
   const reset = () => {
     setType("rss")
     setValues({})
+    setMutationError(null)
   }
 
   const handleSubmit = () => {
     // Client-side required field validation
     const missing = fields.filter((f) => f.required && !values[f.key]?.trim())
     if (missing.length > 0) {
-      toast.error(`Missing required field: ${missing.map((f) => f.label).join(", ")}`)
+      toast.error(
+        `Missing required field: ${missing.map((f) => f.label).join(", ")}`
+      )
       return
     }
 
@@ -189,6 +318,10 @@ function AddSourceDialog() {
     const config: Record<string, unknown> = { type }
     for (const field of fields) {
       const raw = values[field.key]?.trim()
+      if (field.kind === "boolean") {
+        config[field.key] = raw === "true"
+        continue
+      }
       if (!raw) continue
       if (field.kind === "list") {
         config[field.key] = raw
@@ -203,6 +336,7 @@ function AddSourceDialog() {
       }
     }
 
+    setMutationError(null)
     upsert.mutate(
       { config },
       {
@@ -215,6 +349,7 @@ function AddSourceDialog() {
           const message = isApiError(error)
             ? error.message
             : "Failed to add source"
+          setMutationError(message)
           toast.error(message)
         },
       }
@@ -250,8 +385,9 @@ function AddSourceDialog() {
             <Select
               value={type}
               onValueChange={(next) => {
-                setType(next as SourceType)
+                setType(next as BrowserSourceType)
                 setValues({})
+                setMutationError(null)
               }}
             >
               <SelectTrigger id="source-type" className="w-full" size="sm">
@@ -269,23 +405,52 @@ function AddSourceDialog() {
 
           {fields.map((field) => (
             <div key={field.key} className="space-y-1.5">
-              <Label htmlFor={`source-field-${field.key}`}>
-                {field.label}
-                {field.required && (
-                  <span className="text-destructive"> *</span>
-                )}
-              </Label>
-              <Input
-                id={`source-field-${field.key}`}
-                type={field.kind === "number" ? "number" : "text"}
-                placeholder={field.placeholder}
-                value={values[field.key] ?? ""}
-                onChange={(e) =>
-                  setValues((prev) => ({ ...prev, [field.key]: e.target.value }))
-                }
-              />
+              {field.kind === "boolean" ? (
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id={`source-field-${field.key}`}
+                    checked={values[field.key] === "true"}
+                    onCheckedChange={(checked) =>
+                      setValues((prev) => ({
+                        ...prev,
+                        [field.key]: checked === true ? "true" : "false",
+                      }))
+                    }
+                  />
+                  <Label htmlFor={`source-field-${field.key}`}>
+                    {field.label}
+                  </Label>
+                </div>
+              ) : (
+                <>
+                  <Label htmlFor={`source-field-${field.key}`}>
+                    {field.label}
+                    {field.required && (
+                      <span className="text-destructive"> *</span>
+                    )}
+                  </Label>
+                  <Input
+                    id={`source-field-${field.key}`}
+                    type={field.kind === "number" ? "number" : "text"}
+                    placeholder={field.placeholder}
+                    value={values[field.key] ?? ""}
+                    onChange={(e) =>
+                      setValues((prev) => ({
+                        ...prev,
+                        [field.key]: e.target.value,
+                      }))
+                    }
+                  />
+                </>
+              )}
             </div>
           ))}
+
+          {mutationError && (
+            <p role="alert" className="text-destructive text-sm">
+              {mutationError}. Review the fields and try again.
+            </p>
+          )}
         </div>
 
         <DialogFooter>
@@ -317,23 +482,28 @@ function AddSourceDialog() {
 function SourceRow({ source }: { source: SourceInfo }) {
   const setEnabled = useSetSourceEnabled()
   const deleteSource = useDeleteSource()
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [mutationError, setMutationError] = useState<string | null>(null)
 
   const key = source.source_key
   const canMutate = Boolean(key)
+  const isObsidian = source.type === "obsidian_vault"
+  const displayName = isObsidian ? "Obsidian vault" : source.name || source.url
+  const displayLocator = isObsidian ? key : source.url
 
   const handleToggle = (checked: boolean) => {
     if (!key) return
+    setMutationError(null)
     setEnabled.mutate(
       { key, enabled: checked },
       {
         onSuccess: () =>
-          toast.success(
-            `${source.name || source.url} ${checked ? "enabled" : "disabled"}`
-          ),
+          toast.success(`${displayName} ${checked ? "enabled" : "disabled"}`),
         onError: (error) => {
           const message = isApiError(error)
             ? error.message
             : "Failed to update source"
+          setMutationError(message)
           toast.error(message)
         },
       }
@@ -342,55 +512,102 @@ function SourceRow({ source }: { source: SourceInfo }) {
 
   const handleDelete = () => {
     if (!key) return
+    setMutationError(null)
     deleteSource.mutate(key, {
-      onSuccess: () => toast.success(`Deleted ${source.name || source.url}`),
+      onSuccess: () => {
+        setDeleteOpen(false)
+        toast.success(`Removed database override for ${displayName}`)
+      },
       onError: (error) => {
         const message = isApiError(error)
           ? error.message
           : "Failed to delete source"
+        setMutationError(message)
         toast.error(message)
       },
     })
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-md border bg-card px-3 py-3">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium">
-            {source.name || source.url}
-          </span>
-          <Badge
-            className={`px-1.5 py-0 text-[10px] ${ORIGIN_BADGE_CLASSES[source.origin]}`}
-          >
-            {source.origin}
-          </Badge>
+    <div className="bg-card rounded-md border px-3 py-3">
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-medium">{displayName}</span>
+            <Badge
+              className={`px-1.5 py-0 text-[10px] ${ORIGIN_BADGE_CLASSES[source.origin]}`}
+            >
+              {source.origin}
+            </Badge>
+          </div>
+          <p className="text-muted-foreground mt-0.5 truncate font-mono text-xs">
+            {displayLocator}
+          </p>
         </div>
-        <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
-          {source.url}
-        </p>
-      </div>
 
-      <div className="flex shrink-0 items-center gap-2">
-        <Switch
-          checked={source.enabled}
-          onCheckedChange={handleToggle}
-          disabled={!canMutate || setEnabled.isPending}
-          aria-label={`Toggle ${source.name || source.url}`}
-        />
-        {source.origin === "db" && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 shrink-0 p-0 text-destructive hover:text-destructive"
-            onClick={handleDelete}
-            disabled={!canMutate || deleteSource.isPending}
-            aria-label={`Delete ${source.name || source.url}`}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          <Switch
+            checked={source.enabled}
+            onCheckedChange={handleToggle}
+            disabled={!canMutate || setEnabled.isPending}
+            aria-label={`Toggle ${displayName}`}
+          />
+          {source.origin === "db" && (
+            <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive h-8 w-8 shrink-0 p-0"
+                  disabled={!canMutate || deleteSource.isPending}
+                  aria-label={`Remove database override for ${displayName}`}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Remove database override?</DialogTitle>
+                  <DialogDescription>
+                    Remove database override; a YAML definition may reappear.
+                  </DialogDescription>
+                </DialogHeader>
+                {mutationError && (
+                  <p role="alert" className="text-destructive text-sm">
+                    {mutationError}. You can try again or cancel.
+                  </p>
+                )}
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDeleteOpen(false)}
+                    disabled={deleteSource.isPending}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleDelete}
+                    disabled={deleteSource.isPending}
+                  >
+                    {deleteSource.isPending && (
+                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                    )}
+                    Remove override
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
       </div>
+      {mutationError && !deleteOpen && (
+        <p role="alert" className="text-destructive mt-2 text-sm">
+          {mutationError}. Try again.
+        </p>
+      )}
     </div>
   )
 }
@@ -423,8 +640,8 @@ export function SourcesConfigurator() {
     return (
       <div className="flex h-48 items-center justify-center rounded-lg border border-dashed">
         <div className="text-center">
-          <AlertCircle className="mx-auto h-10 w-10 text-destructive/50" />
-          <p className="mt-2 text-sm text-muted-foreground">
+          <AlertCircle className="text-destructive/50 mx-auto h-10 w-10" />
+          <p className="text-muted-foreground mt-2 text-sm">
             Failed to load sources: {error?.message}
           </p>
           <Button
@@ -444,7 +661,7 @@ export function SourcesConfigurator() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
+        <p className="text-muted-foreground text-sm">
           {data?.total_sources ?? 0} sources · {data?.enabled_sources ?? 0}{" "}
           enabled
         </p>
@@ -453,14 +670,14 @@ export function SourcesConfigurator() {
 
       {types.length === 0 ? (
         <div className="flex h-48 items-center justify-center rounded-lg border border-dashed">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             No sources configured yet
           </p>
         </div>
       ) : (
         types.map((type) => (
           <div key={type} className="space-y-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
               {formatType(type)}
             </h3>
             <div className="space-y-2">
