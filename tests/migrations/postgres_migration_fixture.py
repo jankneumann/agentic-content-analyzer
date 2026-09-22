@@ -69,7 +69,7 @@ def disposable_migration_database() -> DisposableMigrationDatabase:
 
     base_url = make_url(get_test_database_url())
     if base_url.get_backend_name() != "postgresql":
-        pytest.skip("source-overrides migration evidence requires PostgreSQL")
+        pytest.fail("source-overrides migration evidence requires PostgreSQL")
 
     database_name = _disposable_database_name()
     admin_url = base_url.set(database="postgres")
@@ -85,7 +85,9 @@ def disposable_migration_database() -> DisposableMigrationDatabase:
                 connection.execute(sa.text(f"CREATE DATABASE {quoted_name}"))
             created = True
         except SQLAlchemyError as exc:
-            pytest.skip(f"cannot create disposable PostgreSQL migration database: {exc}")
+            pytest.fail(
+                f"cannot create disposable PostgreSQL migration database: {exc}"
+            )
 
         target_engine = sa.create_engine(target_url, poolclass=NullPool)
         # A new PostgreSQL database already owns an isolated public schema.  Re-

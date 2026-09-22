@@ -4,13 +4,13 @@
 
 | Req ID | Spec Source | Description | Contract Ref | Design Decision | Files Changed | Test(s) | Evidence |
 |--------|-------------|-------------|--------------|-----------------|---------------|---------|----------|
-| source-configuration.1 | `specs/source-configuration/spec.md` | Source override management API uses authenticated public management keys and keeps disabled shadows management-visible. | --- | D2, D4, D5 | --- | `tests/api/test_source_write_api.py`; `tests/api/test_sources_api.py` | --- |
-| source-configuration.2 | `specs/source-configuration/spec.md` | CLI lifecycle commands use public management keys and redact Obsidian locators. | --- | D2, D5 | --- | `tests/cli/test_source_commands.py` | --- |
-| source-override-closeout-evidence.1 | `specs/source-override-closeout-evidence/spec.md` | OpenAPI, runtime, and transports share nested `config.type`, PATCH, response, and legacy error semantics. | --- | D1, D2, D3 | --- | `tests/contract/test_canonical_workflow_contracts.py`; `tests/api/test_source_write_api.py`; `tests/cli/test_source_commands.py`; `web/src/lib/api/__tests__/sources.test.ts` | --- |
-| source-override-closeout-evidence.2 | `specs/source-override-closeout-evidence/spec.md` | Authentication and opaque Obsidian identity include application/audit-log redaction. | --- | D4, D5 | --- | `tests/api/test_source_write_api.py`; `tests/api/test_audit_middleware.py`; `tests/cli/test_source_commands.py` | --- |
-| source-override-closeout-evidence.3 | `specs/source-override-closeout-evidence/spec.md` | Browser quick-add supports Readwise while existing Obsidian rows remain opaque and not browser-configurable. | --- | D6 | --- | `web/src/components/settings/__tests__/SourcesConfigurator.test.tsx`; `web/tests/e2e/settings/sources.spec.ts` | --- |
-| source-override-closeout-evidence.4 | `specs/source-override-closeout-evidence/spec.md` | A disposable PostgreSQL database proves predecessor-to-head migration behavior and incompatible-table diagnostics. | --- | D7 | --- | `tests/migrations/test_source_overrides.py` | --- |
-| source-override-closeout-evidence.5 | `specs/source-override-closeout-evidence/spec.md` | Current setup and architecture docs make source override operations and recovery reproducible. | --- | D8, D9 | --- | deterministic documentation checks in `tasks.md`; strict OpenSpec validation | --- |
+| source-configuration.1 | `specs/source-configuration/spec.md` | Source override management API uses authenticated public management keys and keeps disabled shadows management-visible. | `content-workflows/openapi/v1.yaml` | D2, D4, D5 | `src/api/source_write_routes.py`; `src/api/source_routes.py`; generated contracts | `tests/api/test_source_write_api.py`; `tests/api/test_sources_api.py` | Authenticated lifecycle and disabled-shadow scenarios pass in the focused backend suite. |
+| source-configuration.2 | `specs/source-configuration/spec.md` | CLI lifecycle commands use public management keys and redact Obsidian locators. | `content-workflows/openapi/v1.yaml` | D2, D5 | `src/cli/api_client.py`; `src/cli/source_commands.py` | `tests/cli/test_source_commands.py` | CLI source suite passes within the 116-test focused run. |
+| source-override-closeout-evidence.1 | `specs/source-override-closeout-evidence/spec.md` | OpenAPI, runtime, and transports share nested `config.type`, PATCH, response, and legacy error semantics. | `content-workflows/openapi/v1.yaml` | D1, D2, D3 | canonical OpenAPI; generator; four generated artifacts; API/CLI/web transports | contract, API, CLI, and web API tests | Contract drift passes; contract-only 34/34 and focused backend 116/116 pass. |
+| source-override-closeout-evidence.2 | `specs/source-override-closeout-evidence/spec.md` | Authentication and opaque Obsidian identity include application/audit-log redaction. | `content-workflows/openapi/v1.yaml` | D4, D5 | `src/api/middleware/audit.py`; source routes; CLI; browser rendering | API, audit, CLI, component, and browser tests | Nested encoding, stored/logged paths, both credential modes, and malformed browser keys pass. |
+| source-override-closeout-evidence.3 | `specs/source-override-closeout-evidence/spec.md` | Browser quick-add supports Readwise while existing Obsidian rows remain opaque and not browser-configurable. | generated TypeScript request/response types | D6 | `SourcesConfigurator.tsx`; component harness; Playwright fixtures/spec | rendered component and Chromium source-settings tests | Component 10/10 and Chromium 7/7 pass. |
+| source-override-closeout-evidence.4 | `specs/source-override-closeout-evidence/spec.md` | A disposable PostgreSQL database proves predecessor-to-head migration behavior and incompatible-table diagnostics. | shipped Alembic revision chain | D7 | `tests/migrations/postgres_migration_fixture.py`; `tests/migrations/test_source_overrides.py` | live disposable-PostgreSQL migration tests | 2/2 passed with no skips; fixture now fails closed. |
+| source-override-closeout-evidence.5 | `specs/source-override-closeout-evidence/spec.md` | Current setup and architecture docs make source override operations and recovery reproducible. | current management contract | D8, D9 | `docs/SETUP.md`; `docs/ARCHITECTURE.md` | deterministic documentation anchors; strict OpenSpec | Required lifecycle, auth, fail-open, backup, and recovery anchors are present. |
 
 The change-local `contracts/` directory contains only explanatory Markdown, so
 no machine-readable change contract is available for hand-populated contract
@@ -37,11 +37,12 @@ its paths and generated artifacts are asserted directly by the mapped tests.
 |------------|---------|------|-------------|-------------|------------|
 | plan-1 | plan | consistency/security/testability | high | fixed | Three refinement rounds resolved discriminator, auth, privacy, UI provenance, migration isolation, and durable-spec conflicts. |
 | plan-final | plan | structured review | low | accepted | No blocking finding; external vendor quorum was policy-blocked and recorded as single-reviewer fallback. |
+| impl-iteration-1 | implementation | security, frontend, evidence | high/medium | fixed | Three independent reviews found one high and ten medium issues; all were resolved and revalidated. |
 
 ## Coverage Summary
 
 - **Requirements traced**: 7/7
 - **Tests mapped**: 7 requirements have at least one planned test/check
-- **Evidence collected**: 0/7 requirements have pass/fail evidence
-- **Gaps identified**: implementation and validation pending
+- **Evidence collected**: 7/7 requirements have pass/fail evidence
+- **Gaps identified**: none at the implementation-refinement threshold
 - **Deferred items**: none

@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 from unittest.mock import patch
+from urllib.parse import quote
 
 import pytest
 from fastapi import FastAPI
@@ -354,6 +355,32 @@ def test_source_audit_path_redacts_private_obsidian_locator(app_factory, recorde
     assert stored_path == "/api/v1/sources/<redacted>"
     for private_value in private_values:
         assert private_value not in stored_path
+
+
+def test_source_audit_path_redacts_nested_encoding(app_factory, recorder):
+    app = app_factory()
+    encoded_key = "obsidian_vault%253Aprivate-client%252Fsrv%252Fvault"
+
+    with TestClient(app) as client:
+        client.delete(f"/api/v1/sources/{encoded_key}")
+
+    assert recorder.last()["path"] == "/api/v1/sources/<redacted>"
+    assert "private-client" not in recorder.last()["path"]
+
+
+def test_source_audit_path_fails_closed_for_extreme_nested_encoding(
+    app_factory, recorder
+):
+    app = app_factory()
+    encoded_key = "obsidian_vault:private-client/srv/vault"
+    for _ in range(40):
+        encoded_key = quote(encoded_key, safe="")
+
+    with TestClient(app) as client:
+        client.delete(f"/api/v1/sources/{encoded_key}")
+
+    assert recorder.last()["path"] == "/api/v1/sources/<redacted>"
+    assert "private-client" not in recorder.last()["path"]
 
 
 def test_source_audit_writer_failure_log_uses_redacted_path(

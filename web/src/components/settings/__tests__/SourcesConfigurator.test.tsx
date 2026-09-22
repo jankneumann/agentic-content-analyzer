@@ -64,8 +64,8 @@ const overview = {
   enabled_sources: 2,
 }
 
-function mutation(mutate: ReturnType<typeof vi.fn>) {
-  return { mutate, isPending: false }
+function mutation(mutate: ReturnType<typeof vi.fn>, isPending = false) {
+  return { mutate, isPending }
 }
 
 function renderSources() {
@@ -185,6 +185,56 @@ describe("SourcesConfigurator", () => {
     expect(
       screen.queryByRole("button", { name: /edit obsidian/i })
     ).not.toBeInTheDocument()
+  })
+
+  it("redacts and disables a malformed Obsidian management key", () => {
+    hooks.sources.mockReturnValue({
+      data: {
+        ...overview,
+        sources: overview.sources.map((source) =>
+          source.type === "obsidian_vault"
+            ? {
+                ...source,
+                source_key: "obsidian_vault:/srv/private/research-vault",
+              }
+            : source
+        ),
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    render(<SourcesConfigurator />)
+
+    expect(
+      screen.getByText("Private source identifier unavailable")
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(/obsidian_vault:\/srv\/private/)
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole("switch", { name: "Toggle Obsidian vault" })
+    ).toBeDisabled()
+    expect(
+      screen.getByRole("button", {
+        name: "Remove database override for Obsidian vault",
+      })
+    ).toBeDisabled()
+  })
+
+  it("prevents toggle and delete from racing on the same row", () => {
+    hooks.setEnabled.mockReturnValue(mutation(vi.fn(), true))
+    renderSources()
+
+    expect(
+      screen.getByRole("switch", { name: "Toggle Readwise Reader" })
+    ).toBeDisabled()
+    expect(
+      screen.getByRole("button", {
+        name: "Remove database override for Readwise Reader",
+      })
+    ).toBeDisabled()
   })
 
   it("sends a toggle payload and does not optimistically change rendered state", async () => {

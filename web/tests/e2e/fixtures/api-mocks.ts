@@ -45,6 +45,8 @@ export class ApiMocks {
       this.mockVoiceCleanup(),
       this.mockConnectionStatus(),
       this.mockSources(),
+      this.mockOperations(),
+      this.mockNotificationStream(),
       this.mockNotificationEvents(),
       this.mockNotificationUnreadCount(),
       this.mockNotificationPreferences(),
@@ -76,6 +78,8 @@ export class ApiMocks {
       this.mockVoiceCleanup(),
       this.mockConnectionStatus(),
       this.mockSourcesEmpty(),
+      this.mockOperations(),
+      this.mockNotificationStream(),
       this.mockNotificationEventsEmpty(),
       this.mockNotificationUnreadCountEmpty(),
       this.mockNotificationPreferences(),
@@ -922,6 +926,22 @@ export class ApiMocks {
 
   async mockSourcesEmpty(): Promise<void> {
     await this.mockSources(mockData.createSourcesOverview({ sources: [], counts: {} }))
+  }
+
+  async mockOperations(): Promise<void> {
+    await this.page.route("**/api/v1/operations?*", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: [], next_cursor: null }),
+    }))
+  }
+
+  async mockNotificationStream(): Promise<void> {
+    await this.page.route("**/api/v1/notifications/stream", (route) => route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: ": deterministic test stream\n\n",
+    }))
   }
 
   // ─── Model Settings Endpoints ───────────────────────────

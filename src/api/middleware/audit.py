@@ -86,8 +86,18 @@ def _normalize_audit_path(path: str) -> str:
         return path
 
     source_key = path.removeprefix(_SOURCE_MANAGEMENT_PREFIX)
-    decoded_key = unquote(source_key).casefold()
-    if decoded_key.startswith(_OBSIDIAN_NATURAL_KEY_PREFIX):
+    decoded_key = source_key.casefold()
+    for _ in range(32):
+        next_key = unquote(decoded_key)
+        if next_key == decoded_key:
+            break
+        decoded_key = next_key
+    else:
+        # Fail closed if hostile nesting exceeds the work bound.
+        return _REDACTED_SOURCE_PATH
+    if decoded_key.startswith(_OBSIDIAN_NATURAL_KEY_PREFIX) or decoded_key.startswith(
+        "obsidian_vault"
+    ):
         return _REDACTED_SOURCE_PATH
     return path
 

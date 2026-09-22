@@ -175,10 +175,13 @@ def test_source_management_contract_matches_legacy_runtime_shapes() -> None:
     assert post_schema == {"$ref": "#/components/schemas/SourceUpsertRequest"}
     assert "type" not in schemas["SourceUpsertRequest"]["properties"]
     assert schemas["SourceUpsertRequest"]["required"] == ["config"]
-    assert schemas["SourceOverrideConfig"]["required"] == ["type"]
-    assert schemas["SourceOverrideConfig"]["properties"]["type"] == {
-        "$ref": "#/components/schemas/SourceManagementType"
+    assert schemas["SourceOverrideConfig"]["discriminator"] == {
+        "propertyName": "type"
     }
+    assert schemas["RSSSourceOverrideConfig"]["allOf"][1]["required"] == [
+        "type",
+        "url",
+    ]
 
     patch_schema = member["patch"]["requestBody"]["content"]["application/json"][
         "schema"
@@ -211,7 +214,6 @@ def test_source_management_contract_matches_legacy_runtime_shapes() -> None:
 
     public_key = schemas["PublicSourceKey"]
     assert public_key["type"] == "string"
-    assert public_key["maxLength"] == 512
     assert "src_[a-f0-9]{20}" in public_key["pattern"]
     assert "obsidian_vault" not in public_key["pattern"]
     assert "version" not in schemas["SourceInfo"]["properties"]
@@ -231,8 +233,9 @@ def test_generated_source_management_models_accept_runtime_compatible_requests()
     }
     generated_request = module.SourceUpsertRequest.model_validate(payload)
     runtime_request = runtime_contract.SourceUpsertRequest.model_validate(payload)
-    assert generated_request.model_dump(exclude_none=True) == payload
-    assert runtime_request.model_dump(exclude_none=True) == payload
+    assert generated_request.model_dump() == runtime_request.model_dump()
+    assert generated_request.config.type == "rss"
+    assert generated_request.config.url == "https://example.test/feed.xml"
 
     opaque = "src_0123456789abcdef0123"
     generated_result = module.SourceMutationResult(
@@ -262,6 +265,10 @@ def test_generated_source_management_models_accept_runtime_compatible_requests()
         assert "version" not in source_info
         assert '"readwise"' in source
         assert '"obsidian_vault"' in source
+        upsert = source.split("export interface SourceUpsertRequest", 1)[1].split(
+            "}", 1
+        )[0]
+        assert "[key: string]: unknown" in upsert
 
 
 def test_fastapi_source_models_match_generated_contract_fields() -> None:
@@ -986,6 +993,76 @@ def test_database_contract_declares_provenance_and_queue_payload() -> None:
 
     assert "ALTER COLUMN summary_ids SET DEFAULT '[]'::jsonb" in schema
     assert "ALTER COLUMN selection_policy SET DEFAULT" in schema
+
+
+def test_generated_source_requests_match_runtime_validation_and_extra_handling() -> None:
+    module = _generated_models()
+
+    request = module.SourceUpsertRequest.model_validate(
+        {
+            "type": "ignored",
+            "unknown": "ignored",
+            "config": {"type": "rss", "url": "https://example.test/feed"},
+        }
+    )
+    dumped = request.model_dump()
+    assert "type" not in dumped
+    assert "unknown" not in dumped
+    assert dumped["config"]["type"] == "rss"
+
+    with pytest.raises(ValidationError):
+        module.SourceUpsertRequest.model_validate({"config": {"type": "rss"}})
+
+    patch = module.SourceEnabledRequest.model_validate(
+        {"enabled": False, "version": 99}
+    )
+    assert patch.model_dump() == {"enabled": False}
+
+
+def test_generated_obsidian_override_matches_runtime_validation() -> None:
+    module = _generated_models()
+    runtime = __import__("src.config.sources", fromlist=["ObsidianVaultSource"])
+    valid = {
+        "type": "obsidian_vault",
+        "vault_id": "personal",
+        "vault_path": "/srv/obsidian/personal",
+        "name": "Private notes",
+        "tags": ["notes"],
+        "enabled": False,
+        "ingest_folder": "Inbox/AI",
+    }
+    generated = module.ObsidianVaultSourceOverrideConfig.model_validate(valid)
+    configured = runtime.ObsidianVaultSource.model_validate(valid)
+    assert generated.name == configured.name == "Private notes"
+    assert generated.tags == configured.tags == ["notes"]
+    assert generated.enabled is configured.enabled is False
+
+    invalid_updates = (
+        {"vault_path": "relative/vault"},
+        {"vault_path": "/srv/../private"},
+        {"ingest_folder": "../Private"},
+        {"max_duration_seconds": 0},
+        {"max_total_bytes": 100, "max_note_bytes": 101},
+        {"max_note_bytes": 100, "max_frontmatter_bytes": 101},
+    )
+    for update in invalid_updates:
+        payload = {**valid, **update}
+        with pytest.raises(ValidationError):
+            module.ObsidianVaultSourceOverrideConfig.model_validate(payload)
+        with pytest.raises(ValidationError):
+            runtime.ObsidianVaultSource.model_validate(payload)
+
+
+def test_generated_legacy_validation_items_retain_required_fields() -> None:
+    module = _generated_models()
+
+    with pytest.raises(ValidationError):
+        module.LegacyValidationErrorBody.model_validate({"detail": [{}]})
+
+    valid = module.LegacyValidationErrorBody.model_validate(
+        {"detail": [{"type": "missing", "loc": ["body", "config"], "msg": "required"}]}
+    )
+    assert valid.detail[0].type == "missing"
 
 
 def test_generated_contract_files_have_no_drift() -> None:

@@ -249,13 +249,6 @@ class TestEnableDisable:
         )
         assert "personal" not in response.text
 
-    def test_key_longer_than_contract_bound_returns_422(self, client):
-        response = client.patch(
-            f"/api/v1/sources/blog:{'x' * 508}", json={"enabled": False}
-        )
-
-        assert response.status_code == 422
-
 
 class TestAuth:
     @pytest.fixture
@@ -306,6 +299,65 @@ class TestAuth:
             "/api/v1/sources/blog:x", json={"enabled": False}
         )
         assert resp.status_code == 401
+
+    @pytest.mark.parametrize("credential", ["admin", "session"])
+    def test_writes_accept_either_documented_credential(
+        self, production_client, credential, db_session
+    ):
+        from src.api.auth_routes import _COOKIE_NAME, _create_jwt
+
+        headers = (
+            {"X-Admin-Key": ADMIN_KEY}
+            if credential == "admin"
+            else {"Cookie": f"{_COOKIE_NAME}={_create_jwt(APP_SECRET_KEY)}"}
+        )
+        created = production_client.post(
+            "/api/v1/sources", json={"config": BLOG}, headers=headers
+        )
+        assert created.status_code == 200
+        source_key = created.json()["source_key"]
+
+        patched = production_client.patch(
+            f"/api/v1/sources/{source_key}",
+            json={"enabled": False},
+            headers=headers,
+        )
+        assert patched.status_code == 200
+        assert patched.json()["version"] == 2
+
+        deleted = production_client.delete(
+            f"/api/v1/sources/{source_key}", headers=headers
+        )
+        assert deleted.status_code == 200
+        assert db_session.query(SourceOverride).count() == 0
+
+    @pytest.mark.parametrize("operation", ["patch", "delete"])
+    @pytest.mark.parametrize(
+        ("headers", "expected_status"),
+        [({}, 401), ({"X-Admin-Key": "wrong-key"}, 403)],
+    )
+    def test_rejected_member_write_preserves_state_and_version(
+        self, production_client, db_session, operation, headers, expected_status
+    ):
+        created = production_client.post(
+            "/api/v1/sources",
+            json={"config": BLOG},
+            headers={"X-Admin-Key": ADMIN_KEY},
+        ).json()
+        path = f"/api/v1/sources/{created['source_key']}"
+
+        if operation == "patch":
+            response = production_client.patch(
+                path, json={"enabled": False}, headers=headers
+            )
+        else:
+            response = production_client.delete(path, headers=headers)
+
+        assert response.status_code == expected_status
+        db_session.expire_all()
+        row = db_session.query(SourceOverride).one()
+        assert row.enabled is True
+        assert row.version == 1
 
     def test_get_requires_auth(self, production_client):
         response = production_client.get("/api/v1/sources")
