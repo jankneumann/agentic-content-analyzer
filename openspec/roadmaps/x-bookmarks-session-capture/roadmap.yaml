@@ -1,0 +1,389 @@
+schema_version: 1
+roadmap_id: x-bookmarks-session-capture
+source_proposal: openspec/roadmaps/x-bookmarks-session-capture/proposal.md
+status: planning
+policy:
+  default_action: wait_if_budget_exceeded
+  max_switch_attempts_per_item: 2
+items:
+- item_id: ri-01
+  title: Establish tailnet exposure baseline for gx-10 services
+  status: candidate
+  priority: 3
+  effort: M
+  depends_on: []
+  description: Bind OpenBao and the API on gx-10 to the Tailscale interface only,
+    give the API a trusted certificate on its MagicDNS name, and record the bind addresses,
+    ACL sketch, and BAO_ADDR in docs/TAILNET.md linked from CLAUDE.md and docs/SETUP.md.
+  rationale: Every unattended credential write in later items (capture CLI, adapter
+    write-back, extension sync) assumes the workstation and worker reach OpenBao and
+    the API privately over the tailnet with no public port exposure.
+  change_id: establish-tailnet-exposure-baseline-for-gx-10-services
+  acceptance_outcomes:
+  - docs/TAILNET.md exists, is linked from CLAUDE.md and docs/SETUP.md, and documents
+    bind addresses, the Tailscale ACL sketch, the tailscale serve or cert recipe,
+    and the workstation BAO_ADDR value.
+  - The documented compose or systemd configuration binds OpenBao and the API to the
+    Tailscale address and the documented listener check shows no 0.0.0.0 listener
+    for port 8200 or the API port.
+  - The API answers over HTTPS on its MagicDNS hostname with a certificate Chrome
+    trusts without a manual exception.
+  - The Chrome extension README states the tailnet API URL and the matching host permission
+    note.
+- item_id: ri-02
+  title: Add secret sink abstraction to the auth CLI
+  status: candidate
+  priority: 1
+  effort: M
+  depends_on: []
+  description: Replace the Railway-only --deploy flag on aca auth commands with a
+    --to railway|bao|secrets-file sink under src/cli/, where the OpenBao sink uses
+    KV v2 patch_secret on secret/newsletter and records saved_at beside each value.
+    Add SUBSTACK_SESSION_COOKIE, X_AUTH_TOKEN, and X_CT0 to the Railway secret allowlist
+    for the interim.
+  rationale: The background token manager only re-fetches the single secret/newsletter
+    path, so a single-key patch is the only write shape that reaches a running worker
+    without clobbering the LLM keys stored alongside; every later credential write
+    reuses this sink.
+  change_id: add-secret-sink-abstraction-to-the-auth-cli
+  acceptance_outcomes:
+  - aca auth gmail --to bao writes only GMAIL_OAUTH_TOKEN_JSON and leaves every other
+    key at secret/newsletter byte-identical, proven by a test against a fake KV v2
+    client.
+  - The railway sink behaves exactly as --deploy did, and --deploy remains as a deprecated
+    alias that emits a deprecation warning for one release.
+  - Gmail and YouTube OAuth flows accept --to bao with no provider-specific code changes.
+  - settings/deploy/railway_secrets.yaml lists SUBSTACK_SESSION_COOKIE, X_AUTH_TOKEN,
+    and X_CT0.
+- item_id: ri-03
+  title: Ship workstation and worker AppRole policies
+  status: candidate
+  priority: 4
+  effort: S
+  depends_on: []
+  description: Add two AppRole policies to the bao-vault seed script, a workstation
+    role limited to patch on secret/data/newsletter and a worker role with read plus
+    patch on the same path.
+  rationale: Least-privilege roles let the workstation push cookies without reading
+    LLM keys and let the worker persist rotated ct0 values, which the adapter write-back
+    requires.
+  change_id: ship-workstation-and-worker-approle-policies
+  acceptance_outcomes:
+  - A write with the workstation AppRole succeeds for patch on secret/data/newsletter
+    and is denied for read and delete.
+  - The worker AppRole succeeds for both read and patch on secret/data/newsletter
+    and is denied for delete.
+  - The seed script is idempotent and re-running it leaves both policies unchanged.
+- item_id: ri-04
+  title: Introduce live credential provider for rotating secrets
+  status: candidate
+  priority: 2
+  effort: M
+  depends_on:
+  - ri-02
+  description: Add a CredentialProvider that resolves a named credential at request
+    time from the OpenBao cache first and falls back to Settings, carrying saved_at
+    and last_verified_at metadata, and migrate the Substack adapter to it with all
+    reads and writes passing through log redaction.
+  rationale: The module-level settings object is built once behind lru_cache, so adapters
+    reading settings.substack_session_cookie keep the boot-time value forever and
+    a rotated cookie never reaches a running worker.
+  change_id: introduce-live-credential-provider-for-rotating-secrets
+  acceptance_outcomes:
+  - After a KV patch and one token-manager refresh, a long-running worker process
+    uses the new Substack cookie without restart, proven by an integration test that
+    swaps the cache.
+  - src/ingestion/substack.py no longer references settings.substack_session_cookie
+    directly.
+  - The provider exposes saved_at and last_verified_at for the substack.sid, x.auth_token,
+    and x.ct0 credentials.
+  - No credential value appears in log output in any provider test.
+- item_id: ri-05
+  title: Detect Substack session expiry and fail readiness closed
+  status: candidate
+  priority: 2
+  effort: M
+  depends_on:
+  - ri-04
+  description: Make the Substack adapter detect a login redirect or HTML login page
+    in place of JSON and raise a typed readiness failure with the stable code session_expired,
+    and route the descriptor readiness_resolver through the credential provider so
+    a patched cookie flips readiness without restart.
+  rationale: Today an expired cookie only produces a log warning and a silently thinner
+    corpus; the proposal requires credential-gated sources to yield ready=false with
+    a stable code rather than a partial run.
+  change_id: detect-substack-session-expiry-and-fail-readiness-closed
+  acceptance_outcomes:
+  - A Hoverfly-simulated login redirect makes the Substack descriptor report ready=false
+    with code session_expired and the run produces zero rows rather than a partial
+    result.
+  - Patching a fresh cookie into the OpenBao cache flips the descriptor to ready=true
+    in the same process without restart.
+  - The typed readiness failure is reusable by other adapters and carries no cookie
+    value in its message or payload.
+- item_id: ri-06
+  title: Add browser-session rows to aca auth status
+  status: candidate
+  priority: 5
+  effort: S
+  depends_on:
+  - ri-04
+  description: Extend aca auth status with one row per browser session (substack,
+    x) showing saved_at, last_verified_at, and the exact refresh command, in both
+    table and --json output.
+  rationale: Until the terminal-event outbox exists this is the primary place an operator
+    learns that a session is stale and which command to run.
+  change_id: add-browser-session-rows-to-aca-auth-status
+  acceptance_outcomes:
+  - aca auth status --json lists substack and x sessions with saved_at, last_verified_at,
+    and refresh_command fields.
+  - Stdout contains exactly one JSON document in --json mode with diagnostics on stderr.
+  - No cookie value appears in either output mode.
+- item_id: ri-07
+  title: Exclude browser profile directory from backup and sync
+  status: candidate
+  priority: 6
+  effort: S
+  depends_on: []
+  description: Add ~/.aca/browser-profiles/ to the exclusion lists of aca backup,
+    aca sync, and every artifacts tarball, and document the exclusion in the backup
+    and sync docs.
+  rationale: The persistent Playwright profile is a session credential; it must never
+    be captured off-site or copied between machines.
+  change_id: exclude-browser-profile-directory-from-backup-and-sync
+  acceptance_outcomes:
+  - A test proves aca backup run, aca sync, and the artifacts tarball builder each
+    skip a populated ~/.aca/browser-profiles/ directory.
+  - docs/BACKUP_RESTORE.md lists ~/.aca/browser-profiles/ as an excluded path.
+- item_id: ri-08
+  title: Add aca auth session capture command
+  status: candidate
+  priority: 3
+  effort: L
+  depends_on:
+  - ri-01
+  - ri-02
+  - ri-07
+  description: Add aca auth session substack|x, which launches headed Chromium via
+    Playwright launch_persistent_context on a per-site profile under ~/.aca/browser-profiles/,
+    polls context.cookies() for the target cookies, validates them with one cheap
+    authenticated request, and writes them with saved_at through the secret sink.
+  rationale: Replaces the manual DevTools cookie copy with a deterministic one-time
+    login per site, and is the command an expiry alert names when the yearly auth_token
+    expiry fires.
+  change_id: add-aca-auth-session-capture-command
+  acceptance_outcomes:
+  - Running the command with a stubbed browser context that already holds the cookies
+    validates them and patches OpenBao within one invocation, with no cookie value
+    on stdout or in logs.
+  - Running it against a context that never produces the cookies exits non-zero with
+    a timeout message after the configured wait.
+  - A second run reuses the persisted profile directory and needs no interactive login
+    when the session is still valid.
+  - No refresh timer, cron entry, or scheduled job is created by the command.
+  - docs/SETUP.md replaces the manual DevTools instructions for Substack with the
+    command.
+- item_id: ri-09
+  title: Add x_bookmarks to the workflow contract and ContentSource enum
+  status: candidate
+  priority: 1
+  effort: M
+  depends_on: []
+  description: Add XBookmarksIngestCommand to openspec/contracts/content-workflows/openapi/v1.yaml,
+    regenerate src/contracts/workflow_models.py, add ingest.x-bookmarks and x_bookmarks
+    to the closed literals in src/ingestion/result.py and COMMAND_MODELS, and add
+    X_BOOKMARKS to ContentSource with an idempotent Alembic enum migration.
+  rationale: Canonical sources are contract-first; the generated models, closed literals,
+    and PG enum must exist before any descriptor or adapter can be registered.
+  change_id: add-x-bookmarks-contract-and-content-source
+  acceptance_outcomes:
+  - src/contracts/workflow_models.py contains XBookmarksIngestCommand and matches
+    a fresh regeneration from openapi/v1.yaml with no hand edits.
+  - alembic heads reports a single head and the migration uses ALTER TYPE contentsource
+    ADD VALUE IF NOT EXISTS so it is idempotent.
+  - Contract tests accept ingest.x-bookmarks and x_bookmarks as valid literals.
+- item_id: ri-10
+  title: Register the x_bookmarks source descriptor and config
+  status: candidate
+  priority: 2
+  effort: M
+  depends_on:
+  - ri-09
+  - ri-04
+  description: Add XBookmarksSource with expand_links and max_entries to the Source
+    union, ship sources.d/x_bookmarks.yaml with a quiet-hour schedule, register a
+    SourceDescriptor modelled on Readwise with scheduled=True, a bulk planner, and
+    a fail-closed readiness resolver, and add a network-free fixture to tests/fixtures/sources/library.py.
+  rationale: Registering through src/ingestion/registry.py is the only way the CLI,
+    HTTP, MCP, and frontend transports all learn the source; the fixture registry
+    completeness check enforces it.
+  change_id: register-the-x-bookmarks-source-descriptor-and-config
+  acceptance_outcomes:
+  - aca ingest x-bookmarks submits an operation through OperationService and the CLI,
+    HTTP, MCP, and frontend transports all list the source.
+  - The descriptor reports ready=false with code x_bookmarks_credentials_missing when
+    auth_token or ct0 is unset.
+  - The source fixture registry test passes with x_bookmarks covered by a network-free
+    fixture.
+  - sources.d/x_bookmarks.yaml schedules the source at a quiet hour with a conservative
+    max_entries default.
+- item_id: ri-11
+  title: Implement X GraphQL client with query ID discovery and ct0 write-back
+  status: candidate
+  priority: 1
+  effort: M
+  depends_on:
+  - ri-02
+  - ri-04
+  - ri-05
+  description: Build an httpx client for X's Bookmarks GraphQL endpoint using the
+    public web-app bearer token, auth_token and ct0 cookies, an x-csrf-token header
+    equal to ct0, query ID discovery from X's JavaScript bundles cached as a DB override
+    and re-scraped on 404, 429 handling honouring x-rate-limit-reset, session_expired
+    detection, and OpenBao patch of a rotated ct0 before the response is discarded.
+  rationale: This is the port of the exporter's fetch logic that removes the Node.js
+    dependency and lets the worker heal routine ct0 rotation itself, so the human
+    is only needed for the yearly auth_token expiry.
+  change_id: implement-x-graphql-client-with-ct0-write-back
+  acceptance_outcomes:
+  - Hoverfly tests cover query ID discovery, a 404 that triggers re-scrape, a 429
+    with x-rate-limit-reset that is honoured, and a login-page response that yields
+    the typed session_expired failure.
+  - A Set-Cookie header carrying a new ct0 is written back through a fake sink as
+    a single-key patch before the response is discarded.
+  - The client runs from the python:3.12-slim image and shells out to nothing.
+  - No cookie or bearer value appears in logs or test output.
+- item_id: ri-12
+  title: Ingest X bookmarks incrementally as Content rows
+  status: candidate
+  priority: 1
+  effort: M
+  depends_on:
+  - ri-10
+  - ri-11
+  description: Implement src/ingestion/x_bookmarks.py on top of the client with cursor
+    pagination newest-first, persistence of each bookmark as a Content row with source_type=X_BOOKMARKS
+    and source_id xpost:{id}, rendering through the same thread-to-markdown path as
+    the Grok search adapter, and incremental sync that stops when an entire page's
+    IDs already exist unless --full is passed.
+  rationale: Delivers the core proposal outcome that every bookmark lands in the corpus
+    nightly through the canonical durable workflow, in the same document shape as
+    the existing X source.
+  change_id: ingest-x-bookmarks-incrementally-as-content-rows
+  acceptance_outcomes:
+  - A Hoverfly two-page cursor walk ingests every bookmark from both pages exactly
+    once.
+  - A second run against unchanged bookmarks fetches exactly one page and ingests
+    zero rows, and --full walks every page.
+  - A bookmarked post that Grok search later surfaces is deduplicated by source_id
+    and not inserted twice.
+  - The ingestion filter hook and reference hook run on ingested bookmark rows like
+    any other adapter.
+- item_id: ri-13
+  title: Expand linked articles from bookmarked posts
+  status: candidate
+  priority: 4
+  effort: S
+  depends_on:
+  - ri-12
+  description: When expand_links is enabled, submit one UrlIngestCommand per expanded
+    outbound URL in a bookmarked post through OperationService while the post row
+    remains the receipt, skipping media-only and self-referential X URLs and keeping
+    the content_reference recorded either way.
+  rationale: Bookmarks are usually receipts for an article; summarizing the linked
+    article as its own row is what makes the bookmark gesture a useful capture path.
+  change_id: expand-linked-articles-from-bookmarked-posts
+  acceptance_outcomes:
+  - With expand_links true, a fixture bookmark carrying one external link produces
+    exactly one submitted url operation and a content_reference from the post to the
+    article.
+  - With expand_links false, no url operation is submitted and the reference is still
+    recorded.
+  - Media-only and self-referential x.com URLs never produce a url operation.
+- item_id: ri-14
+  title: Add admin endpoint for browser-session sync
+  status: candidate
+  priority: 6
+  effort: M
+  depends_on:
+  - ri-01
+  - ri-02
+  description: Add an admin API endpoint that accepts the substack.sid, auth_token,
+    and ct0 cookies, keeps the X-Admin-Key check and audit-log fingerprint, and writes
+    only the session keys with saved_at through the OpenBao sink.
+  rationale: Gives the extension a tailnet-reachable write path for the fast manual
+    response when an expiry alert fires and the operator is at a laptop rather than
+    the workstation.
+  change_id: add-admin-endpoint-for-browser-session-sync
+  acceptance_outcomes:
+  - The endpoint rejects requests without a valid admin key with 401 or 403 and records
+    an audit row with admin_key_fp for both accepted and rejected calls.
+  - A valid request patches only the session keys and leaves every other key at secret/newsletter
+    byte-identical.
+  - No cookie value appears in logs, audit rows, or error responses.
+- item_id: ri-15
+  title: Add Sync session button to the Chrome extension
+  status: candidate
+  priority: 7
+  effort: S
+  depends_on:
+  - ri-14
+  description: Add a Sync session action to the extension that reads the substack.sid,
+    auth_token, and ct0 cookies via the cookies permission with host permissions for
+    substack.com and x.com, and posts them over the tailnet to the session sync endpoint.
+  rationale: Completes the laptop-side manual refresh path so an expiry alert can
+    be resolved without opening DevTools.
+  change_id: add-sync-session-button-to-the-chrome-extension
+  acceptance_outcomes:
+  - The extension manifest declares cookies and host permissions for substack.com
+    and x.com only.
+  - Clicking Sync session posts the three cookies to the endpoint with the admin key
+    header and shows success or the endpoint error without displaying cookie values.
+  - The extension README documents the tailnet API URL and the sync action.
+- item_id: ri-16
+  title: Classify session_expired in the terminal-event outbox
+  status: candidate
+  priority: 5
+  effort: S
+  depends_on:
+  - ri-05
+  - ri-06
+  description: Once the terminal-event outbox from production-telemetry-and-out-of-band-alerting
+    exists, classify the session_expired readiness failure there so the alert names
+    the exact aca auth session refresh command; until then, surface it through aca
+    auth status and the scheduled real-ingestion evidence artifact.
+  rationale: The proposal's end state is a yearly expiry announced by an alert that
+    names the command to run; this item is gated on an external change and must not
+    build the outbox itself.
+  change_id: classify-session-expired-in-the-terminal-event-outbox
+  acceptance_outcomes:
+  - The alert body for a session_expired failure contains the refresh command and
+    no cookie value, proven with the real emitter rather than a stubbed telemetry_emitter.
+  - Before the outbox lands, the scheduled real-ingestion evidence artifact records
+    the session_expired code for the affected source.
+- item_id: ri-17
+  title: Document X bookmarks and the credential lifecycle
+  status: candidate
+  priority: 7
+  effort: M
+  depends_on:
+  - ri-06
+  - ri-08
+  - ri-12
+  - ri-13
+  description: Update docs/USER_GUIDE.md, docs/SETUP.md, docs/MOBILE_CAPTURE.md, CLAUDE.md,
+    and docs/GOTCHAS.md so the X bookmarks source, the session capture command, the
+    sync button, and the credential lifecycle are discoverable, including the two
+    new gotchas.
+  rationale: The new commands and settings must appear in the documentation index
+    and setup guide or the operator will fall back to the manual DevTools path the
+    proposal removes.
+  change_id: document-x-bookmarks-and-the-credential-lifecycle
+  acceptance_outcomes:
+  - Every new CLI command and setting appears in the CLAUDE.md documentation index
+    tables and docs/SETUP.md.
+  - docs/MOBILE_CAPTURE.md states that bookmarking on X replaces the share-sheet path
+    for X content.
+  - docs/GOTCHAS.md contains entries for frozen settings versus the live provider
+    and for KV v2 create_or_update clobbering sibling keys.
+updated_at: '2026-09-22T18:21:53.327379+00:00'
