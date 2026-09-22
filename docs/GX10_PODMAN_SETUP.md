@@ -288,6 +288,16 @@ attacker-influenced input, so that last rule is the one doing the security
 work, and it is checked after name resolution. Plain `http://` sources stay
 blocked, since the policy permits `CONNECT` only.
 
+The backup freezes a filesystem-copied store rather than stopping it.
+Stopping was the original design and could not work: those services carry
+`restart: on-failure:5`, so Podman brought ClickHouse back up 0.45 seconds
+after the stop and `tar` exited with "file changed as we read it". `podman
+pause` emits no "died" event, so no restart policy fires and nothing races the
+copy. The artifact is crash-consistent rather than clean-shutdown consistent,
+the same guarantee a filesystem snapshot gives, and both ClickHouse and MinIO
+recover from it. The store is thawed even when the copy fails, because a store
+left frozen is an outage.
+
 `git pull` updates `/opt/aca` and never `/etc/systemd/system`, so a changed
 unit takes effect only after `sudo make -C /opt/aca/deploy/gx10 install`,
 which reinstalls, verifies, and reloads. Timers fire the storage, backup, and

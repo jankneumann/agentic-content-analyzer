@@ -12,23 +12,30 @@ PODMAN="${GX10_PODMAN_BIN:-/usr/bin/podman}"
 PERSIST_ROOT="${GX10_PERSIST_ROOT:-/srv/aca}"
 POSTGRES_IMAGE="docker.io/library/postgres:17.11@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675"
 
-# Stop the store, copy it cold, start the same container again.
+# Freeze the store, copy it, thaw it.
 #
-# `compose up -d` is wrong for the restart: the container still exists, so
-# podman-compose runs `podman run`, gets 125 for the name already in use,
-# falls back to `podman start`, and reports failure anyway. The store came
-# back up and the component was recorded as a permanent failure -- with no
-# artifact, which is the outcome that matters. `podman start` on the name
-# does exactly the one thing intended, and fails only when it truly cannot.
+# Stopping was the original design and it cannot work here: the container
+# carries `restart: on-failure:5`, and Podman brought ClickHouse back up 0.45
+# seconds after the stop, so the copy ran against a live store and tar exited
+# with "file changed as we read it". MinIO fared worse, failing in Podman's
+# own namespace teardown while the stop and the restart raced.
 #
-# A failed stop aborts before the copy: tarring a running store yields an
+# `podman pause` freezes the container's processes through the cgroup freezer.
+# No "died" event means no restart policy fires, nothing races the copy, and
+# the container keeps its identity, its network, and its dependents' handles.
+# The copy is crash-consistent rather than clean-shutdown consistent: it is
+# what these stores see after a power cut, which both are built to recover
+# from, and it is the same guarantee a filesystem snapshot gives.
+#
+# A refused pause aborts before the copy. Copying a running store yields an
 # artifact that looks fine and restores torn.
-offline_tar() {
+paused_tar() {
   local service="$1" source="$2" status=0 name
   name="${COMPOSE_PROJECT_NAME:-aca-gx10}_${service}_1"
-  "${COMPOSE[@]}" stop --timeout 120 "$service" >&2 || return "$?"
+  "$PODMAN" pause "$name" >&2 || return "$?"
   /usr/bin/tar -C "$source" -cf - . || status=$?
-  "$PODMAN" start "$name" >&2 || status=$?
+  # Thaw even when the copy failed; a store left frozen is an outage.
+  "$PODMAN" unpause "$name" >&2 || status=$?
   return "$status"
 }
 
@@ -40,9 +47,9 @@ produce() {
     langfuse_postgresql)
       exec "${COMPOSE[@]}" exec -T langfuse-postgres sh -ec 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec pg_dump --format=custom --dbname=langfuse --username=langfuse'
       ;;
-    falkordb) offline_tar falkordb "$PERSIST_ROOT/falkordb" ;;
-    clickhouse) offline_tar clickhouse "$PERSIST_ROOT/clickhouse" ;;
-    minio) offline_tar minio "$PERSIST_ROOT/minio" ;;
+    falkordb) paused_tar falkordb "$PERSIST_ROOT/falkordb" ;;
+    clickhouse) paused_tar clickhouse "$PERSIST_ROOT/clickhouse" ;;
+    minio) paused_tar minio "$PERSIST_ROOT/minio" ;;
     configuration_metadata)
       exec /usr/bin/tar -C /opt/aca -cf - docker-compose.gx10.yml deploy/gx10
       ;;
