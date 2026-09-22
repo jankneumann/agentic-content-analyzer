@@ -4,8 +4,10 @@ Every function here returns a :class:`Stage` (or a skip reason) and runs nothing
 That is what makes the "no credential in argv" requirement testable as a property
 of the code rather than as a property of one mocked call: a test can build every
 stage this module can produce and assert no secret appears in any of them, without
-a subprocess ever running. The single exception is `existing_directories`, which
-stats the configured artifact paths and injects its predicate for tests.
+a subprocess ever running. The exceptions are read-only path lookups:
+`existing_directories` stats the configured artifact paths (and injects its
+predicate for tests), and `plan_artifacts` resolves them to keep browser-profile
+directories out of the tar stream.
 
 The four adapters share one shape on purpose. Decomposing them into four packages
 was attempted at plan time and rejected — they all depend on the same Stage
@@ -19,6 +21,12 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
+from src.config.browser_profiles import (
+    EXCLUDED_PATH_PATTERNS,
+    excluded_roots,
+    excluded_subpaths,
+    is_excluded_path,
+)
 from src.services.backup.executor import Stage
 from src.services.backup.models import (
     SKIP_MANAGED_PROVIDER,
@@ -26,6 +34,9 @@ from src.services.backup.models import (
     SKIP_NOT_CONFIGURED,
     StoreName,
 )
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -199,9 +210,46 @@ def existing_directories(settings: Any, *, is_dir: Any = None) -> list[str]:
     return [directory for directory in artifact_directories(settings) if check(directory)]
 
 
+def artifact_exclusion_argv(directories: list[str], roots: tuple[Path, ...]) -> tuple[str, ...]:
+    """`tar` options that keep browser profiles out of the artifacts stream.
+
+    Two layers, both passed BEFORE the operands (GNU tar applies `--exclude` to the
+    operands that follow it):
+
+    * the generic pattern (`EXCLUDED_PATH_PATTERNS`), unanchored, so the default
+      `.aca/browser-profiles` layout is dropped wherever it sits in any tree;
+    * every configured excluded root that one of these directories CONTAINS,
+      anchored and spelled as `tar` names it. This is the fail-closed check: an
+      operator who points an artifact path at `$HOME` or `~/.aca` gets the
+      exclusion computed from the resolved paths, not from a hardcoded string.
+
+    `--no-wildcards` so a `*` or `[` in a path is matched literally.
+    """
+    argv: list[str] = ["--no-wildcards", "--no-anchored"]
+    argv += [f"--exclude={pattern}" for pattern in EXCLUDED_PATH_PATTERNS]
+    contained = [sub for directory in directories for sub in excluded_subpaths(directory, roots)]
+    if contained:
+        argv.append("--anchored")
+        argv += [f"--exclude={sub}" for sub in sorted(set(contained))]
+    return tuple(argv)
+
+
 def plan_artifacts(settings: Any, *, existing: list[str] | None = None) -> StorePlan:
-    """One tar stream over every artifact directory that is present."""
+    """One tar stream over every artifact directory that is present.
+
+    Browser-profile directories are never captured: a directory that IS (or sits
+    inside) one is dropped outright, and one that CONTAINS one is tarred with it
+    excluded — see `artifact_exclusion_argv`.
+    """
     directories = existing if existing is not None else existing_directories(settings)
+    roots = excluded_roots(settings)
+    dropped = [d for d in directories if is_excluded_path(d, roots)]
+    if dropped:
+        logger.warning(
+            "Artifact directories inside a browser-profile root are never backed up: %s",
+            ", ".join(dropped),
+        )
+        directories = [d for d in directories if d not in dropped]
     if not directories:
         return StorePlan(
             store=StoreName.ARTIFACTS,
@@ -213,7 +261,14 @@ def plan_artifacts(settings: Any, *, existing: list[str] | None = None) -> Store
         artifact_name="artifacts.tar",
         stage=Stage(
             name="tar",
-            argv=("tar", "--create", "--file", "-", *sorted(directories)),
+            argv=(
+                "tar",
+                "--create",
+                "--file",
+                "-",
+                *artifact_exclusion_argv(directories, roots),
+                *sorted(directories),
+            ),
         ),
     )
 

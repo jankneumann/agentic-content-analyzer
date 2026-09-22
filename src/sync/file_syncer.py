@@ -15,6 +15,11 @@ from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from src.config.browser_profiles import (
+    excluded_roots,
+    is_excluded_path,
+    matches_excluded_pattern,
+)
 from src.services.file_storage import FileStorageProvider, LocalFileStorage, S3FileStorage
 from src.sync.constants import FILE_PATH_COLUMNS
 
@@ -33,6 +38,8 @@ class FileSyncStats:
     skipped: int = 0
     missing: int = 0
     failed: int = 0
+    #: Refs refused because they point into a browser-profile directory.
+    excluded: int = 0
     bytes_copied: int = 0
     per_bucket: dict[str, dict[str, int]] = field(default_factory=dict)
 
@@ -47,6 +54,8 @@ class FileSyncStats:
             parts.append(f"missing={self.missing}")
         if self.failed:
             parts.append(f"failed={self.failed}")
+        if self.excluded:
+            parts.append(f"excluded={self.excluded}")
         if self.bytes_copied:
             parts.append(f"bytes={_format_size(self.bytes_copied)}")
         return ", ".join(parts)
@@ -77,6 +86,9 @@ class FileSyncer:
                         for a given bucket on the source side.
         target_storage: Callable that returns a FileStorageProvider
                         for a given bucket on the target side.
+        excluded: Resolved directories no file may be read from or written
+                  into. Defaults to the browser-profile root
+                  (``src.config.browser_profiles.excluded_roots``).
     """
 
     def __init__(
@@ -84,10 +96,12 @@ class FileSyncer:
         source_engine: Engine,
         source_storage: dict[str, FileStorageProvider],
         target_storage: dict[str, FileStorageProvider],
+        excluded: tuple[Path, ...] | None = None,
     ) -> None:
         self._engine = source_engine
         self._source_storage = source_storage
         self._target_storage = target_storage
+        self._excluded = excluded if excluded is not None else excluded_roots()
 
     def discover_files(
         self,
@@ -190,6 +204,7 @@ class FileSyncer:
             FileSyncStats with counts and per-bucket breakdown.
         """
         stats = FileSyncStats(discovered=len(refs))
+        refs = self._drop_excluded(refs, stats)
 
         if not refs:
             logger.info("No files to sync")
@@ -200,6 +215,42 @@ class FileSyncer:
 
         # Group by bucket for reporting
         return asyncio.run(self._async_sync_files(refs, stats))
+
+    def _is_excluded(self, ref: FileRef) -> bool:
+        """True when ``ref`` would read from or write into an excluded directory.
+
+        The database is the source of the path, so it is not trusted: a local
+        bucket rooted at ``$HOME`` or ``~/.aca`` would otherwise resolve a row's
+        path straight into a browser profile. Both sides are checked, so a sync
+        can neither copy a live session out nor overwrite one in place.
+        """
+        if matches_excluded_pattern(ref.path):
+            return True
+        for providers in (self._source_storage, self._target_storage):
+            provider = providers.get(ref.bucket)
+            if isinstance(provider, LocalFileStorage):
+                local_path = provider.get_local_path(ref.path)
+                if local_path is not None and is_excluded_path(local_path, self._excluded):
+                    return True
+        return False
+
+    def _drop_excluded(self, refs: list[FileRef], stats: FileSyncStats) -> list[FileRef]:
+        """Remove refs into browser-profile directories, before dry run or copy."""
+        kept: list[FileRef] = []
+        for ref in refs:
+            if self._is_excluded(ref):
+                logger.warning(
+                    "Refusing to sync %s (bucket: %s, from %s.%s): "
+                    "browser-profile directories are never synced",
+                    ref.path,
+                    ref.bucket,
+                    ref.table,
+                    ref.column,
+                )
+                stats.excluded += 1
+                continue
+            kept.append(ref)
+        return kept
 
     async def _async_sync_files(
         self,

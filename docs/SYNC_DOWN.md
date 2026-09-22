@@ -43,6 +43,10 @@ The CLI orchestrates subprocesses and contains no Python restore logic:
 Every credential travels by environment. None appears in a process argument
 list, so nothing leaks through `/proc` to other local users.
 
+Browser-profile directories (`~/.aca/browser-profiles/`) are never in a backup
+artifact, so nothing restored here contains a browser session. See
+[BACKUP_RESTORE.md](./BACKUP_RESTORE.md#excluded-paths).
+
 ### Backup target credentials
 
 The CLI reads the provider-neutral backup settings. The same names address

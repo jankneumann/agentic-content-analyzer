@@ -76,6 +76,22 @@ Everything streams: `<dump> | age | rclone rcat`. No artifact is staged on disk
 and none passes through the Python interpreter, so a multi-GB dump costs no
 proportional memory.
 
+### Excluded paths
+
+| Path | Why |
+|---|---|
+| `~/.aca/browser-profiles/` (setting `browser_profiles_dir`, env `BROWSER_PROFILES_DIR`) | Persistent Playwright profiles from `aca auth session` hold live session cookies. They are credentials, not artifacts, so they are never captured off-site. The cookies extracted from them live in OpenBao and are already covered by the raft snapshot. |
+
+The artifacts `tar` excludes these two ways, before its operands. It drops any
+`.aca/browser-profiles` directory by name wherever it sits. It also drops the
+configured `browser_profiles_dir`, resolved, whenever an artifact directory
+contains it, for example when an artifact path points at `$HOME` or `~/.aca`.
+An artifact directory that is itself inside the profiles root is not tarred at
+all. `~` expands per user, and the timer runs as `aca-backup`, so set
+`BROWSER_PROFILES_DIR` to an absolute path when the profiles live anywhere other
+than the default layout. `aca sync` applies the same exclusion
+(`src/config/browser_profiles.py`).
+
 ### Graph database, by configuration
 
 | `graphdb_provider` | `graphdb_mode` | Behavior |

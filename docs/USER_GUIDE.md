@@ -1064,6 +1064,11 @@ aca sync import backup.jsonl --to-profile staging --mode replace
 aca sync push --from-profile local --to-profile staging
 ```
 
+File sync never reads from or writes into a browser-profile directory
+(`~/.aca/browser-profiles/`, or `BROWSER_PROFILES_DIR`). Those profiles hold live
+session cookies and must not move between machines. A database path that
+resolves into one is counted as `excluded` and skipped.
+
 ### Customize AI prompts
 
 ```bash

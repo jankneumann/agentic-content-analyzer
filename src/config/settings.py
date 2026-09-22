@@ -34,6 +34,7 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
+from src.config.browser_profiles import DEFAULT_BROWSER_PROFILES_DIR
 from src.config.models import ModelConfig, Provider, ProviderConfig
 
 logger = logging.getLogger(__name__)
@@ -753,6 +754,12 @@ class Settings(BaseSettings):
 
     # Local storage paths per bucket (defaults to data/{bucket})
     storage_local_paths: dict[str, str] | None = None
+
+    # Root for per-site persistent browser profiles (aca auth session). Holds live
+    # session cookies, so every backup and sync path excludes it — see
+    # src/config/browser_profiles.py. Set an absolute path when the backup runs as a
+    # different user than the one who logs in: "~" expands per user.
+    browser_profiles_dir: str = DEFAULT_BROWSER_PROFILES_DIR
 
     # S3 bucket names per logical bucket (defaults to image_storage_bucket)
     storage_s3_buckets: dict[str, str] | None = None
