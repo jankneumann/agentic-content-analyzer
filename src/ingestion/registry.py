@@ -540,6 +540,26 @@ def _gmail_readiness(_source: SourceBase) -> ConfiguredSourceReadiness:
     return ConfiguredSourceReadiness(ready=False, code="oauth_unavailable")
 
 
+def _substack_readiness(_source: SourceBase) -> ConfiguredSourceReadiness:
+    """Readiness of the Substack session, read live through the credential provider.
+
+    Never reads ``Settings`` directly: a cookie patched into OpenBao (or a
+    rejection recorded by the adapter) changes the answer in the same process.
+    """
+    from src.config.credentials import SUBSTACK_SESSION_COOKIE, get_credential_provider
+    from src.ingestion.credential_failures import CREDENTIALS_MISSING, SESSION_EXPIRED
+
+    try:
+        metadata = get_credential_provider().metadata(SUBSTACK_SESSION_COOKIE)
+    except Exception:
+        return ConfiguredSourceReadiness(ready=False, code="source_unavailable")
+    if not metadata.present:
+        return ConfiguredSourceReadiness(ready=False, code=CREDENTIALS_MISSING)
+    if metadata.rejected_at is not None:
+        return ConfiguredSourceReadiness(ready=False, code=SESSION_EXPIRED)
+    return ConfiguredSourceReadiness(ready=True)
+
+
 def _obsidian_readiness(source: SourceBase) -> ConfiguredSourceReadiness:
     try:
         from src.ingestion.orchestrator import obsidian_adapter_config
@@ -655,6 +675,7 @@ def _default_descriptors() -> tuple[SourceDescriptor, ...]:
             ),
             config_matcher=_is(SubstackSource),
             config_accessor=_get("get_substack_sources"),
+            readiness_resolver=_substack_readiness,
             options=force_date,
         ),
         SourceDescriptor(

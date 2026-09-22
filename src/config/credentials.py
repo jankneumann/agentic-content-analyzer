@@ -21,7 +21,7 @@ Only the credentials registered in :data:`BROWSER_SESSION_CREDENTIALS` are
 served, each with an explicit OpenBao/env key <-> ``Settings`` field mapping.
 
 Logging: this module logs credential NAMES only, never values. Metadata
-(``saved_at``, ``last_verified_at``) is never secret.
+(``saved_at``, ``last_verified_at``, ``rejected_at``) is never secret.
 """
 
 from __future__ import annotations
@@ -84,6 +84,8 @@ class CredentialMetadata:
     """When a secret sink last wrote the value (``<NAME>_SAVED_AT`` in OpenBao)."""
     last_verified_at: datetime | None
     """When THIS process last saw the CURRENT value accepted by the remote site."""
+    rejected_at: datetime | None = None
+    """When THIS process last saw the CURRENT value rejected by the remote site."""
 
 
 def _parse_saved_at(raw: str | None) -> datetime | None:
@@ -99,6 +101,14 @@ def _parse_saved_at(raw: str | None) -> datetime | None:
 def _fingerprint(value: str) -> bytes:
     # In-memory only, used to tell whether the verified value is still current.
     return hashlib.sha256(value.encode("utf-8")).digest()
+
+
+def _stamp_for_current(record: tuple[datetime, bytes] | None, value: str | None) -> datetime | None:
+    """Return the recorded time only while it was recorded for ``value``."""
+    if record is None or value is None:
+        return None
+    at, fingerprint = record
+    return at if hmac.compare_digest(fingerprint, _fingerprint(value)) else None
 
 
 def _utc_now() -> datetime:
@@ -118,9 +128,9 @@ class CredentialProvider:
     OpenBao cache has loaded; only :meth:`refresh` reads OpenBao, and at most
     once per interval process-wide.
 
-    ``last_verified_at`` is kept in process memory only (see ``mark_verified``):
-    writing it to OpenBao on every successful run would turn each ingestion
-    into a secret-store write. A cross-process record is left to its consumer
+    ``last_verified_at`` and ``rejected_at`` are kept in process memory only
+    (see ``mark_verified`` / ``mark_rejected``): writing them to OpenBao on
+    every run would turn each ingestion into a secret-store write. A cross-process record is left to its consumer
     (``aca auth status``).
     """
 
@@ -140,6 +150,7 @@ class CredentialProvider:
         self._clock = clock
         self._lock = threading.Lock()
         self._verified: dict[str, tuple[datetime, bytes]] = {}
+        self._rejected: dict[str, tuple[datetime, bytes]] = {}
 
     # -- resolution -----------------------------------------------------
 
@@ -190,20 +201,17 @@ class CredentialProvider:
         saved_at = (
             _parse_saved_at(snapshot.get(saved_at_key(name))) if source == "openbao" else None
         )
-        last_verified_at: datetime | None = None
         with self._lock:
             verified = self._verified.get(name)
-        if verified is not None and value is not None:
-            at, fingerprint = verified
-            if hmac.compare_digest(fingerprint, _fingerprint(value)):
-                last_verified_at = at
+            rejected = self._rejected.get(name)
         return CredentialMetadata(
             name=name,
             label=spec.label,
             present=value is not None,
             source=source,
             saved_at=saved_at,
-            last_verified_at=last_verified_at,
+            last_verified_at=_stamp_for_current(verified, value),
+            rejected_at=_stamp_for_current(rejected, value),
         )
 
     # -- lifecycle ------------------------------------------------------
@@ -219,6 +227,22 @@ class CredentialProvider:
             return
         with self._lock:
             self._verified[name] = (at or self._clock(), _fingerprint(value))
+            self._rejected.pop(name, None)
+
+    def mark_rejected(self, name: str, *, at: datetime | None = None) -> None:
+        """Record that the current value of ``name`` was just rejected remotely.
+
+        For adapters that saw a login page, a sign-in redirect, or a 401 even
+        after :meth:`refresh`. In-process only, like :meth:`mark_verified`; a
+        rotated value is not rejected until it is itself refused, so patching a
+        fresh credential clears the condition without a restart.
+        """
+        value = self.get(name)
+        if value is None:
+            return
+        with self._lock:
+            self._rejected[name] = (at or self._clock(), _fingerprint(value))
+            self._verified.pop(name, None)
 
     def refresh(
         self, *, min_interval_s: float = bao_secrets.DEFAULT_REFRESH_MIN_INTERVAL_S

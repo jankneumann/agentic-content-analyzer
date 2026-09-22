@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import httpx
 import yaml
@@ -24,11 +24,13 @@ from src.config.credentials import (
     get_credential_provider,
 )
 from src.config.sources import SourceFileConfig, SubstackSource
+from src.ingestion.credential_failures import CREDENTIALS_MISSING, SessionExpiredError
 from src.ingestion.gmail import ContentData
 from src.ingestion.log_redaction import log_error_type
 from src.ingestion.result import (
     IngestionError,
     IngestionResponse,
+    IngestionWarning,
     SourceFetchResult,
     build_response_from_source_results,
 )
@@ -66,6 +68,42 @@ class SyncResult:
 
 
 SUBSTACK_SID_COOKIE = "substack.sid"
+SUBSTACK_REFRESH_COMMAND = "aca auth session substack"
+
+SESSION_PROBE_URL = "https://substack.com/api/v1/subscriptions"
+"""Cheap endpoint that only answers a logged-in reader (also the sync source)."""
+
+_LOGIN_PATHS = ("/sign-in", "/account/login")
+
+
+def is_dead_session_response(response: httpx.Response) -> bool:
+    """True when a JSON API request that CARRIED ``substack.sid`` came back logged out.
+
+    Conservative on purpose: each signal is one a logged-in request never
+    produces, so a false positive would need Substack itself to misbehave.
+
+    - ``401``;
+    - ``403`` unless it is a Cloudflare challenge (``cf-mitigated`` header),
+      which is bot mitigation rather than a verdict on the session;
+    - a redirect whose ``Location`` path is a sign-in page (``/sign-in``,
+      ``/account/login``); the client never follows redirects;
+    - a ``2xx`` ``text/html`` body where the API endpoint returns JSON.
+
+    404, 429, 5xx, and redirects elsewhere are ordinary failures, not session
+    verdicts, and are left to the caller's existing handling.
+    """
+    status = response.status_code
+    if status == 401:
+        return True
+    if status == 403:
+        return "cf-mitigated" not in response.headers
+    if response.is_redirect:
+        path = urlparse(response.headers.get("location", "")).path.rstrip("/").lower()
+        return any(path == login or path.startswith(login + "/") for login in _LOGIN_PATHS)
+    if response.is_success:
+        content_type = response.headers.get("content-type", "").lower()
+        return content_type.startswith("text/html")
+    return False
 
 
 class SubstackClient:
@@ -114,6 +152,88 @@ class SubstackClient:
                     "substack.session_cookie_changed: using the current %s", SUBSTACK_SESSION_COOKIE
                 )
         return cookie
+
+    def _uses_provider_cookie(self, cookie: str) -> bool:
+        """True when ``cookie`` is the provider's current value (not an override)."""
+        return (
+            not self._explicit_cookie and self._credentials.get(SUBSTACK_SESSION_COOKIE) == cookie
+        )
+
+    def _get_with_session(
+        self,
+        url: str,
+        *,
+        params: dict[str, Any] | None = None,
+        verifies_session: bool = False,
+    ) -> httpx.Response:
+        """GET ``url`` with the current ``substack.sid`` and police the answer.
+
+        A dead-session answer (see :func:`is_dead_session_response`) triggers
+        one bounded OpenBao refresh and, when that yields a different cookie,
+        one retry. A session still refused raises :class:`SessionExpiredError`
+        and records the rejection on the provider so readiness reports
+        ``session_expired`` until a new cookie is patched in. Requests sent
+        without a cookie are never judged: logged out is their expected state.
+
+        ``verifies_session`` marks the provider's cookie verified on a 2xx; set
+        it only for endpoints that require a login (the archive is public, so
+        its 200 proves nothing about the session).
+        """
+        cookie = self._sync_session_cookie()
+        response = self._http.get(url, params=params)
+        if cookie is None:
+            return response
+        if is_dead_session_response(response):
+            response, cookie = self._retry_after_refresh(url, params, rejected=cookie)
+        if verifies_session and response.is_success and self._uses_provider_cookie(cookie):
+            self._credentials.mark_verified(SUBSTACK_SESSION_COOKIE)
+        return response
+
+    def _retry_after_refresh(
+        self, url: str, params: dict[str, Any] | None, *, rejected: str
+    ) -> tuple[httpx.Response, str]:
+        logger.warning(
+            "substack.session_rejected: refreshing %s once before failing closed",
+            SUBSTACK_SESSION_COOKIE,
+        )
+        if not self._explicit_cookie:
+            # An explicit override did not come from the provider; refreshing
+            # OpenBao cannot replace it.
+            self._credentials.refresh()
+        cookie = self._sync_session_cookie()
+        if cookie and cookie != rejected:
+            response = self._http.get(url, params=params)
+            if not is_dead_session_response(response):
+                logger.info("substack.session_recovered: refreshed %s", SUBSTACK_SESSION_COOKIE)
+                return response, cookie
+            rejected = cookie
+        if self._uses_provider_cookie(rejected):
+            self._credentials.mark_rejected(SUBSTACK_SESSION_COOKIE)
+        raise SessionExpiredError(
+            source="substack",
+            credential_label=SUBSTACK_SID_COOKIE,
+            refresh_command=SUBSTACK_REFRESH_COMMAND,
+        )
+
+    def verify_session(self) -> bool:
+        """Prove the current cookie with one authenticated request.
+
+        Returns True when Substack accepted it (and marks it verified), False
+        when there is no cookie or the answer says nothing about the session
+        (network error, 404, 429, 5xx). Raises :class:`SessionExpiredError`
+        when Substack refused it even after one refresh.
+        """
+        if not self._sync_session_cookie():
+            return False
+        try:
+            response = self._get_with_session(SESSION_PROBE_URL, verifies_session=True)
+        except httpx.HTTPError as exc:
+            logger.warning("substack.session_probe_inconclusive (%s)", log_error_type(exc))
+            return False
+        if not response.is_success:
+            logger.warning("substack.session_probe_inconclusive (HTTP %s)", response.status_code)
+            return False
+        return True
 
     def _get_auth(self) -> SubstackAuth | None:
         """Get or create SubstackAuth from cookies file if available."""
@@ -167,7 +287,7 @@ class SubstackClient:
         ]
         for endpoint in endpoints:
             try:
-                response = self._http.get(endpoint)
+                response = self._get_with_session(endpoint, verifies_session=True)
                 if response.status_code == 404:
                     continue
                 response.raise_for_status()
@@ -176,6 +296,10 @@ class SubstackClient:
                     return self._join_subscriptions_with_publications(data)
                 if isinstance(data, list):
                     return data
+            except SessionExpiredError:
+                # Never degrade to "no subscriptions": sync would then rewrite
+                # substack.yaml with an empty source list.
+                raise
             except Exception as exc:
                 logger.warning("Substack HTTP subscription fetch failed (%s)", log_error_type(exc))
                 continue
@@ -257,15 +381,18 @@ class SubstackClient:
         self, publication_url: str, max_entries: int
     ) -> list[dict[str, Any]] | None:
         archive_url = urljoin(publication_url.rstrip("/") + "/", "api/v1/archive")
-        self._sync_session_cookie()
         try:
-            response = self._http.get(archive_url, params={"limit": max_entries, "sort": "new"})
+            response = self._get_with_session(
+                archive_url, params={"limit": max_entries, "sort": "new"}
+            )
             response.raise_for_status()
             data = response.json()
             if isinstance(data, list):
                 return data
             if isinstance(data, dict) and "posts" in data:
                 return data["posts"]
+        except SessionExpiredError:
+            raise
         except Exception as exc:
             logger.warning("Substack HTTP archive fetch failed (%s)", log_error_type(exc))
             return None
@@ -319,39 +446,31 @@ class SubstackContentIngestionService:
             f"({len(sources) - len(enabled_sources)} disabled)"
         )
 
-        # Track contents alongside the source they came from so per-source
-        # diagnostics survive the flat persistence loop below.
-        contents: list[tuple[ContentData, SourceFetchResult]] = []
-        for source in enabled_sources:
-            fetch_result = SourceFetchResult(url=source.url, name=source.name)
-            source_results.append(fetch_result)
-            max_entries = source.max_entries or max_entries_per_source
-            posts = self.client.fetch_posts(source.url, max_entries=max_entries)
-            for post in posts:
-                coerced = self._coerce_post(post)
-                content = self._post_to_content(coerced, source)
-                if content is None:
-                    fetch_result.items_failed += 1
-                    post_url = coerced.get("canonical_url") or coerced.get("url") or source.url
-                    fetch_result.item_errors.append(
-                        IngestionError(
-                            code="extraction_failed",
-                            message="Empty or paywalled post body",
-                            url=post_url,
-                        )
-                    )
-                    continue
-                if after_date and content.published_date and content.published_date < after_date:
-                    continue
-                contents.append((content, fetch_result))
+        # Every fetch finishes before the first row is written, so failing
+        # closed here persists nothing: a dead session is never a partial run.
+        try:
+            contents = self._fetch_contents(
+                enabled_sources, source_results, max_entries_per_source, after_date
+            )
+        except SessionExpiredError as exc:
+            logger.error("substack.session_expired: ingestion failed closed with zero rows")
+            return IngestionResponse(
+                command="ingest.substack",
+                source="substack",
+                status="error",
+                items_ingested=0,
+                errors=[exc.to_ingestion_error()],
+            )
 
         if not contents:
             logger.info("No Substack content found")
-            return build_response_from_source_results(
-                command="ingest.substack",
-                source="substack",
-                items_ingested=0,
-                source_results=source_results,
+            return self._with_session_warning(
+                build_response_from_source_results(
+                    command="ingest.substack",
+                    source="substack",
+                    items_ingested=0,
+                    source_results=source_results,
+                )
             )
 
         count = 0
@@ -494,14 +613,73 @@ class SubstackContentIngestionService:
                     continue
 
         logger.info(f"Successfully ingested {count} Substack items")
-        return build_response_from_source_results(
-            command="ingest.substack",
-            source="substack",
-            items_ingested=count,
-            source_results=source_results,
-            extra_item_errors=persistence_errors,
-            extra_items_failed=len(persistence_errors),
+        return self._with_session_warning(
+            build_response_from_source_results(
+                command="ingest.substack",
+                source="substack",
+                items_ingested=count,
+                source_results=source_results,
+                extra_item_errors=persistence_errors,
+                extra_items_failed=len(persistence_errors),
+            )
         )
+
+    def _fetch_contents(
+        self,
+        enabled_sources: list[SubstackSource],
+        source_results: list[SourceFetchResult],
+        max_entries_per_source: int,
+        after_date: datetime | None,
+    ) -> list[tuple[ContentData, SourceFetchResult]]:
+        """Fetch and convert every enabled source; persist nothing.
+
+        When a cookie is configured it is proven first with one authenticated
+        request, because the post fetches below mostly go through public
+        endpoints that would silently serve a logged-out reader. Raises
+        :class:`SessionExpiredError` when Substack refuses the session.
+        """
+        if enabled_sources:
+            self.client.verify_session()
+
+        # Track contents alongside the source they came from so per-source
+        # diagnostics survive the flat persistence loop in ingest_content.
+        contents: list[tuple[ContentData, SourceFetchResult]] = []
+        for source in enabled_sources:
+            fetch_result = SourceFetchResult(url=source.url, name=source.name)
+            source_results.append(fetch_result)
+            max_entries = source.max_entries or max_entries_per_source
+            posts = self.client.fetch_posts(source.url, max_entries=max_entries)
+            for post in posts:
+                coerced = self._coerce_post(post)
+                content = self._post_to_content(coerced, source)
+                if content is None:
+                    fetch_result.items_failed += 1
+                    post_url = coerced.get("canonical_url") or coerced.get("url") or source.url
+                    fetch_result.item_errors.append(
+                        IngestionError(
+                            code="extraction_failed",
+                            message="Empty or paywalled post body",
+                            url=post_url,
+                        )
+                    )
+                    continue
+                if after_date and content.published_date and content.published_date < after_date:
+                    continue
+                contents.append((content, fetch_result))
+        return contents
+
+    def _with_session_warning(self, response: IngestionResponse) -> IngestionResponse:
+        """Flag a cookie-less run on the envelope; it still ingests public posts."""
+        if self.client.session_cookie:
+            return response
+        warning = IngestionWarning(
+            code=CREDENTIALS_MISSING,
+            message=(
+                f"{SUBSTACK_SESSION_COOKIE} is not set; paid Substack posts are unavailable. "
+                f"Capture it with: {SUBSTACK_REFRESH_COMMAND}"
+            ),
+        )
+        return response.model_copy(update={"warnings": [*response.warnings, warning]})
 
     def _post_to_content(self, post: dict[str, Any], source: SubstackSource) -> ContentData | None:
         title = post.get("title") or post.get("subject") or "Untitled"

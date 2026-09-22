@@ -484,6 +484,31 @@ class TestMetadata:
         fake.client.adapter.request.assert_not_called()
         fake.client.secrets.kv.v2.create_or_update_secret.assert_not_called()
 
+    def test_rejected_at_tracks_the_current_value(
+        self, token_env: None, log_capture: _ListHandler
+    ) -> None:
+        fake = FakeBao({SUBSTACK_SESSION_COOKIE: BOOT_COOKIE})
+        rejected_at = datetime(2026, 9, 22, 10, 0, tzinfo=UTC)
+        provider = CredentialProvider(settings_factory=_settings)
+        with patch("src.config.bao_secrets.hvac", fake.hvac):
+            provider.mark_verified(SUBSTACK_SESSION_COOKIE)
+            provider.mark_rejected(SUBSTACK_SESSION_COOKIE, at=rejected_at)
+            meta = provider.metadata(SUBSTACK_SESSION_COOKIE)
+            # A rejection supersedes an earlier verification of the same value.
+            assert (meta.rejected_at, meta.last_verified_at) == (rejected_at, None)
+
+            provider.mark_verified(SUBSTACK_SESSION_COOKIE)
+            assert provider.metadata(SUBSTACK_SESSION_COOKIE).rejected_at is None
+
+            provider.mark_rejected(SUBSTACK_SESSION_COOKIE, at=rejected_at)
+            fake.data[SUBSTACK_SESSION_COOKIE] = ROTATED_COOKIE
+            assert provider.refresh(min_interval_s=0) is True
+            # The rejection belonged to the previous cookie.
+            assert provider.metadata(SUBSTACK_SESSION_COOKIE).rejected_at is None
+        fake.client.adapter.request.assert_not_called()
+        fake.client.secrets.kv.v2.create_or_update_secret.assert_not_called()
+        assert BOOT_COOKIE not in repr(provider.metadata(SUBSTACK_SESSION_COOKIE))
+
     def test_mark_verified_without_value_is_a_noop(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("BAO_ADDR", raising=False)
         provider = CredentialProvider(settings_factory=_settings)
