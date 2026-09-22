@@ -31,14 +31,21 @@ logger = get_logger(__name__)
 class SourceInfo(BaseModel):
     """Information about a single configured source."""
 
-    type: str = Field(description="Source type (e.g., rss, youtube_playlist, podcast, gmail)")
+    type: str = Field(
+        description="Source type (e.g., rss, youtube_playlist, podcast, gmail)"
+    )
     name: str | None = Field(default=None, description="Human-readable source name")
     url: str = Field(description="Source URL or identifier")
     enabled: bool = Field(description="Whether the source is enabled for ingestion")
-    tags: list[str] = Field(default_factory=list, description="Tags for categorizing the source")
-    origin: str = Field(default="yaml", description="Where the source came from: 'yaml' or 'db'")
+    tags: list[str] = Field(
+        default_factory=list, description="Tags for categorizing the source"
+    )
+    origin: str = Field(
+        default="yaml", description="Where the source came from: 'yaml' or 'db'"
+    )
     source_key: str | None = Field(
-        default=None, description="Natural key '<type>:<locator>' identifying the source"
+        default=None,
+        description="Public management key: ordinary natural key or opaque Obsidian key",
     )
 
 

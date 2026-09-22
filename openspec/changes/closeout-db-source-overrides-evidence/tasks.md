@@ -18,20 +18,20 @@ outputs, `tests/contract/test_canonical_workflow_contracts.py`, source API tests
 `web/src/types/settings.ts`, and—only where parity tests expose drift—the source
 routes and hand-maintained CLI/web transport wrappers plus their tests.
 
-- [ ] 1.1 Add failing assertions for all four operations, authoritative nested
+- [x] 1.1 Add failing assertions for all four operations, authoritative nested
   `config.type`, ignored siblings with no semantic effect, PATCH `{enabled}`,
   operation-specific success bodies, legacy error bodies, both credential
   schemes, and opaque Obsidian keys.
-- [ ] 1.2 Add paths/schemas to the durable OpenAPI, regenerate Python/TypeScript
+- [x] 1.2 Add paths/schemas to the durable OpenAPI, regenerate Python/TypeScript
   models, and keep generated artifacts in the same commit.
-- [ ] 1.3 Prove FastAPI, CLI, and web parity: semantic config failure
+- [x] 1.3 Prove FastAPI, CLI, and web parity: semantic config failure
   (400/no row), malformed body (422/no row), missing/invalid auth
   (401/403/no mutation), unknown PATCH (404), ignored extras, and versioning.
-- [ ] 1.4 Normalize source-management audit paths before persistence and
+- [x] 1.4 Normalize source-management audit paths before persistence and
   writer-failure logging. Prove valid opaque keys remain useful while rejected
   Obsidian natural locators, filesystem fields, tags, and identifiers never
   appear in stored audit rows or captured application logs.
-- [ ] 1.5 Correct stale comments that describe GET as public or every key as a
+- [x] 1.5 Correct stale comments that describe GET as public or every key as a
   natural key; add Readwise and Obsidian to shared response DTO unions without
   creating a browser Obsidian form.
 

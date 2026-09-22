@@ -14,6 +14,7 @@ import httpx
 import pytest
 from typer.testing import CliRunner
 
+from src.cli.api_client import ApiClient
 from src.cli.app import app
 
 runner = CliRunner()
@@ -36,6 +37,63 @@ def _http_error(status_code: int, detail: str = "boom") -> httpx.HTTPStatusError
     request = httpx.Request("POST", "http://test/api/v1/sources")
     response = httpx.Response(status_code, json={"detail": detail}, request=request)
     return httpx.HTTPStatusError("err", request=request, response=response)
+
+
+def _ok_response(payload: dict) -> httpx.Response:
+    request = httpx.Request("GET", "http://test/api/v1/sources")
+    return httpx.Response(200, json=payload, request=request)
+
+
+def test_api_client_source_transports_match_contract_payloads_and_encoded_keys():
+    client = ApiClient(base_url="http://test", admin_key="admin")
+    opaque_key = "src_0123456789abcdef0123"
+    mutation = {
+        "source_key": opaque_key,
+        "version": 1,
+        "origin": "db",
+        "enabled": True,
+    }
+    deletion = {"source_key": opaque_key, "deleted": True}
+
+    with (
+        patch.object(client._client, "post", return_value=_ok_response(mutation)) as post,
+        patch.object(client._client, "patch", return_value=_ok_response(mutation)) as patch_call,
+        patch.object(client._client, "delete", return_value=_ok_response(deletion)) as delete,
+    ):
+        assert client.add_source(
+            {"type": "rss", "url": "https://example.test/feed"},
+            description="operator note",
+        ) == mutation
+        assert client.set_source_enabled(opaque_key, False) == mutation
+        assert client.remove_source(opaque_key) == deletion
+
+    post.assert_called_once_with(
+        "/api/v1/sources",
+        json={
+            "config": {"type": "rss", "url": "https://example.test/feed"},
+            "description": "operator note",
+        },
+    )
+    patch_call.assert_called_once_with(
+        "/api/v1/sources/src_0123456789abcdef0123", json={"enabled": False}
+    )
+    delete.assert_called_once_with("/api/v1/sources/src_0123456789abcdef0123")
+    client.close()
+
+
+def test_api_client_url_encodes_ordinary_source_key():
+    client = ApiClient(base_url="http://test", admin_key="admin")
+    response = _ok_response(
+        {"source_key": "rss:https://example.test/feed", "deleted": True}
+    )
+
+    with patch.object(client._client, "delete", return_value=response) as delete:
+        client.remove_source("rss:https://example.test/feed")
+
+    delete.assert_called_once_with(
+        "/api/v1/sources/rss%3Ahttps%3A%2F%2Fexample.test%2Ffeed"
+    )
+    client.close()
 
 
 # ---------------------------------------------------------------------------

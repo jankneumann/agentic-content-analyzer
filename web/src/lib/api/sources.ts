@@ -2,9 +2,9 @@
  * Ingestion Sources API Functions
  *
  * API client functions for viewing and managing ingestion source overrides.
- * Sources live under the `/sources` prefix (NOT `/settings`). Read access is
- * public; create / delete / enable-disable require admin authentication, which
- * is handled by the shared apiClient the same way as other admin settings calls.
+ * Sources live under the `/sources` prefix (NOT `/settings`). Every operation
+ * requires an owner session or X-Admin-Key outside credential-free local
+ * development; the shared apiClient supplies the configured credential mode.
  */
 
 import { apiClient } from "./client"
@@ -20,7 +20,7 @@ export async function fetchSources(): Promise<SourcesOverview> {
   return apiClient.get<SourcesOverview>("/sources")
 }
 
-/** Add or update a source override (upsert by natural key) */
+/** Add or update a source override (upsert by its private internal identity) */
 export async function upsertSource(
   request: SourceUpsertRequest
 ): Promise<SourceMutationResult> {
