@@ -263,3 +263,28 @@ def test_role_readiness_answers_inside_the_healthcheck_budget(monkeypatch) -> No
     assert fetched and all(
         url.startswith("http://") and 0 < timeout <= probe.STEP_SECONDS for url, timeout in fetched
     ), fetched
+
+
+def test_the_quota_counts_what_is_already_on_disk(tmp_path) -> None:
+    """`used_bytes=0` handed every run the full quota again.
+
+    The limit bounded one run and nothing bounded the directory. A GX-10 run
+    writes about 42GB, dominated by ClickHouse, the timer runs daily, and
+    nothing prunes: the quota is all that stands between that and a full disk.
+    """
+    runtime = _runtime_module()
+
+    assert runtime._stored_bytes(tmp_path / "absent") == 0
+
+    (tmp_path / "application_postgresql-20260922T131228Z.age").write_bytes(b"x" * 500)
+    (tmp_path / "clickhouse-20260922T131228Z.age").write_bytes(b"y" * 1500)
+    (tmp_path / "notes.txt").write_text("not an artifact")
+
+    assert runtime._stored_bytes(tmp_path) == 2000
+
+    # The scheduled run is the one writing to a directory; the synthetic
+    # checkpoint stores in memory, where zero is the honest answer.
+    source = (ROOT / "scripts/gx10/backup/runtime.py").read_text(encoding="utf-8")
+    scheduled = source.split("def run_once()", 1)[1].split("return 0 if manifest", 1)[0]
+    assert "used_bytes=_stored_bytes(args.output)" in scheduled
+    assert "used_bytes=0" not in scheduled

@@ -156,6 +156,21 @@ def age_adapter_from_material_file(
     return OpenBaoAgeAdapter(material=OpenBaoAgeMaterialProvider(read_secret=secrets.get))
 
 
+def _stored_bytes(output_dir: Path) -> int:
+    """Bytes of artifacts already written under the output directory.
+
+    Passing zero here gave every run the full quota again, so the limit only
+    ever bounded a single run and nothing bounded the directory. A GX-10 run
+    writes about 42GB, mostly ClickHouse, and nothing prunes: the quota is the
+    only thing standing between a daily timer and a full disk, and it was
+    measuring the wrong thing.
+    """
+
+    if not output_dir.is_dir():
+        return 0
+    return sum(path.stat().st_size for path in output_dir.glob("*.age") if path.is_file())
+
+
 def _maintenance_correlation(
     operation_id: str | None,
     trace_id: str | None,
@@ -588,7 +603,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 plan_path=args.plan,
                 output_dir=args.output,
                 correlation=correlation,
-                quota=BackupQuota(limit_bytes=args.quota_bytes, used_bytes=0),
+                quota=BackupQuota(
+                    limit_bytes=args.quota_bytes,
+                    used_bytes=_stored_bytes(args.output),
+                ),
                 age=age,
             )
             print(manifest.to_json())
