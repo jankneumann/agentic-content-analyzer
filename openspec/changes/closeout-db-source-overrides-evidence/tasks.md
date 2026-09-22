@@ -97,12 +97,12 @@ and the source-settings browser spec; it does not edit production components.
 `tests/migrations/` and `tests/migrations/test_source_overrides.py`; no
 historical migration edit or session-shared database mutation is expected.
 
-- [ ] 4.1 Provision a uniquely named, worktree-safe disposable database with
+- [x] 4.1 Provision a uniquely named, worktree-safe disposable database with
   its own `public` schema, upgrade to `b8f8b5ededed`, create a sentinel,
   upgrade through `c3d4e5f6a7b8` to current head, and assert the revision chain,
   columns, PostgreSQL JSONB, nullability, defaults, constraints/indexes, JSON
   round trip, and sentinel preservation.
-- [ ] 4.2 Prove a second head upgrade is a no-op. Separately use a test-local
+- [x] 4.2 Prove a second head upgrade is a no-op. Separately use a test-local
   verifier to demonstrate that the existing-table guard does not validate an
   incompatible manual schema; this evidence must not be presented as a
   production doctor. Teardown drops only the uniquely named disposable
