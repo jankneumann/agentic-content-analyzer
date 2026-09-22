@@ -28,14 +28,14 @@ def _fixture(tmp_path: Path, *, stop_exit: int = 0, start_exit: int = 0) -> dict
     compose.write_text(
         "#!/usr/bin/env bash\n"
         f'echo "compose $*" >> "{log}"\n'
-        f"[[ \"$1\" == stop ]] && exit {stop_exit}\n"
+        f'[[ "$1" == stop ]] && exit {stop_exit}\n'
         "exit 0\n"
     )
     podman = tmp_path / "podman"
     podman.write_text(
         "#!/usr/bin/env bash\n"
         f'echo "podman $*" >> "{log}"\n'
-        f"[[ \"$1\" == start ]] && exit {start_exit}\n"
+        f'[[ "$1" == start ]] && exit {start_exit}\n'
         "exit 0\n"
     )
     compose.chmod(0o700)
@@ -60,9 +60,7 @@ def _calls(tmp_path: Path) -> list[str]:
 def test_the_store_is_stopped_copied_and_started_again(tmp_path: Path) -> None:
     env = _fixture(tmp_path)
 
-    result = subprocess.run(
-        [COMPONENT, "produce", "clickhouse"], env=env, capture_output=True
-    )
+    result = subprocess.run([COMPONENT, "produce", "clickhouse"], env=env, capture_output=True)
 
     assert result.returncode == 0, result.stderr.decode()
     calls = _calls(tmp_path)
@@ -80,9 +78,7 @@ def test_a_failed_stop_aborts_before_the_copy(tmp_path: Path) -> None:
     """A tar of a running store restores torn while looking like a backup."""
     env = _fixture(tmp_path, stop_exit=2)
 
-    result = subprocess.run(
-        [COMPONENT, "produce", "clickhouse"], env=env, capture_output=True
-    )
+    result = subprocess.run([COMPONENT, "produce", "clickhouse"], env=env, capture_output=True)
 
     assert result.returncode == 2
     assert result.stdout == b"", "no artifact may be produced from a live store"
@@ -93,9 +89,7 @@ def test_a_store_that_will_not_start_again_fails_the_component(tmp_path: Path) -
     """The copy succeeded, but leaving a store down must not read as success."""
     env = _fixture(tmp_path, start_exit=1)
 
-    result = subprocess.run(
-        [COMPONENT, "produce", "clickhouse"], env=env, capture_output=True
-    )
+    result = subprocess.run([COMPONENT, "produce", "clickhouse"], env=env, capture_output=True)
 
     assert result.returncode == 1
     assert "podman start aca-gx10_clickhouse_1" in _calls(tmp_path)
