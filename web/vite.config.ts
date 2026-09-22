@@ -152,6 +152,8 @@ export default defineConfig({
   test: {
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['tests/e2e/**', 'node_modules/**', 'dist/**'],
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
   },
   plugins: [
     // React plugin provides Fast Refresh and JSX transformation

@@ -2,3 +2,8 @@
 # This enables monorepo support for the frontend alongside the Python backend
 packages:
   - "web"
+overrides:
+  serialize-javascript: ">=7.0.5"
+  protobufjs: 8.7.1
+allowBuilds:
+  esbuild: true
