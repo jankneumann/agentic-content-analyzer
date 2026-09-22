@@ -1,20 +1,25 @@
 """CLI commands for OAuth credential management.
 
-Run the OAuth flow locally for Gmail and YouTube. Optionally upload the
-resulting token (and the credentials.json file) to Railway as env vars,
-so headless cloud deployments don't need filesystem access for OAuth.
+Run the OAuth flow locally for Gmail and YouTube. Optionally push the
+resulting token (and the credentials.json file) to a secret sink so headless
+deployments don't need filesystem access for OAuth.
 
 Usage:
     aca auth gmail                              # Local OAuth, save token.json
     aca auth gmail --no-browser                 # Print URL; wait on localhost callback
     aca auth gmail --force                      # Re-consent even if a token exists
-    aca auth gmail --deploy                     # + upload token to Railway
-    aca auth gmail --deploy --include-credentials  # + upload credentials.json
+    aca auth gmail --to bao                     # + PATCH token into OpenBao secret/newsletter
+    aca auth gmail --to railway                 # + set token as a Railway variable
+    aca auth gmail --to secrets-file            # + upsert token into .secrets.yaml
+    aca auth gmail --to railway --include-credentials  # + push credentials.json too
+    aca auth gmail --deploy                     # DEPRECATED alias for --to railway
     aca auth youtube                            # Same, for YouTube
     aca auth status                             # Show local + Railway state
 
-The Railway upload uses the ``railway`` CLI, which must be installed and
-authenticated (``railway login``) with a project linked (``railway link``).
+Sinks live in ``src/cli/secret_sinks.py``. The Railway sink uses the
+``railway`` CLI, which must be installed and authenticated (``railway login``)
+with a project linked (``railway link``). The OpenBao sink needs ``BAO_ADDR``
+plus AppRole or token credentials and an existing KV v2 secret.
 
 Why these env-var names matter: the corresponding settings
 (``gmail_oauth_token_json``, ``youtube_oauth_token_json``, etc.) are
@@ -42,7 +47,14 @@ import typer
 # module's existing imports and patch-targets stable.
 from src.cli.railway import (
     linked_target as _railway_linked_target,
-    set_variable as _railway_set_env,
+    set_variable as _railway_set_env,  # noqa: F401 — stable import/patch target
+)
+from src.cli.secret_sinks import (
+    SecretSink,
+    SecretSinkError,
+    SinkName,
+    build_sink,
+    echo_railway_target_notice,
 )
 
 app = typer.Typer(
@@ -281,81 +293,116 @@ def _run_oauth_flow(
 
 
 def _warn_deploy_target(service: str | None) -> None:
-    """Surface the two independent sources of truth before pushing secrets.
+    """Surface the linked Railway target vs. the active profile before a push.
 
-    ``--deploy`` writes to whatever Railway project ``railway link`` points at,
-    which is *independent* of the active profile's ``api_base_url``. Showing
-    both prevents pushing OAuth tokens to the wrong project/service.
+    Kept for callers/tests; the Railway sink prints the same notice from
+    ``SecretSink.check()`` before the OAuth flow starts.
     """
-    from src.config.settings import get_active_profile_name, get_settings
+    echo_railway_target_notice(service, _railway_linked_target())
 
-    profile = get_active_profile_name() or "(none)"
-    api_base_url = get_settings().api_base_url
-    linked = _railway_linked_target()
-    linked_desc = linked or "(unknown — railway not linked or CLI unavailable)"
-    target_service = service or "(default service)"
 
-    typer.echo(
-        "\nDeploy target — please confirm before secrets are pushed:\n"
-        f"  Active profile : {profile}  (api_base_url: {api_base_url})\n"
-        f"  Railway link   : {linked_desc}\n"
-        f"  Railway service: {target_service}\n"
-        "  NOTE: --deploy pushes to the *linked Railway project* above, which is\n"
-        "  independent of the profile's api_base_url. Make sure they match.\n"
-    )
+_DEPLOY_DEPRECATION = (
+    "Warning: --deploy is deprecated and will be removed in a future release; "
+    "use --to railway instead."
+)
+
+
+def _resolve_sink(
+    to: SinkName | None,
+    *,
+    deploy: bool,
+    service: str | None,
+) -> SecretSink | None:
+    """Map ``--to``/``--deploy``/``--service`` to a sink (None = local only)."""
+    if deploy:
+        typer.echo(_DEPLOY_DEPRECATION, err=True)
+        if to is not None and to is not SinkName.RAILWAY:
+            typer.echo(f"--deploy (= --to railway) conflicts with --to {to.value}.", err=True)
+            raise typer.Exit(2)
+        to = SinkName.RAILWAY
+    if to is None:
+        return None
+    if service and to is not SinkName.RAILWAY:
+        typer.echo(f"--service only applies to --to railway, not --to {to.value}.", err=True)
+        raise typer.Exit(2)
+    return build_sink(to, service=service)
 
 
 def _do_auth(
     provider: str,
     *,
-    deploy: bool,
     include_credentials: bool,
     service: str | None,
+    to: SinkName | None = None,
+    deploy: bool = False,
     force: bool = False,
     open_browser: bool = True,
     credentials_json: str | None = None,
 ) -> None:
-    """Shared implementation for `aca auth gmail|youtube`."""
+    """Shared implementation for `aca auth gmail|youtube`.
+
+    Provider-agnostic: the provider only contributes env-var names from
+    ``PROVIDERS``; the sink decides where the values go.
+    """
+    sink = _resolve_sink(to, deploy=deploy, service=service)
+    if sink is not None:
+        # Fail fast (missing CLI, bad OpenBao auth, unparsable secrets file)
+        # before the operator clicks through a browser consent screen.
+        try:
+            sink.check()
+        except SecretSinkError as exc:
+            typer.echo(f"Cannot use --to {sink.name.value}: {exc}", err=True)
+            raise typer.Exit(1) from exc
+
     _token_path, token_json = _run_oauth_flow(
         provider,
         force=force,
         open_browser=open_browser,
         credentials_json=credentials_json,
     )
-    if not deploy:
+    if sink is None:
         typer.echo(
-            f"\nNot deploying. To upload this token to Railway, re-run with --deploy.\n"
-            f"  aca auth {provider} --deploy"
+            "\nNot pushing this token anywhere (saved locally only). To push it, re-run with\n"
+            f"  aca auth {provider} --to railway|bao|secrets-file\n"
+            "(--deploy is a deprecated alias for --to railway)"
         )
         return
 
-    _warn_deploy_target(service)
-
     cfg = PROVIDERS[provider]
-    _railway_set_env(str(cfg["token_env"]), token_json, service=service)
+    try:
+        sink.write({str(cfg["token_env"]): token_json})
+        if include_credentials:
+            cred_path, _ = _get_paths(provider)
+            sink.write({str(cfg["credentials_env"]): cred_path.read_text()})
+    except SecretSinkError as exc:
+        typer.echo(f"Error writing to {sink.target}: {exc}", err=True)
+        raise typer.Exit(1) from exc
 
-    if include_credentials:
-        cred_path, _ = _get_paths(provider)
-        cred_json = cred_path.read_text()
-        _railway_set_env(str(cfg["credentials_env"]), cred_json, service=service)
+    typer.echo(f"\nDone. {sink.next_step_hint}")
 
-    typer.echo(
-        "\nDone. Restart the Railway service to pick up the new env vars "
-        "(railway redeploys automatically on env-var change in most cases)."
-    )
+
+_TO_HELP = (
+    "Push the token to a secret sink: 'bao' (OpenBao KV v2 PATCH on "
+    "BAO_MOUNT_PATH/BAO_SECRET_PATH, default secret/newsletter), 'railway' "
+    "(linked Railway project), or 'secrets-file' (.secrets.yaml). Default: local token only."
+)
 
 
 @app.command("gmail")
 def gmail_auth(
+    to: Annotated[
+        SinkName | None,
+        typer.Option("--to", help=_TO_HELP, case_sensitive=False),
+    ] = None,
     deploy: Annotated[
         bool,
-        typer.Option("--deploy", help="Upload the new token to Railway as GMAIL_OAUTH_TOKEN_JSON"),
+        typer.Option("--deploy", help="DEPRECATED: alias for --to railway"),
     ] = False,
     include_credentials: Annotated[
         bool,
         typer.Option(
             "--include-credentials",
-            help="Also upload credentials.json as GMAIL_CREDENTIALS_JSON (needed for fresh deploys)",
+            help="Also push credentials.json as GMAIL_CREDENTIALS_JSON (needed for fresh deploys)",
         ),
     ] = False,
     service: Annotated[
@@ -384,9 +431,10 @@ def gmail_auth(
         ),
     ] = None,
 ) -> None:
-    """Log in to Gmail (browser or printed URL). With --deploy, push the token to Railway."""
+    """Log in to Gmail (browser or printed URL). With --to, push the token to a secret sink."""
     _do_auth(
         "gmail",
+        to=to,
         deploy=deploy,
         include_credentials=include_credentials,
         service=service,
@@ -398,18 +446,20 @@ def gmail_auth(
 
 @app.command("youtube")
 def youtube_auth(
+    to: Annotated[
+        SinkName | None,
+        typer.Option("--to", help=_TO_HELP, case_sensitive=False),
+    ] = None,
     deploy: Annotated[
         bool,
-        typer.Option(
-            "--deploy", help="Upload the new token to Railway as YOUTUBE_OAUTH_TOKEN_JSON"
-        ),
+        typer.Option("--deploy", help="DEPRECATED: alias for --to railway"),
     ] = False,
     include_credentials: Annotated[
         bool,
         typer.Option(
             "--include-credentials",
             help=(
-                "Also upload youtube_credentials.json as YOUTUBE_CREDENTIALS_JSON "
+                "Also push youtube_credentials.json as YOUTUBE_CREDENTIALS_JSON "
                 "(needed for fresh deploys)"
             ),
         ),
@@ -440,9 +490,10 @@ def youtube_auth(
         ),
     ] = None,
 ) -> None:
-    """Log in to YouTube (browser or printed URL). With --deploy, push the token to Railway."""
+    """Log in to YouTube (browser or printed URL). With --to, push the token to a secret sink."""
     _do_auth(
         "youtube",
+        to=to,
         deploy=deploy,
         include_credentials=include_credentials,
         service=service,

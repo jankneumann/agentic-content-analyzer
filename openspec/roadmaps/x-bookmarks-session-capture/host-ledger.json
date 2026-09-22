@@ -39,5 +39,47 @@
         "tar exclusion flags are GNU-only; gx-10 has GNU tar 1.35"
       ]
     }
+  },
+  "ri-02": {
+    "change_id": "add-secret-sink-abstraction-to-the-auth-cli",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "SecretSink protocol with three sinks",
+          "outcome": "src/cli/secret_sinks.py: RailwaySink, BaoSink, SecretsFileSink; write(mapping) returns key names and never echoes values; aca auth gmail|youtube --to railway|bao|secrets-file, --deploy is a deprecated alias"
+        },
+        {
+          "title": "Server-side KV v2 PATCH instead of hvac kv.v2.patch()",
+          "outcome": "hvac 2.4.0 patch() is read_secret_version + create_or_update_secret(cas); BaoSink sends PATCH /v1/<mount>/data/<path> with application/merge-patch+json via client.adapter.request, needing only the patch capability"
+        },
+        {
+          "title": "saved_at as sibling keys",
+          "outcome": "BaoSink writes <KEY>_SAVED_AT in the same atomic PATCH; saved_at_key() lives in src/config/secrets.py"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "optionally create a missing path",
+          "actual": "sink never creates the path; 404 points at the seed script",
+          "reason": "creation requires create_or_update, which the effort forbids"
+        },
+        {
+          "from_plan": "implementer used ruff: ignore[...] comments",
+          "actual": "host converted them back to # noqa codes",
+          "reason": "CI pins ruff 0.15.15, which rejects ruff: ignore (RUF102); venv ruff 0.16.8 differs"
+        }
+      ],
+      "recommendations": [
+        "ri-04/ri-11: write X_AUTH_TOKEN and X_CT0 in one BaoSink.write() so the pair stays consistent; reuse the worker's authenticated hvac client",
+        "Server-side KV v2 PATCH needs OpenBao/Vault >= 1.9; not yet exercised against a live server",
+        "Lint with uvx ruff@0.15.15, never the venv ruff"
+      ]
+    }
   }
 }

@@ -76,6 +76,29 @@ pip install '.[vault]'
 
 The `hvac` library is an optional dependency. Without it, OpenBao integration is silently skipped.
 
+### 5. Push a Single Secret From the CLI
+
+`aca auth gmail|youtube --to bao` writes the freshly minted OAuth token into the
+existing KV v2 secret (`BAO_MOUNT_PATH`/`BAO_SECRET_PATH`, default
+`secret/newsletter`) with a server-side **PATCH** (`application/merge-patch+json`):
+
+```bash
+BAO_ADDR=http://localhost:8200 BAO_TOKEN=dev-root-token aca auth gmail --to bao
+```
+
+- Only the named keys change, plus a sibling `<KEY>_SAVED_AT` (ISO-8601 UTC) per
+  key. Every other key at the path (the LLM keys) is left byte-identical.
+- The path must already exist: PATCH on a missing secret fails with a message
+  pointing at the seed script above. The sink never creates the path, because
+  that needs a full `create_or_update` write.
+- The token needs only the `patch` capability on `secret/data/newsletter`, not
+  `read`. That is why the sink does not use hvac's `kv.v2.patch()`, which is a
+  client-side read followed by `create_or_update_secret`.
+- Values are never printed; the CLI echoes key names and the target path only.
+
+Implementation: `src/cli/secret_sinks.py` (`BaoSink`). Other sinks: `--to railway`
+and `--to secrets-file` (`.secrets.yaml`, mode 0600).
+
 ## Production Deployment
 
 ### AppRole Authentication

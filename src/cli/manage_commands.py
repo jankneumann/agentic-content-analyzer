@@ -123,7 +123,7 @@ def setup_gmail() -> None:
     """Log in to Gmail (alias for ``aca auth gmail``).
 
     Canonical command: ``aca auth gmail``. Use ``--no-browser`` on SSH hosts
-    and ``--deploy`` to push the token to Railway.
+    and ``--to bao|railway|secrets-file`` to push the token to a secret sink.
     """
     typer.echo("Canonical Gmail login is `aca auth gmail`. Running it now...")
     try:

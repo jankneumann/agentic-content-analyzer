@@ -39,6 +39,16 @@ SECRET_KEY_PATTERNS = [
 # Pattern for detecting credentials in URLs
 URL_CREDENTIAL_PATTERN = re.compile(r"://[^:]+:([^@]+)@")
 
+# Suffix of the sibling key that records when a secret was last written by a
+# CLI secret sink (e.g. ``X_CT0`` -> ``X_CT0_SAVED_AT``). The value is an
+# ISO-8601 UTC timestamp, never a secret, so it does not match SECRET_KEY_PATTERNS.
+SAVED_AT_SUFFIX = "_SAVED_AT"
+
+
+def saved_at_key(key: str) -> str:
+    """Return the name of the ``saved_at`` sibling key for secret ``key``."""
+    return f"{key}{SAVED_AT_SUFFIX}"
+
 
 class SecretValue:
     """Wrapper for secret values that masks them in string representation.

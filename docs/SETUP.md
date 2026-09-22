@@ -1496,8 +1496,11 @@ aca auth gmail --no-browser
 # Re-consent / replace an existing token
 aca auth gmail --force
 
-# Push the token to Railway after login
-aca auth gmail --deploy
+# Push the token to a secret sink after login (values are never printed)
+aca auth gmail --to bao            # PATCH into OpenBao secret/newsletter (+ _SAVED_AT)
+aca auth gmail --to railway        # Railway variable on the linked project
+aca auth gmail --to secrets-file   # upsert into .secrets.yaml (mode 0600)
+# --deploy still works for one release as a deprecated alias for --to railway
 
 # Check local + Railway token state
 aca auth status
