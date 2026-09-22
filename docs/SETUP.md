@@ -1560,6 +1560,127 @@ aca ingest substack-sync
 aca ingest substack
 ```
 
+## Database source overrides
+
+Source definitions normally live in `sources.d/` (falling back to `sources.yaml`,
+then legacy source files). Database source overrides are a runtime management layer
+over that baseline; they do not replace version-controlled configuration.
+
+### Precedence and availability
+
+A database override with the same natural source identity takes precedence over
+YAML. A disabled override remains management-visible but is excluded from
+ingestion selection, so it can shadow a YAML source. Removing its database row
+restores a YAML definition when one exists; removing a database-only row removes
+the source entirely.
+
+The loader is deliberately **fail-open** if the database cannot be read: it
+logs the lookup at debug level and continues with the YAML/legacy baseline. This
+preserves ingestion continuity; it does not prove an intended override applied,
+and management writes still require a reachable database.
+
+### Management interfaces
+
+Use the CLI for the ordinary lifecycle:
+
+```bash
+aca sources list
+aca sources add blog --url https://www.normaltech.ai/ --name "Normal Tech"
+aca sources disable 'blog:https://www.normaltech.ai/'
+aca sources enable 'blog:https://www.normaltech.ai/'
+aca sources remove 'blog:https://www.normaltech.ai/'
+```
+
+`aca sources list` shows the complete merged catalog, including `origin` and
+enabled state. `GET /api/v1/sources` returns the same complete, unpaginated
+operator catalog plus grouped content counts; it is not content history.
+
+Outside credential-free local development, source routes accept an authenticated
+owner `session` cookie or `X-Admin-Key`; write routes retain that check as
+defense in depth. Prefer an environment variable for scripting:
+
+```bash
+export ACA_API_BASE=https://your-app.example
+export ACA_ADMIN_KEY='replace-with-admin-key'
+
+# GET: complete catalog
+curl --fail-with-body -H "X-Admin-Key: $ACA_ADMIN_KEY" \
+  "$ACA_API_BASE/api/v1/sources"
+
+# POST: full-config upsert; the discriminator belongs inside config.
+curl --fail-with-body -X POST -H "Content-Type: application/json" \
+  -H "X-Admin-Key: $ACA_ADMIN_KEY" "$ACA_API_BASE/api/v1/sources" \
+  --data '{"config":{"type":"rss","url":"https://example.com/feed.xml"}}'
+
+# PATCH: only enabled state. Public keys must be URL-encoded in paths.
+curl --fail-with-body -X PATCH -H "Content-Type: application/json" \
+  -H "X-Admin-Key: $ACA_ADMIN_KEY" \
+  "$ACA_API_BASE/api/v1/sources/blog%3Ahttps%3A%2F%2Fwww.normaltech.ai%2F" \
+  --data '{"enabled":false}'
+
+# DELETE: removes the database override; a YAML definition may reappear.
+curl --fail-with-body -X DELETE -H "X-Admin-Key: $ACA_ADMIN_KEY" \
+  "$ACA_API_BASE/api/v1/sources/blog%3Ahttps%3A%2F%2Fwww.normaltech.ai%2F"
+```
+
+The nested `config.type` is authoritative. Request models tolerate unknown top-level
+siblings for compatibility, so a legacy top-level `type` is ignored and must
+not be used as a second discriminator. POST/PATCH return `source_key`,
+`version`, `origin`, and `enabled`; new rows begin at version 1. DELETE
+returns `{ "source_key": "…", "deleted": true }`. GET omits mutation version
+and does not distinguish a database-only row from a YAML shadow. Use the generic
+deletion warning: **“Remove database override; a YAML definition may reappear.”**
+
+Source routes retain legacy response families: semantic or missing-key failures
+are `400`/`404` `{ "detail": "…" }`; malformed bodies are `422`
+`{ "detail": [ValidationError, …] }`; and authentication failures are
+`401`/`403` `{ "error", "detail", "trace_id"? }`. Missing credentials are
+401; an explicitly invalid admin key is 403.
+
+### Obsidian management boundary
+
+Ordinary sources use public natural keys such as
+`blog:https://www.normaltech.ai/`. Obsidian's internal natural identity is
+worker-local, while its public management identity is an HMAC-derived opaque
+`src_<20 hexadecimal characters>` key. Use only that opaque key returned by
+list/write responses for PATCH and DELETE. Do not place `vault_id`,
+`vault_path`, `ingest_folder`, private tags, or an
+`obsidian_vault:<locator>` natural key in a public management URL.
+
+Trusted CLI/API callers may submit full Obsidian configuration, but public
+responses never echo it. Application source-management audit paths and failure
+logs redact non-public locators; independently configured proxy access logs are
+outside that guarantee. The browser has no Obsidian create/edit form because it
+cannot inspect worker mounts or allowed roots. It shows existing rows only with
+a generic label and opaque key, and may enable, disable, or remove an override.
+
+Readwise is supported by the browser quick-add form, including its reviewed
+`source_types` and `include_deleted` fields. Advanced options remain
+available through YAML, CLI, or direct API use.
+
+### Migration, backup, and recovery
+
+Alembic revision `c3d4e5f6a7b8` creates `source_overrides`; use the normal
+migration before relying on overrides:
+
+```bash
+alembic upgrade head
+```
+
+Before changing or recovering this table, take and verify a database backup.
+Use `aca backup run`, `aca backup verify`, and
+[BACKUP_RESTORE.md](BACKUP_RESTORE.md), or the provider-approved PostgreSQL
+procedure. Overrides can hold operator intent not recoverable from YAML.
+
+The historical migration only guards against an existing table name; it does
+**not** validate or repair a manually created incompatible `source_overrides`
+table. There is no schema doctor or automatic repair command. Place recovery
+under change control, preserve a verified backup, and have a qualified operator
+rename or remove the manual table before creating a migration-managed table when
+the revision is not recorded. If migration history may already claim it,
+restore/reconcile from backup with a DBA; do not blindly rerun Alembic or edit
+the migration ledger.
+
 ## Obsidian Vault Setup
 
 Ingests Obsidian Web Clipper notes from a worker-local vault folder. Read-only:
@@ -1604,7 +1725,7 @@ alembic upgrade head
 
 ### Railway Production
 
-1. Take a backup via `pg_dump` or the scheduled pg_cron backup job
+1. Take and verify a backup with `aca backup run` and `aca backup verify`
 2. Push the new GHCR image (`newsletter-postgres:17-railway`)
 3. Update the Railway service to use the new image
 4. Recreate the volume and restore from backup
