@@ -63,9 +63,7 @@ def _openapi() -> dict:
 
 def _generated_models() -> Any:
     generated = CONTRACTS / "generated/models.py"
-    spec = importlib.util.spec_from_file_location(
-        "canonical_workflow_models", generated
-    )
+    spec = importlib.util.spec_from_file_location("canonical_workflow_models", generated)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -165,49 +163,39 @@ def test_source_management_contract_matches_legacy_runtime_shapes() -> None:
         assert operation["responses"]["401"] == {
             "$ref": "#/components/responses/LegacyUnauthorized"
         }
-        assert operation["responses"]["403"] == {
-            "$ref": "#/components/responses/LegacyForbidden"
-        }
+        assert operation["responses"]["403"] == {"$ref": "#/components/responses/LegacyForbidden"}
 
-    post_schema = collection["post"]["requestBody"]["content"]["application/json"][
-        "schema"
-    ]
+    post_schema = collection["post"]["requestBody"]["content"]["application/json"]["schema"]
     assert post_schema == {"$ref": "#/components/schemas/SourceUpsertRequest"}
     assert "type" not in schemas["SourceUpsertRequest"]["properties"]
     assert schemas["SourceUpsertRequest"]["required"] == ["config"]
-    assert schemas["SourceOverrideConfig"]["discriminator"] == {
-        "propertyName": "type"
-    }
+    assert schemas["SourceOverrideConfig"]["discriminator"] == {"propertyName": "type"}
     assert schemas["RSSSourceOverrideConfig"]["allOf"][1]["required"] == [
         "type",
         "url",
     ]
 
-    patch_schema = member["patch"]["requestBody"]["content"]["application/json"][
-        "schema"
-    ]
+    patch_schema = member["patch"]["requestBody"]["content"]["application/json"]["schema"]
     assert patch_schema == {"$ref": "#/components/schemas/SourceEnabledRequest"}
     assert schemas["SourceEnabledRequest"]["required"] == ["enabled"]
-    assert schemas["SourceEnabledRequest"]["properties"] == {
-        "enabled": {"type": "boolean"}
-    }
+    assert schemas["SourceEnabledRequest"]["properties"] == {"enabled": {"type": "boolean"}}
 
-    assert collection["get"]["responses"]["200"]["content"]["application/json"][
-        "schema"
-    ] == {"$ref": "#/components/schemas/SourcesOverview"}
+    assert collection["get"]["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/SourcesOverview"
+    }
     for operation in (collection["post"], member["patch"]):
-        assert operation["responses"]["200"]["content"]["application/json"][
-            "schema"
-        ] == {"$ref": "#/components/schemas/SourceMutationResult"}
+        assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/SourceMutationResult"
+        }
         assert operation["responses"]["400"] == {
             "$ref": "#/components/responses/LegacyServiceError"
         }
         assert operation["responses"]["422"] == {
             "$ref": "#/components/responses/LegacyValidationError"
         }
-    assert member["delete"]["responses"]["200"]["content"]["application/json"][
-        "schema"
-    ] == {"$ref": "#/components/schemas/SourceDeleteResult"}
+    assert member["delete"]["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/SourceDeleteResult"
+    }
     assert member["delete"]["responses"]["404"] == {
         "$ref": "#/components/responses/LegacyServiceError"
     }
@@ -219,13 +207,9 @@ def test_source_management_contract_matches_legacy_runtime_shapes() -> None:
     assert "version" not in schemas["SourceInfo"]["properties"]
 
 
-def test_generated_source_management_models_accept_runtime_compatible_requests() -> (
-    None
-):
+def test_generated_source_management_models_accept_runtime_compatible_requests() -> None:
     module = _generated_models()
-    runtime_contract = __import__(
-        "src.contracts.workflow_models", fromlist=["SourceUpsertRequest"]
-    )
+    runtime_contract = __import__("src.contracts.workflow_models", fromlist=["SourceUpsertRequest"])
 
     payload = {
         "config": {"type": "rss", "url": "https://example.test/feed.xml"},
@@ -265,9 +249,7 @@ def test_generated_source_management_models_accept_runtime_compatible_requests()
         assert "version" not in source_info
         assert '"readwise"' in source
         assert '"obsidian_vault"' in source
-        upsert = source.split("export interface SourceUpsertRequest", 1)[1].split(
-            "}", 1
-        )[0]
+        upsert = source.split("export interface SourceUpsertRequest", 1)[1].split("}", 1)[0]
         assert "[key: string]: unknown" in upsert
 
 
@@ -307,9 +289,9 @@ def test_fastapi_source_models_match_generated_contract_fields() -> None:
 def test_content_query_source_types_match_persisted_content_sources() -> None:
     from src.models.content import ContentSource
 
-    source_type_schema = _openapi()["components"]["schemas"]["ContentQuery"][
-        "properties"
-    ]["source_types"]["items"]
+    source_type_schema = _openapi()["components"]["schemas"]["ContentQuery"]["properties"][
+        "source_types"
+    ]["items"]
     expected = {source.value for source in ContentSource}
 
     assert set(source_type_schema["enum"]) == expected
@@ -323,23 +305,17 @@ def test_content_query_source_types_match_persisted_content_sources() -> None:
         ROOT / "web/src/generated/workflow-contracts.ts",
     ):
         content_query = (
-            path.read_text()
-            .split("export interface ContentQuery", 1)[1]
-            .split("}", 1)[0]
+            path.read_text().split("export interface ContentQuery", 1)[1].split("}", 1)[0]
         )
         assert '"obsidian"' in content_query
 
 
-def test_generated_obsidian_vault_command_has_python_typescript_and_runtime_parity() -> (
-    None
-):
+def test_generated_obsidian_vault_command_has_python_typescript_and_runtime_parity() -> None:
     module = _generated_models()
     runtime_contract = __import__(
         "src.contracts.workflow_models", fromlist=["ObsidianVaultIngestCommand"]
     )
-    runtime_commands = __import__(
-        "src.ingestion.commands", fromlist=["ObsidianVaultIngestCommand"]
-    )
+    runtime_commands = __import__("src.ingestion.commands", fromlist=["ObsidianVaultIngestCommand"])
     payload = {
         "kind": "obsidian_vault",
         "source_key": "src_0123456789abcdef0123",
@@ -355,12 +331,9 @@ def test_generated_obsidian_vault_command_has_python_typescript_and_runtime_pari
     )
     assert internal.configured_source_version == "a" * 64
     assert (
-        runtime_commands.ObsidianVaultIngestCommand
-        is runtime_contract.ObsidianVaultIngestCommand
+        runtime_commands.ObsidianVaultIngestCommand is runtime_contract.ObsidianVaultIngestCommand
     )
-    assert (
-        runtime_commands.ObsidianVaultIngestCommand in runtime_commands.COMMAND_MODELS
-    )
+    assert runtime_commands.ObsidianVaultIngestCommand in runtime_commands.COMMAND_MODELS
 
     for invalid in (
         {**payload, "source_key": "obsidian_vault:personal"},
@@ -377,9 +350,9 @@ def test_generated_obsidian_vault_command_has_python_typescript_and_runtime_pari
     generated_typescript = (CONTRACTS / "generated/types.ts").read_text()
     runtime_typescript = (ROOT / "web/src/generated/workflow-contracts.ts").read_text()
     for source in (generated_typescript, runtime_typescript):
-        interface = source.split("export interface ObsidianVaultIngestCommand", 1)[
-            1
-        ].split("}", 1)[0]
+        interface = source.split("export interface ObsidianVaultIngestCommand", 1)[1].split("}", 1)[
+            0
+        ]
         assert 'kind: "obsidian_vault";' in interface
         assert "source_key: string;" in interface
         assert "max_items?: number;" in interface
@@ -388,10 +361,7 @@ def test_generated_obsidian_vault_command_has_python_typescript_and_runtime_pari
         assert "configured_source_version" not in interface
         assert "vault_path" not in interface
         assert "ingest_folder" not in interface
-        assert (
-            "ObsidianVaultIngestCommand"
-            in source.split("export type IngestCommand =", 1)[1]
-        )
+        assert "ObsidianVaultIngestCommand" in source.split("export type IngestCommand =", 1)[1]
 
 
 def test_obsidian_ingestion_response_literals_are_registered() -> None:
@@ -424,9 +394,7 @@ def test_scheduled_date_commands_support_an_absolute_lower_bound() -> None:
         properties = dict(schema.get("properties", {}))
         for part in schema.get("allOf", []):
             if "$ref" in part:
-                properties.update(
-                    schemas[part["$ref"].rsplit("/", 1)[-1]]["properties"]
-                )
+                properties.update(schemas[part["$ref"].rsplit("/", 1)[-1]]["properties"])
             else:
                 properties.update(part.get("properties", {}))
         assert properties["after_date"] == {
@@ -456,9 +424,7 @@ def test_scheduled_commands_support_an_immutable_source_snapshot() -> None:
         properties = dict(schema.get("properties", {}))
         for part in schema.get("allOf", []):
             if "$ref" in part:
-                properties.update(
-                    schemas[part["$ref"].rsplit("/", 1)[-1]]["properties"]
-                )
+                properties.update(schemas[part["$ref"].rsplit("/", 1)[-1]]["properties"])
             else:
                 properties.update(part.get("properties", {}))
         assert properties["configured_sources"]["type"] == "array"
@@ -487,9 +453,7 @@ def test_operation_handle_contract_is_complete() -> None:
         "created_at",
     }
     assert set(handle["properties"]["operation_type"]["enum"]) == OPERATION_TYPES
-    assert handle["properties"]["status"] == {
-        "$ref": "#/components/schemas/OperationStatus"
-    }
+    assert handle["properties"]["status"] == {"$ref": "#/components/schemas/OperationStatus"}
     assert "cancelled" in schemas["OperationStatus"]["enum"]
     assert handle["x-operation-result-schemas"]["ingestion.execute"] == {
         "$ref": "#/components/schemas/IngestionResult"
@@ -567,19 +531,15 @@ def test_pipeline_and_history_contracts_have_stable_typed_summaries() -> None:
     assert schemas["OperationPage"]["properties"]["data"]["items"] == {
         "$ref": "#/components/schemas/OperationSummary"
     }
-    assert document["paths"]["/api/v1/ingestions"]["get"]["responses"]["200"][
-        "content"
-    ]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/IngestionHistoryPage"
-    }
+    assert document["paths"]["/api/v1/ingestions"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"] == {"$ref": "#/components/schemas/IngestionHistoryPage"}
     history_status = next(
         parameter
         for parameter in document["paths"]["/api/v1/ingestions"]["get"]["parameters"]
         if parameter["name"] == "status"
     )
-    assert history_status["schema"] == {
-        "$ref": "#/components/schemas/TerminalOperationStatus"
-    }
+    assert history_status["schema"] == {"$ref": "#/components/schemas/TerminalOperationStatus"}
     history_parameters = {
         parameter["name"]: parameter["schema"]
         for parameter in document["paths"]["/api/v1/ingestions"]["get"]["parameters"]
@@ -594,15 +554,11 @@ def test_pipeline_and_history_contracts_have_stable_typed_summaries() -> None:
         for parameter in document["paths"]["/api/v1/operations"]["get"]["parameters"]
         if "name" in parameter
     }
-    assert operation_parameters["status"] == {
-        "$ref": "#/components/schemas/OperationStatus"
-    }
+    assert operation_parameters["status"] == {"$ref": "#/components/schemas/OperationStatus"}
     assert set(schemas["OperationSummary"]["properties"]) <= set(
         schemas["OperationHandle"]["properties"]
     )
-    assert not {"resource", "result", "problem"} & set(
-        schemas["OperationSummary"]["properties"]
-    )
+    assert not {"resource", "result", "problem"} & set(schemas["OperationSummary"]["properties"])
     history = schemas["IngestionHistoryItem"]
     assert history["properties"]["items_ingested"]["type"] == ["integer", "null"]
     assert history["properties"]["items_skipped"]["type"] == ["integer", "null"]
@@ -751,10 +707,7 @@ def test_content_reconciliation_openapi_matches_change_contract() -> None:
 
     canonical_report = schemas["ContentReconciliationReport"]
     change_report = change_defs["report"]
-    assert (
-        canonical_report["additionalProperties"]
-        == change_report["additionalProperties"]
-    )
+    assert canonical_report["additionalProperties"] == change_report["additionalProperties"]
     assert set(canonical_report["required"]) == set(change_report["required"])
     assert set(canonical_report["properties"]) == set(change_report["properties"])
 
@@ -862,9 +815,9 @@ def test_content_reconciliation_endpoint_has_exact_response_semantics() -> None:
     # a retry would clear. A 5xx here would also breach the fuzz contract that
     # schema-valid input never produces a server error.
     assert set(operation["responses"]) == {"200", "401", "403", "409", "422"}
-    assert operation["responses"]["409"]["content"]["application/problem+json"][
-        "schema"
-    ] == {"$ref": "#/components/schemas/Problem"}
+    assert operation["responses"]["409"]["content"]["application/problem+json"]["schema"] == {
+        "$ref": "#/components/schemas/Problem"
+    }
 
 
 def test_generated_reconciliation_models_are_strict_and_default_to_dry_run() -> None:
@@ -938,9 +891,9 @@ def test_agent_facing_discovery_contracts_use_cursor_pages() -> None:
     paths = document["paths"]
     schemas = document["components"]["schemas"]
 
-    assert paths["/api/v1/operations"]["get"]["responses"]["200"]["content"][
-        "application/json"
-    ]["schema"] == {"$ref": "#/components/schemas/OperationPage"}
+    assert paths["/api/v1/operations"]["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/OperationPage"}
     assert paths["/api/v1/configured-sources"]["get"]["responses"]["200"]["content"][
         "application/json"
     ]["schema"] == {"$ref": "#/components/schemas/ConfiguredSourcePage"}
@@ -959,9 +912,7 @@ def test_agent_facing_discovery_contracts_use_cursor_pages() -> None:
 
 
 def test_progress_event_schema_is_valid() -> None:
-    schema = json.loads(
-        (CONTRACTS / "events/operation.progress.schema.json").read_text()
-    )
+    schema = json.loads((CONTRACTS / "events/operation.progress.schema.json").read_text())
     validator_for(schema).check_schema(schema)
     assert set(schema["required"]) >= {
         "schema_version",
@@ -1013,9 +964,7 @@ def test_generated_source_requests_match_runtime_validation_and_extra_handling()
     with pytest.raises(ValidationError):
         module.SourceUpsertRequest.model_validate({"config": {"type": "rss"}})
 
-    patch = module.SourceEnabledRequest.model_validate(
-        {"enabled": False, "version": 99}
-    )
+    patch = module.SourceEnabledRequest.model_validate({"enabled": False, "version": 99})
     assert patch.model_dump() == {"enabled": False}
 
 
@@ -1094,9 +1043,7 @@ def test_generated_typescript_omits_internal_scheduler_fields() -> None:
 def test_generated_typescript_declares_named_unions_and_type_checks() -> None:
     generated = CONTRACTS / "generated/types.ts"
     source = generated.read_text()
-    assert (
-        "export type IngestionResult = IngestionResultV1 | IngestionResultV2;" in source
-    )
+    assert "export type IngestionResult = IngestionResultV1 | IngestionResultV2;" in source
     assert "export type IngestionOutcome =" in source
     assert "export interface OperationSummary" in source
     result = subprocess.run(

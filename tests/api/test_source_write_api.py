@@ -79,9 +79,7 @@ class TestUpsert:
 
     def test_update_bumps_version(self, client):
         client.post("/api/v1/sources", json={"config": BLOG})
-        resp = client.post(
-            "/api/v1/sources", json={"config": {**BLOG, "max_entries": 5}}
-        )
+        resp = client.post("/api/v1/sources", json={"config": {**BLOG, "max_entries": 5}})
         assert resp.json()["version"] == 2
 
     def test_invalid_config_returns_400(self, client):
@@ -102,9 +100,7 @@ class TestUpsert:
         assert row.source_type == "blog"
         assert "unknown" not in row.config
 
-    def test_missing_nested_type_is_400_and_does_not_create_override(
-        self, client, db_session
-    ):
+    def test_missing_nested_type_is_400_and_does_not_create_override(self, client, db_session):
         response = client.post(
             "/api/v1/sources",
             json={"type": "blog", "config": {"url": "https://example.test/feed"}},
@@ -114,9 +110,7 @@ class TestUpsert:
         assert set(response.json()) == {"detail"}
         assert db_session.query(SourceOverride).count() == 0
 
-    def test_malformed_body_is_422_and_does_not_create_override(
-        self, client, db_session
-    ):
+    def test_malformed_body_is_422_and_does_not_create_override(self, client, db_session):
         response = client.post("/api/v1/sources", json={"config": "not-an-object"})
 
         assert response.status_code == 422
@@ -182,10 +176,7 @@ class TestDelete:
         response = client.delete("/api/v1/sources/obsidian_vault:personal")
 
         assert response.status_code == 400
-        assert (
-            response.json()["detail"]
-            == "Obsidian source mutations require an opaque source key"
-        )
+        assert response.json()["detail"] == "Obsidian source mutations require an opaque source key"
         assert "personal" not in response.text
 
 
@@ -198,9 +189,7 @@ class TestEnableDisable:
         assert resp.status_code == 200
         assert resp.json()["enabled"] is False
 
-    def test_patch_ignores_unknown_sibling_and_only_changes_enabled(
-        self, client, db_session
-    ):
+    def test_patch_ignores_unknown_sibling_and_only_changes_enabled(self, client, db_session):
         created = client.post("/api/v1/sources", json={"config": BLOG}).json()
 
         response = client.patch(
@@ -217,18 +206,14 @@ class TestEnableDisable:
 
     def test_patch_unknown_key_without_yaml_twin_returns_404(self, client):
         # No override row and no YAML source resolves to this key.
-        with patch(
-            "src.api.source_write_routes._resolve_source_config", return_value=None
-        ):
+        with patch("src.api.source_write_routes._resolve_source_config", return_value=None):
             resp = client.patch("/api/v1/sources/blog:ghost", json={"enabled": False})
         assert resp.status_code == 404
 
     def test_disable_obsidian_by_opaque_key_keeps_response_opaque(self, client):
         created = client.post("/api/v1/sources", json={"config": OBSIDIAN}).json()
 
-        response = client.patch(
-            f"/api/v1/sources/{created['source_key']}", json={"enabled": False}
-        )
+        response = client.patch(f"/api/v1/sources/{created['source_key']}", json={"enabled": False})
 
         assert response.status_code == 200
         assert response.json()["source_key"] == created["source_key"]
@@ -243,10 +228,7 @@ class TestEnableDisable:
         )
 
         assert response.status_code == 400
-        assert (
-            response.json()["detail"]
-            == "Obsidian source mutations require an opaque source key"
-        )
+        assert response.json()["detail"] == "Obsidian source mutations require an opaque source key"
         assert "personal" not in response.text
 
 
@@ -277,9 +259,7 @@ class TestAuth:
         assert set(resp.json()) >= {"error", "detail"}
         assert db_session.query(SourceOverride).count() == 0
 
-    def test_post_rejects_invalid_admin_key_without_mutating(
-        self, production_client, db_session
-    ):
+    def test_post_rejects_invalid_admin_key_without_mutating(self, production_client, db_session):
         resp = production_client.post(
             "/api/v1/sources",
             json={"config": BLOG},
@@ -295,9 +275,7 @@ class TestAuth:
         assert resp.status_code == 401
 
     def test_patch_requires_auth(self, production_client):
-        resp = production_client.patch(
-            "/api/v1/sources/blog:x", json={"enabled": False}
-        )
+        resp = production_client.patch("/api/v1/sources/blog:x", json={"enabled": False})
         assert resp.status_code == 401
 
     @pytest.mark.parametrize("credential", ["admin", "session"])
@@ -311,9 +289,7 @@ class TestAuth:
             if credential == "admin"
             else {"Cookie": f"{_COOKIE_NAME}={_create_jwt(APP_SECRET_KEY)}"}
         )
-        created = production_client.post(
-            "/api/v1/sources", json={"config": BLOG}, headers=headers
-        )
+        created = production_client.post("/api/v1/sources", json={"config": BLOG}, headers=headers)
         assert created.status_code == 200
         source_key = created.json()["source_key"]
 
@@ -325,9 +301,7 @@ class TestAuth:
         assert patched.status_code == 200
         assert patched.json()["version"] == 2
 
-        deleted = production_client.delete(
-            f"/api/v1/sources/{source_key}", headers=headers
-        )
+        deleted = production_client.delete(f"/api/v1/sources/{source_key}", headers=headers)
         assert deleted.status_code == 200
         assert db_session.query(SourceOverride).count() == 0
 
@@ -347,9 +321,7 @@ class TestAuth:
         path = f"/api/v1/sources/{created['source_key']}"
 
         if operation == "patch":
-            response = production_client.patch(
-                path, json={"enabled": False}, headers=headers
-            )
+            response = production_client.patch(path, json={"enabled": False}, headers=headers)
         else:
             response = production_client.delete(path, headers=headers)
 
@@ -366,17 +338,13 @@ class TestAuth:
         assert set(response.json()) >= {"error", "detail"}
 
     def test_get_rejects_invalid_admin_key(self, production_client):
-        response = production_client.get(
-            "/api/v1/sources", headers={"X-Admin-Key": "wrong-key"}
-        )
+        response = production_client.get("/api/v1/sources", headers={"X-Admin-Key": "wrong-key"})
 
         assert response.status_code == 403
         assert set(response.json()) >= {"error", "detail"}
 
     @pytest.mark.parametrize("credential", ["admin", "session"])
-    def test_get_accepts_either_documented_credential(
-        self, production_client, credential
-    ):
+    def test_get_accepts_either_documented_credential(self, production_client, credential):
         from src.api.auth_routes import _COOKIE_NAME, _create_jwt
         from src.config.sources import SourcesConfig
 

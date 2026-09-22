@@ -122,9 +122,7 @@ class ApiClient:
 
     def set_setting(self, key: str, value: str) -> dict[str, Any]:
         """PUT /api/v1/settings/overrides/{key} — set a setting override."""
-        resp = self._client.put(
-            f"/api/v1/settings/overrides/{key}", json={"value": value}
-        )
+        resp = self._client.put(f"/api/v1/settings/overrides/{key}", json={"value": value})
         resp.raise_for_status()
         return self._resp_json(resp)
 
@@ -143,9 +141,7 @@ class ApiClient:
         resp.raise_for_status()
         return self._resp_json(resp)
 
-    def add_source(
-        self, config: dict[str, Any], description: str | None = None
-    ) -> dict[str, Any]:
+    def add_source(self, config: dict[str, Any], description: str | None = None) -> dict[str, Any]:
         """POST /api/v1/sources — add or update a source override."""
         payload: dict[str, Any] = {"config": config}
         if description is not None:
@@ -197,9 +193,7 @@ class ApiClient:
 
     def set_prompt(self, key: str, value: str) -> dict[str, Any]:
         """PUT /api/v1/settings/overrides/{key} — set prompt override."""
-        resp = self._client.put(
-            f"/api/v1/settings/overrides/{key}", json={"value": value}
-        )
+        resp = self._client.put(f"/api/v1/settings/overrides/{key}", json={"value": value})
         resp.raise_for_status()
         return self._resp_json(resp)
 
@@ -266,18 +260,14 @@ class ApiClient:
     def references_extract(self, **body: Any) -> dict[str, Any]:
         """POST /api/v1/references/extract — returns ReferencesExtractResponse shape."""
         payload = {k: v for k, v in body.items() if v is not None}
-        return self._request_with_retry(
-            "POST", "/api/v1/references/extract", json=payload
-        )
+        return self._request_with_retry("POST", "/api/v1/references/extract", json=payload)
 
     def references_resolve(self, batch_size: int | None = None) -> dict[str, Any]:
         """POST /api/v1/references/resolve — returns ReferencesResolveResponse shape."""
         payload: dict[str, Any] = {}
         if batch_size is not None:
             payload["batch_size"] = batch_size
-        return self._request_with_retry(
-            "POST", "/api/v1/references/resolve", json=payload
-        )
+        return self._request_with_retry("POST", "/api/v1/references/resolve", json=payload)
 
     def _request_with_retry(
         self,
@@ -300,9 +290,7 @@ class ApiClient:
         last_exc: Exception | None = None
         for attempt in range(attempts + 1):
             try:
-                resp = self._client.request(
-                    method, path, params=params, json=json, timeout=timeout
-                )
+                resp = self._client.request(method, path, params=params, json=json, timeout=timeout)
                 if resp.status_code in _RETRYABLE_STATUS and attempt < attempts:
                     logger.warning(
                         "api_client: %s %s returned %d, retrying in %.1fs (attempt %d/%d)",

@@ -85,9 +85,7 @@ def disposable_migration_database() -> DisposableMigrationDatabase:
                 connection.execute(sa.text(f"CREATE DATABASE {quoted_name}"))
             created = True
         except SQLAlchemyError as exc:
-            pytest.fail(
-                f"cannot create disposable PostgreSQL migration database: {exc}"
-            )
+            pytest.fail(f"cannot create disposable PostgreSQL migration database: {exc}")
 
         target_engine = sa.create_engine(target_url, poolclass=NullPool)
         # A new PostgreSQL database already owns an isolated public schema.  Re-
