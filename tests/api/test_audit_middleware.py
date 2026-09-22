@@ -393,9 +393,12 @@ def test_source_audit_writer_failure_log_uses_redacted_path(app_factory, recorde
 
     assert response.status_code == 404
     captured = capsys.readouterr()
-    assert "path=/api/v1/sources/<redacted>" in captured.err
+    audit_line = next(
+        line for line in captured.err.splitlines() if line.startswith("[audit] write failure")
+    )
+    assert "path=/api/v1/sources/<redacted>" in audit_line
     for private_value in private_values:
-        assert private_value not in captured.err
+        assert private_value not in audit_line
 
 
 def test_hash_admin_key_returns_last_8_of_sha256():

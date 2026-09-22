@@ -160,23 +160,22 @@
       "disposition": "block",
       "phase": "SUBMIT_PR",
       "recorded_at": "2026-09-22T03:36:45.271639+00:00"
+    },
+    {
+      "gate": "pr_creation",
+      "outcome": "proceed",
+      "resolution": "console_approved",
+      "authorizing_disposition": "block",
+      "reason": "gate 'pr_creation' approved by the operator \u2014 User approved PR creation in conversation.",
+      "approval_id": null,
+      "default_action": null,
+      "posture_present": false,
+      "disposition": "block",
+      "phase": "SUBMIT_PR",
+      "recorded_at": "2026-09-22T13:04:26.841253+00:00",
+      "note": "User approved PR creation in conversation."
     }
   ],
-  "pending_gate": {
-    "schema_version": 1,
-    "change_id": "closeout-db-source-overrides-evidence",
-    "gate": "pr_creation",
-    "phase": "SUBMIT_PR",
-    "requested_at": "2026-09-22T03:36:45.272158+00:00",
-    "prompt": "Create the pull request for this change?",
-    "context": {
-      "branch": "openspec/closeout-db-source-overrides-evidence",
-      "change_id": "closeout-db-source-overrides-evidence"
-    },
-    "posture": {
-      "disposition": "block",
-      "posture_present": false
-    }
-  },
+  "pending_gate": null,
   "goal_gate": null
 }
