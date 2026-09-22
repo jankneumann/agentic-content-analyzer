@@ -1,0 +1,105 @@
+{
+  "schema_version": 5,
+  "change_id": "closeout-db-source-overrides-evidence",
+  "current_phase": "IMPLEMENT",
+  "iteration": 0,
+  "total_iterations": 4,
+  "max_phase_iterations": 3,
+  "findings_trend": [],
+  "blocking_findings": [],
+  "vendor_availability": {
+    "external_cli_review": false,
+    "workspace_subagents": true
+  },
+  "packages_status": {},
+  "package_authors": {},
+  "implementation_strategy": {},
+  "memory_ids": [],
+  "handoff_ids": [],
+  "phase_history": [
+    {
+      "phase": "GATEKEEPER",
+      "outcome": "DEGRADED",
+      "at": "2026-09-22T00:48:02.495100+00:00",
+      "note": "Coordinator-backed archetype dispatch was policy-blocked; an in-workspace read-only judge performed the risk/verifiability assessment."
+    },
+    {
+      "phase": "GATEKEEPER",
+      "outcome": "proceed_with_review",
+      "at": "2026-09-22T00:48:02.495109+00:00",
+      "note": "Verifiable plan with bounded but nontrivial auth, privacy, contract, and database-test risk; validation review required."
+    },
+    {
+      "phase": "PLAN",
+      "outcome": "exists",
+      "at": "2026-09-22T01:11:16.970988+00:00",
+      "note": "Existing refined proposal approved by the operator; coordinator archetype resolution unavailable under egress policy."
+    },
+    {
+      "phase": "PLAN_ITERATE",
+      "outcome": "DEGRADED",
+      "at": "2026-09-22T01:17:15.217998+00:00",
+      "note": "Coordinator-backed archetype dispatch was policy-blocked; in-workspace read-only plan reviewer used."
+    },
+    {
+      "phase": "PLAN_ITERATE",
+      "outcome": "complete",
+      "at": "2026-09-22T01:17:15.218008+00:00",
+      "note": "No remaining medium/high blockers; plan is consistent, feasible, and testable."
+    }
+  ],
+  "last_handoff_id": null,
+  "started_at": "2026-09-22T00:45:20.546672+00:00",
+  "phase_started_at": "2026-09-22T01:17:15.218011+00:00",
+  "previous_phase": null,
+  "escalation_reason": null,
+  "val_review_enabled": true,
+  "cli_review_enabled": false,
+  "error": null,
+  "phase_archetype": null,
+  "force": false,
+  "gate_signals": {
+    "external_dep_count": 0,
+    "has_broad_write_scope": false,
+    "has_db_migration": false,
+    "has_proposal": true,
+    "has_security_signal": false,
+    "has_specs": true,
+    "has_tasks": true,
+    "has_work_packages": false,
+    "package_count": 0,
+    "total_loc_estimate": null
+  },
+  "gate_verdict": "proceed_with_review",
+  "gate_decisions": [
+    {
+      "gate": "proposal_approval",
+      "outcome": "blocked",
+      "resolution": "posture_block",
+      "authorizing_disposition": "block",
+      "reason": "gate 'proposal_approval' parked: trust posture disposition is block",
+      "approval_id": null,
+      "default_action": null,
+      "posture_present": false,
+      "disposition": "block",
+      "phase": "PLAN",
+      "recorded_at": "2026-09-22T00:48:24.154877+00:00"
+    },
+    {
+      "gate": "proposal_approval",
+      "outcome": "proceed",
+      "resolution": "console_approved",
+      "authorizing_disposition": "block",
+      "reason": "gate 'proposal_approval' approved by the operator \u2014 User approved implementation in conversation.",
+      "approval_id": null,
+      "default_action": null,
+      "posture_present": false,
+      "disposition": "block",
+      "phase": "PLAN",
+      "recorded_at": "2026-09-22T01:10:42.954203+00:00",
+      "note": "User approved implementation in conversation."
+    }
+  ],
+  "pending_gate": null,
+  "goal_gate": null
+}
