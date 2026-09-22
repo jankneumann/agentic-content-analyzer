@@ -18,8 +18,14 @@ from dateutil.parser import isoparse
 from substack_api import Newsletter, Post, SubstackAuth
 
 from src.config import settings
+from src.config.credentials import (
+    SUBSTACK_SESSION_COOKIE,
+    CredentialProvider,
+    get_credential_provider,
+)
 from src.config.sources import SourceFileConfig, SubstackSource
 from src.ingestion.gmail import ContentData
+from src.ingestion.log_redaction import log_error_type
 from src.ingestion.result import (
     IngestionError,
     IngestionResponse,
@@ -59,15 +65,55 @@ class SyncResult:
     substack_existing: int
 
 
-class SubstackClient:
-    """Wrapper around the substack-api 1.1.3 client with HTTP fallbacks."""
+SUBSTACK_SID_COOKIE = "substack.sid"
 
-    def __init__(self, session_cookie: str | None = None) -> None:
-        self.session_cookie = session_cookie or settings.substack_session_cookie
+
+class SubstackClient:
+    """Wrapper around the substack-api 1.1.3 client with HTTP fallbacks.
+
+    Unless an explicit ``session_cookie`` is passed, the ``substack.sid``
+    cookie is resolved through the live :class:`CredentialProvider` before
+    every HTTP request, so a cookie rotated in OpenBao reaches a long-lived
+    client without a restart.
+    """
+
+    def __init__(
+        self,
+        session_cookie: str | None = None,
+        *,
+        credentials: CredentialProvider | None = None,
+        http_client: httpx.Client | None = None,
+    ) -> None:
+        self._explicit_cookie = session_cookie or None
+        self._credentials = credentials or get_credential_provider()
         self._auth: SubstackAuth | None = None
-        self._http = httpx.Client(timeout=30)
-        if self.session_cookie:
-            self._http.cookies.set("substack.sid", self.session_cookie)
+        self._http = http_client or httpx.Client(timeout=30)
+        self._applied_cookie: str | None = None
+        self._sync_session_cookie()
+
+    @property
+    def session_cookie(self) -> str | None:
+        """The cookie to send now: the explicit override, else the live credential."""
+        if self._explicit_cookie:
+            return self._explicit_cookie
+        return self._credentials.get(SUBSTACK_SESSION_COOKIE)
+
+    def _sync_session_cookie(self) -> str | None:
+        """Point the HTTP client's ``substack.sid`` at the current credential."""
+        cookie = self.session_cookie
+        if cookie != self._applied_cookie:
+            rotated = self._applied_cookie is not None
+            # Drop every substack.sid, including one a response set, so the
+            # rotated credential is the only session the next request sends.
+            self._http.cookies.delete(SUBSTACK_SID_COOKIE)
+            if cookie:
+                self._http.cookies.set(SUBSTACK_SID_COOKIE, cookie)
+            self._applied_cookie = cookie
+            if rotated:
+                logger.info(
+                    "substack.session_cookie_changed: using the current %s", SUBSTACK_SESSION_COOKIE
+                )
+        return cookie
 
     def _get_auth(self) -> SubstackAuth | None:
         """Get or create SubstackAuth from cookies file if available."""
@@ -111,7 +157,7 @@ class SubstackClient:
         return results
 
     def _fetch_subscriptions_from_http(self) -> list[dict[str, Any]] | None:
-        if not self.session_cookie:
+        if not self._sync_session_cookie():
             logger.warning("SUBSTACK_SESSION_COOKIE not set; subscription sync may be incomplete.")
             return None
 
@@ -131,7 +177,7 @@ class SubstackClient:
                 if isinstance(data, list):
                     return data
             except Exception as exc:
-                logger.warning(f"Substack HTTP subscription fetch failed: {exc}")
+                logger.warning("Substack HTTP subscription fetch failed (%s)", log_error_type(exc))
                 continue
         return None
 
@@ -211,6 +257,7 @@ class SubstackClient:
         self, publication_url: str, max_entries: int
     ) -> list[dict[str, Any]] | None:
         archive_url = urljoin(publication_url.rstrip("/") + "/", "api/v1/archive")
+        self._sync_session_cookie()
         try:
             response = self._http.get(archive_url, params={"limit": max_entries, "sort": "new"})
             response.raise_for_status()
@@ -220,7 +267,7 @@ class SubstackClient:
             if isinstance(data, dict) and "posts" in data:
                 return data["posts"]
         except Exception as exc:
-            logger.warning(f"Substack HTTP archive fetch failed: {exc}")
+            logger.warning("Substack HTTP archive fetch failed (%s)", log_error_type(exc))
             return None
         return None
 
@@ -228,9 +275,14 @@ class SubstackClient:
 class SubstackContentIngestionService:
     """Service for ingesting Substack posts into the unified Content model."""
 
-    def __init__(self, session_cookie: str | None = None) -> None:
-        self.client = SubstackClient(session_cookie=session_cookie)
-        if session_cookie is None and settings.substack_session_cookie is None:
+    def __init__(
+        self,
+        session_cookie: str | None = None,
+        *,
+        credentials: CredentialProvider | None = None,
+    ) -> None:
+        self.client = SubstackClient(session_cookie=session_cookie, credentials=credentials)
+        if not self.client.session_cookie:
             logger.warning(
                 "SUBSTACK_SESSION_COOKIE not set; paid Substack posts may be unavailable."
             )

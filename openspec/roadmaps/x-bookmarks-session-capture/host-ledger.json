@@ -118,5 +118,42 @@
         "Follow-up outside this roadmap: a production/gx-10 profile and loopback binds for the data stores in the root docker-compose.yml"
       ]
     }
+  },
+  "ri-04": {
+    "change_id": "introduce-live-credential-provider-for-rotating-secrets",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "CredentialProvider resolves at call time",
+          "outcome": "src/config/credentials.py get_credential_provider(): get(name) reads the OpenBao cache first, then Settings; explicit registry of SUBSTACK_SESSION_COOKIE, X_AUTH_TOKEN, X_CT0 (settings x_auth_token, x_ct0 added, repr=False)"
+        },
+        {
+          "title": "Bounded refresh and local write-back",
+          "outcome": "bao_secrets.refresh_bao_secrets(min_interval_s) throttles process-wide and reuses the authenticated client; apply_bao_local_write merges under the lock; the token manager now swaps under the same lock so an older read cannot clobber a write-back"
+        },
+        {
+          "title": "Substack reads the cookie per request",
+          "outcome": "SubstackClient re-resolves substack.sid before each request and replaces it in the jar on change; substack.py no longer reads settings.substack_session_cookie"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "last_verified_at from the provider",
+          "actual": "in-memory only, bound to a digest of the value",
+          "reason": "no per-run OpenBao writes; ri-06 needs a durable cross-process source"
+        }
+      ],
+      "recommendations": [
+        "ri-05: on a login page or 401 call provider.refresh() then get() once; call mark_verified() on success; readiness uses provider.metadata().present",
+        "ri-11: after BaoSink.write() call provider.apply_local_write(values, saved_at=<same timestamp>)",
+        "Pre-existing: operation payloads can carry a substack session_cookie override (src/api/content_routes.py, src/queue/worker.py), which may persist a cookie in the operations table"
+      ]
+    }
   }
 }

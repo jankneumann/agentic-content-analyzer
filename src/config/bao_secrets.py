@@ -30,6 +30,9 @@ import atexit
 import logging
 import os
 import threading
+import time
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Any
 
 try:
@@ -46,11 +49,30 @@ _bao_lock = threading.Lock()
 _bao_cache: dict[str, str] | None = None
 _bao_checked = False
 _token_manager: _BaoTokenManager | None = None
+# Authenticated client and (mount, path) kept after a successful load so an
+# on-demand refresh (``refresh_bao_secrets``) reuses them instead of logging in
+# again. ``_last_fetch_at`` is the monotonic time of the last fetch ATTEMPT from
+# any path (initial load, token manager, on-demand refresh); it bounds how often
+# callers can make this process read OpenBao.
+_bao_client: Any | None = None
+_bao_location: tuple[str, str] | None = None
+_last_fetch_at: float | None = None
+
+# Default lower bound between two on-demand refreshes, process-wide.
+DEFAULT_REFRESH_MIN_INTERVAL_S = 60.0
 
 
 def _is_bao_configured() -> bool:
     """Check if OpenBao environment variables are present."""
     return bool(os.environ.get("BAO_ADDR"))
+
+
+def _configured_location() -> tuple[str, str]:
+    """Return the ``(mount, path)`` of the KV v2 secret from ``BAO_*`` env vars."""
+    return (
+        os.environ.get("BAO_MOUNT_PATH", "secret"),
+        os.environ.get("BAO_SECRET_PATH", "newsletter"),
+    )
 
 
 def _authenticate_client(client: Any) -> tuple[Any, int | None]:
@@ -107,7 +129,7 @@ def _load_bao_secrets() -> dict[str, str]:
     Returns:
         Flat dict of secret key -> value. Empty dict on any failure.
     """
-    global _bao_cache, _bao_checked, _token_manager
+    global _bao_cache, _bao_checked, _token_manager, _bao_client, _bao_location, _last_fetch_at
 
     # Fast path: already loaded
     if _bao_checked:
@@ -139,10 +161,10 @@ def _load_bao_secrets() -> dict[str, str]:
             return {}
 
         bao_addr = os.environ["BAO_ADDR"]
-        mount_path = os.environ.get("BAO_MOUNT_PATH", "secret")
-        secret_path = os.environ.get("BAO_SECRET_PATH", "newsletter")
+        mount_path, secret_path = _configured_location()
 
         try:
+            _last_fetch_at = time.monotonic()
             client = hvac.Client(url=bao_addr, timeout=10)
             client, token_ttl = _authenticate_client(client)
 
@@ -155,6 +177,8 @@ def _load_bao_secrets() -> dict[str, str]:
 
             # Atomic cache update (reference swap)
             _bao_cache = secrets
+            _bao_client = client
+            _bao_location = (mount_path, secret_path)
             logger.info(
                 "bao.secrets_loaded: loaded %d secrets from %s/%s",
                 len(secrets),
@@ -198,14 +222,126 @@ def get_bao_secret(key: str) -> str | None:
     return secrets.get(key)
 
 
+def get_bao_secrets() -> Mapping[str, str]:
+    """Return a read-only view of the current OpenBao cache.
+
+    Loads once on first use; afterwards every call reads the module-level
+    cache reference, so a swap by the token manager, ``refresh_bao_secrets()``
+    or ``apply_bao_local_write()`` is visible on the next call with no
+    network I/O. The view is of one snapshot: a later swap replaces the dict
+    rather than mutating it, so a caller reading two keys from one view sees
+    a consistent pair.
+    """
+    return MappingProxyType(_load_bao_secrets())
+
+
+def refresh_bao_secrets(*, min_interval_s: float = DEFAULT_REFRESH_MIN_INTERVAL_S) -> bool:
+    """Re-read the KV v2 secret now, at most once per ``min_interval_s``.
+
+    The bound is process-wide and counts every fetch attempt (initial load,
+    token-manager refresh, earlier on-demand refreshes, successful or not),
+    so callers that just saw an auth failure cannot hammer OpenBao. Works
+    for token and AppRole auth: the client authenticated at load time is
+    reused, and one re-authentication is tried when the read fails (an
+    AppRole token may have expired between manager refreshes).
+
+    Returns:
+        True when the cache was replaced with freshly read values; False when
+        OpenBao is not configured, the call was throttled, or the read failed.
+        Never raises.
+    """
+    global _bao_cache, _bao_client, _bao_location, _last_fetch_at
+
+    # Ensure the one-time load happened (it takes the lock itself).
+    _load_bao_secrets()
+    if not _is_bao_configured() or hvac is None:
+        return False
+
+    with _bao_lock:
+        now = time.monotonic()
+        if _last_fetch_at is not None and now - _last_fetch_at < min_interval_s:
+            logger.debug(
+                "bao.refresh_throttled: last fetch %.1fs ago (min interval %.1fs)",
+                now - _last_fetch_at,
+                min_interval_s,
+            )
+            return False
+        _last_fetch_at = now
+
+        mount_path, secret_path = _bao_location or _configured_location()
+        try:
+            client = _bao_client
+            if client is None:
+                # The boot-time load failed; build the client it never kept.
+                client, _ttl = _authenticate_client(
+                    hvac.Client(url=os.environ["BAO_ADDR"], timeout=10)
+                )
+            try:
+                secrets = _fetch_secrets(client, mount_path, secret_path)
+            except Exception:
+                client, _ttl = _authenticate_client(client)
+                secrets = _fetch_secrets(client, mount_path, secret_path)
+        except Exception as exc:
+            # Exception type only: hvac errors can carry server response text.
+            logger.warning(
+                "bao.connection_error: on-demand refresh of %s/%s failed (%s)",
+                mount_path,
+                secret_path,
+                type(exc).__name__,
+            )
+            return False
+
+        # Atomic cache update (reference swap)
+        _bao_cache = secrets
+        _bao_client = client
+        _bao_location = (mount_path, secret_path)
+        logger.info(
+            "bao.secrets_refreshed: reloaded %d secrets from %s/%s on demand",
+            len(secrets),
+            mount_path,
+            secret_path,
+        )
+        return True
+
+
+def apply_bao_local_write(values: Mapping[str, str]) -> list[str]:
+    """Merge values this process just PATCHed into OpenBao into the cache.
+
+    Call after a successful ``BaoSink.write()`` so the next read sees the new
+    value without an OpenBao round trip. The merge builds a new dict and swaps
+    the reference under the lock, so lockless readers see either the old or
+    the new snapshot, never a partial one. Non-string values are ignored, as
+    ``_fetch_secrets`` ignores them.
+
+    Returns:
+        The key names applied (never values).
+    """
+    global _bao_cache
+
+    _load_bao_secrets()
+    updates = {k: v for k, v in values.items() if isinstance(k, str) and isinstance(v, str)}
+    if not updates:
+        return []
+    with _bao_lock:
+        merged = dict(_bao_cache or {})
+        merged.update(updates)
+        _bao_cache = merged
+    names = sorted(updates)
+    logger.info("bao.local_write_applied: %s", ", ".join(names))
+    return names
+
+
 def clear_bao_cache() -> None:
     """Clear the cached OpenBao secrets. Useful for testing."""
-    global _bao_cache, _bao_checked, _token_manager
+    global _bao_cache, _bao_checked, _token_manager, _bao_client, _bao_location, _last_fetch_at
     if _token_manager is not None:
         _token_manager.stop()
         _token_manager = None
     _bao_cache = None
     _bao_checked = False
+    _bao_client = None
+    _bao_location = None
+    _last_fetch_at = None
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +397,7 @@ class _BaoTokenManager:
 
     def _refresh(self) -> None:
         """Re-authenticate and reload secrets."""
-        global _bao_cache
+        global _bao_cache, _bao_client, _last_fetch_at
 
         if self._stopped:
             return
@@ -273,10 +409,16 @@ class _BaoTokenManager:
                 logger.warning("bao.auth_failure: token refresh authentication failed")
                 return
 
-            secrets = _fetch_secrets(self._client, self._mount_path, self._secret_path)
+            # Fetch and swap under the lock so an on-demand refresh or a local
+            # write-back (apply_bao_local_write) is ordered against this fetch
+            # and can never be overwritten by a read that started before it.
+            with _bao_lock:
+                _last_fetch_at = time.monotonic()
+                secrets = _fetch_secrets(self._client, self._mount_path, self._secret_path)
 
-            # Atomic cache update
-            _bao_cache = secrets
+                # Atomic cache update
+                _bao_cache = secrets
+                _bao_client = self._client
 
             if new_ttl and new_ttl > 0:
                 self._ttl_seconds = new_ttl

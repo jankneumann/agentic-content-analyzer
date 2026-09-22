@@ -609,8 +609,13 @@ class Settings(BaseSettings):
     obsidian_allowed_roots: str = Field(default="", max_length=16_384)
     obsidian_compatible_worker: bool = False
 
-    # Substack Configuration
-    substack_session_cookie: str | None = None  # Value of the substack.sid cookie
+    # Browser-session credentials (rotate while workers run). Adapters must read
+    # them through src.config.credentials.CredentialProvider, which checks the
+    # live OpenBao cache first: this Settings object is built once, so these
+    # fields hold only the boot-time value.
+    substack_session_cookie: str | None = Field(default=None, repr=False)  # substack.sid
+    x_auth_token: str | None = Field(default=None, repr=False)  # x.com auth_token cookie
+    x_ct0: str | None = Field(default=None, repr=False)  # x.com ct0 cookie (CSRF token)
 
     # Substack RSS Configuration (legacy — use sources.d/ instead)
     # Comma-separated list of RSS feed URLs

@@ -126,6 +126,8 @@ settings:
     elevenlabs_api_key: "${ELEVENLABS_API_KEY:-}"
     sendgrid_api_key: "${SENDGRID_API_KEY:-}"
     substack_session_cookie: "${SUBSTACK_SESSION_COOKIE:-}"
+    x_auth_token: "${X_AUTH_TOKEN:-}"
+    x_ct0: "${X_CT0:-}"
     admin_api_key: "${ADMIN_API_KEY:-}"
     app_secret_key: "${APP_SECRET_KEY:-}"
     voyage_api_key: "${VOYAGE_API_KEY:-}"
