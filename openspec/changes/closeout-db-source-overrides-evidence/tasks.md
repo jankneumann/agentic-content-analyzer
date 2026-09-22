@@ -80,10 +80,10 @@ src/components/settings/__tests__/SourcesConfigurator.test.tsx` and
 **Blocked by:** WP1. **Owns:** Playwright source fixtures, page-object helpers,
 and the source-settings browser spec; it does not edit production components.
 
-- [ ] 3.1 Add deterministic API mocks for mixed origins, Readwise creation,
+- [x] 3.1 Add deterministic API mocks for mixed origins, Readwise creation,
   add/PATCH/delete success and representative failures, DB-override deletion,
   and an opaque Obsidian row.
-- [ ] 3.2 Prove origin badges, enabled state, Readwise add, toggle, generic
+- [x] 3.2 Prove origin badges, enabled state, Readwise add, toggle, generic
   override-removal copy, Obsidian redaction, and recoverable add, toggle, and
   delete failures. Use representative status classes rather than a Cartesian
   matrix, and do not mock unavailable YAML-baseline provenance.
