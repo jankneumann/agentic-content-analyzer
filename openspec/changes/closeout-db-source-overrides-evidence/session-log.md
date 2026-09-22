@@ -213,3 +213,29 @@ Convergence achieved after closing package-policy, generated-contract parity, an
 ### Context
 All change-specific acceptance checks passed, including live API smoke, ZAP, browser, contract, and disposable PostgreSQL evidence. Pre-existing frontend dependency advisories are tracked in GitHub issue #530.
 
+---
+
+## Phase: Pull Request Submission (2026-09-22)
+
+**Agent**: codex | **Session**: N/A
+
+### Decisions
+1. **Keep unrelated main-branch CI debt outside this change** — The remaining frontend audit, convergence-test import, and Schemathesis timeout failures reproduce on current or historical `main` and are tracked independently in issues #530, #532, and #533.
+
+### Completed Work
+- Opened [PR #531](https://github.com/jankneumann/agentic-content-analyzer/pull/531) with the full evidence trail.
+- Fixed the CI-only audit redaction test isolation failure; the rerun API shard passes.
+- Verified remote lint, typecheck, security scans, cold-start migration, real-ingest, API, CLI, and services checks pass.
+- Confirmed the remaining contract timeout signatures match historical main run 34024466787.
+
+### Next Steps
+- Obtain explicit human merge authorization.
+- Merge only through the cleanup-feature workflow after approval and repository policy allow it.
+
+### Relevant Files
+- `openspec/changes/closeout-db-source-overrides-evidence/handoffs/submission-1.json` — PR and remote CI handoff
+- `openspec/changes/closeout-db-source-overrides-evidence/loop-state.json` — Gate and phase history
+
+### Context
+The branch is pushed and change-specific validation is green. Autopilot does not merge; the next action is the human merge-authorization gate.
+

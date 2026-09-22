@@ -174,8 +174,37 @@
       "phase": "SUBMIT_PR",
       "recorded_at": "2026-09-22T13:04:26.841253+00:00",
       "note": "User approved PR creation in conversation."
+    },
+    {
+      "gate": "merge",
+      "outcome": "blocked",
+      "resolution": "posture_block",
+      "authorizing_disposition": "block",
+      "reason": "gate 'merge' parked: trust posture disposition is block",
+      "approval_id": null,
+      "default_action": null,
+      "posture_present": false,
+      "disposition": "block",
+      "phase": "SUBMIT_PR",
+      "recorded_at": "2026-09-22T13:27:16.535613+00:00"
     }
   ],
-  "pending_gate": null,
+  "pending_gate": {
+    "schema_version": 1,
+    "change_id": "closeout-db-source-overrides-evidence",
+    "gate": "merge",
+    "phase": "SUBMIT_PR",
+    "requested_at": "2026-09-22T13:27:16.535990+00:00",
+    "prompt": "Authorize merging this pull request? (autopilot records the authorization only; /cleanup-feature merges)",
+    "context": {
+      "pr_url": "https://github.com/jankneumann/agentic-content-analyzer/pull/531",
+      "branch": "openspec/closeout-db-source-overrides-evidence",
+      "change_id": "closeout-db-source-overrides-evidence"
+    },
+    "posture": {
+      "disposition": "block",
+      "posture_present": false
+    }
+  },
   "goal_gate": null
 }
