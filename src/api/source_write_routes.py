@@ -97,9 +97,7 @@ def _resolve_source_config(key: str) -> dict[str, Any] | None:
 # ============================================================================
 
 
-@router.post(
-    "", response_model=SourceMutationResult, dependencies=[Depends(verify_admin_key)]
-)
+@router.post("", response_model=SourceMutationResult, dependencies=[Depends(verify_admin_key)])
 async def upsert_source(request: SourceUpsertRequest) -> SourceMutationResult:
     """Add or update a source override (upsert by natural key).
 
@@ -126,9 +124,7 @@ async def delete_source(key: SourceKey) -> dict:
         except PublicSourceKeyError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if deleted_key is None:
-            raise HTTPException(
-                status_code=404, detail=f"Source override not found: {key}"
-            )
+            raise HTTPException(status_code=404, detail=f"Source override not found: {key}")
         return {"source_key": deleted_key, "deleted": True}
 
 
@@ -137,9 +133,7 @@ async def delete_source(key: SourceKey) -> dict:
     response_model=SourceMutationResult,
     dependencies=[Depends(verify_admin_key)],
 )
-async def set_source_enabled(
-    key: SourceKey, request: SourceEnabledRequest
-) -> SourceMutationResult:
+async def set_source_enabled(key: SourceKey, request: SourceEnabledRequest) -> SourceMutationResult:
     """Enable or disable a source.
 
     For a YAML-defined source with no override row, a self-describing shadow row

@@ -321,9 +321,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
         # (used by test_audit_ordering.py).
         self._writer_override = writer
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # Skip paths that aren't under /api/v1
         if not request.url.path.startswith(_API_V1_PREFIX):
             return await call_next(request)

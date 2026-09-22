@@ -88,9 +88,7 @@ def app_factory(recorder):
             from starlette.responses import JSONResponse
 
             class FakeAuth(BaseHTTPMiddleware):
-                async def dispatch(
-                    self, request: Request, call_next: RequestResponseEndpoint
-                ):
+                async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
                     key = request.headers.get("X-Admin-Key")
                     if not key:
                         return JSONResponse({"detail": "no creds"}, status_code=401)
@@ -368,9 +366,7 @@ def test_source_audit_path_redacts_nested_encoding(app_factory, recorder):
     assert "private-client" not in recorder.last()["path"]
 
 
-def test_source_audit_path_fails_closed_for_extreme_nested_encoding(
-    app_factory, recorder
-):
+def test_source_audit_path_fails_closed_for_extreme_nested_encoding(app_factory, recorder):
     app = app_factory()
     encoded_key = "obsidian_vault:private-client/srv/vault"
     for _ in range(40):
@@ -383,9 +379,7 @@ def test_source_audit_path_fails_closed_for_extreme_nested_encoding(
     assert "private-client" not in recorder.last()["path"]
 
 
-def test_source_audit_writer_failure_log_uses_redacted_path(
-    app_factory, recorder, capsys
-):
+def test_source_audit_writer_failure_log_uses_redacted_path(app_factory, recorder, capsys):
     app = app_factory()
     recorder.raise_on_next = True
     private_values = ("personal", "srv/obsidian/private", "Clients/Private")
@@ -424,9 +418,7 @@ def test_write_failure_sets_otel_span_attribute(app_factory, recorder):
         def is_recording(self) -> bool:  # pragma: no cover - defensive
             return True
 
-    with patch(
-        "src.api.middleware.audit.trace.get_current_span", return_value=_FakeSpan()
-    ):
+    with patch("src.api.middleware.audit.trace.get_current_span", return_value=_FakeSpan()):
         with TestClient(app) as c:
             resp = c.get("/api/v1/echo")
 

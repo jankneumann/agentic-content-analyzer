@@ -6,14 +6,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import (
-    AnyUrl,
-    BaseModel,
-    ConfigDict,
-    Field,
-    field_validator,
-    model_validator,
-)
+from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 CONTRACT_SHA256 = "4a676697b5d8db6579b6efe1d708a33567d9443152a983ec2cd4dfc0f7eb7536"
 
@@ -28,9 +21,7 @@ OperationType = Literal[
     "podcast_audio.create",
     "audio_digest.create",
 ]
-IngestionOutcome = Literal[
-    "success", "zero_items", "partial", "failed", "cancelled", "unknown"
-]
+IngestionOutcome = Literal["success", "zero_items", "partial", "failed", "cancelled", "unknown"]
 IngestionStatus = Literal["ok", "partial", "error"]
 TerminalOperationStatus = Literal["completed", "failed", "cancelled"]
 ContentReconciliationMode = Literal["dry_run", "apply"]
@@ -218,11 +209,7 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
             "title": {"type": "string"},
             "tags": {"type": "array", "items": {"type": "string"}},
             "notes": {"type": "string"},
-            "routing_mode": {
-                "type": "string",
-                "enum": ["auto", "webpage"],
-                "default": "auto",
-            },
+            "routing_mode": {"type": "string", "enum": ["auto", "webpage"], "default": "auto"},
             "force_reprocess": {"type": "boolean", "default": False},
         },
         "required": ["kind", "url"],
@@ -452,18 +439,14 @@ class ConfiguredSourceHistoryOutcome(StrictModel):
 
 class IngestionHistoryItem(StrictModel):
     operation_id: Annotated[str, Field(max_length=19, pattern="^[1-9][0-9]*$")]
-    parent_operation_id: str | None = Field(
-        None, max_length=19, pattern="^[1-9][0-9]*$"
-    )
+    parent_operation_id: str | None = Field(None, max_length=19, pattern="^[1-9][0-9]*$")
     command_key: Annotated[str, Field(min_length=1, max_length=100)]
     operation_status: TerminalOperationStatus
     outcome: IngestionOutcome
     items_ingested: Annotated[int | None, Field(ge=0)]
     items_skipped: Annotated[int | None, Field(ge=0)]
     items_failed: Annotated[int | None, Field(ge=0)]
-    source_outcomes: Annotated[
-        list[ConfiguredSourceHistoryOutcome], Field(max_length=100)
-    ]
+    source_outcomes: Annotated[list[ConfiguredSourceHistoryOutcome], Field(max_length=100)]
     retry_count: Annotated[int, Field(ge=0)]
     problem_code: str | None = Field(None, max_length=100)
     status_url: Annotated[str, Field(pattern="^/api/v1/operations/[1-9][0-9]*$")]
@@ -519,9 +502,7 @@ class OperationPage(StrictModel):
 class WorkflowAlertVerificationContext(StrictModel):
     schema_version: Literal[1] = 1
     environment_class: Literal["staging"] = "staging"
-    revision: Annotated[
-        str, Field(min_length=40, max_length=40, pattern="^[a-f0-9]{40}$")
-    ]
+    revision: Annotated[str, Field(min_length=40, max_length=40, pattern="^[a-f0-9]{40}$")]
     revision_source: Literal["railway_commit_sha"] = "railway_commit_sha"
 
 
@@ -536,9 +517,7 @@ class WorkflowTerminalDeliveryCounts(StrictModel):
 class WorkflowTerminalEventDiagnostic(StrictModel):
     schema_version: Literal[1] = 1
     event_id: UUID
-    event_key: Annotated[
-        str, Field(min_length=1, max_length=160, pattern="^[a-z0-9:_-]+$")
-    ]
+    event_key: Annotated[str, Field(min_length=1, max_length=160, pattern="^[a-z0-9:_-]+$")]
     source_kind: Literal[
         "operation", "reconciliation_action", "reconciliation_failure", "system_check"
     ]
@@ -547,12 +526,9 @@ class WorkflowTerminalEventDiagnostic(StrictModel):
     terminal_status: Literal["completed", "failed", "cancelled", None]
     classification_status: Literal["pending", "ready", "telemetry_only", "rejected"]
     release_revision: Annotated[
-        str | None,
-        Field(max_length=40, pattern="^(?:[a-f0-9]{40}|development|unavailable)$"),
+        str | None, Field(max_length=40, pattern="^(?:[a-f0-9]{40}|development|unavailable)$")
     ]
-    release_revision_source: Literal[
-        "railway_commit_sha", "local_development", "unavailable", None
-    ]
+    release_revision_source: Literal["railway_commit_sha", "local_development", "unavailable", None]
     occurred_at: datetime
     telemetry_emitted_at: datetime | None
     delivery_counts: WorkflowTerminalDeliveryCounts
@@ -585,9 +561,7 @@ class ContentReconciliationItem(StrictModel):
     projection: ContentReconciliationProjection
     content_status_before: ContentReconciliationContentStatus
     content_status_after: ContentReconciliationContentStatus
-    operation_id: Annotated[
-        str | None, Field(max_length=19, pattern="^[1-9][0-9]{0,18}$")
-    ]
+    operation_id: Annotated[str | None, Field(max_length=19, pattern="^[1-9][0-9]{0,18}$")]
     claim_generation: Annotated[int | None, Field(ge=1, le=9223372036854775807)]
     claim_protocol_version: Annotated[int | None, Field(ge=1, le=32767)]
     operation_status_before: ContentReconciliationOperationStatus | None
@@ -710,9 +684,7 @@ class YouTubeSourceConfigBase(IgnoredExtraModel):
     long_video_strategy: Literal["grounding", "segments"] = "grounding"
     video_fps: float | None = 0.1
     segment_overlap_seconds: int = 15
-    unknown_duration_strategy: Literal["short", "grounding", "segments", "skip"] = (
-        "short"
-    )
+    unknown_duration_strategy: Literal["short", "grounding", "segments", "skip"] = "short"
 
 
 class YouTubePlaylistSourceOverrideConfig(SourceConfigBase):
@@ -725,9 +697,7 @@ class YouTubePlaylistSourceOverrideConfig(SourceConfigBase):
     long_video_strategy: Literal["grounding", "segments"] = "grounding"
     video_fps: float | None = 0.1
     segment_overlap_seconds: int = 15
-    unknown_duration_strategy: Literal["short", "grounding", "segments", "skip"] = (
-        "short"
-    )
+    unknown_duration_strategy: Literal["short", "grounding", "segments", "skip"] = "short"
     hint_terms: list[str] = []
     proofread: bool = True
     gemini_summary: bool = True
@@ -744,9 +714,7 @@ class YouTubeChannelSourceOverrideConfig(SourceConfigBase):
     long_video_strategy: Literal["grounding", "segments"] = "grounding"
     video_fps: float | None = 0.1
     segment_overlap_seconds: int = 15
-    unknown_duration_strategy: Literal["short", "grounding", "segments", "skip"] = (
-        "short"
-    )
+    unknown_duration_strategy: Literal["short", "grounding", "segments", "skip"] = "short"
     languages: list[str] = ["en"]
     hint_terms: list[str] = []
     proofread: bool = True
@@ -763,9 +731,7 @@ class YouTubeRSSSourceOverrideConfig(SourceConfigBase):
     long_video_strategy: Literal["grounding", "segments"] = "grounding"
     video_fps: float | None = 0.1
     segment_overlap_seconds: int = 15
-    unknown_duration_strategy: Literal["short", "grounding", "segments", "skip"] = (
-        "short"
-    )
+    unknown_duration_strategy: Literal["short", "grounding", "segments", "skip"] = "short"
     gemini_summary: bool = True
     gemini_resolution: str = "low"
 
@@ -831,9 +797,7 @@ class ObsidianVaultSourceOverrideConfig(StrictModel):
         str, Field(min_length=1, max_length=128, pattern="^[A-Za-z0-9][A-Za-z0-9._-]*$")
     ]
     vault_path: Annotated[str, Field(min_length=1, max_length=4096, pattern="^/")]
-    ingest_folder: str = Field(
-        "Inbox", min_length=1, max_length=1024, pattern="^[^/\\\\\\x00]"
-    )
+    ingest_folder: str = Field("Inbox", min_length=1, max_length=1024, pattern="^[^/\\\\\\x00]")
     max_files: int = Field(1000, ge=1, le=10000)
     max_entries: int = Field(10000, ge=1, le=100000)
     max_total_bytes: int = Field(67108864, ge=1, le=268435456)
@@ -870,7 +834,7 @@ class ObsidianVaultSourceOverrideConfig(StrictModel):
         return value
 
     @model_validator(mode="after")
-    def validate_nested_byte_limits(self) -> "ObsidianVaultSourceOverrideConfig":
+    def validate_nested_byte_limits(self) -> ObsidianVaultSourceOverrideConfig:
         if self.max_note_bytes > self.max_total_bytes:
             raise ValueError("max_note_bytes cannot exceed max_total_bytes")
         if self.max_frontmatter_bytes > self.max_note_bytes:
@@ -961,13 +925,7 @@ class ContentQuery(StrictModel):
     statuses: (
         list[
             Literal[
-                "pending",
-                "parsing",
-                "parsed",
-                "processing",
-                "completed",
-                "failed",
-                "filtered_out",
+                "pending", "parsing", "parsed", "processing", "completed", "failed", "filtered_out"
             ]
         ]
         | None
@@ -980,13 +938,7 @@ class ContentQuery(StrictModel):
     search: str | None = None
     limit: int | None = Field(None, ge=1)
     sort_by: Literal[
-        "id",
-        "title",
-        "source_type",
-        "publication",
-        "status",
-        "published_date",
-        "ingested_at",
+        "id", "title", "source_type", "publication", "status", "published_date", "ingested_at"
     ] = "published_date"
     sort_order: Literal["asc", "desc"] = "desc"
     canonical_only: bool = True
@@ -1203,9 +1155,7 @@ class PodcastScriptRequest(StrictModel):
 
 class PodcastAudioRequest(StrictModel):
     script_id: Annotated[int, Field(ge=1)]
-    voice_provider: Literal["elevenlabs", "google_tts", "aws_polly", "openai_tts"] = (
-        "openai_tts"
-    )
+    voice_provider: Literal["elevenlabs", "google_tts", "aws_polly", "openai_tts"] = "openai_tts"
     alex_voice: Literal["alex_male", "alex_female"] = "alex_male"
     sam_voice: Literal["sam_male", "sam_female"] = "sam_female"
 

@@ -292,7 +292,7 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
                     "        return value",
                     "",
                     '    @model_validator(mode="after")',
-                    '    def validate_nested_byte_limits(self) -> "ObsidianVaultSourceOverrideConfig":',
+                    "    def validate_nested_byte_limits(self) -> ObsidianVaultSourceOverrideConfig:",
                     "        if self.max_note_bytes > self.max_total_bytes:",
                     '            raise ValueError("max_note_bytes cannot exceed max_total_bytes")',
                     "        if self.max_frontmatter_bytes > self.max_note_bytes:",
@@ -507,7 +507,7 @@ def _format_python(source: str) -> str:
             "ruff is required for deterministic Python generation; install it or add it to PATH"
         )
     result = subprocess.run(
-        [ruff, "format", "--isolated", "--stdin-filename", str(PYTHON_OUTPUT), "-"],
+        [ruff, "format", "--stdin-filename", str(PYTHON_OUTPUT), "-"],
         input=source,
         text=True,
         capture_output=True,
