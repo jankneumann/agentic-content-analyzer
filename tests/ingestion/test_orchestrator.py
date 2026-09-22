@@ -520,14 +520,16 @@ class TestIngestSubstack:
         mock_service.close.assert_called_once()
 
     @patch("src.ingestion.substack.SubstackContentIngestionService")
-    def test_passes_session_cookie(self, mock_cls):
+    def test_never_accepts_a_session_cookie_argument(self, mock_cls):
         from src.ingestion.orchestrator import ingest_substack
 
         mock_cls.return_value.ingest_content.return_value = _substack_response(0)
 
-        ingest_substack(session_cookie="test-cookie")
+        with pytest.raises(TypeError):
+            ingest_substack(session_cookie="test-cookie")  # type: ignore[call-arg]
+        ingest_substack()
 
-        mock_cls.assert_called_once_with(session_cookie="test-cookie")
+        mock_cls.assert_called_once_with()
 
     @patch("src.ingestion.substack.SubstackContentIngestionService")
     def test_passes_parameters(self, mock_cls):

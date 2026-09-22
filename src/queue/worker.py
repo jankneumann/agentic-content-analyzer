@@ -1195,14 +1195,7 @@ def _register_content_handlers() -> None:
             ),
             "substack": (
                 ingest_substack,
-                {
-                    **({"max_entries_per_source": max_results} if max_results is not None else {}),
-                    **(
-                        {"session_cookie": payload["session_cookie"]}
-                        if "session_cookie" in payload
-                        else {}
-                    ),
-                },
+                {**({"max_entries_per_source": max_results} if max_results is not None else {})},
             ),
             "xsearch": (
                 ingest_xsearch,

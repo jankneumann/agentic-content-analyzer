@@ -168,7 +168,8 @@ async def test_ingest_substack(mock_sub):
     )
     mock_sub.assert_called_once()
     kwargs = mock_sub.call_args[1]
-    assert kwargs.get("session_cookie") == "abc123"
+    # A cookie left in an old queued payload is never forwarded.
+    assert "session_cookie" not in kwargs
     assert kwargs.get("max_entries_per_source") == 15
 
 

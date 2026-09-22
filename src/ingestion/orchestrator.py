@@ -440,7 +440,6 @@ def ingest_substack(
     max_entries_per_source: int = 10,
     after_date: datetime | None = None,
     force_reprocess: bool = False,
-    session_cookie: str | None = None,
 ) -> IngestionResponse:
     """Ingest posts from Substack sources.
 
@@ -450,14 +449,15 @@ def ingest_substack(
         max_entries_per_source: Maximum posts per Substack source.
         after_date: Only fetch posts after this date.
         force_reprocess: Force reprocess existing content.
-        session_cookie: Override SUBSTACK_SESSION_COOKIE value.
 
     Returns:
         Canonical IngestionResponse envelope.
     """
     from src.ingestion.substack import SubstackContentIngestionService
 
-    service = SubstackContentIngestionService(session_cookie=session_cookie)
+    # The session cookie is resolved live by the credential provider. It is
+    # never accepted as an argument: @observe() would record it in traces.
+    service = SubstackContentIngestionService()
     try:
         return service.ingest_content(
             max_entries_per_source=max_entries_per_source,
