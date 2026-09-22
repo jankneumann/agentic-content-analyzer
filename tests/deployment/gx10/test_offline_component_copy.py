@@ -27,7 +27,7 @@ COMPONENT = ROOT / "scripts/gx10/backup/component.sh"
 def _fixture(tmp_path: Path, *, pause_exit: int = 0, unpause_exit: int = 0) -> dict[str, str]:
     log = tmp_path / "calls.log"
     compose = tmp_path / "podman-compose.sh"
-    compose.write_text("#!/usr/bin/env bash\n" f'echo "compose $*" >> "{log}"\n' "exit 0\n")
+    compose.write_text(f'#!/usr/bin/env bash\necho "compose $*" >> "{log}"\nexit 0\n')
     podman = tmp_path / "podman"
     podman.write_text(
         "#!/usr/bin/env bash\n"
