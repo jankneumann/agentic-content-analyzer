@@ -32,7 +32,7 @@ items:
     note.
 - item_id: ri-02
   title: Add secret sink abstraction to the auth CLI
-  status: approved
+  status: completed
   priority: 1
   effort: M
   depends_on: []
@@ -386,4 +386,4 @@ items:
     for X content.
   - docs/GOTCHAS.md contains entries for frozen settings versus the live provider
     and for KV v2 create_or_update clobbering sibling keys.
-updated_at: '2026-09-22T18:21:53.327379+00:00'
+updated_at: '2026-09-22T20:39:35.825161+00:00'
