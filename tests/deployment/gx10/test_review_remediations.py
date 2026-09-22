@@ -223,7 +223,7 @@ def test_internal_hosts_bypass_proxy_and_roles_have_distinct_exporters() -> None
     ],
 )
 def test_role_readiness_fails_after_mapped_dependency_loss(
-    monkeypatch: pytest.MonkeyPatch, role: str, lost_host: str
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], role: str, lost_host: str
 ) -> None:
     path = ROOT / "scripts/gx10/check_role_readiness.py"
     spec = importlib.util.spec_from_file_location("gx10_role_readiness", path)
@@ -241,8 +241,9 @@ def test_role_readiness_fails_after_mapped_dependency_loss(
         def __exit__(self, *_args: object) -> None:
             return None
 
-    def connect(address: tuple[str, int], timeout: int) -> Connection:
-        assert timeout == 3
+    def connect(address: tuple[str, int], timeout: float) -> Connection:
+        # Every wait is bounded by what is left of the probe's own budget.
+        assert 0 < timeout <= module.STEP_SECONDS
         if address[0] == lost_host:
             raise OSError("dependency lost after process start")
         return Connection()
@@ -251,6 +252,11 @@ def test_role_readiness_fails_after_mapped_dependency_loss(
     monkeypatch.setattr(module.sys, "argv", [str(path), "--role", role])
     monkeypatch.setenv("HTTPS_PROXY", "http://fixture:fixture@squid:3128")
     assert module.main() == 1
+
+    # The probe reports the exception type, and it catches everything -- so
+    # without this the test passed on any failure at all, including an
+    # AssertionError raised by its own fixture.
+    assert "readiness denied: OSError" in capsys.readouterr().err
 
 
 def test_proxy_readiness_requires_fresh_marker_and_authenticated_connect_probe() -> None:

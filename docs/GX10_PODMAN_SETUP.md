@@ -288,6 +288,16 @@ attacker-influenced input, so that last rule is the one doing the security
 work, and it is checked after name resolution. Plain `http://` sources stay
 blocked, since the policy permits `CONNECT` only.
 
+The role readiness probe checks local dependencies and configuration only.
+It used to finish by fetching `https://api.github.com` through the proxy, once
+per role every ten seconds against a five-second timeout, and all four roles
+flapped between healthy and unhealthy roughly half the time while nothing was
+wrong with them. Squid's own healthcheck already performs that handshake, and
+`squid:3128` is among the probe's dependencies, so an egress outage still
+marks the roles unready. The probe also spends a budget smaller than the
+healthcheck timeout: a probe that cannot answer in time is a failing probe,
+whatever the reason.
+
 The backup freezes a filesystem-copied store rather than stopping it.
 Stopping was the original design and could not work: those services carry
 `restart: on-failure:5`, so Podman brought ClickHouse back up 0.45 seconds

@@ -209,3 +209,58 @@ def test_a_timer_fired_unit_refuses_a_stale_installed_definition(name: str, tmp_
     assert stale.returncode == 1
     assert "older installed definition" in stale.stderr
     assert "make -C" in stale.stderr, "the message must carry the fix"
+
+
+def test_role_readiness_answers_inside_the_healthcheck_budget(monkeypatch) -> None:
+    """Four roles ran this probe every ten seconds with a five-second timeout,
+    and it ended by fetching https://api.github.com through the proxy. A TLS
+    handshake with the internet, forty times a minute, does not fit in five
+    seconds reliably: all four roles flapped between healthy and unhealthy
+    roughly half the time while nothing was actually wrong with them.
+
+    Squid's own healthcheck performs that handshake already, and squid:3128 is
+    among the dependencies below, so an egress outage still reaches the roles.
+    """
+    path = ROOT / "scripts/gx10/check_role_readiness.py"
+    spec = importlib.util.spec_from_file_location("gx10_role_readiness_budget", path)
+    assert spec is not None and spec.loader is not None
+    probe = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(probe)
+
+    source = path.read_text(encoding="utf-8")
+    assert "api.github.com" not in source, "the probe must not reach the internet"
+    assert probe.BUDGET_SECONDS < 5, "the budget must sit inside the healthcheck timeout"
+
+    class _Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    waits: list[float] = []
+
+    def connect(address: tuple[str, int], timeout: float) -> _Connection:
+        waits.append(timeout)
+        return _Connection()
+
+    fetched: list[tuple[str, float]] = []
+
+    def get(url: str, *, timeout: float) -> bytes:
+        fetched.append((url, timeout))
+        return b'{"initialized": true, "sealed": false}'
+
+    monkeypatch.setattr(probe.socket, "create_connection", connect)
+    monkeypatch.setattr(probe, "get", get)
+    monkeypatch.setattr(probe.sys, "argv", [str(path), "--role", "worker"])
+    monkeypatch.setenv("HTTPS_PROXY", "http://fixture:fixture@squid:3128")
+
+    assert probe.main() == 0
+    # An egress outage still reaches the roles: squid is a dependency here, and
+    # its own healthcheck is the one doing the TLS handshake.
+    assert ("squid", 3128) in probe.ROLE_DEPENDENCIES["worker"]
+    assert waits and all(0 < wait <= probe.STEP_SECONDS for wait in waits)
+    assert fetched and all(
+        url.startswith("http://") and 0 < timeout <= probe.STEP_SECONDS
+        for url, timeout in fetched
+    ), fetched
