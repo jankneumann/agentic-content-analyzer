@@ -149,11 +149,11 @@ and a stale source-merge docstring only if contract tests identify it.
 **Blocked by:** WP1, WP2b, WP3, WP4, WP5, WP6. **Owns:** validation output and
 completion evidence; it does not absorb unfinished implementation.
 
-- [ ] 7.1 Run focused contract, API, CLI, component, browser, and migration
+- [x] 7.1 Run focused contract, API, CLI, component, browser, and migration
   suites; run `pnpm --dir web build`, `pnpm --dir web typecheck`,
   `make workflow-contracts-check`, and
   `openspec validate closeout-db-source-overrides-evidence --strict`.
-- [ ] 7.2 Confirm the archived source change is untouched with
+- [x] 7.2 Confirm the archived source change is untouched with
   `git diff --exit-code $(git merge-base HEAD origin/main) --
   openspec/changes/archive/2026-07-23-db-source-overrides` and report which
   suite proves each requirement and failure path.
