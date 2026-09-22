@@ -261,6 +261,5 @@ def test_role_readiness_answers_inside_the_healthcheck_budget(monkeypatch) -> No
     assert ("squid", 3128) in probe.ROLE_DEPENDENCIES["worker"]
     assert waits and all(0 < wait <= probe.STEP_SECONDS for wait in waits)
     assert fetched and all(
-        url.startswith("http://") and 0 < timeout <= probe.STEP_SECONDS
-        for url, timeout in fetched
+        url.startswith("http://") and 0 < timeout <= probe.STEP_SECONDS for url, timeout in fetched
     ), fetched
