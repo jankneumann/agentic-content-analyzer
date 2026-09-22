@@ -116,7 +116,7 @@ worktree-safe disposable PostgreSQL database fixture.
 
 **Blocked by:** none. **Owns:** `docs/SETUP.md`.
 
-- [ ] 5.1 Document precedence; auth; add/list/enable/disable/remove examples;
+- [x] 5.1 Document precedence; auth; add/list/enable/disable/remove examples;
   generic deletion semantics; DB-unavailable fail-open behavior; backup
   cautions; and incompatible-manual-table recovery without claiming a schema
   doctor.
@@ -132,10 +132,10 @@ examples against WP1 tests. This command finds every required topic:
 `openspec/changes/closeout-db-source-overrides-evidence/specs/source-configuration/spec.md`,
 and a stale source-merge docstring only if contract tests identify it.
 
-- [ ] 6.1 Modify the durable source-configuration requirements to distinguish
+- [x] 6.1 Modify the durable source-configuration requirements to distinguish
   internal natural identity from public management identity and to keep a
   disabled shadow management-visible while ingestion selection excludes it.
-- [ ] 6.2 Record all four methods, nested discriminator and ignored-sibling
+- [x] 6.2 Record all four methods, nested discriminator and ignored-sibling
   compatibility, PATCH/shadow behavior, auth, Obsidian opaque keys, exact
   response families, version/identity rules, complete-catalog GET, audit-path
   redaction, generic deletion copy, and rejected alternatives.

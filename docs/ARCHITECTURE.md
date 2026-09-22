@@ -629,7 +629,68 @@ The legacy Newsletter API has been removed. Use the Content API instead.
 ### Sources API (`/api/v1/sources`)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/sources` | List configured sources with content counts |
+| GET | `/sources` | Complete merged source catalog with grouped content counts; no pagination |
+| POST | `/sources` | Full-config database-override upsert |
+| PATCH | `/sources/{public-key}` | Set only `{ "enabled": boolean }` |
+| DELETE | `/sources/{public-key}` | Remove a database override |
+
+### Source override management
+
+Configured sources resolve from `sources.d/`, then `sources.yaml`, then
+legacy files. Database rows in `source_overrides` overlay that baseline last.
+A disabled row remains management-visible but is excluded from ingestion; PATCH
+on a YAML-only source creates this self-describing shadow. DELETE removes the
+database row: a YAML source returns if one exists, while a database-only source
+disappears. Because GET projects both as `origin="db"`, clients must use the
+generic deletion copy: “Remove database override; a YAML definition may
+reappear.”
+
+The four method contract is intentionally narrow. GET returns the complete catalog
+as the unpaginated `SourcesOverview` projection (management key, type, label or URL,
+origin, enabled state, and grouped counts), not content history, and it omits
+mutation version. POST accepts
+`{ "config": { "type": "…", … }, "description"?: "…" }` and returns
+`source_key`, `version`, `origin`, and `enabled`; new rows begin at
+version 1 and later effective updates advance it. PATCH accepts exactly
+`{ "enabled": boolean }`, not generic partial config, PUT replacement, or
+separate enable/disable paths. DELETE returns
+`{ "source_key": "…", "deleted": true }`.
+
+`config.type` is the sole discriminator. Unknown request siblings remain
+tolerated for compatibility, so a legacy top-level `type` is ignored and
+cannot override the nested value. This avoids publishing two competing
+discriminators or turning tolerated input into a new 422 error.
+
+Outside credential-free local development, source routes require an owner
+`session` cookie or `X-Admin-Key`; write-route key verification remains
+defense in depth. Their legacy response families are deliberate: service and
+unknown-key failures use `400`/`404` `{ "detail": string }`, body validation
+uses `422` `{ "detail": ValidationError[] }`, and auth middleware uses
+`401`/`403` `{ "error", "detail", "trace_id"? }`. Missing credentials are
+401; an explicitly invalid key is 403. These routes do not adopt newer RFC 7807
+endpoint families.
+
+Public management identity differs from internal storage identity for Obsidian.
+Ordinary sources use a natural `<type>:<locator>` key; Obsidian uses only an
+HMAC-derived opaque `src_[a-f0-9]{20}` key at public boundaries. Responses,
+errors, and public paths must not reveal `vault_id`, `vault_path`,
+`ingest_folder`, private tags, or an Obsidian natural locator. Application
+audit paths are normalized before persistence and failure logging: valid opaque
+keys remain useful; non-public locators become a fixed redacted token. This
+does not govern independently configured proxy logs.
+
+The browser quick-add supports non-worker-filesystem sources, including
+Readwise's reviewed `source_types` and `include_deleted` fields. It has no
+Obsidian create/edit form because it cannot inspect worker mounts or allowed
+roots, and private paths cannot safely be read back. Existing Obsidian rows
+show only a generic label and opaque key and may be toggled or deleted.
+
+If database lookup fails, the loader is fail-open and preserves the YAML/legacy
+baseline; that does not make a write succeed or prove an override applied.
+The source migration's historical table-exists guard is not a schema doctor or
+repair mechanism: recover an incompatible manual table only with a verified
+backup and controlled table/history reconciliation, not by blindly rerunning
+Alembic.
 
 ## Content API Features
 
