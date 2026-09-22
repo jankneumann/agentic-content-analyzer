@@ -61,12 +61,12 @@ setup file.
 form-definition module, and the rendered component test. Shared API DTOs remain
 WP1-owned.
 
-- [ ] 2.2 Add Readwise quick-add fields for `source_types` and
+- [x] 2.2 Add Readwise quick-add fields for `source_types` and
   `include_deleted`; credentials remain environment-owned.
-- [ ] 2.3 Render existing Obsidian rows with a generic label and opaque key;
+- [x] 2.3 Render existing Obsidian rows with a generic label and opaque key;
   allow enable/disable and DB-override removal but expose no create/edit form or
   private configuration.
-- [ ] 2.4 Test mixed origins, states, nested add/toggle payloads, the generic
+- [x] 2.4 Test mixed origins, states, nested add/toggle payloads, the generic
   “remove override; YAML may reappear” message, and representative add, toggle,
   and delete failures; every independent handler surfaces a recoverable error
   without an optimistic state lie.
