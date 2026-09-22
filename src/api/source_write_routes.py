@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 # Shares the /api/v1/sources prefix with the read-only overview router.
 router = APIRouter(prefix="/api/v1/sources", tags=["sources"])
 
-SourceKey = Annotated[str, Path(min_length=1, pattern=r"^[^\x00]+$")]
+SourceKey = Annotated[str, Path(min_length=1, max_length=512, pattern=r"^[^\x00]+$")]
 
 
 # ============================================================================
@@ -69,7 +69,10 @@ def _resolve_source_config(key: str) -> dict[str, Any] | None:
     that has no override row yet, so a self-describing shadow row can be created.
     """
     from src.config import settings
-    from src.config.sources import configured_source_public_key, source_key as derive_source_key
+    from src.config.sources import (
+        configured_source_public_key,
+        source_key as derive_source_key,
+    )
 
     config = settings.get_sources_config()
     for source in config.sources:
@@ -94,7 +97,9 @@ def _resolve_source_config(key: str) -> dict[str, Any] | None:
 # ============================================================================
 
 
-@router.post("", response_model=SourceMutationResult, dependencies=[Depends(verify_admin_key)])
+@router.post(
+    "", response_model=SourceMutationResult, dependencies=[Depends(verify_admin_key)]
+)
 async def upsert_source(request: SourceUpsertRequest) -> SourceMutationResult:
     """Add or update a source override (upsert by natural key).
 
@@ -121,14 +126,20 @@ async def delete_source(key: SourceKey) -> dict:
         except PublicSourceKeyError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if deleted_key is None:
-            raise HTTPException(status_code=404, detail=f"Source override not found: {key}")
+            raise HTTPException(
+                status_code=404, detail=f"Source override not found: {key}"
+            )
         return {"source_key": deleted_key, "deleted": True}
 
 
 @router.patch(
-    "/{key:path}", response_model=SourceMutationResult, dependencies=[Depends(verify_admin_key)]
+    "/{key:path}",
+    response_model=SourceMutationResult,
+    dependencies=[Depends(verify_admin_key)],
 )
-async def set_source_enabled(key: SourceKey, request: SourceEnabledRequest) -> SourceMutationResult:
+async def set_source_enabled(
+    key: SourceKey, request: SourceEnabledRequest
+) -> SourceMutationResult:
     """Enable or disable a source.
 
     For a YAML-defined source with no override row, a self-describing shadow row

@@ -20,6 +20,12 @@ import {
   deleteSource,
   setSourceEnabled,
 } from "../sources"
+import type {
+  SourceDeleteResult,
+  SourceInfo,
+  SourceMutationResult,
+  SourceUpsertRequest,
+} from "@/types/settings"
 
 describe("sources API client", () => {
   beforeEach(() => {
@@ -32,9 +38,54 @@ describe("sources API client", () => {
   })
 
   it("upsertSource POSTs the request body to /sources", async () => {
-    const request = { config: { type: "rss", url: "https://x.test/feed" } }
+    const request: SourceUpsertRequest = {
+      config: { type: "rss", url: "https://x.test/feed" },
+    }
     await upsertSource(request)
     expect(apiClient.post).toHaveBeenCalledWith("/sources", request)
+  })
+
+  it("shares generated mutation and deletion response shapes", () => {
+    const mutation: SourceMutationResult = {
+      source_key: "src_0123456789abcdef0123",
+      version: 1,
+      origin: "db",
+      enabled: true,
+    }
+    const deletion: SourceDeleteResult = {
+      source_key: mutation.source_key,
+      deleted: true,
+    }
+
+    expect(deletion.source_key).toBe(mutation.source_key)
+  })
+
+  it("represents Readwise and opaque Obsidian response rows", () => {
+    const sources: SourceInfo[] = [
+      {
+        type: "readwise",
+        name: "Readwise",
+        url: "default",
+        enabled: true,
+        tags: [],
+        origin: "db",
+        source_key: "readwise:default",
+      },
+      {
+        type: "obsidian_vault",
+        name: null,
+        url: "src_0123456789abcdef0123",
+        enabled: false,
+        tags: [],
+        origin: "db",
+        source_key: "src_0123456789abcdef0123",
+      },
+    ]
+
+    expect(sources.map((source) => source.type)).toEqual([
+      "readwise",
+      "obsidian_vault",
+    ])
   })
 
   it("setSourceEnabled PATCHes an encoded key with { enabled }", async () => {

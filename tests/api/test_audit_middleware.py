@@ -87,7 +87,9 @@ def app_factory(recorder):
             from starlette.responses import JSONResponse
 
             class FakeAuth(BaseHTTPMiddleware):
-                async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
+                async def dispatch(
+                    self, request: Request, call_next: RequestResponseEndpoint
+                ):
                     key = request.headers.get("X-Admin-Key")
                     if not key:
                         return JSONResponse({"detail": "no creds"}, status_code=401)
@@ -169,7 +171,11 @@ def test_body_size_is_captured(app_factory, recorder):
     app = app_factory()
     payload = b'{"x":' + (b"0" * 32) + b"}"
     with TestClient(app) as c:
-        c.post("/api/v1/write", content=payload, headers={"Content-Type": "application/json"})
+        c.post(
+            "/api/v1/write",
+            content=payload,
+            headers={"Content-Type": "application/json"},
+        )
     # body_size should equal byte length of payload
     assert recorder.last()["body_size"] == len(payload)
 
@@ -320,6 +326,57 @@ def test_write_failure_is_non_blocking(app_factory, recorder, capsys):
     assert "audit" in captured.err.lower()
 
 
+def test_source_audit_path_preserves_valid_opaque_key(app_factory, recorder):
+    app = app_factory()
+    opaque_key = "src_0123456789abcdef0123"
+
+    with TestClient(app) as c:
+        c.delete(f"/api/v1/sources/{opaque_key}")
+
+    assert recorder.last()["path"] == f"/api/v1/sources/{opaque_key}"
+
+
+def test_source_audit_path_redacts_private_obsidian_locator(app_factory, recorder):
+    app = app_factory()
+    private_values = (
+        "personal-vault",
+        "srv/obsidian/clients",
+        "Clients/Private",
+        "board-research",
+        "private-client",
+    )
+    private_key = "obsidian_vault:" + "/".join(private_values)
+
+    with TestClient(app) as c:
+        c.delete(f"/api/v1/sources/{private_key}")
+
+    stored_path = recorder.last()["path"]
+    assert stored_path == "/api/v1/sources/<redacted>"
+    for private_value in private_values:
+        assert private_value not in stored_path
+
+
+def test_source_audit_writer_failure_log_uses_redacted_path(
+    app_factory, recorder, capsys
+):
+    app = app_factory()
+    recorder.raise_on_next = True
+    private_values = ("personal", "srv/obsidian/private", "Clients/Private")
+    private_key = "obsidian_vault:" + "/".join(private_values)
+
+    with TestClient(app) as c:
+        response = c.patch(
+            f"/api/v1/sources/{private_key}",
+            json={"enabled": False},
+        )
+
+    assert response.status_code == 404
+    captured = capsys.readouterr()
+    assert "path=/api/v1/sources/<redacted>" in captured.err
+    for private_value in private_values:
+        assert private_value not in captured.err
+
+
 def test_hash_admin_key_returns_last_8_of_sha256():
     assert _hash_admin_key("abc") == hashlib.sha256(b"abc").hexdigest()[-8:]
     assert _hash_admin_key(None) is None
@@ -340,7 +397,9 @@ def test_write_failure_sets_otel_span_attribute(app_factory, recorder):
         def is_recording(self) -> bool:  # pragma: no cover - defensive
             return True
 
-    with patch("src.api.middleware.audit.trace.get_current_span", return_value=_FakeSpan()):
+    with patch(
+        "src.api.middleware.audit.trace.get_current_span", return_value=_FakeSpan()
+    ):
         with TestClient(app) as c:
             resp = c.get("/api/v1/echo")
 

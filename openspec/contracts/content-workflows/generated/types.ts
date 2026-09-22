@@ -1,5 +1,5 @@
 // Generated from contracts/openapi/v1.yaml; do not edit.
-export const CONTRACT_SHA256 = "42c7725900d7c46933c6df9edb8f0e51c08325ba7102492cff1e3c7774ffe8fe" as const;
+export const CONTRACT_SHA256 = "72f692d31525ab06e1634d5251192d62687f202fe7ad942df841c62a30909cf3" as const;
 
 export type OperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 export type OperationType = "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
@@ -13,6 +13,22 @@ export type ContentReconciliationOperationStatus = "queued" | "in_progress" | "c
 export type ContentReconciliationPhase = "parsing" | "processing";
 export type ContentReconciliationAction = "none" | "retry_operation" | "project_completed" | "project_parsed" | "restore_parsed" | "restore_pending" | "cancel_restore_parsed" | "cancel_restore_pending";
 export type ContentReconciliationReason = "summary_exists" | "extraction_completed" | "completed_output_missing" | "output_owner_mismatch" | "active_operation" | "cancellation_pending" | "execution_locked" | "cancellation_requested" | "stale_operation" | "failed_operation" | "retry_budget_exhausted" | "forced_reprocessing" | "summarization_cancelled" | "extraction_cancelled" | "missing_operation" | "ownership_conflict" | "incompatible_worker" | "revalidation_conflict" | "apply_failed";
+export type SourceManagementType = "blog" | "rss" | "substack" | "podcast" | "youtube_playlist" | "youtube_channel" | "youtube_rss" | "gmail" | "scholar" | "arxiv" | "huggingface_papers" | "websearch" | "readwise" | "obsidian_vault";
+export type PublicSourceKey = string;
+
+export interface LegacyDetailError {
+  detail: string;
+}
+
+export interface LegacyAuthError {
+  error: string;
+  detail: string;
+  trace_id?: string | null;
+}
+
+export interface LegacyValidationErrorBody {
+  detail: Array<Record<string, unknown>>;
+}
 
 export interface Problem {
   type: string;
@@ -324,6 +340,51 @@ export interface CapabilityDocument {
   operation_types: Array<string>;
   resource_types: Array<string>;
   next_cursor?: string | null;
+}
+
+export interface SourceOverrideConfig {
+  [key: string]: unknown;
+  type: SourceManagementType;
+}
+
+export interface SourceUpsertRequest {
+  [key: string]: unknown;
+  config: SourceOverrideConfig;
+  description?: string | null;
+}
+
+export interface SourceEnabledRequest {
+  [key: string]: unknown;
+  enabled: boolean;
+}
+
+export interface SourceInfo {
+  type: SourceManagementType;
+  name: string | null;
+  url: string;
+  enabled: boolean;
+  tags: Array<string>;
+  origin: "yaml" | "db";
+  source_key: PublicSourceKey | null;
+}
+
+export interface SourcesOverview {
+  sources: Array<SourceInfo>;
+  counts: Record<string, number>;
+  total_sources: number;
+  enabled_sources: number;
+}
+
+export interface SourceMutationResult {
+  source_key: PublicSourceKey;
+  version: number;
+  origin: "db";
+  enabled: boolean;
+}
+
+export interface SourceDeleteResult {
+  source_key: PublicSourceKey;
+  deleted: boolean;
 }
 
 export interface ConfiguredSource {

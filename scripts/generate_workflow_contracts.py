@@ -63,11 +63,15 @@ def _python_type(schema: dict[str, Any], *, field_name: str | None = None) -> st
         return _literal(values, language="python")
     if "anyOf" in schema:
         return " | ".join(
-            dict.fromkeys(_python_type(part, field_name=field_name) for part in schema["anyOf"])
+            dict.fromkeys(
+                _python_type(part, field_name=field_name) for part in schema["anyOf"]
+            )
         )
     if "oneOf" in schema and not schema.get("type") and not schema.get("properties"):
         return " | ".join(
-            dict.fromkeys(_python_type(part, field_name=field_name) for part in schema["oneOf"])
+            dict.fromkeys(
+                _python_type(part, field_name=field_name) for part in schema["oneOf"]
+            )
         )
 
     schema_type = schema.get("type")
@@ -155,10 +159,13 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
     scalar_aliases = [
         (name, schema)
         for name, schema in schemas.items()
-        if "enum" in schema
-        and not schema.get("properties")
+        if not schema.get("properties")
         and not schema.get("allOf")
         and name not in {"OperationStatus", "OperationType"}
+        and (
+            "enum" in schema
+            or schema.get("type") in {"string", "integer", "number", "boolean"}
+        )
     ]
     lines = [
         '"""Generated from contracts/openapi/v1.yaml; do not edit."""',
@@ -176,7 +183,16 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
         f"OperationStatus = {_literal(operation_statuses, language='python')}",
         f"OperationType = {_literal(operation_types, language='python')}",
         *[
-            f"{name} = {_literal(schema['enum'], language='python')}"
+            (
+                f"{name} = {_literal(schema['enum'], language='python')}"
+                if "enum" in schema
+                else (
+                    f"{name} = Annotated[{_python_type(schema)}, "
+                    f"Field({', '.join(_python_default(schema, required=True)[1])})]"
+                    if _python_default(schema, required=True)[1]
+                    else f"{name} = {_python_type(schema)}"
+                )
+            )
             for name, schema in scalar_aliases
         ],
         "",
@@ -204,7 +220,11 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
         if is_alias:
             aliases.append((name, schema))
             continue
-        if not (schema.get("type") == "object" or schema.get("properties") or schema.get("allOf")):
+        if not (
+            schema.get("type") == "object"
+            or schema.get("properties")
+            or schema.get("allOf")
+        ):
             continue
 
         base, properties, required = _object_parts(schema)
@@ -215,12 +235,18 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
         for field_name, field_schema in properties.items():
             field_type = _python_type(field_schema, field_name=field_name)
             is_required = field_name in required
-            if not is_required and "default" not in field_schema and "None" not in field_type:
+            if (
+                not is_required
+                and "default" not in field_schema
+                and "None" not in field_type
+            ):
                 field_type = f"{field_type} | None"
             default, constraints = _python_default(field_schema, required=is_required)
             if is_required and constraints:
                 constraint_args = ", ".join(constraints)
-                lines.append(f"    {field_name}: Annotated[{field_type}, Field({constraint_args})]")
+                lines.append(
+                    f"    {field_name}: Annotated[{field_type}, Field({constraint_args})]"
+                )
             elif is_required and "const" in field_schema:
                 lines.append(f"    {field_name}: {field_type} = {default}")
             elif is_required:
@@ -258,7 +284,9 @@ def _command_field_schemas(spec: dict[str, Any]) -> dict[str, dict[str, Any]]:
         required: list[str] = []
         for part in schema.get("allOf", [schema]):
             if "$ref" in part:
-                part_properties, part_required = resolve(schemas[_ref_name(part["$ref"])])
+                part_properties, part_required = resolve(
+                    schemas[_ref_name(part["$ref"])]
+                )
             else:
                 part_properties = dict(part.get("properties", {}))
                 part_required = list(part.get("required", []))
@@ -270,7 +298,9 @@ def _command_field_schemas(spec: dict[str, Any]) -> dict[str, dict[str, Any]]:
     for key, ref in mapping.items():
         properties, required = resolve(schemas[_ref_name(ref)])
         properties = {
-            name: schema for name, schema in properties.items() if not schema.get("x-internal")
+            name: schema
+            for name, schema in properties.items()
+            if not schema.get("x-internal")
         }
         required = [name for name in required if name in properties]
         result[key] = {"properties": properties, "required": required}
@@ -285,14 +315,20 @@ def _typescript_type(schema: dict[str, Any]) -> str:
     if "enum" in schema:
         return _literal(schema["enum"], language="typescript")
     if "anyOf" in schema:
-        return " | ".join(dict.fromkeys(_typescript_type(part) for part in schema["anyOf"]))
+        return " | ".join(
+            dict.fromkeys(_typescript_type(part) for part in schema["anyOf"])
+        )
     if "oneOf" in schema and not schema.get("type") and not schema.get("properties"):
-        return " | ".join(dict.fromkeys(_typescript_type(part) for part in schema["oneOf"]))
+        return " | ".join(
+            dict.fromkeys(_typescript_type(part) for part in schema["oneOf"])
+        )
 
     schema_type = schema.get("type")
     if isinstance(schema_type, list):
         return " | ".join(
-            dict.fromkeys(_typescript_type({**schema, "type": item}) for item in schema_type)
+            dict.fromkeys(
+                _typescript_type({**schema, "type": item}) for item in schema_type
+            )
         )
     if schema_type == "null":
         return "null"
@@ -306,7 +342,9 @@ def _typescript_type(schema: dict[str, Any]) -> str:
         return f"Array<{_typescript_type(schema.get('items', {}))}>"
     if schema_type == "object" or "additionalProperties" in schema:
         additional = schema.get("additionalProperties")
-        value_type = _typescript_type(additional) if isinstance(additional, dict) else "unknown"
+        value_type = (
+            _typescript_type(additional) if isinstance(additional, dict) else "unknown"
+        )
         return f"Record<string, {value_type}>"
     return "unknown"
 
@@ -318,10 +356,13 @@ def _render_typescript(spec: dict[str, Any], digest: str) -> str:
     scalar_aliases = [
         (name, schema)
         for name, schema in schemas.items()
-        if "enum" in schema
-        and not schema.get("properties")
+        if not schema.get("properties")
         and not schema.get("allOf")
         and name not in {"OperationStatus", "OperationType"}
+        and (
+            "enum" in schema
+            or schema.get("type") in {"string", "integer", "number", "boolean"}
+        )
     ]
     lines = [
         "// Generated from contracts/openapi/v1.yaml; do not edit.",
@@ -330,7 +371,11 @@ def _render_typescript(spec: dict[str, Any], digest: str) -> str:
         f"export type OperationStatus = {_literal(operation_statuses, language='typescript')};",
         f"export type OperationType = {_literal(operation['operation_type']['enum'], language='typescript')};",
         *[
-            f"export type {name} = {_literal(schema['enum'], language='typescript')};"
+            (
+                f"export type {name} = {_literal(schema['enum'], language='typescript')};"
+                if "enum" in schema
+                else f"export type {name} = {_typescript_type(schema)};"
+            )
             for name, schema in scalar_aliases
         ],
     ]
@@ -346,11 +391,17 @@ def _render_typescript(spec: dict[str, Any], digest: str) -> str:
         if is_alias:
             aliases.append((name, schema))
             continue
-        if not (schema.get("type") == "object" or schema.get("properties") or schema.get("allOf")):
+        if not (
+            schema.get("type") == "object"
+            or schema.get("properties")
+            or schema.get("allOf")
+        ):
             continue
 
         base, properties, required = _object_parts(schema)
-        extends = f" extends {base}" if base not in {"StrictModel", "ExtensibleModel"} else ""
+        extends = (
+            f" extends {base}" if base not in {"StrictModel", "ExtensibleModel"} else ""
+        )
         lines.extend(["", f"export interface {name}{extends} {{"])
         if schema.get("additionalProperties") is True:
             lines.append("  [key: string]: unknown;")
@@ -409,7 +460,7 @@ def _format_python(source: str) -> str:
             "ruff is required for deterministic Python generation; install it or add it to PATH"
         )
     result = subprocess.run(
-        [ruff, "format", "--stdin-filename", str(PYTHON_OUTPUT), "-"],
+        [ruff, "format", "--isolated", "--stdin-filename", str(PYTHON_OUTPUT), "-"],
         input=source,
         text=True,
         capture_output=True,
@@ -432,7 +483,9 @@ def _diff(path: Path, expected: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--check", action="store_true", help="Fail when generated files drift")
+    parser.add_argument(
+        "--check", action="store_true", help="Fail when generated files drift"
+    )
     args = parser.parse_args()
 
     spec = _validated_contract()

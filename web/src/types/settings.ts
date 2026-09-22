@@ -5,6 +5,15 @@
  * Matches the backend API response models.
  */
 
+import type {
+  SourceDeleteResult as ContractSourceDeleteResult,
+  SourceInfo as ContractSourceInfo,
+  SourceManagementType,
+  SourceMutationResult as ContractSourceMutationResult,
+  SourcesOverview as ContractSourcesOverview,
+  SourceUpsertRequest as ContractSourceUpsertRequest,
+} from "@/generated/workflow-contracts"
+
 /** A single model option with cost data */
 export interface ModelOption {
   id: string
@@ -68,59 +77,23 @@ export interface VoiceSettingsResponse {
 
 // ── Ingestion Sources ──
 
-/** Supported ingestion source types (matches the backend Source union) */
-export type SourceType =
-  | "blog"
-  | "rss"
-  | "substack"
-  | "podcast"
-  | "youtube_playlist"
-  | "youtube_channel"
-  | "youtube_rss"
-  | "gmail"
-  | "scholar"
-  | "arxiv"
-  | "huggingface_papers"
-  | "websearch"
+/** Full response/config union; the browser form intentionally excludes Obsidian. */
+export type SourceType = SourceManagementType
 
 /** A single configured ingestion source */
-export interface SourceInfo {
-  type: string
-  name: string | null
-  url: string
-  enabled: boolean
-  tags: string[]
-  origin: "yaml" | "db"
-  source_key: string | null
-}
+export type SourceInfo = ContractSourceInfo
 
 /** Overview of all configured sources with content counts */
-export interface SourcesOverview {
-  sources: SourceInfo[]
-  counts: Record<string, number>
-  total_sources: number
-  enabled_sources: number
-}
+export type SourcesOverview = ContractSourcesOverview
 
 /** Request body to add/update a source override */
-export interface SourceUpsertRequest {
-  config: Record<string, unknown>
-  description?: string
-}
+export type SourceUpsertRequest = ContractSourceUpsertRequest
 
 /** Result of a source mutation (create / enable / disable) */
-export interface SourceMutationResult {
-  source_key: string
-  version: number
-  origin: string
-  enabled: boolean
-}
+export type SourceMutationResult = ContractSourceMutationResult
 
 /** Result of a source deletion */
-export interface SourceDeleteResult {
-  source_key: string
-  deleted: boolean
-}
+export type SourceDeleteResult = ContractSourceDeleteResult
 
 /** Health status for a single service */
 export interface ServiceStatus {

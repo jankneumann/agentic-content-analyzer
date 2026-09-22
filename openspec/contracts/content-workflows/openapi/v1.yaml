@@ -62,6 +62,94 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /api/v1/sources:
+    get:
+      operationId: listSources
+      summary: List the complete operator-managed source configuration catalog
+      tags: [sources]
+      security:
+        - AdminKey: []
+        - OwnerSession: []
+      responses:
+        "200":
+          description: Configured source overview and grouped content counts
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SourcesOverview" }
+        "401": { $ref: "#/components/responses/LegacyUnauthorized" }
+        "403": { $ref: "#/components/responses/LegacyForbidden" }
+    post:
+      operationId: upsertSource
+      summary: Add or replace a database source override
+      tags: [sources]
+      security:
+        - AdminKey: []
+        - OwnerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SourceUpsertRequest" }
+      responses:
+        "200":
+          description: Database override mutation result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SourceMutationResult" }
+        "400": { $ref: "#/components/responses/LegacyServiceError" }
+        "401": { $ref: "#/components/responses/LegacyUnauthorized" }
+        "403": { $ref: "#/components/responses/LegacyForbidden" }
+        "422": { $ref: "#/components/responses/LegacyValidationError" }
+
+  /api/v1/sources/{key}:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        description: Ordinary natural key or opaque Obsidian management key; clients URL-encode it.
+        schema: { $ref: "#/components/schemas/PublicSourceKey" }
+    patch:
+      operationId: setSourceEnabled
+      summary: Enable or disable a source, creating a YAML shadow when required
+      tags: [sources]
+      security:
+        - AdminKey: []
+        - OwnerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SourceEnabledRequest" }
+      responses:
+        "200":
+          description: Database override mutation result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SourceMutationResult" }
+        "400": { $ref: "#/components/responses/LegacyServiceError" }
+        "401": { $ref: "#/components/responses/LegacyUnauthorized" }
+        "403": { $ref: "#/components/responses/LegacyForbidden" }
+        "404": { $ref: "#/components/responses/LegacyServiceError" }
+        "422": { $ref: "#/components/responses/LegacyValidationError" }
+    delete:
+      operationId: deleteSource
+      summary: Remove a database override, possibly revealing a YAML definition
+      tags: [sources]
+      security:
+        - AdminKey: []
+        - OwnerSession: []
+      responses:
+        "200":
+          description: Deleted override result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SourceDeleteResult" }
+        "400": { $ref: "#/components/responses/LegacyServiceError" }
+        "401": { $ref: "#/components/responses/LegacyUnauthorized" }
+        "403": { $ref: "#/components/responses/LegacyForbidden" }
+        "404": { $ref: "#/components/responses/LegacyServiceError" }
+        "422": { $ref: "#/components/responses/LegacyValidationError" }
+
   /api/v1/uploads:
     post:
       operationId: createUpload
@@ -532,6 +620,11 @@ components:
       in: header
       name: X-Admin-Key
 
+    OwnerSession:
+      type: apiKey
+      in: cookie
+      name: session
+
   parameters:
     PageLimit:
       name: limit
@@ -659,7 +752,68 @@ components:
             status: 404
             detail: Operation 8123 was not found
 
+    LegacyServiceError:
+      description: Legacy source-management service error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/LegacyDetailError" }
+    LegacyUnauthorized:
+      description: Authentication is required
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/LegacyAuthError" }
+          example:
+            error: Authentication required
+            detail: Please log in or provide X-Admin-Key header.
+    LegacyForbidden:
+      description: Explicit credentials are invalid
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/LegacyAuthError" }
+          example:
+            error: Forbidden
+            detail: Invalid admin API key
+    LegacyValidationError:
+      description: Request-body or path validation failed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/LegacyValidationErrorBody" }
+
   schemas:
+    LegacyDetailError:
+      type: object
+      additionalProperties: false
+      required: [detail]
+      properties:
+        detail: { type: string }
+
+    LegacyAuthError:
+      type: object
+      additionalProperties: false
+      required: [error, detail]
+      properties:
+        error: { type: string }
+        detail: { type: string }
+        trace_id: { type: [string, "null"] }
+
+    LegacyValidationErrorBody:
+      type: object
+      additionalProperties: false
+      required: [detail]
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+            required: [type, loc, msg]
+            properties:
+              type: { type: string }
+              loc: { type: array, items: { type: [string, integer] } }
+              msg: { type: string }
+              input: {}
+              ctx: { type: object, additionalProperties: true }
+
     Problem:
       type: object
       additionalProperties: false
@@ -1433,6 +1587,84 @@ components:
         operation_types: { type: array, items: { type: string } }
         resource_types: { type: array, items: { type: string } }
         next_cursor: { type: [string, "null"] }
+
+    SourceManagementType:
+      type: string
+      enum: [blog, rss, substack, podcast, youtube_playlist, youtube_channel, youtube_rss, gmail, scholar, arxiv, huggingface_papers, websearch, readwise, obsidian_vault]
+
+    PublicSourceKey:
+      type: string
+      maxLength: 512
+      description: Ordinary natural key or HMAC-derived opaque Obsidian management key.
+      pattern: "^(?:src_[a-f0-9]{20}|(?:blog|rss|substack|podcast|youtube_playlist|youtube_channel|youtube_rss|gmail|scholar|arxiv|huggingface_papers|websearch|readwise):.+)$"
+
+    SourceOverrideConfig:
+      type: object
+      additionalProperties: true
+      required: [type]
+      properties:
+        type: { $ref: "#/components/schemas/SourceManagementType" }
+
+    SourceUpsertRequest:
+      type: object
+      additionalProperties: true
+      description: Only config.type is semantic; unknown request siblings are ignored by /api/v1.
+      required: [config]
+      properties:
+        config: { $ref: "#/components/schemas/SourceOverrideConfig" }
+        description: { type: [string, "null"] }
+
+    SourceEnabledRequest:
+      type: object
+      additionalProperties: true
+      description: Only enabled is semantic; unknown request siblings are ignored by /api/v1.
+      required: [enabled]
+      properties:
+        enabled: { type: boolean }
+
+    SourceInfo:
+      type: object
+      additionalProperties: false
+      required: [type, name, url, enabled, tags, origin, source_key]
+      properties:
+        type: { $ref: "#/components/schemas/SourceManagementType" }
+        name: { type: [string, "null"] }
+        url: { type: string }
+        enabled: { type: boolean }
+        tags: { type: array, items: { type: string } }
+        origin: { type: string, enum: [yaml, db] }
+        source_key:
+          anyOf:
+            - { $ref: "#/components/schemas/PublicSourceKey" }
+            - { type: "null" }
+
+    SourcesOverview:
+      type: object
+      additionalProperties: false
+      required: [sources, counts, total_sources, enabled_sources]
+      properties:
+        sources: { type: array, items: { $ref: "#/components/schemas/SourceInfo" } }
+        counts: { type: object, additionalProperties: { type: integer, minimum: 0 } }
+        total_sources: { type: integer, minimum: 0 }
+        enabled_sources: { type: integer, minimum: 0 }
+
+    SourceMutationResult:
+      type: object
+      additionalProperties: false
+      required: [source_key, version, origin, enabled]
+      properties:
+        source_key: { $ref: "#/components/schemas/PublicSourceKey" }
+        version: { type: integer, minimum: 1 }
+        origin: { type: string, enum: [db] }
+        enabled: { type: boolean }
+
+    SourceDeleteResult:
+      type: object
+      additionalProperties: false
+      required: [source_key, deleted]
+      properties:
+        source_key: { $ref: "#/components/schemas/PublicSourceKey" }
+        deleted: { type: boolean }
 
     ConfiguredSource:
       type: object
