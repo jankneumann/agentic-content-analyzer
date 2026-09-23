@@ -69,6 +69,7 @@ from src.cli.review_commands import app as review_app
 from src.cli.settings_commands import app as settings_app
 from src.cli.source_commands import app as sources_app
 from src.cli.sync_commands import app as sync_app
+from src.cli.telemetry_commands import app as telemetry_app
 from src.cli.worker_commands import app as worker_app
 from src.cli.workflow_commands import (
     WorkflowCliState,
@@ -146,6 +147,7 @@ app.add_typer(auth_app, name="auth")
 app.add_typer(curate_app, name="curate")
 app.add_typer(deploy_app, name="deploy")
 app.add_typer(backup_app, name="backup")
+app.add_typer(telemetry_app, name="telemetry")
 app.command("capabilities")(capabilities)
 app.command("configured-sources")(configured_sources)
 

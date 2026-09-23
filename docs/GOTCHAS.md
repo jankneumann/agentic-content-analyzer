@@ -217,6 +217,9 @@ still work.
 | Langfuse self-hosted is resource-heavy | 6 services (PG, ClickHouse, Redis, MinIO, web, worker); use `make langfuse-up` only when needed |
 | Langfuse uses Basic Auth for OTLP | `Authorization: Basic base64(public_key:secret_key)` — different from Opik/Braintrust auth |
 | Langfuse port 3100 | Avoids conflict with web frontend (3000), Vite (5173), Opik (5174) |
+| Open-source Langfuse never deletes anything | Automated retention is enterprise-only ([discussion 7460](https://github.com/orgs/langfuse/discussions/7460)); `LANGFUSE_INIT_PROJECT_RETENTION` is parsed and discarded. A self-hosted stack grows forever unless something prunes it over the public API — `langfuse_trace_retention_enabled` plus the worker tick, or `aca telemetry prune-traces`. |
+| Never expire Langfuse rows with a ClickHouse TTL | One trace is ClickHouse rows PLUS raw event blobs in object storage. A `TTL` expires the rows and orphans the blobs permanently: the UI goes quiet while the bucket keeps growing. Only `DELETE /api/public/traces` clears both. |
+| Langfuse trace deletion is asynchronous | A deleted trace keeps coming back from `GET /api/public/traces` until the worker drains its queue. A loop that re-reads page 1 expecting it to shrink re-deletes the same IDs forever — page forward and track what you already asked to delete. |
 
 ## Ingestion Sources
 

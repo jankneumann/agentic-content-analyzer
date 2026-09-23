@@ -882,6 +882,30 @@ class Settings(BaseSettings):
     # ingestion/API endpoints are deliberately never reflected to clients.
     langfuse_public_url: str | None = None
 
+    # Open-source Langfuse has no scheduled deletion: automated retention is an
+    # enterprise feature, so a self-hosted stack grows without bound until
+    # something prunes it over the public API. These drive that pruner. It is
+    # off by default because deletion is irreversible and Langfuse Cloud
+    # enforces its own retention already.
+    langfuse_trace_retention_enabled: bool = False
+    langfuse_trace_retention_days: int = Field(default=30, ge=1, le=3650)
+    langfuse_trace_retention_interval_seconds: int = Field(
+        default=86_400,
+        ge=3600,
+        le=604_800,
+    )
+    # Deleting thousands of traces in one request times out in ClickHouse
+    # (langfuse#11440). Small batches keep each request well inside the
+    # server's own limits.
+    langfuse_trace_retention_batch_size: int = Field(default=50, ge=1, le=100)
+    # A first run against a stack that has never been pruned could otherwise
+    # delete for hours. The cap makes each run bounded; the next run continues.
+    langfuse_trace_retention_max_deletes_per_run: int = Field(
+        default=10_000,
+        ge=1,
+        le=1_000_000,
+    )
+
     # Braintrust Configuration
     braintrust_api_key: str | None = None  # Braintrust API key
     braintrust_project_name: str = "newsletter-aggregator"  # Braintrust project name

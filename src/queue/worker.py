@@ -251,6 +251,7 @@ _BATCH_MAINTENANCE_INTERVAL_SECONDS = 60.0
 _RETENTION_MAINTENANCE_ADVISORY_LOCK = 2_104_711_916
 _WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK = 2_104_711_917
 _STALE_CLAIM_ADVISORY_LOCK = 2_104_711_918
+_LANGFUSE_RETENTION_ADVISORY_LOCK = 2_104_711_919
 _WORKFLOW_ALERT_MAINTENANCE_INTERVAL_SECONDS = 5.0
 # Backup freshness is a question about the last 48 hours, and every evaluation
 # is a traced operation. Asking it every five seconds produced 251,438 spans of
@@ -1191,6 +1192,67 @@ async def _run_stale_claim_tick(
         )
 
 
+async def _run_langfuse_retention_tick(
+    conn: asyncpg.Connection,
+    *,
+    retention_settings: Any,
+) -> int:
+    """Delete expired Langfuse traces when this process wins leader election.
+
+    Open-source Langfuse deletes nothing on a schedule, so without this the
+    trace store grows for as long as the stack runs. One process prunes at a
+    time: the deletes are idempotent, but several workers paging the same
+    listing would mostly issue duplicate requests.
+
+    A failure here is logged and dropped. Housekeeping the observability store
+    must never take down the queue worker that carries the actual workload.
+    """
+
+    acquired = await conn.fetchval(
+        "SELECT pg_try_advisory_lock($1::bigint)",
+        _LANGFUSE_RETENTION_ADVISORY_LOCK,
+    )
+    if not acquired:
+        logger.debug("langfuse retention tick skipped; advisory lock held")
+        return 0
+
+    try:
+        from src.services.langfuse_retention import (
+            build_retention_client,
+            prune_expired_traces,
+        )
+
+        client = build_retention_client(retention_settings)
+        if client is None:
+            return 0
+
+        started_at = monotonic()
+        async with client:
+            result = await prune_expired_traces(
+                client,
+                retention_days=retention_settings.langfuse_trace_retention_days,
+                batch_size=retention_settings.langfuse_trace_retention_batch_size,
+                max_deletes=(retention_settings.langfuse_trace_retention_max_deletes_per_run),
+            )
+        logger.info(
+            "langfuse trace retention completed",
+            extra={
+                **result.as_log_fields(),
+                "langfuse_retention_duration_seconds": max(monotonic() - started_at, 0.0),
+            },
+        )
+        return result.deleted_count
+    except Exception as exc:
+        # The reason goes in the message: the host log formatter drops `extra`.
+        logger.warning("langfuse trace retention failed reason=%s", exc)
+        return 0
+    finally:
+        await conn.execute(
+            "SELECT pg_advisory_unlock($1::bigint)",
+            _LANGFUSE_RETENTION_ADVISORY_LOCK,
+        )
+
+
 def _build_workflow_alert_sink(alert_settings: Any) -> Any:
     """Construct the configured safe sink from validated process settings."""
 
@@ -1553,6 +1615,7 @@ async def run_worker(
     retention_conn = await asyncpg.connect(asyncpg_url)
     stale_claim_conn = await asyncpg.connect(asyncpg_url)
     alert_conn = await asyncpg.connect(asyncpg_url)
+    langfuse_retention_conn = await asyncpg.connect(asyncpg_url)
     from src.config.settings import get_settings
 
     retention_settings = get_settings()
@@ -1575,11 +1638,13 @@ async def run_worker(
     retention_task: asyncio.Task[bool] | None = None
     stale_claim_task: asyncio.Task[int] | None = None
     alert_task: asyncio.Task[bool] | None = None
+    langfuse_retention_task: asyncio.Task[int] | None = None
     last_maintenance_at = float("-inf")
     last_retention_at: float | None = None
     last_stale_claim_at: float | None = None
     last_freshness_at: float | None = None
     last_alert_at = float("-inf")
+    last_langfuse_retention_at: float | None = None
     loop = asyncio.get_running_loop()
     logger.info(f"Embedded worker started (concurrency={concurrency})")
 
@@ -1612,6 +1677,13 @@ async def run_worker(
                 except Exception:
                     logger.exception("workflow alert maintenance tick failed")
                 alert_task = None
+
+            if langfuse_retention_task is not None and langfuse_retention_task.done():
+                try:
+                    langfuse_retention_task.result()
+                except Exception:
+                    logger.exception("langfuse retention tick failed")
+                langfuse_retention_task = None
 
             if (
                 maintenance_task is None
@@ -1670,6 +1742,21 @@ async def run_worker(
                 if freshness_due:
                     last_freshness_at = loop.time()
 
+            # Runs at startup too, so a stack that was down past its interval
+            # prunes on the way back up instead of a day later.
+            if langfuse_retention_task is None and _retention_tick_due(
+                now=loop.time(),
+                last_run_at=last_langfuse_retention_at,
+                interval_seconds=(retention_settings.langfuse_trace_retention_interval_seconds),
+            ):
+                langfuse_retention_task = asyncio.create_task(
+                    _run_langfuse_retention_tick(
+                        langfuse_retention_conn,
+                        retention_settings=retention_settings,
+                    )
+                )
+                last_langfuse_retention_at = loop.time()
+
             # Clean up completed tasks
             done = {t for t in active_tasks if t.done()}
             for t in done:
@@ -1719,12 +1806,16 @@ async def run_worker(
         if alert_task is not None:
             alert_task.cancel()
             await asyncio.gather(alert_task, return_exceptions=True)
+        if langfuse_retention_task is not None:
+            langfuse_retention_task.cancel()
+            await asyncio.gather(langfuse_retention_task, return_exceptions=True)
         await conn.remove_listener("pgqueuer", _on_notify)
         await conn.close()
         await maintenance_conn.close()
         await retention_conn.close()
         await stale_claim_conn.close()
         await alert_conn.close()
+        await langfuse_retention_conn.close()
 
 
 def _prepare_forced_summary(content_id: int) -> None:

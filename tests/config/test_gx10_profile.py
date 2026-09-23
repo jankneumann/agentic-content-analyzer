@@ -10,7 +10,7 @@ import yaml
 from pydantic import ValidationError
 
 from src.config.profiles import load_profile, validate_profile
-from src.config.settings import Settings
+from src.config.settings import Settings, _flatten_profile_to_settings
 
 ROOT = Path(__file__).resolve().parents[2]
 PROFILE_PATH = ROOT / "profiles" / "gx10.yaml"
@@ -67,6 +67,33 @@ def test_gx10_profile_declares_complete_local_observability_topology() -> None:
         "http://langfuse-web:3000/api/public/otel"
     )
     assert settings["observability"]["langfuse_base_url"] == "http://langfuse-web:3000"
+
+
+def test_gx10_prunes_its_own_trace_store() -> None:
+    """Open-source Langfuse deletes nothing on a schedule.
+
+    This host keeps 100 percent of traces and nothing upstream expires them,
+    so without an explicit pruner ClickHouse and object storage grow until the
+    disk does -- which is exactly what filled 44GB here after one ingest.
+    """
+
+    profile = load_profile(
+        "gx10",
+        profiles_dir=ROOT / "profiles",
+        env_vars=_secret_environment(),
+        secrets={},
+    )
+    observability = profile.settings.model_dump(mode="json")["observability"]
+
+    assert observability["langfuse_trace_retention_enabled"] is True
+    assert observability["langfuse_trace_retention_days"] == 30
+    # A pruner that runs more often than it needs to is the freshness-probe
+    # mistake again: every tick is traffic against the store it is draining.
+    assert observability["langfuse_trace_retention_interval_seconds"] >= 3600
+
+    flat = _flatten_profile_to_settings(profile.model_dump())
+    assert flat["langfuse_trace_retention_enabled"] is True
+    assert flat["langfuse_trace_retention_days"] == 30
 
 
 def test_gx10_profile_uses_unique_process_identities_and_external_secret_references() -> None:

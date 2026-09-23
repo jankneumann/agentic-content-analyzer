@@ -49,6 +49,15 @@ settings:
     langfuse_public_url: "${GX10_PUBLIC_LANGFUSE_URL}"
     langfuse_sample_rate: 1.0
     langfuse_environment: production
+    # Open-source Langfuse never deletes anything on its own, and this host
+    # keeps 100 percent of traces. Without a pruner ClickHouse and MinIO grow
+    # until the disk does. Thirty days outlives any incident worth tracing
+    # back through.
+    langfuse_trace_retention_enabled: true
+    langfuse_trace_retention_days: 30
+    langfuse_trace_retention_interval_seconds: 86400
+    langfuse_trace_retention_batch_size: 50
+    langfuse_trace_retention_max_deletes_per_run: 20000
 
   api_keys:
     anthropic_api_key: "${ANTHROPIC_API_KEY:-}"

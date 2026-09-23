@@ -289,15 +289,37 @@ work, and it is checked after name resolution. Plain `http://` sources stay
 blocked, since the policy permits `CONNECT` only.
 
 Langfuse's project data retention is an enterprise feature. This deployment
-runs the open-source edition, so nothing deletes traces, observations, or
-their object-storage blobs on a schedule: ClickHouse and MinIO grow for as
-long as the stack runs. Setting `LANGFUSE_INIT_PROJECT_RETENTION` does
-nothing here, and a ClickHouse TTL would delete rows while orphaning their
-blobs. Growth is bounded today only by how few spans the stack emits, which is
-why the freshness cadence below matters. Reclaiming space means deleting
-traces through Langfuse's public API, or rebuilding its three data
-directories, which headless initialisation repopulates from the seeded
-project identity.
+runs the open-source edition, so nothing upstream deletes traces,
+observations, or their object-storage blobs on a schedule, and setting
+`LANGFUSE_INIT_PROJECT_RETENTION` does nothing here. Left alone, ClickHouse
+and MinIO grow for as long as the stack runs.
+
+The worker therefore prunes the trace store itself. Every role runs the
+maintenance loop and a Postgres advisory lock elects one of them, which then
+walks Langfuse's public API once a day and deletes everything past
+`langfuse_trace_retention_days` (30 on this host). Going through the API is
+the point: one trace is rows in ClickHouse plus raw event blobs in object
+storage, and a ClickHouse `TTL` would expire the rows while orphaning the
+blobs forever, so the bucket would keep growing while the UI showed nothing.
+The delete endpoint enqueues a job that clears both.
+
+Deletion is asynchronous, so a deleted trace stays listed until the Langfuse
+worker drains its queue. The pruner pages forward and never revisits a page,
+because re-reading page one expecting it to shrink re-deletes the same IDs
+forever. Paging forward while rows disappear underneath can skip a trace;
+that costs nothing, since the next run re-lists from the first page against a
+fresh cutoff. Runs converge rather than each being exhaustive, which is the
+safe direction for a delete loop. Each run stops at
+`langfuse_trace_retention_max_deletes_per_run`, so a first prune against a
+large backlog is bounded and the next run continues.
+
+Run it by hand with `aca telemetry prune-traces`, which counts without
+deleting unless given `--apply`, and takes `--older-than-days` for a one-off
+aggressive prune. That command is the same code the timer runs -- the only
+way to exercise a daily tick without waiting a day. A prune only reaches
+traces past the window; reclaiming space from traces newer than that means
+rebuilding Langfuse's three data directories, which headless initialisation
+repopulates from the seeded project identity.
 
 Backup freshness is evaluated every fifteen minutes, not on the five-second
 alert pulse. Each evaluation is a traced operation, and at the pulse rate it

@@ -84,6 +84,10 @@ aca backup verify                      # preflight binaries + prove the canary d
 aca backup list                        # read-only listing under the configured prefix
 python scripts/backup_retention.py     # lifecycle rules; DRY RUN unless --apply
 
+# Telemetry store housekeeping
+aca telemetry prune-traces             # count expired Langfuse traces (dry run)
+aca telemetry prune-traces --apply     # delete them; OSS Langfuse has no scheduled retention
+
 # Model registry freshness
 aca models discover                    # Catalog models not yet in the registry
 aca models refresh [--apply]           # Pricing diffs (dry-run default; --apply writes models.yaml)
