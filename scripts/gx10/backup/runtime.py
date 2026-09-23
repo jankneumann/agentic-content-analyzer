@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import stat
 import subprocess
@@ -169,6 +170,41 @@ def _stored_bytes(output_dir: Path) -> int:
     if not output_dir.is_dir():
         return 0
     return sum(path.stat().st_size for path in output_dir.glob("*.age") if path.is_file())
+
+
+_ARTIFACT = re.compile(r"^(?P<component>[a-z_]+)-(?P<generation>\d{8}T\d{6}Z)\.age$")
+
+
+def prune_generations(output_dir: Path, *, keep: int) -> list[str]:
+    """Delete all but the newest `keep` complete-looking generations.
+
+    Nothing pruned these before, and the local directory reached 112GB in five
+    days against a 916GB disk. The quota alone would eventually stop the
+    backup, which protects the disk by ending the backups -- not the trade
+    anyone wants.
+
+    Only whole generations go, never the newest one, and only artifacts whose
+    names this module wrote. A file it does not recognise is left alone rather
+    than guessed at.
+    """
+
+    if keep < 1:
+        raise ValueError("keep must retain at least the newest generation")
+    if not output_dir.is_dir():
+        return []
+
+    generations: dict[str, list[Path]] = {}
+    for path in output_dir.glob("*.age"):
+        match = _ARTIFACT.match(path.name)
+        if match:
+            generations.setdefault(match.group("generation"), []).append(path)
+
+    removed: list[str] = []
+    for generation in sorted(generations)[:-keep]:
+        for path in generations[generation]:
+            path.unlink()
+        removed.append(generation)
+    return removed
 
 
 def _maintenance_correlation(
@@ -577,6 +613,9 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--trace-id")
         command.add_argument("--quota-bytes", type=int, required=True)
         command.add_argument("--age-material-file", type=Path, required=True)
+        # Explicit, not defaulted: how much history to keep is a policy the
+        # unit file should state out loud.
+        command.add_argument("--keep-generations", type=int, required=True)
     scheduled.add_argument("--max-runs", type=int, default=0)
     restore = subparsers.add_parser("restore")
     restore.add_argument("--plan", type=Path, required=True)
@@ -610,7 +649,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 age=age,
             )
             print(manifest.to_json())
-            return 0 if manifest.outcome == "succeeded" else 1
+            if manifest.outcome == "succeeded":
+                # Only after a good run: pruning on a failed one would trade
+                # generations that restore for one that might not.
+                for generation in prune_generations(args.output, keep=args.keep_generations):
+                    print(f"gx10 pruned backup generation {generation}", file=sys.stderr)
+                return 0
+            return 1
 
         if args.command == "schedule":
             return run_daily_backup_schedule(

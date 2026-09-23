@@ -23,7 +23,7 @@ StateDirectoryMode=0700
 # A timer fires this unit directly, so a stale installed copy would run
 # old settings indefinitely with nothing to say so.
 ExecStartPre=/opt/aca/scripts/gx10/check_unit_current.sh %n
-ExecStart=/opt/aca/.venv/bin/python -m scripts.gx10.backup backup --plan /etc/aca/gx10/backup-plan.json --output /var/lib/aca/gx10/backups --quota-bytes 1099511627776 --age-material-file /run/aca/gx10/backup/backup-age.json
+ExecStart=/opt/aca/.venv/bin/python -m scripts.gx10.backup backup --plan /etc/aca/gx10/backup-plan.json --output /var/lib/aca/gx10/backups --quota-bytes 1099511627776 --age-material-file /run/aca/gx10/backup/backup-age.json --keep-generations 7
 TimeoutStartSec=7200
 UMask=0077
 PrivateTmp=yes

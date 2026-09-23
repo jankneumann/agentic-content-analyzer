@@ -288,3 +288,50 @@ def test_the_quota_counts_what_is_already_on_disk(tmp_path) -> None:
     scheduled = source.split("def run_once()", 1)[1].split("return 0 if manifest", 1)[0]
     assert "used_bytes=_stored_bytes(args.output)" in scheduled
     assert "used_bytes=0" not in scheduled
+
+
+def test_old_generations_are_pruned_but_never_the_newest(tmp_path) -> None:
+    """Nothing pruned the output directory and it reached 112GB in five days.
+
+    The quota alone would eventually stop the backup, which protects the disk
+    by ending the backups. Pruning keeps a bounded history instead, and the
+    rules that make it safe are: whole generations only, never the newest, and
+    only files this module wrote.
+    """
+    runtime = _runtime_module()
+
+    for generation in ("20260918T030000Z", "20260919T030000Z", "20260920T030000Z"):
+        for component in ("application_postgresql", "clickhouse"):
+            (tmp_path / f"{component}-{generation}.age").write_bytes(b"artifact")
+    (tmp_path / "manifest.json").write_text("{}")
+    (tmp_path / "operator-notes.txt").write_text("not ours")
+
+    removed = runtime.prune_generations(tmp_path, keep=2)
+
+    assert removed == ["20260918T030000Z"]
+    remaining = sorted(path.name for path in tmp_path.glob("*.age"))
+    assert remaining == [
+        "application_postgresql-20260919T030000Z.age",
+        "application_postgresql-20260920T030000Z.age",
+        "clickhouse-20260919T030000Z.age",
+        "clickhouse-20260920T030000Z.age",
+    ]
+    # Files it did not write are none of its business.
+    assert (tmp_path / "operator-notes.txt").exists()
+    assert (tmp_path / "manifest.json").exists()
+
+    assert runtime.prune_generations(tmp_path, keep=99) == []
+    with pytest.raises(ValueError):
+        runtime.prune_generations(tmp_path, keep=0)
+
+
+def test_the_unit_states_its_retention_and_prunes_only_after_a_good_run() -> None:
+    """A run that failed may have written a generation that does not restore;
+    deleting older ones on the strength of it is the wrong trade."""
+    unit = (ROOT / "deploy/gx10/systemd/aca-gx10-backup.service").read_text(encoding="utf-8")
+    assert "--keep-generations" in unit, "the policy belongs where an operator reads it"
+
+    source = (ROOT / "scripts/gx10/backup/runtime.py").read_text(encoding="utf-8")
+    scheduled = source.split("def run_once()", 1)[1].split("if args.command ==", 1)[0]
+    assert 'if manifest.outcome == "succeeded":' in scheduled
+    assert scheduled.index('outcome == "succeeded"') < scheduled.index("prune_generations")

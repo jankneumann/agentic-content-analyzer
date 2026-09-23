@@ -288,6 +288,14 @@ attacker-influenced input, so that last rule is the one doing the security
 work, and it is checked after name resolution. Plain `http://` sources stay
 blocked, since the policy permits `CONNECT` only.
 
+The backup keeps a bounded number of generations, stated on the unit's
+command line as `--keep-generations`. Nothing pruned before it, and the output
+directory reached 112GB in five days on a 916GB disk. Pruning runs only after
+a successful backup, removes whole generations, never the newest, and touches
+only artifacts the backup itself wrote. The quota is the backstop beneath it:
+it now counts what is already stored, so a directory that outgrows its limit
+fails the backup loudly instead of filling the disk.
+
 The role readiness probe checks local dependencies and configuration only.
 It used to finish by fetching `https://api.github.com` through the proxy, once
 per role every ten seconds against a five-second timeout, and all four roles
