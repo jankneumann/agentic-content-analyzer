@@ -288,6 +288,18 @@ attacker-influenced input, so that last rule is the one doing the security
 work, and it is checked after name resolution. Plain `http://` sources stay
 blocked, since the policy permits `CONNECT` only.
 
+Langfuse retention is rendered as `LANGFUSE_INIT_PROJECT_RETENTION`, default
+14 days, overridable with `GX10_LANGFUSE_RETENTION_DAYS`. It applies only while
+Langfuse creates the project: headless initialisation fills in resources that
+do not exist yet and changes nothing afterwards. A self-hosted project
+otherwise keeps traces forever, which is how this host accumulated 39GB of
+ClickHouse. An existing project is changed under Project Settings, Data
+Retention, or through Langfuse's admin API.
+
+Do not express this as a ClickHouse TTL. Langfuse's retention job deletes the
+ClickHouse rows and the object-storage blobs together; a TTL would remove one
+side and orphan the other.
+
 Backup freshness is evaluated every fifteen minutes, not on the five-second
 alert pulse. Each evaluation is a traced operation, and at the pulse rate it
 produced 251,438 spans named `operation.alert.backup_freshness` against single

@@ -105,6 +105,15 @@ emit "$LANGFUSE_TMP" LANGFUSE_INIT_PROJECT_SECRET_KEY "$RUNTIME_PATH" langfuse_s
 emit "$LANGFUSE_TMP" LANGFUSE_INIT_USER_EMAIL "$RUNTIME_PATH" langfuse_init_user_email
 emit "$LANGFUSE_TMP" LANGFUSE_INIT_USER_NAME "$RUNTIME_PATH" langfuse_init_user_name
 emit "$LANGFUSE_TMP" LANGFUSE_INIT_USER_PASSWORD "$RUNTIME_PATH" langfuse_init_user_password
+# Retention in days, applied when Langfuse creates the project and never after:
+# headless initialisation only fills in resources that do not exist yet. A
+# self-hosted project keeps traces forever by default, which is how one alert
+# evaluated every five seconds grew to 39GB of ClickHouse and 4.9GB of object
+# storage here. This makes a rebuilt stack bounded from its first minute; an
+# existing project is changed in Project Settings or through the admin API.
+LANGFUSE_RETENTION_DAYS="${GX10_LANGFUSE_RETENTION_DAYS:-14}"
+[[ "$LANGFUSE_RETENTION_DAYS" =~ ^[0-9]+$ && "$LANGFUSE_RETENTION_DAYS" -ge 3 ]] || { echo "gx10 Langfuse retention must be an integer of at least 3 days" >&2; exit 1; }
+printf 'LANGFUSE_INIT_PROJECT_RETENTION=%s\n' "$LANGFUSE_RETENTION_DAYS" >>"$LANGFUSE_TMP"
 printf 'CLICKHOUSE_URL=http://clickhouse:8123\nCLICKHOUSE_MIGRATION_URL=clickhouse://clickhouse:9000\nCLICKHOUSE_USER=langfuse\nCLICKHOUSE_PASSWORD=%s\nREDIS_HOST=redis\nREDIS_PORT=6379\nREDIS_AUTH=%s\nLANGFUSE_S3_EVENT_UPLOAD_ENABLED=true\nLANGFUSE_S3_EVENT_UPLOAD_ENDPOINT=http://minio:9000\nLANGFUSE_S3_EVENT_UPLOAD_BUCKET=langfuse-events\nLANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID=%s\nLANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY=%s\nLANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE=true\nLANGFUSE_S3_EVENT_UPLOAD_REGION=us-east-1\n' "$CLICKHOUSE" "$REDIS" "$MINIO_USER" "$MINIO_PASSWORD" >>"$LANGFUSE_TMP"
 emit "$CADDY_TMP" CADDY_USERNAME "$RUNTIME_PATH" caddy_username; emit "$CADDY_TMP" CADDY_PASSWORD_HASH "$RUNTIME_PATH" caddy_password_hash
 printf 'GX10_PUBLIC_ORIGIN=%s\n' "$PUBLIC_ORIGIN" >>"$CADDY_TMP"

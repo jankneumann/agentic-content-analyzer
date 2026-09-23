@@ -116,6 +116,9 @@ def test_renderer_outputs_profile_compatible_least_privilege_role_envs(tmp_path:
     assert langfuse["LANGFUSE_INIT_PROJECT_SECRET_KEY"] == "e" * 48
     assert langfuse["LANGFUSE_INIT_USER_EMAIL"] == "operator@example.test"
     assert len(langfuse["LANGFUSE_INIT_USER_PASSWORD"]) >= 32
+    # A self-hosted project keeps traces forever unless told otherwise, and
+    # this value only applies while Langfuse is creating the project.
+    assert int(langfuse["LANGFUSE_INIT_PROJECT_RETENTION"]) >= 3
     args = (tmp_path / "openssl.args").read_text()
     stdin = (tmp_path / "openssl.stdin").read_text()
     assert "proxycanary" not in args
