@@ -68,6 +68,15 @@ def _command_evidence(stderr: bytes) -> str:
     return str(TelemetryMasker.from_environment().mask(tail))
 
 
+# A component is produced, encrypted, and stored entirely in memory, so a
+# store costs roughly twice its size in RAM. That is fine for a database dump
+# and fatal for a filesystem copy: a 39GB ClickHouse component took the whole
+# run down with the OOM killer, losing the five artifacts that had succeeded
+# beside it. Until the pipeline streams, a component larger than this fails on
+# its own and lets the rest of the run finish.
+MAX_COMPONENT_BYTES = 8 * 1024**3
+
+
 def _safe_command(argv: Sequence[str], *, payload: bytes | None = None) -> bytes:
     if not argv:
         raise ValueError("component command argv must not be empty")
@@ -78,6 +87,11 @@ def _safe_command(argv: Sequence[str], *, payload: bytes | None = None) -> bytes
         check=False,
         env=component_environment(),
     )
+    if len(completed.stdout) > MAX_COMPONENT_BYTES:
+        raise RuntimeError(
+            f"component output {len(completed.stdout)} bytes exceeds the "
+            f"{MAX_COMPONENT_BYTES} byte in-memory limit: {argv[0]}"
+        )
     if completed.returncode != 0:
         raise RuntimeError(
             f"component command failed: {argv[0]} "

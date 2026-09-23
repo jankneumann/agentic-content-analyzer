@@ -15,6 +15,7 @@ state under /var/lib/containers and /run.
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import os
 import re
 import sys
@@ -335,3 +336,42 @@ def test_the_unit_states_its_retention_and_prunes_only_after_a_good_run() -> Non
     scheduled = source.split("def run_once()", 1)[1].split("if args.command ==", 1)[0]
     assert 'if manifest.outcome == "succeeded":' in scheduled
     assert scheduled.index('outcome == "succeeded"') < scheduled.index("prune_generations")
+
+
+def test_a_component_larger_than_memory_fails_alone(monkeypatch) -> None:
+    """The run is buffered: produce, encrypt, store, all in RAM, so a store
+    costs about twice its size. A 39GB ClickHouse component was killed by the
+    OOM killer and took the five artifacts beside it down with it. Until the
+    pipeline streams, an oversized component must fail by itself."""
+    runtime = _runtime_module()
+
+    monkeypatch.setattr(runtime, "MAX_COMPONENT_BYTES", 64)
+
+    small = runtime._safe_command(["/bin/sh", "-c", "printf 'x%.0s' $(seq 1 32)"])
+    assert len(small) == 32
+
+    with pytest.raises(RuntimeError) as failure:
+        runtime._safe_command(["/bin/sh", "-c", "printf 'x%.0s' $(seq 1 4096)"])
+    assert "exceeds the" in str(failure.value)
+    assert "in-memory limit" in str(failure.value)
+
+
+def test_backup_freshness_is_not_evaluated_on_every_alert_pulse() -> None:
+    """251,438 spans named operation.alert.backup_freshness against single
+    digits for everything else. Alert delivery wants a five-second pulse; a
+    question about the last 48 hours does not, and each evaluation is a traced
+    operation that lands in ClickHouse and object storage."""
+    from src.queue import worker
+
+    assert worker._BACKUP_FRESHNESS_INTERVAL_SECONDS >= 600
+    assert (
+        worker._BACKUP_FRESHNESS_INTERVAL_SECONDS
+        > worker._WORKFLOW_ALERT_MAINTENANCE_INTERVAL_SECONDS * 100
+    )
+
+    source = inspect.getsource(worker.run_worker)
+    assert "evaluate_freshness=freshness_due" in source
+    assert "_BACKUP_FRESHNESS_INTERVAL_SECONDS" in source
+
+    tick = inspect.getsource(worker._run_workflow_alert_maintenance_tick)
+    assert "if evaluate_freshness:" in tick

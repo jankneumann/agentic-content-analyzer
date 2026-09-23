@@ -252,6 +252,13 @@ _RETENTION_MAINTENANCE_ADVISORY_LOCK = 2_104_711_916
 _WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK = 2_104_711_917
 _STALE_CLAIM_ADVISORY_LOCK = 2_104_711_918
 _WORKFLOW_ALERT_MAINTENANCE_INTERVAL_SECONDS = 5.0
+# Backup freshness is a question about the last 48 hours, and every evaluation
+# is a traced operation. Asking it every five seconds produced 251,438 spans of
+# `operation.alert.backup_freshness` against single digits for everything else,
+# which is what filled 39GB of ClickHouse and 4.9GB of object storage on a host
+# that had run one ingest. Fifteen minutes still notices a stale backup long
+# before the staleness window closes.
+_BACKUP_FRESHNESS_INTERVAL_SECONDS = 900.0
 _WORKFLOW_ALERT_MAX_CONCURRENT_DELIVERIES = 8
 
 _WORKFLOW_ALERT_PENDING_EVENT_QUERY = """
@@ -1414,8 +1421,14 @@ async def _run_workflow_alert_maintenance_tick(
     conn: asyncpg.Connection,
     *,
     alert_settings: Any,
+    evaluate_freshness: bool = True,
 ) -> bool:
-    """Classify, claim, deliver, and retain one bounded alert batch."""
+    """Classify, claim, deliver, and retain one bounded alert batch.
+
+    Alert delivery wants a five-second pulse; backup freshness does not, and
+    each evaluation costs a traced operation. The caller decides when that
+    question is due.
+    """
 
     acquired = False
     async with conn.transaction():
@@ -1456,10 +1469,11 @@ async def _run_workflow_alert_maintenance_tick(
             # Failure to evaluate freshness must not abort the alert tick that
             # delivers every other alert — including, in the worst case, the ones
             # explaining why the backup target is unreachable.
-            try:
-                await _emit_backup_freshness_alert(conn, alert_settings=alert_settings)
-            except Exception:
-                logger.exception("backup freshness alert emission failed")
+            if evaluate_freshness:
+                try:
+                    await _emit_backup_freshness_alert(conn, alert_settings=alert_settings)
+                except Exception:
+                    logger.exception("backup freshness alert emission failed")
 
     # Classification commits with the transaction-scoped leader lock before
     # synchronous sessions create delivery intents. The unique event/sink key
@@ -1564,6 +1578,7 @@ async def run_worker(
     last_maintenance_at = float("-inf")
     last_retention_at: float | None = None
     last_stale_claim_at: float | None = None
+    last_freshness_at: float | None = None
     last_alert_at = float("-inf")
     loop = asyncio.get_running_loop()
     logger.info(f"Embedded worker started (concurrency={concurrency})")
@@ -1639,13 +1654,21 @@ async def run_worker(
                 alert_task is None
                 and loop.time() - last_alert_at >= _WORKFLOW_ALERT_MAINTENANCE_INTERVAL_SECONDS
             ):
+                freshness_due = _retention_tick_due(
+                    now=loop.time(),
+                    last_run_at=last_freshness_at,
+                    interval_seconds=_BACKUP_FRESHNESS_INTERVAL_SECONDS,
+                )
                 alert_task = asyncio.create_task(
                     _run_workflow_alert_maintenance_tick(
                         alert_conn,
                         alert_settings=retention_settings,
+                        evaluate_freshness=freshness_due,
                     )
                 )
                 last_alert_at = loop.time()
+                if freshness_due:
+                    last_freshness_at = loop.time()
 
             # Clean up completed tasks
             done = {t for t in active_tasks if t.done()}

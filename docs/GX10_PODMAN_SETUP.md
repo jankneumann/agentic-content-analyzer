@@ -288,6 +288,21 @@ attacker-influenced input, so that last rule is the one doing the security
 work, and it is checked after name resolution. Plain `http://` sources stay
 blocked, since the policy permits `CONNECT` only.
 
+Backup freshness is evaluated every fifteen minutes, not on the five-second
+alert pulse. Each evaluation is a traced operation, and at the pulse rate it
+produced 251,438 spans named `operation.alert.backup_freshness` against single
+digits for every other span on the host: that is what filled 39GB of
+ClickHouse and 4.9GB of object storage on a stack that had run one ingest. The
+question covers the last 48 hours, so fifteen minutes still notices a stale
+backup long before the window closes.
+
+A component is produced, encrypted, and stored in memory, so a store costs
+about twice its size in RAM while it is copied. The 39GB ClickHouse component
+was killed by the OOM killer and took the five artifacts beside it down with
+it. A component larger than `MAX_COMPONENT_BYTES` now fails on its own and
+lets the rest of the run finish. Streaming the pipeline is the real fix and is
+not done.
+
 The backup keeps a bounded number of generations, stated on the unit's
 command line as `--keep-generations`. Nothing pruned before it, and the output
 directory reached 112GB in five days on a 916GB disk. Pruning runs only after
