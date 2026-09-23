@@ -199,5 +199,42 @@
         "Unreachable legacy path persists a session_cookie into pgqueuer_jobs.payload and Langfuse inputs; remove it"
       ]
     }
+  },
+  "ri-06": {
+    "change_id": "add-browser-session-rows-to-aca-auth-status",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Durable last_verified_at from ingestion history",
+          "outcome": "completed_at of the latest success or zero_items run of the gated source (substack, x_bookmarks) via OperationService.list_ingestion_history; remote profiles use GET /api/v1/ingestions"
+        },
+        {
+          "title": "Status never fails on lookup errors",
+          "outcome": "5s cap, never raises, rows show unknown and stderr carries the exception type only"
+        },
+        {
+          "title": "Value-free JSON",
+          "outcome": "aca auth status --json emits oauth, browser_sessions, last_verified_lookup; Railway variables reported as booleans only"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "new browser-session-credentials capability for the spec",
+          "actual": "existing cli-interface capability",
+          "reason": "the change is a CLI surface"
+        }
+      ],
+      "recommendations": [
+        "ri-12: use command_key x_bookmarks exactly; BROWSER_SESSIONS in src/cli/browser_session_status.py looks it up",
+        "ri-08: keep the command names aca auth session substack|x, which the status rows hard-code",
+        "ri-16/ri-17: reuse build_session_rows() for alert text and docs"
+      ]
+    }
   }
 }

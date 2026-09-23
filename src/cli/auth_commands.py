@@ -14,7 +14,8 @@ Usage:
     aca auth gmail --to railway --include-credentials  # + push credentials.json too
     aca auth gmail --deploy                     # DEPRECATED alias for --to railway
     aca auth youtube                            # Same, for YouTube
-    aca auth status                             # Show local + Railway state
+    aca auth status                             # OAuth + Railway + browser-session state
+    aca auth status --json                      # Same, as one JSON document (no values)
 
 Sinks live in ``src/cli/secret_sinks.py``. The Railway sink uses the
 ``railway`` CLI, which must be installed and authenticated (``railway login``)
@@ -37,7 +38,7 @@ import subprocess
 import sys
 from importlib import import_module
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast
 
 import typer
 
@@ -503,50 +504,134 @@ def youtube_auth(
     )
 
 
-@app.command("status")
-def auth_status() -> None:
-    """Show local OAuth state for each provider.
+def _railway_variable_listing() -> str | None:
+    """Raw ``railway variables`` output, or None when unavailable.
 
-    Reports whether the credentials/token files exist locally and, if the
-    railway CLI is available and a project is linked, whether the
-    corresponding env vars are set on Railway.
+    The listing includes secret VALUES; callers may only test names against it.
     """
-    typer.echo("OAuth credential status:\n")
-    railway_vars: str | None = None
-    if shutil.which("railway"):
-        try:
-            result = subprocess.run(
-                ["railway", "variables"],  # noqa: S607
-                capture_output=True,
-                text=True,
-                timeout=15,
-                check=False,
-            )
-            if result.returncode == 0:
-                railway_vars = result.stdout
-        except subprocess.TimeoutExpired:
-            railway_vars = None
+    if not shutil.which("railway"):
+        return None
+    try:
+        result = subprocess.run(
+            ["railway", "variables"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return None
+    return result.stdout if result.returncode == 0 else None
 
+
+def _oauth_status_rows(railway_vars: str | None) -> list[dict[str, object]]:
+    """JSON-safe OAuth rows: paths, presence flags and variable names only."""
+    rows: list[dict[str, object]] = []
     for provider, cfg in PROVIDERS.items():
         cred_path, token_path = _get_paths(provider)
-        typer.echo(f"  {provider}:")
-        typer.echo(
-            f"    credentials file: {cred_path} [{'present' if cred_path.exists() else 'missing'}]"
-        )
-        typer.echo(
-            f"    token file:       {token_path} "
-            f"[{'present' if token_path.exists() else 'missing'}]"
-        )
-        token_detail = _describe_token_file(token_path)
-        if token_detail:
-            typer.echo(f"    {token_detail}")
+        railway: dict[str, object] | None = None
         if railway_vars is not None:
-            token_present = str(cfg["token_env"]) in railway_vars
-            cred_present = str(cfg["credentials_env"]) in railway_vars
-            typer.echo(f"    Railway {cfg['token_env']}: [{'set' if token_present else 'NOT set'}]")
+            token_env, cred_env = str(cfg["token_env"]), str(cfg["credentials_env"])
+            railway = {
+                "token_env": token_env,
+                "token_set": token_env in railway_vars,
+                "credentials_env": cred_env,
+                "credentials_set": cred_env in railway_vars,
+            }
+        rows.append(
+            {
+                "provider": provider,
+                "credentials_file": {"path": str(cred_path), "present": cred_path.exists()},
+                "token_file": {"path": str(token_path), "present": token_path.exists()},
+                "token_detail": _describe_token_file(token_path),
+                "railway": railway,
+            }
+        )
+    return rows
+
+
+def _render_oauth_rows(rows: list[dict[str, object]]) -> None:
+    typer.echo("OAuth credential status:\n")
+    for row in rows:
+        cred_file = cast(dict[str, object], row["credentials_file"])
+        token_file = cast(dict[str, object], row["token_file"])
+        typer.echo(f"  {row['provider']}:")
+        typer.echo(
+            f"    credentials file: {cred_file['path']} "
+            f"[{'present' if cred_file['present'] else 'missing'}]"
+        )
+        typer.echo(
+            f"    token file:       {token_file['path']} "
+            f"[{'present' if token_file['present'] else 'missing'}]"
+        )
+        if row["token_detail"]:
+            typer.echo(f"    {row['token_detail']}")
+        railway = cast(dict[str, object] | None, row["railway"])
+        if railway is not None:
             typer.echo(
-                f"    Railway {cfg['credentials_env']}: [{'set' if cred_present else 'NOT set'}]"
+                f"    Railway {railway['token_env']}: "
+                f"[{'set' if railway['token_set'] else 'NOT set'}]"
+            )
+            typer.echo(
+                f"    Railway {railway['credentials_env']}: "
+                f"[{'set' if railway['credentials_set'] else 'NOT set'}]"
             )
         else:
             typer.echo("    Railway: (not linked or railway CLI unavailable)")
         typer.echo()
+
+
+@app.command("status")
+def auth_status(
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Print one JSON document (no credential values); diagnostics go to stderr.",
+        ),
+    ] = False,
+) -> None:
+    """Show OAuth and browser-session credential state.
+
+    Reports whether the OAuth credentials/token files exist locally and, if
+    the railway CLI is available and a project is linked, whether the
+    corresponding env vars are set on Railway. Then one row per browser
+    session (substack, x): present/missing, source, saved_at,
+    last_verified_at (latest successful ingestion of the gated source) and
+    the refresh command. Never prints a credential value.
+    """
+    from src.cli.browser_session_status import build_session_rows, render_session_rows
+    from src.cli.output import is_json_mode
+
+    as_json = json_output or is_json_mode()
+    oauth_rows = _oauth_status_rows(_railway_variable_listing())
+    session_rows, verification = build_session_rows()
+
+    if as_json:
+        if not verification.available:
+            typer.echo(
+                f"last_verified_at unavailable: {verification.reason}",
+                err=True,
+            )
+        typer.echo(
+            json.dumps(
+                {
+                    "oauth": oauth_rows,
+                    "browser_sessions": session_rows,
+                    "last_verified_lookup": {
+                        "available": verification.available,
+                        "via": verification.via,
+                        "reason": verification.reason,
+                    },
+                }
+            )
+        )
+        return
+
+    _render_oauth_rows(oauth_rows)
+    render_session_rows(session_rows, verification, typer.echo)
+    if not verification.available:
+        typer.echo(
+            f"Note: last_verified_at is unknown ({verification.reason}).",
+            err=True,
+        )
