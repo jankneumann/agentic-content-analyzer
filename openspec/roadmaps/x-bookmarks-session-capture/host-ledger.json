@@ -236,5 +236,42 @@
         "ri-16/ri-17: reuse build_session_rows() for alert text and docs"
       ]
     }
+  },
+  "ri-03": {
+    "change_id": "ship-workstation-and-worker-approle-policies",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Workstation role is patch-only",
+          "outcome": "newsletter-session-writer grants only patch on secret/data/newsletter; AppRole newsletter-workstation, token TTL 900s, secret-id TTL 90 days"
+        },
+        {
+          "title": "Worker gains patch on the shared app role",
+          "outcome": "newsletter-worker (read + patch) attached to newsletter-app beside newsletter-read, so the API and worker can persist rotations"
+        },
+        {
+          "title": "hvac kv.v2.patch() is forbidden",
+          "outcome": "it needs read + update; all writers must use BaoSink's raw merge-patch PATCH"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "separate worker AppRole",
+          "actual": "extra policy on newsletter-app",
+          "reason": "API and worker share one role_id and the session-sync endpoint also patches"
+        }
+      ],
+      "recommendations": [
+        "Operator must run scripts/bao_seed_newsletter.py --with-session-roles once on gx-10",
+        "Live check on gx-10: bao kv get with a workstation token returns 403 and aca auth gmail --to bao succeeds",
+        "KV v2 ACLs are per path, so a leaked workstation credential can overwrite but not read other keys"
+      ]
+    }
   }
 }

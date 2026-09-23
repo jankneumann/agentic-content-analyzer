@@ -20,7 +20,7 @@ A single OpenBao instance serves multiple projects with namespaced paths:
 
 | Path | Project | Access |
 |------|---------|--------|
-| `secret/newsletter/*` | Newsletter aggregator | `newsletter-read` policy |
+| `secret/newsletter/*` | Newsletter aggregator | `newsletter-read`; `newsletter-worker` and `newsletter-session-writer` add `patch` ([session roles](#session-credential-roles-workstation-and-worker)) |
 | `secret/coordinator/*` | Agent coordinator | `coordinator-read` policy |
 | `secret/shared/*` | Cross-project keys | Both policies |
 
@@ -117,6 +117,89 @@ export BAO_SECRET_ID=<secret-id>
 ```
 
 The `_BaoTokenManager` automatically refreshes tokens at 75% of their TTL using a background `threading.Timer`. On refresh, secrets are reloaded atomically (dict reference swap).
+
+### Session-Credential Roles (Workstation and Worker)
+
+Browser-session cookies (`SUBSTACK_SESSION_COOKIE`, `X_AUTH_TOKEN`, `X_CT0`) and
+OAuth tokens are written into the same KV v2 secret the app reads, with a
+server-side **PATCH**. Two least-privilege roles cover the two writers:
+
+```bash
+# On gx-10, as the admin (implies --with-approle; safe to re-run)
+BAO_ADDR=http://127.0.0.1:8200 BAO_TOKEN=$ADMIN_TOKEN \
+  python scripts/bao_seed_newsletter.py --with-session-roles
+```
+
+| AppRole | Policies | Who uses it | Token TTL / max | Secret-id TTL |
+|---------|----------|-------------|-----------------|---------------|
+| `newsletter-workstation` | `newsletter-session-writer` | `aca auth ... --to bao` on the operator's workstation | 15 min / 1 h | 90 days |
+| `newsletter-app` | `newsletter-read` + `newsletter-worker` | API and worker on gx-10 (rotated `ct0` write-back, API session endpoint) | `BAO_TOKEN_TTL` (1 h) / 24 h | unset |
+
+Capabilities (default mount `secret`, path `newsletter`; both follow
+`BAO_MOUNT_PATH` / `BAO_SECRET_PATH`):
+
+| Policy | `secret/data/newsletter` | `secret/data/shared` | `secret/metadata/*`, `secret/delete/*`, `secret/destroy/*` |
+|--------|--------------------------|----------------------|--------------------------------------------------------|
+| `newsletter-read` | `read` | `read` | none |
+| `newsletter-worker` | `read`, `patch` | none | none |
+| `newsletter-session-writer` | `patch` | none | none |
+
+No role gets `create`, `update`, `delete`, `destroy` or `list`, so none can
+replace the whole secret, delete versions, or enumerate paths. What this rests on:
+
+- **Why `patch` without `read` works.** The OpenBao sink (`BaoSink` in
+  `src/cli/secret_sinks.py`) sends an HTTP `PATCH` with
+  `Content-Type: application/merge-patch+json`, which the server merges and which
+  needs only the `patch` capability. hvac's `kv.v2.patch()` must **not** be used
+  with these roles: in hvac 2.4 it is `read_secret_version()` followed by
+  `create_or_update_secret(cas=...)`, which needs `read` plus `update` and would
+  fail with 403 for the workstation.
+- **PATCH is path-scoped, not key-scoped.** KV v2 ACLs cannot restrict which keys
+  inside the secret a PATCH touches (`allowed_parameters` only sees the top-level
+  `data` object). A leaked workstation credential could therefore overwrite or
+  null out other keys, but could never read them. The short token TTL and the
+  90-day secret-id TTL bound that window.
+- **The secret must already exist.** PATCH on a missing path returns 404. Run the
+  plain seed (`python scripts/bao_seed_newsletter.py`) once first.
+- **Re-runs are idempotent.** Each policy is compared with what is stored and
+  reported as `created`, `updated` or `unchanged`. A later plain `--with-approle`
+  run keeps `newsletter-worker` on `newsletter-app` rather than silently revoking
+  the worker's write-back.
+- **Expect one warning on the workstation.** If `BAO_ADDR` is exported when the
+  CLI loads its settings, the startup read of `secret/data/newsletter` is denied
+  and logged as `bao.connection_error`. That is by design and does no harm: settings
+  fall back to env and profile values, and the sink's PATCH still succeeds.
+
+#### Getting the workstation its secret-id over the tailnet
+
+The workstation reaches OpenBao only over Tailscale, at
+`BAO_ADDR=https://gx-10.<tailnet>.ts.net:8200`. The bind addresses, `tailscale serve`
+setup and ACL are in [TAILNET.md](TAILNET.md#client-values). Never paste a bare
+secret-id into chat or a ticket. Hand it over response-wrapped:
+
+```bash
+# 1. On gx-10 (admin token): mint a single-use wrapping token that expires in 5 min.
+#    The role_id is printed by the seed script and is not secret.
+bao write -wrap-ttl=5m -f auth/approle/role/newsletter-workstation/secret-id
+
+# 2. On the workstation: unwrap it over the tailnet (the wrapping token is its own auth)
+export BAO_ADDR=https://gx-10.<tailnet>.ts.net:8200
+bao unwrap -field=secret_id <wrapping-token>
+
+# 3. Keep role_id + secret_id in the workstation's shell/profile secrets
+export BAO_ROLE_ID=<newsletter-workstation role_id>
+export BAO_SECRET_ID=<unwrapped secret_id>
+aca auth gmail --to bao
+```
+
+If `bao unwrap` reports that the wrapping token was already used, assume someone
+intercepted it. List the role's secret-id accessors with
+`bao list auth/approle/role/newsletter-workstation/secret-id`, destroy the
+unexpected one with
+`bao write auth/approle/role/newsletter-workstation/secret-id-accessor/destroy secret_id_accessor=<accessor>`,
+and mint a new one. Do not add `token_bound_cidrs` for the tailnet range (`100.64.0.0/10`).
+`tailscale serve` proxies from loopback, so OpenBao sees every workstation
+request as coming from `127.0.0.1`.
 
 ### Dynamic Database Credentials
 
