@@ -1519,11 +1519,40 @@ cookie (never commit this to git).
 
 ### 1. Capture the session cookie
 
-1. Log in to Substack in your browser.
-2. Open DevTools → **Application** → **Cookies** → `https://substack.com`.
-3. Copy the value of the `substack.sid` cookie.
+Run the capture command on a machine with a display (your workstation):
+
+```bash
+aca auth session substack                    # default sink: bao if BAO_ADDR is set, else .secrets.yaml
+aca auth session substack --to bao           # PATCH SUBSTACK_SESSION_COOKIE into OpenBao secret/newsletter
+aca auth session substack --to secrets-file  # upsert into .secrets.yaml (mode 0600)
+aca auth session substack --to railway       # set it on the linked Railway service
+```
+
+It opens Chromium (Playwright) on a dedicated profile under
+`~/.aca/browser-profiles/substack` (mode 0700, `BROWSER_PROFILES_DIR` to move it;
+never copied by `aca backup` or `aca sync`), goes to the Substack sign-in page,
+and waits up to `--timeout` seconds (default 300) for the `substack.sid` cookie
+on `substack.com`. It then checks the cookie with one authenticated request to
+`https://substack.com/api/v1/subscriptions` and writes it only if Substack
+accepts it. Output names the cookie, domain, key and sink, never the value.
+
+The profile persists, so re-running the command later needs no login while the
+session is still valid (add `--headless` to skip the window in that case). Nothing
+is scheduled: re-run it when the session expires. `aca auth session x` does the
+same for the X `auth_token` + `ct0` pair (`X_AUTH_TOKEN`, `X_CT0`).
+
+Playwright must be installed where you run the command
+(`pip install 'playwright==1.62.0' && playwright install chromium`).
+
+> **Manual fallback** (no display, or Playwright unavailable): log in to Substack
+> in your normal browser, open DevTools → **Application** → **Cookies** →
+> `https://substack.com`, copy the value of the `substack.sid` cookie, and store
+> it with one of the options below.
 
 ### 2. Store the cookie
+
+`aca auth session substack` already stored it. The options below are for the
+manual fallback.
 
 **Option A — Profile-based** (recommended, uses `.secrets.yaml`):
 

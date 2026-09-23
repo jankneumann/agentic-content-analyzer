@@ -273,5 +273,47 @@
         "KV v2 ACLs are per path, so a leaked workstation credential can overwrite but not read other keys"
       ]
     }
+  },
+  "ri-08": {
+    "change_id": "add-aca-auth-session-capture-command",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "aca auth session substack|x",
+          "outcome": "src/cli/session_commands.py: Playwright launch_persistent_context on browser_profiles_dir()/<site> (0700), capture without login when the profile already holds cookies, else poll context.cookies() until --timeout; one httpx validation request, one sink.write(), apply_local_write with the sink's exact saved_at"
+        },
+        {
+          "title": "Shared X web constants",
+          "outcome": "src/ingestion/x_web.py holds X_WEB_BEARER_TOKEN, user agent, X_ACCOUNT_SETTINGS_URL, cookie names and x_web_headers() for ri-11"
+        },
+        {
+          "title": "Default sink",
+          "outcome": "bao when BAO_ADDR is set, else secrets-file; never Railway implicitly"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "registration line in auth_commands.py",
+          "actual": "registered in src/cli/app.py",
+          "reason": "avoid colliding with ri-06 edits"
+        },
+        {
+          "from_plan": "bearer token split to avoid scanner matches",
+          "actual": "host added a documented .gitleaks.toml allowlist entry; pinned gitleaks 8.21.2 finds no leaks in the files or branch history",
+          "reason": "be explicit about a public client constant rather than rely on literal layout"
+        }
+      ],
+      "recommendations": [
+        "Playwright lives only in the release-smoke extra; add a browser-session extra so the capture command installs cleanly",
+        "The sandbox Chromium build (1194) is older than Playwright 1.62 expects (1234); a real headed login on the workstation is still untested",
+        "ri-11: import x_web_headers(); treat 401 on account/settings.json as session_expired"
+      ]
+    }
   }
 }
