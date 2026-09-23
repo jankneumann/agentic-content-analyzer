@@ -121,6 +121,30 @@ items:
     in the same process without restart.
   - The typed readiness failure is reusable by other adapters and carries no cookie
     value in its message or payload.
+- item_id: ri-18
+  title: Authenticate Substack post fetches with the session cookie
+  description: Send the live substack.sid on the requests that fetch Substack post
+    bodies (the substack_api Newsletter/Post path, or an httpx replacement), so paid
+    posts are ingested in full. Once authenticated, make a Substack run without a
+    cookie fail closed with credentials_missing, and re-fetch teaser rows that dedup
+    would otherwise keep forever.
+  rationale: Paid Substack access is why the session cookie exists; today the post
+    path never sends it, so capture and rotation have no effect on content.
+  effort: M
+  depends_on:
+  - ri-05
+  acceptance_outcomes:
+  - A mocked paid post that returns a truncated body without substack.sid and the
+    full body with it is ingested in full when the cookie is configured.
+  - No request on the post-fetch path is sent without the live cookie when one is
+    configured, and no log line or exception contains the cookie value.
+  - A Substack run with no configured cookie returns zero rows with readiness code
+    credentials_missing.
+  - A previously ingested teaser row for a paid post is updated to the full body on
+    the next authenticated run.
+  status: approved
+  priority: 8
+  change_id: authenticate-substack-post-fetches-with-the-session-cookie
 - item_id: ri-06
   title: Add browser-session rows to aca auth status
   status: approved
@@ -386,4 +410,17 @@ items:
     for X content.
   - docs/GOTCHAS.md contains entries for frozen settings versus the live provider
     and for KV v2 create_or_update clobbering sibling keys.
-updated_at: '2026-09-22T20:39:35.825161+00:00'
+updated_at: '2026-09-23T03:22:12.642633+00:00'
+refinements:
+- timestamp: '2026-09-23T03:22:12.642633+00:00'
+  actor: claude-autopilot-roadmap (host agent)
+  source: learning entry ri-05 (host-ledger.json recommendations) and the operator's
+    original request for simpler Substack token capture
+  rationale: ri-05 found that the substack_api library path which fetches post bodies
+    is called with auth=None, so paid Substack posts are fetched logged out even with
+    a valid substack.sid. Capturing and rotating the cookie (ri-04, ri-05, ri-08)
+    delivers no paid content until that path is authenticated, which is the purpose
+    of the Substack half of this roadmap.
+  base_sha256: 359bd19c19c33d53fae1451d29cbcfa3f92e7c1a0fedc2dfae3c7ff543a3a820
+  operations:
+  - add:ri-18
