@@ -147,6 +147,7 @@ IngestionCommandLiteral = Literal[
     "ingest.url",
     "ingest.readwise",
     "ingest.obsidian-vault",
+    "ingest.x-bookmarks",
 ]
 
 # Closed registry of canonical ``source`` identifiers. Note the two
@@ -177,6 +178,7 @@ IngestionSourceLiteral = Literal[
     "url",
     "readwise",
     "obsidian",
+    "x_bookmarks",
 ]
 
 

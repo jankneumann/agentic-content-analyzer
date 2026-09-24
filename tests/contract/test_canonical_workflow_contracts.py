@@ -43,6 +43,7 @@ SOURCE_KEYS = {
     "huggingface_papers",
     "readwise",
     "obsidian_vault",
+    "x_bookmarks",
 }
 
 OPERATION_TYPES = {
@@ -231,6 +232,97 @@ def test_obsidian_ingestion_response_literals_are_registered() -> None:
     assert response.source == "obsidian"
 
 
+def test_x_bookmarks_ingest_command_is_public_strict_and_bounded() -> None:
+    schema = _openapi()["components"]["schemas"]["XBookmarksIngestCommand"]
+
+    assert schema["additionalProperties"] is False
+    assert schema["required"] == ["kind"]
+    assert schema["properties"]["kind"] == {"type": "string", "const": "x_bookmarks"}
+    assert schema["properties"]["max_items"] == {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10_000,
+    }
+    assert schema["properties"]["full"] == {"type": "boolean", "default": False}
+    # No default: an absent value defers to the source configuration.
+    assert schema["properties"]["expand_links"] == {"type": "boolean"}
+    assert schema["properties"]["force_reprocess"] == {"type": "boolean", "default": False}
+    # Browser-session credentials are resolved server-side and never travel in a command.
+    assert not {"auth_token", "ct0", "cookies", "query_id"} & set(schema["properties"])
+
+
+def test_generated_x_bookmarks_command_has_python_typescript_and_runtime_parity() -> None:
+    module = _generated_models()
+    runtime_contract = __import__(
+        "src.contracts.workflow_models", fromlist=["XBookmarksIngestCommand"]
+    )
+    runtime_commands = __import__("src.ingestion.commands", fromlist=["XBookmarksIngestCommand"])
+    payload = {
+        "kind": "x_bookmarks",
+        "max_items": 200,
+        "full": True,
+        "expand_links": False,
+        "force_reprocess": True,
+    }
+
+    command = TypeAdapter(module.IngestCommand).validate_python(payload)
+    assert isinstance(command, module.XBookmarksIngestCommand)
+    assert command.model_dump(exclude_none=True) == payload
+
+    defaults = TypeAdapter(module.IngestCommand).validate_python({"kind": "x_bookmarks"})
+    assert defaults.full is False
+    assert defaults.expand_links is None
+    assert defaults.force_reprocess is False
+    assert defaults.max_items is None
+
+    assert runtime_commands.XBookmarksIngestCommand is runtime_contract.XBookmarksIngestCommand
+    assert runtime_commands.XBookmarksIngestCommand in runtime_commands.COMMAND_MODELS
+    assert "x_bookmarks" in runtime_contract.COMMAND_FIELD_SCHEMAS
+
+    for invalid in (
+        {**payload, "max_items": 0},
+        {**payload, "max_items": 10_001},
+        {**payload, "auth_token": "not-a-real-token"},
+        {**payload, "ct0": "not-a-real-csrf"},
+    ):
+        with pytest.raises(ValidationError):
+            TypeAdapter(module.IngestCommand).validate_python(invalid)
+
+    generated_typescript = (CONTRACTS / "generated/types.ts").read_text()
+    runtime_typescript = (ROOT / "web/src/generated/workflow-contracts.ts").read_text()
+    for source in (generated_typescript, runtime_typescript):
+        interface = source.split("export interface XBookmarksIngestCommand", 1)[1].split("}", 1)[0]
+        assert 'kind: "x_bookmarks";' in interface
+        assert "max_items?: number;" in interface
+        assert "full?: boolean;" in interface
+        assert "expand_links?: boolean;" in interface
+        assert "force_reprocess?: boolean;" in interface
+        assert "configured_sources" not in interface
+        assert "XBookmarksIngestCommand" in source.split("export type IngestCommand =", 1)[1]
+
+
+def test_x_bookmarks_ingestion_response_literals_are_registered() -> None:
+    from src.ingestion.result import (
+        IngestionCommandLiteral,
+        IngestionResponse,
+        IngestionSourceLiteral,
+    )
+    from src.models.content import ContentSource
+
+    assert "ingest.x-bookmarks" in get_args(IngestionCommandLiteral)
+    assert "x_bookmarks" in get_args(IngestionSourceLiteral)
+    assert ContentSource("x_bookmarks") is ContentSource.X_BOOKMARKS
+
+    response = IngestionResponse(command="ingest.x-bookmarks", source="x_bookmarks", status="ok")
+    assert response.command == "ingest.x-bookmarks"
+    assert response.source == "x_bookmarks"
+
+    with pytest.raises(ValidationError):
+        IngestionResponse(command="ingest.x_bookmarks", source="x_bookmarks", status="ok")
+    with pytest.raises(ValidationError):
+        IngestionResponse(command="ingest.x-bookmarks", source="x-bookmarks", status="ok")
+
+
 def test_scheduled_date_commands_support_an_absolute_lower_bound() -> None:
     schemas = _openapi()["components"]["schemas"]
     for name in (
@@ -273,6 +365,7 @@ def test_scheduled_commands_support_an_immutable_source_snapshot() -> None:
         "ArxivSearchIngestCommand",
         "HuggingFacePapersIngestCommand",
         "ReadwiseIngestCommand",
+        "XBookmarksIngestCommand",
     ):
         schema = schemas[name]
         properties = dict(schema.get("properties", {}))

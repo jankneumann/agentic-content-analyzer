@@ -18,6 +18,7 @@ Content Sources:
 - HUGGINGFACE_PAPERS: Daily papers from HuggingFace Papers
 - READWISE: Books/articles imported via Readwise (Kindle, Instapaper, Pocket, Apple Books, Airr, Reader)
 - OBSIDIAN: Private Web Clipper notes from an approved local vault mount
+- X_BOOKMARKS: Posts the operator bookmarked on X, fetched with a browser session
 - MANUAL: Manually created content via API
 """
 
@@ -78,6 +79,7 @@ class ContentSource(StrEnum):
     HUGGINGFACE_PAPERS = "huggingface_papers"  # Daily papers from HuggingFace
     READWISE = "readwise"  # Books/articles imported via Readwise (Kindle, Instapaper, Pocket, etc.)
     OBSIDIAN = "obsidian"  # Private Web Clipper notes from an approved local vault mount
+    X_BOOKMARKS = "x_bookmarks"  # Posts bookmarked on X, fetched with a browser session
     OTHER = "other"
 
 

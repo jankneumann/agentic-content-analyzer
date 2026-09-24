@@ -361,5 +361,41 @@
         "ri-16: add credentials_missing and session_expired to the alert code enums together"
       ]
     }
+  },
+  "ri-09": {
+    "change_id": "add-x-bookmarks-contract-and-content-source",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "XBookmarksIngestCommand contract",
+          "outcome": "strict, kind-only required; max_items 1..10000, full (default false), expand_links (no default, defers to source config), force_reprocess, internal configured_sources; no after_date since X does not expose bookmark time"
+        },
+        {
+          "title": "Enum and closed lists",
+          "outcome": "ContentSource.X_BOOKMARKS with migration d8e2a4c6f1b3 (ADD VALUE IF NOT EXISTS, idempotent); result literals ingest.x-bookmarks and x_bookmarks; MCP tool ingest_x_bookmarks; web display, filter, and contents route"
+        },
+        {
+          "title": "CLI generated from contract",
+          "outcome": "aca ingest x-bookmarks with --full, --expand-links/--no-expand-links, --max-items, --force-reprocess needs no code"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "land independently",
+          "actual": "committed locally and pushed together with ri-10",
+          "reason": "test_capabilities_match_openapi_discriminator_and_fields requires the registry descriptor; an unregistered kind 500s"
+        }
+      ],
+      "recommendations": [
+        "ri-10: bulk planner maps max_entries to max_items and ignores after_date; readiness uses the shared credentials_missing code from src/ingestion/credential_failures.py",
+        "ri-10: add x_bookmarks to the worker dispatch map and real_ingest_policy as credentialed on X_AUTH_TOKEN + X_CT0"
+      ]
+    }
   }
 }

@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
-CONTRACT_SHA256 = "42c7725900d7c46933c6df9edb8f0e51c08325ba7102492cff1e3c7774ffe8fe"
+CONTRACT_SHA256 = "483730392ad4b2c808110e72d51f39964746eef21df116b15978b5b72d713e9a"
 
 OperationStatus = Literal["queued", "in_progress", "completed", "failed", "cancelled"]
 OperationType = Literal[
@@ -263,6 +263,16 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
             "force_reprocess": {"type": "boolean", "default": False},
         },
         "required": ["kind", "source_key"],
+    },
+    "x_bookmarks": {
+        "properties": {
+            "kind": {"type": "string", "const": "x_bookmarks"},
+            "max_items": {"type": "integer", "minimum": 1, "maximum": 10000},
+            "full": {"type": "boolean", "default": False},
+            "expand_links": {"type": "boolean"},
+            "force_reprocess": {"type": "boolean", "default": False},
+        },
+        "required": ["kind"],
     },
 }
 
@@ -629,6 +639,7 @@ class ContentQuery(StrictModel):
                 "huggingface_papers",
                 "readwise",
                 "obsidian",
+                "x_bookmarks",
                 "other",
             ]
         ]
@@ -830,6 +841,15 @@ class ObsidianVaultIngestCommand(StrictModel):
     force_reprocess: bool = False
 
 
+class XBookmarksIngestCommand(StrictModel):
+    kind: Literal["x_bookmarks"] = "x_bookmarks"
+    configured_sources: list[dict[str, Any]] | None = None
+    max_items: int | None = Field(None, ge=1, le=10000)
+    full: bool = False
+    expand_links: bool | None = None
+    force_reprocess: bool = False
+
+
 class SummarizationRequest(StrictModel):
     content_ids: list[int] | None = Field(None, min_length=1)
     query: ContentQuery | None = None
@@ -901,6 +921,7 @@ IngestCommand = Annotated[
     | ArxivPaperIngestCommand
     | HuggingFacePapersIngestCommand
     | ReadwiseIngestCommand
-    | ObsidianVaultIngestCommand,
+    | ObsidianVaultIngestCommand
+    | XBookmarksIngestCommand,
     Field(discriminator="kind"),
 ]

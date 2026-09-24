@@ -145,6 +145,37 @@ async def test_obsidian_http_tool_submits_only_public_bounded_fields(
 
 
 @pytest.mark.asyncio
+async def test_x_bookmarks_http_tool_submits_only_public_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ACA_API_BASE_URL", "https://api.example.test")
+    monkeypatch.setenv("ACA_ADMIN_KEY", "secret")
+    client = MagicMock()
+    client.submit_ingestion.return_value = _handle()
+    monkeypatch.setattr(runtime, "create_workflow_client", lambda: client)
+
+    result = await ingestion.ingest_x_bookmarks(max_items=100, full=True)
+
+    # expand_links is omitted when unset so the source configuration decides.
+    client.submit_ingestion.assert_called_once_with(
+        {
+            "kind": "x_bookmarks",
+            "max_items": 100,
+            "full": True,
+            "force_reprocess": False,
+        },
+        idempotency_key=None,
+    )
+    assert result.operation_id == "42"
+
+
+@pytest.mark.asyncio
+async def test_x_bookmarks_tool_rejects_unbounded_runs() -> None:
+    with pytest.raises(McpError):
+        await ingestion.ingest_x_bookmarks(max_items=10_001)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("source_key", "max_items"),
     [

@@ -20,6 +20,7 @@ const SOURCE_OPTIONS: { value: ContentSource; label: string }[] = [
   { value: "manual", label: "Manual" },
   { value: "readwise", label: "Readwise" },
   { value: "obsidian", label: "Obsidian" },
+  { value: "x_bookmarks", label: "X Bookmarks" },
   { value: "other", label: "Other" },
 ]
 
