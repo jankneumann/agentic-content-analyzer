@@ -133,7 +133,7 @@ BAO_ADDR=http://127.0.0.1:8200 BAO_TOKEN=$ADMIN_TOKEN \
 | AppRole | Policies | Who uses it | Token TTL / max | Secret-id TTL |
 |---------|----------|-------------|-----------------|---------------|
 | `newsletter-workstation` | `newsletter-session-writer` | `aca auth ... --to bao` on the operator's workstation | 15 min / 1 h | 90 days |
-| `newsletter-app` | `newsletter-read` + `newsletter-worker` | API and worker on gx-10 (rotated `ct0` write-back, API session endpoint) | `BAO_TOKEN_TTL` (1 h) / 24 h | unset |
+| `newsletter-app` | `newsletter-read` + `newsletter-worker` | API and worker on gx-10 (rotated `ct0` write-back, [API session endpoint](TAILNET.md#browser-session-sync-endpoint)) | `BAO_TOKEN_TTL` (1 h) / 24 h | unset |
 
 Capabilities (default mount `secret`, path `newsletter`; both follow
 `BAO_MOUNT_PATH` / `BAO_SECRET_PATH`):

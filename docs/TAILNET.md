@@ -197,6 +197,43 @@ ALLOWED_ORIGINS=https://gx-10.<tailnet>.ts.net:8443,chrome-extension://<extensio
 - In production, leaving `ALLOWED_ORIGINS` at the localhost dev default yields an
   **empty** allow-list (deny all), by design.
 
+## Browser-session sync endpoint
+
+The Chrome extension's "Sync session" action pushes freshly read cookies to the
+API over the tailnet. It is the laptop-side answer to a session-expiry alert;
+`aca auth session substack|x` stays the workstation path.
+
+```bash
+# X: both cookies, written together
+curl -sS -X PUT "https://gx-10.<tailnet>.ts.net/api/v1/browser-sessions/x" \
+  -H "X-Admin-Key: $ADMIN_API_KEY" -H "Content-Type: application/json" \
+  --data @x-session.json        # {"auth_token": "...", "ct0": "..."}
+# Substack: {"substack_sid": "..."} to /api/v1/browser-sessions/substack
+```
+
+- **Auth:** the `X-Admin-Key` header only. A web-UI session cookie or the
+  unconfigured-development bypass gets `401`. Every call is written to
+  `audit_log` (operation `browser_sessions.sync`, `admin_key_fp` from the raw
+  header, notes with site, outcome and key names; never a value).
+- **Body:** exactly the site's cookie fields (unknown fields `422`), each a
+  cookie value of at most 4096 characters; bodies over 16 KiB get `413`.
+- **Validation:** before writing, the API makes the same single request as the
+  CLI (Substack subscriptions / X `account/settings.json`). A refused session is
+  `422` `session_invalid`; a site outage, throttle or network error is `502`
+  `session_validation_unavailable`. Nothing is written in either case.
+- **Write:** one KV v2 merge-PATCH on `BAO_MOUNT_PATH/BAO_SECRET_PATH`
+  (`SUBSTACK_SESSION_COOKIE`, or `X_AUTH_TOKEN` + `X_CT0`, each with
+  `<KEY>_SAVED_AT`), then the API's own credential cache is updated with the
+  same `saved_at`. The response lists `site`, `keys_written` and `saved_at`.
+- **OpenBao required:** the API needs `BAO_ADDR` and `BAO_ROLE_ID`/`BAO_SECRET_ID`
+  (the `newsletter-app` role with the `patch` capability, seeded by
+  `scripts/bao_seed_newsletter.py --with-session-roles`) or `BAO_TOKEN`. Without
+  them the endpoint answers `503` `openbao_not_configured` and names what is
+  missing. It never falls back to `.secrets.yaml`, the environment or Railway.
+  A PATCH OpenBao refuses is `502` `openbao_write_failed`.
+- **Rate limit:** 10 calls per 5 minutes per client IP (`429` with
+  `Retry-After`), since every call costs a request to Substack or X.
+
 ## Verify
 
 ### 1. Listener check (on gx-10)

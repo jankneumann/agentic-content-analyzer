@@ -243,6 +243,9 @@ class BaoSink:
         mount_path: str | None = None,
         secret_path: str | None = None,
         clock: Callable[[], datetime] = _utc_now,
+        # Receives the one value-free success line; None silences it (the API
+        # server reports through its response and logger instead).
+        echo: Callable[[str], None] | None = typer.echo,
     ) -> None:
         self._client = client
         self._client_factory = client_factory
@@ -251,6 +254,7 @@ class BaoSink:
             "/"
         )
         self._clock = clock
+        self._echo = echo
 
     @property
     def target(self) -> str:
@@ -296,7 +300,8 @@ class BaoSink:
                 message = f"PATCH to {self.target} failed ({type(exc).__name__})"
             raise SecretSinkError(message) from exc
 
-        typer.echo(f"{self.target}: patched {', '.join(secrets)} (saved_at {saved_at}).")
+        if self._echo is not None:
+            self._echo(f"{self.target}: patched {', '.join(secrets)} (saved_at {saved_at}).")
         return list(secrets)
 
 

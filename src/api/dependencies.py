@@ -46,6 +46,11 @@ ENDPOINT_AUTH_MAP: dict[str, dict[str, str]] = {
     "/api/v1/settings/*": {"auth": "admin_api_key", "reason": "Prompt/settings management"},
     "/api/v1/prompts/*": {"auth": "admin_api_key", "reason": "Prompt management"},
     "/api/v1/voice/*": {"auth": "admin_api_key", "reason": "Voice cleanup (LLM cost)"},
+    # Admin credential write — X-Admin-Key header only (no session cookie, no dev bypass)
+    "/api/v1/browser-sessions/*": {
+        "auth": "admin_api_key_header",
+        "reason": "Writes browser-session cookies to OpenBao",
+    },
 }
 
 # Define the API key header scheme

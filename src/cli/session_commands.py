@@ -54,12 +54,15 @@ from src.config.credentials import (
     CredentialProvider,
     get_credential_provider,
 )
-from src.ingestion.x_web import (
-    X_ACCOUNT_SETTINGS_URL,
-    X_AUTH_TOKEN_COOKIE,
-    X_CT0_COOKIE,
-    x_web_headers,
+from src.ingestion.browser_session_validation import (
+    SUBSTACK_SID_COOKIE,
+    SessionValidationError,
+    SessionValidator,
+    new_validation_client,
+    validate_substack_session,
+    validate_x_session,
 )
+from src.ingestion.x_web import X_AUTH_TOKEN_COOKIE, X_CT0_COOKIE
 
 __all__ = [
     "DEFAULT_TIMEOUT_S",
@@ -82,13 +85,6 @@ app = typer.Typer(
 
 DEFAULT_TIMEOUT_S = 300
 POLL_INTERVAL_S = 1.0
-VALIDATION_TIMEOUT_S = 15.0
-
-#: Authenticated JSON endpoint the Substack adapter already calls
-#: (``SubstackClient._fetch_subscriptions_from_http``). Anonymous or expired
-#: sessions get a 401/403 or an HTML page instead of JSON.
-SUBSTACK_VALIDATION_URL = "https://substack.com/api/v1/subscriptions"
-SUBSTACK_SID_COOKIE = "substack.sid"
 
 
 class SessionCaptureError(Exception):
@@ -99,49 +95,9 @@ class SessionCaptureError(Exception):
 # Per-site configuration
 # ---------------------------------------------------------------------------
 
-Validator = Callable[[Mapping[str, str], httpx.Client], None]
-
-
-def _validate_substack(values: Mapping[str, str], http: httpx.Client) -> None:
-    cookie = values[SUBSTACK_SESSION_COOKIE]
-    response = http.get(
-        SUBSTACK_VALIDATION_URL,
-        headers={"cookie": f"{SUBSTACK_SID_COOKIE}={cookie}", "accept": "application/json"},
-    )
-    _require_json_ok(response, "Substack", lambda data: isinstance(data, list | dict))
-
-
-def _validate_x(values: Mapping[str, str], http: httpx.Client) -> None:
-    response = http.get(
-        X_ACCOUNT_SETTINGS_URL,
-        headers=x_web_headers(values[X_AUTH_TOKEN], values[X_CT0]),
-    )
-    _require_json_ok(
-        response, "X", lambda data: isinstance(data, dict) and bool(data.get("screen_name"))
-    )
-
-
-def _require_json_ok(response: httpx.Response, site: str, accept: Callable[[Any], bool]) -> None:
-    """Raise unless ``response`` is a 200 carrying the expected JSON shape.
-
-    Messages carry the status code and URL only, never headers or body.
-    """
-    where = f"{response.request.method} {response.request.url.copy_with(query=None)}"
-    if response.status_code != 200:
-        raise SessionCaptureError(
-            f"{site} rejected the captured session: {where} returned HTTP {response.status_code}"
-        )
-    try:
-        data = response.json()
-    except ValueError:
-        raise SessionCaptureError(
-            f"{site} did not accept the captured session: {where} returned a non-JSON "
-            "page (usually the login page)"
-        ) from None
-    if not accept(data):
-        raise SessionCaptureError(
-            f"{site} did not accept the captured session: {where} returned unexpected JSON"
-        )
+# The validators live in src/ingestion/browser_session_validation.py so the
+# admin browser-session sync endpoint judges a session by the same request.
+Validator = SessionValidator
 
 
 @dataclass(frozen=True)
@@ -169,7 +125,7 @@ SITES: Mapping[str, SiteSpec] = {
         login_url="https://substack.com/sign-in",
         cookie_domains=("substack.com",),
         cookies=((SUBSTACK_SID_COOKIE, SUBSTACK_SESSION_COOKIE),),
-        validate=_validate_substack,
+        validate=validate_substack_session,
     ),
     "x": SiteSpec(
         site="x",
@@ -177,7 +133,7 @@ SITES: Mapping[str, SiteSpec] = {
         login_url="https://x.com/i/flow/login",
         cookie_domains=("x.com", "twitter.com"),
         cookies=((X_AUTH_TOKEN_COOKIE, X_AUTH_TOKEN), (X_CT0_COOKIE, X_CT0)),
-        validate=_validate_x,
+        validate=validate_x_session,
     ),
 }
 
@@ -270,7 +226,7 @@ def playwright_persistent_context(user_data_dir: Path, headless: bool) -> Iterat
 
 def new_http_client() -> httpx.Client:
     """The client used for the one validation request (no redirects followed)."""
-    return httpx.Client(timeout=VALIDATION_TIMEOUT_S, follow_redirects=False)
+    return new_validation_client()
 
 
 class _PinnedClock:
@@ -437,6 +393,8 @@ def capture_session(
     http = http_client or new_http_client()
     try:
         spec.validate(session.values, http)
+    except SessionValidationError as exc:
+        raise SessionCaptureError(str(exc)) from None
     except httpx.HTTPError as exc:
         raise SessionCaptureError(
             f"Could not reach {spec.title} to validate the session ({type(exc).__name__})"

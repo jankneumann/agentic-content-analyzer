@@ -489,5 +489,50 @@
         "ri-17: document aca sources enable x_bookmarks:account"
       ]
     }
+  },
+  "ri-14": {
+    "change_id": "add-admin-endpoint-for-browser-session-sync",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Two strict routes",
+          "outcome": "PUT /api/v1/browser-sessions/substack {substack_sid} and /x {auth_token, ct0}; SecretStr, extra=forbid, RFC 6265 charset, 16 KiB cap; audited browser_sessions.sync; 10 calls per 5 min per IP"
+        },
+        {
+          "title": "Admin key header only",
+          "outcome": "web-UI session and dev no-key bypass are refused because tailscale serve makes every tailnet peer appear as 127.0.0.1"
+        },
+        {
+          "title": "Validate, then one patch",
+          "outcome": "shared validators in src/ingestion/browser_session_validation.py; one BaoSink.write() then apply_local_write with the same saved_at; typed problems 422 session_invalid, 502 upstream/openbao, 503 openbao_not_configured"
+        },
+        {
+          "title": "Problem bodies for this prefix",
+          "outcome": "error_handler problem-path prefix added so a 422 never echoes the submitted cookie as input"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "single {site} route",
+          "actual": "two static routes",
+          "reason": "per-site strict schemas; unknown site is 404"
+        },
+        {
+          "from_plan": "declare in canonical OpenAPI",
+          "actual": "not declared",
+          "reason": "v1.yaml holds only workflow routes; admin routes follow the /api/v1/sources precedent"
+        }
+      ],
+      "recommendations": [
+        "ri-15: send X-Admin-Key and exact field names; 422 means log in again, 502 retry, 503 server lacks OpenBao",
+        "Operator: one real curl PUT on gx-10, then confirm the audit row with admin_key_fp"
+      ]
+    }
   }
 }

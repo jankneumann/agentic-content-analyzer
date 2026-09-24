@@ -48,6 +48,8 @@ _FUZZ_ONLY_EXCLUSIONS: list[str] = [
     r"/api/v1/documents/upload$",
     # Requires a separately provisioned graph database.
     r"/api/v1/graph/query$",
+    # Validates cookies against substack.com / x.com, then writes OpenBao.
+    r"/api/v1/browser-sessions/",
 ]
 
 EXCLUDED_FUZZ_REGEX = "|".join(EXCLUDED_COMMON_PATHS + _FUZZ_ONLY_EXCLUSIONS)
