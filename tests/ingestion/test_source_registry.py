@@ -48,6 +48,7 @@ EXPECTED_SOURCE_KEYS = {
     "huggingface_papers",
     "readwise",
     "obsidian_vault",
+    "x_bookmarks",
 }
 
 

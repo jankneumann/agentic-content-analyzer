@@ -443,5 +443,51 @@
         "ri-17: document remediation_command and the two credential codes"
       ]
     }
+  },
+  "ri-10": {
+    "change_id": "register-the-x-bookmarks-source-descriptor-and-config",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Fixed single-account identity",
+          "outcome": "XBookmarksSource always keys as x_bookmarks:account (X_BOOKMARKS_LOCATOR); aca sources enable x_bookmarks:account"
+        },
+        {
+          "title": "Ships disabled",
+          "outcome": "sources.d/x_bookmarks.yaml has enabled: false so a fresh install's scheduled pipeline stays green"
+        },
+        {
+          "title": "Descriptor and provider readiness",
+          "outcome": "scheduled bulk planner maps max_entries to max_items, passes expand_links, ignores the period; readiness via the credential provider only: credentials_missing unless both X cookies, session_expired if either rejected"
+        },
+        {
+          "title": "Fail-closed stub orchestrator",
+          "outcome": "ingest_x_bookmarks returns status error with source_unavailable and persists nothing until ri-12"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "worker dispatch map entry",
+          "actual": "unchanged",
+          "reason": "worker.py ingest_content map is legacy and its only producer is filtered out; canonical path goes through IngestionService"
+        },
+        {
+          "from_plan": "quiet-hour schedule",
+          "actual": "deferred to ri-12",
+          "reason": "sources.d has no per-source schedule and the source ships disabled"
+        }
+      ],
+      "recommendations": [
+        "ri-12: keep ingest_x_bookmarks keyword-only signature; expand_links=None means use get_x_bookmarks_sources()[0]",
+        "ri-12: emit a ConfiguredSourceResult for the snapshot's public key so IngestionService does not count the source as omitted",
+        "ri-17: document aca sources enable x_bookmarks:account"
+      ]
+    }
   }
 }

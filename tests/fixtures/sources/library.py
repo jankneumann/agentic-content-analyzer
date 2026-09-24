@@ -229,6 +229,25 @@ SOURCE_FIXTURES: dict[str, SourceFixture] = {
         response_command="ingest.obsidian-vault",
         response_source="obsidian",
     ),
+    "x_bookmarks": SourceFixture(
+        command={
+            "kind": "x_bookmarks",
+            "max_items": 2,
+            # An explicit snapshot: the shipped sources.d entry is disabled.
+            "configured_sources": [
+                {
+                    "type": "x_bookmarks",
+                    "name": "x-bookmarks",
+                    "enabled": True,
+                    "max_entries": 2,
+                    "expand_links": False,
+                }
+            ],
+        },
+        title="X bookmark agent thread",
+        response_command="ingest.x-bookmarks",
+        response_source="x_bookmarks",
+    ),
 }
 
 

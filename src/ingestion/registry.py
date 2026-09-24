@@ -24,6 +24,7 @@ from src.config.sources import (
     SourcesConfig,
     SubstackSource,
     WebSearchSource,
+    XBookmarksSource,
     YouTubeChannelSource,
     YouTubePlaylistSource,
     YouTubeRSSSource,
@@ -49,6 +50,7 @@ from src.ingestion.commands import (
     ScholarSearchIngestCommand,
     SubstackIngestCommand,
     UrlIngestCommand,
+    XBookmarksIngestCommand,
     XSearchIngestCommand,
     YouTubePlaylistIngestCommand,
     YouTubeRssIngestCommand,
@@ -560,6 +562,28 @@ def _substack_readiness(_source: SourceBase) -> ConfiguredSourceReadiness:
     return ConfiguredSourceReadiness(ready=True)
 
 
+def _x_bookmarks_readiness(_source: SourceBase) -> ConfiguredSourceReadiness:
+    """Readiness of the X session pair, read live through the credential provider.
+
+    X needs both ``auth_token`` and ``ct0``: either one alone is useless, so
+    the source is ``credentials_missing`` unless both are present, and
+    ``session_expired`` while X has refused the current value of either.
+    """
+    from src.config.credentials import X_AUTH_TOKEN, X_CT0, get_credential_provider
+    from src.ingestion.credential_failures import CREDENTIALS_MISSING, SESSION_EXPIRED
+
+    try:
+        provider = get_credential_provider()
+        pair = [provider.metadata(name) for name in (X_AUTH_TOKEN, X_CT0)]
+    except Exception:
+        return ConfiguredSourceReadiness(ready=False, code="source_unavailable")
+    if not all(metadata.present for metadata in pair):
+        return ConfiguredSourceReadiness(ready=False, code=CREDENTIALS_MISSING)
+    if any(metadata.rejected_at is not None for metadata in pair):
+        return ConfiguredSourceReadiness(ready=False, code=SESSION_EXPIRED)
+    return ConfiguredSourceReadiness(ready=True)
+
+
 def _obsidian_readiness(source: SourceBase) -> ConfiguredSourceReadiness:
     try:
         from src.ingestion.orchestrator import obsidian_adapter_config
@@ -1021,6 +1045,35 @@ def _default_descriptors() -> tuple[SourceDescriptor, ...]:
             config_matcher=_is(ObsidianVaultSource),
             config_accessor=_get("get_obsidian_vault_sources"),
             readiness_resolver=_obsidian_readiness,
+            options=SourceOptions(supports_force=True),
+        ),
+        SourceDescriptor(
+            "x_bookmarks",
+            "X Bookmarks",
+            XBookmarksIngestCommand,
+            _dispatch(
+                "ingest_x_bookmarks",
+                lambda c: _compact(
+                    max_items=c.max_items,
+                    full=c.full,
+                    expand_links=c.expand_links,
+                    force_reprocess=c.force_reprocess,
+                ),
+            ),
+            frozenset({ContentSource.X_BOOKMARKS}),
+            True,
+            # X does not expose when a post was bookmarked, so the period start
+            # cannot bound the walk: the adapter stops at the first known page.
+            scheduled_command_planner=_bulk_plan(
+                XBookmarksIngestCommand,
+                lambda sources, _after_date: {
+                    "max_items": getattr(sources[0], "max_entries", None),
+                    "expand_links": getattr(sources[0], "expand_links", False),
+                },
+            ),
+            config_matcher=_is(XBookmarksSource),
+            config_accessor=_get("get_x_bookmarks_sources"),
+            readiness_resolver=_x_bookmarks_readiness,
             options=SourceOptions(supports_force=True),
         ),
     )

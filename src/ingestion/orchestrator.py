@@ -19,7 +19,8 @@ the three-tier persona-aware filter. The hook is a no-op when filtering is
 globally disabled, and adapters don't need to know about it.
 
 Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity,
-url, files, scholar, arxiv, huggingface_papers, readwise
+url, files, scholar, arxiv, huggingface_papers, readwise, obsidian_vault,
+x_bookmarks (registered; fails closed until its adapter ships)
 
 """
 
@@ -1678,6 +1679,40 @@ def ingest_obsidian_vault(
         details={
             "content_ids": list(outcome.content_ids),
         },
+    )
+
+
+X_BOOKMARKS_UNAVAILABLE_MESSAGE = (
+    "The X bookmarks adapter is not available yet; nothing was fetched"
+)
+
+
+@observe()
+def ingest_x_bookmarks(
+    *,
+    max_items: int | None = None,
+    full: bool = False,
+    expand_links: bool | None = None,
+    force_reprocess: bool = False,
+) -> IngestionResponse:
+    """Sync the operator's X bookmarks (registered; adapter not yet shipped).
+
+    The source is registered so every transport lists it and the scheduler can
+    plan it, but the fetch adapter lands separately. Until then every run fails
+    closed: zero rows, no network call, and one ``source_unavailable`` error the
+    durable operation records as a failed ingestion. The ``auth_token``/``ct0``
+    session is resolved by the adapter through the credential provider and is
+    never accepted as an argument here, because ``@observe()`` records inputs.
+    """
+    from src.ingestion.result import IngestionError, IngestionResponse
+
+    del max_items, full, expand_links, force_reprocess  # consumed by the adapter
+    logger.warning("x_bookmarks ingestion requested before its adapter is available")
+    return IngestionResponse(
+        command="ingest.x-bookmarks",
+        source="x_bookmarks",
+        status="error",
+        errors=[IngestionError(code="source_unavailable", message=X_BOOKMARKS_UNAVAILABLE_MESSAGE)],
     )
 
 

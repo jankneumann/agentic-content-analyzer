@@ -192,6 +192,7 @@ _PUBLIC_CONFIG_FIELDS = frozenset(
     {
         "days_back",
         "enabled",
+        "expand_links",
         "extract_pdf",
         "include_deleted",
         "max_entries",

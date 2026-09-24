@@ -8,7 +8,9 @@ is always fixture-only.
 Credential env-var names mirror the pydantic ``Settings`` fields in
 ``src/config/settings.py`` (uppercased). A source with more than one credential
 name is satisfied when *any* is present (e.g. YouTube accepts a dedicated key or
-the shared Google key).
+the shared Google key), unless the policy sets ``requires_all_credentials``
+(X bookmarks needs both halves of its browser session: ``auth_token`` and
+``ct0``).
 
 Deliberately conservative choices:
 
@@ -46,6 +48,7 @@ class LiveAdapterPolicy:
     live_eligible: bool
     paid: bool = False
     credential_env_vars: tuple[str, ...] = ()
+    requires_all_credentials: bool = False
     max_attempts: int = 2
     reason: str = ""
     requires_worker_local_mount: bool = False
@@ -71,6 +74,15 @@ def _free(key: str) -> LiveAdapterPolicy:
 
 def _credentialed(key: str, *env_vars: str) -> LiveAdapterPolicy:
     return LiveAdapterPolicy(key=key, live_eligible=True, credential_env_vars=env_vars)
+
+
+def _credentialed_all(key: str, *env_vars: str) -> LiveAdapterPolicy:
+    return LiveAdapterPolicy(
+        key=key,
+        live_eligible=True,
+        credential_env_vars=env_vars,
+        requires_all_credentials=True,
+    )
 
 
 def _paid(key: str, *env_vars: str) -> LiveAdapterPolicy:
@@ -137,6 +149,8 @@ LIVE_ADAPTER_POLICIES: dict[str, LiveAdapterPolicy] = {
     # substack.yaml holds paid subscriptions; a run without the session cookie
     # fails closed with credentials_missing (free publications go through RSS).
     "substack": _credentialed("substack", "SUBSTACK_SESSION_COOKIE"),
+    # One X browser session is two cookies; either alone cannot authenticate.
+    "x_bookmarks": _credentialed_all("x_bookmarks", "X_AUTH_TOKEN", "X_CT0"),
     # Paid providers — never live-eligible.
     "x_search": _paid("x_search", "XAI_API_KEY"),
     "perplexity_search": _paid("perplexity_search", "PERPLEXITY_API_KEY"),
@@ -184,8 +198,11 @@ def evaluate_live_adapter(
             "Skipped: compatible worker-local mount is unavailable",
             policy,
         )
-    if policy.credential_env_vars and not any(env.get(var) for var in policy.credential_env_vars):
-        names = " or ".join(policy.credential_env_vars)
+    present = [bool(env.get(var)) for var in policy.credential_env_vars]
+    satisfied = all(present) if policy.requires_all_credentials else any(present)
+    if policy.credential_env_vars and not satisfied:
+        joiner = " and " if policy.requires_all_credentials else " or "
+        names = joiner.join(policy.credential_env_vars)
         return LiveEvaluation(
             key,
             LiveDecision.SKIP_MISSING_CREDENTIAL,
