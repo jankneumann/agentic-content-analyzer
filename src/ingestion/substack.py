@@ -30,6 +30,7 @@ from src.config.credentials import (
 from src.config.settings import get_settings
 from src.config.sources import SourceFileConfig, SubstackSource
 from src.ingestion.credential_failures import (
+    SESSION_REFRESH_COMMANDS,
     CredentialFailureError,
     CredentialsMissingError,
     SessionExpiredError,
@@ -76,7 +77,7 @@ class SyncResult:
 
 
 SUBSTACK_SID_COOKIE = "substack.sid"
-SUBSTACK_REFRESH_COMMAND = "aca auth session substack"
+SUBSTACK_REFRESH_COMMAND = SESSION_REFRESH_COMMANDS["substack"]
 
 SESSION_PROBE_URL = "https://substack.com/api/v1/subscriptions"
 """Cheap endpoint that only answers a logged-in reader (also the sync source)."""

@@ -148,8 +148,24 @@ WorkflowAlertDiagnosticCode = (
         "backup_partial",
         "backup_stale",
         "backup_target_unreachable",
+        # Credential-gated ingestion (Substack session cookie, X auth_token/ct0).
+        # The single definitions live in src/ingestion/credential_failures.py; a
+        # code missing here is dropped by `_ingestion_codes`, so a dead session
+        # would alert as a bare `operation_failed` that names nothing to do.
+        "credentials_missing",
+        "session_expired",
     ]
 )
+#: Codes an operator clears by re-capturing a browser session. An envelope may
+#: carry `remediation_command` only when its `codes` name one of these.
+WORKFLOW_ALERT_CREDENTIAL_CODES: frozenset[str] = frozenset(
+    {"credentials_missing", "session_expired"}
+)
+#: The closed set of commands an alert may tell an operator to run. Every value is
+#: a fixed literal, never derived from a source, a URL, or a credential; the
+#: parity with `SESSION_REFRESH_COMMANDS` in src/ingestion/credential_failures.py
+#: is asserted by tests/contract/test_workflow_alert_contracts.py.
+WorkflowAlertRemediationCommand = Literal["aca auth session substack", "aca auth session x"]
 WorkflowDiagnosticUrl = Annotated[
     AnyUrl,
     UrlConstraints(max_length=2048, allowed_schemes=["https"]),
@@ -290,6 +306,10 @@ class WorkflowAlertEnvelopeV1(StrictModel):
     ]
     counts: WorkflowAlertCounts
     codes: Annotated[list[WorkflowAlertDiagnosticCode], Field(max_length=20)]
+    # Optional and omitted when absent, exactly like `release_revision`: every
+    # envelope that does not name a credential failure serializes byte-for-byte as
+    # it did before this field existed.
+    remediation_command: WorkflowAlertRemediationCommand | None = None
 
     @model_serializer(mode="wrap")
     def serialize_legacy_compatible(
@@ -300,6 +320,8 @@ class WorkflowAlertEnvelopeV1(StrictModel):
         if self.release_revision is None:
             serialized.pop("release_revision", None)
             serialized.pop("release_revision_source", None)
+        if self.remediation_command is None:
+            serialized.pop("remediation_command", None)
         return serialized
 
     @field_validator("diagnostic_url")
@@ -350,6 +372,12 @@ class WorkflowAlertEnvelopeV1(StrictModel):
             raise ValueError("workflow alert source_keys must be unique")
         if len(self.codes) != len(set(self.codes)):
             raise ValueError("workflow alert codes must be unique")
+        if self.remediation_command is not None and (
+            self.source_kind != "operation"
+            or self.workflow_type != "ingestion.execute"
+            or WORKFLOW_ALERT_CREDENTIAL_CODES.isdisjoint(self.codes)
+        ):
+            raise ValueError("remediation_command requires a credential-gated ingestion code")
 
         path = self.diagnostic_url.path or ""
         if self.source_kind == "operation":

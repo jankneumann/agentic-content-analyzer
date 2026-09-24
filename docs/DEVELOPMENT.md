@@ -421,6 +421,13 @@ classified envelope includes both. Staging proof is intentionally stricter and
 rejects a legacy receipt because it cannot bind that delivery to the expected
 revision.
 
+A credential-gated ingestion that fails closed (`session_expired` or
+`credentials_missing` for Substack or X) alerts with those codes after
+`operation_failed` and an optional closed `remediation_command` naming the fix
+(`aca auth session substack` or `aca auth session x`). The field is omitted on
+every other alert. Inside a pipeline this child alert is routed on its own,
+because the root's aggregate alert carries no codes.
+
 Credentials and origins are environment-only:
 
 ```bash

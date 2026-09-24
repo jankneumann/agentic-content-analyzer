@@ -33,6 +33,7 @@ from src.config.credentials import (
     CredentialMetadata,
     get_credential_provider,
 )
+from src.ingestion.credential_failures import SESSION_REFRESH_COMMANDS
 
 LOOKUP_TIMEOUT_S = 5.0
 """Upper bound for the ingestion-history lookup, so status never hangs."""
@@ -61,13 +62,13 @@ BROWSER_SESSIONS: tuple[BrowserSessionSpec, ...] = (
         session="substack",
         credentials=(SUBSTACK_SESSION_COOKIE,),
         verified_by="substack",
-        refresh_command="aca auth session substack",
+        refresh_command=SESSION_REFRESH_COMMANDS["substack"],
     ),
     BrowserSessionSpec(
         session="x",
         credentials=(X_AUTH_TOKEN, X_CT0),
         verified_by="x_bookmarks",
-        refresh_command="aca auth session x",
+        refresh_command=SESSION_REFRESH_COMMANDS["x_bookmarks"],
     ),
 )
 

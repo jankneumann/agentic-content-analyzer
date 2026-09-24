@@ -118,6 +118,10 @@
           "backup_environment_mismatch"
         ]
       }
+    },
+    "remediation_command": {
+      "description": "Narrowed to never-present. The model admits this optional field only on an ingestion.execute operation alert whose codes name a credential failure, so a backup alert can never carry it.",
+      "not": {}
     }
   },
   "dependentRequired": {

@@ -849,3 +849,107 @@ def test_terminal_event_model_rejects_a_system_check_with_workflow_identity() ->
             operation_id="42",
             occurred_at=datetime(2026, 8, 21, 3, 0, tzinfo=UTC),
         )
+
+
+# ---------------------------------------------------------------------------
+# Credential-gated ingestion (ri-16)
+#
+# `session_expired` / `credentials_missing` and the refresh commands are decided
+# in src/ingestion/credential_failures.py. Every closed alert surface must admit
+# exactly those: a code the alert model lacks is silently dropped by
+# `_ingestion_codes`, and a command the literal lacks is silently omitted.
+# ---------------------------------------------------------------------------
+
+
+def _credential_envelope(**overrides: object) -> dict[str, object]:
+    envelope = _valid_envelope()
+    envelope.update(
+        codes=["operation_failed", "session_expired"],
+        remediation_command="aca auth session substack",
+    )
+    envelope.update(overrides)
+    return envelope
+
+
+def test_every_credential_failure_code_is_an_alert_code_everywhere() -> None:
+    from pydantic import TypeAdapter
+
+    from src.contracts.workflow_alert_models import (
+        WORKFLOW_ALERT_CREDENTIAL_CODES,
+        WorkflowAlertDiagnosticCode,
+    )
+    from src.ingestion.credential_failures import (
+        CREDENTIAL_FAILURE_CODES,
+        CredentialFailureError,
+    )
+    from src.ingestion.result_sanitizer import SAFE_INGESTION_DIAGNOSTIC_CODES
+
+    subclass_codes = {cls.code for cls in CredentialFailureError.__subclasses__()}
+    schema_codes = set(
+        _load_schema("workflow-alert-envelope.schema.json")["properties"]["codes"]["items"]["enum"]
+    )
+    adapter = TypeAdapter(WorkflowAlertDiagnosticCode)
+
+    assert subclass_codes == set(CREDENTIAL_FAILURE_CODES) == WORKFLOW_ALERT_CREDENTIAL_CODES
+    for code in CREDENTIAL_FAILURE_CODES:
+        adapter.validate_python(code)
+        assert code in schema_codes
+        assert code in SAFE_INGESTION_DIAGNOSTIC_CODES
+
+
+def test_remediation_commands_match_the_one_refresh_table() -> None:
+    from typing import get_args
+
+    from src.cli.browser_session_status import BROWSER_SESSIONS
+    from src.contracts.workflow_alert_models import WorkflowAlertRemediationCommand
+    from src.ingestion.credential_failures import SESSION_REFRESH_COMMANDS
+    from src.ingestion.substack import SUBSTACK_REFRESH_COMMAND
+
+    literal = set(get_args(WorkflowAlertRemediationCommand))
+    schema = set(
+        _load_schema("workflow-alert-envelope.schema.json")["properties"]["remediation_command"][
+            "enum"
+        ]
+    )
+
+    assert literal == set(SESSION_REFRESH_COMMANDS.values()) == schema
+    assert {spec.verified_by: spec.refresh_command for spec in BROWSER_SESSIONS} == dict(
+        SESSION_REFRESH_COMMANDS
+    )
+    assert SESSION_REFRESH_COMMANDS["substack"] == SUBSTACK_REFRESH_COMMAND
+
+
+def test_credential_envelope_matches_model_and_checked_in_schema() -> None:
+    instance = _credential_envelope()
+
+    _validate(_load_schema("workflow-alert-envelope.schema.json"), instance)
+    envelope = WorkflowAlertEnvelopeV1.model_validate(instance)
+
+    assert envelope.model_dump(mode="json")["remediation_command"] == "aca auth session substack"
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"codes": ["operation_failed"]},
+        {"remediation_command": "rm -rf /"},
+        {"workflow_type": "digest.create"},
+    ],
+)
+def test_remediation_command_is_closed_in_model_and_schema(overrides: dict[str, object]) -> None:
+    instance = _credential_envelope(**overrides)
+
+    with pytest.raises(ValidationError):
+        WorkflowAlertEnvelopeV1.model_validate(instance)
+    with pytest.raises(JsonSchemaValidationError):
+        _validate(_load_schema("workflow-alert-envelope.schema.json"), instance)
+
+
+def test_remediation_command_is_rejected_on_a_backup_alert() -> None:
+    instance = _valid_system_check_envelope()
+    instance["remediation_command"] = "aca auth session substack"
+
+    with pytest.raises(ValidationError):
+        WorkflowAlertEnvelopeV1.model_validate(instance)
+    with pytest.raises(JsonSchemaValidationError):
+        _validate(_backup_alert_schema(), instance)

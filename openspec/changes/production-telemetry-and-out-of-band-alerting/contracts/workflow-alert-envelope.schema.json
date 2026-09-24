@@ -116,6 +116,7 @@
           "channel_ingest_error",
           "channel_unresolvable",
           "completed_output_missing",
+          "credentials_missing",
           "empty_response",
           "execution_locked",
           "extraction_cancelled",
@@ -144,6 +145,7 @@
           "scholar_paper_error",
           "scholar_source_error",
           "search_failed",
+          "session_expired",
           "source_partial",
           "stale_operation",
           "storage_error",
@@ -156,6 +158,10 @@
         ]
       },
       "uniqueItems": true
+    },
+    "remediation_command": {
+      "description": "Optional; omitted unless the alert names a credential failure. A closed command that re-captures the browser session behind a credential-gated ingestion source. Never carries a credential value.",
+      "enum": ["aca auth session substack", "aca auth session x"]
     }
   },
   "dependentRequired": {
@@ -163,6 +169,16 @@
     "release_revision_source": ["release_revision"]
   },
   "allOf": [
+    {
+      "if": {"required": ["remediation_command"]},
+      "then": {
+        "properties": {
+          "source_kind": {"const": "operation"},
+          "workflow_type": {"const": "ingestion.execute"},
+          "codes": {"contains": {"enum": ["credentials_missing", "session_expired"]}}
+        }
+      }
+    },
     {
       "if": {
         "required": ["release_revision_source"],

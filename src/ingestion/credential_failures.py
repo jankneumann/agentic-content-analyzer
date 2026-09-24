@@ -16,6 +16,8 @@ and the refresh command. They never carry, format, or chain a credential value.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import ClassVar, Final
 
 from src.ingestion.result import IngestionError
@@ -25,6 +27,28 @@ CREDENTIALS_MISSING: Final = "credentials_missing"
 
 SESSION_EXPIRED: Final = "session_expired"
 """The remote site rejected the session even after one refresh from OpenBao."""
+
+CREDENTIAL_FAILURE_CODES: Final = frozenset({CREDENTIALS_MISSING, SESSION_EXPIRED})
+"""Codes an operator clears by re-capturing the browser session."""
+
+SESSION_REFRESH_COMMANDS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "substack": "aca auth session substack",
+        "x_bookmarks": "aca auth session x",
+    }
+)
+"""Ingestion ``command_key`` -> the command that re-captures its browser session.
+
+The one table for these commands: the Substack adapter's exception, the
+``aca auth status`` rows, and the terminal-event outbox's alert all read it, so
+an alert can never name a command the CLI does not have.
+"""
+
+
+def refresh_command_for(command_key: str) -> str | None:
+    """Return the refresh command for a credential-gated ingestion, if any."""
+
+    return SESSION_REFRESH_COMMANDS.get(command_key)
 
 
 class CredentialFailureError(Exception):
