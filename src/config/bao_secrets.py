@@ -304,6 +304,23 @@ def refresh_bao_secrets(*, min_interval_s: float = DEFAULT_REFRESH_MIN_INTERVAL_
         return True
 
 
+def is_bao_configured() -> bool:
+    """True when ``BAO_ADDR`` is set (whether or not the load succeeded)."""
+    return _is_bao_configured()
+
+
+def get_authenticated_bao_client() -> Any | None:
+    """The hvac client this process authenticated for its OpenBao reads, if any.
+
+    For a worker that writes back a value it just learned (a rotated X ``ct0``)
+    through ``BaoSink``: reusing this client avoids a second AppRole login. It
+    is ``None`` when OpenBao is not configured or no load has succeeded yet.
+    The client carries a token: never log it or put it in a message.
+    """
+    _load_bao_secrets()
+    return _bao_client
+
+
 def apply_bao_local_write(values: Mapping[str, str]) -> list[str]:
     """Merge values this process just PATCHed into OpenBao into the cache.
 

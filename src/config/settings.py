@@ -619,6 +619,9 @@ class Settings(BaseSettings):
     # Pause between Substack post-body requests (the substack-api library slept
     # 2s per request); runs use the operator's own paid account.
     substack_request_delay_s: float = Field(default=1.0, ge=0.0, le=30.0)
+    # Pause between X Bookmarks GraphQL pages: the requests share the operator's
+    # account and IP with their own browser, so pace them like a person scrolling.
+    x_bookmarks_page_delay_s: float = Field(default=1.0, ge=0.0, le=60.0)
 
     # Substack RSS Configuration (legacy — use sources.d/ instead)
     # Comma-separated list of RSS feed URLs
