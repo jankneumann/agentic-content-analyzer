@@ -1,7 +1,7 @@
 """A dead Substack session fails the run closed with ``session_expired``.
 
-Network-free: every Substack answer comes from an ``httpx.MockTransport`` and
-the substack-api library path is stubbed. No test sends or prints a real cookie.
+Network-free: every Substack answer comes from an ``httpx.MockTransport``.
+No test sends or prints a real cookie.
 """
 
 from __future__ import annotations
@@ -190,13 +190,6 @@ def _isolate(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     bao_mod.clear_bao_cache()
 
 
-@pytest.fixture
-def no_library_fetch() -> Iterator[MagicMock]:
-    """The substack-api path is unauthenticated; force the cookie-bearing fallback."""
-    with patch.object(SubstackClient, "_fetch_posts_from_api", return_value=None) as mocked:
-        yield mocked
-
-
 # -- the predicate -----------------------------------------------------------
 
 
@@ -226,7 +219,7 @@ def test_dead_session_predicate_is_conservative(response: httpx.Response, dead: 
 
 
 @pytest.mark.parametrize("refusal", [login_redirect, html_login_page, unauthorized])
-def test_refresh_retry_then_session_expired(refusal: Answer, no_library_fetch: MagicMock) -> None:
+def test_refresh_retry_then_session_expired(refusal: Answer) -> None:
     bao = _FakeBao(DEAD_COOKIE)
     bao.remote[SUBSTACK_SESSION_COOKIE] = FRESH_COOKIE  # rotated, but also refused
     provider = bao.provider()
@@ -246,7 +239,6 @@ def test_refresh_retry_then_session_expired(refusal: Answer, no_library_fetch: M
     assert response.items_ingested == 0
     assert [error.code for error in response.errors] == [SESSION_EXPIRED]
     get_db.assert_not_called()  # zero rows: persistence never opened
-    no_library_fetch.assert_not_called()  # no source was fetched after the refusal
 
     message = response.errors[0].message
     assert "substack.sid" in message
@@ -275,7 +267,7 @@ def test_unchanged_cookie_after_refresh_fails_without_a_second_request() -> None
     _assert_no_cookie(str(excinfo.value), repr(excinfo.value), excinfo.value.args)
 
 
-def test_session_dying_mid_run_still_persists_zero_rows(no_library_fetch: MagicMock) -> None:
+def test_session_dying_mid_run_still_persists_zero_rows() -> None:
     """The probe is inconclusive; a later archive answers with a sign-in redirect."""
     provider = _FakeBao(DEAD_COOKIE).provider()
 
@@ -341,9 +333,7 @@ def _fake_db() -> tuple[MagicMock, Callable[[], Any]]:
     return db, get_db
 
 
-def test_refreshed_cookie_recovers_the_run_and_is_marked_verified(
-    no_library_fetch: MagicMock,
-) -> None:
+def test_refreshed_cookie_recovers_the_run_and_is_marked_verified() -> None:
     bao = _FakeBao(DEAD_COOKIE)
     bao.remote[SUBSTACK_SESSION_COOKIE] = FRESH_COOKIE
     provider = bao.provider()
@@ -381,7 +371,7 @@ def test_public_archive_success_does_not_verify_the_session() -> None:
     substack = _Substack(dead=lambda sid: False, refusal=unauthorized)
     client = _client(provider, substack)
     try:
-        assert client._fetch_posts_from_http(PUBLICATION, 2)
+        assert client._fetch_archive(PUBLICATION, 2)
         assert provider.metadata(SUBSTACK_SESSION_COOKIE).last_verified_at is None
         assert client.verify_session() is True
     finally:
@@ -400,27 +390,8 @@ def test_subscription_sync_raises_instead_of_returning_no_subscriptions() -> Non
         client.close()
 
 
-# -- no cookie: public posts still arrive, flagged on the envelope -------------
-
-
-def test_cookie_less_run_keeps_public_posts_and_warns(no_library_fetch: MagicMock) -> None:
-    provider = _FakeBao(None).provider()
-    substack = _Substack(dead=lambda sid: True, refusal=unauthorized)
-    service = _service(provider, substack)
-    _db, get_db = _fake_db()
-
-    with (
-        patch("src.ingestion.substack.get_db", get_db),
-        patch("src.ingestion.substack.find_existing_substack_content", return_value=None),
-        patch("src.services.indexing.index_content"),
-    ):
-        response = service.ingest_content(sources=[SOURCE])
-    service.close()
-
-    assert response.status == "ok"
-    assert response.items_ingested == 2
-    assert [warning.code for warning in response.warnings] == [CREDENTIALS_MISSING]
-    assert all(url != SESSION_PROBE_URL for url, _ in substack.calls)  # no probe without cookie
+# No cookie: covered by tests/ingestion/test_substack_paid_posts.py (ri-18 made
+# a cookie-less run fail closed with credentials_missing instead of warning).
 
 
 # -- readiness -----------------------------------------------------------------

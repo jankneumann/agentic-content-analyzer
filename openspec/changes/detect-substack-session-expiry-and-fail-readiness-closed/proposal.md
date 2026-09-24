@@ -42,6 +42,7 @@ closed rather than run partially.
     and one `session_expired` error: zero rows, never a partial run.
   - A cookie-less run keeps today's behaviour (public posts) and adds a
     `credentials_missing` warning to the envelope (see design.md).
+    Superseded by ri-18: a cookie-less run now fails closed.
   - `fetch_subscriptions()` raises instead of returning `[]` on a dead
     session.
 - `src/config/credentials.py`: `CredentialProvider.mark_rejected(name)` and

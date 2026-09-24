@@ -60,6 +60,13 @@ class CredentialFailureError(Exception):
         return IngestionError(code=self.code, message=str(self))
 
 
+class CredentialsMissingError(CredentialFailureError):
+    """The source's credential is not configured anywhere the provider looks."""
+
+    code = CREDENTIALS_MISSING
+    summary = "is not configured"
+
+
 class SessionExpiredError(CredentialFailureError):
     """The remote site answered an authenticated request as logged out."""
 

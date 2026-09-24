@@ -52,7 +52,14 @@ anywhere in it (probe or a later archive fallback) returns
 before `get_db()` is opened. The canonical workflow handler attaches that
 result and marks the operation failed; the sanitizer keeps the code.
 
-## No cookie: warn, do not fail
+## No cookie: warn, do not fail (superseded by ri-18)
+
+> **Superseded.** `authenticate-substack-post-fetches-with-the-session-cookie`
+> (ri-18) routed the post-body fetch through the authenticated client, which
+> is the condition the last paragraph below names. A Substack run without a
+> cookie now fails closed with `credentials_missing` and zero rows, and the
+> envelope warning is gone. See that change's design.md. The reasoning below
+> is kept as the record of why ri-05 did not fail closed.
 
 The brief asks whether cookie-less Substack ingestion is useless. From the
 code: no. Because the post path never sends the cookie (above), a cookie-less
@@ -109,7 +116,7 @@ Closed lists checked (CLAUDE.md gotcha):
 
 ## Non-goals
 
-- Authenticating the substack-api library path.
+- Authenticating the substack-api library path (done in ri-18, which replaced it).
 - Removing the pre-existing `session_cookie` override (reported separately).
 - Hoverfly simulations: tests use `httpx.MockTransport`, which exercises the
   same client code network-free.

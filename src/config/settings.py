@@ -616,6 +616,9 @@ class Settings(BaseSettings):
     substack_session_cookie: str | None = Field(default=None, repr=False)  # substack.sid
     x_auth_token: str | None = Field(default=None, repr=False)  # x.com auth_token cookie
     x_ct0: str | None = Field(default=None, repr=False)  # x.com ct0 cookie (CSRF token)
+    # Pause between Substack post-body requests (the substack-api library slept
+    # 2s per request); runs use the operator's own paid account.
+    substack_request_delay_s: float = Field(default=1.0, ge=0.0, le=30.0)
 
     # Substack RSS Configuration (legacy — use sources.d/ instead)
     # Comma-separated list of RSS feed URLs

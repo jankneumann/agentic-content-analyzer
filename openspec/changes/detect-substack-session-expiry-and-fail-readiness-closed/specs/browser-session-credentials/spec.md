@@ -35,8 +35,9 @@ fetch phase, the run SHALL persist zero rows and return `status=error`,
 `items_ingested=0`, and one error with code `session_expired`. The codes
 `session_expired` and `credentials_missing` SHALL be part of the closed public
 ingestion diagnostic vocabulary so the durable operation result keeps them. A
-run without any cookie SHALL still ingest public posts and SHALL add a
-`credentials_missing` warning to its envelope.
+run without any cookie is governed by the "Cookie-less Substack Runs Fail
+Closed" requirement of change
+`authenticate-substack-post-fetches-with-the-session-cookie`.
 
 #### Scenario: Zero rows on an HTML login page
 - **WHEN** the probe answers 200 `text/html` for both the cached and the refreshed cookie
@@ -46,10 +47,6 @@ run without any cookie SHALL still ingest public posts and SHALL add a
 #### Scenario: Session dies mid-run
 - **WHEN** the probe is inconclusive, the first publication's archive succeeds, and the second publication's archive redirects to `/sign-in`
 - **THEN** the run persists zero rows and reports `session_expired`
-
-#### Scenario: Cookie-less run
-- **WHEN** no `SUBSTACK_SESSION_COOKIE` is configured
-- **THEN** no session probe is sent, public posts are ingested, and the envelope carries a `credentials_missing` warning
 
 ### Requirement: Typed Session Failure Without Values
 

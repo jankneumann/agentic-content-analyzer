@@ -120,7 +120,6 @@ LIVE_ADAPTER_POLICIES: dict[str, LiveAdapterPolicy] = {
     # Free, no-key upstreams — run live with no secret.
     "rss": _free("rss"),
     "blog": _free("blog"),
-    "substack": _free("substack"),
     "youtube_rss": _free("youtube_rss"),
     "url": _free("url"),
     "arxiv_search": _free("arxiv_search"),
@@ -135,6 +134,9 @@ LIVE_ADAPTER_POLICIES: dict[str, LiveAdapterPolicy] = {
     "gmail": _credentialed("gmail", "GMAIL_OAUTH_TOKEN_JSON", "GMAIL_CREDENTIALS_JSON"),
     "youtube_playlist": _credentialed("youtube_playlist", "YOUTUBE_API_KEY", "GOOGLE_API_KEY"),
     "readwise": _credentialed("readwise", "READWISE_API_KEY"),
+    # substack.yaml holds paid subscriptions; a run without the session cookie
+    # fails closed with credentials_missing (free publications go through RSS).
+    "substack": _credentialed("substack", "SUBSTACK_SESSION_COOKIE"),
     # Paid providers — never live-eligible.
     "x_search": _paid("x_search", "XAI_API_KEY"),
     "perplexity_search": _paid("perplexity_search", "PERPLEXITY_API_KEY"),

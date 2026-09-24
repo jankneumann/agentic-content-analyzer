@@ -315,5 +315,51 @@
         "ri-11: import x_web_headers(); treat 401 on account/settings.json as session_expired"
       ]
     }
+  },
+  "ri-18": {
+    "change_id": "authenticate-substack-post-fetches-with-the-session-cookie",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Own httpx post path instead of substack_api",
+          "outcome": "the library can only authenticate from a cookies file on disk; _fetch_archive and _fetch_post_detail go through _get_with_session so every post request carries the live cookie"
+        },
+        {
+          "title": "Paid-only substack source fails closed without a cookie",
+          "outcome": "CredentialsMissingError / credentials_missing after one bounded refresh; real_ingest_policy marks substack credentialed"
+        },
+        {
+          "title": "Teaser detection and upgrade",
+          "outcome": "audience only_paid/founding with missing body or <80% of wordcount is a teaser; next authenticated run replaces it, deletes summaries, resets status to parsed (filtered_out kept), reindexes"
+        },
+        {
+          "title": "403 disambiguation",
+          "outcome": "a 403 on a post or archive re-runs the session probe once; live session means per-post access denied (keep teaser, continue), dead session means session_expired with zero rows"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "no pacing",
+          "actual": "substack_request_delay_s (default 1.0s) between post-detail requests",
+          "reason": "host review: runs use the operator's own paid account and the old library slept 2s"
+        },
+        {
+          "from_plan": "any post 403 is a dead session",
+          "actual": "probe-disambiguated",
+          "reason": "host review: a tier-restricted post must not fail the whole run"
+        }
+      ],
+      "recommendations": [
+        "Live check with a real paid subscription to confirm teaser/full signals and whether custom domains accept substack.sid",
+        "Drop the now-unused substack-api dependency in a later cleanup",
+        "ri-16: add credentials_missing and session_expired to the alert code enums together"
+      ]
+    }
   }
 }

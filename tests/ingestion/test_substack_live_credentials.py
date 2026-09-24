@@ -91,12 +91,12 @@ def test_rotated_cookie_reaches_client_between_requests(
                 http_client=httpx.Client(transport=httpx.MockTransport(recorder)),
             )
             try:
-                assert client._fetch_posts_from_http("https://one.substack.com", 1)
+                assert client._fetch_archive("https://one.substack.com", 1)
 
                 data[SUBSTACK_SESSION_COOKIE] = ROTATED_COOKIE
                 assert provider.refresh(min_interval_s=0) is True
 
-                assert client._fetch_posts_from_http("https://one.substack.com", 1)
+                assert client._fetch_archive("https://one.substack.com", 1)
             finally:
                 client.close()
     finally:
@@ -125,8 +125,8 @@ def test_settings_fallback_and_explicit_override(monkeypatch: pytest.MonkeyPatch
         http_client=httpx.Client(transport=httpx.MockTransport(recorder)),
     )
     try:
-        fallback._fetch_posts_from_http("https://one.substack.com", 1)
-        override._fetch_posts_from_http("https://one.substack.com", 1)
+        fallback._fetch_archive("https://one.substack.com", 1)
+        override._fetch_archive("https://one.substack.com", 1)
     finally:
         fallback.close()
         override.close()
@@ -146,7 +146,7 @@ def test_missing_cookie_sends_none_and_skips_subscription_sync(
     try:
         assert client.session_cookie is None
         assert client.fetch_subscriptions() == []
-        client._fetch_posts_from_http("https://one.substack.com", 1)
+        client._fetch_archive("https://one.substack.com", 1)
     finally:
         client.close()
     assert recorder.sids == [None]

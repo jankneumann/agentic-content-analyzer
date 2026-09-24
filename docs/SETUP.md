@@ -1593,6 +1593,18 @@ aca ingest substack-sync
 aca ingest substack
 ```
 
+`sources.d/substack.yaml` is for paid subscriptions only; add free
+publications to `rss.yaml` as `<publication>/feed`. Every archive and post
+request of `aca ingest substack` carries the session cookie, so paid posts are
+stored in full. Without a cookie the run sends nothing and fails with
+`credentials_missing` (zero rows); run `aca auth session substack`. A paid post
+stored as a teaser (fetched without access) is replaced by its full body, and
+summarized again, on the next run that can read it.
+Post requests are paced by `SUBSTACK_REQUEST_DELAY_S` (default `1.0` seconds).
+A 403 on a single post (for example a founding-only post on a paid-tier
+subscription) keeps that post's teaser; the run fails with `session_expired`
+only when the session probe also rejects the cookie.
+
 ## Obsidian Vault Setup
 
 Ingests Obsidian Web Clipper notes from a worker-local vault folder. Read-only:
