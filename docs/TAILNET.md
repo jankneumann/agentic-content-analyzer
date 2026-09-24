@@ -181,19 +181,22 @@ Only browser origins need CORS; the CLI, MCP, and Shortcuts do not.
 ```bash
 # /etc/aca/aca.env
 ENVIRONMENT=production
-ALLOWED_ORIGINS=https://gx-10.<tailnet>.ts.net:8443,chrome-extension://<extension-id>
+ALLOWED_ORIGINS=https://gx-10.<tailnet>.ts.net:8443
 ```
 
 - **Web UI on `:8443`**: its origin differs from the API's only by port, so it
   is cross-origin but *same-site*. The `SameSite=Lax` session cookie is sent, so
   `AUTH_COOKIE_CROSS_ORIGIN` stays `false`. Set it to `true` only if the UI is
   served from a different host.
-- **Chrome extension**: the extension currently declares no host permission, so
-  its fetches carry `Origin: chrome-extension://<extension-id>` (the ID shown on
-  `chrome://extensions`) and are CORS-checked. Once the manifest gains
-  `"host_permissions": ["https://gx-10.<tailnet>.ts.net/*"]`, Chrome exempts the
-  extension from CORS for that host and the `chrome-extension://` entry can go.
-  See [extension/README.md](../extension/README.md).
+- **Chrome extension**: needs no `ALLOWED_ORIGINS` entry. The manifest declares
+  `"optional_host_permissions": ["https://*.ts.net/*"]`, and saving an
+  `https://gx-10.<tailnet>.ts.net` API URL in the extension's options requests
+  host access to exactly that host (`https://gx-10.<tailnet>.ts.net/*`); once
+  granted, Chrome exempts the extension's requests to it from CORS, for both URL
+  saves and session sync. If access is declined, its fetches are CORS-checked
+  with `Origin: chrome-extension://<extension-id>`: grant access (save the
+  options again) rather than adding that origin. See
+  [extension/README.md](../extension/README.md).
 - In production, leaving `ALLOWED_ORIGINS` at the localhost dev default yields an
   **empty** allow-list (deny all), by design.
 

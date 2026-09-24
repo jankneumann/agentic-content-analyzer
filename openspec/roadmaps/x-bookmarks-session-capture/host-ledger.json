@@ -580,5 +580,41 @@
         "Not exercised against live x.com: chunk-map pattern, query-not-found wording, session error codes and the discovery login check are unverified"
       ]
     }
+  },
+  "ri-15": {
+    "change_id": "add-sync-session-button-to-the-chrome-extension",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Popup sync buttons over a pure module",
+          "outcome": "extension/session_sync.js holds cookie reading, permission origin, https check, PUT and status mapping with no DOM or chrome globals; popup has one button and status line per site"
+        },
+        {
+          "title": "Runtime tailnet permission",
+          "outcome": "optional_host_permissions https://*.ts.net/*; options Save requests the API origin from the click; the chrome-extension:// ALLOWED_ORIGINS interim note is removed"
+        },
+        {
+          "title": "Defensive request",
+          "outcome": "https-only API (http only for localhost), credentials omit, redirect manual, no-store; status text is fixed strings plus a validated problem code, saved_at and Retry-After"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "twitter.com fallback",
+          "actual": "x.com only, both cookies required",
+          "reason": "X sessions live on .x.com; a twitter.com pair would be stale"
+        }
+      ],
+      "recommendations": [
+        "Operator: load 1.1.0 unpacked, grant the tailnet host, sync both sites against gx-10, then drop chrome-extension://<id> from ALLOWED_ORIGINS",
+        "Alert text could also mention the extension's Sync X session button"
+      ]
+    }
   }
 }

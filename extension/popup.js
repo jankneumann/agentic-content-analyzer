@@ -1,5 +1,7 @@
 /* global chrome */
 
+import { SITES, requestApiAccess, syncSession } from './session_sync.js';
+
 const DEFAULT_CONFIG = {
   apiUrl: '',
   apiKey: '',
@@ -14,17 +16,25 @@ const statusDiv = document.getElementById('status');
 const configWarning = document.getElementById('config-warning');
 const formContainer = document.getElementById('save-form-container');
 const openOptionsLink = document.getElementById('open-options');
+const syncSection = document.getElementById('sync-section');
+const syncButtons = document.querySelectorAll('#sync-section button[data-site]');
 
 let currentUrl = '';
+// Loaded once in init(); the sync click handler needs it synchronously so that
+// chrome.permissions.request still runs inside the click's user gesture.
+let currentConfig = DEFAULT_CONFIG;
 
 async function init() {
   const config = await loadConfig();
+  currentConfig = config;
 
   if (!config.apiUrl) {
     configWarning.classList.remove('hidden');
     formContainer.classList.add('hidden');
     return;
   }
+
+  syncSection.classList.remove('hidden');
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab) {
@@ -128,8 +138,41 @@ async function saveUrl() {
   }
 }
 
+function setSyncStatus(siteId, type, message) {
+  const line = document.getElementById(`sync-status-${siteId}`);
+  line.className = `sync-status ${type}`;
+  line.textContent = message;
+}
+
+// Read the site's cookies and PUT them to the API. Cookie values stay inside
+// syncSession(); only its fixed status message reaches the page.
+async function syncSite(event) {
+  const button = event.currentTarget;
+  const siteId = button.dataset.site;
+  // Must be the first call: the permission prompt needs the click's gesture.
+  // Resolves immediately, without a prompt, once the origin is granted.
+  const access = requestApiAccess(currentConfig.apiUrl, chrome.permissions);
+
+  button.disabled = true;
+  setSyncStatus(siteId, 'loading', `Syncing ${SITES[siteId].label} session...`);
+  try {
+    const result = await syncSession(siteId, currentConfig, {
+      cookies: chrome.cookies,
+      fetch: (url, init) => fetch(url, init),
+      access: await access,
+    });
+    setSyncStatus(siteId, result.ok ? 'success' : 'error', result.message);
+  } catch {
+    setSyncStatus(siteId, 'error', `${SITES[siteId].label} sync failed unexpectedly.`);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 // Event listeners
 saveBtn.addEventListener('click', saveUrl);
+
+syncButtons.forEach((button) => button.addEventListener('click', syncSite));
 
 openOptionsLink.addEventListener('click', (e) => {
   e.preventDefault();

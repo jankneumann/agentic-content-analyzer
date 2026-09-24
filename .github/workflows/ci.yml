@@ -50,6 +50,10 @@ jobs:
         working-directory: web
         run: npm test -- --run src/lib/api/__tests__/workflow-contracts.test.ts
 
+      # Dependency-free node:test suite for extension/ (fakes chrome.* and fetch).
+      - name: Run Chrome extension unit tests
+        run: node --test 'extension/tests/*.test.js'
+
       - name: Build production frontend
         working-directory: web
         run: npm run build

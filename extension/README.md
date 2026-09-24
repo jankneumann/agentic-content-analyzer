@@ -1,6 +1,7 @@
 # Newsletter Aggregator - Chrome Extension
 
-Queue the current page URL into durable ingestion with one click.
+Queue the current page URL into durable ingestion with one click, and push
+this browser's Substack and X logins to the server when a session expires.
 
 Full-page HTML capture (`POST /api/v1/content/save-page`) is **retired**.
 The extension always posts `POST /api/v1/ingestions` with `kind: url`.
@@ -13,6 +14,8 @@ Reload the unpacked extension from this directory after pulling `main`.
 - **Tags**: Add comma-separated tags
 - **Dark mode**: Adapts to your system color scheme
 - **Status feedback**: Shows the returned `operation_id`
+- **Session sync**: One button each for Substack and X sends the browser's
+  session cookies to the API, which validates them and stores them in OpenBao
 
 ## Installation (Load Unpacked)
 
@@ -38,13 +41,18 @@ name with a Let's Encrypt certificate issued by `tailscale serve`:
   trailing slash). The machine running Chrome must be on the tailnet with
   Tailscale DNS enabled. Use the full name: the certificate is not valid for
   `gx-10`, the `100.x.y.z` address, or `http://`.
-- **Host permission**: `manifest.json` does not yet declare
-  `host_permissions`, so Chrome applies CORS to the extension's requests. Until
-  it does, add the extension's origin to the API's `ALLOWED_ORIGINS`, e.g.
-  `ALLOWED_ORIGINS=...,chrome-extension://<extension-id>` (the ID is shown on
-  `chrome://extensions`). The matching host permission for the tailnet API is
-  `"host_permissions": ["https://gx-10.<tailnet>.ts.net/*"]`; once the manifest
-  declares it, the `chrome-extension://` origin is no longer needed.
+- **Host permission**: the manifest declares
+  `"optional_host_permissions": ["https://*.ts.net/*"]`. When you click
+  **Save Settings** with an `https://….ts.net` API URL, Chrome asks to allow the
+  extension to access that host; allow it. The grant covers exactly your API
+  host, works for any tailnet name, and exempts the extension's requests from
+  CORS, so the API's `ALLOWED_ORIGINS` needs **no** `chrome-extension://` entry.
+  If you declined, save the settings again (or click a sync button) to be asked
+  again; you can review the grant under the extension's **Details → Site access**.
+- **Other API origins** (`http://localhost:8000`, a Railway URL) get no host
+  permission and stay CORS-checked as before: add
+  `chrome-extension://<extension-id>` (the ID shown on `chrome://extensions`) to
+  that API's `ALLOWED_ORIGINS`.
 
 Topology, ACLs, and verification: [docs/TAILNET.md](../docs/TAILNET.md).
 
@@ -76,6 +84,41 @@ not round-trip through the extension. Restoring client-supplied HTML requires
 a URL-major (`/api/v2`) or a new ingest `kind`. See
 [API consumers](../docs/API_CONSUMERS.md).
 
+## Sync sessions
+
+When a Substack or X session-expiry alert fires and you are at a browser that
+is logged in to that site, open the popup and click **Sync Substack session** or
+**Sync X session**. This replaces copying cookies out of DevTools; on the
+workstation, `aca auth session substack|x` remains the alternative.
+
+| Site | Cookies read | Endpoint | Body |
+|------|--------------|----------|------|
+| Substack | `substack.sid` from `https://substack.com` | `PUT /api/v1/browser-sessions/substack` | `{"substack_sid": "..."}` |
+| X | `auth_token` and `ct0` from `https://x.com` (both or nothing) | `PUT /api/v1/browser-sessions/x` | `{"auth_token": "...", "ct0": "..."}` |
+
+The request carries the configured API key as `X-Admin-Key` (required: the
+sync endpoint accepts nothing else). The API validates the session with the
+site, then writes it to OpenBao; see
+[docs/TAILNET.md](../docs/TAILNET.md#browser-session-sync-endpoint).
+
+Each site has its own status line:
+
+| Status line | Meaning / what to do |
+|-------------|----------------------|
+| Synced … (saved *time*) | Stored in OpenBao; *time* is the server's `saved_at` |
+| Not logged in to *site* in this browser | The cookies are missing; log in to the site in this Chrome profile. Nothing was sent |
+| No API key configured | Set the API key in Options. Nothing was read or sent |
+| Session sync needs an https:// API URL | Cookies are only sent over HTTPS (plain `http` only to `localhost`). Nothing was read or sent |
+| *site* refused this session: log in again (422 `session_invalid`) | The site rejected the cookies; log out and back in, then sync |
+| API key rejected (403) / API refused the request (401) | Fix the key in Options; the server needs `ADMIN_API_KEY` |
+| Too many sync attempts (429) | 10 syncs per 5 minutes; wait the time shown |
+| … could not be reached / OpenBao refused the write (502) | Temporary; retry later |
+| The server has no OpenBao configured (503) | The API needs `BAO_ADDR` and AppRole credentials; nothing was saved |
+| Could not reach the API | Wrong API URL, machine not on the tailnet, or host access not granted |
+
+Cookie values are never shown, logged, or written to extension storage; they
+exist only for the duration of the request.
+
 ## Permissions
 
 | Permission | Purpose |
@@ -83,6 +126,26 @@ a URL-major (`/api/v2`) or a new ingest `kind`. See
 | `activeTab` | Access the current tab's URL and title when you click the icon |
 | `scripting` | Capture selected text from the page |
 | `storage` | Persist API URL and key across sessions |
+| `cookies` | Read the session cookies for **Sync sessions** |
+| Host `https://substack.com/*`, `https://x.com/*` | The only sites whose cookies the extension can read |
+| Optional host `https://*.ts.net/*` | Requested at runtime for your tailnet API host only (exempts it from CORS) |
+
+After pulling version 1.1.0, click the reload icon on `chrome://extensions`;
+an unpacked extension receives the new `cookies` and host permissions on reload.
+The optional tailnet host is still asked for separately (see Configuration).
+
+## Tests
+
+The sync logic lives in `session_sync.js`, a module without DOM or `chrome.*`
+globals, so it runs under Node's built-in test runner (Node 20+, no install):
+
+```bash
+node --test 'extension/tests/*.test.js'   # from the repo root
+cd extension && npm test                  # same, from this directory
+```
+
+`package.json` only sets `"type": "module"` for Node; Chrome ignores it. CI runs
+these tests in the `frontend-release` job.
 
 ## Troubleshooting
 
@@ -93,4 +156,6 @@ a URL-major (`/api/v2`) or a new ingest `kind`. See
 | "Save failed" with 422 | Body must include `"kind": "url"`; do not send `source`, `excerpt`, or HTML |
 | Can't capture selected text | Some pages (chrome://, file://) restrict extension access |
 | Extension not visible | Click the puzzle piece icon in Chrome toolbar and pin the extension |
+| Sync says "Could not reach the API" on a tailnet URL | Save the settings again and allow access to the host, or check **Details → Site access** |
+| "Could not read … cookies" | Reload the unpacked extension and accept the `cookies` permission |
 | Empty content behind a paywall | Client-supplied HTML is retired; the server fetches the URL |

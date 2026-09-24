@@ -152,6 +152,51 @@
       color: var(--muted-color);
       margin-top: 2px;
     }
+
+    .sync-section {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid var(--input-border);
+    }
+
+    h2 {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .sync-hint {
+      font-size: 11px;
+      color: var(--muted-color);
+      margin-bottom: 8px;
+    }
+
+    .sync-row { margin-bottom: 8px; }
+
+    .sync-row button {
+      padding: 7px;
+      font-size: 13px;
+      color: var(--primary-color);
+      background-color: transparent;
+      border: 1px solid var(--primary-color);
+    }
+
+    .sync-row button:hover {
+      color: white;
+      background-color: var(--primary-color);
+    }
+
+    .sync-status {
+      font-size: 12px;
+      margin-top: 4px;
+      color: var(--muted-color);
+      overflow-wrap: anywhere;
+    }
+
+    .sync-status:empty { display: none; }
+    .sync-status.success { color: var(--success-color); }
+    .sync-status.error { color: var(--error-color); }
+    .sync-status.loading { color: var(--primary-color); }
   </style>
 </head>
 <body>
@@ -185,6 +230,21 @@
 
   <div id="status" class="status hidden"></div>
 
-  <script src="popup.js"></script>
+  <section id="sync-section" class="sync-section hidden" aria-labelledby="sync-heading">
+    <h2 id="sync-heading">Sync sessions</h2>
+    <p class="sync-hint">Send this browser's login to the server after a session-expiry alert.</p>
+
+    <div class="sync-row">
+      <button type="button" id="sync-substack" data-site="substack">Sync Substack session</button>
+      <div id="sync-status-substack" class="sync-status" role="status" aria-live="polite"></div>
+    </div>
+
+    <div class="sync-row">
+      <button type="button" id="sync-x" data-site="x">Sync X session</button>
+      <div id="sync-status-x" class="sync-status" role="status" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <script type="module" src="popup.js"></script>
 </body>
 </html>
