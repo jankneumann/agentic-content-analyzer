@@ -12,8 +12,10 @@ row each one becomes, and the envelope the durable workflow records.
   upstream failure) keeps what it read and saves where it stopped as the
   settings override ``x_bookmarks.backfill_cursor``. The next run first walks
   the head as above and, once caught up, resumes from that cursor with the
-  budget left, so older bookmarks are never stranded. Reaching the oldest
-  bookmark clears it; ``full=True`` ignores it and resets it.
+  budget left, so older bookmarks are never stranded. A post whose row failed
+  to store pins the cursor to the page it came from (the newest such page), so
+  the next run reads it again instead of stopping above it. Reaching the
+  oldest bookmark clears it; ``full=True`` ignores it and resets it.
 * **Fetch everything, then persist**: every page is read before the first row
   is written, so a missing or dead session (``credentials_missing`` /
   ``session_expired``, even on a later page) fails closed with zero rows and
@@ -409,6 +411,20 @@ class _Collected:
     posts: list[XPost] = field(default_factory=list)
     seen: set[str] = field(default_factory=set)
     known_skipped: int = 0
+    page_cursors: dict[str, str | None] = field(default_factory=dict, repr=False)
+    """The cursor that fetched each collected post's page (None: the newest page)."""
+
+    def retry_cursor(self, failed_post_ids: Sequence[str]) -> str | None:
+        """The newest page cursor holding a post that failed to store.
+
+        A failure on the newest page needs none: the next head walk reads that
+        page, and the unstored post keeps it from counting as caught up.
+        """
+        failed = set(failed_post_ids)
+        for post in self.posts:
+            if post.post_id in failed and self.page_cursors.get(post.post_id) is not None:
+                return self.page_cursors[post.post_id]
+        return None
 
 
 @dataclass
@@ -448,6 +464,7 @@ class _PersistResult:
     linked: int = 0
     skipped: int = 0
     errors: list[IngestionError] = field(default_factory=list)
+    failed_post_ids: list[str] = field(default_factory=list)
     written_posts: list[XPost] = field(default_factory=list)
     """Posts whose row this run inserted or rewrote, in walk order."""
     references_recorded: int = 0
@@ -550,7 +567,13 @@ class XBookmarksIngestionService:
             )
 
         persisted = self._persist(collected.posts, force_reprocess=force_reprocess)
-        backfill_pending = self._move_cursor(stored_cursor, head, backfill, full=full)
+        backfill_pending = self._move_cursor(
+            stored_cursor,
+            head,
+            backfill,
+            full=full,
+            retry_cursor=collected.retry_cursor(persisted.failed_post_ids),
+        )
         expansion = self._expand_links(persisted.written_posts, enabled=expand_links)
         return self._response(
             collected,
@@ -620,6 +643,7 @@ class XBookmarksIngestionService:
                             overflowed, overflow_cursor = True, request_cursor
                     else:
                         collected.posts.append(post)
+                        collected.page_cursors[post.post_id] = request_cursor
         except XBookmarksClientError as exc:
             logger.warning(
                 f"x_bookmarks.walk_failed ({log_error_type(exc)}) after "
@@ -670,6 +694,7 @@ class XBookmarksIngestionService:
         backfill: _Pass | None,
         *,
         full: bool,
+        retry_cursor: str | None = None,
     ) -> bool:
         """Save, advance, or clear the backfill cursor; True while a gap remains.
 
@@ -677,11 +702,17 @@ class XBookmarksIngestionService:
         from it walks down through everything older, so it replaces the saved
         cursor. Reaching the oldest bookmark clears it. A full walk that read
         at least one page resets it from its own outcome.
+
+        ``retry_cursor`` (the newest page holding a post that failed to store)
+        wins over all of these: it is newer than any gap this run left, and a
+        backfill from it re-reads that post and walks down through the rest.
         """
         if full and head.pages_fetched == 0:
             return stored is not None  # nothing was read: nothing to reset from
         target: str | None
-        if head.resume_cursor is not None:
+        if retry_cursor is not None:
+            target = retry_cursor
+        elif head.resume_cursor is not None:
             target = head.resume_cursor
         elif full or head.reached_end:
             target = None
@@ -735,6 +766,7 @@ class XBookmarksIngestionService:
                             url=data.source_url,
                         )
                     )
+                    result.failed_post_ids.append(post.post_id)
                     continue
                 if row is not None:
                     result.written_posts.append(post)

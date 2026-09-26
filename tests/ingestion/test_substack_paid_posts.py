@@ -364,21 +364,27 @@ def test_a_dead_session_on_a_post_body_fails_closed_without_the_value() -> None:
     _assert_no_cookie(response.model_dump_json(), _log_blob(records))
 
 
-def test_publication_host_move_is_followed_once_with_the_cookie() -> None:
-    moved = "https://www.paid-newsletter.com"
-
+def _host_move_client(
+    moved_host: str, entries: list[dict[str, Any]]
+) -> tuple[SubstackClient, _PaywalledSubstack]:
     def host_move(request: httpx.Request) -> httpx.Response | None:
         if request.url.host == "paid.substack.com":
-            target = request.url.copy_with(scheme="https", host="www.paid-newsletter.com")
+            target = request.url.copy_with(scheme="https", host=moved_host)
             return httpx.Response(301, headers={"location": str(target)})
         return None
 
-    substack = _PaywalledSubstack([_archive_entry(101)], override=host_move)
+    substack = _PaywalledSubstack(entries, override=host_move)
     client = SubstackClient(
         credentials=_FakeBao(GOOD_COOKIE).provider(),
         http_client=httpx.Client(transport=httpx.MockTransport(substack)),
         request_delay_s=0,
     )
+    return client, substack
+
+
+def test_publication_move_within_substack_is_followed_once_with_the_cookie() -> None:
+    moved = "https://renamed.substack.com"
+    client, substack = _host_move_client("renamed.substack.com", [_archive_entry(101)])
     try:
         posts = client.fetch_posts(PUBLICATION, max_entries=1)
     finally:
@@ -391,6 +397,57 @@ def test_publication_host_move_is_followed_once_with_the_cookie() -> None:
         (f"{moved}/api/v1/posts/post-101", GOOD_COOKIE),
     ]
     assert "PAID-ENDING-101" in posts[0]["body_html"]
+
+
+def test_publication_move_off_substack_is_followed_without_the_cookie() -> None:
+    # A publication redirect names a host nobody configured: it may be anyone's.
+    moved = "https://www.paid-newsletter.com"
+    client, substack = _host_move_client("www.paid-newsletter.com", [_archive_entry(101)])
+    with _captured_logs() as records:
+        try:
+            posts = client.fetch_posts(PUBLICATION, max_entries=1)
+        finally:
+            client.close()
+
+    assert substack.calls == [
+        (ARCHIVE_URL, GOOD_COOKIE),
+        (f"{moved}/api/v1/archive", None),
+        (f"{PUBLICATION}/api/v1/posts/post-101", GOOD_COOKIE),
+        (f"{moved}/api/v1/posts/post-101", None),
+    ]
+    assert "PAID-ENDING-101" not in posts[0]["body_html"]
+    assert "substack.publication_moved_off_substack" in _log_blob(records)
+    _assert_no_cookie(_log_blob(records))
+
+
+def test_configured_custom_domain_receives_the_cookie_and_nothing_else_does() -> None:
+    custom = "https://www.paid-newsletter.com"
+    seen: list[tuple[str, str | None]] = []
+
+    def record(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.host, _sid(request)))
+        return httpx.Response(200, json=[])
+
+    client = SubstackClient(
+        credentials=_FakeBao(GOOD_COOKIE).provider(),
+        http_client=httpx.Client(transport=httpx.MockTransport(record)),
+        request_delay_s=0,
+    )
+    try:
+        client.fetch_posts(custom, max_entries=1)
+        for url in ("https://substack.com/x", "https://a.substack.com/x", "https://evil.example/x"):
+            client._http.get(url)
+        client._http.get("https://notsubstack.com/x")
+    finally:
+        client.close()
+
+    assert seen == [
+        ("www.paid-newsletter.com", GOOD_COOKIE),
+        ("substack.com", GOOD_COOKIE),
+        ("a.substack.com", GOOD_COOKIE),
+        ("evil.example", None),
+        ("notsubstack.com", None),
+    ]
 
 
 def test_redirect_to_another_path_is_not_followed() -> None:

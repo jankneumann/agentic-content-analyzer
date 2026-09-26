@@ -407,6 +407,33 @@ def test_capped_runs_backfill_older_batches_until_the_oldest_clears_the_cursor(
     assert (timeline.cursors, fourth.items_ingested) == ([None], 0)
 
 
+def test_a_row_that_failed_to_store_pins_the_cursor_until_it_is_stored(
+    use_db, make_service, timeline
+) -> None:
+    real_persist_one = XBookmarksIngestionService._persist_one
+
+    def fail_102(db, data, rows, **kwargs):
+        if data.source_id == "xpost:102":
+            raise RuntimeError("boom")
+        return real_persist_one(db, data, rows, **kwargs)
+
+    with patch.object(XBookmarksIngestionService, "_persist_one", staticmethod(fail_102)):
+        first = make_service().ingest()
+    assert first.items_ingested == 4
+    assert [error.code for error in first.errors] == [PERSISTENCE_ERROR]
+    # 102 sits below the head page the next walk stops on: only the cursor
+    # brings the walk back to it.
+    assert cursor_store().get() == "after:104"
+    assert first.details["backfill_pending"] is True
+
+    rerun(timeline)
+    second = make_service().ingest()
+    assert timeline.cursors == [None, "after:104", "after:102"]
+    assert second.items_ingested == 1
+    assert "xpost:102" in {row.source_id for row in bookmark_rows(use_db)}
+    assert cursor_store().get() is None
+
+
 def test_new_bookmarks_are_read_before_the_backfill_resumes(use_db, make_service, timeline) -> None:
     make_service().ingest(max_items=2)
     timeline.bookmark("107", "106")

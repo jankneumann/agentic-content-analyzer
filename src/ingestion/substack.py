@@ -84,6 +84,15 @@ SESSION_PROBE_URL = "https://substack.com/api/v1/subscriptions"
 
 _LOGIN_PATHS = ("/sign-in", "/account/login")
 
+SUBSTACK_COOKIE_DOMAIN = ".substack.com"
+"""``substack.sid`` is scoped to Substack's own hosts, never sent host-less."""
+
+
+def is_substack_host(host: str) -> bool:
+    """True for ``substack.com`` and its subdomains."""
+    host = host.lower().rstrip(".")
+    return host == "substack.com" or host.endswith(SUBSTACK_COOKIE_DOMAIN)
+
 
 def is_dead_session_response(response: httpx.Response) -> bool:
     """True when a JSON API request that CARRIED ``substack.sid`` came back logged out.
@@ -220,6 +229,9 @@ class SubstackClient:
         self._credentials = credentials or get_credential_provider()
         self._http = http_client or httpx.Client(timeout=30, headers=_DEFAULT_HEADERS)
         self._applied_cookie: str | None = None
+        # Configured publications on a custom domain: the reader chose these
+        # hosts, so they receive the session too. Nothing else ever does.
+        self._session_hosts: set[str] = set()
         self._request_delay_s = (
             get_settings().substack_request_delay_s if request_delay_s is None else request_delay_s
         )
@@ -245,17 +257,30 @@ class SubstackClient:
         cookie = self.session_cookie
         if cookie != self._applied_cookie:
             rotated = self._applied_cookie is not None
-            # Drop every substack.sid, including one a response set, so the
-            # rotated credential is the only session the next request sends.
-            self._http.cookies.delete(SUBSTACK_SID_COOKIE)
-            if cookie:
-                self._http.cookies.set(SUBSTACK_SID_COOKIE, cookie)
+            self._apply_cookie(cookie)
             self._applied_cookie = cookie
             if rotated:
                 logger.info(
                     "substack.session_cookie_changed: using the current %s", SUBSTACK_SESSION_COOKIE
                 )
         return cookie
+
+    def _apply_cookie(self, cookie: str | None) -> None:
+        """Scope ``cookie`` to Substack and the configured publication hosts."""
+        # Drop every substack.sid, including one a response set, so the
+        # rotated credential is the only session the next request sends.
+        self._http.cookies.delete(SUBSTACK_SID_COOKIE)
+        if cookie:
+            for domain in (SUBSTACK_COOKIE_DOMAIN, *sorted(self._session_hosts)):
+                self._http.cookies.set(SUBSTACK_SID_COOKIE, cookie, domain=domain)
+
+    def trust_publication_host(self, publication_url: str) -> None:
+        """Let the session reach a configured publication's (custom-domain) host."""
+        host = httpx.URL(publication_url).host.lower()
+        if not host or is_substack_host(host) or host in self._session_hosts:
+            return
+        self._session_hosts.add(host)
+        self._apply_cookie(self._applied_cookie)
 
     def _uses_provider_cookie(self, cookie: str) -> bool:
         """True when ``cookie`` is the provider's current value (not an override)."""
@@ -465,6 +490,7 @@ class SubstackClient:
         reported by the caller; a dead session raises
         :class:`SessionExpiredError`.
         """
+        self.trust_publication_host(publication_url)
         posts: list[dict[str, Any]] = []
         for entry in self._fetch_archive(publication_url, max_entries)[:max_entries]:
             detail = self._fetch_post_detail(publication_url, entry.get("slug"))
@@ -483,17 +509,32 @@ class SubstackClient:
         A publication that moved hosts answers with a redirect to the same API
         path on its new host; that one redirect is followed (the client never
         follows redirects on its own, so a sign-in redirect is still judged
-        as a dead session). Any other redirect or error status raises
+        as a dead session). The session follows it only to a Substack host or
+        a configured publication host: a move to any other host is fetched
+        without ``substack.sid`` (free posts still arrive; paid ones stay
+        teasers until the source URL names the new host). Any other redirect
+        or error status raises
         ``httpx.HTTPStatusError``; an ambiguous 403 that the session probe
         does not confirm as dead raises :class:`PublicationAccessDeniedError`.
         """
         response = self._get_publication(url, params)
         if response.is_redirect:
             moved = _same_path_redirect(url, response)
-            if moved is not None:
+            if moved is not None and self._session_may_reach(moved):
                 response = self._get_publication(moved, params)
+            elif moved is not None:
+                logger.warning(
+                    "substack.publication_moved_off_substack: following to %s without the "
+                    "session; set the source url to that host to read paid posts",
+                    httpx.URL(moved).host,
+                )
+                response = self._http.get(moved, params=params)
         response.raise_for_status()
         return response.json()
+
+    def _session_may_reach(self, url: str) -> bool:
+        host = httpx.URL(url).host.lower()
+        return is_substack_host(host) or host in self._session_hosts
 
     def _get_publication(self, url: str, params: dict[str, Any] | None) -> httpx.Response:
         response = self._get_with_session(url, params=params, forbidden_is_ambiguous=True)
