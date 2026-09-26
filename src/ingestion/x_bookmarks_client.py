@@ -773,9 +773,11 @@ class BookmarkWalk:
         *,
         stop_when: Callable[[tuple[str, ...]], bool] | None,
         max_pages: int,
+        start_cursor: str | None = None,
     ) -> None:
         self._client = client
         self._stop_when = stop_when
+        self._start_cursor = start_cursor
         self.max_pages = max_pages
         self.stop_reason: WalkStopReason | None = None
         self.pages_fetched = 0
@@ -796,7 +798,7 @@ class BookmarkWalk:
         )
 
     def _pages(self) -> Iterator[BookmarksPage]:
-        cursor: str | None = None
+        cursor = self._start_cursor
         seen_cursors: set[str] = set()
         while True:
             if self.pages_fetched >= self.max_pages:
@@ -889,13 +891,16 @@ class XBookmarksClient:
         *,
         stop_when: Callable[[tuple[str, ...]], bool] | None = None,
         max_pages: int = DEFAULT_MAX_PAGES,
+        start_cursor: str | None = None,
     ) -> BookmarkWalk:
         """Walk the bookmarks newest-first, one :class:`BookmarksPage` at a time.
 
         ``stop_when`` receives each yielded page's post IDs after the caller
         has consumed the page; returning True ends the walk without fetching
         another page (an incremental sync stops once a whole page is known).
-        ``max_pages`` is a hard cap (at most 500).
+        ``max_pages`` is a hard cap (at most 500). ``start_cursor`` resumes a
+        walk from a ``cursor-bottom`` value an earlier walk saw (a backfill),
+        instead of from the newest bookmark.
 
         Raises :class:`CredentialsMissingError`, :class:`SessionExpiredError`,
         :class:`QueryIdDiscoveryError` or :class:`XBookmarksUpstreamError`
@@ -904,7 +909,9 @@ class XBookmarksClient:
         """
         if not 1 <= max_pages <= HARD_MAX_PAGES:
             raise ValueError(f"max_pages must be between 1 and {HARD_MAX_PAGES}")
-        return BookmarkWalk(self, stop_when=stop_when, max_pages=max_pages)
+        return BookmarkWalk(
+            self, stop_when=stop_when, max_pages=max_pages, start_cursor=start_cursor or None
+        )
 
     def discover_query_id(self) -> str:
         """Scrape X's web bundles for the current Bookmarks query ID.

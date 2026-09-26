@@ -154,6 +154,12 @@ WorkflowAlertDiagnosticCode = (
         # would alert as a bare `operation_failed` that names nothing to do.
         "credentials_missing",
         "session_expired",
+        # A walk X cut short (X bookmarks): the posts read were kept and a
+        # saved cursor resumes the rest. Fixed literals from
+        # src/ingestion/x_bookmarks.py, admitted by the result sanitizer too.
+        "item_cap_reached",
+        "page_cap_reached",
+        "rate_limited",
     ]
 )
 #: Codes an operator clears by re-capturing a browser session. An envelope may

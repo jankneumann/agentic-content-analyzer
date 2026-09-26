@@ -616,5 +616,56 @@
         "Alert text could also mention the extension's Sync X session button"
       ]
     }
+  },
+  "ri-12": {
+    "change_id": "ingest-x-bookmarks-incrementally-as-content-rows",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Fetch then persist",
+          "outcome": "XBookmarksIngestionService walks every page before writing; credential failure on any page gives zero rows and the session code with command_key x_bookmarks"
+        },
+        {
+          "title": "Backfill cursor",
+          "outcome": "a partial walk stores x_bookmarks.backfill_cursor in settings_overrides; each run walks the head with stop_when, then resumes the backfill with remaining budget; exhausted clears it; full ignores and resets it"
+        },
+        {
+          "title": "Cross-source dedup",
+          "outcome": "an existing Grok search row with the same xpost id is flagged bookmarked instead of duplicated; xsearch force_reprocess no longer inserts next to a bookmark row"
+        },
+        {
+          "title": "Shared renderer",
+          "outcome": "xsearch thread markdown and metadata builders are shared; Grok search output unchanged; optional Quoted Post section"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "call on_content_ingested reference hook",
+          "actual": "removed after host review",
+          "reason": "no other adapter uses it and it enqueued a legacy job via asyncio.run in the worker"
+        },
+        {
+          "from_plan": "no resume after a capped run",
+          "actual": "durable backfill cursor added after host review",
+          "reason": "older bookmarks were stranded after the first capped run"
+        },
+        {
+          "from_plan": "implementer run",
+          "actual": "container restart cut off the rework report; host verified all four fixes and ran the full validation",
+          "reason": "environment restart"
+        }
+      ],
+      "recommendations": [
+        "ri-13: hook in at XBookmarksIngestionService._expand_links with the written posts only; record content_references explicitly and submit url operations through OperationService",
+        "ri-17: document aca sources enable x_bookmarks:account, the backfill cursor, --full, and scheduling aca ingest x-bookmarks separately for a quiet hour",
+        "Nothing exercised against live x.com"
+      ]
+    }
   }
 }

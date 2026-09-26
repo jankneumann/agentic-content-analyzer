@@ -26,8 +26,9 @@ defaults:
 sources:
   - type: x_bookmarks
     name: x-bookmarks
-    # Bookmarks read per run, newest first. The incremental sync stops early at
-    # the first page it already knows, so this only bounds a first or --full run.
+    # Bookmarks written per run, newest first. The incremental sync stops early
+    # at the first page it already knows; a run this cap cuts short saves where
+    # it stopped, and later runs backfill older bookmarks with the budget left.
     max_entries: 100
     # Also ingest each bookmarked post's outbound article link as its own `url`
     # content. The post row and its link reference are kept either way.

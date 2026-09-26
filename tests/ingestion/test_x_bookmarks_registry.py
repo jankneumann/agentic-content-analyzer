@@ -1,8 +1,8 @@
 """Registry, configuration, and readiness of the ``x_bookmarks`` source.
 
-Network-free. The adapter is not shipped yet, so these tests pin the registry
-layer: the source config, the scheduled planner, the credential-gated
-readiness, the fail-closed orchestrator entry, and the live-tier policy.
+Network-free. These tests pin the registry layer: the source config, the
+scheduled planner, the credential-gated readiness, and the live-tier policy.
+The adapter and its durable path are covered in test_x_bookmarks_ingestion.py.
 No test uses or prints a real cookie.
 """
 
@@ -31,11 +31,7 @@ from src.ingestion.commands import XBookmarksIngestCommand
 from src.ingestion.credential_failures import CREDENTIALS_MISSING, SESSION_EXPIRED
 from src.ingestion.real_ingest_policy import LiveDecision, evaluate_live_adapter
 from src.ingestion.registry import SOURCE_REGISTRY
-from src.ingestion.result_sanitizer import sanitize_ingestion_metadata
-from src.ingestion.service import IngestionService
 from src.models.content import ContentSource
-from src.models.jobs import OperationType
-from src.queue.workflow_handlers import WorkflowExecutionError, build_workflow_handler_registry
 from src.services.capability_service import CapabilityService
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -287,67 +283,6 @@ def test_configured_source_listing_is_value_free(install_provider) -> None:
     serialized = page.model_dump_json()
     assert AUTH_TOKEN_VALUE not in serialized
     assert "x-bookmarks" not in serialized
-
-
-# -- orchestrator: fails closed until the adapter ships ------------------------
-
-
-def test_orchestrator_fails_closed_with_a_stable_code() -> None:
-    from src.ingestion.orchestrator import ingest_x_bookmarks
-
-    with (
-        patch("src.ingestion.filter_hook.apply_filter_to_recent"),
-        patch("httpx.Client.send", side_effect=AssertionError("network")),
-    ):
-        response = ingest_x_bookmarks(max_items=3, full=True, expand_links=True)
-
-    assert response.command == "ingest.x-bookmarks"
-    assert response.source == "x_bookmarks"
-    assert response.status == "error"
-    assert (response.items_ingested, response.items_failed) == (0, 0)
-    assert [error.code for error in response.errors] == ["source_unavailable"]
-    projection = sanitize_ingestion_metadata(errors=[e.model_dump() for e in response.errors])
-    assert projection["errors"][0]["code"] == "source_unavailable"
-
-
-@pytest.mark.asyncio
-async def test_durable_operation_records_the_failure_and_persists_nothing() -> None:
-    attached: list[dict] = []
-
-    class _Operations:
-        async def attach_result(self, _operation_id: int, result: dict) -> None:
-            attached.append(result)
-
-        async def update_progress(self, *_args: object) -> None:
-            return None
-
-        async def checkpoint_cancellation(self, *_args: object, **_kwargs: object) -> None:
-            return None
-
-    registry = build_workflow_handler_registry(
-        operation_service=_Operations(),
-        ingestion_service=IngestionService(configured_source_key_secret=SECRET),
-    )
-    payload = {
-        "kind": "x_bookmarks",
-        "max_items": 2,
-        "configured_sources": [SOURCE.model_dump(mode="json")],
-    }
-
-    with (
-        patch("src.ingestion.filter_hook.apply_filter_to_recent"),
-        pytest.raises(WorkflowExecutionError, match="Ingestion 'x_bookmarks' failed"),
-    ):
-        await registry.dispatch(OperationType.INGESTION_EXECUTE, 41, payload)
-
-    (result,) = attached
-    assert result["command_key"] == "x_bookmarks"
-    assert result["emitted_sources"] == ["x_bookmarks"]
-    assert (result["status"], result["outcome"]) == ("error", "failed")
-    assert (result["items_ingested"], result["content_ids"]) == (0, [])
-    assert result["errors"] == [
-        {"code": "source_unavailable", "message": "The configured source is unavailable"}
-    ]
 
 
 # -- live-tier policy ------------------------------------------------------------

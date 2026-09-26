@@ -897,6 +897,24 @@ def test_every_credential_failure_code_is_an_alert_code_everywhere() -> None:
         assert code in SAFE_INGESTION_DIAGNOSTIC_CODES
 
 
+def test_every_x_bookmarks_walk_code_is_an_alert_code_everywhere() -> None:
+    from pydantic import TypeAdapter
+
+    from src.contracts.workflow_alert_models import WorkflowAlertDiagnosticCode
+    from src.ingestion.result_sanitizer import SAFE_INGESTION_DIAGNOSTIC_CODES
+    from src.ingestion.x_bookmarks import ITEM_CAP_REACHED, PAGE_CAP_REACHED, RATE_LIMITED
+
+    schema_codes = set(
+        _load_schema("workflow-alert-envelope.schema.json")["properties"]["codes"]["items"]["enum"]
+    )
+    adapter = TypeAdapter(WorkflowAlertDiagnosticCode)
+
+    for code in (ITEM_CAP_REACHED, PAGE_CAP_REACHED, RATE_LIMITED):
+        adapter.validate_python(code)
+        assert code in schema_codes
+        assert code in SAFE_INGESTION_DIAGNOSTIC_CODES
+
+
 def test_remediation_commands_match_the_one_refresh_table() -> None:
     from typing import get_args
 

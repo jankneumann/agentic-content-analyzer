@@ -387,6 +387,19 @@ def test_two_page_cursor_walk(make_client, fake_x, sleeps) -> None:
     assert sleeps == [1.0, 1.0]  # the pause between pages, never before the first
 
 
+def test_a_walk_resumes_from_a_start_cursor(make_client, fake_x) -> None:
+    fake_x.graphql.extend([page(post("1"), cursor="CURSOR-C"), page()])
+
+    walk = make_client().iter_pages(start_cursor="CURSOR-B")
+    pages = list(walk)
+
+    assert [p.post_ids for p in pages] == [("1",)]
+    assert [p.number for p in pages] == [1]
+    assert walk.stop_reason is WalkStopReason.EXHAUSTED
+    sent = [variables_of(r) for r in fake_x.graphql_requests()]
+    assert [v.get("cursor") for v in sent] == ["CURSOR-B", "CURSOR-C"]
+
+
 def test_graphql_requests_carry_the_web_session_headers(make_client, fake_x) -> None:
     fake_x.graphql.append(page(post("1")))
 

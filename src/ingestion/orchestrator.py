@@ -20,7 +20,7 @@ globally disabled, and adapters don't need to know about it.
 
 Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity,
 url, files, scholar, arxiv, huggingface_papers, readwise, obsidian_vault,
-x_bookmarks (registered; fails closed until its adapter ships)
+x_bookmarks
 
 """
 
@@ -1682,11 +1682,6 @@ def ingest_obsidian_vault(
     )
 
 
-X_BOOKMARKS_UNAVAILABLE_MESSAGE = (
-    "The X bookmarks adapter is not available yet; nothing was fetched"
-)
-
-
 @observe()
 def ingest_x_bookmarks(
     *,
@@ -1695,24 +1690,80 @@ def ingest_x_bookmarks(
     expand_links: bool | None = None,
     force_reprocess: bool = False,
 ) -> IngestionResponse:
-    """Sync the operator's X bookmarks (registered; adapter not yet shipped).
+    """Sync the operator's X bookmarks incrementally into Content rows.
 
-    The source is registered so every transport lists it and the scheduler can
-    plan it, but the fetch adapter lands separately. Until then every run fails
-    closed: zero rows, no network call, and one ``source_unavailable`` error the
-    durable operation records as a failed ingestion. The ``auth_token``/``ct0``
-    session is resolved by the adapter through the credential provider and is
-    never accepted as an argument here, because ``@observe()`` records inputs.
+    Walks the bookmarks newest-first and stops at the first page it already
+    knows (``full`` walks every page), reads every page before writing, and
+    fails closed with zero rows and ``credentials_missing``/``session_expired``
+    when the X session is unusable. ``max_items`` caps the rows written and
+    defaults to the source's ``max_entries``; ``expand_links=None`` defers to the
+    source's ``expand_links``. The ``auth_token``/``ct0`` session is resolved by
+    the client through the credential provider and is never accepted as an
+    argument here, because ``@observe()`` records inputs.
+
+    Returns:
+        Canonical IngestionResponse envelope with one ``source_outcomes`` entry
+        for the configured source, so the durable result never counts it as
+        omitted.
     """
-    from src.ingestion.result import IngestionError, IngestionResponse
+    from src.config.sources import load_sources_config
+    from src.ingestion.result import ConfiguredSourceResult, public_source_key_for
+    from src.ingestion.x_bookmarks import XBookmarksIngestionService
 
-    del max_items, full, expand_links, force_reprocess  # consumed by the adapter
-    logger.warning("x_bookmarks ingestion requested before its adapter is available")
-    return IngestionResponse(
-        command="ingest.x-bookmarks",
-        source="x_bookmarks",
-        status="error",
-        errors=[IngestionError(code="source_unavailable", message=X_BOOKMARKS_UNAVAILABLE_MESSAGE)],
+    source = None
+    try:
+        sources = load_sources_config().get_x_bookmarks_sources()
+        source = sources[0] if sources else None
+    except Exception:
+        logger.debug("Could not load x_bookmarks sources config, using defaults")
+    if expand_links is None:
+        expand_links = source.expand_links if source is not None else False
+    if max_items is None and source is not None:
+        max_items = source.max_entries
+
+    response = XBookmarksIngestionService().ingest(
+        max_items=max_items,
+        full=full,
+        expand_links=expand_links,
+        force_reprocess=force_reprocess,
+    )
+    if source is None:
+        return response
+
+    source_public_key = public_source_key_for(source)
+    if source_public_key is None:
+        from src.config.settings import get_settings
+        from src.config.sources import configured_source_public_key
+
+        try:
+            source_public_key = configured_source_public_key(
+                source,
+                secret=get_settings().get_configured_source_key_secret(),
+            )
+        except (RuntimeError, ValueError):
+            logger.warning("x_bookmarks: no configured-source key secret; outcome not reported")
+            return response
+    return response.model_copy(
+        update={
+            "source_outcomes": [
+                ConfiguredSourceResult(
+                    source_key=source_public_key,
+                    status=response.status,
+                    items_ingested=response.items_ingested,
+                    items_failed=response.items_failed,
+                    errors=[
+                        {"code": error.code, "message": error.message[:500]}
+                        for error in response.errors[:20]
+                    ],
+                    errors_omitted=max(0, len(response.errors) - 20),
+                    warnings=[
+                        {"code": warning.code, "message": warning.message[:500]}
+                        for warning in response.warnings[:20]
+                    ],
+                    warnings_omitted=max(0, len(response.warnings) - 20),
+                )
+            ]
+        }
     )
 
 
