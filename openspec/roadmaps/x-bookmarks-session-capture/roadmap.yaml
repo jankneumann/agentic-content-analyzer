@@ -8,7 +8,7 @@ policy:
 items:
 - item_id: ri-01
   title: Establish tailnet exposure baseline for gx-10 services
-  status: approved
+  status: completed
   priority: 3
   effort: M
   depends_on: []
@@ -57,7 +57,7 @@ items:
     and X_CT0.
 - item_id: ri-03
   title: Ship workstation and worker AppRole policies
-  status: approved
+  status: completed
   priority: 4
   effort: S
   depends_on: []
@@ -76,8 +76,8 @@ items:
   - The seed script is idempotent and re-running it leaves both policies unchanged.
 - item_id: ri-04
   title: Introduce live credential provider for rotating secrets
-  status: approved
-  priority: 2
+  status: completed
+  priority: 1
   effort: M
   depends_on:
   - ri-02
@@ -98,9 +98,11 @@ items:
   - The provider exposes saved_at and last_verified_at for the substack.sid, x.auth_token,
     and x.ct0 credentials.
   - No credential value appears in log output in any provider test.
+  learning_refs:
+  - ri-02
 - item_id: ri-05
   title: Detect Substack session expiry and fail readiness closed
-  status: approved
+  status: completed
   priority: 2
   effort: M
   depends_on:
@@ -123,6 +125,11 @@ items:
     value in its message or payload.
 - item_id: ri-18
   title: Authenticate Substack post fetches with the session cookie
+  status: approved
+  priority: 8
+  effort: M
+  depends_on:
+  - ri-05
   description: Send the live substack.sid on the requests that fetch Substack post
     bodies (the substack_api Newsletter/Post path, or an httpx replacement), so paid
     posts are ingested in full. Once authenticated, make a Substack run without a
@@ -130,9 +137,7 @@ items:
     would otherwise keep forever.
   rationale: Paid Substack access is why the session cookie exists; today the post
     path never sends it, so capture and rotation have no effect on content.
-  effort: M
-  depends_on:
-  - ri-05
+  change_id: authenticate-substack-post-fetches-with-the-session-cookie
   acceptance_outcomes:
   - A mocked paid post that returns a truncated body without substack.sid and the
     full body with it is ingested in full when the cookie is configured.
@@ -142,9 +147,6 @@ items:
     credentials_missing.
   - A previously ingested teaser row for a paid post is updated to the full body on
     the next authenticated run.
-  status: approved
-  priority: 8
-  change_id: authenticate-substack-post-fetches-with-the-session-cookie
 - item_id: ri-06
   title: Add browser-session rows to aca auth status
   status: approved
@@ -209,7 +211,7 @@ items:
     command.
 - item_id: ri-09
   title: Add x_bookmarks to the workflow contract and ContentSource enum
-  status: approved
+  status: completed
   priority: 1
   effort: M
   depends_on: []
@@ -228,7 +230,7 @@ items:
   - Contract tests accept ingest.x-bookmarks and x_bookmarks as valid literals.
 - item_id: ri-10
   title: Register the x_bookmarks source descriptor and config
-  status: approved
+  status: completed
   priority: 2
   effort: M
   depends_on:
@@ -253,7 +255,7 @@ items:
     max_entries default.
 - item_id: ri-11
   title: Implement X GraphQL client with query ID discovery and ct0 write-back
-  status: approved
+  status: completed
   priority: 1
   effort: M
   depends_on:
@@ -279,7 +281,7 @@ items:
   - No cookie or bearer value appears in logs or test output.
 - item_id: ri-12
   title: Ingest X bookmarks incrementally as Content rows
-  status: approved
+  status: completed
   priority: 1
   effort: M
   depends_on:
@@ -410,7 +412,7 @@ items:
     for X content.
   - docs/GOTCHAS.md contains entries for frozen settings versus the live provider
     and for KV v2 create_or_update clobbering sibling keys.
-updated_at: '2026-09-23T03:22:12.642633+00:00'
+updated_at: '2026-09-26T09:48:56.034847+00:00'
 refinements:
 - timestamp: '2026-09-23T03:22:12.642633+00:00'
   actor: claude-autopilot-roadmap (host agent)
