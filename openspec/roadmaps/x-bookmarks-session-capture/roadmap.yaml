@@ -125,7 +125,7 @@ items:
     value in its message or payload.
 - item_id: ri-18
   title: Authenticate Substack post fetches with the session cookie
-  status: approved
+  status: completed
   priority: 8
   effort: M
   depends_on:
@@ -149,7 +149,7 @@ items:
     the next authenticated run.
 - item_id: ri-06
   title: Add browser-session rows to aca auth status
-  status: approved
+  status: completed
   priority: 5
   effort: S
   depends_on:
@@ -167,7 +167,7 @@ items:
   - No cookie value appears in either output mode.
 - item_id: ri-07
   title: Exclude browser profile directory from backup and sync
-  status: approved
+  status: completed
   priority: 6
   effort: S
   depends_on: []
@@ -183,7 +183,7 @@ items:
   - docs/BACKUP_RESTORE.md lists ~/.aca/browser-profiles/ as an excluded path.
 - item_id: ri-08
   title: Add aca auth session capture command
-  status: approved
+  status: completed
   priority: 3
   effort: L
   depends_on:
@@ -307,7 +307,7 @@ items:
     any other adapter.
 - item_id: ri-13
   title: Expand linked articles from bookmarked posts
-  status: approved
+  status: completed
   priority: 4
   effort: S
   depends_on:
@@ -328,7 +328,7 @@ items:
   - Media-only and self-referential x.com URLs never produce a url operation.
 - item_id: ri-14
   title: Add admin endpoint for browser-session sync
-  status: approved
+  status: completed
   priority: 6
   effort: M
   depends_on:
@@ -349,8 +349,8 @@ items:
   - No cookie value appears in logs, audit rows, or error responses.
 - item_id: ri-15
   title: Add Sync session button to the Chrome extension
-  status: approved
-  priority: 7
+  status: completed
+  priority: 1
   effort: S
   depends_on:
   - ri-14
@@ -366,10 +366,12 @@ items:
   - Clicking Sync session posts the three cookies to the endpoint with the admin key
     header and shows success or the endpoint error without displaying cookie values.
   - The extension README documents the tailnet API URL and the sync action.
+  learning_refs:
+  - ri-01
 - item_id: ri-16
   title: Classify session_expired in the terminal-event outbox
-  status: approved
-  priority: 5
+  status: completed
+  priority: 3
   effort: S
   depends_on:
   - ri-05
@@ -387,10 +389,12 @@ items:
     no cookie value, proven with the real emitter rather than a stubbed telemetry_emitter.
   - Before the outbox lands, the scheduled real-ingestion evidence artifact records
     the session_expired code for the affected source.
+  learning_refs:
+  - ri-05
 - item_id: ri-17
   title: Document X bookmarks and the credential lifecycle
-  status: approved
-  priority: 7
+  status: completed
+  priority: 1
   effort: M
   depends_on:
   - ri-06
@@ -412,7 +416,11 @@ items:
     for X content.
   - docs/GOTCHAS.md contains entries for frozen settings versus the live provider
     and for KV v2 create_or_update clobbering sibling keys.
-updated_at: '2026-09-26T09:48:56.034847+00:00'
+  learning_refs:
+  - ri-05
+  - ri-10
+  - ri-12
+updated_at: '2026-09-26T11:07:33.721179+00:00'
 refinements:
 - timestamp: '2026-09-23T03:22:12.642633+00:00'
   actor: claude-autopilot-roadmap (host agent)
