@@ -69,7 +69,10 @@ def _resolve_source_config(key: str) -> dict[str, Any] | None:
     that has no override row yet, so a self-describing shadow row can be created.
     """
     from src.config import settings
-    from src.config.sources import configured_source_public_key, source_key as derive_source_key
+    from src.config.sources import (
+        configured_source_public_key,
+        source_key as derive_source_key,
+    )
 
     config = settings.get_sources_config()
     for source in config.sources:
@@ -126,7 +129,9 @@ async def delete_source(key: SourceKey) -> dict:
 
 
 @router.patch(
-    "/{key:path}", response_model=SourceMutationResult, dependencies=[Depends(verify_admin_key)]
+    "/{key:path}",
+    response_model=SourceMutationResult,
+    dependencies=[Depends(verify_admin_key)],
 )
 async def set_source_enabled(key: SourceKey, request: SourceEnabledRequest) -> SourceMutationResult:
     """Enable or disable a source.

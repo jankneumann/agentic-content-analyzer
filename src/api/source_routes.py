@@ -38,7 +38,8 @@ class SourceInfo(BaseModel):
     tags: list[str] = Field(default_factory=list, description="Tags for categorizing the source")
     origin: str = Field(default="yaml", description="Where the source came from: 'yaml' or 'db'")
     source_key: str | None = Field(
-        default=None, description="Natural key '<type>:<locator>' identifying the source"
+        default=None,
+        description="Public management key: ordinary natural key or opaque Obsidian key",
     )
 
 

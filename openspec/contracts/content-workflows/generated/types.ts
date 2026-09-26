@@ -1,5 +1,5 @@
 // Generated from contracts/openapi/v1.yaml; do not edit.
-export const CONTRACT_SHA256 = "3cada528dae35553c2e438b966183ce8c98bb0244c83ca11c450a270d146e532" as const;
+export const CONTRACT_SHA256 = "0a3347353feb19918a8c8c634a9dc6348f63e27cee96bb4a3cedd19d8f871845" as const;
 
 export type OperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 export type OperationType = "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
@@ -13,6 +13,31 @@ export type ContentReconciliationOperationStatus = "queued" | "in_progress" | "c
 export type ContentReconciliationPhase = "parsing" | "processing";
 export type ContentReconciliationAction = "none" | "retry_operation" | "project_completed" | "project_parsed" | "restore_parsed" | "restore_pending" | "cancel_restore_parsed" | "cancel_restore_pending";
 export type ContentReconciliationReason = "summary_exists" | "extraction_completed" | "completed_output_missing" | "output_owner_mismatch" | "active_operation" | "cancellation_pending" | "execution_locked" | "cancellation_requested" | "stale_operation" | "failed_operation" | "retry_budget_exhausted" | "forced_reprocessing" | "summarization_cancelled" | "extraction_cancelled" | "missing_operation" | "ownership_conflict" | "incompatible_worker" | "revalidation_conflict" | "apply_failed";
+export type SourceManagementType = "blog" | "rss" | "substack" | "podcast" | "youtube_playlist" | "youtube_channel" | "youtube_rss" | "gmail" | "scholar" | "arxiv" | "huggingface_papers" | "websearch" | "readwise" | "obsidian_vault";
+export type PublicSourceKey = string;
+
+export interface LegacyDetailError {
+  detail: string;
+}
+
+export interface LegacyAuthError {
+  error: string;
+  detail: string;
+  trace_id?: string | null;
+}
+
+export interface LegacyValidationErrorBody {
+  detail: Array<LegacyValidationErrorItem>;
+}
+
+export interface LegacyValidationErrorItem {
+  [key: string]: unknown;
+  type: string;
+  loc: Array<string | number>;
+  msg: string;
+  input?: unknown;
+  ctx?: Record<string, unknown>;
+}
 
 export interface Problem {
   type: string;
@@ -329,6 +354,219 @@ export interface CapabilityDocument {
   next_cursor?: string | null;
 }
 
+export interface SourceConfigBase {
+  [key: string]: unknown;
+  name?: string | null;
+  tags?: Array<string>;
+  enabled?: boolean;
+  max_entries?: number | null;
+  content_filter_strategy?: string | null;
+  content_filter_topics?: Array<string> | null;
+  content_filter_excerpt_chars?: number | null;
+}
+
+export interface BlogSourceOverrideConfig extends SourceConfigBase {
+  type: "blog";
+  url: string;
+  link_selector?: string | null;
+  link_pattern?: string | null;
+  request_delay?: number;
+  rss_url?: string | null;
+}
+
+export interface RSSSourceOverrideConfig extends SourceConfigBase {
+  type: "rss";
+  url: string;
+}
+
+export interface SubstackSourceOverrideConfig extends SourceConfigBase {
+  type: "substack";
+  url: string;
+}
+
+export interface PodcastSourceOverrideConfig extends SourceConfigBase {
+  type: "podcast";
+  url: string;
+  transcribe?: boolean;
+  stt_provider?: "openai" | "local_whisper";
+  languages?: Array<string>;
+}
+
+export interface YouTubeSourceConfigBase {
+  [key: string]: unknown;
+  min_duration_seconds?: number | null;
+  max_duration_seconds?: number | null;
+  long_video_threshold_seconds?: number;
+  long_video_strategy?: "grounding" | "segments";
+  video_fps?: number | null;
+  segment_overlap_seconds?: number;
+  unknown_duration_strategy?: "short" | "grounding" | "segments" | "skip";
+}
+
+export interface YouTubePlaylistSourceOverrideConfig extends SourceConfigBase {
+  type: "youtube_playlist";
+  id: string;
+  visibility?: "public" | "private";
+  min_duration_seconds?: number | null;
+  max_duration_seconds?: number | null;
+  long_video_threshold_seconds?: number;
+  long_video_strategy?: "grounding" | "segments";
+  video_fps?: number | null;
+  segment_overlap_seconds?: number;
+  unknown_duration_strategy?: "short" | "grounding" | "segments" | "skip";
+  hint_terms?: Array<string>;
+  proofread?: boolean;
+  gemini_summary?: boolean;
+  gemini_resolution?: string;
+}
+
+export interface YouTubeChannelSourceOverrideConfig extends SourceConfigBase {
+  type: "youtube_channel";
+  channel_id: string;
+  visibility?: "public" | "private";
+  min_duration_seconds?: number | null;
+  max_duration_seconds?: number | null;
+  long_video_threshold_seconds?: number;
+  long_video_strategy?: "grounding" | "segments";
+  video_fps?: number | null;
+  segment_overlap_seconds?: number;
+  unknown_duration_strategy?: "short" | "grounding" | "segments" | "skip";
+  languages?: Array<string>;
+  hint_terms?: Array<string>;
+  proofread?: boolean;
+  gemini_summary?: boolean;
+  gemini_resolution?: string;
+}
+
+export interface YouTubeRSSSourceOverrideConfig extends SourceConfigBase {
+  type: "youtube_rss";
+  url: string;
+  min_duration_seconds?: number | null;
+  max_duration_seconds?: number | null;
+  long_video_threshold_seconds?: number;
+  long_video_strategy?: "grounding" | "segments";
+  video_fps?: number | null;
+  segment_overlap_seconds?: number;
+  unknown_duration_strategy?: "short" | "grounding" | "segments" | "skip";
+  gemini_summary?: boolean;
+  gemini_resolution?: string;
+}
+
+export interface GmailSourceOverrideConfig extends SourceConfigBase {
+  type: "gmail";
+  query?: string;
+  max_results?: number;
+}
+
+export interface ScholarSourceOverrideConfig extends SourceConfigBase {
+  type: "scholar";
+  query: string;
+  fields_of_study?: Array<string>;
+  paper_types?: Array<string>;
+  min_citation_count?: number;
+  year_range?: string;
+  venues?: Array<string>;
+}
+
+export interface ArxivSourceOverrideConfig extends SourceConfigBase {
+  type: "arxiv";
+  categories?: Array<string>;
+  search_query?: string | null;
+  sort_by?: "relevance" | "lastUpdatedDate" | "submittedDate";
+  pdf_extraction?: boolean;
+  max_pdf_pages?: number;
+}
+
+export interface HuggingFacePapersSourceOverrideConfig extends SourceConfigBase {
+  type: "huggingface_papers";
+  url?: string;
+  request_delay?: number;
+}
+
+export interface WebSearchSourceOverrideConfig extends SourceConfigBase {
+  type: "websearch";
+  provider: "perplexity" | "grok";
+  prompt: string;
+  max_results?: number | null;
+  max_threads?: number | null;
+  recency_filter?: string | null;
+  context_size?: string | null;
+  domain_filter?: Array<string> | null;
+}
+
+export interface ReadwiseSourceOverrideConfig extends SourceConfigBase {
+  type: "readwise";
+  source_types?: Array<string>;
+  include_deleted?: boolean;
+}
+
+export interface ObsidianVaultSourceOverrideConfig {
+  type: "obsidian_vault";
+  name?: string | null;
+  tags?: Array<string>;
+  enabled?: boolean;
+  content_filter_strategy?: string | null;
+  content_filter_topics?: Array<string> | null;
+  content_filter_excerpt_chars?: number | null;
+  origin?: "yaml" | "db";
+  vault_id: string;
+  vault_path: string;
+  ingest_folder?: string;
+  max_files?: number;
+  max_entries?: number;
+  max_total_bytes?: number;
+  max_depth?: number;
+  max_duration_seconds?: number;
+  max_note_bytes?: number;
+  settle_seconds?: number;
+  max_concurrency?: number;
+  max_frontmatter_bytes?: number;
+  max_yaml_nodes?: number;
+  max_yaml_depth?: number;
+  max_yaml_aliases?: number;
+  max_yaml_string_chars?: number;
+}
+
+export interface SourceUpsertRequest {
+  [key: string]: unknown;
+  config: SourceOverrideConfig;
+  description?: string | null;
+}
+
+export interface SourceEnabledRequest {
+  [key: string]: unknown;
+  enabled: boolean;
+}
+
+export interface SourceInfo {
+  type: SourceManagementType;
+  name: string | null;
+  url: string;
+  enabled: boolean;
+  tags: Array<string>;
+  origin: "yaml" | "db";
+  source_key: PublicSourceKey | null;
+}
+
+export interface SourcesOverview {
+  sources: Array<SourceInfo>;
+  counts: Record<string, number>;
+  total_sources: number;
+  enabled_sources: number;
+}
+
+export interface SourceMutationResult {
+  source_key: PublicSourceKey;
+  version: number;
+  origin: "db";
+  enabled: boolean;
+}
+
+export interface SourceDeleteResult {
+  source_key: PublicSourceKey;
+  deleted: boolean;
+}
+
 export interface ConfiguredSource {
   key: string;
   command_key: string;
@@ -578,5 +816,7 @@ export interface AudioDigestRequest {
 }
 
 export type IngestionResult = IngestionResultV1 | IngestionResultV2;
+
+export type SourceOverrideConfig = BlogSourceOverrideConfig | RSSSourceOverrideConfig | SubstackSourceOverrideConfig | PodcastSourceOverrideConfig | YouTubePlaylistSourceOverrideConfig | YouTubeChannelSourceOverrideConfig | YouTubeRSSSourceOverrideConfig | GmailSourceOverrideConfig | ScholarSourceOverrideConfig | ArxivSourceOverrideConfig | HuggingFacePapersSourceOverrideConfig | WebSearchSourceOverrideConfig | ReadwiseSourceOverrideConfig | ObsidianVaultSourceOverrideConfig;
 
 export type IngestCommand = GmailIngestCommand | RssIngestCommand | BlogIngestCommand | SubstackIngestCommand | YouTubePlaylistIngestCommand | YouTubeRssIngestCommand | PodcastIngestCommand | XSearchIngestCommand | PerplexitySearchIngestCommand | FilesIngestCommand | UrlIngestCommand | ScholarSearchIngestCommand | ScholarPaperIngestCommand | ScholarReferencesIngestCommand | ArxivSearchIngestCommand | ArxivPaperIngestCommand | HuggingFacePapersIngestCommand | ReadwiseIngestCommand | ObsidianVaultIngestCommand | XBookmarksIngestCommand;

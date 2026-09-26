@@ -141,6 +141,152 @@ def test_configured_source_contract_exposes_typed_readiness() -> None:
     }
 
 
+def test_source_management_contract_matches_legacy_runtime_shapes() -> None:
+    document = _openapi()
+    paths = document["paths"]
+    schemas = document["components"]["schemas"]
+
+    collection = paths["/api/v1/sources"]
+    member = paths["/api/v1/sources/{key}"]
+    assert collection["get"]["operationId"] == "listSources"
+    assert collection["post"]["operationId"] == "upsertSource"
+    assert member["patch"]["operationId"] == "setSourceEnabled"
+    assert member["delete"]["operationId"] == "deleteSource"
+
+    expected_security = [{"AdminKey": []}, {"OwnerSession": []}]
+    for operation in (
+        collection["get"],
+        collection["post"],
+        member["patch"],
+        member["delete"],
+    ):
+        assert operation["security"] == expected_security
+        assert operation["responses"]["401"] == {
+            "$ref": "#/components/responses/LegacyUnauthorized"
+        }
+        assert operation["responses"]["403"] == {"$ref": "#/components/responses/LegacyForbidden"}
+
+    post_schema = collection["post"]["requestBody"]["content"]["application/json"]["schema"]
+    assert post_schema == {"$ref": "#/components/schemas/SourceUpsertRequest"}
+    assert "type" not in schemas["SourceUpsertRequest"]["properties"]
+    assert schemas["SourceUpsertRequest"]["required"] == ["config"]
+    assert schemas["SourceOverrideConfig"]["discriminator"] == {"propertyName": "type"}
+    assert schemas["RSSSourceOverrideConfig"]["allOf"][1]["required"] == [
+        "type",
+        "url",
+    ]
+
+    patch_schema = member["patch"]["requestBody"]["content"]["application/json"]["schema"]
+    assert patch_schema == {"$ref": "#/components/schemas/SourceEnabledRequest"}
+    assert schemas["SourceEnabledRequest"]["required"] == ["enabled"]
+    assert schemas["SourceEnabledRequest"]["properties"] == {"enabled": {"type": "boolean"}}
+
+    assert collection["get"]["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/SourcesOverview"
+    }
+    for operation in (collection["post"], member["patch"]):
+        assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/SourceMutationResult"
+        }
+        assert operation["responses"]["400"] == {
+            "$ref": "#/components/responses/LegacyServiceError"
+        }
+        assert operation["responses"]["422"] == {
+            "$ref": "#/components/responses/LegacyValidationError"
+        }
+    assert member["delete"]["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/SourceDeleteResult"
+    }
+    assert member["delete"]["responses"]["404"] == {
+        "$ref": "#/components/responses/LegacyServiceError"
+    }
+
+    public_key = schemas["PublicSourceKey"]
+    assert public_key["type"] == "string"
+    assert "src_[a-f0-9]{20}" in public_key["pattern"]
+    assert "obsidian_vault" not in public_key["pattern"]
+    assert "version" not in schemas["SourceInfo"]["properties"]
+
+
+def test_generated_source_management_models_accept_runtime_compatible_requests() -> None:
+    module = _generated_models()
+    runtime_contract = __import__("src.contracts.workflow_models", fromlist=["SourceUpsertRequest"])
+
+    payload = {
+        "config": {"type": "rss", "url": "https://example.test/feed.xml"},
+        "description": "operator note",
+    }
+    generated_request = module.SourceUpsertRequest.model_validate(payload)
+    runtime_request = runtime_contract.SourceUpsertRequest.model_validate(payload)
+    assert generated_request.model_dump() == runtime_request.model_dump()
+    assert generated_request.config.type == "rss"
+    assert generated_request.config.url == "https://example.test/feed.xml"
+
+    opaque = "src_0123456789abcdef0123"
+    generated_result = module.SourceMutationResult(
+        source_key=opaque,
+        version=1,
+        origin="db",
+        enabled=True,
+    )
+    assert generated_result.source_key == opaque
+    with pytest.raises(ValidationError):
+        module.SourceMutationResult(
+            source_key="obsidian_vault:personal",
+            version=1,
+            origin="db",
+            enabled=True,
+        )
+
+    for path in (
+        CONTRACTS / "generated/types.ts",
+        ROOT / "web/src/generated/workflow-contracts.ts",
+    ):
+        source = path.read_text()
+        assert "export interface SourceUpsertRequest" in source
+        assert "export interface SourceMutationResult" in source
+        assert "export interface SourcesOverview" in source
+        source_info = source.split("export interface SourceInfo", 1)[1].split("}", 1)[0]
+        assert "version" not in source_info
+        assert '"readwise"' in source
+        assert '"obsidian_vault"' in source
+        upsert = source.split("export interface SourceUpsertRequest", 1)[1].split("}", 1)[0]
+        assert "[key: string]: unknown" in upsert
+
+
+def test_fastapi_source_models_match_generated_contract_fields() -> None:
+    from src.api.source_routes import (
+        SourceInfo as ApiSourceInfo,
+        SourcesOverview as ApiSourcesOverview,
+    )
+    from src.api.source_write_routes import (
+        SourceEnabledRequest as ApiSourceEnabledRequest,
+        SourceMutationResult as ApiSourceMutationResult,
+        SourceUpsertRequest as ApiSourceUpsertRequest,
+    )
+
+    generated = _generated_models()
+    pairs = (
+        (ApiSourceInfo, generated.SourceInfo),
+        (ApiSourcesOverview, generated.SourcesOverview),
+        (ApiSourceEnabledRequest, generated.SourceEnabledRequest),
+        (ApiSourceMutationResult, generated.SourceMutationResult),
+        (ApiSourceUpsertRequest, generated.SourceUpsertRequest),
+    )
+    for runtime, contract in pairs:
+        assert set(runtime.model_fields) == set(contract.model_fields)
+
+    request = ApiSourceUpsertRequest.model_validate(
+        {
+            "type": "ignored",
+            "config": {"type": "rss", "url": "https://example.test/rss"},
+        }
+    )
+    assert request.model_dump(exclude_none=True) == {
+        "config": {"type": "rss", "url": "https://example.test/rss"}
+    }
+
+
 def test_content_query_source_types_match_persisted_content_sources() -> None:
     from src.models.content import ContentSource
 
@@ -778,7 +924,10 @@ def test_generated_reconciliation_models_are_strict_and_default_to_dry_run() -> 
         module.ContentReconciliationRequest(unexpected=True)
 
     assert set(get_args(module.ContentReconciliationMode)) == {"dry_run", "apply"}
-    assert set(get_args(module.ContentReconciliationProjection)) == {"proposed", "observed"}
+    assert set(get_args(module.ContentReconciliationProjection)) == {
+        "proposed",
+        "observed",
+    }
 
     item = {
         "content_id": 42,
@@ -888,6 +1037,74 @@ def test_database_contract_declares_provenance_and_queue_payload() -> None:
 
     assert "ALTER COLUMN summary_ids SET DEFAULT '[]'::jsonb" in schema
     assert "ALTER COLUMN selection_policy SET DEFAULT" in schema
+
+
+def test_generated_source_requests_match_runtime_validation_and_extra_handling() -> None:
+    module = _generated_models()
+
+    request = module.SourceUpsertRequest.model_validate(
+        {
+            "type": "ignored",
+            "unknown": "ignored",
+            "config": {"type": "rss", "url": "https://example.test/feed"},
+        }
+    )
+    dumped = request.model_dump()
+    assert "type" not in dumped
+    assert "unknown" not in dumped
+    assert dumped["config"]["type"] == "rss"
+
+    with pytest.raises(ValidationError):
+        module.SourceUpsertRequest.model_validate({"config": {"type": "rss"}})
+
+    patch = module.SourceEnabledRequest.model_validate({"enabled": False, "version": 99})
+    assert patch.model_dump() == {"enabled": False}
+
+
+def test_generated_obsidian_override_matches_runtime_validation() -> None:
+    module = _generated_models()
+    runtime = __import__("src.config.sources", fromlist=["ObsidianVaultSource"])
+    valid = {
+        "type": "obsidian_vault",
+        "vault_id": "personal",
+        "vault_path": "/srv/obsidian/personal",
+        "name": "Private notes",
+        "tags": ["notes"],
+        "enabled": False,
+        "ingest_folder": "Inbox/AI",
+    }
+    generated = module.ObsidianVaultSourceOverrideConfig.model_validate(valid)
+    configured = runtime.ObsidianVaultSource.model_validate(valid)
+    assert generated.name == configured.name == "Private notes"
+    assert generated.tags == configured.tags == ["notes"]
+    assert generated.enabled is configured.enabled is False
+
+    invalid_updates = (
+        {"vault_path": "relative/vault"},
+        {"vault_path": "/srv/../private"},
+        {"ingest_folder": "../Private"},
+        {"max_duration_seconds": 0},
+        {"max_total_bytes": 100, "max_note_bytes": 101},
+        {"max_note_bytes": 100, "max_frontmatter_bytes": 101},
+    )
+    for update in invalid_updates:
+        payload = {**valid, **update}
+        with pytest.raises(ValidationError):
+            module.ObsidianVaultSourceOverrideConfig.model_validate(payload)
+        with pytest.raises(ValidationError):
+            runtime.ObsidianVaultSource.model_validate(payload)
+
+
+def test_generated_legacy_validation_items_retain_required_fields() -> None:
+    module = _generated_models()
+
+    with pytest.raises(ValidationError):
+        module.LegacyValidationErrorBody.model_validate({"detail": [{}]})
+
+    valid = module.LegacyValidationErrorBody.model_validate(
+        {"detail": [{"type": "missing", "loc": ["body", "config"], "msg": "required"}]}
+    )
+    assert valid.detail[0].type == "missing"
 
 
 def test_generated_contract_files_have_no_drift() -> None:

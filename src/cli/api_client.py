@@ -153,8 +153,9 @@ class ApiClient:
     def remove_source(self, key: str) -> dict[str, Any]:
         """DELETE /api/v1/sources/{key} — delete a source override.
 
-        The natural key (e.g. ``blog:https://www.normaltech.ai/``) is
-        URL-encoded so its ``:`` and ``/`` survive transit.
+        The public management key (an ordinary natural key such as
+        ``blog:https://www.normaltech.ai/`` or an opaque Obsidian key) is URL-encoded
+        so its ``:`` and ``/`` survive transit.
         """
         from urllib.parse import quote
 
@@ -176,7 +177,10 @@ class ApiClient:
 
     def list_prompts(self, **params: Any) -> dict[str, Any]:
         """GET /api/v1/settings/overrides — list prompts (via overrides API)."""
-        query = {"prefix": "prompt.", **{k: v for k, v in params.items() if v is not None}}
+        query = {
+            "prefix": "prompt.",
+            **{k: v for k, v in params.items() if v is not None},
+        }
         resp = self._client.get("/api/v1/settings/overrides", params=query)
         resp.raise_for_status()
         return self._resp_json(resp)
@@ -231,7 +235,9 @@ class ApiClient:
     def kb_query(self, question: str, file_back: bool = False) -> dict[str, Any]:
         """POST /api/v1/kb/query — KBQueryResponse shape (LLM-backed Q&A)."""
         return self._request_with_retry(
-            "POST", "/api/v1/kb/query", json={"question": question, "file_back": file_back}
+            "POST",
+            "/api/v1/kb/query",
+            json={"question": question, "file_back": file_back},
         )
 
     def graph_query(self, query: str, limit: int = 20) -> dict[str, Any]:
@@ -299,7 +305,11 @@ class ApiClient:
                     continue
                 resp.raise_for_status()
                 return self._resp_json(resp)
-            except (httpx.ConnectError, httpx.ReadError, httpx.RemoteProtocolError) as exc:
+            except (
+                httpx.ConnectError,
+                httpx.ReadError,
+                httpx.RemoteProtocolError,
+            ) as exc:
                 last_exc = exc
                 if attempt < attempts:
                     logger.warning(

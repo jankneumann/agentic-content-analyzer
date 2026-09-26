@@ -10,6 +10,7 @@ import json
 import pprint
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, cast
 
@@ -63,11 +64,15 @@ def _python_type(schema: dict[str, Any], *, field_name: str | None = None) -> st
         return _literal(values, language="python")
     if "anyOf" in schema:
         return " | ".join(
-            dict.fromkeys(_python_type(part, field_name=field_name) for part in schema["anyOf"])
+            dict.fromkeys(
+                _python_type(part, field_name=field_name) for part in schema["anyOf"]
+            )
         )
     if "oneOf" in schema and not schema.get("type") and not schema.get("properties"):
         return " | ".join(
-            dict.fromkeys(_python_type(part, field_name=field_name) for part in schema["oneOf"])
+            dict.fromkeys(
+                _python_type(part, field_name=field_name) for part in schema["oneOf"]
+            )
         )
 
     schema_type = schema.get("type")
@@ -116,6 +121,10 @@ def _python_default(schema: dict[str, Any], *, required: bool) -> tuple[str, lis
     ):
         if source in schema:
             constraints.append(f"{target}={schema[source]!r}")
+    if "exclusiveMinimum" in schema:
+        constraints.append(f"gt={schema['exclusiveMinimum']!r}")
+    if "exclusiveMaximum" in schema:
+        constraints.append(f"lt={schema['exclusiveMaximum']!r}")
 
     if required and "const" in schema:
         default = repr(schema["const"])
@@ -140,6 +149,8 @@ def _object_parts(schema: dict[str, Any]) -> tuple[str, dict[str, Any], set[str]
             required.update(part.get("required", []))
     if bases:
         base = bases[0]
+    elif schema.get("x-model-extra") == "ignore":
+        base = "IgnoredExtraModel"
     elif schema.get("additionalProperties") is True:
         base = "ExtensibleModel"
     else:
@@ -155,10 +166,13 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
     scalar_aliases = [
         (name, schema)
         for name, schema in schemas.items()
-        if "enum" in schema
-        and not schema.get("properties")
+        if not schema.get("properties")
         and not schema.get("allOf")
         and name not in {"OperationStatus", "OperationType"}
+        and (
+            "enum" in schema
+            or schema.get("type") in {"string", "integer", "number", "boolean"}
+        )
     ]
     lines = [
         '"""Generated from contracts/openapi/v1.yaml; do not edit."""',
@@ -169,14 +183,23 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
         "from typing import Annotated, Any, Literal",
         "from uuid import UUID",
         "",
-        "from pydantic import AnyUrl, BaseModel, ConfigDict, Field",
+        "from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_validator, model_validator",
         "",
         f'CONTRACT_SHA256 = "{digest}"',
         "",
         f"OperationStatus = {_literal(operation_statuses, language='python')}",
         f"OperationType = {_literal(operation_types, language='python')}",
         *[
-            f"{name} = {_literal(schema['enum'], language='python')}"
+            (
+                f"{name} = {_literal(schema['enum'], language='python')}"
+                if "enum" in schema
+                else (
+                    f"{name} = Annotated[{_python_type(schema)}, "
+                    f"Field({', '.join(_python_default(schema, required=True)[1])})]"
+                    if _python_default(schema, required=True)[1]
+                    else f"{name} = {_python_type(schema)}"
+                )
+            )
             for name, schema in scalar_aliases
         ],
         "",
@@ -187,6 +210,10 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
         "",
         "class ExtensibleModel(BaseModel):",
         '    model_config = ConfigDict(extra="allow")',
+        "",
+        "",
+        "class IgnoredExtraModel(BaseModel):",
+        '    model_config = ConfigDict(extra="ignore")',
         "",
         "",
         "COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = "
@@ -204,7 +231,11 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
         if is_alias:
             aliases.append((name, schema))
             continue
-        if not (schema.get("type") == "object" or schema.get("properties") or schema.get("allOf")):
+        if not (
+            schema.get("type") == "object"
+            or schema.get("properties")
+            or schema.get("allOf")
+        ):
             continue
 
         base, properties, required = _object_parts(schema)
@@ -215,12 +246,18 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
         for field_name, field_schema in properties.items():
             field_type = _python_type(field_schema, field_name=field_name)
             is_required = field_name in required
-            if not is_required and "default" not in field_schema and "None" not in field_type:
+            if (
+                not is_required
+                and "default" not in field_schema
+                and "None" not in field_type
+            ):
                 field_type = f"{field_type} | None"
             default, constraints = _python_default(field_schema, required=is_required)
             if is_required and constraints:
                 constraint_args = ", ".join(constraints)
-                lines.append(f"    {field_name}: Annotated[{field_type}, Field({constraint_args})]")
+                lines.append(
+                    f"    {field_name}: Annotated[{field_type}, Field({constraint_args})]"
+                )
             elif is_required and "const" in field_schema:
                 lines.append(f"    {field_name}: {field_type} = {default}")
             elif is_required:
@@ -230,6 +267,39 @@ def _render_python(spec: dict[str, Any], digest: str) -> str:
                 lines.append(f"    {field_name}: {field_type} = {value}")
             else:
                 lines.append(f"    {field_name}: {field_type} = {default}")
+        if schema.get("x-model-validators") == "obsidian_vault":
+            lines.extend(
+                [
+                    "",
+                    '    @field_validator("vault_path")',
+                    "    @classmethod",
+                    "    def validate_vault_path(cls, value: str) -> str:",
+                    "        from pathlib import PurePosixPath",
+                    "        path = PurePosixPath(value)",
+                    '        if "\\x00" in value or "\\\\" in value or not path.is_absolute():',
+                    '            raise ValueError("vault_path must be an absolute Unix path")',
+                    '        if any(part in {".", ".."} for part in path.parts):',
+                    '            raise ValueError("vault_path cannot contain dot or traversal components")',
+                    "        return value",
+                    "",
+                    '    @field_validator("ingest_folder")',
+                    "    @classmethod",
+                    "    def validate_ingest_folder(cls, value: str) -> str:",
+                    '        if "\\x00" in value or "\\\\" in value or value.startswith("/"):',
+                    '            raise ValueError("ingest_folder must be a safe relative path")',
+                    '        if any(part in {"", ".", ".."} for part in value.split("/")):',
+                    '            raise ValueError("ingest_folder must be a safe relative path")',
+                    "        return value",
+                    "",
+                    '    @model_validator(mode="after")',
+                    "    def validate_nested_byte_limits(self) -> ObsidianVaultSourceOverrideConfig:",
+                    "        if self.max_note_bytes > self.max_total_bytes:",
+                    '            raise ValueError("max_note_bytes cannot exceed max_total_bytes")',
+                    "        if self.max_frontmatter_bytes > self.max_note_bytes:",
+                    '            raise ValueError("max_frontmatter_bytes cannot exceed max_note_bytes")',
+                    "        return self",
+                ]
+            )
 
     for name, schema in aliases:
         union = _python_type(schema)
@@ -258,7 +328,9 @@ def _command_field_schemas(spec: dict[str, Any]) -> dict[str, dict[str, Any]]:
         required: list[str] = []
         for part in schema.get("allOf", [schema]):
             if "$ref" in part:
-                part_properties, part_required = resolve(schemas[_ref_name(part["$ref"])])
+                part_properties, part_required = resolve(
+                    schemas[_ref_name(part["$ref"])]
+                )
             else:
                 part_properties = dict(part.get("properties", {}))
                 part_required = list(part.get("required", []))
@@ -270,7 +342,9 @@ def _command_field_schemas(spec: dict[str, Any]) -> dict[str, dict[str, Any]]:
     for key, ref in mapping.items():
         properties, required = resolve(schemas[_ref_name(ref)])
         properties = {
-            name: schema for name, schema in properties.items() if not schema.get("x-internal")
+            name: schema
+            for name, schema in properties.items()
+            if not schema.get("x-internal")
         }
         required = [name for name in required if name in properties]
         result[key] = {"properties": properties, "required": required}
@@ -285,14 +359,20 @@ def _typescript_type(schema: dict[str, Any]) -> str:
     if "enum" in schema:
         return _literal(schema["enum"], language="typescript")
     if "anyOf" in schema:
-        return " | ".join(dict.fromkeys(_typescript_type(part) for part in schema["anyOf"]))
+        return " | ".join(
+            dict.fromkeys(_typescript_type(part) for part in schema["anyOf"])
+        )
     if "oneOf" in schema and not schema.get("type") and not schema.get("properties"):
-        return " | ".join(dict.fromkeys(_typescript_type(part) for part in schema["oneOf"]))
+        return " | ".join(
+            dict.fromkeys(_typescript_type(part) for part in schema["oneOf"])
+        )
 
     schema_type = schema.get("type")
     if isinstance(schema_type, list):
         return " | ".join(
-            dict.fromkeys(_typescript_type({**schema, "type": item}) for item in schema_type)
+            dict.fromkeys(
+                _typescript_type({**schema, "type": item}) for item in schema_type
+            )
         )
     if schema_type == "null":
         return "null"
@@ -306,7 +386,9 @@ def _typescript_type(schema: dict[str, Any]) -> str:
         return f"Array<{_typescript_type(schema.get('items', {}))}>"
     if schema_type == "object" or "additionalProperties" in schema:
         additional = schema.get("additionalProperties")
-        value_type = _typescript_type(additional) if isinstance(additional, dict) else "unknown"
+        value_type = (
+            _typescript_type(additional) if isinstance(additional, dict) else "unknown"
+        )
         return f"Record<string, {value_type}>"
     return "unknown"
 
@@ -318,10 +400,13 @@ def _render_typescript(spec: dict[str, Any], digest: str) -> str:
     scalar_aliases = [
         (name, schema)
         for name, schema in schemas.items()
-        if "enum" in schema
-        and not schema.get("properties")
+        if not schema.get("properties")
         and not schema.get("allOf")
         and name not in {"OperationStatus", "OperationType"}
+        and (
+            "enum" in schema
+            or schema.get("type") in {"string", "integer", "number", "boolean"}
+        )
     ]
     lines = [
         "// Generated from contracts/openapi/v1.yaml; do not edit.",
@@ -330,7 +415,11 @@ def _render_typescript(spec: dict[str, Any], digest: str) -> str:
         f"export type OperationStatus = {_literal(operation_statuses, language='typescript')};",
         f"export type OperationType = {_literal(operation['operation_type']['enum'], language='typescript')};",
         *[
-            f"export type {name} = {_literal(schema['enum'], language='typescript')};"
+            (
+                f"export type {name} = {_literal(schema['enum'], language='typescript')};"
+                if "enum" in schema
+                else f"export type {name} = {_typescript_type(schema)};"
+            )
             for name, schema in scalar_aliases
         ],
     ]
@@ -346,11 +435,17 @@ def _render_typescript(spec: dict[str, Any], digest: str) -> str:
         if is_alias:
             aliases.append((name, schema))
             continue
-        if not (schema.get("type") == "object" or schema.get("properties") or schema.get("allOf")):
+        if not (
+            schema.get("type") == "object"
+            or schema.get("properties")
+            or schema.get("allOf")
+        ):
             continue
 
         base, properties, required = _object_parts(schema)
-        extends = f" extends {base}" if base not in {"StrictModel", "ExtensibleModel"} else ""
+        extends = (
+            f" extends {base}" if base not in {"StrictModel", "ExtensibleModel", "IgnoredExtraModel"} else ""
+        )
         lines.extend(["", f"export interface {name}{extends} {{"])
         if schema.get("additionalProperties") is True:
             lines.append("  [key: string]: unknown;")
@@ -404,6 +499,9 @@ def _validated_contract() -> dict[str, Any]:
 
 def _format_python(source: str) -> str:
     ruff = shutil.which("ruff")
+    sibling_ruff = Path(sys.executable).with_name("ruff")
+    if ruff is None and sibling_ruff.is_file():
+        ruff = str(sibling_ruff)
     if ruff is None:
         raise RuntimeError(
             "ruff is required for deterministic Python generation; install it or add it to PATH"
@@ -432,7 +530,9 @@ def _diff(path: Path, expected: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--check", action="store_true", help="Fail when generated files drift")
+    parser.add_argument(
+        "--check", action="store_true", help="Fail when generated files drift"
+    )
     args = parser.parse_args()
 
     spec = _validated_contract()

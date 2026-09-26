@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-09-21T19:29:04.795282+00:00",
+  "coordinator_error": {
+    "error_type": "unreachable",
+    "message": "coordinator write skipped after policy rejection; using local fallback",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Resolved contract, security, browser-scope, migration, documentation, testability, and parallel-execution gaps in the closeout proposal.",
+    "completed_work": [
+      "Rewrote proposal and design with explicit decisions, boundaries, and rejected alternatives.",
+      "Expanded the delta spec to five traceable requirements with success and failure scenarios.",
+      "Split tasks into owned, dependency-aware work packages with validation checkpoints.",
+      "Recorded all review findings and dispositions; strict OpenSpec validation passes."
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Use nested config.type as the only POST discriminator",
+        "rationale": "It is the existing FastAPI, CLI, web, and test contract.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Keep Obsidian creation and editing worker-local",
+        "rationale": "Browser paths cannot safely represent or validate worker mounts; existing rows remain manageable by opaque key.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Add Readwise browser quick-add",
+        "rationale": "Its non-secret options are safe to submit while credentials remain environment-owned.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Extend the durable content-workflows OpenAPI",
+        "rationale": "One additive executable contract avoids a second contract domain and archive drift.",
+        "capability": null,
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Run independent convergence review, address any medium-or-higher findings, then publish the refined branch for implementation approval."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/closeout-db-source-overrides-evidence/proposal.md",
+        "description": "refined scope and acceptance outcomes"
+      },
+      {
+        "path": "openspec/changes/closeout-db-source-overrides-evidence/design.md",
+        "description": "locked API/UI/security/migration decisions"
+      },
+      {
+        "path": "openspec/changes/closeout-db-source-overrides-evidence/tasks.md",
+        "description": "parallel work-package DAG"
+      },
+      {
+        "path": "openspec/changes/closeout-db-source-overrides-evidence/specs/source-override-closeout-evidence/spec.md",
+        "description": "testable requirements"
+      },
+      {
+        "path": "openspec/changes/closeout-db-source-overrides-evidence/plan-findings.md",
+        "description": "review audit trail"
+      }
+    ]
+  }
+}

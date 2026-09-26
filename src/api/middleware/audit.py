@@ -34,6 +34,7 @@ import sys
 import uuid
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import unquote
 
 from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -58,6 +59,9 @@ AUDIT_STATE_ATTR = "audit_operation"
 """Attribute name on ``request.state`` where the decorator stashes operation."""
 
 _API_V1_PREFIX = "/api/v1"
+_SOURCE_MANAGEMENT_PREFIX = "/api/v1/sources/"
+_OBSIDIAN_NATURAL_KEY_PREFIX = "obsidian_vault:"
+_REDACTED_SOURCE_PATH = f"{_SOURCE_MANAGEMENT_PREFIX}<redacted>"
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +78,28 @@ def _hash_admin_key(raw: str | None) -> str | None:
     if not raw:
         return None
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[-8:]
+
+
+def _normalize_audit_path(path: str) -> str:
+    """Redact non-public Obsidian identity from source-management audit paths."""
+    if not path.startswith(_SOURCE_MANAGEMENT_PREFIX):
+        return path
+
+    source_key = path.removeprefix(_SOURCE_MANAGEMENT_PREFIX)
+    decoded_key = source_key.casefold()
+    for _ in range(32):
+        next_key = unquote(decoded_key)
+        if next_key == decoded_key:
+            break
+        decoded_key = next_key
+    else:
+        # Fail closed if hostile nesting exceeds the work bound.
+        return _REDACTED_SOURCE_PATH
+    if decoded_key.startswith(_OBSIDIAN_NATURAL_KEY_PREFIX) or decoded_key.startswith(
+        "obsidian_vault"
+    ):
+        return _REDACTED_SOURCE_PATH
+    return path
 
 
 def _extract_client_ip(request: Request) -> str | None:
@@ -318,6 +344,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 body_size = None
 
         client_ip = _extract_client_ip(request)
+        audit_path = _normalize_audit_path(request.url.path)
 
         # Run the inner stack — this is where auth will run, then the route, then
         # the ``@audited`` decorator populates request.state.audit_operation.
@@ -365,7 +392,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
             writer(
                 request_id=request_id,
                 method=request.method,
-                path=request.url.path,
+                path=audit_path,
                 operation=operation,
                 admin_key_fp=admin_key_fp,
                 status_code=status_code,
@@ -378,7 +405,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
             _set_span_attr("audit.write_failure", True)
             print(
                 f"[audit] write failure request_id={request_id} "
-                f"method={request.method} path={request.url.path} error={exc!r}",
+                f"method={request.method} path={audit_path} error={exc!r}",
                 file=sys.stderr,
             )
 

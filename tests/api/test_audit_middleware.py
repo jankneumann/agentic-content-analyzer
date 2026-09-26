@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 from unittest.mock import patch
+from urllib.parse import quote
 
 import pytest
 from fastapi import FastAPI
@@ -169,7 +170,11 @@ def test_body_size_is_captured(app_factory, recorder):
     app = app_factory()
     payload = b'{"x":' + (b"0" * 32) + b"}"
     with TestClient(app) as c:
-        c.post("/api/v1/write", content=payload, headers={"Content-Type": "application/json"})
+        c.post(
+            "/api/v1/write",
+            content=payload,
+            headers={"Content-Type": "application/json"},
+        )
     # body_size should equal byte length of payload
     assert recorder.last()["body_size"] == len(payload)
 
@@ -318,6 +323,82 @@ def test_write_failure_is_non_blocking(app_factory, recorder, capsys):
     # Error surfaced to stderr
     captured = capsys.readouterr()
     assert "audit" in captured.err.lower()
+
+
+def test_source_audit_path_preserves_valid_opaque_key(app_factory, recorder):
+    app = app_factory()
+    opaque_key = "src_0123456789abcdef0123"
+
+    with TestClient(app) as c:
+        c.delete(f"/api/v1/sources/{opaque_key}")
+
+    assert recorder.last()["path"] == f"/api/v1/sources/{opaque_key}"
+
+
+def test_source_audit_path_redacts_private_obsidian_locator(app_factory, recorder):
+    app = app_factory()
+    private_values = (
+        "personal-vault",
+        "srv/obsidian/clients",
+        "Clients/Private",
+        "board-research",
+        "private-client",
+    )
+    private_key = "obsidian_vault:" + "/".join(private_values)
+
+    with TestClient(app) as c:
+        c.delete(f"/api/v1/sources/{private_key}")
+
+    stored_path = recorder.last()["path"]
+    assert stored_path == "/api/v1/sources/<redacted>"
+    for private_value in private_values:
+        assert private_value not in stored_path
+
+
+def test_source_audit_path_redacts_nested_encoding(app_factory, recorder):
+    app = app_factory()
+    encoded_key = "obsidian_vault%253Aprivate-client%252Fsrv%252Fvault"
+
+    with TestClient(app) as client:
+        client.delete(f"/api/v1/sources/{encoded_key}")
+
+    assert recorder.last()["path"] == "/api/v1/sources/<redacted>"
+    assert "private-client" not in recorder.last()["path"]
+
+
+def test_source_audit_path_fails_closed_for_extreme_nested_encoding(app_factory, recorder):
+    app = app_factory()
+    encoded_key = "obsidian_vault:private-client/srv/vault"
+    for _ in range(40):
+        encoded_key = quote(encoded_key, safe="")
+
+    with TestClient(app) as client:
+        client.delete(f"/api/v1/sources/{encoded_key}")
+
+    assert recorder.last()["path"] == "/api/v1/sources/<redacted>"
+    assert "private-client" not in recorder.last()["path"]
+
+
+def test_source_audit_writer_failure_log_uses_redacted_path(app_factory, recorder, capsys):
+    app = app_factory()
+    recorder.raise_on_next = True
+    private_values = ("personal", "srv/obsidian/private", "Clients/Private")
+    private_key = "obsidian_vault:" + "/".join(private_values)
+
+    with TestClient(app) as c:
+        response = c.patch(
+            f"/api/v1/sources/{private_key}",
+            json={"enabled": False},
+        )
+
+    assert response.status_code == 404
+    captured = capsys.readouterr()
+    audit_line = next(
+        line for line in captured.err.splitlines() if line.startswith("[audit] write failure")
+    )
+    assert "path=/api/v1/sources/<redacted>" in audit_line
+    for private_value in private_values:
+        assert private_value not in audit_line
 
 
 def test_hash_admin_key_returns_last_8_of_sha256():
