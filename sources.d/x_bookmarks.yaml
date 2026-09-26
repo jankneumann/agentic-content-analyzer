@@ -14,10 +14,14 @@ version: 1
 #
 # Readiness fails closed: without both cookies the source reports
 # `credentials_missing`, and a session X refused reports `session_expired`
-# (refresh it with `aca auth session x`). Either way the run persists nothing.
+# (refresh it with `aca auth session x`, or the Chrome extension's "Sync X
+# session" button). Either way the run persists nothing.
 #
 # X rate-limits the Bookmarks endpoint per account, and the requests share the
-# account and IP with your own browser. Keep max_entries small.
+# account and IP with your own browser. Keep max_entries small. Once enabled the
+# source runs with every scheduled pipeline; to run it at a quiet hour instead,
+# schedule `aca ingest x-bookmarks` separately and pass the pipeline an explicit
+# --source list without x_bookmarks. Guide: docs/USER_GUIDE.md#x-bookmarks
 
 defaults:
   enabled: false
@@ -31,5 +35,6 @@ sources:
     # it stopped, and later runs backfill older bookmarks with the budget left.
     max_entries: 100
     # Also ingest each bookmarked post's outbound article link as its own `url`
-    # content. The post row and its link reference are kept either way.
+    # content. The post row and its link reference are kept either way. At most
+    # X_BOOKMARKS_MAX_EXPANDED_LINKS (default 50) links are submitted per run.
     expand_links: false

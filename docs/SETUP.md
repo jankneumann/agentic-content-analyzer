@@ -1439,8 +1439,8 @@ FALKORDB_CLOUD_PASSWORD=              # Auth password (if enabled)
 GMAIL_CREDENTIALS_FILE=credentials.json
 GMAIL_TOKEN_FILE=token.json
 
-# Substack Ingestion
-SUBSTACK_SESSION_COOKIE=...  # Value of the substack.sid cookie
+# Substack / X browser sessions: captured by `aca auth session substack|x`,
+# never typed by hand (see "Browser-Session and X Bookmarks Variables" below)
 
 # Email Delivery (production only)
 SENDGRID_API_KEY=...
@@ -1464,6 +1464,34 @@ PODCAST_TEMP_DIR=/tmp/podcast_audio     # Temp directory for audio downloads
 ```
 
 See [Model Configuration](MODEL_CONFIGURATION.md) for detailed model selection options.
+
+### Browser-Session and X Bookmarks Variables (Optional)
+
+| Variable (setting) | Default | Purpose |
+|--------------------|---------|---------|
+| `SUBSTACK_SESSION_COOKIE` | unset | Substack `substack.sid` cookie. Written by `aca auth session substack`; required by `aca ingest substack` |
+| `X_AUTH_TOKEN`, `X_CT0` | unset | X `auth_token` and `ct0` cookies. Written together by `aca auth session x`; both required by `aca ingest x-bookmarks` |
+| `BROWSER_PROFILES_DIR` (`browser_profiles_dir`) | `~/.aca/browser-profiles` | Playwright profiles of `aca auth session`; excluded from backup and sync |
+| `SUBSTACK_REQUEST_DELAY_S` (`substack_request_delay_s`) | `1.0` (0-30) | Pause between Substack post-detail requests |
+| `X_BOOKMARKS_PAGE_DELAY_S` (`x_bookmarks_page_delay_s`) | `1.0` (0-60) | Pause between X Bookmarks GraphQL pages |
+| `X_BOOKMARKS_MAX_EXPANDED_LINKS` (`x_bookmarks_max_expanded_links`) | `50` (0-1000) | Most linked-article `url` operations one X bookmarks run submits when `expand_links` is on |
+
+The three cookie keys never belong in `.env` by hand: capture them (see
+[Browser-Session Capture](#browser-session-capture)). Each sink also stores
+`<KEY>_SAVED_AT`. The X bookmarks adapter keeps two pieces of state as
+database setting overrides, not configuration: `x_bookmarks.graphql_query_id`
+(the last working GraphQL query ID, rediscovered automatically when X rotates
+it) and `x_bookmarks.backfill_cursor`.
+
+On the self-hosted gx-10 host, three more variables in `/etc/aca/aca.env` keep
+the API and OpenBao on loopback behind `tailscale serve`; details in
+[Tailnet Exposure](TAILNET.md):
+
+| Variable | gx-10 value | Default elsewhere | Purpose |
+|----------|-------------|-------------------|---------|
+| `ACA_API_HOST` | `127.0.0.1` | `0.0.0.0` | `uvicorn --host` in `docker-entrypoint.sh` |
+| `ACA_FORWARDED_ALLOW_IPS` | `127.0.0.1` | `*` | `uvicorn --forwarded-allow-ips`; the login rate limiter keys on the forwarded client IP |
+| `ACA_BAO_BIND_ADDR` | `127.0.0.1` | `127.0.0.1` | Host IP that `deploy/gx10/docker-compose.gx10.yml` publishes OpenBao's port 8200 on |
 
 ## Gmail API Setup
 
@@ -1511,99 +1539,122 @@ aca auth status
 use `token.json` or `GMAIL_OAUTH_TOKEN_JSON`. `aca manage setup-gmail` is an
 alias for `aca auth gmail`.
 
+## Browser-Session Capture
+
+Substack paid posts and X bookmarks authenticate with browser session cookies.
+Capture them with one command per site instead of copying them out of DevTools:
+
+| Command | Cookies (domain) | Keys written |
+|---------|------------------|--------------|
+| `aca auth session substack` | `substack.sid` (`substack.com`) | `SUBSTACK_SESSION_COOKIE` |
+| `aca auth session x` | `auth_token` + `ct0` (`x.com`) | `X_AUTH_TOKEN`, `X_CT0` |
+
+Run it on a machine with a display (your workstation). Playwright must be
+installed there (`pip install 'playwright==1.62.0' && playwright install chromium`;
+it is also part of the `release-smoke` extra).
+
+```bash
+aca auth session substack                    # default sink: bao if BAO_ADDR is set, else secrets-file
+aca auth session x --to bao                  # KV v2 PATCH into BAO_MOUNT_PATH/BAO_SECRET_PATH (default secret/newsletter)
+aca auth session substack --to secrets-file  # upsert into .secrets.yaml (SECRETS_FILE, mode 0600)
+aca auth session x --to railway              # set the variables on the linked Railway service
+aca auth session x --timeout 600             # wait longer for the login (default 300 s)
+aca auth session x --headless                # no window; only when the saved profile is still logged in
+```
+
+The command opens Chromium on a dedicated profile under
+`~/.aca/browser-profiles/<site>` (mode 0700; `BROWSER_PROFILES_DIR` moves it;
+never copied by `aca backup` or `aca sync`, see
+[Backup & Restore](BACKUP_RESTORE.md)). It returns at once when the profile
+already holds the cookies, otherwise it opens the login page and waits up to
+`--timeout` seconds. It then proves the cookies with one authenticated request
+(`https://substack.com/api/v1/subscriptions`, or X's `account/settings.json`)
+and writes nothing if the site refuses them. All of a site's keys go out in one
+write, each with a `<KEY>_SAVED_AT` timestamp, so the X pair never lands torn.
+Output names cookies, domains, keys and the sink, never a value. Nothing is
+scheduled: re-run the command when `aca auth status` or an alert reports
+`session_expired` or `credentials_missing`.
+
+- **`--to bao` on gx-10.** The workstation needs `BAO_ADDR`
+  (`https://gx-10.<tailnet>.ts.net:8200`, see [TAILNET.md](TAILNET.md)) and the
+  patch-only `newsletter-workstation` AppRole. Run
+  `python scripts/bao_seed_newsletter.py --with-session-roles` once on gx-10 as
+  the OpenBao admin; it also gives the worker's `newsletter-app` role the `patch`
+  capability it needs to write a rotated X `ct0` back. See
+  [OpenBao session roles](OPENBAO.md#session-credential-roles-workstation-and-worker).
+  The sink PATCHes only its own keys and never creates the secret path.
+- **`--to railway`** hands the value to `railway variables --set KEY=VALUE`,
+  so it is briefly visible in the local process list. Prefer `bao`.
+- **No argv cookies.** No command takes a cookie value as an argument (the old
+  `aca ingest substack-sync --session-cookie` example put the cookie in shell
+  history and `ps` output, and that command no longer exists). Do not export a
+  cookie on a command line either.
+- **No display at hand?** On a laptop with the Chrome extension, logged in to
+  the site, use the popup's **Sync Substack session** / **Sync X session**
+  button. It posts the cookies to `PUT /api/v1/browser-sessions/<site>` on the
+  tailnet API, which validates them and PATCHes OpenBao (see
+  [TAILNET.md](TAILNET.md#browser-session-sync-endpoint) and
+  [extension/README.md](../extension/README.md#sync-sessions)).
+
+Check the result with `aca auth status` (add `--json` for one JSON document):
+one row per session with presence, source, `saved_at`, `last_verified_at` and
+the refresh command, and never a value.
+
+**Where the worker reads the cookies.** A long-running worker resolves these
+three keys on every request through the live credential provider: the OpenBao
+cache first (refreshed by the AppRole token manager, so a new capture takes
+effect without a restart), then `Settings` (environment, profile, or
+`.secrets.yaml` via `${SUBSTACK_SESSION_COOKIE:-}`, `${X_AUTH_TOKEN:-}`,
+`${X_CT0:-}` in `profiles/base.yaml`). Railway reads them from its variables
+(allowlisted in `settings/deploy/railway_secrets.yaml` for the interim; see
+[Deploy Secrets](DEPLOY_SECRETS.md)).
+
 ## Substack API Setup
 
-Substack paid posts require an authenticated session cookie. The
-`SUBSTACK_SESSION_COOKIE` stores the value of the `substack.sid` browser
-cookie (never commit this to git).
+`sources.d/substack.yaml` lists **paid** Substack subscriptions only; add free
+publications to `sources.d/rss.yaml` as `<publication>/feed`, so a publication
+is never ingested twice.
 
-### 1. Capture the session cookie
+1. Capture the session: `aca auth session substack`
+   ([Browser-Session Capture](#browser-session-capture)).
+2. Enable the paid publications you want in `sources.d/substack.yaml`.
+3. Ingest: `aca ingest substack --wait`.
 
-Run the capture command on a machine with a display (your workstation):
+Every archive and post request of `aca ingest substack` carries the session
+cookie, so paid posts are stored in full. Without a cookie the run sends
+nothing and fails with `credentials_missing` (zero rows); run
+`aca auth session substack`. A paid post stored as a teaser (fetched without
+access) is replaced by its full body, and summarized again, on the next run
+that can read it. Post requests are paced by `SUBSTACK_REQUEST_DELAY_S`
+(default `1.0` seconds). A 403 on a single post (for example a founding-only
+post on a paid-tier subscription) keeps that post's teaser; the run fails with
+`session_expired` only when the session probe also rejects the cookie.
 
-```bash
-aca auth session substack                    # default sink: bao if BAO_ADDR is set, else .secrets.yaml
-aca auth session substack --to bao           # PATCH SUBSTACK_SESSION_COOKIE into OpenBao secret/newsletter
-aca auth session substack --to secrets-file  # upsert into .secrets.yaml (mode 0600)
-aca auth session substack --to railway       # set it on the linked Railway service
-```
+## X Bookmarks Setup
 
-It opens Chromium (Playwright) on a dedicated profile under
-`~/.aca/browser-profiles/substack` (mode 0700, `BROWSER_PROFILES_DIR` to move it;
-never copied by `aca backup` or `aca sync`), goes to the Substack sign-in page,
-and waits up to `--timeout` seconds (default 300) for the `substack.sid` cookie
-on `substack.com`. It then checks the cookie with one authenticated request to
-`https://substack.com/api/v1/subscriptions` and writes it only if Substack
-accepts it. Output names the cookie, domain, key and sink, never the value.
-
-The profile persists, so re-running the command later needs no login while the
-session is still valid (add `--headless` to skip the window in that case). Nothing
-is scheduled: re-run it when the session expires. `aca auth session x` does the
-same for the X `auth_token` + `ct0` pair (`X_AUTH_TOKEN`, `X_CT0`).
-
-Playwright must be installed where you run the command
-(`pip install 'playwright==1.62.0' && playwright install chromium`).
-
-> **Manual fallback** (no display, or Playwright unavailable): log in to Substack
-> in your normal browser, open DevTools → **Application** → **Cookies** →
-> `https://substack.com`, copy the value of the `substack.sid` cookie, and store
-> it with one of the options below.
-
-### 2. Store the cookie
-
-`aca auth session substack` already stored it. The options below are for the
-manual fallback.
-
-**Option A — Profile-based** (recommended, uses `.secrets.yaml`):
-
-```yaml
-# .secrets.yaml (gitignored)
-SUBSTACK_SESSION_COOKIE: your-cookie-value-here
-```
-
-Requires `PROFILE` env var to be set (e.g., `export PROFILE=local`).
-The cookie is referenced in `profiles/base.yaml` via `${SUBSTACK_SESSION_COOKIE:-}`.
-
-**Option B — Environment variable**:
+Ingests your own X bookmarks (`aca ingest x-bookmarks`) with the `auth_token` +
+`ct0` session. The source ships disabled in `sources.d/x_bookmarks.yaml`.
 
 ```bash
-export SUBSTACK_SESSION_COOKIE="your-cookie-value-here"
+aca auth session x                        # capture X_AUTH_TOKEN + X_CT0
+aca auth status                           # the x row must be present
+aca sources enable x_bookmarks:account    # or set enabled: true in sources.d/x_bookmarks.yaml
+aca ingest x-bookmarks --wait
 ```
 
-**Option C — CLI flag** (one-off use):
+| Field (`sources.d/x_bookmarks.yaml`) | Default | Meaning |
+|--------------------------------------|---------|---------|
+| `max_entries` | `100` in the shipped file | Rows written per run, newest first (1-10000) |
+| `expand_links` | `false` | Also submit each bookmarked post's outbound article link as its own `url` ingestion |
 
-```bash
-aca ingest substack-sync --session-cookie "your-cookie-value-here"
-```
-
-### 3. Sync subscriptions and ingest
-
-The `substack-sync` command fetches your subscriptions and routes them based
-on membership status:
-
-- **Paid** subscriptions (`subscribed`) → `sources.d/substack.yaml` with `enabled: true`
-- **Free** subscriptions (`free_signup`) → `sources.d/rss.yaml` (deduplicated, as `/feed` URLs)
-- Paid entries are **removed from `rss.yaml`** to prevent duplicate ingestion
-
-```bash
-# Sync subscriptions (paid → substack.yaml, free → rss.yaml)
-aca ingest substack-sync
-
-# Disable any unwanted sources in sources.d/substack.yaml, then ingest
-aca ingest substack
-```
-
-`sources.d/substack.yaml` is for paid subscriptions only; add free
-publications to `rss.yaml` as `<publication>/feed`. Every archive and post
-request of `aca ingest substack` carries the session cookie, so paid posts are
-stored in full. Without a cookie the run sends nothing and fails with
-`credentials_missing` (zero rows); run `aca auth session substack`. A paid post
-stored as a teaser (fetched without access) is replaced by its full body, and
-summarized again, on the next run that can read it.
-Post requests are paced by `SUBSTACK_REQUEST_DELAY_S` (default `1.0` seconds).
-A 403 on a single post (for example a founding-only post on a paid-tier
-subscription) keeps that post's teaser; the run fails with `session_expired`
-only when the session probe also rejects the cookie.
+Readiness fails closed: without both cookies the source reports
+`credentials_missing`; a session X refused reports `session_expired`. Either way
+the run writes nothing. When X rotates `ct0`, the worker writes the pair back
+to OpenBao itself (this needs the `patch` capability from
+`--with-session-roles`; a failed write-back never fails the run), so a
+re-capture is normally needed only when `auth_token` expires. Command options,
+incremental behaviour and the backfill cursor are in the
+[User Guide](USER_GUIDE.md#x-bookmarks).
 
 ## Obsidian Vault Setup
 

@@ -14,6 +14,7 @@ recreated; that mutation is retired. See [API consumers](API_CONSUMERS.md).
 | Bookmarklet | Any browser | One-time setup | Desktop and mobile browsers |
 | Web Save Page | Any device | No setup | Quick saves, fallback method |
 | Chrome Extension | Desktop Chrome | Install extension | URL capture from the toolbar |
+| Bookmark on X | Any device with X | Enable the `x_bookmarks` source once | X posts (and, optionally, the articles they link) |
 
 ## iOS Shortcut Setup
 
@@ -92,6 +93,20 @@ Visit `https://your-server.com/api/v1/content/save` to save URLs manually.
 See [Content Capture](CONTENT_CAPTURE.md#chrome-extension). URL-only capture
 posts the same `IngestCommand`. Client-supplied HTML (`save-page`) is retired;
 the extension falls back to URL ingestion.
+
+## X Posts: Bookmark Them on X
+
+For X content, bookmarking the post in the X app or on x.com, from any device,
+replaces the share-sheet path. Once the `x_bookmarks` source is enabled, the
+worker reads your bookmarks with the X session stored on the server and ingests
+each new one as content on its next run (`aca ingest x-bookmarks` or the
+scheduled pipeline). With `expand_links: true`, the articles the post links to
+are ingested as their own `url` content too.
+
+The phone never holds a credential: no API key, no cookie, no Shortcut. The X
+session is captured once on a workstation with `aca auth session x` (or synced
+from a laptop with the Chrome extension's **Sync X session** button) and lives
+in the server's secret store (OpenBao on gx-10). Setup: [User Guide](USER_GUIDE.md#x-bookmarks).
 
 ## API Reference
 

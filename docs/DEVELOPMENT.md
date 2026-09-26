@@ -421,12 +421,25 @@ classified envelope includes both. Staging proof is intentionally stricter and
 rejects a legacy receipt because it cannot bind that delivery to the expected
 revision.
 
-A credential-gated ingestion that fails closed (`session_expired` or
-`credentials_missing` for Substack or X) alerts with those codes after
-`operation_failed` and an optional closed `remediation_command` naming the fix
-(`aca auth session substack` or `aca auth session x`). The field is omitted on
-every other alert. Inside a pipeline this child alert is routed on its own,
-because the root's aggregate alert carries no codes.
+A credential-gated ingestion that fails closed alerts with `operation_failed`
+followed by the safe codes of its persisted result, and an optional closed
+`remediation_command` naming the fix:
+
+| Code | Meaning | `remediation_command` |
+|------|---------|-----------------------|
+| `credentials_missing` | The session cookie is not configured (X needs both `X_AUTH_TOKEN` and `X_CT0`) | `aca auth session substack` or `aca auth session x` |
+| `session_expired` | The site refused the session, even after one re-read from OpenBao | same |
+
+The command comes from the failed operation's `command_key` through
+`SESSION_REFRESH_COMMANDS` in `src/ingestion/credential_failures.py`, the table
+`aca auth status` also reads, so an alert can never name a command the CLI
+lacks, and never carries a credential value. The field appears only on
+`ingestion.execute` alerts whose codes include one of the two credential codes,
+and is omitted from every other alert, which serializes exactly as before.
+Inside a pipeline this child alert is routed on its own, because the root's
+aggregate alert carries no codes. The operator can also refresh from a laptop
+with the Chrome extension's **Sync** buttons; see
+[USER_GUIDE](USER_GUIDE.md#browser-sessions-substack-and-x).
 
 Credentials and origins are environment-only:
 

@@ -7,7 +7,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | Doc | Purpose |
 |-----|---------|
 | [**User Guide**](docs/USER_GUIDE.md) | End-user documentation: setup, features, workflows, deployment |
-| [Setup](docs/SETUP.md) | Environment setup, providers, configuration |
+| [Setup](docs/SETUP.md) | Environment setup, providers, configuration, browser-session capture, X bookmarks |
 | [Profiles](docs/PROFILES.md) | Profile-based configuration, inheritance, secrets |
 | [Architecture](docs/ARCHITECTURE.md) | System design, ingestion, parsers, data models |
 | [Development](docs/DEVELOPMENT.md) | Commands, patterns, database, testing |
@@ -19,7 +19,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | [Markdown Pipeline](docs/MARKDOWN_PIPELINE_DESIGN.md) | End-to-end markdown flow |
 | [Case Studies](docs/CASE_STUDIES.md) | Refactoring lessons, migration patterns |
 | [Content Capture](docs/CONTENT_CAPTURE.md) | Chrome extension, bookmarklet, canonical ingestions |
-| [Mobile Capture](docs/MOBILE_CAPTURE.md) | iOS Shortcut, bookmarklet, web save page |
+| [Mobile Capture](docs/MOBILE_CAPTURE.md) | iOS Shortcut, bookmarklet, web save page, bookmark-on-X |
 | [API consumers](docs/API_CONSUMERS.md) | Independently deployed clients and compatibility windows |
 | [Unified workflow cutover](docs/UNIFIED_WORKFLOW_CUTOVER.md) | July 2026 `/api/v1` contract 2.0.0 production evidence |
 | [Obsidian Vault Ingest](docs/OBSIDIAN_VAULT_INGEST.md) | Web Clipper vault ingress: allowed roots, clip contract, privacy, troubleshooting |
@@ -60,8 +60,13 @@ aca pipeline run --period daily --period-start 2026-07-15T00:00:00Z --period-end
 
 # Content ingestion
 aca ingest gmail|rss|substack|youtube-playlist|podcast|x-search|perplexity-search|scholar-search
+aca ingest x-bookmarks [--full] [--max-items N] [--expand-links]  # own X bookmarks; enable: aca sources enable x_bookmarks:account
 aca ingest files <path...>             # Local files
 aca ingest url <url>                   # Direct URL
+
+# Browser-session credentials (Substack paid posts, X bookmarks)
+aca auth session substack|x [--to bao|railway|secrets-file]  # Playwright login capture, validated, one sink write
+aca auth status [--json]               # OAuth + session rows: saved_at, last_verified_at, refresh command
 
 # Processing
 aca summarize run --wait               # Summarize pending content
@@ -147,7 +152,7 @@ Phase 0 supports inline requests below 18 MiB only. See
 
 **Ingestion filter** — Three-tier (heuristic → embedding → LLM) post-persist filter in `src/services/ingestion_filter.py`. Runs automatically after every adapter via the orchestrator hook (`src/ingestion/filter_hook.py`). Writes `filter_score`, `filter_decision`, `filter_tier`, `priority_bucket` on `Content`; skipped items get `status=FILTERED_OUT`. Distinct from `src/services/content_filter.py`, which is the pre-persist adapter-side keyword filter. CLI: `aca filter explain|rerun|stats`; `aca ingest --no-filter | --filter-dry-run`.
 
-**Sources** — YAML files in `sources.d/`: `rss.yaml`, `youtube_playlist.yaml`, `youtube_channel.yaml` (channels via paginated Data API — uploads-playlist path, no 15-item cap), `podcasts.yaml`, `gmail.yaml`, `websearch.yaml`, `scholar.yaml`. The `youtube_rss` source type still works (Atom feeds, capped ~15, no API key) but ships with no default file. Each supports `name`, `url`/`id`, `tags`, `enabled`, `max_entries`. See [docs/SETUP.md](docs/SETUP.md) for source-specific options.
+**Sources** — YAML files in `sources.d/`: `rss.yaml`, `youtube_playlist.yaml`, `youtube_channel.yaml` (channels via paginated Data API — uploads-playlist path, no 15-item cap), `podcasts.yaml`, `gmail.yaml`, `websearch.yaml`, `scholar.yaml`, `x_bookmarks.yaml` (own X bookmarks via the `X_AUTH_TOKEN`/`X_CT0` session; ships disabled — see [USER_GUIDE](docs/USER_GUIDE.md#x-bookmarks)). The `youtube_rss` source type still works (Atom feeds, capped ~15, no API key) but ships with no default file. Each supports `name`, `url`/`id`, `tags`, `enabled`, `max_entries`. See [docs/SETUP.md](docs/SETUP.md) for source-specific options.
 
 **Source DB overrides** — Sources can also be added/edited/disabled at runtime (no YAML commit) via database overrides merged on top of the YAML defaults inside `load_sources_config()` (`src/config/sources.py`). Precedence is DB over YAML, keyed by the natural key `<type>:<locator>` (`source_key()`); a DB row with `enabled:false` shadows its YAML twin. Storage: `source_overrides` table + `SourceOverrideService` (validates each `config` against the `Source` union). Manage via CLI `aca sources add|list|remove|enable|disable`, the `/api/v1/sources` write endpoints (admin-key), or the web **Settings → Sources** tab. The merge fails open to YAML-only when the DB is unavailable.
 
@@ -181,6 +186,8 @@ The full list is in [docs/GOTCHAS.md](docs/GOTCHAS.md). These are the ones that 
 | The pg_cron backup never worked | `railway/postgres/init-backup-job.sql` failed at four independent points and never produced a backup. Backups are `aca backup run` + a systemd timer. `railway_backup_schedule` / `railway_backup_retention_days` are **inert** — no Python consumer, ever. See [GOTCHAS](docs/GOTCHAS.md#the-pg_cron-backup-never-produced-a-backup). |
 | A backup that reports success is the failure mode | A shell pipeline reports the LAST stage's status, so `pg_dump` dying halfway still yields zero from the uploader. `src/services/backup/executor.py` checks EVERY stage, reads the stored size back, and refuses to record a store with no digest. Never replace it with `sh -c 'a \| b \| c'`. |
 | Widening `WorkflowTerminalSourceKind` is never enough | A new source kind is rejected at **13** closed points: 3 CHECK constraints (in three copies of the DDL), 7 in `workflow_alert_models.py`, 4 on the emission path in `workflow_terminal_event_service.py` (including `_event_from_row`), plus `_validate_event_key` in `src/telemetry/workflow_events.py` and `WorkflowTerminalEventDiagnostic.source_kind` (regenerate from `openapi/v1.yaml`, never hand-edit). Each fails SILENTLY and DIFFERENTLY: the first eleven as `classification_status='rejected'` with no delivery; the telemetry one as `emitted=False`, so the alert ships with no log line, no metric, and no `telemetry_emitted_at`; the diagnostic one as a 500 on the very URL the alert carries as its `diagnostic_url`. Prove a new kind end to end with the REAL emitter and the REAL diagnostic projection (`tests/unit/test_system_check_alert_emission.py`) — a stubbed `telemetry_emitter` hid the twelfth point through three review rounds. |
+| OpenBao KV v2 writes clobber sibling keys | `create_or_update_secret` replaces all of `secret/newsletter` (LLM keys included), and hvac's `kv.v2.patch()` is a read + `create_or_update` under the hood. Write only through `BaoSink` (server-side merge-patch `PATCH`); `create_or_update` belongs to the seed script alone. Read rotating cookies via `get_credential_provider()`, never frozen `settings`. See [GOTCHAS](docs/GOTCHAS.md#profiles--secrets). |
+| CI pins ruff 0.15.15 | The venv's newer ruff writes `# ruff: ignore[...]`, which CI rejects (RUF102). Use `# noqa: CODE` on the violating line; lint with `make lint-ci` or `uvx ruff@0.15.15`. |
 | `ruff S608` on multi-line SQL strings | `# noqa: S608` span is single-line. Prefer single-line f-strings so the noqa covers the violation line, OR put the noqa on the LINE where `SELECT`/`DELETE` appears — not the closing paren line. Otherwise you get a RUF100 "unused noqa" flip-flop. |
 
 ## Quick Links by Task

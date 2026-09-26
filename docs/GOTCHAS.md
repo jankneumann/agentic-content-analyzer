@@ -128,6 +128,8 @@ still work.
 | `.secrets.yaml` uses YAML syntax | Must use `:` not `=`; `KEY=value` silently parses as a string instead of a key-value pair |
 | `.secrets.yaml` needs profile active | Without `PROFILE` env var, `.secrets.yaml` is never read; secrets only flow via `${VAR}` in profiles |
 | New secrets need `base.yaml` wiring | Add `${VAR:-}` reference in `profiles/base.yaml` under the appropriate settings section |
+| Rotating secret read from `settings` never rotates | `get_settings()` is built once behind `lru_cache`, so `settings.substack_session_cookie` (or `x_auth_token`/`x_ct0`) keeps the boot-time value for the life of the worker. Read browser-session cookies through `get_credential_provider().get(name)` (`src/config/credentials.py`), which checks the live OpenBao cache first on every call; after writing a new value, call `provider.apply_local_write(values, saved_at=...)` with the sink's exact `saved_at` |
+| KV v2 writes clobber sibling keys | `hvac` `kv.v2.create_or_update_secret` replaces the WHOLE secret at `secret/newsletter`, deleting the LLM keys stored beside a cookie. `kv.v2.patch()` is no fix: hvac implements it as `read_secret_version` + `create_or_update_secret`, which needs `read` (the workstation AppRole lacks it) and is still a full-document write. Write through `BaoSink` (`src/cli/secret_sinks.py`), which sends a server-side `PATCH` with `application/merge-patch+json` and never creates the path. `create_or_update` is allowed only in `scripts/bao_seed_newsletter.py` |
 
 ## Auth & Security
 
@@ -146,6 +148,7 @@ still work.
 | Upload magic bytes validation | File uploads are validated against `FILE_SIGNATURES` mapping in `upload_routes.py` — mismatched extensions return 415 |
 | Upload MIME cross-check | Client `Content-Type` is validated against `EXTENSION_MIME_MAP` — `application/octet-stream` and `None` bypass the check |
 | gitleaks pre-commit blocks commit | Check `.gitleaks.toml` allowlist; add path or regex exception for intentional test fixtures |
+| X web bearer token looks like a leaked secret | `X_WEB_BEARER_TOKEN` in `src/ingestion/x_web.py` is the PUBLIC client identifier from x.com's JavaScript bundle, identical for every user and useless without the session cookies. Both halves of the wrapped literal are allowlisted in `.gitleaks.toml` with that explanation; do not split or obfuscate it to dodge the scanner, and never allowlist a real cookie |
 | Security headers break iframe embedding | `X-Frame-Options: DENY` prevents embedding; if embedding needed, switch to CSP `frame-ancestors` directive |
 
 ## API Routes
@@ -217,6 +220,7 @@ still work.
 | Langfuse self-hosted is resource-heavy | 6 services (PG, ClickHouse, Redis, MinIO, web, worker); use `make langfuse-up` only when needed |
 | Langfuse uses Basic Auth for OTLP | `Authorization: Basic base64(public_key:secret_key)` — different from Opik/Braintrust auth |
 | Langfuse port 3100 | Avoids conflict with web frontend (3000), Vite (5173), Opik (5174) |
+| New failure code never reaches the alert | Widening `WorkflowAlertDiagnosticCode` (and the envelope schema enum) alone changes nothing: a failed operation's alert carries `operation_failed` plus the codes `_failed_ingestion_codes()` in `src/services/workflow_terminal_event_service.py` reads from the persisted ingestion result, and only codes the result sanitizer admits (`src/ingestion/result_sanitizer.py`) survive into that result. Add the code in all three places and prove it with an end-to-end emission test. `remediation_command` is set only for `credentials_missing`/`session_expired` via `SESSION_REFRESH_COMMANDS` in `src/ingestion/credential_failures.py` |
 
 ## Ingestion Sources
 
@@ -252,3 +256,4 @@ still work.
 | Issue | Solution |
 |-------|----------|
 | pip-audit fails in CI | Check `pip-audit --desc on` locally; known advisories may need `--ignore-vuln` flag |
+| `ruff: ignore[...]` fails CI with RUF102 | CI and pre-commit pin ruff 0.15.15, which rejects the `# ruff: ignore[...]` comments newer ruff (the venv's 0.16.x) writes. Suppress with `# noqa: CODE` on the violating line only, and lint with the pinned version: `uvx ruff@0.15.15 check <files>` or `make lint-ci` |

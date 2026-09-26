@@ -19,6 +19,8 @@ This system helps technical leaders and developers stay informed on AI, data, an
   - [API Keys](#api-keys)
   - [Profiles](#profiles)
   - [Content Sources](#content-sources)
+  - [Browser Sessions (Substack and X)](#browser-sessions-substack-and-x)
+  - [X Bookmarks](#x-bookmarks)
   - [LLM Models](#llm-models)
 - [The Pipeline](#the-pipeline)
 - [Web Interface](#web-interface)
@@ -265,6 +267,7 @@ sources.d/
   youtube_rss.yaml         # YouTube RSS feeds (public, no OAuth)
   podcasts.yaml            # Podcast feeds with transcript settings
   websearch.yaml           # Web search (Perplexity + Grok)
+  x_bookmarks.yaml         # Your own X bookmarks (ships disabled)
 ```
 
 **Adding an RSS feed** — edit `sources.d/rss.yaml`:
@@ -301,15 +304,146 @@ sources:
     recency_filter: week
 ```
 
-**Syncing Substack subscriptions** automatically:
-
-```bash
-aca ingest substack-sync
-# Paid subscriptions → sources.d/substack.yaml
-# Free subscriptions → sources.d/rss.yaml
-```
+**Substack**: `sources.d/substack.yaml` lists **paid** subscriptions only; add
+free publications to `rss.yaml` as `<publication>/feed`. Paid posts are fetched
+with your Substack session cookie, see
+[Browser Sessions](#browser-sessions-substack-and-x).
 
 The system ships with 150+ pre-configured AI/tech RSS feeds ready to use.
+
+### Browser Sessions (Substack and X)
+
+Two sources sign in as you with browser cookies instead of an API key:
+
+| Session | Cookies | Stored as | Used by |
+|---------|---------|-----------|---------|
+| `substack` | `substack.sid` | `SUBSTACK_SESSION_COOKIE` | `aca ingest substack` (paid posts) |
+| `x` | `auth_token` + `ct0` | `X_AUTH_TOKEN`, `X_CT0` | `aca ingest x-bookmarks` |
+
+**Capture** once per site, on a machine with a display (your workstation):
+
+```bash
+aca auth session substack          # log in to Substack in the window that opens
+aca auth session x                 # log in to X
+aca auth session x --to bao        # pick the secret sink explicitly
+```
+
+The command opens Chromium (Playwright) on a per-site profile under
+`~/.aca/browser-profiles/`, waits up to `--timeout` seconds (default 300) for the
+cookies, proves them with one authenticated request, and writes them in one call
+to the sink, with a `<KEY>_SAVED_AT` timestamp beside each value:
+
+| `--to` | Writes to | Default when |
+|--------|-----------|--------------|
+| `bao` | OpenBao KV v2 PATCH on `BAO_MOUNT_PATH/BAO_SECRET_PATH` (default `secret/newsletter`); sibling keys untouched | `BAO_ADDR` is set |
+| `secrets-file` | `.secrets.yaml` (mode 0600) | `BAO_ADDR` is not set |
+| `railway` | The linked Railway service's variables | never (explicit only) |
+
+No cookie value is printed or logged. The profile persists, so a later run needs
+no login while the session lives (`--headless` then skips the window). Nothing
+is scheduled: re-run the command only when a session dies. Setup details are in
+[SETUP.md](SETUP.md#browser-session-capture).
+
+**Check** the sessions at any time:
+
+```bash
+aca auth status          # one row per session: present, source, saved_at, last_verified_at, refresh command
+aca auth status --json   # the same as one JSON document on stdout; never a credential value
+```
+
+`last_verified_at` is when the latest successful (or zero-item) ingestion of the
+source the session gates completed.
+
+**Refresh** when a session dies. A running worker reads the credentials live
+from OpenBao, so a fresh capture takes effect without a restart. X rotates `ct0`
+routinely; the worker writes the new value back to OpenBao itself, so the X
+session normally needs a human only when `auth_token` expires. A dead or missing
+session fails the run closed with zero rows and one of these codes, and the
+workflow alert for that failed ingestion carries a `remediation_command`
+naming the fix:
+
+| Code | Meaning | Fix |
+|------|---------|-----|
+| `credentials_missing` | The cookie is not configured anywhere (X needs both cookies) | Capture the session |
+| `session_expired` | The site refused the session, even after one re-read from OpenBao | Capture it again |
+
+Two ways to refresh:
+
+- **Workstation**: re-run `aca auth session substack` or `aca auth session x`.
+- **Any laptop with the Chrome extension**, logged in to the site: open the
+  popup and click **Sync Substack session** or **Sync X session**. The extension
+  sends the cookies over the tailnet to the API, which validates them and PATCHes
+  OpenBao. It needs the extension's API key and an API with OpenBao configured;
+  see [extension/README.md](../extension/README.md#sync-sessions) and
+  [TAILNET.md](TAILNET.md#browser-session-sync-endpoint).
+
+Never put a cookie value on a command line (it lands in shell history and the
+process list) or in a `sources.d/` file. The browser profiles are credentials:
+`aca backup` and `aca sync` never copy `~/.aca/browser-profiles/`.
+
+**Paid Substack posts.** Every archive and post request of `aca ingest substack`
+carries the session cookie, so paid posts are stored in full. Without a cookie
+the run fails closed with `credentials_missing`. A paid post stored earlier as a
+teaser is replaced by its full body, and summarized again, on the next run that
+can read it. Post requests are paced by `SUBSTACK_REQUEST_DELAY_S` (default 1
+second). A 403 on a single post (for example a founding-only post) keeps that
+post's teaser and the run continues; the run fails with `session_expired` only
+when the session check also rejects the cookie.
+
+### X Bookmarks
+
+Ingests the bookmarks of your own X account through X's web API, using the `x`
+browser session. Bookmarking a post on X, from any device, is the capture
+gesture: the next run pulls it in, and the device never holds a credential.
+
+The source ships **disabled** (`enabled: false` in `sources.d/x_bookmarks.yaml`)
+so a fresh install's scheduled pipeline stays green. To turn it on:
+
+```bash
+aca auth session x                        # 1. capture X_AUTH_TOKEN + X_CT0
+aca auth status                           # 2. the x row must be present
+aca sources enable x_bookmarks:account    # 3. or set enabled: true in the YAML
+```
+
+There is one account, so the source key is always `x_bookmarks:account`.
+
+```bash
+aca ingest x-bookmarks --wait                   # incremental run
+aca ingest x-bookmarks --max-items 500          # cap rows written this run (1-10000)
+aca ingest x-bookmarks --full                   # walk every page, ignoring the backfill cursor
+aca ingest x-bookmarks --expand-links           # also ingest linked articles (--no-expand-links to skip)
+aca ingest x-bookmarks --force-reprocess        # re-render stored bookmark rows (summarized again)
+```
+
+- **Incremental**: pages are read newest first and the walk stops after the
+  first page whose posts are all stored, so a run against unchanged bookmarks
+  reads one page. `--max-items` defaults to the source's `max_entries` (100 in
+  the shipped YAML).
+- **Backfill cursor**: a run cut short (rate limit, page cap, `--max-items`)
+  keeps what it read, records a warning (`rate_limited`, `page_cap_reached`,
+  `item_cap_reached`), and saves where it stopped as the setting
+  `x_bookmarks.backfill_cursor`. Later runs first catch up on new bookmarks,
+  then resume the backfill with the budget left, until the oldest bookmark
+  clears the cursor. `--full` ignores and resets it.
+- **All or nothing on the session**: every page is read before the first row is
+  written, so `credentials_missing` or `session_expired` on any page means zero
+  rows and an untouched cursor.
+- **One row per post, across X sources**: each bookmark is stored as
+  `xpost:<post id>` in the same thread markdown as `aca ingest x-search`. A post
+  Grok search already stored is flagged as bookmarked instead of duplicated, and
+  Grok search never duplicates a bookmark.
+- **Linked articles**: every stored post records a content reference to each
+  outbound article link. With `expand_links: true` (or `--expand-links`), each
+  link not yet stored is also submitted as its own `url` ingestion, at most
+  `X_BOOKMARKS_MAX_EXPANDED_LINKS` (default 50) per run; the rest keep their
+  reference only and the run warns `link_expansion_capped`. X's own links, X
+  media, non-http(s) links, and feed or playlist URLs are never submitted.
+
+Once enabled, the source runs with every scheduled pipeline (one page when
+nothing is new). Its requests share your account and IP with your own browser,
+and `X_BOOKMARKS_PAGE_DELAY_S` (default 1 second) paces its pages. To run it at
+a quiet hour instead, schedule `aca ingest x-bookmarks` on its own and give the
+pipeline an explicit `--source` list without `x_bookmarks`.
 
 ### LLM Models
 
@@ -555,6 +689,7 @@ aca ingest youtube-playlist               # YouTube playlists only (requires OAu
 aca ingest youtube-rss                    # YouTube RSS feeds only
 aca ingest podcast                        # Podcast feeds
 aca ingest x-search                       # X/Twitter via Grok API
+aca ingest x-bookmarks                    # Your own X bookmarks (browser session)
 aca ingest perplexity-search              # Perplexity Sonar web search
 
 # From specific content
@@ -1126,6 +1261,7 @@ alembic upgrade head
 - **Gmail**: Run `aca auth gmail` to (re)authorize OAuth (`--no-browser` on SSH, `--force` to replace a token, `--to bao|railway|secrets-file` to push the token to a secret store; `--deploy` is a deprecated alias for `--to railway`)
 - **YouTube playlists**: Ensure Google OAuth is configured; use `--public-only` to skip private playlists
 - **X/Twitter**: Verify `XAI_API_KEY` is set
+- **Substack or X bookmarks** fail with `credentials_missing` or `session_expired`: run `aca auth status`, then `aca auth session substack` or `aca auth session x` (or the extension's **Sync** button); see [Browser Sessions](#browser-sessions-substack-and-x)
 - **Perplexity**: Verify `PERPLEXITY_API_KEY` is set
 
 ### Settings or prompt API returns 500
