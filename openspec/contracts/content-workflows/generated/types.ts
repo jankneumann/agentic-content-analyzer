@@ -1,5 +1,5 @@
 // Generated from contracts/openapi/v1.yaml; do not edit.
-export const CONTRACT_SHA256 = "483730392ad4b2c808110e72d51f39964746eef21df116b15978b5b72d713e9a" as const;
+export const CONTRACT_SHA256 = "3cada528dae35553c2e438b966183ce8c98bb0244c83ca11c450a270d146e532" as const;
 
 export type OperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 export type OperationType = "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
@@ -93,6 +93,9 @@ export interface SafeIngestionDetails {
   citations_found?: number;
   tool_calls_made?: number;
   threads_found?: number;
+  references_recorded?: number;
+  links_submitted?: number;
+  links_skipped?: number;
 }
 
 export interface PipelineSourceIngestionSummary {

@@ -29,6 +29,9 @@ _SAFE_DETAIL_FIELDS: dict[str, type] = {
     "citations_found": int,
     "tool_calls_made": int,
     "threads_found": int,
+    "references_recorded": int,
+    "links_submitted": int,
+    "links_skipped": int,
 }
 _SAFE_DIAGNOSTIC_MESSAGES = {
     "arxiv_paper_error": "An arXiv paper could not be ingested",
@@ -60,6 +63,8 @@ _SAFE_DIAGNOSTIC_MESSAGES = {
     "invalid_youtube_playlist": "The YouTube playlist is invalid",
     "invalid_youtube_url": "The YouTube URL is invalid",
     "item_cap_reached": "The run reached its item limit; older items were not read",
+    "link_expansion_capped": "Some linked articles exceeded the per-run limit and were not submitted",
+    "link_expansion_failed": "Some linked articles could not be submitted for ingestion",
     "missing_frontmatter": "A clip is missing required metadata",
     "missing_required_metadata": "A clip is missing required metadata",
     "non_regular_file": "A source entry is not a regular file",

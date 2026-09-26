@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
-CONTRACT_SHA256 = "483730392ad4b2c808110e72d51f39964746eef21df116b15978b5b72d713e9a"
+CONTRACT_SHA256 = "3cada528dae35553c2e438b966183ce8c98bb0244c83ca11c450a270d146e532"
 
 OperationStatus = Literal["queued", "in_progress", "completed", "failed", "cancelled"]
 OperationType = Literal[
@@ -366,6 +366,9 @@ class SafeIngestionDetails(StrictModel):
     citations_found: int | None = Field(None, ge=0)
     tool_calls_made: int | None = Field(None, ge=0)
     threads_found: int | None = Field(None, ge=0)
+    references_recorded: int | None = Field(None, ge=0)
+    links_submitted: int | None = Field(None, ge=0)
+    links_skipped: int | None = Field(None, ge=0)
 
 
 class PipelineSourceIngestionSummary(StrictModel):

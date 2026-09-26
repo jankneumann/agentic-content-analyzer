@@ -24,22 +24,31 @@ from sqlalchemy import func, select
 
 from src.config.credentials import X_AUTH_TOKEN, X_CT0, CredentialProvider
 from src.config.sources import XBookmarksSource, configured_source_public_key
+from src.contracts.workflow_models import UrlIngestCommand
 from src.ingestion.credential_failures import CREDENTIALS_MISSING, SESSION_EXPIRED
 from src.ingestion.service import IngestionService
 from src.ingestion.x_bookmarks import (
     BACKFILL_CURSOR_SETTING_KEY,
     BOOKMARKED_KEY,
     ITEM_CAP_REACHED,
+    LINK_EXPANSION_CAPPED,
+    LINK_EXPANSION_FAILED,
     PAGE_CAP_REACHED,
+    PERSISTENCE_ERROR,
     RATE_LIMITED,
+    X_BOOKMARK_TAG,
     SettingsBackfillCursorStore,
     XBookmarksIngestionService,
     bookmark_content_data,
     bookmark_thread,
+    expansion_skip_reason,
+    link_idempotency_key,
+    link_references,
 )
 from src.ingestion.x_bookmarks_client import (
     GRAPHQL_BASE_URL,
     XBookmarksClient,
+    XPost,
     parse_tweet_result,
 )
 from src.ingestion.xsearch import (
@@ -759,7 +768,7 @@ def test_grok_search_rendering_is_unchanged_by_the_shared_path() -> None:
 # -- hooks -------------------------------------------------------------------------------
 
 
-def test_outbound_links_are_stored_without_an_inline_reference_hook(
+def test_outbound_links_are_referenced_explicitly_without_the_inline_hook(
     use_db, make_service, timeline
 ) -> None:
     timeline.post_ids = ["1850000000000000001"]
@@ -776,10 +785,11 @@ def test_outbound_links_are_stored_without_an_inline_reference_hook(
     assert response.items_ingested == 1
     assert row.links_json == ["https://example.com/article"]
     hook.assert_not_called()
-    assert (
+    (reference,) = (
         use_db.query(ContentReference).filter(ContentReference.source_content_id == row.id).all()
-        == []
     )
+    assert reference.external_url == "https://example.com/article"
+    assert reference.external_id is None
 
 
 def test_orchestrator_runs_the_filter_hook_and_defers_expand_links_to_the_source(
@@ -897,3 +907,419 @@ async def test_durable_operation_fails_closed_on_an_expired_session(
     (outcome,) = result["source_outcomes"]
     assert outcome["status"] == "error"
     assert bookmark_rows(use_db) == []
+
+
+# -- linked articles (ri-13) ----------------------------------------------------------
+
+ARTICLE = "https://example.com/article"
+
+
+class RecordingSubmitter:
+    """The link submitter's test double: records each url command it is handed."""
+
+    def __init__(self, *, fail_on: int | None = None) -> None:
+        self.commands: list[UrlIngestCommand] = []
+        self.keys: list[str] = []
+        self.fail_on = fail_on
+
+    def __call__(self, command: UrlIngestCommand, *, idempotency_key: str) -> str:
+        if self.fail_on is not None and len(self.commands) + 1 >= self.fail_on:
+            raise OSError("queue unavailable")
+        self.commands.append(command)
+        self.keys.append(idempotency_key)
+        return str(len(self.commands))
+
+    @property
+    def urls(self) -> list[str]:
+        return [str(command.url) for command in self.commands]
+
+
+def links_post(timeline: FakeTimeline, post_id: str, *urls: str) -> None:
+    timeline.results[post_id] = fx.tweet_result(
+        post_id,
+        "Worth reading " + " ".join(f"https://t.co/{i}" for i in range(len(urls))),
+        urls=[fx.url_entity(f"https://t.co/{i}", url) for i, url in enumerate(urls)],
+    )
+
+
+def references_of(db: Any, row: Content) -> list[ContentReference]:
+    return (
+        db.query(ContentReference)
+        .filter(ContentReference.source_content_id == row.id)
+        .order_by(ContentReference.external_url)
+        .all()
+    )
+
+
+def test_expand_links_submits_one_url_operation_and_references_the_article(
+    use_db, make_service, timeline
+) -> None:
+    timeline.post_ids = ["201"]
+    links_post(timeline, "201", ARTICLE)
+    submitter = RecordingSubmitter()
+
+    with patch("src.services.reference_hook.on_content_ingested") as hook:
+        response = make_service(link_submitter=submitter).ingest(expand_links=True)
+
+    (row,) = bookmark_rows(use_db)
+    (command,) = submitter.commands
+    assert str(command.url) == ARTICLE
+    assert command.tags == [X_BOOKMARK_TAG]
+    assert command.notes == f"Linked from the X bookmark {row.source_url}"
+    assert (command.routing_mode, command.force_reprocess) == ("auto", False)
+    assert submitter.keys == [link_idempotency_key(ARTICLE)]
+    (reference,) = references_of(use_db, row)
+    assert (reference.external_url, reference.external_id) == (ARTICLE, None)
+    assert reference.resolution_status == "unresolved"
+    hook.assert_not_called()
+    assert (response.status, response.warnings) == ("ok", [])
+    assert response.details["links_submitted"] == 1
+    assert response.details["references_recorded"] == 1
+    # The post row stays the receipt: no article row is written inline.
+    assert use_db.query(Content).filter(Content.source_url == ARTICLE).all() == []
+
+
+def test_expand_links_off_submits_nothing_but_still_records_the_reference(
+    use_db, make_service, timeline
+) -> None:
+    timeline.post_ids = ["201"]
+    links_post(timeline, "201", ARTICLE)
+    submitter = RecordingSubmitter()
+
+    response = make_service(link_submitter=submitter).ingest(expand_links=False)
+
+    (row,) = bookmark_rows(use_db)
+    assert submitter.commands == []
+    assert [ref.external_url for ref in references_of(use_db, row)] == [ARTICLE]
+    assert response.details["links_submitted"] == 0
+    assert response.details["references_recorded"] == 1
+
+
+def test_a_link_shared_by_two_bookmarks_is_submitted_once_and_referenced_twice(
+    use_db, make_service, timeline
+) -> None:
+    timeline.post_ids = ["202", "201"]
+    links_post(timeline, "202", ARTICLE)
+    links_post(timeline, "201", ARTICLE, "https://example.org/other")
+    submitter = RecordingSubmitter()
+
+    response = make_service(link_submitter=submitter).ingest(expand_links=True)
+
+    assert submitter.urls == [ARTICLE, "https://example.org/other"]
+    rows = bookmark_rows(use_db)
+    assert [len(references_of(use_db, row)) for row in rows] == [2, 1]
+    assert response.details["links_submitted"] == 2
+    assert response.details["references_recorded"] == 3
+
+
+def test_a_rerun_over_known_bookmarks_submits_nothing(use_db, make_service, timeline) -> None:
+    timeline.post_ids = ["201"]
+    links_post(timeline, "201", ARTICLE)
+    make_service(link_submitter=RecordingSubmitter()).ingest(expand_links=True)
+    submitter = RecordingSubmitter()
+
+    response = make_service(link_submitter=submitter).ingest(expand_links=True)
+
+    assert submitter.commands == []
+    assert response.items_ingested == 0
+    assert response.details["links_submitted"] == 0
+    (row,) = bookmark_rows(use_db)
+    assert len(references_of(use_db, row)) == 1
+
+
+def test_a_link_already_stored_as_content_is_not_submitted(use_db, make_service, timeline) -> None:
+    use_db.add(
+        Content(
+            source_type=ContentSource.WEBPAGE,
+            source_id=f"webpage:{ARTICLE}",
+            source_url=ARTICLE,
+            title="Already saved",
+            markdown_content="",
+            content_hash="0" * 64,
+            status=ContentStatus.COMPLETED,
+        )
+    )
+    use_db.flush()
+    timeline.post_ids = ["201"]
+    links_post(timeline, "201", ARTICLE)
+    submitter = RecordingSubmitter()
+
+    response = make_service(link_submitter=submitter).ingest(expand_links=True)
+
+    assert submitter.commands == []
+    assert response.details["links_skipped_by_reason"] == {"already_stored": 1}
+    (row,) = bookmark_rows(use_db)
+    assert [ref.external_url for ref in references_of(use_db, row)] == [ARTICLE]
+
+
+def test_media_and_feed_links_are_never_submitted(use_db, make_service, timeline) -> None:
+    timeline.post_ids = ["201"]
+    links_post(
+        timeline,
+        "201",
+        "https://pbs.twimg.com/media/PHOTO9.jpg",
+        "https://video.twimg.com/ext_tw_video/9/pu/vid/high.mp4",
+        "https://blog.example.com/feed.xml",
+        "https://arxiv.org/abs/2401.00001v2",
+        ARTICLE,
+    )
+    submitter = RecordingSubmitter()
+
+    response = make_service(link_submitter=submitter).ingest(expand_links=True)
+
+    assert submitter.urls == ["https://arxiv.org/abs/2401.00001v2", ARTICLE]
+    assert response.details["links_skipped_by_reason"] == {"feed_or_playlist": 1, "x_media": 2}
+    (row,) = bookmark_rows(use_db)
+    refs = {
+        (ref.external_id_type, ref.external_id, ref.external_url)
+        for ref in references_of(use_db, row)
+    }
+    # The feed is referenced (it is a link off X), media is not.
+    assert refs == {
+        ("arxiv", "2401.00001", "https://arxiv.org/abs/2401.00001"),
+        (None, None, "https://blog.example.com/feed.xml"),
+        (None, None, ARTICLE),
+    }
+
+
+def test_self_and_non_http_links_are_skipped_defensively(use_db, make_service) -> None:
+    # The client already drops these; a post built directly still never submits them.
+    post = XPost(
+        post_id="301",
+        url="https://x.com/alice/status/301",
+        text="self links only",
+        outbound_urls=(
+            "https://x.com/bob/status/1",
+            "https://mobile.twitter.com/bob",
+            "https://t.co/abc",
+            "ftp://files.example.com/paper.pdf",
+            ARTICLE,
+        ),
+    )
+    submitter = RecordingSubmitter()
+
+    expansion = make_service(link_submitter=submitter, max_expanded_links=10)._expand_links(
+        [post], enabled=True
+    )
+
+    assert submitter.urls == [ARTICLE]
+    assert expansion.skipped == {"x_self_link": 3, "unsupported_link": 1}
+    assert [ref.external_url for ref in link_references(post)] == [ARTICLE]
+
+
+@pytest.mark.parametrize(
+    ("url", "reason"),
+    [
+        ("https://example.com/a", None),
+        ("http://example.com/a", None),
+        ("https://x.com/a/status/1", "x_self_link"),
+        ("https://twitter.com/a", "x_self_link"),
+        ("https://t.co/x", "x_self_link"),
+        ("https://pbs.twimg.com/media/a.jpg", "x_media"),
+        ("https://video.twimg.com/v.mp4", "x_media"),
+        ("mailto:a@example.com", "unsupported_link"),
+        ("javascript:alert(1)", "unsupported_link"),
+        ("https://", "unsupported_link"),
+        ("https://www.youtube.com/playlist?list=PL123", "feed_or_playlist"),
+        ("https://www.youtube.com/watch?v=dQw4w9WgXcQ", None),
+    ],
+)
+def test_expansion_skip_reasons(url: str, reason: str | None) -> None:
+    assert expansion_skip_reason(url) == reason
+
+
+def test_a_failed_submission_keeps_the_rows_and_warns(use_db, make_service, timeline) -> None:
+    timeline.post_ids = ["203", "202", "201"]
+    for index, post_id in enumerate(timeline.post_ids):
+        links_post(timeline, post_id, f"https://example.com/{index}")
+    submitter = RecordingSubmitter(fail_on=2)
+
+    response = make_service(link_submitter=submitter).ingest(expand_links=True)
+
+    assert (response.status, response.items_ingested) == ("ok", 3)
+    assert submitter.urls == ["https://example.com/0"]
+    assert [warning.code for warning in response.warnings] == [LINK_EXPANSION_FAILED]
+    assert "2 linked article(s) were not submitted" in response.warnings[0].message
+    assert "example.com" not in response.warnings[0].message
+    assert (response.details["links_submitted"], response.details["links_failed"]) == (1, 2)
+    assert all(len(references_of(use_db, row)) == 1 for row in bookmark_rows(use_db))
+
+
+def test_expansion_outside_the_worker_warns_instead_of_running_inline(
+    use_db, make_service, timeline
+) -> None:
+    timeline.post_ids = ["201"]
+    links_post(timeline, "201", ARTICLE)
+
+    response = make_service().ingest(expand_links=True)
+
+    assert (response.status, response.items_ingested) == ("ok", 1)
+    (warning,) = response.warnings
+    assert warning.code == LINK_EXPANSION_FAILED
+    assert "durable ingestion worker" in warning.message
+    assert use_db.query(Content).filter(Content.source_url == ARTICLE).all() == []
+
+
+def test_submissions_per_run_are_capped(use_db, make_service, timeline) -> None:
+    timeline.post_ids = ["203", "202", "201"]
+    for index, post_id in enumerate(timeline.post_ids):
+        links_post(timeline, post_id, f"https://example.com/{index}")
+    submitter = RecordingSubmitter()
+
+    response = make_service(link_submitter=submitter, max_expanded_links=2).ingest(
+        expand_links=True
+    )
+
+    assert submitter.urls == ["https://example.com/0", "https://example.com/1"]
+    assert [warning.code for warning in response.warnings] == [LINK_EXPANSION_CAPPED]
+    assert (response.details["links_capped"], response.details["max_expanded_links"]) == (1, 2)
+    assert response.details["references_recorded"] == 3
+
+
+def test_the_cap_defaults_to_the_setting() -> None:
+    from src.config.settings import Settings
+
+    assert Settings(_env_file=None).x_bookmarks_max_expanded_links == 50
+
+
+def test_a_reference_failure_keeps_the_row_and_warns(use_db, make_service, timeline) -> None:
+    timeline.post_ids = ["201"]
+    links_post(timeline, "201", ARTICLE)
+
+    with patch(
+        "src.services.reference_extractor.ReferenceExtractor.store_references",
+        side_effect=RuntimeError("boom"),
+    ):
+        response = make_service(link_submitter=RecordingSubmitter()).ingest()
+
+    (row,) = bookmark_rows(use_db)
+    assert references_of(use_db, row) == []
+    assert (response.status, response.items_ingested) == ("ok", 1)
+    assert [warning.code for warning in response.warnings] == [PERSISTENCE_ERROR]
+
+
+def test_link_expansion_codes_are_public_diagnostics() -> None:
+    from src.ingestion.result_sanitizer import (
+        SAFE_INGESTION_DIAGNOSTIC_CODES,
+        sanitize_ingestion_metadata,
+    )
+
+    assert {LINK_EXPANSION_CAPPED, LINK_EXPANSION_FAILED} <= SAFE_INGESTION_DIAGNOSTIC_CODES
+    projection = sanitize_ingestion_metadata(
+        details={
+            "links_submitted": 2,
+            "links_skipped": 1,
+            "references_recorded": 3,
+            "links_skipped_by_reason": {"x_media": 1},
+        }
+    )
+    assert projection["details"] == {
+        "links_skipped": 1,
+        "links_submitted": 2,
+        "references_recorded": 3,
+    }
+
+
+class _SubmittingOperations(_Operations):
+    """The workflow handler's operations double, plus canonical ``submit``."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.submitted: list[tuple[OperationType, dict[str, Any], str | None]] = []
+
+    async def submit(
+        self,
+        operation_type: OperationType,
+        normalized_input: dict[str, Any],
+        *,
+        idempotency_key: str | None = None,
+    ) -> SimpleNamespace:
+        self.submitted.append((operation_type, normalized_input, idempotency_key))
+        return SimpleNamespace(operation_id=str(900 + len(self.submitted)))
+
+
+@pytest.mark.asyncio
+async def test_durable_operation_submits_linked_articles_through_the_worker_operations(
+    use_db, client_factory, timeline
+) -> None:
+    timeline.post_ids = ["201"]
+    links_post(timeline, "201", ARTICLE)
+    operations = _SubmittingOperations()
+    registry = build_workflow_handler_registry(
+        operation_service=operations,
+        ingestion_service=IngestionService(configured_source_key_secret=SECRET),
+    )
+    source = SOURCE.model_copy(update={"expand_links": True})
+    payload = {"kind": "x_bookmarks", "configured_sources": [source.model_dump(mode="json")]}
+
+    with (
+        patch("src.ingestion.x_bookmarks.XBookmarksClient", client_factory),
+        patch("src.ingestion.filter_hook.apply_filter_to_recent", MagicMock()),
+    ):
+        await registry.dispatch(OperationType.INGESTION_EXECUTE, 43, payload)
+
+    (row,) = bookmark_rows(use_db)
+    assert operations.submitted == [
+        (
+            OperationType.INGESTION_EXECUTE,
+            {
+                "kind": "url",
+                "url": ARTICLE,
+                "tags": [X_BOOKMARK_TAG],
+                "notes": f"Linked from the X bookmark {row.source_url}",
+                "routing_mode": "auto",
+                "force_reprocess": False,
+            },
+            link_idempotency_key(ARTICLE),
+        )
+    ]
+    (result,) = operations.attached
+    assert (result["status"], result["warnings"]) == ("ok", [])
+    assert result["details"] == {
+        "links_skipped": 0,
+        "links_submitted": 1,
+        "references_recorded": 1,
+    }
+
+
+@pytest.mark.asyncio
+async def test_real_operation_service_queues_one_url_operation_per_link(
+    use_db, make_service, timeline, test_engine
+) -> None:
+    import asyncio
+
+    import asyncpg
+
+    from src.queue.follow_up_operations import bind_follow_up_operations
+    from src.services.operation_service import OperationService
+
+    timeline.post_ids = ["202", "201"]
+    links_post(timeline, "202", ARTICLE)
+    links_post(timeline, "201", ARTICLE)
+    key = link_idempotency_key(ARTICLE)
+    conn = await asyncpg.connect(test_engine.url.render_as_string(hide_password=False))
+    try:
+        with bind_follow_up_operations(OperationService(connection=conn)):
+            first = await asyncio.to_thread(make_service().ingest, expand_links=True)
+            # Rewriting the rows expands them again: the key collapses onto the
+            # still-queued operation instead of queueing a second one.
+            again = await asyncio.to_thread(
+                make_service().ingest, expand_links=True, force_reprocess=True, full=True
+            )
+        jobs = await conn.fetch(
+            "SELECT entrypoint, status, payload FROM pgqueuer_jobs WHERE idempotency_key = $1",
+            key,
+        )
+    finally:
+        await conn.execute("DELETE FROM pgqueuer_jobs WHERE idempotency_key = $1", key)
+        await conn.close()
+
+    assert (first.details["links_submitted"], first.warnings) == (1, [])
+    assert again.items_ingested == 2
+    assert again.details["links_submitted"] == 1
+    (job,) = jobs
+    assert (job["entrypoint"], job["status"]) == ("ingestion.execute", "queued")
+    payload = json.loads(job["payload"])
+    assert payload["operation_type"] == "ingestion.execute"
+    assert payload["input"]["kind"] == "url"
+    assert payload["input"]["url"] == ARTICLE

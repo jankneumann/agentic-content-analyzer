@@ -622,6 +622,9 @@ class Settings(BaseSettings):
     # Pause between X Bookmarks GraphQL pages: the requests share the operator's
     # account and IP with their own browser, so pace them like a person scrolling.
     x_bookmarks_page_delay_s: float = Field(default=1.0, ge=0.0, le=60.0)
+    # Most linked-article url operations one X bookmarks run submits when the
+    # source's expand_links is on; the rest keep their content_reference only.
+    x_bookmarks_max_expanded_links: int = Field(default=50, ge=0, le=1000)
 
     # Substack RSS Configuration (legacy — use sources.d/ instead)
     # Comma-separated list of RSS feed URLs

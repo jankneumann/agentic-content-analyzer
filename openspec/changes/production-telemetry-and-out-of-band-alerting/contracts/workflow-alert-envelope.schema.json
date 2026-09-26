@@ -133,6 +133,8 @@
           "invalid_youtube_playlist",
           "invalid_youtube_url",
           "item_cap_reached",
+          "link_expansion_capped",
+          "link_expansion_failed",
           "missing_operation",
           "oauth_unavailable",
           "operation_failed",

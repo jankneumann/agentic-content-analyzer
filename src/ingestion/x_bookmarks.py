@@ -22,6 +22,14 @@ row each one becomes, and the envelope the durable workflow records.
   adapter's thread-to-markdown path (:func:`src.ingestion.xsearch.format_thread_markdown`)
   under ``source_id = "xpost:<post id>"``, and carries ``bookmarked: true`` in
   ``metadata_json``.
+* **Linked articles**: every row written in a run gets a ``content_reference``
+  to each outbound article link, committed with the row. With ``expand_links``
+  on, each distinct link that is not stored yet is also submitted as its own
+  canonical ``url`` ingestion operation (bounded per run by
+  ``x_bookmarks_max_expanded_links``), handed to the worker's
+  ``OperationService`` through :mod:`src.queue.follow_up_operations`; the post
+  row stays the receipt. X self links, X media hosts, non-http(s) links, and
+  feed or playlist URLs are never submitted.
 * **Cross-source dedup**: ``contents`` is unique on ``(source_type,
   source_id)`` only, so a post Grok search already stored would otherwise get
   a second row. A bookmark whose ``xpost:<id>`` exists under another source is
@@ -35,14 +43,18 @@ session per request and raises value-free errors.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Final, Protocol
+from urllib.parse import urlsplit
 
+from pydantic import ValidationError
 from sqlalchemy import or_, select
 
+from src.contracts.workflow_models import UrlIngestCommand
 from src.ingestion.credential_failures import CredentialFailureError
 from src.ingestion.gmail import ContentData
 from src.ingestion.log_redaction import log_error_type
@@ -52,12 +64,14 @@ from src.ingestion.result import (
     IngestionWarning,
     derive_status,
 )
+from src.ingestion.url_router import RouteKind, classify_url as classify_route
 from src.ingestion.x_bookmarks_client import (
     DEFAULT_MAX_PAGES,
     WalkStopReason,
     XBookmarksClient,
     XBookmarksClientError,
     XPost,
+    is_x_self_link,
 )
 from src.ingestion.xsearch import (
     XPostContent,
@@ -68,6 +82,12 @@ from src.ingestion.xsearch import (
     thread_title,
 )
 from src.models.content import Content, ContentSource, ContentStatus
+from src.queue.follow_up_operations import FollowUpUnavailableError, submit_follow_up_ingestion
+from src.services.reference_extractor import (
+    ExtractedReference,
+    ReferenceExtractor,
+    classify_url as classify_reference_url,
+)
 from src.storage.database import get_db
 from src.utils.content_hash import generate_markdown_hash
 from src.utils.logging import get_logger
@@ -81,13 +101,21 @@ __all__ = [
     "BACKFILL_CURSOR_SETTING_KEY",
     "BOOKMARKED_KEY",
     "ITEM_CAP_REACHED",
+    "LINK_EXPANSION_CAPPED",
+    "LINK_EXPANSION_FAILED",
     "PAGE_CAP_REACHED",
     "RATE_LIMITED",
+    "X_BOOKMARK_TAG",
     "BackfillCursorStore",
+    "LinkSubmitter",
     "SettingsBackfillCursorStore",
     "XBookmarksIngestionService",
     "bookmark_content_data",
     "bookmark_thread",
+    "expansion_skip_reason",
+    "link_idempotency_key",
+    "link_references",
+    "link_skip_reason",
     "post_source_id",
 ]
 
@@ -106,6 +134,9 @@ PAGE_CAP_REACHED: Final = "page_cap_reached"
 ITEM_CAP_REACHED: Final = "item_cap_reached"
 FETCH_ERROR: Final = "fetch_error"
 PERSISTENCE_ERROR: Final = "persistence_error"
+# Envelope codes for linked-article expansion; the bookmark rows are kept.
+LINK_EXPANSION_CAPPED: Final = "link_expansion_capped"
+LINK_EXPANSION_FAILED: Final = "link_expansion_failed"
 
 
 def post_source_id(post_id: str) -> str:
@@ -200,6 +231,88 @@ def bookmark_content_data(post: XPost) -> ContentData:
         metadata_json=bookmark_metadata(post, thread),
         content_hash=generate_markdown_hash(markdown),
     )
+
+
+# -- linked articles --------------------------------------------------------------
+
+X_BOOKMARK_TAG: Final = "x-bookmark"
+"""Tag on every url operation submitted for a bookmark's linked article."""
+
+LINK_IDEMPOTENCY_PREFIX: Final = "x_bookmarks.link:"
+_MEDIA_HOSTS: Final = ("twimg.com",)  # pbs.twimg.com images, video.twimg.com videos
+_HTTP_SCHEMES: Final = frozenset({"http", "https"})
+
+# Why an outbound link is not submitted (``details.links_skipped_by_reason``).
+SKIP_UNSUPPORTED: Final = "unsupported_link"
+SKIP_SELF_LINK: Final = "x_self_link"
+SKIP_MEDIA: Final = "x_media"
+SKIP_COLLECTION: Final = "feed_or_playlist"
+SKIP_ALREADY_STORED: Final = "already_stored"
+
+
+def link_skip_reason(url: str) -> str | None:
+    """Why a link is never an article reference: None for an http(s) link off X.
+
+    X self links are already dropped by the client; the check here is defensive.
+    """
+    try:
+        parts = urlsplit(url)
+        host = (parts.hostname or "").lower().rstrip(".")
+    except ValueError:
+        return SKIP_UNSUPPORTED
+    if parts.scheme.lower() not in _HTTP_SCHEMES or not host:
+        return SKIP_UNSUPPORTED
+    if is_x_self_link(url):
+        return SKIP_SELF_LINK
+    if any(host == base or host.endswith("." + base) for base in _MEDIA_HOSTS):
+        return SKIP_MEDIA
+    return None
+
+
+def expansion_skip_reason(url: str) -> str | None:
+    """Why a link is not submitted as a url operation: None for an article link.
+
+    Beyond :func:`link_skip_reason`, a feed or YouTube playlist is a collection
+    whose url route would ingest every item in it, so it is referenced only.
+    """
+    reason = link_skip_reason(url)
+    if reason is not None:
+        return reason
+    if classify_route(url) in (RouteKind.RSS_FEED, RouteKind.YOUTUBE_PLAYLIST):
+        return SKIP_COLLECTION
+    return None
+
+
+def link_references(post: XPost) -> list[ExtractedReference]:
+    """One reference per distinct article link of the post (and its quoted post).
+
+    arXiv, DOI and Semantic Scholar links become identifier references; any
+    other link is a URL-only reference.
+    """
+    refs: dict[tuple[str | None, str | None, str | None], ExtractedReference] = {}
+    for url in _outbound_links(post):
+        if link_skip_reason(url) is not None:
+            continue
+        ref = classify_reference_url(url) or ExtractedReference(external_url=url)
+        refs.setdefault((ref.external_id, ref.external_id_type, ref.external_url), ref)
+    return list(refs.values())
+
+
+def link_idempotency_key(url: str) -> str:
+    """The url operation's idempotency key: one active operation per linked URL."""
+    return LINK_IDEMPOTENCY_PREFIX + hashlib.sha256(url.encode("utf-8")).hexdigest()
+
+
+class LinkSubmitter(Protocol):
+    """Submit one canonical url ingestion operation; return its operation ID."""
+
+    def __call__(self, command: UrlIngestCommand, *, idempotency_key: str) -> str: ...
+
+
+def submit_link_operation(command: UrlIngestCommand, *, idempotency_key: str) -> str:
+    """The production submitter: the worker's ``OperationService``, never inline work."""
+    handle = submit_follow_up_ingestion(command, idempotency_key=idempotency_key)
+    return str(handle.operation_id)
 
 
 # -- backfill cursor ------------------------------------------------------------
@@ -335,6 +448,25 @@ class _PersistResult:
     linked: int = 0
     skipped: int = 0
     errors: list[IngestionError] = field(default_factory=list)
+    written_posts: list[XPost] = field(default_factory=list)
+    """Posts whose row this run inserted or rewrote, in walk order."""
+    references_recorded: int = 0
+    reference_failures: int = 0
+
+
+@dataclass
+class _Expansion:
+    """What linked-article expansion did for the rows written in one run."""
+
+    limit: int = 0
+    submitted: int = 0
+    capped: int = 0
+    failed: int = 0
+    unavailable: bool = False
+    skipped: dict[str, int] = field(default_factory=dict)
+
+    def skip(self, reason: str) -> None:
+        self.skipped[reason] = self.skipped.get(reason, 0) + 1
 
 
 class XBookmarksIngestionService:
@@ -345,6 +477,9 @@ class XBookmarksIngestionService:
     walk from the saved cursor that resumes where an earlier partial walk
     stopped. ``client_factory`` builds the HTTP client and ``cursor_store``
     holds the backfill cursor; both are injectable for network-free tests.
+    ``link_submitter`` submits linked-article url operations (the worker's
+    ``OperationService`` by default) and ``max_expanded_links`` bounds them per
+    run (``x_bookmarks_max_expanded_links`` by default).
     """
 
     def __init__(
@@ -353,10 +488,14 @@ class XBookmarksIngestionService:
         client_factory: Callable[[], XBookmarksClient] | None = None,
         cursor_store: BackfillCursorStore | None = None,
         max_pages: int = DEFAULT_MAX_PAGES,
+        link_submitter: LinkSubmitter | None = None,
+        max_expanded_links: int | None = None,
     ) -> None:
         self._client_factory = client_factory or XBookmarksClient
         self._cursor_store: BackfillCursorStore = cursor_store or SettingsBackfillCursorStore()
         self._max_pages = max_pages
+        self._link_submitter: LinkSubmitter = link_submitter or submit_link_operation
+        self._max_expanded_links = max_expanded_links
 
     def ingest(
         self,
@@ -412,12 +551,13 @@ class XBookmarksIngestionService:
 
         persisted = self._persist(collected.posts, force_reprocess=force_reprocess)
         backfill_pending = self._move_cursor(stored_cursor, head, backfill, full=full)
-        self._expand_links(collected.posts, enabled=expand_links)
+        expansion = self._expand_links(persisted.written_posts, enabled=expand_links)
         return self._response(
             collected,
             head,
             backfill,
             persisted,
+            expansion,
             backfill_pending=backfill_pending,
             full=full,
             expand_links=expand_links,
@@ -577,7 +717,7 @@ class XBookmarksIngestionService:
                 data = bookmark_content_data(post)
                 try:
                     with db.begin_nested():
-                        self._persist_one(
+                        row = self._persist_one(
                             db,
                             data,
                             existing.get(data.source_id, []),
@@ -595,8 +735,33 @@ class XBookmarksIngestionService:
                             url=data.source_url,
                         )
                     )
+                    continue
+                if row is not None:
+                    result.written_posts.append(post)
+                    self._record_references(db, row, post, result)
             db.commit()
         return result
+
+    @staticmethod
+    def _record_references(db: Session, row: Content, post: XPost, result: _PersistResult) -> None:
+        """Reference each article link from the written row, in its own savepoint.
+
+        The references commit with the row; a failure drops only the references
+        (the row is kept) and is reported as a warning.
+        """
+        refs = link_references(post)
+        if not refs:
+            return
+        try:
+            with db.begin_nested():
+                result.references_recorded += ReferenceExtractor().store_references(
+                    row.id, refs, db, commit=False
+                )
+        except Exception as exc:
+            logger.warning(
+                f"x_bookmarks.references_failed: {row.source_id} ({log_error_type(exc)})"
+            )
+            result.reference_failures += 1
 
     @staticmethod
     def _persist_one(
@@ -606,20 +771,21 @@ class XBookmarksIngestionService:
         *,
         force_reprocess: bool,
         result: _PersistResult,
-    ) -> None:
+    ) -> Content | None:
+        """Write one post; return its row when inserted or rewritten, else None."""
         bookmark_row = next(
             (row for row in rows if row.source_type == ContentSource.X_BOOKMARKS), None
         )
         if bookmark_row is not None:
             if not force_reprocess:
                 result.skipped += 1
-                return
+                return None
             _apply(bookmark_row, data)
             bookmark_row.status = ContentStatus.PENDING
             bookmark_row.error_message = None
             db.flush()
             result.written += 1
-            return
+            return bookmark_row
 
         if rows:
             # The post is already stored under another source (Grok search):
@@ -633,7 +799,7 @@ class XBookmarksIngestionService:
                 f"{other.source_type}; marked bookmarked"
             )
             result.linked += 1
-            return
+            return None
 
         content = Content(
             source_type=data.source_type,
@@ -645,21 +811,91 @@ class XBookmarksIngestionService:
         db.add(content)
         db.flush()
         result.written += 1
+        return content
 
     # -- link expansion (ri-13) ------------------------------------------------
 
-    @staticmethod
-    def _expand_links(posts: Sequence[XPost], *, enabled: bool) -> None:
-        """Where linked-article expansion hooks in; it ships separately.
+    def _expand_links(self, posts: Sequence[XPost], *, enabled: bool) -> _Expansion:
+        """Submit one url operation per distinct article link of the written posts.
 
         ``enabled`` is already resolved against the source's ``expand_links``.
-        The outbound links are stored in ``links_json`` either way.
+        Only rows written in this run are expanded, so a rerun over known
+        bookmarks submits nothing. A link already stored as content, or seen
+        earlier in the run, is not submitted again, and the idempotency key
+        collapses a submission onto a still-active one for the same URL. The
+        first failed submission stops the rest: the rows are committed, and the
+        unsubmitted links keep their references.
         """
-        if enabled and posts:
-            logger.info(
-                f"x_bookmarks.expand_links: requested for {len(posts)} post(s); link "
-                "expansion is not available yet"
+        result = _Expansion()
+        if not enabled or not posts:
+            return result
+        result.limit = self._expansion_limit()
+
+        candidates: dict[str, XPost] = {}
+        seen: set[str] = set()
+        for post in posts:
+            for url in _outbound_links(post):
+                if url in seen:
+                    continue
+                seen.add(url)
+                reason = expansion_skip_reason(url)
+                if reason is not None:
+                    result.skip(reason)
+                    continue
+                candidates[url] = post
+        for url in self._stored_urls(list(candidates)):
+            del candidates[url]
+            result.skip(SKIP_ALREADY_STORED)
+
+        pending = list(candidates.items())
+        result.capped = max(0, len(pending) - result.limit)
+        for index, (url, post) in enumerate(pending[: result.limit]):
+            try:
+                command = UrlIngestCommand(
+                    url=url,
+                    tags=[X_BOOKMARK_TAG],
+                    notes=f"Linked from the X bookmark {post.url}",
+                )
+            except ValidationError:
+                result.skip(SKIP_UNSUPPORTED)
+                continue
+            try:
+                self._link_submitter(command, idempotency_key=link_idempotency_key(url))
+            except FollowUpUnavailableError:
+                result.unavailable = True
+            except Exception as exc:
+                logger.warning(f"x_bookmarks.link_submit_failed ({log_error_type(exc)})")
+            else:
+                result.submitted += 1
+                continue
+            result.failed = min(result.limit, len(pending)) - index
+            break
+
+        skipped = sum(result.skipped.values())
+        logger.info(
+            f"x_bookmarks.expand_links: {result.submitted} url operation(s) submitted, "
+            f"{skipped} link(s) skipped, {result.capped} over the limit of {result.limit}, "
+            f"{result.failed} not submitted"
+        )
+        return result
+
+    def _expansion_limit(self) -> int:
+        if self._max_expanded_links is not None:
+            return max(0, self._max_expanded_links)
+        from src.config.settings import get_settings
+
+        return get_settings().x_bookmarks_max_expanded_links
+
+    @staticmethod
+    def _stored_urls(urls: Sequence[str]) -> list[str]:
+        """The URLs already stored as content (the url adapter's own dedup key)."""
+        if not urls:
+            return []
+        with get_db() as db:
+            stored = set(
+                db.execute(select(Content.source_url).where(Content.source_url.in_(urls))).scalars()
             )
+        return [url for url in urls if url in stored]
 
     # -- envelope ------------------------------------------------------------------
 
@@ -669,6 +905,7 @@ class XBookmarksIngestionService:
         head: _Pass,
         backfill: _Pass | None,
         persisted: _PersistResult,
+        expansion: _Expansion,
         *,
         backfill_pending: bool,
         full: bool,
@@ -700,6 +937,7 @@ class XBookmarksIngestionService:
                 IngestionWarning(code=code, message=_gap_message(code, label, walk_pass))
             )
         errors.extend(persisted.errors)
+        warnings.extend(_link_warnings(persisted, expansion))
 
         items_ingested = persisted.written
         items_failed = len(persisted.errors)
@@ -736,8 +974,57 @@ class XBookmarksIngestionService:
                 "backfill_pending": backfill_pending,
                 "rate_limit_reset_at": reset_at.isoformat() if reset_at else None,
                 "linked_existing": persisted.linked,
+                "references_recorded": persisted.references_recorded,
+                "links_submitted": expansion.submitted,
+                "links_skipped": sum(expansion.skipped.values()),
+                "links_skipped_by_reason": dict(sorted(expansion.skipped.items())),
+                "links_capped": expansion.capped,
+                "links_failed": expansion.failed,
+                "max_expanded_links": expansion.limit,
             },
         )
+
+
+def _link_warnings(persisted: _PersistResult, expansion: _Expansion) -> list[IngestionWarning]:
+    """Counts only: never a URL, so a warning cannot carry a link's query string."""
+    warnings: list[IngestionWarning] = []
+    if persisted.reference_failures:
+        warnings.append(
+            IngestionWarning(
+                code=PERSISTENCE_ERROR,
+                message=(
+                    f"The links of {persisted.reference_failures} bookmark(s) could not be "
+                    "recorded as references; the bookmarks were stored"
+                ),
+            )
+        )
+    if expansion.capped:
+        warnings.append(
+            IngestionWarning(
+                code=LINK_EXPANSION_CAPPED,
+                message=(
+                    f"{expansion.capped} linked article(s) exceeded the limit of "
+                    f"{expansion.limit} per run and were not submitted; their references "
+                    "are kept"
+                ),
+            )
+        )
+    if expansion.failed:
+        reason = (
+            "link expansion needs the durable ingestion worker"
+            if expansion.unavailable
+            else "the url operation could not be submitted"
+        )
+        warnings.append(
+            IngestionWarning(
+                code=LINK_EXPANSION_FAILED,
+                message=(
+                    f"{expansion.failed} linked article(s) were not submitted ({reason}); "
+                    "the bookmarks and their references were stored"
+                ),
+            )
+        )
+    return warnings
 
 
 def _gap_message(code: str, label: str, walk_pass: _Pass) -> str:

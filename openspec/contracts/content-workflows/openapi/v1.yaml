@@ -857,6 +857,9 @@ components:
         citations_found: { type: integer, minimum: 0 }
         tool_calls_made: { type: integer, minimum: 0 }
         threads_found: { type: integer, minimum: 0 }
+        references_recorded: { type: integer, minimum: 0 }
+        links_submitted: { type: integer, minimum: 0 }
+        links_skipped: { type: integer, minimum: 0 }
 
     PipelineSourceIngestionSummary:
       type: object

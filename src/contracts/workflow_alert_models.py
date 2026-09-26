@@ -160,6 +160,10 @@ WorkflowAlertDiagnosticCode = (
         "item_cap_reached",
         "page_cap_reached",
         "rate_limited",
+        # Linked-article expansion from X bookmarks: the bookmark rows and their
+        # content_references were stored; some url operations were not submitted.
+        "link_expansion_capped",
+        "link_expansion_failed",
     ]
 )
 #: Codes an operator clears by re-capturing a browser session. An envelope may
