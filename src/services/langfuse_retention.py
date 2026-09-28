@@ -42,6 +42,27 @@ class LangfuseRetentionError(RuntimeError):
     """The Langfuse API rejected or failed a retention request."""
 
 
+# A 422 names the offending field in its body. Reporting the status alone turns
+# a precise server answer into a guessing game, so the body travels with the
+# error -- bounded, because a Langfuse error body can embed request echoes.
+_MAX_EVIDENCE_CHARS = 400
+
+
+def _response_evidence(response: httpx.Response) -> str:
+    """Return the server's own explanation, bounded and single-line."""
+
+    try:
+        body = response.text
+    except Exception:  # pragma: no cover - body already consumed or undecodable
+        return "(no readable body)"
+    collapsed = " ".join(body.split())
+    if not collapsed:
+        return "(empty body)"
+    if len(collapsed) > _MAX_EVIDENCE_CHARS:
+        collapsed = collapsed[:_MAX_EVIDENCE_CHARS] + "..."
+    return collapsed
+
+
 @dataclass(frozen=True)
 class LangfuseRetentionResult:
     """What one pruning run actually did."""
@@ -167,6 +188,7 @@ class LangfuseRetentionClient:
         if response.status_code >= 400:
             raise LangfuseRetentionError(
                 f"langfuse retention request returned HTTP {response.status_code}"
+                f" {_response_evidence(response)}"
             )
         return response
 

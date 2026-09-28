@@ -239,6 +239,64 @@ async def test_an_empty_batch_makes_no_request() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_rejected_request_reports_the_servers_own_explanation() -> None:
+    """A 422 names the offending field; a bare status turns that into guesswork.
+
+    The first live run of this pruner failed with `HTTP 422` and nothing else,
+    which is the same defect the backup executor exists to avoid: a status
+    without evidence is not diagnosable.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            422,
+            json={
+                "message": "Invalid request data",
+                "error": [{"path": ["toTimestamp"], "message": "Invalid datetime"}],
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with LangfuseRetentionClient(
+        base_url="http://langfuse-web:3000",
+        public_key="pk-lf-test",
+        secret_key="sk-lf-test",
+        client=httpx.AsyncClient(transport=transport),
+    ) as client:
+        with pytest.raises(LangfuseRetentionError) as caught:
+            await client.list_trace_ids_before(
+                cutoff=datetime(2026, 8, 1, tzinfo=UTC),
+                limit=10,
+                page=1,
+            )
+
+    message = str(caught.value)
+    assert "422" in message
+    assert "toTimestamp" in message, "the offending field must reach the operator"
+    assert "Invalid datetime" in message
+
+
+@pytest.mark.asyncio
+async def test_error_evidence_is_bounded() -> None:
+    """An error body can echo the request; it must not become the log."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="x" * 5000)
+
+    transport = httpx.MockTransport(handler)
+    async with LangfuseRetentionClient(
+        base_url="http://langfuse-web:3000",
+        public_key="pk-lf-test",
+        secret_key="sk-lf-test",
+        client=httpx.AsyncClient(transport=transport),
+    ) as client:
+        with pytest.raises(LangfuseRetentionError) as caught:
+            await client.delete_traces(["t1"])
+
+    assert len(str(caught.value)) < 600
+
+
+@pytest.mark.asyncio
 async def test_an_http_error_is_raised_as_a_retention_error() -> None:
     """A 403 must not read as 'nothing left to delete'."""
 
