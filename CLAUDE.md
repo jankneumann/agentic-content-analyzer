@@ -60,7 +60,7 @@ aca pipeline run --period daily --period-start 2026-07-15T00:00:00Z --period-end
 
 # Content ingestion
 aca ingest gmail|rss|substack|youtube-playlist|podcast|x-search|perplexity-search|scholar-search
-aca ingest x-bookmarks [--full] [--max-items N] [--expand-links]  # own X bookmarks; enable: aca sources enable x_bookmarks:account
+aca ingest x-bookmarks [--full] [--max-items N] [--expand-links] [--retry-links]  # own X bookmarks; enable: aca sources enable x_bookmarks:account
 aca ingest files <path...>             # Local files
 aca ingest url <url>                   # Direct URL
 

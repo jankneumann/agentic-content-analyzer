@@ -416,6 +416,7 @@ aca ingest x-bookmarks --wait                   # incremental run
 aca ingest x-bookmarks --max-items 500          # cap rows written this run (1-10000)
 aca ingest x-bookmarks --full                   # walk every page, ignoring the backfill cursor
 aca ingest x-bookmarks --expand-links           # also ingest linked articles (--no-expand-links to skip)
+aca ingest x-bookmarks --retry-links            # only retry pending linked articles; no X session needed
 aca ingest x-bookmarks --force-reprocess        # re-render stored bookmark rows (summarized again)
 ```
 
@@ -442,6 +443,24 @@ aca ingest x-bookmarks --force-reprocess        # re-render stored bookmark rows
   `X_BOOKMARKS_MAX_EXPANDED_LINKS` (default 50) per run; the rest keep their
   reference only and the run warns `link_expansion_capped`. X's own links, X
   media, non-http(s) links, and feed or playlist URLs are never submitted.
+- **Link retry**: each bookmark reference records what expansion did with its
+  link: `pending`, `submitted`, `skipped` (already stored as content, or a feed
+  or playlist), or `failed`. A link shared by several bookmarks is submitted
+  once and every one of its references records the outcome. After expanding
+  the new posts, every expand-links run spends the budget it has left on older
+  `pending` or `failed` links, oldest first, so a link that was capped, failed
+  to submit, or was found while the worker was down is picked up by a later
+  run, even one that finds no new bookmarks. A link is not tried again after
+  three failed submissions (a run outside the durable worker does not count as
+  an attempt). The run details report `links_retried` (backlog links submitted)
+  and `links_pending` (links left to retry); `links_submitted` counts only the
+  links of the posts written in that run.
+- **Retry only**: `--retry-links` (MCP `retry_links: true`) skips the bookmarks
+  walk entirely: no X request, no X session needed (it cannot fail with
+  `credentials_missing`), and the backfill cursor is left alone. The whole
+  `X_BOOKMARKS_MAX_EXPANDED_LINKS` budget goes to the backlog, whatever the
+  source's `expand_links`. Scheduled runs never use this mode; they retry from
+  the leftover budget whenever `expand_links` is on.
 
 Once enabled, the source runs with every scheduled pipeline (one page when
 nothing is new). Its requests share your account and IP with your own browser,
