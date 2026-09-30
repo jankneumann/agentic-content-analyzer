@@ -38,6 +38,9 @@ class SourceOverride(Base):
     enabled = Column(Boolean, nullable=False, default=True)
     version = Column(Integer, nullable=False, default=1)
     description = Column(Text, nullable=True)
+    # Automation that created the row (e.g. "substack-sync"); NULL for rows an
+    # operator made. A sync prunes only rows carrying its own marker.
+    managed_by = Column(String(64), nullable=True)
 
     # Timestamps
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
