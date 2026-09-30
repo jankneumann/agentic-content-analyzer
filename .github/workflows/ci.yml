@@ -305,8 +305,10 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: |
           # Per-test timeout converts a hung case into a named failure instead
-          # of a job-level kill with no output. 300s is above observed healthy
-          # per-endpoint times (~2 min) and far below the 16+ min stall.
+          # of a job-level kill with no output. It applies per pytest item, and
+          # a schemathesis sweep runs all its endpoints inside one item, so
+          # test_fuzz.py raises the budget on its two broad sweeps with
+          # @pytest.mark.timeout; everything else keeps 300s.
           # Fuzz uses signal (#521): thread timeouts cannot interrupt C-level
           # or GIL-deadlocked hangs, which exit 1 with no pytest summary.
           # Tee stderr so an interpreter abort has a file to land in.
