@@ -34,10 +34,24 @@ SECRET_KEY_PATTERNS = [
     # diagnostics. Deliberately anchored on `_KEY_ID` rather than a bare `.*_ID`:
     # over-matching would mask NEON_PROJECT_ID and every other harmless identifier.
     re.compile(r".*_KEY_ID$", re.IGNORECASE),
+    # Browser-session credentials: SUBSTACK_SESSION_COOKIE and X_CT0 match none
+    # of the suffixes above (X_AUTH_TOKEN already matches `_TOKEN`).
+    re.compile(r".*_COOKIE$", re.IGNORECASE),
+    re.compile(r"^X_CT0$", re.IGNORECASE),
 ]
 
 # Pattern for detecting credentials in URLs
 URL_CREDENTIAL_PATTERN = re.compile(r"://[^:]+:([^@]+)@")
+
+# Suffix of the sibling key that records when a secret was last written by a
+# CLI secret sink (e.g. ``X_CT0`` -> ``X_CT0_SAVED_AT``). The value is an
+# ISO-8601 UTC timestamp, never a secret, so it does not match SECRET_KEY_PATTERNS.
+SAVED_AT_SUFFIX = "_SAVED_AT"
+
+
+def saved_at_key(key: str) -> str:
+    """Return the name of the ``saved_at`` sibling key for secret ``key``."""
+    return f"{key}{SAVED_AT_SUFFIX}"
 
 
 class SecretValue:

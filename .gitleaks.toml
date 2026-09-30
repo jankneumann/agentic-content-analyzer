@@ -34,6 +34,14 @@ title = "agentic-content-analyzer gitleaks config"
     # project and are published in the official Supabase docs.
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\\.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9\\.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0",
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\\.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0\\.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU",
+
+    # X web-app bearer token (src/ingestion/x_web.py, X_WEB_BEARER_TOKEN) — the
+    # PUBLIC client identifier embedded in x.com's JavaScript bundle. It is the
+    # same for every user, grants nothing without the operator's session
+    # cookies, and is published by every X web-client project. The literal is
+    # wrapped over two lines for line length; both halves are listed.
+    "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D",
+    "1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
   ]
 
   # ---------------------------------------------------------------------------

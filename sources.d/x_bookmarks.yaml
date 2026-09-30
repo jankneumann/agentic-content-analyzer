@@ -1,0 +1,40 @@
+version: 1
+
+# X (Twitter) bookmarks of the operator's own account, read with the browser
+# session of that account. One entry only: every x_bookmarks entry shares the
+# natural key `x_bookmarks:account`, whatever it is named.
+#
+# DISABLED BY DEFAULT so a fresh install does not fail its scheduled pipeline.
+# Before enabling it:
+#   1. Capture the session cookies with `aca auth session x`. It stores
+#      X_AUTH_TOKEN and X_CT0 (the `auth_token` and `ct0` cookies) in OpenBao
+#      or your secret sink. Never paste the cookie values into this file.
+#   2. Check `aca auth status`: the `x` session row must be present.
+#   3. Set `enabled: true` here, or run `aca sources enable x_bookmarks:account`.
+#
+# Readiness fails closed: without both cookies the source reports
+# `credentials_missing`, and a session X refused reports `session_expired`
+# (refresh it with `aca auth session x`, or the Chrome extension's "Sync X
+# session" button). Either way the run persists nothing.
+#
+# X rate-limits the Bookmarks endpoint per account, and the requests share the
+# account and IP with your own browser. Keep max_entries small. Once enabled the
+# source runs with every scheduled pipeline; to run it at a quiet hour instead,
+# schedule `aca ingest x-bookmarks` separately and pass the pipeline an explicit
+# --source list without x_bookmarks. Guide: docs/USER_GUIDE.md#x-bookmarks
+
+defaults:
+  enabled: false
+  tags: [x, bookmarks]
+
+sources:
+  - type: x_bookmarks
+    name: x-bookmarks
+    # Bookmarks written per run, newest first. The incremental sync stops early
+    # at the first page it already knows; a run this cap cuts short saves where
+    # it stopped, and later runs backfill older bookmarks with the budget left.
+    max_entries: 100
+    # Also ingest each bookmarked post's outbound article link as its own `url`
+    # content. The post row and its link reference are kept either way. At most
+    # X_BOOKMARKS_MAX_EXPANDED_LINKS (default 50) links are submitted per run.
+    expand_links: false

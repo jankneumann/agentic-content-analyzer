@@ -34,6 +34,7 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
+from src.config.browser_profiles import DEFAULT_BROWSER_PROFILES_DIR
 from src.config.models import ModelConfig, Provider, ProviderConfig
 
 logger = logging.getLogger(__name__)
@@ -608,8 +609,22 @@ class Settings(BaseSettings):
     obsidian_allowed_roots: str = Field(default="", max_length=16_384)
     obsidian_compatible_worker: bool = False
 
-    # Substack Configuration
-    substack_session_cookie: str | None = None  # Value of the substack.sid cookie
+    # Browser-session credentials (rotate while workers run). Adapters must read
+    # them through src.config.credentials.CredentialProvider, which checks the
+    # live OpenBao cache first: this Settings object is built once, so these
+    # fields hold only the boot-time value.
+    substack_session_cookie: str | None = Field(default=None, repr=False)  # substack.sid
+    x_auth_token: str | None = Field(default=None, repr=False)  # x.com auth_token cookie
+    x_ct0: str | None = Field(default=None, repr=False)  # x.com ct0 cookie (CSRF token)
+    # Pause between Substack post-body requests (the substack-api library slept
+    # 2s per request); runs use the operator's own paid account.
+    substack_request_delay_s: float = Field(default=1.0, ge=0.0, le=30.0)
+    # Pause between X Bookmarks GraphQL pages: the requests share the operator's
+    # account and IP with their own browser, so pace them like a person scrolling.
+    x_bookmarks_page_delay_s: float = Field(default=1.0, ge=0.0, le=60.0)
+    # Most linked-article url operations one X bookmarks run submits when the
+    # source's expand_links is on; the rest keep their content_reference only.
+    x_bookmarks_max_expanded_links: int = Field(default=50, ge=0, le=1000)
 
     # Substack RSS Configuration (legacy — use sources.d/ instead)
     # Comma-separated list of RSS feed URLs
@@ -753,6 +768,12 @@ class Settings(BaseSettings):
 
     # Local storage paths per bucket (defaults to data/{bucket})
     storage_local_paths: dict[str, str] | None = None
+
+    # Root for per-site persistent browser profiles (aca auth session). Holds live
+    # session cookies, so every backup and sync path excludes it — see
+    # src/config/browser_profiles.py. Set an absolute path when the backup runs as a
+    # different user than the one who logs in: "~" expands per user.
+    browser_profiles_dir: str = DEFAULT_BROWSER_PROFILES_DIR
 
     # S3 bucket names per logical bucket (defaults to image_storage_bucket)
     storage_s3_buckets: dict[str, str] | None = None

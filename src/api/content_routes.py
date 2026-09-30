@@ -178,7 +178,6 @@ class IngestRequest(BaseModel):
     recency_filter: str | None = Field(default=None, description="Recency filter (perplexity)")
     context_size: str | None = Field(default=None, description="Context size (perplexity)")
     transcribe: bool = Field(default=True, description="Enable podcast transcription")
-    session_cookie: str | None = Field(default=None, description="Substack session cookie")
     public_only: bool = Field(default=False, description="YouTube: skip private playlists")
     url: str | None = Field(default=None, description="Target URL (url source)")
     auto_route: bool = Field(
@@ -240,7 +239,6 @@ async def _enqueue_ingestion_job(request: IngestRequest) -> int:
         "max_threads",
         "recency_filter",
         "context_size",
-        "session_cookie",
         "url",
         "auto_route",
         "title",

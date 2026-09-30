@@ -29,11 +29,17 @@ Usage::
             --shared-keys ANTHROPIC_API_KEY,OPENAI_API_KEY \\
             --with-approle --with-db-engine
 
+    # Session-credential roles: patch-only workstation role, and read+patch
+    # for the app/worker role (implies --with-approle)
+    BAO_ADDR=http://localhost:8200 BAO_TOKEN=dev-root-token \\
+        python scripts/bao_seed_newsletter.py --with-session-roles
+
 Environment variables:
     BAO_ADDR:        OpenBao server URL (required)
     BAO_TOKEN:       Root/admin token for seeding (required)
     BAO_MOUNT_PATH:  KV v2 mount path (default: "secret")
     BAO_SECRET_PATH: Secret data path (default: "newsletter")
+    BAO_TOKEN_TTL:   newsletter-app token TTL in seconds (default: 3600)
     POSTGRES_DSN:    PostgreSQL DSN for database engine (with --with-db-engine)
 """
 
@@ -43,6 +49,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 import yaml
@@ -97,7 +104,7 @@ def _get_client():  # type: ignore[no-untyped-def]
 
 
 def seed_secrets(
-    client,  # type: ignore[no-untyped-def]
+    client: Any,
     secrets_path: Path,
     mount_path: str,
     secret_path: str,
@@ -140,7 +147,7 @@ def seed_secrets(
 
 
 def seed_shared_keys(
-    client,  # type: ignore[no-untyped-def]
+    client: Any,
     secrets: dict[str, str],
     shared_keys: list[str],
     mount_path: str,
@@ -199,56 +206,251 @@ def seed_shared_keys(
         print(f"  - {key}")
 
 
-def seed_approle(
-    client,  # type: ignore[no-untyped-def]
-    mount_path: str,
-    secret_path: str,
-    token_ttl: int,
-    dry_run: bool = False,
-) -> None:
-    """Create an AppRole for the newsletter application."""
-    role_name = "newsletter-app"
-    policy_name = "newsletter-read"
-    policy_hcl = (
-        f'path "{mount_path}/data/{secret_path}" {{\n'
-        f'  capabilities = ["read"]\n'
-        f"}}\n"
-        f'path "{mount_path}/data/shared" {{\n'
-        f'  capabilities = ["read"]\n'
-        f"}}\n"
+# ---------------------------------------------------------------------------
+# Policies and AppRoles
+# ---------------------------------------------------------------------------
+#
+# Capability matrix on ``<mount>/data/<secret_path>`` (default
+# ``secret/data/newsletter``), which is the only path any of these touch
+# besides the existing shared read:
+#
+#   policy                       read   patch   create/update   delete/destroy/list
+#   newsletter-read              yes    --      --              --
+#   newsletter-worker            yes    yes     --              --
+#   newsletter-session-writer    --     yes     --              --
+#
+# ``patch`` is the KV v2 server-side merge (HTTP PATCH with
+# ``application/merge-patch+json``). It is deliberately NOT hvac's
+# ``kv.v2.patch()``, which is a client-side ``read_secret_version`` followed by
+# ``create_or_update_secret`` and would need ``read`` + ``update``; see
+# ``src/cli/secret_sinks.py`` (``BaoSink``).
+
+READ_POLICY = "newsletter-read"
+APP_ROLE = "newsletter-app"
+WORKER_POLICY = "newsletter-worker"
+WORKSTATION_POLICY = "newsletter-session-writer"
+WORKSTATION_ROLE = "newsletter-workstation"
+
+# Workstation tokens only live long enough for one ``aca auth ... --to bao``.
+WORKSTATION_TOKEN_TTL = "900s"
+WORKSTATION_TOKEN_MAX_TTL = "3600s"
+# A leaked workstation secret-id stops working after 90 days; re-issue it with
+# the wrapped secret-id command printed below.
+WORKSTATION_SECRET_ID_TTL = "2160h"
+
+
+def _render_policy(rules: list[tuple[str, list[str]]]) -> str:
+    """Render ``(path, capabilities)`` pairs as deterministic OpenBao HCL."""
+    blocks = []
+    for path, capabilities in rules:
+        caps = ", ".join(f'"{cap}"' for cap in capabilities)
+        blocks.append(f'path "{path}" {{\n  capabilities = [{caps}]\n}}\n')
+    return "".join(blocks)
+
+
+def _data_path(mount_path: str, secret_path: str) -> str:
+    return f"{mount_path.strip('/')}/data/{secret_path.strip('/')}"
+
+
+def read_policy_hcl(mount_path: str, secret_path: str) -> str:
+    """HCL for ``newsletter-read``: read the app secret and the shared keys."""
+    return _render_policy(
+        [
+            (_data_path(mount_path, secret_path), ["read"]),
+            (_data_path(mount_path, "shared"), ["read"]),
+        ]
     )
 
-    if dry_run:
-        print(f"[DRY RUN] Would create policy '{policy_name}'")
-        print(f"[DRY RUN] Would create AppRole '{role_name}'")
-        return
 
-    client.sys.create_or_update_policy(name=policy_name, policy=policy_hcl)
-    print(f"Created policy: {policy_name}")
+def worker_policy_hcl(mount_path: str, secret_path: str) -> str:
+    """HCL for ``newsletter-worker``: read plus server-side patch on the app secret.
 
+    Lets adapters persist a rotated cookie (e.g. X ``ct0``) without being able
+    to replace, delete, or destroy the secret.
+    """
+    return _render_policy([(_data_path(mount_path, secret_path), ["read", "patch"])])
+
+
+def workstation_policy_hcl(mount_path: str, secret_path: str) -> str:
+    """HCL for ``newsletter-session-writer``: patch only, no read.
+
+    The workstation pushes browser-session cookies and OAuth tokens but can
+    never read the LLM keys stored alongside them.
+    """
+    return _render_policy([(_data_path(mount_path, secret_path), ["patch"])])
+
+
+def _ensure_policy(client: Any, name: str, hcl: str) -> str:
+    """Write policy ``name`` unless it already holds exactly ``hcl``.
+
+    Returns ``"created"``, ``"updated"`` or ``"unchanged"`` so re-runs can be
+    shown to be idempotent.
+    """
+    current = None
+    try:
+        resp = client.sys.read_policy(name=name)
+        if isinstance(resp, dict):
+            current = resp.get("rules") or (resp.get("data") or {}).get("rules")
+    except Exception:  # a missing policy raises hvac InvalidPath
+        current = None
+
+    if isinstance(current, str) and current.strip() == hcl.strip():
+        status = "unchanged"
+    else:
+        client.sys.create_or_update_policy(name=name, policy=hcl)
+        status = "updated" if isinstance(current, str) else "created"
+    print(f"Policy {name}: {status}")
+    return status
+
+
+def _ensure_approle_auth(client: Any) -> None:
     auth_methods = client.sys.list_auth_methods()
     if "approle/" not in auth_methods:
         client.sys.enable_auth_method("approle")
         print("Enabled AppRole auth method")
 
-    client.auth.approle.create_or_update_approle(
-        role_name=role_name,
-        token_policies=[policy_name],
-        token_ttl=f"{token_ttl}s",
-        token_max_ttl=f"{24 * 3600}s",
-    )
-    print(f"Created AppRole: {role_name}")
 
+def _existing_role_policies(client: Any, role_name: str) -> list[str]:
+    """Return the role's current ``token_policies`` or ``[]`` if it does not exist."""
+    try:
+        resp = client.auth.approle.read_role(role_name=role_name)
+    except Exception:  # a missing role raises hvac InvalidPath
+        return []
+    policies = resp.get("data", {}).get("token_policies") if isinstance(resp, dict) else None
+    if not isinstance(policies, list):
+        return []
+    return [p for p in policies if isinstance(p, str)]
+
+
+def _print_role_id(client: Any, role_name: str, metadata: str) -> None:
+    """Print the (non-secret) role_id and how to mint a secret_id.
+
+    The secret_id itself is never generated or printed here.
+    """
     role_id_resp = client.auth.approle.read_role_id(role_name=role_name)
     role_id = role_id_resp.get("data", {}).get("role_id", "")
     print(f"  Role ID: {role_id}")
     print("  Generate a secret ID with:")
     print(f"    bao write auth/approle/role/{role_name}/secret-id \\")
-    print('      metadata="project=newsletter-aggregator"')
+    print(f'      metadata="{metadata}"')
+
+
+def seed_approle(
+    client: Any,
+    mount_path: str,
+    secret_path: str,
+    token_ttl: int,
+    dry_run: bool = False,
+    extra_policies: tuple[str, ...] = (),
+) -> None:
+    """Create the AppRole for the newsletter application (API + worker).
+
+    ``extra_policies`` is how ``--with-session-roles`` attaches
+    ``newsletter-worker``. A plain ``--with-approle`` re-run keeps an already
+    attached ``newsletter-worker`` instead of silently revoking the worker's
+    patch right.
+    """
+    role_name = APP_ROLE
+    policy_name = READ_POLICY
+    policy_hcl = read_policy_hcl(mount_path, secret_path)
+
+    if dry_run:
+        print(f"[DRY RUN] Would create policy '{policy_name}'")
+        print(f"[DRY RUN] Would create AppRole '{role_name}'")
+        if extra_policies:
+            print(f"[DRY RUN]   with extra policies: {', '.join(extra_policies)}")
+        return
+
+    _ensure_policy(client, policy_name, policy_hcl)
+    _ensure_approle_auth(client)
+
+    policies = [policy_name, *extra_policies]
+    if WORKER_POLICY not in policies and WORKER_POLICY in _existing_role_policies(
+        client, role_name
+    ):
+        policies.append(WORKER_POLICY)
+        print(
+            f"NOTE: keeping '{WORKER_POLICY}' on AppRole '{role_name}' "
+            "(attached by an earlier --with-session-roles run)",
+            file=sys.stderr,
+        )
+
+    client.auth.approle.create_or_update_approle(
+        role_name=role_name,
+        token_policies=policies,
+        token_ttl=f"{token_ttl}s",
+        token_max_ttl=f"{24 * 3600}s",
+    )
+    print(f"Created AppRole: {role_name} (policies: {', '.join(policies)})")
+    _print_role_id(client, role_name, "project=newsletter-aggregator")
+
+
+def seed_session_roles(
+    client: Any,
+    mount_path: str,
+    secret_path: str,
+    token_ttl: int,
+    dry_run: bool = False,
+) -> None:
+    """Create the workstation and worker session-credential policies and roles.
+
+    * ``newsletter-session-writer`` + AppRole ``newsletter-workstation``:
+      ``patch`` only on the app secret, short-lived tokens.
+    * ``newsletter-worker``: ``read`` + ``patch`` on the app secret, attached
+      to the existing ``newsletter-app`` role next to ``newsletter-read``.
+    """
+    workstation_hcl = workstation_policy_hcl(mount_path, secret_path)
+    worker_hcl = worker_policy_hcl(mount_path, secret_path)
+
+    if dry_run:
+        print(f"[DRY RUN] Would create policy '{WORKSTATION_POLICY}':")
+        print(workstation_hcl, end="")
+        print(f"[DRY RUN] Would create policy '{WORKER_POLICY}':")
+        print(worker_hcl, end="")
+        print(
+            f"[DRY RUN] Would create AppRole '{WORKSTATION_ROLE}' "
+            f"(token TTL {WORKSTATION_TOKEN_TTL}, max {WORKSTATION_TOKEN_MAX_TTL}, "
+            f"secret-id TTL {WORKSTATION_SECRET_ID_TTL})"
+        )
+        seed_approle(
+            None,
+            mount_path,
+            secret_path,
+            token_ttl,
+            dry_run=True,
+            extra_policies=(WORKER_POLICY,),
+        )
+        return
+
+    _ensure_policy(client, WORKSTATION_POLICY, workstation_hcl)
+    _ensure_policy(client, WORKER_POLICY, worker_hcl)
+    _ensure_approle_auth(client)
+
+    client.auth.approle.create_or_update_approle(
+        role_name=WORKSTATION_ROLE,
+        token_policies=[WORKSTATION_POLICY],
+        token_ttl=WORKSTATION_TOKEN_TTL,
+        token_max_ttl=WORKSTATION_TOKEN_MAX_TTL,
+        secret_id_ttl=WORKSTATION_SECRET_ID_TTL,
+    )
+    print(f"Created AppRole: {WORKSTATION_ROLE} (policies: {WORKSTATION_POLICY})")
+    _print_role_id(client, WORKSTATION_ROLE, "project=newsletter-aggregator,host=workstation")
+    print("  To hand it to the workstation without exposing it, wrap it instead:")
+    print(f"    bao write -wrap-ttl=5m -f auth/approle/role/{WORKSTATION_ROLE}/secret-id")
+    print("  and unwrap on the workstation: bao unwrap -field=secret_id <wrapping-token>")
+    print()
+
+    seed_approle(
+        client,
+        mount_path,
+        secret_path,
+        token_ttl,
+        extra_policies=(WORKER_POLICY,),
+    )
 
 
 def seed_db_engine(
-    client,  # type: ignore[no-untyped-def]
+    client: Any,
     dry_run: bool = False,
 ) -> None:
     """Configure database secrets engine for dynamic PostgreSQL credentials.
@@ -333,6 +535,14 @@ def main() -> None:
         help="Create an AppRole for the newsletter application",
     )
     parser.add_argument(
+        "--with-session-roles",
+        action="store_true",
+        help=(
+            "Create the patch-only 'newsletter-workstation' AppRole and attach the "
+            "read+patch 'newsletter-worker' policy to 'newsletter-app' (implies --with-approle)"
+        ),
+    )
+    parser.add_argument(
         "--shared-keys",
         type=str,
         default="",
@@ -368,8 +578,13 @@ def main() -> None:
         seed_shared_keys(client, secrets, shared_keys, mount_path, dry_run=args.dry_run)
         print()
 
-    # Step 3: Create AppRole (optional)
-    if args.with_approle:
+    # Step 3: Create AppRole(s) (optional). --with-session-roles also (re)writes
+    # newsletter-app, so it replaces the plain --with-approle step.
+    if args.with_session_roles:
+        print("--- Creating session-credential AppRoles ---")
+        seed_session_roles(client, mount_path, secret_path, token_ttl, dry_run=args.dry_run)
+        print()
+    elif args.with_approle:
         print("--- Creating AppRole ---")
         seed_approle(client, mount_path, secret_path, token_ttl, dry_run=args.dry_run)
         print()

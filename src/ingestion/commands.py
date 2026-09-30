@@ -20,6 +20,7 @@ from src.contracts.workflow_models import (
     StrictModel,
     SubstackIngestCommand,
     UrlIngestCommand,
+    XBookmarksIngestCommand,
     XSearchIngestCommand,
     YouTubePlaylistIngestCommand,
     YouTubeRssIngestCommand,
@@ -47,6 +48,7 @@ COMMAND_MODELS = (
     HuggingFacePapersIngestCommand,
     ReadwiseIngestCommand,
     ObsidianVaultIngestCommand,
+    XBookmarksIngestCommand,
 )
 
 __all__ = [
@@ -70,6 +72,7 @@ __all__ = [
     "ScholarSearchIngestCommand",
     "SubstackIngestCommand",
     "UrlIngestCommand",
+    "XBookmarksIngestCommand",
     "XSearchIngestCommand",
     "YouTubePlaylistIngestCommand",
     "YouTubeRssIngestCommand",

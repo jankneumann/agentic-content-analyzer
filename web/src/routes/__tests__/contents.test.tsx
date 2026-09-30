@@ -16,4 +16,11 @@ describe("contents source display", () => {
     expect(display.label).toBe("Readwise")
     expect(display.icon).toBeDefined()
   })
+
+  it("maps persisted X bookmarks content to a renderable badge", () => {
+    const display = getContentSourceDisplay("x_bookmarks")
+
+    expect(display.label).toBe("X Bookmarks")
+    expect(display.icon).toBeDefined()
+  })
 })

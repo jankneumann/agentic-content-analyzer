@@ -46,6 +46,19 @@ class XPostContent(BaseModel):
     post_id: str | None = None
 
 
+class XQuotedPost(BaseModel):
+    """A post quoted by the rendered post, one level deep.
+
+    Grok search never sets it; the X bookmarks adapter does, so a bookmarked
+    quote post renders the quoted text through the same markdown path.
+    """
+
+    post_id: str
+    author_handle: str | None = None
+    text: str = ""
+    source_url: str | None = None
+
+
 class XThreadData(BaseModel):
     """Parsed data for a single X thread (or standalone post)."""
 
@@ -65,6 +78,7 @@ class XThreadData(BaseModel):
     hashtags: list[str] = Field(default_factory=list)
     mentions: list[str] = Field(default_factory=list)
     source_url: str | None = None
+    quoted: XQuotedPost | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -112,6 +126,10 @@ def format_thread_markdown(thread: XThreadData) -> str:
             parts.append(thread.posts[0].text)
             parts.append("")
 
+    # Quoted post (absent for Grok search results, so their shape is unchanged)
+    if thread.quoted is not None:
+        parts.extend(_quoted_post_markdown(thread.quoted))
+
     # Media
     if thread.media_urls:
         parts.append("## Media")
@@ -138,8 +156,26 @@ def format_thread_markdown(thread: XThreadData) -> str:
     return "\n".join(parts)
 
 
-def build_metadata(thread: XThreadData, search_prompt: str, tool_calls: int) -> dict[str, Any]:
-    """Build metadata_json for a Content record from thread data."""
+def _quoted_post_markdown(quoted: XQuotedPost) -> list[str]:
+    byline = f"@{quoted.author_handle}" if quoted.author_handle else "Quoted post"
+    parts = ["## Quoted Post", ""]
+    parts.append(
+        f"**{byline}**" + (f" ([View on X]({quoted.source_url}))" if quoted.source_url else "")
+    )
+    parts.append("")
+    parts.extend(f"> {line}" if line else ">" for line in quoted.text.splitlines())
+    parts.append("")
+    return parts
+
+
+def thread_title(thread: XThreadData) -> str:
+    """The ``Content.title`` of an X post or thread: ``@handle: <first 120 chars>``."""
+    title_text = thread.posts[0].text[:120] if thread.posts else "X Post"
+    return f"@{thread.author_handle}: {title_text}"
+
+
+def build_thread_metadata(thread: XThreadData) -> dict[str, Any]:
+    """The source-independent ``metadata_json`` keys every X post row carries."""
     return {
         "root_post_id": thread.root_post_id,
         "thread_post_ids": thread.thread_post_ids,
@@ -155,6 +191,13 @@ def build_metadata(thread: XThreadData, search_prompt: str, tool_calls: int) -> 
         "linked_urls": thread.linked_urls,
         "hashtags": thread.hashtags,
         "mentions": thread.mentions,
+    }
+
+
+def build_metadata(thread: XThreadData, search_prompt: str, tool_calls: int) -> dict[str, Any]:
+    """Build metadata_json for a Content record from thread data."""
+    return {
+        **build_thread_metadata(thread),
         "search_query": search_prompt,
         "tool_calls_made": tool_calls,
     }
@@ -163,12 +206,11 @@ def build_metadata(thread: XThreadData, search_prompt: str, tool_calls: int) -> 
 def thread_to_content_data(thread: XThreadData, search_prompt: str, tool_calls: int) -> ContentData:
     """Convert an XThreadData into a ContentData for storage."""
     markdown = format_thread_markdown(thread)
-    title_text = thread.posts[0].text[:120] if thread.posts else "X Post"
     return ContentData(
         source_type=ContentSource.XSEARCH,
         source_id=f"xpost:{thread.root_post_id}",
         source_url=thread.source_url or f"https://x.com/i/status/{thread.root_post_id}",
-        title=f"@{thread.author_handle}: {title_text}",
+        title=thread_title(thread),
         author=f"@{thread.author_handle}",
         publication="X (Twitter)",
         published_date=thread.posted_at,
@@ -493,6 +535,21 @@ class GrokXContentIngestionService:
                             )
                             .first()
                         )
+                        if existing is None:
+                            # Stored under another source (an X bookmark): never
+                            # a second row. Force-reprocess resets that row in
+                            # place and keeps its content and source.
+                            other = db.query(Content).filter(Content.source_id == source_id).first()
+                            if other is not None:
+                                other.status = ContentStatus.PENDING
+                                other.error_message = None
+                                db.flush()
+                                items_ingested += 1
+                                logger.info(
+                                    f"Reset for reprocessing: id={other.id}, "
+                                    f"source_id={source_id} ({other.source_type})"
+                                )
+                                continue
                     elif self._is_duplicate(db, thread):
                         logger.debug(f"Skipping duplicate: {thread.root_post_id}")
                         items_skipped += 1

@@ -1013,6 +1013,9 @@ components:
         citations_found: { type: integer, minimum: 0 }
         tool_calls_made: { type: integer, minimum: 0 }
         threads_found: { type: integer, minimum: 0 }
+        references_recorded: { type: integer, minimum: 0 }
+        links_submitted: { type: integer, minimum: 0 }
+        links_skipped: { type: integer, minimum: 0 }
 
     PipelineSourceIngestionSummary:
       type: object
@@ -1956,7 +1959,7 @@ components:
           type: array
           items:
             type: string
-            enum: [gmail, rss, file_upload, youtube, podcast, substack, manual, webpage, xsearch, perplexity, blog, scholar, arxiv, huggingface_papers, readwise, obsidian, other]
+            enum: [gmail, rss, file_upload, youtube, podcast, substack, manual, webpage, xsearch, perplexity, blog, scholar, arxiv, huggingface_papers, readwise, obsidian, x_bookmarks, other]
         statuses:
           type: array
           items: { type: string, enum: [pending, parsing, parsed, processing, completed, failed, filtered_out] }
@@ -2268,6 +2271,22 @@ components:
         max_items: { type: integer, minimum: 1, maximum: 10000 }
         force_reprocess: { type: boolean, default: false }
 
+    XBookmarksIngestCommand:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, const: x_bookmarks }
+        configured_sources:
+          type: array
+          readOnly: true
+          x-internal: true
+          items: { type: object, additionalProperties: true }
+        max_items: { type: integer, minimum: 1, maximum: 10000 }
+        full: { type: boolean, default: false }
+        expand_links: { type: boolean }
+        force_reprocess: { type: boolean, default: false }
+
     IngestCommand:
       oneOf:
         - { $ref: "#/components/schemas/GmailIngestCommand" }
@@ -2289,6 +2308,7 @@ components:
         - { $ref: "#/components/schemas/HuggingFacePapersIngestCommand" }
         - { $ref: "#/components/schemas/ReadwiseIngestCommand" }
         - { $ref: "#/components/schemas/ObsidianVaultIngestCommand" }
+        - { $ref: "#/components/schemas/XBookmarksIngestCommand" }
       discriminator:
         propertyName: kind
         mapping:
@@ -2311,6 +2331,7 @@ components:
           huggingface_papers: "#/components/schemas/HuggingFacePapersIngestCommand"
           readwise: "#/components/schemas/ReadwiseIngestCommand"
           obsidian_vault: "#/components/schemas/ObsidianVaultIngestCommand"
+          x_bookmarks: "#/components/schemas/XBookmarksIngestCommand"
 
     SummarizationRequest:
       type: object

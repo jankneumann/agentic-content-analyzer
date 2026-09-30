@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
 
-CONTRACT_SHA256 = "4a676697b5d8db6579b6efe1d708a33567d9443152a983ec2cd4dfc0f7eb7536"
+CONTRACT_SHA256 = "0a3347353feb19918a8c8c634a9dc6348f63e27cee96bb4a3cedd19d8f871845"
 
 OperationStatus = Literal["queued", "in_progress", "completed", "failed", "cancelled"]
 OperationType = Literal[
@@ -290,6 +290,16 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
         },
         "required": ["kind", "source_key"],
     },
+    "x_bookmarks": {
+        "properties": {
+            "kind": {"type": "string", "const": "x_bookmarks"},
+            "max_items": {"type": "integer", "minimum": 1, "maximum": 10000},
+            "full": {"type": "boolean", "default": False},
+            "expand_links": {"type": "boolean"},
+            "force_reprocess": {"type": "boolean", "default": False},
+        },
+        "required": ["kind"],
+    },
 }
 
 
@@ -404,6 +414,9 @@ class SafeIngestionDetails(StrictModel):
     citations_found: int | None = Field(None, ge=0)
     tool_calls_made: int | None = Field(None, ge=0)
     threads_found: int | None = Field(None, ge=0)
+    references_recorded: int | None = Field(None, ge=0)
+    links_submitted: int | None = Field(None, ge=0)
+    links_skipped: int | None = Field(None, ge=0)
 
 
 class PipelineSourceIngestionSummary(StrictModel):
@@ -917,6 +930,7 @@ class ContentQuery(StrictModel):
                 "huggingface_papers",
                 "readwise",
                 "obsidian",
+                "x_bookmarks",
                 "other",
             ]
         ]
@@ -1118,6 +1132,15 @@ class ObsidianVaultIngestCommand(StrictModel):
     force_reprocess: bool = False
 
 
+class XBookmarksIngestCommand(StrictModel):
+    kind: Literal["x_bookmarks"] = "x_bookmarks"
+    configured_sources: list[dict[str, Any]] | None = None
+    max_items: int | None = Field(None, ge=1, le=10000)
+    full: bool = False
+    expand_links: bool | None = None
+    force_reprocess: bool = False
+
+
 class SummarizationRequest(StrictModel):
     content_ids: list[int] | None = Field(None, min_length=1)
     query: ContentQuery | None = None
@@ -1208,6 +1231,7 @@ IngestCommand = Annotated[
     | ArxivPaperIngestCommand
     | HuggingFacePapersIngestCommand
     | ReadwiseIngestCommand
-    | ObsidianVaultIngestCommand,
+    | ObsidianVaultIngestCommand
+    | XBookmarksIngestCommand,
     Field(discriminator="kind"),
 ]

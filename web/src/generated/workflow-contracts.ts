@@ -1,5 +1,5 @@
 // Generated from contracts/openapi/v1.yaml; do not edit.
-export const CONTRACT_SHA256 = "4a676697b5d8db6579b6efe1d708a33567d9443152a983ec2cd4dfc0f7eb7536" as const;
+export const CONTRACT_SHA256 = "0a3347353feb19918a8c8c634a9dc6348f63e27cee96bb4a3cedd19d8f871845" as const;
 
 export type OperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 export type OperationType = "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
@@ -118,6 +118,9 @@ export interface SafeIngestionDetails {
   citations_found?: number;
   tool_calls_made?: number;
   threads_found?: number;
+  references_recorded?: number;
+  links_submitted?: number;
+  links_skipped?: number;
 }
 
 export interface PipelineSourceIngestionSummary {
@@ -582,7 +585,7 @@ export interface ConfiguredSourcePage {
 }
 
 export interface ContentQuery {
-  source_types?: Array<"gmail" | "rss" | "file_upload" | "youtube" | "podcast" | "substack" | "manual" | "webpage" | "xsearch" | "perplexity" | "blog" | "scholar" | "arxiv" | "huggingface_papers" | "readwise" | "obsidian" | "other">;
+  source_types?: Array<"gmail" | "rss" | "file_upload" | "youtube" | "podcast" | "substack" | "manual" | "webpage" | "xsearch" | "perplexity" | "blog" | "scholar" | "arxiv" | "huggingface_papers" | "readwise" | "obsidian" | "x_bookmarks" | "other">;
   statuses?: Array<"pending" | "parsing" | "parsed" | "processing" | "completed" | "failed" | "filtered_out">;
   publications?: Array<string>;
   publication_search?: string;
@@ -755,6 +758,14 @@ export interface ObsidianVaultIngestCommand {
   force_reprocess?: boolean;
 }
 
+export interface XBookmarksIngestCommand {
+  kind: "x_bookmarks";
+  max_items?: number;
+  full?: boolean;
+  expand_links?: boolean;
+  force_reprocess?: boolean;
+}
+
 export interface SummarizationRequest {
   content_ids?: Array<number>;
   query?: ContentQuery;
@@ -808,4 +819,4 @@ export type IngestionResult = IngestionResultV1 | IngestionResultV2;
 
 export type SourceOverrideConfig = BlogSourceOverrideConfig | RSSSourceOverrideConfig | SubstackSourceOverrideConfig | PodcastSourceOverrideConfig | YouTubePlaylistSourceOverrideConfig | YouTubeChannelSourceOverrideConfig | YouTubeRSSSourceOverrideConfig | GmailSourceOverrideConfig | ScholarSourceOverrideConfig | ArxivSourceOverrideConfig | HuggingFacePapersSourceOverrideConfig | WebSearchSourceOverrideConfig | ReadwiseSourceOverrideConfig | ObsidianVaultSourceOverrideConfig;
 
-export type IngestCommand = GmailIngestCommand | RssIngestCommand | BlogIngestCommand | SubstackIngestCommand | YouTubePlaylistIngestCommand | YouTubeRssIngestCommand | PodcastIngestCommand | XSearchIngestCommand | PerplexitySearchIngestCommand | FilesIngestCommand | UrlIngestCommand | ScholarSearchIngestCommand | ScholarPaperIngestCommand | ScholarReferencesIngestCommand | ArxivSearchIngestCommand | ArxivPaperIngestCommand | HuggingFacePapersIngestCommand | ReadwiseIngestCommand | ObsidianVaultIngestCommand;
+export type IngestCommand = GmailIngestCommand | RssIngestCommand | BlogIngestCommand | SubstackIngestCommand | YouTubePlaylistIngestCommand | YouTubeRssIngestCommand | PodcastIngestCommand | XSearchIngestCommand | PerplexitySearchIngestCommand | FilesIngestCommand | UrlIngestCommand | ScholarSearchIngestCommand | ScholarPaperIngestCommand | ScholarReferencesIngestCommand | ArxivSearchIngestCommand | ArxivPaperIngestCommand | HuggingFacePapersIngestCommand | ReadwiseIngestCommand | ObsidianVaultIngestCommand | XBookmarksIngestCommand;

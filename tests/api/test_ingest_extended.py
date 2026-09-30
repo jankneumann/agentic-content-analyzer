@@ -67,9 +67,9 @@ class TestIngestRequestSourceFields:
         assert req.tags == ["ai", "ml"]
         assert req.notes == "Good article"
 
-    def test_substack_session_cookie(self):
-        req = IngestRequest(source="substack", session_cookie="sid=abc123")
-        assert req.session_cookie == "sid=abc123"
+    def test_substack_session_cookie_is_not_a_request_field(self):
+        # A cookie in a request would be persisted in the job payload.
+        assert "session_cookie" not in IngestRequest.model_fields
 
     def test_youtube_public_only(self):
         req = IngestRequest(source="youtube", public_only=True)

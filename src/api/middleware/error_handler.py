@@ -48,6 +48,8 @@ _PROBLEM_PATH_PREFIXES = (
     "/api/v1/references/extract",
     "/api/v1/references/resolve",
     "/api/v1/audit",  # covers /audit and /audit/
+    # Admin credential writes: a legacy 422 body would echo the submitted cookie.
+    "/api/v1/browser-sessions/",
 )
 
 

@@ -312,13 +312,23 @@ class ReferenceExtractor:
     # Persistent storage
     # ------------------------------------------------------------------
 
-    def store_references(self, content_id: int, refs: list[ExtractedReference], db: object) -> int:
+    def store_references(
+        self,
+        content_id: int,
+        refs: list[ExtractedReference],
+        db: object,
+        *,
+        commit: bool = True,
+    ) -> int:
         """Persist extracted references using upsert-style conflict handling.
 
         Handles two conflict paths:
         - Named constraint ``uq_content_reference`` for refs with ``external_id``.
         - Partial index on ``(source_content_id, external_url)`` where
           ``external_id IS NULL`` for URL-only refs.
+
+        ``commit=False`` leaves the rows in the caller's transaction (for a
+        caller that commits them together with the source content).
 
         Returns the number of newly stored rows.
         """
@@ -348,7 +358,8 @@ class ReferenceExtractor:
                 )
             result = db.execute(stmt)  # type: ignore[union-attr]
             stored += result.rowcount  # type: ignore[union-attr]
-        db.commit()  # type: ignore[union-attr]
+        if commit:
+            db.commit()  # type: ignore[union-attr]
         return stored
 
     # ------------------------------------------------------------------

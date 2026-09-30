@@ -1,0 +1,750 @@
+{
+  "ri-07": {
+    "change_id": "exclude-browser-profile-directory-from-backup-and-sync",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Single source of truth for the profiles root",
+          "outcome": "src/config/browser_profiles.py owns DEFAULT_BROWSER_PROFILES_DIR, browser_profiles_dir(), excluded_roots() and EXCLUDED_PATH_PATTERNS; settings.browser_profiles_dir (BROWSER_PROFILES_DIR) configures it"
+        },
+        {
+          "title": "Two independent exclusion checks",
+          "outcome": "component pattern .aca/browser-profiles catches the default layout for any user; resolved configured root catches unusual locations and symlinks"
+        },
+        {
+          "title": "Only two copy paths exist",
+          "outcome": "artifacts tar and FileSyncer; pg_dump, graph dumps, bao snapshot and sync export/import carry no local files"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "one exclusion rule",
+          "actual": "pattern plus resolved-root rule",
+          "reason": "aca-backup runs as a different user so ~ resolves elsewhere"
+        },
+        {
+          "from_plan": "harden the systemd unit with ProtectHome",
+          "actual": "unit unchanged",
+          "reason": "would silently drop artifact paths under /home"
+        }
+      ],
+      "recommendations": [
+        "ri-08: create per-site profiles as browser_profiles_dir()/site with mode 0700 and import from src.config.browser_profiles",
+        "tar exclusion flags are GNU-only; gx-10 has GNU tar 1.35"
+      ]
+    }
+  },
+  "ri-02": {
+    "change_id": "add-secret-sink-abstraction-to-the-auth-cli",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "SecretSink protocol with three sinks",
+          "outcome": "src/cli/secret_sinks.py: RailwaySink, BaoSink, SecretsFileSink; write(mapping) returns key names and never echoes values; aca auth gmail|youtube --to railway|bao|secrets-file, --deploy is a deprecated alias"
+        },
+        {
+          "title": "Server-side KV v2 PATCH instead of hvac kv.v2.patch()",
+          "outcome": "hvac 2.4.0 patch() is read_secret_version + create_or_update_secret(cas); BaoSink sends PATCH /v1/<mount>/data/<path> with application/merge-patch+json via client.adapter.request, needing only the patch capability"
+        },
+        {
+          "title": "saved_at as sibling keys",
+          "outcome": "BaoSink writes <KEY>_SAVED_AT in the same atomic PATCH; saved_at_key() lives in src/config/secrets.py"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "optionally create a missing path",
+          "actual": "sink never creates the path; 404 points at the seed script",
+          "reason": "creation requires create_or_update, which the effort forbids"
+        },
+        {
+          "from_plan": "implementer used ruff: ignore[...] comments",
+          "actual": "host converted them back to # noqa codes",
+          "reason": "CI pins ruff 0.15.15, which rejects ruff: ignore (RUF102); venv ruff 0.16.8 differs"
+        }
+      ],
+      "recommendations": [
+        "ri-04/ri-11: write X_AUTH_TOKEN and X_CT0 in one BaoSink.write() so the pair stays consistent; reuse the worker's authenticated hvac client",
+        "Server-side KV v2 PATCH needs OpenBao/Vault >= 1.9; not yet exercised against a live server",
+        "Lint with uvx ruff@0.15.15, never the venv ruff"
+      ]
+    }
+  },
+  "ri-01": {
+    "change_id": "establish-tailnet-exposure-baseline-for-gx-10-services",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Loopback binds behind tailscale serve",
+          "outcome": "API (systemd aca-api.service, ACA_API_HOST=127.0.0.1) and OpenBao (deploy/gx10/docker-compose.gx10.yml, ${ACA_BAO_BIND_ADDR:-127.0.0.1}:8200) listen on loopback; tailscale serve terminates Let's Encrypt TLS on the MagicDNS name"
+        },
+        {
+          "title": "Configurable proxy trust",
+          "outcome": "docker-entrypoint.sh reads ACA_API_HOST and ACA_FORWARDED_ALLOW_IPS with the old defaults, so Railway is unchanged and gx-10 trusts only 127.0.0.1 for X-Forwarded-For (the login rate limiter keys on it)"
+        },
+        {
+          "title": "Workstation BAO_ADDR",
+          "outcome": "https://gx-10.<tailnet>.ts.net:8200 via tailscale serve; no BAO_CACERT needed"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "compose override for gx-10",
+          "actual": "standalone deploy/gx10 compose file with a raft OpenBao server",
+          "reason": "compose merges ports lists, so an override cannot remove the dev 0.0.0.0:8200 publish; dev overlay is also in-memory -dev mode"
+        }
+      ],
+      "recommendations": [
+        "ri-15: use optional_host_permissions plus chrome.permissions.request for the tailnet origin, then drop the interim chrome-extension:// ALLOWED_ORIGINS note",
+        "Nothing verified on a live tailnet; operator must run the Verify section of docs/TAILNET.md (task 4.4 open)",
+        "Follow-up outside this roadmap: a production/gx-10 profile and loopback binds for the data stores in the root docker-compose.yml"
+      ]
+    }
+  },
+  "ri-04": {
+    "change_id": "introduce-live-credential-provider-for-rotating-secrets",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "CredentialProvider resolves at call time",
+          "outcome": "src/config/credentials.py get_credential_provider(): get(name) reads the OpenBao cache first, then Settings; explicit registry of SUBSTACK_SESSION_COOKIE, X_AUTH_TOKEN, X_CT0 (settings x_auth_token, x_ct0 added, repr=False)"
+        },
+        {
+          "title": "Bounded refresh and local write-back",
+          "outcome": "bao_secrets.refresh_bao_secrets(min_interval_s) throttles process-wide and reuses the authenticated client; apply_bao_local_write merges under the lock; the token manager now swaps under the same lock so an older read cannot clobber a write-back"
+        },
+        {
+          "title": "Substack reads the cookie per request",
+          "outcome": "SubstackClient re-resolves substack.sid before each request and replaces it in the jar on change; substack.py no longer reads settings.substack_session_cookie"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "last_verified_at from the provider",
+          "actual": "in-memory only, bound to a digest of the value",
+          "reason": "no per-run OpenBao writes; ri-06 needs a durable cross-process source"
+        }
+      ],
+      "recommendations": [
+        "ri-05: on a login page or 401 call provider.refresh() then get() once; call mark_verified() on success; readiness uses provider.metadata().present",
+        "ri-11: after BaoSink.write() call provider.apply_local_write(values, saved_at=<same timestamp>)",
+        "Pre-existing: operation payloads can carry a substack session_cookie override (src/api/content_routes.py, src/queue/worker.py), which may persist a cookie in the operations table"
+      ]
+    }
+  },
+  "ri-05": {
+    "change_id": "detect-substack-session-expiry-and-fail-readiness-closed",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Conservative dead-session predicate",
+          "outcome": "401; 403 without cf-mitigated; redirect to /sign-in or /account/login; 2xx text/html from a JSON endpoint; only judged on requests that carried the cookie"
+        },
+        {
+          "title": "Refresh once, retry once, then fail closed",
+          "outcome": "provider.refresh() then one retry if the cookie changed; else mark_rejected() and SessionExpiredError; ingest_content probes, fetches all, then persists, so expiry yields zero rows and code session_expired"
+        },
+        {
+          "title": "Reusable credential failure types and codes",
+          "outcome": "src/ingestion/credential_failures.py: CREDENTIALS_MISSING, SESSION_EXPIRED, CredentialFailureError, SessionExpiredError; result_sanitizer admits both codes"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "fail closed when the Substack cookie is missing",
+          "actual": "keep today's warning; readiness reports credentials_missing",
+          "reason": "the substack_api post path never sends the cookie, so a cookie-less run fetches the same bodies"
+        },
+        {
+          "from_plan": "per-source code x_bookmarks_credentials_missing",
+          "actual": "shared credentials_missing",
+          "reason": "readiness is already per source"
+        }
+      ],
+      "recommendations": [
+        "Paid Substack post bodies are fetched logged out today: substack_api Newsletter/Post get auth=None. Authenticate that path, then make cookie-less runs fail closed (follow-up)",
+        "ri-11/ri-12: reuse CredentialFailureError, session_expired, mark_rejected/mark_verified, and the fetch-then-persist shape",
+        "ri-16: add session_expired and credentials_missing to WorkflowAlertDiagnosticCode and the alert schema enum together",
+        "ri-17: remove docs mention of aca ingest substack-sync --session-cookie (cookie on argv)",
+        "Unreachable legacy path persists a session_cookie into pgqueuer_jobs.payload and Langfuse inputs; remove it"
+      ]
+    }
+  },
+  "ri-06": {
+    "change_id": "add-browser-session-rows-to-aca-auth-status",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Durable last_verified_at from ingestion history",
+          "outcome": "completed_at of the latest success or zero_items run of the gated source (substack, x_bookmarks) via OperationService.list_ingestion_history; remote profiles use GET /api/v1/ingestions"
+        },
+        {
+          "title": "Status never fails on lookup errors",
+          "outcome": "5s cap, never raises, rows show unknown and stderr carries the exception type only"
+        },
+        {
+          "title": "Value-free JSON",
+          "outcome": "aca auth status --json emits oauth, browser_sessions, last_verified_lookup; Railway variables reported as booleans only"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "new browser-session-credentials capability for the spec",
+          "actual": "existing cli-interface capability",
+          "reason": "the change is a CLI surface"
+        }
+      ],
+      "recommendations": [
+        "ri-12: use command_key x_bookmarks exactly; BROWSER_SESSIONS in src/cli/browser_session_status.py looks it up",
+        "ri-08: keep the command names aca auth session substack|x, which the status rows hard-code",
+        "ri-16/ri-17: reuse build_session_rows() for alert text and docs"
+      ]
+    }
+  },
+  "ri-03": {
+    "change_id": "ship-workstation-and-worker-approle-policies",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Workstation role is patch-only",
+          "outcome": "newsletter-session-writer grants only patch on secret/data/newsletter; AppRole newsletter-workstation, token TTL 900s, secret-id TTL 90 days"
+        },
+        {
+          "title": "Worker gains patch on the shared app role",
+          "outcome": "newsletter-worker (read + patch) attached to newsletter-app beside newsletter-read, so the API and worker can persist rotations"
+        },
+        {
+          "title": "hvac kv.v2.patch() is forbidden",
+          "outcome": "it needs read + update; all writers must use BaoSink's raw merge-patch PATCH"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "separate worker AppRole",
+          "actual": "extra policy on newsletter-app",
+          "reason": "API and worker share one role_id and the session-sync endpoint also patches"
+        }
+      ],
+      "recommendations": [
+        "Operator must run scripts/bao_seed_newsletter.py --with-session-roles once on gx-10",
+        "Live check on gx-10: bao kv get with a workstation token returns 403 and aca auth gmail --to bao succeeds",
+        "KV v2 ACLs are per path, so a leaked workstation credential can overwrite but not read other keys"
+      ]
+    }
+  },
+  "ri-08": {
+    "change_id": "add-aca-auth-session-capture-command",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "aca auth session substack|x",
+          "outcome": "src/cli/session_commands.py: Playwright launch_persistent_context on browser_profiles_dir()/<site> (0700), capture without login when the profile already holds cookies, else poll context.cookies() until --timeout; one httpx validation request, one sink.write(), apply_local_write with the sink's exact saved_at"
+        },
+        {
+          "title": "Shared X web constants",
+          "outcome": "src/ingestion/x_web.py holds X_WEB_BEARER_TOKEN, user agent, X_ACCOUNT_SETTINGS_URL, cookie names and x_web_headers() for ri-11"
+        },
+        {
+          "title": "Default sink",
+          "outcome": "bao when BAO_ADDR is set, else secrets-file; never Railway implicitly"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "registration line in auth_commands.py",
+          "actual": "registered in src/cli/app.py",
+          "reason": "avoid colliding with ri-06 edits"
+        },
+        {
+          "from_plan": "bearer token split to avoid scanner matches",
+          "actual": "host added a documented .gitleaks.toml allowlist entry; pinned gitleaks 8.21.2 finds no leaks in the files or branch history",
+          "reason": "be explicit about a public client constant rather than rely on literal layout"
+        }
+      ],
+      "recommendations": [
+        "Playwright lives only in the release-smoke extra; add a browser-session extra so the capture command installs cleanly",
+        "The sandbox Chromium build (1194) is older than Playwright 1.62 expects (1234); a real headed login on the workstation is still untested",
+        "ri-11: import x_web_headers(); treat 401 on account/settings.json as session_expired"
+      ]
+    }
+  },
+  "ri-18": {
+    "change_id": "authenticate-substack-post-fetches-with-the-session-cookie",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Own httpx post path instead of substack_api",
+          "outcome": "the library can only authenticate from a cookies file on disk; _fetch_archive and _fetch_post_detail go through _get_with_session so every post request carries the live cookie"
+        },
+        {
+          "title": "Paid-only substack source fails closed without a cookie",
+          "outcome": "CredentialsMissingError / credentials_missing after one bounded refresh; real_ingest_policy marks substack credentialed"
+        },
+        {
+          "title": "Teaser detection and upgrade",
+          "outcome": "audience only_paid/founding with missing body or <80% of wordcount is a teaser; next authenticated run replaces it, deletes summaries, resets status to parsed (filtered_out kept), reindexes"
+        },
+        {
+          "title": "403 disambiguation",
+          "outcome": "a 403 on a post or archive re-runs the session probe once; live session means per-post access denied (keep teaser, continue), dead session means session_expired with zero rows"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "no pacing",
+          "actual": "substack_request_delay_s (default 1.0s) between post-detail requests",
+          "reason": "host review: runs use the operator's own paid account and the old library slept 2s"
+        },
+        {
+          "from_plan": "any post 403 is a dead session",
+          "actual": "probe-disambiguated",
+          "reason": "host review: a tier-restricted post must not fail the whole run"
+        }
+      ],
+      "recommendations": [
+        "Live check with a real paid subscription to confirm teaser/full signals and whether custom domains accept substack.sid",
+        "Drop the now-unused substack-api dependency in a later cleanup",
+        "ri-16: add credentials_missing and session_expired to the alert code enums together"
+      ]
+    }
+  },
+  "ri-09": {
+    "change_id": "add-x-bookmarks-contract-and-content-source",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "XBookmarksIngestCommand contract",
+          "outcome": "strict, kind-only required; max_items 1..10000, full (default false), expand_links (no default, defers to source config), force_reprocess, internal configured_sources; no after_date since X does not expose bookmark time"
+        },
+        {
+          "title": "Enum and closed lists",
+          "outcome": "ContentSource.X_BOOKMARKS with migration d8e2a4c6f1b3 (ADD VALUE IF NOT EXISTS, idempotent); result literals ingest.x-bookmarks and x_bookmarks; MCP tool ingest_x_bookmarks; web display, filter, and contents route"
+        },
+        {
+          "title": "CLI generated from contract",
+          "outcome": "aca ingest x-bookmarks with --full, --expand-links/--no-expand-links, --max-items, --force-reprocess needs no code"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "land independently",
+          "actual": "committed locally and pushed together with ri-10",
+          "reason": "test_capabilities_match_openapi_discriminator_and_fields requires the registry descriptor; an unregistered kind 500s"
+        }
+      ],
+      "recommendations": [
+        "ri-10: bulk planner maps max_entries to max_items and ignores after_date; readiness uses the shared credentials_missing code from src/ingestion/credential_failures.py",
+        "ri-10: add x_bookmarks to the worker dispatch map and real_ingest_policy as credentialed on X_AUTH_TOKEN + X_CT0"
+      ]
+    }
+  },
+  "ri-16": {
+    "change_id": "classify-session-expired-in-the-terminal-event-outbox",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Classifier reads the failed operation's result",
+          "outcome": "classify_terminal_event classified failed operations from status alone as operation_failed; failed ingestion alerts now carry their safe result codes after operation_failed"
+        },
+        {
+          "title": "Closed remediation field",
+          "outcome": "optional remediation_command (aca auth session substack|x) on the alert envelope, allowed only on ingestion.execute alerts with a credential code; omitted when unset so other alerts serialize unchanged"
+        },
+        {
+          "title": "Pipeline aggregation bypass",
+          "outcome": "alerts carrying a remediation command skip pipeline child suppression, so the scheduled pipeline does not swallow an expiry"
+        },
+        {
+          "title": "Single refresh-command table",
+          "outcome": "SESSION_REFRESH_COMMANDS and refresh_command_for() in src/ingestion/credential_failures.py; status rows and the Substack adapter read it"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "only add two codes to enums",
+          "actual": "classifier and pipeline routing changed too",
+          "reason": "widening the enums alone changed nothing because failed operations never read their result"
+        },
+        {
+          "from_plan": "migration for closed codes",
+          "actual": "no migration or contract regeneration",
+          "reason": "DB checks, telemetry key validation and the OpenAPI diagnostic are not closed over codes"
+        }
+      ],
+      "recommendations": [
+        "ri-12: use command_key x_bookmarks and raise SessionExpiredError / CredentialsMissingError; the alert then names aca auth session x",
+        "Follow-up: resync the alert envelope schema with the model (system_check, Obsidian and backup codes) and add a parity test",
+        "ri-17: document remediation_command and the two credential codes"
+      ]
+    }
+  },
+  "ri-10": {
+    "change_id": "register-the-x-bookmarks-source-descriptor-and-config",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Fixed single-account identity",
+          "outcome": "XBookmarksSource always keys as x_bookmarks:account (X_BOOKMARKS_LOCATOR); aca sources enable x_bookmarks:account"
+        },
+        {
+          "title": "Ships disabled",
+          "outcome": "sources.d/x_bookmarks.yaml has enabled: false so a fresh install's scheduled pipeline stays green"
+        },
+        {
+          "title": "Descriptor and provider readiness",
+          "outcome": "scheduled bulk planner maps max_entries to max_items, passes expand_links, ignores the period; readiness via the credential provider only: credentials_missing unless both X cookies, session_expired if either rejected"
+        },
+        {
+          "title": "Fail-closed stub orchestrator",
+          "outcome": "ingest_x_bookmarks returns status error with source_unavailable and persists nothing until ri-12"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "worker dispatch map entry",
+          "actual": "unchanged",
+          "reason": "worker.py ingest_content map is legacy and its only producer is filtered out; canonical path goes through IngestionService"
+        },
+        {
+          "from_plan": "quiet-hour schedule",
+          "actual": "deferred to ri-12",
+          "reason": "sources.d has no per-source schedule and the source ships disabled"
+        }
+      ],
+      "recommendations": [
+        "ri-12: keep ingest_x_bookmarks keyword-only signature; expand_links=None means use get_x_bookmarks_sources()[0]",
+        "ri-12: emit a ConfiguredSourceResult for the snapshot's public key so IngestionService does not count the source as omitted",
+        "ri-17: document aca sources enable x_bookmarks:account"
+      ]
+    }
+  },
+  "ri-14": {
+    "change_id": "add-admin-endpoint-for-browser-session-sync",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Two strict routes",
+          "outcome": "PUT /api/v1/browser-sessions/substack {substack_sid} and /x {auth_token, ct0}; SecretStr, extra=forbid, RFC 6265 charset, 16 KiB cap; audited browser_sessions.sync; 10 calls per 5 min per IP"
+        },
+        {
+          "title": "Admin key header only",
+          "outcome": "web-UI session and dev no-key bypass are refused because tailscale serve makes every tailnet peer appear as 127.0.0.1"
+        },
+        {
+          "title": "Validate, then one patch",
+          "outcome": "shared validators in src/ingestion/browser_session_validation.py; one BaoSink.write() then apply_local_write with the same saved_at; typed problems 422 session_invalid, 502 upstream/openbao, 503 openbao_not_configured"
+        },
+        {
+          "title": "Problem bodies for this prefix",
+          "outcome": "error_handler problem-path prefix added so a 422 never echoes the submitted cookie as input"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "single {site} route",
+          "actual": "two static routes",
+          "reason": "per-site strict schemas; unknown site is 404"
+        },
+        {
+          "from_plan": "declare in canonical OpenAPI",
+          "actual": "not declared",
+          "reason": "v1.yaml holds only workflow routes; admin routes follow the /api/v1/sources precedent"
+        }
+      ],
+      "recommendations": [
+        "ri-15: send X-Admin-Key and exact field names; 422 means log in again, 502 retry, 503 server lacks OpenBao",
+        "Operator: one real curl PUT on gx-10, then confirm the audit row with admin_key_fp"
+      ]
+    }
+  },
+  "ri-11": {
+    "change_id": "implement-x-graphql-client-with-ct0-write-back",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "XBookmarksClient.iter_pages",
+          "outcome": "newest-first pages by cursor-bottom, stop_when(page_ids) hook, page cap, x_bookmarks_page_delay_s pacing; WalkStopReason exhausted/stop_when/page_cap/rate_limited/caller_stopped"
+        },
+        {
+          "title": "Durable query ID cache",
+          "outcome": "settings_overrides key x_bookmarks.graphql_query_id; stale answer clears, rediscovers once, retries once; bundle requests never carry cookies"
+        },
+        {
+          "title": "ct0 write-back as a pair",
+          "outcome": "X_AUTH_TOKEN and X_CT0 in one quiet BaoSink.write() on the worker's authenticated client, then apply_local_write with the pinned saved_at; failure never fails the fetch"
+        },
+        {
+          "title": "Value-free XPost records",
+          "outcome": "note-tweet full text, outbound URLs without X self links, best mp4, UTC created_at, one level of quoted post"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "single-key ct0 patch",
+          "actual": "pair write",
+          "reason": "keeps the pair consistent; X_AUTH_TOKEN_SAVED_AT now means last written"
+        },
+        {
+          "from_plan": "implementer redirected process stdout around the sink write",
+          "actual": "host switched to BaoSink(echo=None) from ri-14",
+          "reason": "redirect_stdout swaps stdout for the whole process"
+        }
+      ],
+      "recommendations": [
+        "ri-12: stop_when=lambda ids: all(i in known for i in ids); collect all pages before persisting; map rate_limited and page_cap to a partial warning; reuse tests/fixtures/x_bookmarks_graphql.py",
+        "ri-13: use XPost.outbound_urls plus quoted.outbound_urls",
+        "Not exercised against live x.com: chunk-map pattern, query-not-found wording, session error codes and the discovery login check are unverified"
+      ]
+    }
+  },
+  "ri-15": {
+    "change_id": "add-sync-session-button-to-the-chrome-extension",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Popup sync buttons over a pure module",
+          "outcome": "extension/session_sync.js holds cookie reading, permission origin, https check, PUT and status mapping with no DOM or chrome globals; popup has one button and status line per site"
+        },
+        {
+          "title": "Runtime tailnet permission",
+          "outcome": "optional_host_permissions https://*.ts.net/*; options Save requests the API origin from the click; the chrome-extension:// ALLOWED_ORIGINS interim note is removed"
+        },
+        {
+          "title": "Defensive request",
+          "outcome": "https-only API (http only for localhost), credentials omit, redirect manual, no-store; status text is fixed strings plus a validated problem code, saved_at and Retry-After"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "twitter.com fallback",
+          "actual": "x.com only, both cookies required",
+          "reason": "X sessions live on .x.com; a twitter.com pair would be stale"
+        }
+      ],
+      "recommendations": [
+        "Operator: load 1.1.0 unpacked, grant the tailnet host, sync both sites against gx-10, then drop chrome-extension://<id> from ALLOWED_ORIGINS",
+        "Alert text could also mention the extension's Sync X session button"
+      ]
+    }
+  },
+  "ri-12": {
+    "change_id": "ingest-x-bookmarks-incrementally-as-content-rows",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Fetch then persist",
+          "outcome": "XBookmarksIngestionService walks every page before writing; credential failure on any page gives zero rows and the session code with command_key x_bookmarks"
+        },
+        {
+          "title": "Backfill cursor",
+          "outcome": "a partial walk stores x_bookmarks.backfill_cursor in settings_overrides; each run walks the head with stop_when, then resumes the backfill with remaining budget; exhausted clears it; full ignores and resets it"
+        },
+        {
+          "title": "Cross-source dedup",
+          "outcome": "an existing Grok search row with the same xpost id is flagged bookmarked instead of duplicated; xsearch force_reprocess no longer inserts next to a bookmark row"
+        },
+        {
+          "title": "Shared renderer",
+          "outcome": "xsearch thread markdown and metadata builders are shared; Grok search output unchanged; optional Quoted Post section"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "call on_content_ingested reference hook",
+          "actual": "removed after host review",
+          "reason": "no other adapter uses it and it enqueued a legacy job via asyncio.run in the worker"
+        },
+        {
+          "from_plan": "no resume after a capped run",
+          "actual": "durable backfill cursor added after host review",
+          "reason": "older bookmarks were stranded after the first capped run"
+        },
+        {
+          "from_plan": "implementer run",
+          "actual": "container restart cut off the rework report; host verified all four fixes and ran the full validation",
+          "reason": "environment restart"
+        }
+      ],
+      "recommendations": [
+        "ri-13: hook in at XBookmarksIngestionService._expand_links with the written posts only; record content_references explicitly and submit url operations through OperationService",
+        "ri-17: document aca sources enable x_bookmarks:account, the backfill cursor, --full, and scheduling aca ingest x-bookmarks separately for a quiet hour",
+        "Nothing exercised against live x.com"
+      ]
+    }
+  },
+  "ri-17": {
+    "change_id": "document-x-bookmarks-and-the-credential-lifecycle",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "User guide and setup coverage",
+          "outcome": "Browser Sessions and X Bookmarks sections in USER_GUIDE; capture, sinks, env/settings tables and gx-10 session roles in SETUP; manual DevTools and --session-cookie instructions removed"
+        },
+        {
+          "title": "Gotchas",
+          "outcome": "frozen settings vs live provider, KV v2 clobbering and hvac patch, public X bearer token allowlist, alert classifier needs result codes, ruff 0.15.15 RUF102; KV v2 and ruff pin also in CLAUDE.md Critical Gotchas"
+        },
+        {
+          "title": "Alert remediation docs",
+          "outcome": "credential codes and remediation_command documented in docs/DEVELOPMENT.md where terminal-event alerts live"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "document aca ingest substack-sync",
+          "actual": "removed all references",
+          "reason": "the command no longer exists in the CLI; sync_substack_sources() has no caller"
+        }
+      ],
+      "recommendations": [
+        "Recheck the link-expansion docs (X_BOOKMARKS_MAX_EXPANDED_LINKS, warnings) once ri-13 lands",
+        "Run make context-refresh after ri-13 so the drift gate goes green",
+        "Decide whether to restore a Substack subscription-sync command or delete sync_substack_sources()"
+      ]
+    }
+  },
+  "ri-13": {
+    "change_id": "expand-linked-articles-from-bookmarked-posts",
+    "phases": {
+      "planning": "success",
+      "implementing": "success",
+      "reviewing": "success",
+      "validating": "success"
+    },
+    "learning": {
+      "decisions": [
+        {
+          "title": "Follow-up operations from a worker thread",
+          "outcome": "src/queue/follow_up_operations.py: the canonical ingestion handler lends its running loop and OperationService through a ContextVar that to_thread copies; submissions run via run_coroutine_threadsafe with a 30s timeout; refused on the loop's own thread; unavailable outside a worker, never inline"
+        },
+        {
+          "title": "References always, expansion when enabled",
+          "outcome": "each written bookmark stores content_references for its article links in a savepoint (identifier refs for arXiv/DOI/S2, URL-only otherwise); with expand_links, distinct new links become UrlIngestCommand operations tagged x-bookmark with key x_bookmarks.link:<sha256(url)>"
+        },
+        {
+          "title": "Bounded and value-free",
+          "outcome": "x_bookmarks_max_expanded_links (default 50); skips X self links, twimg media, non-http, feeds and playlists; warnings link_expansion_capped/failed carry counts only; codes added to sanitizer, alert model and schema together"
+        }
+      ],
+      "deviations": [
+        {
+          "from_plan": "submit via OperationService from adapter code",
+          "actual": "worker loop binding",
+          "reason": "OperationService is async while the orchestrator runs in to_thread; asyncio.run in the thread was ruled out"
+        },
+        {
+          "from_plan": "additive details only",
+          "actual": "SafeIngestionDetails gains references_recorded, links_submitted, links_skipped in the OpenAPI contract",
+          "reason": "sanitized results must carry the new counts; regenerated outputs"
+        }
+      ],
+      "recommendations": [
+        "Capped or failed links are not retried because their rows are known; a later item could re-expand unresolved references",
+        "References link to articles only after aca manage resolve-refs",
+        "Pre-existing: tests/mcp/__init__.py shadows the mcp library when collected with tests/unit"
+      ]
+    }
+  }
+}

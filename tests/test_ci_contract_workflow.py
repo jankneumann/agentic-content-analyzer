@@ -1,5 +1,6 @@
 """Lock the contract-test job against hang-without-output (#507, #521)."""
 
+import re
 from pathlib import Path
 
 from hypothesis import settings
@@ -8,6 +9,7 @@ from tests.contract.hypothesis_profile import CONTRACT_PROFILE, activate_contrac
 
 CI = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
 CONFTEST = Path(__file__).resolve().parents[1] / "tests" / "contract" / "conftest.py"
+FUZZ = Path(__file__).resolve().parents[1] / "tests" / "contract" / "test_fuzz.py"
 
 
 def test_contract_job_isolates_hangs_and_keeps_hypothesis_examples() -> None:
@@ -30,9 +32,22 @@ def test_fuzz_leg_uses_signal_timeout_and_captures_stderr() -> None:
     assert "--timeout-method=${{ matrix.timeout-method }}" in text
     assert "PYTHONFAULTHANDLER" in text
     assert "-X faulthandler" in text
-    assert "faulthandler_timeout=120" in text
     assert "pytest-stderr.log" in text
     assert "tee pytest-stderr.log" in text
+
+
+def test_faulthandler_dump_fires_only_after_every_pytest_timeout() -> None:
+    """The watchdog dump segfaulted healthy sweeps mid-dump, so it must never
+    fire before pytest-timeout: only for a hang that pytest-timeout cannot
+    interrupt, and still before the job-level kill."""
+    text = CI.read_text()
+    (dump_s,) = (int(v) for v in re.findall(r"faulthandler_timeout=(\d+)", text))
+    (global_s,) = (int(v) for v in re.findall(r"--timeout=(\d+)", text))
+    job_s = 45 * 60
+    fuzz = FUZZ.read_text()
+    (sweep_s,) = (int(v) for v in re.findall(r"_BROAD_SWEEP_TIMEOUT_S = (\d+)", fuzz))
+    assert fuzz.count("@pytest.mark.timeout(_BROAD_SWEEP_TIMEOUT_S)") == 2
+    assert max(global_s, sweep_s) < dump_s < job_s
 
 
 def test_contract_conftest_activates_hypothesis_profile() -> None:

@@ -75,12 +75,14 @@ new schema is introduced.
 source of truth for the scheduled tier. Each source declares its credential env
 vars (matching `settings.py`), live-eligibility, and paid exclusion:
 
-- **Free, no key** (run live without secrets): `rss`, `blog`, `substack`,
+- **Free, no key** (run live without secrets): `rss`, `blog`,
   `youtube_rss`, `url`, `arxiv_search`, `arxiv_paper`, `huggingface_papers`,
   `scholar_search`, `scholar_paper`, `scholar_references`.
 - **Credentialed, non-paid** (live only when the secret is present, else
   skip-with-reason): `gmail` (`GMAIL_OAUTH_TOKEN_JSON`), `youtube_playlist`
-  (`YOUTUBE_API_KEY` or `GOOGLE_API_KEY`), `readwise` (`READWISE_API_KEY`).
+  (`YOUTUBE_API_KEY` or `GOOGLE_API_KEY`), `readwise` (`READWISE_API_KEY`),
+  `substack` (`SUBSTACK_SESSION_COOKIE`; a cookie-less run fails closed with
+  `credentials_missing`).
 - **Paid, never live** (fixture-only): `x_search`, `perplexity_search`.
 - **Fixture-only** (no live upstream / cost): `podcast` (transcription cost),
   `files` (local upload).

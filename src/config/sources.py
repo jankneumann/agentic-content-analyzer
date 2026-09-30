@@ -4,7 +4,8 @@ Loads ingestion source definitions from YAML config files in sources.d/
 directory or a single sources.yaml file. Supports cascading defaults:
   _defaults.yaml globals → per-file defaults → per-entry fields
 
-Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmail, substack, websearch, blog, scholar, arxiv, huggingface_papers
+Source types: rss, youtube_playlist, youtube_channel, youtube_rss, podcast, gmail, substack,
+websearch, blog, scholar, arxiv, huggingface_papers, readwise, obsidian_vault, x_bookmarks
 
 """
 
@@ -232,6 +233,34 @@ class ReadwiseSource(SourceBase):
     include_deleted: bool = False
 
 
+X_BOOKMARKS_LOCATOR = "account"
+"""Fixed natural-key locator of the single-account X bookmarks source.
+
+The bookmarks of the one X account whose ``auth_token``/``ct0`` session is
+configured are one source, whatever the entry is named. Every entry therefore
+has the natural key ``x_bookmarks:account``: renaming it keeps its database
+override and its opaque public key, and a database override with
+``enabled: true`` shadows the shipped (disabled) YAML entry.
+"""
+
+
+class XBookmarksSource(SourceBase):
+    """Bookmarks of the operator's X account, read with a browser session.
+
+    Credentials (``X_AUTH_TOKEN`` and ``X_CT0``) never live here: they are
+    captured with ``aca auth session x`` and resolved at run time through the
+    credential provider. ``max_entries`` caps the bookmarks read per run.
+    """
+
+    type: Literal["x_bookmarks"] = "x_bookmarks"
+    # Same bounds as XBookmarksIngestCommand.max_items, which it plans into.
+    max_entries: int | None = Field(default=None, ge=1, le=10_000)
+    # Submit each bookmarked post's outbound article link as its own url
+    # ingestion. Off by default: the post row and its content_reference are
+    # always kept, expansion only adds a summarized article row.
+    expand_links: bool = False
+
+
 class ObsidianVaultSource(SourceBase):
     """Private worker-local configuration for one repeatable Obsidian vault."""
 
@@ -303,7 +332,8 @@ Source = Annotated[
     | ArxivSource
     | HuggingFacePapersSource
     | ReadwiseSource
-    | ObsidianVaultSource,
+    | ObsidianVaultSource
+    | XBookmarksSource,
     Field(discriminator="type"),
 ]
 
@@ -376,6 +406,10 @@ class SourcesConfig(BaseModel):
     def get_obsidian_vault_sources(self) -> list[ObsidianVaultSource]:
         """Get all enabled worker-local Obsidian vault sources."""
         return [s for s in self.sources if isinstance(s, ObsidianVaultSource) and s.enabled]
+
+    def get_x_bookmarks_sources(self) -> list[XBookmarksSource]:
+        """Get the enabled X bookmarks source (at most one account is supported)."""
+        return [s for s in self.sources if isinstance(s, XBookmarksSource) and s.enabled]
 
 
 _ACTIVE_SOURCES_CONFIG: ContextVar[SourcesConfig | None] = ContextVar(
@@ -623,6 +657,7 @@ _LOCATOR_FIELDS: dict[str, str | None] = {
     "websearch": "prompt",
     "readwise": None,  # singleton; unnamed instances use the stable default locator
     "obsidian_vault": "vault_id",
+    "x_bookmarks": None,  # single account; always the fixed X_BOOKMARKS_LOCATOR
 }
 
 
@@ -632,7 +667,9 @@ def source_key(source: dict[str, Any] | SourceBase) -> str:
     The locator is the source's primary identifier for its type (``url`` for
     blog/rss/podcast/substack/youtube_rss, ``id`` for youtube_playlist,
     ``channel_id`` for youtube_channel, ``query`` for gmail/scholar, etc.),
-    falling back to ``url`` then ``name``. This single helper is the authority
+    falling back to ``url`` then ``name``. The single-account ``x_bookmarks``
+    source always uses the fixed :data:`X_BOOKMARKS_LOCATOR`, so renaming its
+    entry never changes its identity. This single helper is the authority
     for source identity, reused by the loader merge, the override service, and
     the API/CLI so database overrides line up with their YAML twins.
 
@@ -643,6 +680,9 @@ def source_key(source: dict[str, Any] | SourceBase) -> str:
     stype = data.get("type")
     if not stype:
         raise ValueError("source has no 'type' field")
+
+    if stype == "x_bookmarks":
+        return f"{stype}:{X_BOOKMARKS_LOCATOR}"
 
     field = _LOCATOR_FIELDS.get(stype, "url")
     locator = data.get(field) if field else None

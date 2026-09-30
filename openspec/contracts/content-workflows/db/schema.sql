@@ -4,6 +4,9 @@
 -- Private Obsidian Web Clipper notes have a distinct immutable Content source.
 ALTER TYPE contentsource ADD VALUE IF NOT EXISTS 'obsidian';
 
+-- Posts bookmarked on X, fetched with the operator's browser session.
+ALTER TYPE contentsource ADD VALUE IF NOT EXISTS 'x_bookmarks';
+
 -- Each generated resource is durably owned by at most one queue operation.
 -- Nullable ownership preserves legacy writers while allowing a worker to recover
 -- a committed resource if its operation projection was not attached before a crash.

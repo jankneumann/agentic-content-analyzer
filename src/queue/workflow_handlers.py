@@ -220,9 +220,14 @@ class _CanonicalHandlers:
             except URLResumeError as exc:
                 raise WorkflowExecutionError(str(exc)) from exc
         else:
+            from src.queue.follow_up_operations import bind_follow_up_operations
+
             for attempt in range(1, policy.max_attempts + 1):
                 try:
-                    response = await asyncio.to_thread(self._ingestion().execute, command)
+                    # Lend this loop and OperationService to the thread, so an
+                    # adapter can submit follow-up operations (X bookmark links).
+                    with bind_follow_up_operations(self.operations):
+                        response = await asyncio.to_thread(self._ingestion().execute, command)
                     break
                 except ClaimRejected:
                     raise

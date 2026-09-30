@@ -13,7 +13,7 @@ dependencies = [
     "pydantic-settings>=2.1.0",
 
     # Database
-    "sqlalchemy>=2.0.0",
+    "sqlalchemy>=2.0.0,<2.1",  # 2.1 drops the mypy plugin and defaults postgresql:// to psycopg 3
     "alembic>=1.13.0",
     "psycopg2-binary>=2.9.9",
 
