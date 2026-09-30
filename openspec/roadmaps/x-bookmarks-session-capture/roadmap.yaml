@@ -174,7 +174,7 @@ items:
     and the refresh command, and an empty or failed subscription listing never prunes.
   - sync_substack_sources() and its YAML writers are removed and no docs describe
     the YAML sync.
-  status: approved
+  status: completed
   priority: 9
   change_id: sync-substack-subscriptions-into-database-source-overrides
 - item_id: ri-06
@@ -380,7 +380,7 @@ items:
     bookmark page and needs no X session.
   - A link shared by several bookmarks is submitted once and every one of its references
     records the outcome.
-  status: approved
+  status: completed
   priority: 10
   change_id: retry-linked-article-expansion-from-stored-references
 - item_id: ri-14
