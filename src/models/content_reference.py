@@ -25,6 +25,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -63,6 +64,19 @@ class ResolutionStatus(StrEnum):
     EXTERNAL = "external"
     FAILED = "failed"
     NOT_FOUND = "not_found"
+
+
+class ExpansionState(StrEnum):
+    """What X bookmark link expansion did with a reference's link.
+
+    NULL (no state) means the reference is not an expansion candidate: only
+    references recorded for X bookmark rows carry a state.
+    """
+
+    PENDING = "pending"
+    SUBMITTED = "submitted"
+    SKIPPED = "skipped"
+    FAILED = "failed"
 
 
 class ContentReference(Base):  # type: ignore[valid-type, misc]
@@ -113,6 +127,11 @@ class ContentReference(Base):  # type: ignore[valid-type, misc]
     context_snippet = Column(Text, nullable=True)
     confidence = Column(Float, default=1.0)
 
+    # Linked-article expansion (X bookmarks only; NULL for other sources)
+    expansion_state = Column(String(16), nullable=True)
+    expansion_attempts = Column(SmallInteger, nullable=False, default=0, server_default=text("0"))
+    expansion_attempted_at = Column(DateTime(timezone=True), nullable=True)
+
     # Timestamps
     created_at = Column(
         DateTime(timezone=True),
@@ -125,6 +144,15 @@ class ContentReference(Base):  # type: ignore[valid-type, misc]
         CheckConstraint(
             "external_id IS NOT NULL OR external_url IS NOT NULL",
             name="chk_has_identifier",
+        ),
+        CheckConstraint(
+            "expansion_state IS NULL OR expansion_state IN "
+            "('pending', 'submitted', 'skipped', 'failed')",
+            name="chk_content_refs_expansion_state",
+        ),
+        CheckConstraint(
+            "expansion_attempts >= 0 AND expansion_attempts <= 100",
+            name="chk_content_refs_expansion_attempts",
         ),
         UniqueConstraint(
             "source_content_id",
@@ -148,6 +176,11 @@ class ContentReference(Base):  # type: ignore[valid-type, misc]
             "ix_content_refs_unresolved",
             "resolution_status",
             postgresql_where=text("resolution_status = 'unresolved'"),
+        ),
+        Index(
+            "ix_content_refs_expansion_retry",
+            "created_at",
+            postgresql_where=text("expansion_state IN ('pending', 'failed')"),
         ),
     )
 
@@ -202,6 +235,18 @@ class ContentReference(Base):  # type: ignore[valid-type, misc]
             )
         return value
 
+    @validates("expansion_state")
+    def validate_expansion_state(self, key: str, value: str | None) -> str | None:
+        """Validate expansion_state against ExpansionState enum (None allowed)."""
+        if value is None:
+            return value
+        valid = {e.value for e in ExpansionState}
+        if value not in valid:
+            raise ValueError(
+                f"Invalid expansion_state '{value}'. Must be one of: {', '.join(sorted(valid))}"
+            )
+        return value
+
     def __repr__(self) -> str:
         return (
             f"<ContentReference(id={self.id}, "
@@ -229,6 +274,9 @@ class ReferenceResponse(BaseModel):
     source_chunk_id: int | None = None
     context_snippet: str | None = None
     confidence: float = 1.0
+    expansion_state: str | None = None
+    expansion_attempts: int = 0
+    expansion_attempted_at: datetime | None = None
     created_at: datetime
     # Enriched fields from target content (when resolved)
     target_title: str | None = None

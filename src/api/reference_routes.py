@@ -62,6 +62,9 @@ def get_references(
                 source_chunk_id=ref.source_chunk_id,
                 confidence=ref.confidence,
                 context_snippet=ref.context_snippet,
+                expansion_state=ref.expansion_state,
+                expansion_attempts=ref.expansion_attempts or 0,
+                expansion_attempted_at=ref.expansion_attempted_at,
                 created_at=ref.created_at,
                 target_title=ref.target_content.title if ref.target_content else None,
                 target_source_type=ref.target_content.source_type.value
@@ -114,6 +117,9 @@ def get_cited_by(
                 source_chunk_id=ref.source_chunk_id,
                 confidence=ref.confidence,
                 context_snippet=ref.context_snippet,
+                expansion_state=ref.expansion_state,
+                expansion_attempts=ref.expansion_attempts or 0,
+                expansion_attempted_at=ref.expansion_attempted_at,
                 created_at=ref.created_at,
                 target_title=ref.target_content.title if ref.target_content else None,
                 target_source_type=ref.target_content.source_type.value
