@@ -145,6 +145,8 @@ def test_planner_maps_config_and_ignores_the_period() -> None:
         "full": False,
         "expand_links": True,
         "force_reprocess": False,
+        # Scheduled runs never retry only: they retry on the leftover budget.
+        "retry_links": False,
     }
 
 
@@ -169,8 +171,26 @@ def test_dispatch_forwards_only_command_fields() -> None:
         descriptor.orchestrator(command)
 
     orchestrator.assert_called_once_with(
-        max_items=5, full=True, expand_links=False, force_reprocess=False
+        max_items=5, full=True, expand_links=False, force_reprocess=False, retry_links=False
     )
+
+
+def test_dispatch_forwards_retry_links() -> None:
+    descriptor = SOURCE_REGISTRY.get("x_bookmarks")
+
+    with patch("src.ingestion.orchestrator.ingest_x_bookmarks") as orchestrator:
+        descriptor.orchestrator(XBookmarksIngestCommand(retry_links=True))
+
+    orchestrator.assert_called_once_with(full=False, force_reprocess=False, retry_links=True)
+
+
+def test_cli_retry_links_flag_comes_from_the_contract() -> None:
+    from src.cli.workflow_commands import _parse_ingest_args
+
+    payload = _parse_ingest_args("x_bookmarks", ["--retry-links"])
+
+    assert payload == {"kind": "x_bookmarks", "retry_links": True}
+    assert XBookmarksIngestCommand.model_validate(payload).retry_links is True
 
 
 # -- readiness ---------------------------------------------------------------

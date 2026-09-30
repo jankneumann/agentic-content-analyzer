@@ -1058,6 +1058,7 @@ def _default_descriptors() -> tuple[SourceDescriptor, ...]:
                     full=c.full,
                     expand_links=c.expand_links,
                     force_reprocess=c.force_reprocess,
+                    retry_links=c.retry_links,
                 ),
             ),
             frozenset({ContentSource.X_BOOKMARKS}),

@@ -1689,6 +1689,7 @@ def ingest_x_bookmarks(
     full: bool = False,
     expand_links: bool | None = None,
     force_reprocess: bool = False,
+    retry_links: bool = False,
 ) -> IngestionResponse:
     """Sync the operator's X bookmarks incrementally into Content rows.
 
@@ -1697,7 +1698,9 @@ def ingest_x_bookmarks(
     fails closed with zero rows and ``credentials_missing``/``session_expired``
     when the X session is unusable. ``max_items`` caps the rows written and
     defaults to the source's ``max_entries``; ``expand_links=None`` defers to the
-    source's ``expand_links``. The ``auth_token``/``ct0`` session is resolved by
+    source's ``expand_links``. ``retry_links`` skips the walk and only retries
+    stored pending/failed linked-article links (no X session needed). The
+    ``auth_token``/``ct0`` session is resolved by
     the client through the credential provider and is never accepted as an
     argument here, because ``@observe()`` records inputs.
 
@@ -1726,6 +1729,7 @@ def ingest_x_bookmarks(
         full=full,
         expand_links=expand_links,
         force_reprocess=force_reprocess,
+        retry_links=retry_links,
     )
     if source is None:
         return response

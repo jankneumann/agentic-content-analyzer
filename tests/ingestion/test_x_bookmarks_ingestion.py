@@ -33,9 +33,11 @@ from src.ingestion.x_bookmarks import (
     ITEM_CAP_REACHED,
     LINK_EXPANSION_CAPPED,
     LINK_EXPANSION_FAILED,
+    MAX_LINK_EXPANSION_ATTEMPTS,
     PAGE_CAP_REACHED,
     PERSISTENCE_ERROR,
     RATE_LIMITED,
+    RETRY_NOTES,
     X_BOOKMARK_TAG,
     SettingsBackfillCursorStore,
     XBookmarksIngestionService,
@@ -978,6 +980,14 @@ def references_of(db: Any, row: Content) -> list[ContentReference]:
     )
 
 
+def expansion_states(db: Any, row: Content) -> dict[str | None, tuple[str | None, int]]:
+    db.expire_all()
+    return {
+        ref.external_url: (ref.expansion_state, ref.expansion_attempts)
+        for ref in references_of(db, row)
+    }
+
+
 def test_expand_links_submits_one_url_operation_and_references_the_article(
     use_db, make_service, timeline
 ) -> None:
@@ -1035,6 +1045,11 @@ def test_a_link_shared_by_two_bookmarks_is_submitted_once_and_referenced_twice(
     assert submitter.urls == [ARTICLE, "https://example.org/other"]
     rows = bookmark_rows(use_db)
     assert [len(references_of(use_db, row)) for row in rows] == [2, 1]
+    # Both references of the shared link record the one submission.
+    assert [expansion_states(use_db, row).get(ARTICLE) for row in rows] == [
+        ("submitted", 1),
+        ("submitted", 1),
+    ]
     assert response.details["links_submitted"] == 2
     assert response.details["references_recorded"] == 3
 
@@ -1106,6 +1121,12 @@ def test_media_and_feed_links_are_never_submitted(use_db, make_service, timeline
         ("arxiv", "2401.00001", "https://arxiv.org/abs/2401.00001"),
         (None, None, "https://blog.example.com/feed.xml"),
         (None, None, ARTICLE),
+    }
+    # The arXiv outcome lands on its canonical reference URL; the feed starts skipped.
+    assert expansion_states(use_db, row) == {
+        "https://arxiv.org/abs/2401.00001": ("submitted", 1),
+        "https://blog.example.com/feed.xml": ("skipped", 0),
+        ARTICLE: ("submitted", 1),
     }
 
 
@@ -1185,6 +1206,10 @@ def test_expansion_outside_the_worker_warns_instead_of_running_inline(
     assert warning.code == LINK_EXPANSION_FAILED
     assert "durable ingestion worker" in warning.message
     assert use_db.query(Content).filter(Content.source_url == ARTICLE).all() == []
+    # Outside the worker is not the link's fault: no attempt is spent on it.
+    (row,) = bookmark_rows(use_db)
+    assert expansion_states(use_db, row) == {ARTICLE: ("pending", 0)}
+    assert response.details["links_pending"] == 1
 
 
 def test_submissions_per_run_are_capped(use_db, make_service, timeline) -> None:
@@ -1303,6 +1328,8 @@ async def test_durable_operation_submits_linked_articles_through_the_worker_oper
     (result,) = operations.attached
     assert (result["status"], result["warnings"]) == ("ok", [])
     assert result["details"] == {
+        "links_pending": 0,
+        "links_retried": 0,
         "links_skipped": 0,
         "links_submitted": 1,
         "references_recorded": 1,
@@ -1350,3 +1377,326 @@ async def test_real_operation_service_queues_one_url_operation_per_link(
     assert payload["operation_type"] == "ingestion.execute"
     assert payload["input"]["kind"] == "url"
     assert payload["input"]["url"] == ARTICLE
+
+
+# -- link retry (ri-20) ----------------------------------------------------------------
+
+FEED = "https://blog.example.com/feed.xml"
+
+
+class CountingSubmitter(RecordingSubmitter):
+    """Fails every submission while ``failing``, and counts every call."""
+
+    def __init__(self, *, failing: bool = False) -> None:
+        super().__init__()
+        self.failing = failing
+        self.calls = 0
+
+    def __call__(self, command: UrlIngestCommand, *, idempotency_key: str) -> str:
+        self.calls += 1
+        if self.failing:
+            raise OSError("queue unavailable")
+        return super().__call__(command, idempotency_key=idempotency_key)
+
+
+class RecordingCursorStore:
+    """A backfill cursor store that fails the test if a retry-only run writes it."""
+
+    def __init__(self, cursor: str | None) -> None:
+        self.cursor = cursor
+
+    def get(self) -> str | None:
+        return self.cursor
+
+    def set(self, cursor: str) -> None:
+        raise AssertionError("a retry-only run must not move the cursor")
+
+    def clear(self) -> None:
+        raise AssertionError("a retry-only run must not clear the cursor")
+
+
+def _no_client() -> XBookmarksClient:
+    raise AssertionError("a retry-only run must not build an X client")
+
+
+def _stored_bookmark(db: Any, post_id: str, *urls: str) -> Content:
+    """A bookmark row from an earlier run, with one pending reference per link."""
+    row = Content(
+        source_type=ContentSource.X_BOOKMARKS,
+        source_id=f"xpost:{post_id}",
+        source_url=f"https://x.com/alice/status/{post_id}",
+        title=f"Post {post_id}",
+        markdown_content="",
+        content_hash=f"{int(post_id):064d}",
+        status=ContentStatus.COMPLETED,
+    )
+    db.add(row)
+    db.flush()
+    for url in urls:
+        db.add(
+            ContentReference(
+                source_content_id=row.id,
+                external_url=url,
+                expansion_state="pending",
+            )
+        )
+        db.flush()
+    return row
+
+
+def test_bookmark_references_start_pending_and_other_sources_have_no_state(
+    use_db, make_service, timeline
+) -> None:
+    from src.services.reference_extractor import ExtractedReference, ReferenceExtractor
+
+    timeline.post_ids = ["201"]
+    links_post(timeline, "201", ARTICLE, FEED, "https://arxiv.org/abs/2401.00001v2")
+
+    response = make_service(link_submitter=RecordingSubmitter()).ingest(expand_links=False)
+
+    (row,) = bookmark_rows(use_db)
+    assert expansion_states(use_db, row) == {
+        "https://arxiv.org/abs/2401.00001": ("pending", 0),
+        FEED: ("skipped", 0),
+        ARTICLE: ("pending", 0),
+    }
+    assert response.details["links_pending"] == 2
+    newsletter = Content(
+        source_type=ContentSource.RSS,
+        source_id="rss:issue-1",
+        source_url="https://news.example.com/issue-1",
+        title="Issue 1",
+        markdown_content="",
+        content_hash="1" * 64,
+        status=ContentStatus.COMPLETED,
+    )
+    use_db.add(newsletter)
+    use_db.flush()
+    ReferenceExtractor().store_references(
+        newsletter.id, [ExtractedReference(external_url=ARTICLE)], use_db, commit=False
+    )
+    assert expansion_states(use_db, newsletter) == {ARTICLE: (None, 0)}
+
+
+def test_a_capped_link_is_submitted_by_a_later_run_oldest_first(
+    use_db, make_service, timeline
+) -> None:
+    timeline.post_ids = ["203", "202", "201"]
+    for index, post_id in enumerate(timeline.post_ids):
+        links_post(timeline, post_id, f"https://example.com/{index}")
+    first = make_service(link_submitter=RecordingSubmitter(), max_expanded_links=1).ingest(
+        expand_links=True
+    )
+    assert (first.details["links_submitted"], first.details["links_capped"]) == (1, 2)
+    assert first.details["links_pending"] == 2
+    # Make the newest capped link the oldest reference: the retry order follows created_at.
+    oldest = next(row for row in bookmark_rows(use_db) if row.source_id == "xpost:201")
+    use_db.query(ContentReference).filter(ContentReference.source_content_id == oldest.id).update(
+        {ContentReference.created_at: datetime(2020, 1, 1, tzinfo=UTC)}
+    )
+    use_db.flush()
+
+    timeline.bookmark("204")
+    links_post(timeline, "204", "https://example.com/new")
+    rerun(timeline)
+    submitter = RecordingSubmitter()
+    second = make_service(link_submitter=submitter, max_expanded_links=2).ingest(expand_links=True)
+
+    # The new post's link first, then the leftover budget on the oldest backlog link.
+    assert submitter.urls == ["https://example.com/new", "https://example.com/2"]
+    assert submitter.commands[1].notes == RETRY_NOTES
+    assert submitter.commands[1].tags == [X_BOOKMARK_TAG]
+    assert submitter.keys[1] == link_idempotency_key("https://example.com/2")
+    assert (second.details["links_submitted"], second.details["links_retried"]) == (1, 1)
+    assert second.details["links_pending"] == 1
+    assert expansion_states(use_db, oldest) == {"https://example.com/2": ("submitted", 1)}
+
+    # A run that writes nothing new still spends its budget on the backlog.
+    rerun(timeline)
+    submitter = RecordingSubmitter()
+    third = make_service(link_submitter=submitter, max_expanded_links=2).ingest(expand_links=True)
+    assert third.items_ingested == 0
+    assert submitter.urls == ["https://example.com/1"]
+    assert (third.details["links_retried"], third.details["links_pending"]) == (1, 0)
+    assert all(
+        state == ("submitted", 1)
+        for row in bookmark_rows(use_db)
+        for state in expansion_states(use_db, row).values()
+    )
+
+
+def test_a_failed_link_is_retried_until_the_attempt_limit(use_db, make_service, timeline) -> None:
+    timeline.post_ids = ["201"]
+    links_post(timeline, "201", ARTICLE)
+    submitter = CountingSubmitter(failing=True)
+
+    first = make_service(link_submitter=submitter).ingest(expand_links=True)
+    (row,) = bookmark_rows(use_db)
+    assert first.details["links_failed"] == 1
+    assert expansion_states(use_db, row) == {ARTICLE: ("failed", 1)}
+
+    for attempt in range(2, MAX_LINK_EXPANSION_ATTEMPTS + 1):
+        rerun(timeline)
+        response = make_service(link_submitter=submitter).ingest(expand_links=True)
+        assert expansion_states(use_db, row) == {ARTICLE: ("failed", attempt)}
+        assert [warning.code for warning in response.warnings] == [LINK_EXPANSION_FAILED]
+        assert "example.com" not in response.warnings[0].message
+    assert submitter.calls == MAX_LINK_EXPANSION_ATTEMPTS
+    assert response.details["links_pending"] == 0
+
+    # After the limit, not even a working submitter is handed the link again.
+    rerun(timeline)
+    working = CountingSubmitter()
+    response = make_service(link_submitter=working).ingest(expand_links=True)
+    assert working.calls == 0
+    assert (response.details["links_retried"], response.warnings) == (0, [])
+    assert expansion_states(use_db, row) == {ARTICLE: ("failed", MAX_LINK_EXPANSION_ATTEMPTS)}
+
+
+def test_the_retry_pass_stops_at_the_first_failed_submission(use_db, make_service) -> None:
+    rows = [
+        _stored_bookmark(use_db, "301", "https://example.com/a"),
+        _stored_bookmark(use_db, "302", "https://example.com/b"),
+    ]
+    submitter = CountingSubmitter(failing=True)
+
+    response = make_service(link_submitter=submitter, max_expanded_links=5).ingest(retry_links=True)
+
+    assert submitter.calls == 1
+    assert response.details["links_failed"] == 2
+    assert [expansion_states(use_db, row) for row in rows] == [
+        {"https://example.com/a": ("failed", 1)},
+        {"https://example.com/b": ("pending", 0)},
+    ]
+
+
+def test_retry_marks_links_already_stored_or_never_submitted_as_skipped(
+    use_db, make_service
+) -> None:
+    use_db.add(
+        Content(
+            source_type=ContentSource.WEBPAGE,
+            source_id=f"webpage:{ARTICLE}",
+            source_url=ARTICLE,
+            title="Saved since the bookmark",
+            markdown_content="",
+            content_hash="0" * 64,
+            status=ContentStatus.COMPLETED,
+        )
+    )
+    # A backfilled feed reference starts pending; the retry pass settles it.
+    row = _stored_bookmark(use_db, "301", ARTICLE, FEED, "https://example.org/fresh")
+    submitter = RecordingSubmitter()
+
+    response = make_service(link_submitter=submitter, max_expanded_links=5).ingest(
+        expand_links=True
+    )
+
+    assert submitter.urls == ["https://example.org/fresh"]
+    assert response.details["links_skipped_by_reason"] == {
+        "already_stored": 1,
+        "feed_or_playlist": 1,
+    }
+    assert expansion_states(use_db, row) == {
+        FEED: ("skipped", 0),
+        ARTICLE: ("skipped", 0),
+        "https://example.org/fresh": ("submitted", 1),
+    }
+
+
+def test_a_backlog_link_shared_by_two_bookmarks_is_submitted_once(use_db, make_service) -> None:
+    rows = [
+        _stored_bookmark(use_db, "301", ARTICLE),
+        _stored_bookmark(use_db, "302", ARTICLE, "https://example.org/other"),
+    ]
+    submitter = RecordingSubmitter()
+
+    response = make_service(link_submitter=submitter, max_expanded_links=5).ingest(retry_links=True)
+
+    assert submitter.urls == [ARTICLE, "https://example.org/other"]
+    assert response.details["links_retried"] == 2
+    assert [expansion_states(use_db, row) for row in rows] == [
+        {ARTICLE: ("submitted", 1)},
+        {ARTICLE: ("submitted", 1), "https://example.org/other": ("submitted", 1)},
+    ]
+
+
+@pytest.mark.parametrize("credentials", [{}])
+def test_retry_links_needs_no_x_session_and_leaves_the_cursor(
+    use_db, make_service, timeline, credentials
+) -> None:
+    row = _stored_bookmark(use_db, "301", ARTICLE)
+    submitter = RecordingSubmitter()
+
+    # The fixture's client has no X session: a walk would fail credentials_missing.
+    response = make_service(
+        link_submitter=submitter,
+        max_expanded_links=5,
+        cursor_store=RecordingCursorStore("after:301"),
+    ).ingest(retry_links=True, expand_links=False)
+
+    assert timeline.graphql_calls == 0
+    assert (response.status, response.errors, response.warnings) == ("ok", [], [])
+    assert response.items_ingested == 0
+    assert submitter.urls == [ARTICLE]
+    assert expansion_states(use_db, row) == {ARTICLE: ("submitted", 1)}
+    details = response.details
+    assert (details["retry_links"], details["expand_links"]) == (True, True)
+    assert (details["pages_fetched"], details["walk_stop_reason"]) == (0, None)
+    assert details["backfill_pending"] is True
+    assert (details["links_retried"], details["links_submitted"]) == (1, 0)
+    assert (details["links_pending"], details["max_expanded_links"]) == (0, 5)
+
+
+@pytest.mark.parametrize("credentials", [{}])
+def test_without_retry_links_the_same_session_fails_closed(
+    use_db, make_service, timeline, credentials
+) -> None:
+    # The control for the test above: the walk does need the session.
+    response = make_service(link_submitter=RecordingSubmitter()).ingest(expand_links=True)
+
+    assert [error.code for error in response.errors] == [CREDENTIALS_MISSING]
+    assert response.details["retry_links"] is False
+
+
+def test_retry_links_never_builds_an_x_client(use_db) -> None:
+    _stored_bookmark(use_db, "301", ARTICLE)
+    submitter = RecordingSubmitter()
+
+    response = XBookmarksIngestionService(
+        client_factory=_no_client,
+        cursor_store=RecordingCursorStore(None),
+        link_submitter=submitter,
+        max_expanded_links=5,
+    ).ingest(retry_links=True)
+
+    assert submitter.urls == [ARTICLE]
+    assert response.details["backfill_pending"] is False
+
+
+def test_orchestrator_threads_retry_links_to_the_service() -> None:
+    from src.ingestion import orchestrator
+
+    config = SimpleNamespace(get_x_bookmarks_sources=lambda: [])
+    with (
+        patch("src.config.sources.load_sources_config", return_value=config),
+        patch.object(XBookmarksIngestionService, "ingest") as ingest,
+    ):
+        orchestrator.ingest_x_bookmarks(retry_links=True)
+
+    assert ingest.call_args.kwargs["retry_links"] is True
+
+
+def test_retry_details_are_public_counts() -> None:
+    from src.ingestion.result_sanitizer import sanitize_ingestion_metadata
+
+    projection = sanitize_ingestion_metadata(
+        details={
+            "links_retried": 2,
+            "links_pending": 7,
+            "retry_links": True,
+            "links_skipped_by_reason": {"already_stored": 1},
+        }
+    )
+
+    assert projection["details"] == {"links_pending": 7, "links_retried": 2}

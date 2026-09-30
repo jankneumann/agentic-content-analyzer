@@ -461,12 +461,15 @@ async def ingest_x_bookmarks(
     full: bool = False,
     expand_links: bool | None = None,
     force_reprocess: bool = False,
+    retry_links: bool = False,
     idempotency_key: str | None = None,
 ) -> OperationHandle:
     """Queue one sync of the operator's X bookmarks.
 
     ``full`` walks every page instead of stopping at the first fully known
     page; ``expand_links`` overrides the configured source when set.
+    ``retry_links`` skips the walk and only retries stored linked-article
+    links that are still pending or failed; it needs no X session.
     Credentials are resolved server-side and never accepted here.
     """
 
@@ -477,6 +480,7 @@ async def ingest_x_bookmarks(
             full=full,
             expand_links=expand_links,
             force_reprocess=force_reprocess,
+            retry_links=retry_links,
         ),
         idempotency_key,
     )

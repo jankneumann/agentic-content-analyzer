@@ -32,6 +32,13 @@ row each one becomes, and the envelope the durable workflow records.
   ``OperationService`` through :mod:`src.queue.follow_up_operations`; the post
   row stays the receipt. X self links, X media hosts, non-http(s) links, and
   feed or playlist URLs are never submitted.
+* **Link retry (ri-20)**: each bookmark reference carries an expansion state
+  (``pending``, ``submitted``, ``skipped``, ``failed``; NULL for references of
+  other sources). Every expand-links run writes each handled link's outcome to
+  every reference of that link, then spends the budget it has left on older
+  ``pending``/``failed`` references, oldest first, at most
+  ``MAX_LINK_EXPANSION_ATTEMPTS`` times per link. ``retry_links=True`` runs only
+  that retry pass: no timeline walk, no X session, no cursor movement.
 * **Cross-source dedup**: ``contents`` is unique on ``(source_type,
   source_id)`` only, so a post Grok search already stored would otherwise get
   a second row. A bookmark whose ``xpost:<id>`` exists under another source is
@@ -54,7 +61,7 @@ from typing import TYPE_CHECKING, Any, Final, Protocol
 from urllib.parse import urlsplit
 
 from pydantic import ValidationError
-from sqlalchemy import or_, select
+from sqlalchemy import Select, func, or_, select, update
 
 from src.contracts.workflow_models import UrlIngestCommand
 from src.ingestion.credential_failures import CredentialFailureError
@@ -84,6 +91,7 @@ from src.ingestion.xsearch import (
     thread_title,
 )
 from src.models.content import Content, ContentSource, ContentStatus
+from src.models.content_reference import ContentReference, ExpansionState
 from src.queue.follow_up_operations import FollowUpUnavailableError, submit_follow_up_ingestion
 from src.services.reference_extractor import (
     ExtractedReference,
@@ -105,8 +113,10 @@ __all__ = [
     "ITEM_CAP_REACHED",
     "LINK_EXPANSION_CAPPED",
     "LINK_EXPANSION_FAILED",
+    "MAX_LINK_EXPANSION_ATTEMPTS",
     "PAGE_CAP_REACHED",
     "RATE_LIMITED",
+    "RETRY_NOTES",
     "X_BOOKMARK_TAG",
     "BackfillCursorStore",
     "LinkSubmitter",
@@ -119,6 +129,7 @@ __all__ = [
     "link_references",
     "link_skip_reason",
     "post_source_id",
+    "reference_url",
 ]
 
 COMMAND: Final = "ingest.x-bookmarks"
@@ -241,6 +252,11 @@ X_BOOKMARK_TAG: Final = "x-bookmark"
 """Tag on every url operation submitted for a bookmark's linked article."""
 
 LINK_IDEMPOTENCY_PREFIX: Final = "x_bookmarks.link:"
+MAX_LINK_EXPANSION_ATTEMPTS: Final = 3
+"""Attempts (failed submissions; ``submitted`` is terminal) after which a link is not retried."""
+_MAX_ATTEMPTS_STORED: Final = 100  # the column's CHECK ceiling
+RETRY_NOTES: Final = "Retried link from an X bookmark"
+_RETRYABLE_STATES: Final = (ExpansionState.PENDING.value, ExpansionState.FAILED.value)
 _MEDIA_HOSTS: Final = ("twimg.com",)  # pbs.twimg.com images, video.twimg.com videos
 _HTTP_SCHEMES: Final = frozenset({"http", "https"})
 
@@ -298,6 +314,22 @@ def link_references(post: XPost) -> list[ExtractedReference]:
         ref = classify_reference_url(url) or ExtractedReference(external_url=url)
         refs.setdefault((ref.external_id, ref.external_id_type, ref.external_url), ref)
     return list(refs.values())
+
+
+def reference_url(url: str) -> str:
+    """The ``external_url`` of the reference :func:`link_references` records for a link.
+
+    An arXiv, DOI or Semantic Scholar link is stored under its canonical URL,
+    so the outcome of submitting a link is written to the references of this
+    URL, not of the one seen in the post.
+    """
+    ref = classify_reference_url(url) or ExtractedReference(external_url=url)
+    return ref.external_url or url
+
+
+def initial_expansion_state(url: str) -> ExpansionState:
+    """A new bookmark reference's state: ``skipped`` for a link never submitted."""
+    return ExpansionState.SKIPPED if expansion_skip_reason(url) else ExpansionState.PENDING
 
 
 def link_idempotency_key(url: str) -> str:
@@ -473,14 +505,21 @@ class _PersistResult:
 
 @dataclass
 class _Expansion:
-    """What linked-article expansion did for the rows written in one run."""
+    """What linked-article expansion did in one run: new posts, then the retry pass."""
 
     limit: int = 0
     submitted: int = 0
+    """Links of the posts written in this run that were submitted."""
+    retried: int = 0
+    """Older pending/failed links the retry pass submitted."""
     capped: int = 0
     failed: int = 0
     unavailable: bool = False
+    pending: int = 0
+    """Distinct links still pending or failed (under the attempt limit) after the run."""
     skipped: dict[str, int] = field(default_factory=dict)
+    handled: set[str] = field(default_factory=set, repr=False)
+    """Reference URLs whose outcome this run recorded: the retry pass skips them."""
 
     def skip(self, reason: str) -> None:
         self.skipped[reason] = self.skipped.get(reason, 0) + 1
@@ -521,8 +560,15 @@ class XBookmarksIngestionService:
         full: bool = False,
         expand_links: bool = False,
         force_reprocess: bool = False,
+        retry_links: bool = False,
     ) -> IngestionResponse:
-        """Walk, then persist, then move the cursor. Never raises for a session problem."""
+        """Walk, then persist, then move the cursor. Never raises for a session problem.
+
+        ``retry_links`` skips all of that and only retries the stored backlog
+        of pending/failed links with the full link budget (see :meth:`_retry_only`).
+        """
+        if retry_links:
+            return self._retry_only(full=full)
         mode = "full" if full else "incremental"
         logger.info(f"x_bookmarks.sync_started: {mode} walk (max_items={max_items})")
         stored_cursor = self._cursor_store.get()
@@ -563,7 +609,7 @@ class XBookmarksIngestionService:
                 source=SOURCE,
                 status="error",
                 errors=[exc.to_ingestion_error()],
-                details={"full": full, "expand_links": expand_links},
+                details={"full": full, "expand_links": expand_links, "retry_links": False},
             )
 
         persisted = self._persist(collected.posts, force_reprocess=force_reprocess)
@@ -575,6 +621,7 @@ class XBookmarksIngestionService:
             retry_cursor=collected.retry_cursor(persisted.failed_post_ids),
         )
         expansion = self._expand_links(persisted.written_posts, enabled=expand_links)
+        expansion.pending = self._pending_link_count()
         return self._response(
             collected,
             head,
@@ -584,6 +631,29 @@ class XBookmarksIngestionService:
             backfill_pending=backfill_pending,
             full=full,
             expand_links=expand_links,
+        )
+
+    def _retry_only(self, *, full: bool) -> IngestionResponse:
+        """Retry the stored backlog only: no client, no X request, no cursor write.
+
+        Expansion is on regardless of the source's ``expand_links``, and the
+        whole link budget goes to the oldest pending/failed links.
+        """
+        logger.info("x_bookmarks.retry_links: retrying stored links without a timeline walk")
+        expansion = _Expansion(limit=self._expansion_limit())
+        self._retry_links(expansion, budget=expansion.limit)
+        expansion.pending = self._pending_link_count()
+        self._log_expansion(expansion)
+        return self._response(
+            _Collected(),
+            _Pass(),
+            None,
+            _PersistResult(),
+            expansion,
+            backfill_pending=self._cursor_store.get() is not None,
+            full=full,
+            expand_links=True,
+            retry_links=True,
         )
 
     # -- walk ------------------------------------------------------------------
@@ -779,7 +849,9 @@ class XBookmarksIngestionService:
         """Reference each article link from the written row, in its own savepoint.
 
         The references commit with the row; a failure drops only the references
-        (the row is kept) and is reported as a warning.
+        (the row is kept) and is reported as a warning. Each reference without
+        an expansion state starts ``pending`` (``skipped`` for a feed or
+        playlist link); a state an earlier run recorded is kept.
         """
         refs = link_references(post)
         if not refs:
@@ -789,6 +861,7 @@ class XBookmarksIngestionService:
                 result.references_recorded += ReferenceExtractor().store_references(
                     row.id, refs, db, commit=False
                 )
+                _initialize_expansion_states(db, row.id, refs)
         except Exception as exc:
             logger.warning(
                 f"x_bookmarks.references_failed: {row.source_id} ({log_error_type(exc)})"
@@ -848,21 +921,34 @@ class XBookmarksIngestionService:
     # -- link expansion (ri-13) ------------------------------------------------
 
     def _expand_links(self, posts: Sequence[XPost], *, enabled: bool) -> _Expansion:
-        """Submit one url operation per distinct article link of the written posts.
+        """Expand the links of the written posts, then retry older links on the budget left.
 
         ``enabled`` is already resolved against the source's ``expand_links``.
-        Only rows written in this run are expanded, so a rerun over known
-        bookmarks submits nothing. A link already stored as content, or seen
-        earlier in the run, is not submitted again, and the idempotency key
-        collapses a submission onto a still-active one for the same URL. The
-        first failed submission stops the rest: the rows are committed, and the
-        unsubmitted links keep their references.
+        The first failed submission stops the rest of the run, retry included.
         """
         result = _Expansion()
-        if not enabled or not posts:
+        if not enabled:
             return result
         result.limit = self._expansion_limit()
+        if posts:
+            self._expand_new_links(posts, result)
+        if not result.failed:
+            self._retry_links(result, budget=result.limit - result.submitted)
+        self._log_expansion(result)
+        return result
 
+    def _expand_new_links(self, posts: Sequence[XPost], result: _Expansion) -> None:
+        """Submit one url operation per distinct article link of the written posts.
+
+        Only rows written in this run are expanded here, so a rerun over known
+        bookmarks submits nothing new (the retry pass handles the backlog). A
+        link already stored as content, or seen earlier in the run, is not
+        submitted again, and the idempotency key collapses a submission onto a
+        still-active one for the same URL. The first failed submission stops
+        the rest: the rows are committed, and the unsubmitted links keep their
+        references. Each outcome is written to every reference of the link.
+        """
+        outcomes: dict[str, ExpansionState] = {}
         candidates: dict[str, XPost] = {}
         seen: set[str] = set()
         for post in posts:
@@ -873,11 +959,13 @@ class XBookmarksIngestionService:
                 reason = expansion_skip_reason(url)
                 if reason is not None:
                     result.skip(reason)
+                    outcomes[reference_url(url)] = ExpansionState.SKIPPED
                     continue
                 candidates[url] = post
         for url in self._stored_urls(list(candidates)):
             del candidates[url]
             result.skip(SKIP_ALREADY_STORED)
+            outcomes[reference_url(url)] = ExpansionState.SKIPPED
 
         pending = list(candidates.items())
         result.capped = max(0, len(pending) - result.limit)
@@ -890,26 +978,170 @@ class XBookmarksIngestionService:
                 )
             except ValidationError:
                 result.skip(SKIP_UNSUPPORTED)
+                outcomes[reference_url(url)] = ExpansionState.SKIPPED
                 continue
-            try:
-                self._link_submitter(command, idempotency_key=link_idempotency_key(url))
-            except FollowUpUnavailableError:
-                result.unavailable = True
-            except Exception as exc:
-                logger.warning(f"x_bookmarks.link_submit_failed ({log_error_type(exc)})")
-            else:
+            outcome = self._submit_link(command, url, result)
+            if outcome is not None:
+                outcomes[reference_url(url)] = outcome
+            if outcome is ExpansionState.SUBMITTED:
                 result.submitted += 1
                 continue
             result.failed = min(result.limit, len(pending)) - index
             break
+        self._record_outcomes(outcomes, result)
 
+    def _retry_links(self, result: _Expansion, *, budget: int) -> None:
+        """Submit older pending/failed links, oldest reference first, within ``budget``.
+
+        Applies the new-post skip rules (feed or playlist, X self or media
+        links, already stored as content) and marks those ``skipped``; a skip
+        spends no budget. Links this run already handled are left alone, and a
+        link is not selected once it has been attempted
+        ``MAX_LINK_EXPANSION_ATTEMPTS`` times. The first failed submission
+        stops the pass, like the new-post loop.
+        """
+        outcomes: dict[str, ExpansionState] = {}
+        stopped = False
+        while budget > 0 and not stopped:
+            batch = self._retry_candidates(limit=budget, exclude=result.handled)
+            if not batch:
+                break
+            stored = set(self._stored_urls(batch))
+            for index, url in enumerate(batch):
+                result.handled.add(url)
+                reason = expansion_skip_reason(url) or (
+                    SKIP_ALREADY_STORED if url in stored else None
+                )
+                command: UrlIngestCommand | None = None
+                if reason is None:
+                    try:
+                        command = UrlIngestCommand(
+                            url=url, tags=[X_BOOKMARK_TAG], notes=RETRY_NOTES
+                        )
+                    except ValidationError:
+                        reason = SKIP_UNSUPPORTED
+                if command is None:
+                    result.skip(reason or SKIP_UNSUPPORTED)
+                    outcomes[url] = ExpansionState.SKIPPED
+                    continue
+                outcome = self._submit_link(command, url, result)
+                if outcome is not None:
+                    outcomes[url] = outcome
+                if outcome is ExpansionState.SUBMITTED:
+                    result.retried += 1
+                    budget -= 1
+                    continue
+                result.failed += len(batch) - index
+                stopped = True
+                break
+        self._record_outcomes(outcomes, result)
+
+    def _submit_link(
+        self, command: UrlIngestCommand, url: str, result: _Expansion
+    ) -> ExpansionState | None:
+        """Submit one link: ``submitted``, ``failed``, or None outside the worker.
+
+        Outside the durable worker nothing can be submitted, which is not the
+        link's fault, so that outcome records no attempt.
+        """
+        try:
+            self._link_submitter(command, idempotency_key=link_idempotency_key(url))
+        except FollowUpUnavailableError:
+            result.unavailable = True
+            return None
+        except Exception as exc:
+            logger.warning(f"x_bookmarks.link_submit_failed ({log_error_type(exc)})")
+            return ExpansionState.FAILED
+        return ExpansionState.SUBMITTED
+
+    @staticmethod
+    def _log_expansion(result: _Expansion) -> None:
         skipped = sum(result.skipped.values())
         logger.info(
             f"x_bookmarks.expand_links: {result.submitted} url operation(s) submitted, "
-            f"{skipped} link(s) skipped, {result.capped} over the limit of {result.limit}, "
-            f"{result.failed} not submitted"
+            f"{result.retried} retried, {skipped} link(s) skipped, {result.capped} over the "
+            f"limit of {result.limit}, {result.failed} not submitted, {result.pending} pending"
         )
-        return result
+
+    @staticmethod
+    def _record_outcomes(outcomes: dict[str, ExpansionState], result: _Expansion) -> None:
+        """Write each link's outcome to every pending/failed reference of that link.
+
+        ``submitted`` and ``failed`` count an attempt and stamp its time;
+        ``skipped`` does not. ``submitted`` and ``skipped`` are terminal, so a
+        reference already in either state is never touched. Fails open: an
+        unrecorded outcome only means the link is considered again next run.
+        """
+        result.handled.update(outcomes)
+        if not outcomes:
+            return
+        by_state: dict[ExpansionState, list[str]] = {}
+        for url, state in outcomes.items():
+            by_state.setdefault(state, []).append(url)
+        attempted_at = datetime.now(UTC)
+        try:
+            with get_db() as db:
+                with db.begin_nested():
+                    for state, urls in by_state.items():
+                        values: dict[str, Any] = {"expansion_state": state.value}
+                        if state is not ExpansionState.SKIPPED:
+                            values["expansion_attempts"] = func.least(
+                                ContentReference.expansion_attempts + 1, _MAX_ATTEMPTS_STORED
+                            )
+                            values["expansion_attempted_at"] = attempted_at
+                        db.execute(
+                            update(ContentReference)
+                            .where(
+                                ContentReference.external_url.in_(urls),
+                                ContentReference.expansion_state.in_(_RETRYABLE_STATES),
+                            )
+                            .values(**values)
+                            .execution_options(synchronize_session=False)
+                        )
+                db.commit()
+        except Exception as exc:
+            logger.warning(f"x_bookmarks.link_state_write_failed ({log_error_type(exc)})")
+
+    @staticmethod
+    def _retryable_links() -> Select[tuple[str | None]]:
+        """Distinct pending/failed reference URLs under the attempt limit."""
+        return (
+            select(ContentReference.external_url)
+            .where(
+                ContentReference.expansion_state.in_(_RETRYABLE_STATES),
+                ContentReference.external_url.is_not(None),
+            )
+            .group_by(ContentReference.external_url)
+            .having(func.max(ContentReference.expansion_attempts) < MAX_LINK_EXPANSION_ATTEMPTS)
+        )
+
+    def _retry_candidates(self, *, limit: int, exclude: set[str]) -> list[str]:
+        """Up to ``limit`` retryable links, oldest reference first. Fails open to none."""
+        statement = self._retryable_links()
+        if exclude:
+            statement = statement.where(ContentReference.external_url.not_in(sorted(exclude)))
+        statement = statement.order_by(
+            func.min(ContentReference.created_at), func.min(ContentReference.id)
+        ).limit(limit)
+        try:
+            with get_db() as db:
+                return [url for url in db.execute(statement).scalars() if url]
+        except Exception as exc:
+            logger.warning(f"x_bookmarks.link_retry_unavailable ({log_error_type(exc)})")
+            return []
+
+    def _pending_link_count(self) -> int:
+        """How many distinct links are left to retry. Fails open to zero."""
+        try:
+            with get_db() as db:
+                return int(
+                    db.execute(
+                        select(func.count()).select_from(self._retryable_links().subquery())
+                    ).scalar_one()
+                )
+        except Exception as exc:
+            logger.warning(f"x_bookmarks.link_backlog_unavailable ({log_error_type(exc)})")
+            return 0
 
     def _expansion_limit(self) -> int:
         if self._max_expanded_links is not None:
@@ -942,6 +1174,7 @@ class XBookmarksIngestionService:
         backfill_pending: bool,
         full: bool,
         expand_links: bool,
+        retry_links: bool = False,
     ) -> IngestionResponse:
         errors: list[IngestionError] = []
         warnings: list[IngestionWarning] = []
@@ -997,6 +1230,7 @@ class XBookmarksIngestionService:
             details={
                 "full": full,
                 "expand_links": expand_links,
+                "retry_links": retry_links,
                 "pages_fetched": pages,
                 "walk_stop_reason": head.stop_reason.value if head.stop_reason else None,
                 "backfill_pages_fetched": backfill.pages_fetched if backfill else 0,
@@ -1008,6 +1242,8 @@ class XBookmarksIngestionService:
                 "linked_existing": persisted.linked,
                 "references_recorded": persisted.references_recorded,
                 "links_submitted": expansion.submitted,
+                "links_retried": expansion.retried,
+                "links_pending": expansion.pending,
                 "links_skipped": sum(expansion.skipped.values()),
                 "links_skipped_by_reason": dict(sorted(expansion.skipped.items())),
                 "links_capped": expansion.capped,
@@ -1057,6 +1293,29 @@ def _link_warnings(persisted: _PersistResult, expansion: _Expansion) -> list[Ing
             )
         )
     return warnings
+
+
+def _initialize_expansion_states(
+    db: Session, content_id: int, refs: Sequence[ExtractedReference]
+) -> None:
+    """Give the row's stateless references their initial expansion state."""
+    by_state: dict[ExpansionState, list[str]] = {}
+    for ref in refs:
+        if ref.external_url:
+            by_state.setdefault(initial_expansion_state(ref.external_url), []).append(
+                ref.external_url
+            )
+    for state, urls in by_state.items():
+        db.execute(
+            update(ContentReference)
+            .where(
+                ContentReference.source_content_id == content_id,
+                ContentReference.external_url.in_(urls),
+                ContentReference.expansion_state.is_(None),
+            )
+            .values(expansion_state=state.value)
+            .execution_options(synchronize_session=False)
+        )
 
 
 def _gap_message(code: str, label: str, walk_pass: _Pass) -> str:
