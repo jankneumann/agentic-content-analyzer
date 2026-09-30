@@ -109,6 +109,7 @@ def prune_traces(
         "trace_count": result.deleted_count,
         "batch_count": result.batch_count,
         "capped": result.capped,
+        "stopped_reason": result.stopped_reason,
     }
 
     if is_json_mode():
@@ -118,6 +119,14 @@ def prune_traces(
     verb = "Deleted" if apply else "Would delete"
     typer.echo(f"{verb} {result.deleted_count} traces older than {days} days")
     typer.echo(f"  cutoff: {result.cutoff.isoformat()}")
+    if result.stopped_reason:
+        typer.echo(
+            typer.style(
+                f"  stopped early: {result.stopped_reason}",
+                fg=typer.colors.YELLOW,
+            ),
+            err=True,
+        )
     if result.capped:
         typer.echo(
             typer.style(

@@ -15,6 +15,13 @@ API is the only way to actually reclaim the space.
 Deletion is irreversible and asynchronous. Everything here is therefore off
 unless explicitly enabled, bounded per run, and conservative about what it
 counts as done.
+
+Pagination is keyset, never ``page=N``. The public API turns a page number
+into a ClickHouse ``OFFSET``, which reads and discards every preceding row, so
+walking a large trace store by page degrades until the server aborts the query
+and answers 422 ("ClickHouse resource limit exceeded"). Carrying a timestamp
+cursor forward keeps every request the same cost no matter how deep the run
+gets.
 """
 
 from __future__ import annotations
@@ -42,10 +49,25 @@ class LangfuseRetentionError(RuntimeError):
     """The Langfuse API rejected or failed a retention request."""
 
 
+class LangfuseResourceLimitError(LangfuseRetentionError):
+    """Langfuse aborted the query because ClickHouse ran out of budget.
+
+    The public API answers 422 for this, which is a load condition rather than
+    a bad request: the same call succeeds against a smaller window. A run that
+    hits it stops and keeps what it already did.
+    """
+
+
 # A 422 names the offending field in its body. Reporting the status alone turns
 # a precise server answer into a guessing game, so the body travels with the
 # error -- bounded, because a Langfuse error body can embed request echoes.
 _MAX_EVIDENCE_CHARS = 400
+
+# Slack above the delete ceiling for cursor nudges past same-timestamp clusters.
+_CURSOR_NUDGE_ALLOWANCE = 100
+
+# The public API caps `limit` at 100 (paginationLimitZod).
+_MAX_API_LIMIT = 100
 
 
 def _response_evidence(response: httpx.Response) -> str:
@@ -73,6 +95,8 @@ class LangfuseRetentionResult:
     capped: bool
     """True when the per-run cap stopped the run with work still outstanding."""
     dry_run: bool = False
+    stopped_reason: str | None = None
+    """Set when the server ended the run early, e.g. a ClickHouse limit."""
 
     def as_log_fields(self) -> dict[str, Any]:
         return {
@@ -81,7 +105,28 @@ class LangfuseRetentionResult:
             "langfuse_retention_cutoff": self.cutoff.isoformat(),
             "langfuse_retention_capped": self.capped,
             "langfuse_retention_dry_run": self.dry_run,
+            "langfuse_retention_stopped_reason": self.stopped_reason,
         }
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    """Parse a Langfuse ISO timestamp, tolerating a trailing ``Z``."""
+
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+@dataclass(frozen=True)
+class TracePage:
+    """One batch of expired traces and the cursor that follows it."""
+
+    trace_ids: list[str]
+    newest_timestamp: datetime | None
 
 
 class LangfuseRetentionClient:
@@ -124,33 +169,50 @@ class LangfuseRetentionClient:
             raise LangfuseRetentionError("client used outside its async context")
         return self._client
 
-    async def list_trace_ids_before(
+    async def list_trace_window(
         self,
         *,
-        cutoff: datetime,
+        until: datetime,
+        since: datetime | None,
         limit: int,
-        page: int,
-    ) -> list[str]:
-        """Return trace IDs older than ``cutoff``, one page at a time.
+    ) -> TracePage:
+        """Return the oldest traces in ``(since, until]``, plus a next cursor.
+
+        Always page 1, ordered oldest first, with ``since`` carried forward
+        from the previous batch. Asking for ``page=N`` instead would make
+        ClickHouse skip ``N * limit`` rows on every request and eventually
+        abort the query.
 
         ``fields=core`` matters: the default response embeds each trace's
         input, output, observations and scores, which is megabytes per page
         for exactly the payload we are about to throw away.
         """
 
-        response = await self._request(
-            "GET",
-            params={
-                "toTimestamp": cutoff.astimezone(UTC).isoformat(),
-                "limit": limit,
-                "page": page,
-                "fields": "core",
-            },
-            timeout=_LIST_TIMEOUT_SECONDS,
-        )
+        params: dict[str, Any] = {
+            "toTimestamp": until.astimezone(UTC).isoformat(),
+            "limit": limit,
+            "page": 1,
+            "fields": "core",
+            "orderBy": "timestamp.asc",
+        }
+        if since is not None:
+            params["fromTimestamp"] = since.astimezone(UTC).isoformat()
+
+        response = await self._request("GET", params=params, timeout=_LIST_TIMEOUT_SECONDS)
         payload = response.json()
         rows = payload.get("data") or []
-        return [str(row["id"]) for row in rows if row.get("id")]
+
+        trace_ids: list[str] = []
+        newest: datetime | None = None
+        for row in rows:
+            trace_id = row.get("id")
+            if not trace_id:
+                continue
+            trace_ids.append(str(trace_id))
+            stamp = _parse_timestamp(row.get("timestamp"))
+            if stamp is not None and (newest is None or stamp > newest):
+                newest = stamp
+        return TracePage(trace_ids=trace_ids, newest_timestamp=newest)
 
     async def delete_traces(self, trace_ids: Sequence[str]) -> None:
         """Enqueue deletion of a batch of traces."""
@@ -185,6 +247,10 @@ class LangfuseRetentionClient:
             raise LangfuseRetentionError(
                 f"langfuse retention request failed: {type(exc).__name__}"
             ) from exc
+        if response.status_code == 422:
+            raise LangfuseResourceLimitError(
+                f"langfuse aborted the query (HTTP 422) {_response_evidence(response)}"
+            )
         if response.status_code >= 400:
             raise LangfuseRetentionError(
                 f"langfuse retention request returned HTTP {response.status_code}"
@@ -204,20 +270,19 @@ async def prune_expired_traces(
 ) -> LangfuseRetentionResult:
     """Delete every trace older than ``retention_days``, up to ``max_deletes``.
 
-    Deletion is asynchronous: the endpoint enqueues work, and a deleted trace
-    keeps appearing in listings until the Langfuse worker gets to it. A loop
-    that re-reads page 1 expecting it to shrink therefore re-deletes the same
-    IDs forever, so this pages forward instead and never revisits a page.
+    Walks the expired window oldest-first with a timestamp cursor. Page numbers
+    are deliberately not used: the API turns them into a ClickHouse ``OFFSET``,
+    so deep pages read and discard everything before them until the server
+    aborts the query with a 422. A cursor keeps every request equally cheap,
+    which is what lets one run clear a backlog of any size.
 
-    Paging forward while rows disappear underneath can skip a trace. That
-    costs nothing: each run re-lists from the first page against a fresh
-    cutoff, so anything skipped is picked up next time. Runs converge rather
-    than each one being exhaustive -- the safe direction for a delete loop,
-    which should under-reach and retry rather than spin.
+    Each iteration either records new deletions or moves the cursor strictly
+    forward, and both are bounded, so the loop terminates. Deletion is
+    asynchronous and ``fromTimestamp`` is inclusive, so a trace can be listed
+    again after it was already submitted; the per-run set makes that a wasted
+    comparison rather than a duplicate request.
 
-    ``dry_run`` counts what would go without sending a delete. Nothing is
-    removed, so paging forward is exact rather than convergent, and the count
-    is the real number of expired traces up to ``max_deletes``.
+    ``dry_run`` counts what would go without sending a delete.
     """
 
     if retention_days < 1:
@@ -233,21 +298,47 @@ async def prune_expired_traces(
     requested: set[str] = set()
     deleted_count = 0
     batch_count = 0
-    page = 1
     capped = False
+    stopped_reason: str | None = None
+    cursor: datetime | None = None
+    window_limit = batch_size
 
-    while deleted_count < max_deletes:
-        trace_ids = await client.list_trace_ids_before(
-            cutoff=cutoff,
-            limit=batch_size,
-            page=page,
-        )
-        if not trace_ids:
+    # A remote loop in a maintenance tick gets a hard ceiling regardless of the
+    # progress argument above, so a surprise on the server side cannot pin a
+    # worker forever.
+    max_iterations = (max_deletes // batch_size) + _CURSOR_NUDGE_ALLOWANCE
+
+    for _ in range(max_iterations):
+        if deleted_count >= max_deletes:
             break
-        page += 1
+        try:
+            page = await client.list_trace_window(
+                until=cutoff,
+                since=cursor,
+                limit=window_limit,
+            )
+        except LangfuseResourceLimitError as exc:
+            stopped_reason = str(exc)
+            break
 
-        fresh = [trace_id for trace_id in trace_ids if trace_id not in requested]
+        if not page.trace_ids:
+            break
+
+        fresh = [trace_id for trace_id in page.trace_ids if trace_id not in requested]
+
         if not fresh:
+            # Everything visible in this window was already submitted. If the
+            # window came back full, the rest of a same-timestamp cluster is
+            # sitting just past its edge, and stepping the cursor over it would
+            # silently skip those traces -- so widen the window first and only
+            # step once we can see the whole cluster.
+            if len(page.trace_ids) >= window_limit and window_limit < _MAX_API_LIMIT:
+                window_limit = min(window_limit * 2, _MAX_API_LIMIT)
+                continue
+            if page.newest_timestamp is None:
+                break
+            cursor = page.newest_timestamp + timedelta(microseconds=1)
+            window_limit = batch_size
             continue
 
         remaining = max_deletes - deleted_count
@@ -256,10 +347,23 @@ async def prune_expired_traces(
             capped = True
 
         if not dry_run:
-            await client.delete_traces(fresh)
+            try:
+                await client.delete_traces(fresh)
+            except LangfuseResourceLimitError as exc:
+                stopped_reason = str(exc)
+                break
+
         requested.update(fresh)
         deleted_count += len(fresh)
         batch_count += 1
+        window_limit = batch_size
+
+        if page.newest_timestamp is None:
+            break
+        # Inclusive: a cluster may straddle this edge, so the boundary trace is
+        # re-read next time and filtered by `requested`. One duplicated row per
+        # batch is the price of never skipping one.
+        cursor = page.newest_timestamp
 
     return LangfuseRetentionResult(
         deleted_count=deleted_count,
@@ -267,6 +371,7 @@ async def prune_expired_traces(
         cutoff=cutoff,
         capped=capped or deleted_count >= max_deletes,
         dry_run=dry_run,
+        stopped_reason=stopped_reason,
     )
 
 

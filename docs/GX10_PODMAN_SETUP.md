@@ -303,15 +303,29 @@ storage, and a ClickHouse `TTL` would expire the rows while orphaning the
 blobs forever, so the bucket would keep growing while the UI showed nothing.
 The delete endpoint enqueues a job that clears both.
 
-Deletion is asynchronous, so a deleted trace stays listed until the Langfuse
-worker drains its queue. The pruner pages forward and never revisits a page,
-because re-reading page one expecting it to shrink re-deletes the same IDs
-forever. Paging forward while rows disappear underneath can skip a trace;
-that costs nothing, since the next run re-lists from the first page against a
-fresh cutoff. Runs converge rather than each being exhaustive, which is the
-safe direction for a delete loop. Each run stops at
-`langfuse_trace_retention_max_deletes_per_run`, so a first prune against a
-large backlog is bounded and the next run continues.
+The pruner walks the expired window oldest-first with a timestamp cursor and
+never asks for a page number. That is not a style choice: the API turns
+`page=N` into a ClickHouse `OFFSET`, so each successive page reads and
+discards everything before it, and a walk across a large trace store
+eventually exceeds the server's query budget. Langfuse answers that with
+HTTP 422 and the message "Request timed out", which reads like a bad request
+and is not one -- the first live run of this pruner died that way at a depth
+no test reached. A cursor keeps every request the same cost however deep the
+run goes.
+
+Two details follow from the cursor. `fromTimestamp` is inclusive, so the
+boundary trace is re-read on the next batch and filtered out by the per-run
+set: one duplicated row per batch buys never skipping one. And when a batch
+comes back full with nothing new in it, a cluster of identical timestamps is
+straddling the edge, so the window widens (up to the API's limit of 100)
+before the cursor steps past -- stepping first would silently drop the rest
+of the cluster. Deletion is asynchronous and a deleted trace stays listed
+until the Langfuse worker drains its queue, which the same set absorbs.
+
+Each run stops at `langfuse_trace_retention_max_deletes_per_run`, so a first
+prune against a large backlog is bounded and the next run continues. A 422
+mid-run is treated as load rather than failure: the run stops, keeps what it
+already deleted, and reports why.
 
 Run it by hand with `aca telemetry prune-traces`, which counts without
 deleting unless given `--apply`, and takes `--older-than-days` for a one-off
