@@ -165,3 +165,74 @@ def test_ingestion_service_uses_provider(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_adapter_source_does_not_read_frozen_settings_cookie() -> None:
     source = (Path(__file__).resolve().parents[2] / "src/ingestion/substack.py").read_text()
     assert "settings.substack_session_cookie" not in source
+
+
+# -- strict listing (subscription sync, ri-19) ---------------------------------
+
+
+def _listing_client(
+    monkeypatch: pytest.MonkeyPatch,
+    cookie: str,
+    handler: object,
+) -> SubstackClient:
+    monkeypatch.delenv("BAO_ADDR", raising=False)
+    provider = CredentialProvider(settings_factory=lambda: _settings(cookie))
+    return SubstackClient(
+        credentials=provider,
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),  # type: ignore[arg-type]
+    )
+
+
+def test_strict_listing_fails_closed_without_a_cookie(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.ingestion.credential_failures import CredentialsMissingError
+
+    recorder = _Recorder()
+    client = _listing_client(monkeypatch, "", recorder)
+    try:
+        with pytest.raises(CredentialsMissingError):
+            client.fetch_subscriptions(strict=True)
+    finally:
+        client.close()
+    assert recorder.sids == []
+
+
+def test_strict_listing_raises_instead_of_returning_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.ingestion.substack import SubscriptionListingError
+
+    client = _listing_client(
+        monkeypatch, BOOT_COOKIE, lambda request: httpx.Response(502, text="bad gateway")
+    )
+    try:
+        assert client.fetch_subscriptions() == []
+        with pytest.raises(SubscriptionListingError):
+            client.fetch_subscriptions(strict=True)
+    finally:
+        client.close()
+
+
+def test_strict_listing_returns_paid_and_free_publications(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = {
+        "subscriptions": [
+            {"publication_id": 1, "membership_state": "subscribed"},
+            {"publication_id": 2, "membership_state": "free_signup"},
+        ],
+        "publications": [
+            {"id": 1, "name": "Paid", "base_url": "https://paid.example.com"},
+            {"id": 2, "name": "Free", "subdomain": "free", "base_url": "https://free.substack.com"},
+        ],
+    }
+    client = _listing_client(
+        monkeypatch, BOOT_COOKIE, lambda request: httpx.Response(200, json=payload)
+    )
+    try:
+        listing = client.fetch_subscriptions(strict=True)
+    finally:
+        client.close()
+    assert [(s.name, s.url, s.is_paid) for s in listing] == [
+        ("Paid", "https://paid.example.com", True),
+        ("Free", "https://free.substack.com", False),
+    ]

@@ -13,12 +13,10 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any, Final
 from urllib.parse import urljoin, urlparse
 
 import httpx
-import yaml
 from dateutil.parser import isoparse
 
 from src.config import settings
@@ -28,7 +26,7 @@ from src.config.credentials import (
     get_credential_provider,
 )
 from src.config.settings import get_settings
-from src.config.sources import SourceFileConfig, SubstackSource
+from src.config.sources import SubstackSource
 from src.ingestion.credential_failures import (
     SESSION_REFRESH_COMMANDS,
     CredentialFailureError,
@@ -65,15 +63,12 @@ class SubstackSubscription:
     is_paid: bool = False
 
 
-@dataclass
-class SyncResult:
-    """Result of a substack-sync operation."""
+class SubscriptionListingError(RuntimeError):
+    """Substack's subscription listing failed or returned an unexpected shape.
 
-    rss_added: int
-    rss_existing: int
-    rss_removed: int
-    substack_added: int
-    substack_existing: int
+    Raised only by the strict listing used by the subscription sync, which must
+    never mistake a failed listing for "subscribed to nothing".
+    """
 
 
 SUBSTACK_SID_COOKIE = "substack.sid"
@@ -395,9 +390,17 @@ class SubstackClient:
     def close(self) -> None:
         self._http.close()
 
-    def fetch_subscriptions(self) -> list[SubstackSubscription]:
-        """Return a list of subscriptions (name + url + paid status)."""
-        subscriptions = self._fetch_subscriptions_from_http()
+    def fetch_subscriptions(self, *, strict: bool = False) -> list[SubstackSubscription]:
+        """Return a list of subscriptions (name + url + paid status).
+
+        By default a missing cookie or a failed listing yields ``[]``. With
+        ``strict=True`` a missing cookie raises :class:`CredentialsMissingError`
+        and a failed listing raises :class:`SubscriptionListingError`; a dead
+        session raises :class:`SessionExpiredError` in both modes.
+        """
+        if strict:
+            self.require_session_cookie()
+        subscriptions = self._fetch_subscriptions_from_http(strict=strict)
 
         if not subscriptions:
             return []
@@ -426,7 +429,9 @@ class SubstackClient:
 
         return results
 
-    def _fetch_subscriptions_from_http(self) -> list[dict[str, Any]] | None:
+    def _fetch_subscriptions_from_http(
+        self, *, strict: bool = False
+    ) -> list[dict[str, Any]] | None:
         if not self._sync_session_cookie():
             logger.warning("SUBSTACK_SESSION_COOKIE not set; subscription sync may be incomplete.")
             return None
@@ -447,12 +452,18 @@ class SubstackClient:
                 if isinstance(data, list):
                     return data
             except SessionExpiredError:
-                # Never degrade to "no subscriptions": sync would then rewrite
-                # substack.yaml with an empty source list.
+                # Never degrade to "no subscriptions": a sync would then prune
+                # every source it manages.
                 raise
             except Exception as exc:
                 logger.warning("Substack HTTP subscription fetch failed (%s)", log_error_type(exc))
+                if strict:
+                    raise SubscriptionListingError(
+                        f"Substack subscription listing failed ({log_error_type(exc)})"
+                    ) from exc
                 continue
+        if strict:
+            raise SubscriptionListingError("Substack returned no subscription listing")
         return None
 
     def _join_subscriptions_with_publications(self, data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -611,8 +622,8 @@ def _same_path_redirect(url: str, response: httpx.Response) -> str | None:
 class SubstackContentIngestionService:
     """Service for ingesting Substack posts into the unified Content model.
 
-    The ``substack`` source type holds paid subscriptions (``substack-sync``
-    routes free ones to RSS), so a run needs the session cookie: without one
+    The ``substack`` source type holds paid subscriptions (``aca sources sync
+    substack`` routes free ones to RSS), so a run needs the session cookie: without one
     it fails closed with ``credentials_missing`` instead of ingesting teasers.
     """
 
@@ -1066,175 +1077,3 @@ def _upgrade_teaser(db: Any, existing: Content, content_data: ContentData) -> No
     db.query(Summary).filter(Summary.content_id == existing.id).delete()
     db.flush()
     reindex_content(existing, db)  # fail-safe; a no-op unless search indexing is on
-
-
-def sync_substack_sources(
-    output_path: Path | None = None,
-    session_cookie: str | None = None,
-) -> SyncResult:
-    """Sync Substack subscriptions: paid → substack.yaml, free → rss.yaml."""
-    sources_dir = Path(settings.sources_config_dir)
-    substack_path = output_path or sources_dir / "substack.yaml"
-    rss_path = sources_dir / "rss.yaml"
-    substack_path.parent.mkdir(parents=True, exist_ok=True)
-
-    client = SubstackClient(session_cookie=session_cookie)
-    subscriptions = client.fetch_subscriptions()
-    client.close()
-
-    paid = [s for s in subscriptions if s.is_paid]
-    free = [s for s in subscriptions if not s.is_paid]
-    logger.info(f"Found {len(subscriptions)} subscriptions: {len(paid)} paid, {len(free)} free")
-
-    substack_result = _sync_paid_to_substack(paid, substack_path)
-    paid_urls = {s.url for s in paid}
-    rss_result = _sync_free_to_rss(free, rss_path, exclude_urls=paid_urls)
-
-    result = SyncResult(
-        rss_added=rss_result[0],
-        rss_existing=rss_result[1],
-        rss_removed=rss_result[2],
-        substack_added=substack_result[0],
-        substack_existing=substack_result[1],
-    )
-    logger.info(
-        f"Sync complete: "
-        f"{result.substack_added} paid added to substack.yaml "
-        f"({result.substack_existing} existing), "
-        f"{result.rss_added} free added to rss.yaml "
-        f"({result.rss_existing} already present, "
-        f"{result.rss_removed} removed — now in substack.yaml)"
-    )
-    return result
-
-
-def _sync_paid_to_substack(
-    subscriptions: list[SubstackSubscription], path: Path
-) -> tuple[int, int]:
-    """Write paid subscriptions to substack.yaml, preserving existing entries.
-
-    Returns (added, existing) counts.
-    """
-    existing_entries: dict[str, dict[str, Any]] = {}
-    if path.exists():
-        try:
-            raw_config = yaml.safe_load(path.read_text())
-            existing_config = (
-                SourceFileConfig.model_validate(raw_config) if raw_config else SourceFileConfig()
-            )
-            for entry in existing_config.sources:
-                url = normalize_substack_url(entry.get("url")) or entry.get("url")
-                if url:
-                    existing_entries[url] = entry
-        except Exception as exc:
-            logger.warning(f"Failed to read existing Substack sources: {exc}")
-
-    added = 0
-    existing = 0
-    merged_sources: list[dict[str, Any]] = []
-    for subscription in subscriptions:
-        canonical_url = normalize_substack_url(subscription.url) or subscription.url
-        entry = existing_entries.get(canonical_url)
-        if entry:
-            merged_sources.append(entry)
-            existing += 1
-        else:
-            merged_sources.append(
-                {
-                    "name": subscription.name,
-                    "url": canonical_url,
-                    "enabled": True,
-                    "tags": [],
-                }
-            )
-            added += 1
-
-    config = {
-        "defaults": {"type": "substack"},
-        "sources": merged_sources,
-    }
-    path.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True))
-    return added, existing
-
-
-def _sync_free_to_rss(
-    subscriptions: list[SubstackSubscription],
-    rss_path: Path,
-    exclude_urls: set[str] | None = None,
-) -> tuple[int, int, int]:
-    """Append free Substack subscriptions to rss.yaml, deduplicating by URL.
-
-    Removes any existing RSS entries whose base URL matches exclude_urls
-    (paid subscriptions that moved to substack.yaml).
-
-    Returns (added, already_existing, removed) counts.
-    """
-    # Build normalized set of paid URLs to exclude
-    exclude_normalized: set[str] = set()
-    if exclude_urls:
-        for url in exclude_urls:
-            exclude_normalized.add(_normalize_feed_url(url))
-
-    # Load existing RSS entries and build a set of known feed URLs
-    existing_urls: set[str] = set()
-    existing_sources: list[dict[str, Any]] = []
-    rss_defaults: dict[str, Any] = {"type": "rss"}
-    removed = 0
-
-    if rss_path.exists():
-        try:
-            raw_config = yaml.safe_load(rss_path.read_text())
-            if raw_config:
-                existing_config = SourceFileConfig.model_validate(raw_config)
-                rss_defaults = raw_config.get("defaults", rss_defaults)
-                for entry in existing_config.sources:
-                    url = entry.get("url", "")
-                    normalized = _normalize_feed_url(url)
-                    if normalized in exclude_normalized:
-                        logger.info(
-                            f"Removing RSS entry (now in substack.yaml): {entry.get('name', url)}"
-                        )
-                        removed += 1
-                        continue
-                    existing_sources.append(entry)
-                    existing_urls.add(normalized)
-        except Exception as exc:
-            logger.warning(f"Failed to read existing RSS sources: {exc}")
-
-    added = 0
-    already_existing = 0
-    for sub in subscriptions:
-        feed_url = sub.url.rstrip("/") + "/feed"
-        normalized = _normalize_feed_url(feed_url)
-
-        if normalized in existing_urls:
-            already_existing += 1
-            continue
-
-        existing_sources.append({"name": sub.name, "url": feed_url})
-        existing_urls.add(normalized)
-        added += 1
-
-    config = {
-        "defaults": rss_defaults,
-        "sources": existing_sources,
-    }
-    rss_path.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True))
-    return added, already_existing, removed
-
-
-def _normalize_feed_url(url: str) -> str:
-    """Normalize a feed URL for dedup comparison.
-
-    Strips scheme, www., and trailing /feed to compare base domains + paths.
-    """
-    from urllib.parse import urlparse
-
-    parsed = urlparse(url.lower())
-    host = parsed.netloc
-    if host.startswith("www."):
-        host = host[4:]
-    path = parsed.path.rstrip("/")
-    if path.endswith("/feed"):
-        path = path[: -len("/feed")]
-    return f"{host}{path}"

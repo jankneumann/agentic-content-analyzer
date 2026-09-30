@@ -789,6 +789,33 @@ def _apply_db_source_overrides(config: SourcesConfig) -> SourcesConfig:
     return merge_source_overrides(config, overrides)
 
 
+def load_yaml_sources_config(
+    sources_dir: str = "sources.d",
+    sources_file: str = "sources.yaml",
+    rss_feeds_file: str = "rss_feeds.txt",
+    youtube_playlists_file: str = "youtube_playlists.txt",
+) -> SourcesConfig:
+    """Load the YAML/legacy baseline only, without database overrides.
+
+    Resolution order: sources.d/ directory, then sources.yaml, then the legacy
+    rss_feeds.txt + youtube_playlists.txt files. Callers that hold their own
+    database session merge overrides with :func:`merge_source_overrides`.
+    """
+    dir_path = Path(sources_dir)
+    file_path = Path(sources_file)
+
+    if dir_path.is_dir():
+        logger.info(f"Loading sources from directory: {dir_path}")
+        config = load_sources_directory(dir_path)
+    elif file_path.is_file():
+        logger.info(f"Loading sources from file: {file_path}")
+        config = load_sources_yaml(file_path)
+    else:
+        config = load_sources_from_legacy(rss_feeds_file, youtube_playlists_file)
+
+    return config
+
+
 def load_sources_config(
     sources_dir: str = "sources.d",
     sources_file: str = "sources.yaml",
@@ -815,17 +842,9 @@ def load_sources_config(
     if active_config is not None:
         return active_config
 
-    dir_path = Path(sources_dir)
-    file_path = Path(sources_file)
-
-    if dir_path.is_dir():
-        logger.info(f"Loading sources from directory: {dir_path}")
-        config = load_sources_directory(dir_path)
-    elif file_path.is_file():
-        logger.info(f"Loading sources from file: {file_path}")
-        config = load_sources_yaml(file_path)
-    else:
-        config = load_sources_from_legacy(rss_feeds_file, youtube_playlists_file)
+    config = load_yaml_sources_config(
+        sources_dir, sources_file, rss_feeds_file, youtube_playlists_file
+    )
 
     # Overlay database overrides on top of the YAML/legacy baseline. Fails open
     # to the YAML-only config when the database is unavailable.
