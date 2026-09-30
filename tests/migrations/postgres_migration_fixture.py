@@ -139,6 +139,7 @@ def source_overrides_schema_mismatches(engine: Engine) -> list[str]:
         "description",
         "created_at",
         "updated_at",
+        "managed_by",
     }
     columns = {
         str(column["name"]): column
@@ -162,6 +163,7 @@ def source_overrides_schema_mismatches(engine: Engine) -> list[str]:
         "description": True,
         "created_at": False,
         "updated_at": False,
+        "managed_by": True,
     }
     for name, expected_nullable in expected_nullability.items():
         if name in columns and columns[name]["nullable"] is not expected_nullable:

@@ -67,6 +67,7 @@ aca ingest url <url>                   # Direct URL
 # Browser-session credentials (Substack paid posts, X bookmarks)
 aca auth session substack|x [--to bao|railway|secrets-file]  # Playwright login capture, validated, one sink write
 aca auth status [--json]               # OAuth + session rows: saved_at, last_verified_at, refresh command
+aca sources sync substack [--apply] [--prune]  # subscriptions -> source overrides (dry run by default)
 
 # Processing
 aca summarize run --wait               # Summarize pending content
@@ -154,7 +155,7 @@ Phase 0 supports inline requests below 18 MiB only. See
 
 **Sources** — YAML files in `sources.d/`: `rss.yaml`, `youtube_playlist.yaml`, `youtube_channel.yaml` (channels via paginated Data API — uploads-playlist path, no 15-item cap), `podcasts.yaml`, `gmail.yaml`, `websearch.yaml`, `scholar.yaml`, `x_bookmarks.yaml` (own X bookmarks via the `X_AUTH_TOKEN`/`X_CT0` session; ships disabled — see [USER_GUIDE](docs/USER_GUIDE.md#x-bookmarks)). The `youtube_rss` source type still works (Atom feeds, capped ~15, no API key) but ships with no default file. Each supports `name`, `url`/`id`, `tags`, `enabled`, `max_entries`. See [docs/SETUP.md](docs/SETUP.md) for source-specific options.
 
-**Source DB overrides** — Sources can also be added/edited/disabled at runtime (no YAML commit) via database overrides merged on top of the YAML defaults inside `load_sources_config()` (`src/config/sources.py`). Precedence is DB over YAML, keyed by the natural key `<type>:<locator>` (`source_key()`); a DB row with `enabled:false` shadows its YAML twin. Storage: `source_overrides` table + `SourceOverrideService` (validates each `config` against the `Source` union). Manage via CLI `aca sources add|list|remove|enable|disable`, the `/api/v1/sources` write endpoints (admin-key), or the web **Settings → Sources** tab. The merge fails open to YAML-only when the DB is unavailable.
+**Source DB overrides** — Sources can also be added/edited/disabled at runtime (no YAML commit) via database overrides merged on top of the YAML defaults inside `load_sources_config()` (`src/config/sources.py`). Precedence is DB over YAML, keyed by the natural key `<type>:<locator>` (`source_key()`); a DB row with `enabled:false` shadows its YAML twin. Storage: `source_overrides` table + `SourceOverrideService` (validates each `config` against the `Source` union). Manage via CLI `aca sources add|list|remove|enable|disable`, the `/api/v1/sources` write endpoints (admin-key), or the web **Settings → Sources** tab. `aca sources sync substack [--apply] [--prune]` (dry run by default) writes your Substack subscriptions as overrides marked `managed_by=substack-sync` and never changes operator-configured sources. The merge fails open to YAML-only when the DB is unavailable.
 
 **Canonical workflows** — CLI, HTTP, MCP, and frontend mutations submit the same eight operation types to `OperationService`; none may execute ingestion, summarization, digest, pipeline, or audio work inline. Extend ingestion only through `src/ingestion/registry.py`, then update the generated contracts and the exact-key fixture registry in `tests/fixtures/sources/`. Digest and podcast code must consume the immutable `ResolvedContentSet` and persisted content/summary IDs rather than re-querying a period.
 

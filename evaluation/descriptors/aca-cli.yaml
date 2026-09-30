@@ -272,6 +272,7 @@ services:
           - enable
           - list
           - remove
+          - sync
       - name: summarize
         description: 'Submit summarization operations.'
         tags: [coverage:plumbing, coverage:workflow-submission]

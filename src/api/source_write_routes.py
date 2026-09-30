@@ -6,7 +6,7 @@ sources.d/ YAML defaults via load_sources_config(). Read access (overview with
 origin) lives in source_routes.py.
 """
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, Field
@@ -55,6 +55,35 @@ class SourceMutationResult(BaseModel):
     version: int
     origin: str = "db"
     enabled: bool
+
+
+class SubstackSyncRequest(BaseModel):
+    """Run the Substack subscription sync (a dry run unless ``apply``)."""
+
+    apply: bool = Field(default=False, description="Write the planned changes")
+    prune: bool = Field(
+        default=False,
+        description="Disable sync-managed sources for publications no longer subscribed",
+    )
+
+
+class SubstackSyncAction(BaseModel):
+    action: Literal["add", "existing", "kept_disabled", "switch", "conflict", "prune"]
+    name: str
+    source_type: Literal["substack", "rss"]
+    url: str
+    source_key: str
+    detail: str | None = None
+
+
+class SubstackSyncResult(BaseModel):
+    apply: bool
+    prune: bool
+    applied: bool
+    subscriptions: int
+    changes: int
+    counts: dict[str, int]
+    actions: list[SubstackSyncAction]
 
 
 # ============================================================================
@@ -152,3 +181,51 @@ async def set_source_enabled(key: SourceKey, request: SourceEnabledRequest) -> S
         return SourceMutationResult(
             source_key=public_source_key(row), version=row.version, enabled=row.enabled
         )
+
+
+@router.post(
+    "/sync/substack",
+    response_model=SubstackSyncResult,
+    dependencies=[Depends(verify_admin_key)],
+)
+def sync_substack_subscriptions(request: SubstackSyncRequest) -> SubstackSyncResult:
+    """Sync Substack subscriptions into source overrides (dry run unless ``apply``).
+
+    Paid publications become ``substack`` overrides and free ones ``rss``
+    ``/feed`` overrides, marked ``managed_by=substack-sync``; sources the
+    operator configured are never modified. A plain ``def`` so the Substack
+    listing runs in the threadpool. Errors:
+
+    * 412 ``credentials_missing`` / ``session_expired`` with the refresh command
+    * 502 ``subscription_listing_failed``
+    * 409 ``prune_refused`` when the listing cannot justify a prune
+    """
+    from src.ingestion.credential_failures import CredentialFailureError
+    from src.ingestion.substack import SubscriptionListingError
+    from src.services.substack_subscription_sync import (
+        SubstackSubscriptionSync,
+        SubstackSyncRefusedError,
+    )
+
+    try:
+        with get_db() as db:
+            plan = SubstackSubscriptionSync(db).run(apply=request.apply, prune=request.prune)
+    except CredentialFailureError as exc:
+        raise HTTPException(
+            status_code=412,
+            detail={
+                "code": exc.code,
+                "message": str(exc),
+                "refresh_command": exc.refresh_command,
+            },
+        ) from exc
+    except SubscriptionListingError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "subscription_listing_failed", "message": str(exc)},
+        ) from exc
+    except SubstackSyncRefusedError as exc:
+        raise HTTPException(
+            status_code=409, detail={"code": "prune_refused", "message": str(exc)}
+        ) from exc
+    return SubstackSyncResult.model_validate(plan.to_dict())

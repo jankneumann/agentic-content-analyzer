@@ -50,6 +50,8 @@ _FUZZ_ONLY_EXCLUSIONS: list[str] = [
     r"/api/v1/graph/query$",
     # Validates cookies against substack.com / x.com, then writes OpenBao.
     r"/api/v1/browser-sessions/",
+    # Lists subscriptions from substack.com with the live session.
+    r"/api/v1/sources/sync/",
 ]
 
 EXCLUDED_FUZZ_REGEX = "|".join(EXCLUDED_COMMON_PATHS + _FUZZ_ONLY_EXCLUSIONS)

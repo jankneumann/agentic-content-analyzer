@@ -307,12 +307,13 @@ class SubstackSubscriptionSync:
         self,
         db: Session,
         *,
-        client_factory: Callable[[], SubstackClient] = SubstackClient,
-        yaml_loader: Callable[[], SourcesConfig] = load_yaml_sources_config,
+        client_factory: Callable[[], SubstackClient] | None = None,
+        yaml_loader: Callable[[], SourcesConfig] | None = None,
     ) -> None:
+        # Defaults resolve at call time so tests can patch this module's names.
         self._db = db
-        self._client_factory = client_factory
-        self._yaml_loader = yaml_loader
+        self._client_factory = client_factory or (lambda: SubstackClient())
+        self._yaml_loader = yaml_loader or (lambda: load_yaml_sources_config())
 
     def run(self, *, apply: bool = False, prune: bool = False) -> SubstackSyncPlan:
         """Plan (and with ``apply`` write) the sync.

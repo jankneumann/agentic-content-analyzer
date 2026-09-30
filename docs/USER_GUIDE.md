@@ -304,10 +304,14 @@ sources:
     recency_filter: week
 ```
 
-**Substack**: `sources.d/substack.yaml` lists **paid** subscriptions only; add
-free publications to `rss.yaml` as `<publication>/feed`. Paid posts are fetched
+**Substack**: the `substack` type lists **paid** subscriptions only; free
+publications are `rss` sources at `<publication>/feed`. Paid posts are fetched
 with your Substack session cookie, see
-[Browser Sessions](#browser-sessions-substack-and-x).
+[Browser Sessions](#browser-sessions-substack-and-x). To follow your
+subscriptions without editing YAML, run `aca sources sync substack` (a dry run)
+and then `aca sources sync substack --apply`; it adds missing publications as
+source overrides and never changes sources you configured. See
+[Syncing Substack subscriptions](SETUP.md#syncing-substack-subscriptions).
 
 The system ships with 150+ pre-configured AI/tech RSS feeds ready to use.
 

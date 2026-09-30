@@ -45,7 +45,7 @@ syncing, or set it directly in Railway Variables.
 
 ## Safety model
 
-Mirrors `aca curate` / `substack-sync`:
+Mirrors `aca curate` and `aca sources sync substack` (dry run unless you apply):
 
 - **Allowlist-gated** — only keys declared in
   `settings/deploy/railway_secrets.yaml` for the target service are eligible.

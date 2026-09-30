@@ -1611,14 +1611,46 @@ effect without a restart), then `Settings` (environment, profile, or
 
 ## Substack API Setup
 
-`sources.d/substack.yaml` lists **paid** Substack subscriptions only; add free
-publications to `sources.d/rss.yaml` as `<publication>/feed`, so a publication
-is never ingested twice.
+The `substack` source type holds **paid** subscriptions only; free
+publications are ingested as `rss` sources at `<publication>/feed`, so a
+publication is never ingested twice.
 
 1. Capture the session: `aca auth session substack`
    ([Browser-Session Capture](#browser-session-capture)).
-2. Enable the paid publications you want in `sources.d/substack.yaml`.
+2. Sync your subscriptions into source overrides (see below), or list paid
+   publications in `sources.d/substack.yaml` and free ones in
+   `sources.d/rss.yaml` by hand.
 3. Ingest: `aca ingest substack --wait`.
+
+### Syncing Substack subscriptions
+
+`aca sources sync substack` lists your subscriptions through the session and
+shows what it would add; nothing is written without `--apply`:
+
+```bash
+aca sources sync substack                  # dry run: planned adds and conflicts
+aca sources sync substack --apply          # write the new source overrides
+aca sources sync substack --apply --prune  # also disable ones you unsubscribed from
+```
+
+- A paid publication becomes a `substack` override and a free one an `rss`
+  override at `<publication>/feed`. Rows it writes are marked
+  `managed_by = substack-sync`.
+- A publication you already configured, in YAML or the database, enabled or
+  disabled, is never changed. If you configured it under the other type (for
+  example a paid publication as an RSS feed), the sync reports a **conflict**
+  and leaves it to you.
+- When a publication it added moves between free and paid, `--apply` disables
+  its old row and adds the new type.
+- `--prune` disables, never deletes, sync-managed rows for publications you no
+  longer subscribe to. It never touches rows you added yourself, and it refuses
+  to run when Substack returns no subscriptions.
+- A missing or expired session fails with `credentials_missing` or
+  `session_expired` and the refresh command, and writes nothing.
+
+The same sync is `POST /api/v1/sources/sync/substack` with
+`{"apply": false, "prune": false}` (admin key). The CLI uses it by default and
+falls back to the local database with `--direct`.
 
 Every archive and post request of `aca ingest substack` carries the session
 cookie, so paid posts are stored in full. Without a cookie the run sends
@@ -1685,6 +1717,7 @@ aca sources add blog --url https://www.normaltech.ai/ --name "Normal Tech"
 aca sources disable 'blog:https://www.normaltech.ai/'
 aca sources enable 'blog:https://www.normaltech.ai/'
 aca sources remove 'blog:https://www.normaltech.ai/'
+aca sources sync substack --apply   # add your Substack subscriptions (see Substack API Setup)
 ```
 
 `aca sources list` shows the complete merged catalog, including `origin` and

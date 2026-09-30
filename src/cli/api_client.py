@@ -173,6 +173,14 @@ class ApiClient:
         resp.raise_for_status()
         return self._resp_json(resp)
 
+    def sync_substack_sources(self, *, apply: bool, prune: bool) -> dict[str, Any]:
+        """POST /api/v1/sources/sync/substack — plan or apply the subscription sync."""
+        resp = self._client.post(
+            "/api/v1/sources/sync/substack", json={"apply": apply, "prune": prune}
+        )
+        resp.raise_for_status()
+        return self._resp_json(resp)
+
     # ── Prompts ───────────────────────────────────────────────────────
 
     def list_prompts(self, **params: Any) -> dict[str, Any]:

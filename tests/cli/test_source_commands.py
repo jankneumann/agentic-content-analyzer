@@ -509,3 +509,133 @@ class TestDirectMode:
         # fallback_config must be supplied for a YAML source with no row
         assert mock_set.call_args.kwargs["fallback_config"] is not None
         assert mock_set.call_args.kwargs["fallback_config"]["type"] == "blog"
+
+
+# ---------------------------------------------------------------------------
+# aca sources sync substack (ri-19)
+# ---------------------------------------------------------------------------
+
+_SYNC_PLAN = {
+    "apply": False,
+    "prune": False,
+    "applied": False,
+    "subscriptions": 2,
+    "changes": 1,
+    "counts": {
+        "add": 1,
+        "existing": 0,
+        "kept_disabled": 0,
+        "switch": 0,
+        "conflict": 1,
+        "prune": 0,
+    },
+    "actions": [
+        {
+            "action": "add",
+            "name": "Paid Pub",
+            "source_type": "substack",
+            "url": "https://paid.substack.com",
+            "source_key": "substack:https://paid.substack.com",
+            "detail": None,
+        },
+        {
+            "action": "conflict",
+            "name": "Other",
+            "source_type": "substack",
+            "url": "https://other.substack.com",
+            "source_key": "substack:https://other.substack.com",
+            "detail": "subscribed as paid but configured as rss:https://other.substack.com/feed (yaml)",
+        },
+    ],
+}
+
+
+def _sync_error(status_code: int, code: str, message: str) -> httpx.HTTPStatusError:
+    request = httpx.Request("POST", "http://test/api/v1/sources/sync/substack")
+    response = httpx.Response(
+        status_code, json={"detail": {"code": code, "message": message}}, request=request
+    )
+    return httpx.HTTPStatusError("err", request=request, response=response)
+
+
+def test_api_client_sync_substack_posts_apply_and_prune():
+    client = ApiClient(base_url="http://test", admin_key="admin")
+    with patch.object(client._client, "post", return_value=_ok_response(_SYNC_PLAN)) as post:
+        assert client.sync_substack_sources(apply=True, prune=False) == _SYNC_PLAN
+    post.assert_called_once_with(
+        "/api/v1/sources/sync/substack", json={"apply": True, "prune": False}
+    )
+
+
+class TestSyncSubstack:
+    def test_dry_run_renders_actions_and_next_step(self):
+        mock_client = MagicMock()
+        mock_client.sync_substack_sources.return_value = _SYNC_PLAN
+        with patch("src.cli.api_client.get_api_client", return_value=mock_client):
+            result = runner.invoke(app, ["sources", "sync", "substack"])
+        assert result.exit_code == 0, result.output
+        mock_client.sync_substack_sources.assert_called_once_with(apply=False, prune=False)
+        assert "dry run" in result.output
+        assert "substack:https://paid.substack.com" in result.output
+        assert "conflict" in result.output
+        assert "--apply" in result.output
+
+    def test_apply_and_prune_flags_reach_the_api(self):
+        mock_client = MagicMock()
+        mock_client.sync_substack_sources.return_value = {**_SYNC_PLAN, "applied": True}
+        with patch("src.cli.api_client.get_api_client", return_value=mock_client):
+            result = runner.invoke(
+                app, ["--json", "sources", "sync", "substack", "--apply", "--prune"]
+            )
+        assert result.exit_code == 0, result.output
+        mock_client.sync_substack_sources.assert_called_once_with(apply=True, prune=True)
+        assert '"applied": true' in result.output
+
+    def test_missing_session_exits_nonzero_with_code(self):
+        mock_client = MagicMock()
+        mock_client.sync_substack_sources.side_effect = _sync_error(
+            412,
+            "credentials_missing",
+            "substack substack.sid is not configured; refresh it with: aca auth session substack",
+        )
+        with patch("src.cli.api_client.get_api_client", return_value=mock_client):
+            result = runner.invoke(app, ["--json", "sources", "sync", "substack"])
+        assert result.exit_code == 1
+        assert '"code": "credentials_missing"' in result.output
+        assert "aca auth session substack" in result.output
+
+    def test_backend_unavailable_falls_back_to_direct(self):
+        mock_client = MagicMock()
+        mock_client.sync_substack_sources.side_effect = httpx.ConnectError("down")
+        plan = MagicMock()
+        plan.to_dict.return_value = _SYNC_PLAN
+        with (
+            patch("src.cli.api_client.get_api_client", return_value=mock_client),
+            patch("src.cli.output.is_remote_backend", return_value=False),
+            patch(
+                "src.services.substack_subscription_sync.SubstackSubscriptionSync.run",
+                return_value=plan,
+            ) as run,
+        ):
+            result = runner.invoke(app, ["sources", "sync", "substack", "--apply"])
+        assert result.exit_code == 0, result.output
+        run.assert_called_once_with(apply=True, prune=False)
+
+    def test_direct_credential_failure_exits_nonzero(self):
+        from src.ingestion.credential_failures import SessionExpiredError
+
+        failure = SessionExpiredError(
+            source="substack",
+            credential_label="substack.sid",
+            refresh_command="aca auth session substack",
+        )
+        with (
+            patch("src.cli.output.is_remote_backend", return_value=False),
+            patch(
+                "src.services.substack_subscription_sync.SubstackSubscriptionSync.run",
+                side_effect=failure,
+            ),
+        ):
+            result = runner.invoke(app, ["--direct", "--json", "sources", "sync", "substack"])
+        assert result.exit_code == 1
+        assert '"code": "session_expired"' in result.output
