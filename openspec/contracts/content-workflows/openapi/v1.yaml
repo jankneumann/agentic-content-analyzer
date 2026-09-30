@@ -1016,6 +1016,8 @@ components:
         references_recorded: { type: integer, minimum: 0 }
         links_submitted: { type: integer, minimum: 0 }
         links_skipped: { type: integer, minimum: 0 }
+        links_retried: { type: integer, minimum: 0 }
+        links_pending: { type: integer, minimum: 0 }
 
     PipelineSourceIngestionSummary:
       type: object
@@ -2286,6 +2288,13 @@ components:
         full: { type: boolean, default: false }
         expand_links: { type: boolean }
         force_reprocess: { type: boolean, default: false }
+        retry_links:
+          type: boolean
+          default: false
+          description: >-
+            Retry-only mode: skip the bookmarks walk (no X request, no X session
+            needed, backfill cursor unchanged) and spend the whole linked-article
+            budget on stored pending or failed bookmark links, oldest first.
 
     IngestCommand:
       oneOf:

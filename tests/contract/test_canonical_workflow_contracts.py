@@ -393,6 +393,12 @@ def test_x_bookmarks_ingest_command_is_public_strict_and_bounded() -> None:
     # No default: an absent value defers to the source configuration.
     assert schema["properties"]["expand_links"] == {"type": "boolean"}
     assert schema["properties"]["force_reprocess"] == {"type": "boolean", "default": False}
+    retry_links = schema["properties"]["retry_links"]
+    assert {key: retry_links[key] for key in ("type", "default")} == {
+        "type": "boolean",
+        "default": False,
+    }
+    assert "no X session" in retry_links["description"]
     # Browser-session credentials are resolved server-side and never travel in a command.
     assert not {"auth_token", "ct0", "cookies", "query_id"} & set(schema["properties"])
 
@@ -409,6 +415,7 @@ def test_generated_x_bookmarks_command_has_python_typescript_and_runtime_parity(
         "full": True,
         "expand_links": False,
         "force_reprocess": True,
+        "retry_links": True,
     }
 
     command = TypeAdapter(module.IngestCommand).validate_python(payload)
@@ -419,6 +426,7 @@ def test_generated_x_bookmarks_command_has_python_typescript_and_runtime_parity(
     assert defaults.full is False
     assert defaults.expand_links is None
     assert defaults.force_reprocess is False
+    assert defaults.retry_links is False
     assert defaults.max_items is None
 
     assert runtime_commands.XBookmarksIngestCommand is runtime_contract.XBookmarksIngestCommand
@@ -442,6 +450,7 @@ def test_generated_x_bookmarks_command_has_python_typescript_and_runtime_parity(
         assert "max_items?: number;" in interface
         assert "full?: boolean;" in interface
         assert "expand_links?: boolean;" in interface
+        assert "retry_links?: boolean;" in interface
         assert "force_reprocess?: boolean;" in interface
         assert "configured_sources" not in interface
         assert "XBookmarksIngestCommand" in source.split("export type IngestCommand =", 1)[1]

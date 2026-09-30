@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
 
-CONTRACT_SHA256 = "0a3347353feb19918a8c8c634a9dc6348f63e27cee96bb4a3cedd19d8f871845"
+CONTRACT_SHA256 = "c8772855f2591fc99d35946b38564f16a2851adeb75d11552847b70ca844653d"
 
 OperationStatus = Literal["queued", "in_progress", "completed", "failed", "cancelled"]
 OperationType = Literal[
@@ -297,6 +297,17 @@ COMMAND_FIELD_SCHEMAS: dict[str, dict[str, Any]] = {
             "full": {"type": "boolean", "default": False},
             "expand_links": {"type": "boolean"},
             "force_reprocess": {"type": "boolean", "default": False},
+            "retry_links": {
+                "type": "boolean",
+                "default": False,
+                "description": "Retry-only mode: skip the "
+                "bookmarks walk (no X request, no X "
+                "session needed, backfill cursor "
+                "unchanged) and spend the whole "
+                "linked-article budget on stored "
+                "pending or failed bookmark links, "
+                "oldest first.",
+            },
         },
         "required": ["kind"],
     },
@@ -417,6 +428,8 @@ class SafeIngestionDetails(StrictModel):
     references_recorded: int | None = Field(None, ge=0)
     links_submitted: int | None = Field(None, ge=0)
     links_skipped: int | None = Field(None, ge=0)
+    links_retried: int | None = Field(None, ge=0)
+    links_pending: int | None = Field(None, ge=0)
 
 
 class PipelineSourceIngestionSummary(StrictModel):
@@ -1139,6 +1152,7 @@ class XBookmarksIngestCommand(StrictModel):
     full: bool = False
     expand_links: bool | None = None
     force_reprocess: bool = False
+    retry_links: bool = False
 
 
 class SummarizationRequest(StrictModel):

@@ -32,6 +32,8 @@ _SAFE_DETAIL_FIELDS: dict[str, type] = {
     "references_recorded": int,
     "links_submitted": int,
     "links_skipped": int,
+    "links_retried": int,
+    "links_pending": int,
 }
 _SAFE_DIAGNOSTIC_MESSAGES = {
     "arxiv_paper_error": "An arXiv paper could not be ingested",
