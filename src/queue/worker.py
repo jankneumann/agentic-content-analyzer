@@ -1233,6 +1233,8 @@ async def _run_langfuse_retention_tick(
                 retention_days=retention_settings.langfuse_trace_retention_days,
                 batch_size=retention_settings.langfuse_trace_retention_batch_size,
                 max_deletes=(retention_settings.langfuse_trace_retention_max_deletes_per_run),
+                slice_hours=retention_settings.langfuse_trace_retention_slice_hours,
+                lookback_days=(retention_settings.langfuse_trace_retention_lookback_days),
             )
         logger.info(
             "langfuse trace retention completed",

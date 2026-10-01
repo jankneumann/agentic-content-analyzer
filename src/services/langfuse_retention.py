@@ -16,12 +16,19 @@ Deletion is irreversible and asynchronous. Everything here is therefore off
 unless explicitly enabled, bounded per run, and conservative about what it
 counts as done.
 
-Pagination is keyset, never ``page=N``. The public API turns a page number
-into a ClickHouse ``OFFSET``, which reads and discards every preceding row, so
-walking a large trace store by page degrades until the server aborts the query
-and answers 422 ("ClickHouse resource limit exceeded"). Carrying a timestamp
-cursor forward keeps every request the same cost no matter how deep the run
-gets.
+Two things keep the queries inside what the server will actually do.
+
+Pagination is keyset, never ``page=N``: the API turns a page number into a
+ClickHouse ``OFFSET``, which reads and discards every preceding row, so
+walking a large store by page degrades until the server aborts the query.
+
+Every query is also bounded at BOTH ends. A cursor alone leaves the window
+open up to the cutoff, which is still weeks wide, and the 422 this endpoint
+answers with says so in as many words: "narrow your request by adding more
+specific filters (e.g., a shorter date range)". The expired period is
+therefore swept as a series of narrow slices, and a slice that still trips the
+limit is halved and retried, so the run tunes itself to whatever the server
+can take rather than to a width guessed here.
 """
 
 from __future__ import annotations
@@ -65,6 +72,11 @@ _MAX_EVIDENCE_CHARS = 400
 
 # Slack above the delete ceiling for cursor nudges past same-timestamp clusters.
 _CURSOR_NUDGE_ALLOWANCE = 100
+
+# A slice narrow enough that the legacy traces endpoint can answer it, halved
+# on a resource limit until the server stops complaining. Five minutes is the
+# floor: below that an empty sweep costs more requests than it saves work.
+_MIN_SLICE = timedelta(minutes=5)
 
 # The public API caps `limit` at 100 (paginationLimitZod).
 _MAX_API_LIMIT = 100
@@ -259,28 +271,115 @@ class LangfuseRetentionClient:
         return response
 
 
+@dataclass
+class _SweepState:
+    """Mutable totals shared across the slices of one run."""
+
+    requested: set[str]
+    deleted_count: int = 0
+    batch_count: int = 0
+    capped: bool = False
+
+
+async def _prune_window(
+    client: LangfuseRetentionClient,
+    *,
+    since: datetime,
+    until: datetime,
+    batch_size: int,
+    max_deletes: int,
+    state: _SweepState,
+    dry_run: bool,
+) -> None:
+    """Delete every not-yet-submitted trace in one narrow window.
+
+    Walks the window oldest-first with a timestamp cursor. Raises
+    ``LangfuseResourceLimitError`` if the window is still too wide for the
+    server, which the caller answers by halving it.
+    """
+
+    cursor = since
+    window_limit = batch_size
+    max_iterations = (max_deletes // batch_size) + _CURSOR_NUDGE_ALLOWANCE
+
+    for _ in range(max_iterations):
+        if state.deleted_count >= max_deletes:
+            state.capped = True
+            return
+
+        page = await client.list_trace_window(
+            until=until,
+            since=cursor,
+            limit=window_limit,
+        )
+        if not page.trace_ids:
+            return
+
+        fresh = [tid for tid in page.trace_ids if tid not in state.requested]
+
+        if not fresh:
+            # Everything visible here was already submitted. If the window came
+            # back full, the rest of a same-timestamp cluster sits just past its
+            # edge, and stepping the cursor over it would silently skip those
+            # traces -- so widen first and only step once the cluster is whole.
+            if len(page.trace_ids) >= window_limit and window_limit < _MAX_API_LIMIT:
+                window_limit = min(window_limit * 2, _MAX_API_LIMIT)
+                continue
+            if page.newest_timestamp is None:
+                return
+            cursor = page.newest_timestamp + timedelta(microseconds=1)
+            window_limit = batch_size
+            continue
+
+        remaining = max_deletes - state.deleted_count
+        if len(fresh) > remaining:
+            fresh = fresh[:remaining]
+            state.capped = True
+
+        if not dry_run:
+            await client.delete_traces(fresh)
+
+        state.requested.update(fresh)
+        state.deleted_count += len(fresh)
+        state.batch_count += 1
+        window_limit = batch_size
+
+        if page.newest_timestamp is None:
+            return
+        # Inclusive: a cluster may straddle this edge, so the boundary trace is
+        # re-read next time and filtered by `requested`. One duplicated row per
+        # batch is the price of never skipping one.
+        cursor = page.newest_timestamp
+
+
 async def prune_expired_traces(
     client: LangfuseRetentionClient,
     *,
     retention_days: int,
     batch_size: int,
     max_deletes: int,
+    lookback_days: int = 400,
+    slice_hours: int = 168,
     now: datetime | None = None,
     dry_run: bool = False,
 ) -> LangfuseRetentionResult:
     """Delete every trace older than ``retention_days``, up to ``max_deletes``.
 
-    Walks the expired window oldest-first with a timestamp cursor. Page numbers
-    are deliberately not used: the API turns them into a ClickHouse ``OFFSET``,
-    so deep pages read and discard everything before them until the server
-    aborts the query with a 422. A cursor keeps every request equally cheap,
-    which is what lets one run clear a backlog of any size.
+    Sweeps the expired period oldest-first as a series of narrow time slices,
+    walking each slice with a timestamp cursor. Both ends of every query are
+    bounded: the legacy traces endpoint answers 422 when a query exceeds
+    ClickHouse's budget, and its own advice is to shorten the date range. A
+    slice that still trips the limit is halved and retried, down to five
+    minutes, so the run adapts to the server instead of to a guess.
 
-    Each iteration either records new deletions or moves the cursor strictly
-    forward, and both are bounded, so the loop terminates. Deletion is
-    asynchronous and ``fromTimestamp`` is inclusive, so a trace can be listed
-    again after it was already submitted; the per-run set makes that a wasted
-    comparison rather than a duplicate request.
+    ``lookback_days`` bounds how far back the sweep starts, since there is no
+    cheap way to ask where history begins -- a trace older than that is left
+    alone. Empty slices cost one fast request each.
+
+    Each iteration either records new deletions or advances, and both are
+    bounded, so the run terminates. Deletion is asynchronous and the cursor is
+    inclusive, so a trace can be listed again after being submitted; the
+    per-run set makes that a wasted comparison rather than a duplicate request.
 
     ``dry_run`` counts what would go without sending a delete.
     """
@@ -291,85 +390,50 @@ async def prune_expired_traces(
         raise ValueError("batch_size must be at least 1")
     if max_deletes < 1:
         raise ValueError("max_deletes must be at least 1")
+    if lookback_days < 1:
+        raise ValueError("lookback_days must be at least 1")
+    if slice_hours < 1:
+        raise ValueError("slice_hours must be at least 1")
 
     moment = (now or datetime.now(UTC)).astimezone(UTC)
     cutoff = moment - timedelta(days=retention_days)
 
-    requested: set[str] = set()
-    deleted_count = 0
-    batch_count = 0
-    capped = False
+    state = _SweepState(requested=set())
     stopped_reason: str | None = None
-    cursor: datetime | None = None
-    window_limit = batch_size
+    slice_width = timedelta(hours=slice_hours)
+    window_start = cutoff - timedelta(days=lookback_days)
 
-    # A remote loop in a maintenance tick gets a hard ceiling regardless of the
-    # progress argument above, so a surprise on the server side cannot pin a
-    # worker forever.
-    max_iterations = (max_deletes // batch_size) + _CURSOR_NUDGE_ALLOWANCE
-
-    for _ in range(max_iterations):
-        if deleted_count >= max_deletes:
-            break
+    while window_start < cutoff and state.deleted_count < max_deletes:
+        window_end = min(window_start + slice_width, cutoff)
         try:
-            page = await client.list_trace_window(
-                until=cutoff,
-                since=cursor,
-                limit=window_limit,
+            await _prune_window(
+                client,
+                since=window_start,
+                until=window_end,
+                batch_size=batch_size,
+                max_deletes=max_deletes,
+                state=state,
+                dry_run=dry_run,
             )
         except LangfuseResourceLimitError as exc:
+            if slice_width > _MIN_SLICE:
+                slice_width = max(slice_width // 2, _MIN_SLICE)
+                logger.info(
+                    "langfuse retention narrowed its window",
+                    extra={"langfuse_retention_slice_seconds": slice_width.total_seconds()},
+                )
+                continue
+            # Already at the floor: the server cannot serve even five minutes
+            # of this store. Keep the progress and say why.
             stopped_reason = str(exc)
             break
-
-        if not page.trace_ids:
-            break
-
-        fresh = [trace_id for trace_id in page.trace_ids if trace_id not in requested]
-
-        if not fresh:
-            # Everything visible in this window was already submitted. If the
-            # window came back full, the rest of a same-timestamp cluster is
-            # sitting just past its edge, and stepping the cursor over it would
-            # silently skip those traces -- so widen the window first and only
-            # step once we can see the whole cluster.
-            if len(page.trace_ids) >= window_limit and window_limit < _MAX_API_LIMIT:
-                window_limit = min(window_limit * 2, _MAX_API_LIMIT)
-                continue
-            if page.newest_timestamp is None:
-                break
-            cursor = page.newest_timestamp + timedelta(microseconds=1)
-            window_limit = batch_size
-            continue
-
-        remaining = max_deletes - deleted_count
-        if len(fresh) > remaining:
-            fresh = fresh[:remaining]
-            capped = True
-
-        if not dry_run:
-            try:
-                await client.delete_traces(fresh)
-            except LangfuseResourceLimitError as exc:
-                stopped_reason = str(exc)
-                break
-
-        requested.update(fresh)
-        deleted_count += len(fresh)
-        batch_count += 1
-        window_limit = batch_size
-
-        if page.newest_timestamp is None:
-            break
-        # Inclusive: a cluster may straddle this edge, so the boundary trace is
-        # re-read next time and filtered by `requested`. One duplicated row per
-        # batch is the price of never skipping one.
-        cursor = page.newest_timestamp
+        window_start = window_end
 
     return LangfuseRetentionResult(
-        deleted_count=deleted_count,
-        batch_count=batch_count,
+        deleted_count=state.deleted_count,
+        batch_count=state.batch_count,
         cutoff=cutoff,
-        capped=capped or deleted_count >= max_deletes,
+        capped=state.capped or state.deleted_count >= max_deletes,
         dry_run=dry_run,
         stopped_reason=stopped_reason,
     )

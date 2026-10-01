@@ -28,6 +28,8 @@ class _Settings:
     langfuse_trace_retention_days = 30
     langfuse_trace_retention_batch_size = 50
     langfuse_trace_retention_max_deletes_per_run = 1000
+    langfuse_trace_retention_slice_hours = 24
+    langfuse_trace_retention_lookback_days = 400
 
 
 @pytest.fixture
@@ -91,6 +93,8 @@ def test_the_window_defaults_to_the_configured_retention(captured: dict[str, Any
     assert captured["retention_days"] == 30
     assert captured["batch_size"] == 50
     assert captured["max_deletes"] == 1000
+    assert captured["slice_hours"] == 24
+    assert captured["lookback_days"] == 400
 
 
 def test_flags_override_the_configured_window(captured: dict[str, Any]) -> None:
@@ -103,6 +107,16 @@ def test_flags_override_the_configured_window(captured: dict[str, Any]) -> None:
     assert captured["retention_days"] == 1
     assert captured["batch_size"] == 10
     assert captured["max_deletes"] == 5
+
+
+def test_the_window_width_can_be_narrowed_from_the_command_line(
+    captured: dict[str, Any],
+) -> None:
+    """When the server keeps aborting, narrowing is the operator's lever."""
+    runner.invoke(app, ["--slice-hours", "1", "--lookback-days", "7"])
+
+    assert captured["slice_hours"] == 1
+    assert captured["lookback_days"] == 7
 
 
 def test_missing_credentials_fail_rather_than_report_zero(

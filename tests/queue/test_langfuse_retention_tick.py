@@ -24,6 +24,8 @@ class _Settings:
     langfuse_trace_retention_days = 30
     langfuse_trace_retention_batch_size = 50
     langfuse_trace_retention_max_deletes_per_run = 1000
+    langfuse_trace_retention_slice_hours = 24
+    langfuse_trace_retention_lookback_days = 400
     langfuse_public_key = "pk-lf-test"
     langfuse_secret_key = "sk-lf-test"
     langfuse_base_url = "http://langfuse-web:3000"

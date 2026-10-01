@@ -905,6 +905,14 @@ class Settings(BaseSettings):
         ge=1,
         le=1_000_000,
     )
+    # Every query must be bounded at both ends: the legacy traces endpoint
+    # answers 422 when one spans too much data, and says to shorten the range.
+    # A slice that still trips the limit is halved at runtime, so this is a
+    # starting width rather than a ceiling. 168h = one week.
+    langfuse_trace_retention_slice_hours: int = Field(default=168, ge=1, le=8760)
+    # How far back a sweep starts. There is no cheap way to ask where history
+    # begins, so this bounds the search; a trace older than it is left alone.
+    langfuse_trace_retention_lookback_days: int = Field(default=400, ge=1, le=3650)
 
     # Braintrust Configuration
     braintrust_api_key: str | None = None  # Braintrust API key

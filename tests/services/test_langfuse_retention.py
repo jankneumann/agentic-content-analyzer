@@ -37,11 +37,15 @@ class _FakeClient:
         traces: list[tuple[str, datetime]] | None = None,
         *,
         resource_limit_after: int | None = None,
+        max_window: timedelta | None = None,
     ) -> None:
         self._traces = sorted(traces or [], key=lambda t: t[1])
         self.deleted: list[list[str]] = []
         self.windows: list[tuple[datetime | None, datetime]] = []
         self._resource_limit_after = resource_limit_after
+        # The real server aborts when a query spans too much data, which is
+        # what the 422 means. Modelling it by width is what exercises halving.
+        self._max_window = max_window
 
     async def list_trace_window(
         self,
@@ -56,6 +60,14 @@ class _FakeClient:
             and len(self.windows) > self._resource_limit_after
         ):
             raise LangfuseResourceLimitError("langfuse aborted the query (HTTP 422)")
+        if (
+            self._max_window is not None
+            and since is not None
+            and (until - since) > self._max_window
+        ):
+            raise LangfuseResourceLimitError(
+                "langfuse aborted the query (HTTP 422) narrow your request"
+            )
         rows = [
             (tid, ts) for tid, ts in self._traces if ts < until and (since is None or ts >= since)
         ][:limit]
@@ -66,9 +78,15 @@ class _FakeClient:
         self.deleted.append(list(trace_ids))
 
 
+# Inside the window every test sweeps: expired relative to `now`, but recent
+# enough to fall within `lookback_days`. A store outside the lookback is
+# invisible by design, which is a fixture bug rather than a finding.
+_STORE_BASE = datetime(2026, 4, 10, tzinfo=UTC)
+
+
 def _store(count: int, *, start: datetime | None = None) -> list[tuple[str, datetime]]:
     """A store of distinctly-timestamped traces, oldest first."""
-    base = start or datetime(2026, 1, 1, tzinfo=UTC)
+    base = start or _STORE_BASE
     return [(f"t{i}", base + timedelta(seconds=i)) for i in range(count)]
 
 
@@ -90,12 +108,13 @@ async def test_it_deletes_every_trace_older_than_the_window() -> None:
 
 
 @pytest.mark.asyncio
-async def test_it_never_asks_for_a_deep_page() -> None:
-    """The live failure: page=N becomes a ClickHouse OFFSET and 422s.
+async def test_every_query_is_bounded_at_both_ends() -> None:
+    """The live failures, in order, were both about unbounded queries.
 
-    Walking 400 pages of a real trace store aborted the query outright. The
-    cursor must carry the window forward instead, so every request costs the
-    same no matter how far in the run gets.
+    First `page=N` became a ClickHouse OFFSET and aborted at depth. Then a
+    cursor with an open upper bound still spanned weeks, and the server said
+    so: "narrow your request by adding more specific filters (e.g., a shorter
+    date range)". Every request must name a start AND an end.
     """
     client = _FakeClient(_store(500))
 
@@ -103,17 +122,63 @@ async def test_it_never_asks_for_a_deep_page() -> None:
         client,
         retention_days=30,
         batch_size=50,
-        max_deletes=1000,
+        max_deletes=10_000,
+        lookback_days=200,
+        slice_hours=168,
         now=datetime(2026, 6, 1, tzinfo=UTC),
     )
 
     assert result.deleted_count == 500
-    # Each window starts where the previous one ended, and only moves forward.
-    starts = [since for since, _ in client.windows]
-    assert starts[0] is None, "the first window is open-ended"
-    later = [since for since in starts[1:] if since is not None]
-    assert len(later) == len(starts) - 1, "every later window carries a cursor"
-    assert later == sorted(later), "the cursor must never go backwards"
+    assert client.windows, "it must have asked for something"
+    for since, until in client.windows:
+        assert since is not None, "an open lower bound is what 422s"
+        assert since < until
+        assert (until - since) <= timedelta(hours=168)
+
+
+@pytest.mark.asyncio
+async def test_a_window_the_server_refuses_is_halved_until_it_is_served() -> None:
+    """Self-tuning beats a width guessed here.
+
+    Six hours is narrow enough for this fake; the default slice is a week. The
+    run has to discover that on its own and still delete everything.
+    """
+    client = _FakeClient(_store(120), max_window=timedelta(hours=6))
+
+    result = await prune_expired_traces(
+        client,
+        retention_days=30,
+        batch_size=50,
+        max_deletes=10_000,
+        lookback_days=30,
+        slice_hours=168,
+        now=datetime(2026, 6, 1, tzinfo=UTC),
+    )
+
+    assert result.deleted_count == 120, "halving must not lose traces"
+    assert result.stopped_reason is None
+    served = [(a, b) for a, b in client.windows if (b - a) <= timedelta(hours=6)]
+    assert served, "it must have narrowed the window"
+
+
+@pytest.mark.asyncio
+async def test_a_server_that_refuses_even_the_floor_stops_and_says_so() -> None:
+    """There is a limit to narrowing; past it, report rather than spin."""
+    client = _FakeClient(_store(10), max_window=timedelta(seconds=1))
+
+    result = await prune_expired_traces(
+        client,
+        retention_days=30,
+        batch_size=50,
+        max_deletes=10_000,
+        lookback_days=30,
+        slice_hours=168,
+        now=datetime(2026, 6, 1, tzinfo=UTC),
+    )
+
+    assert result.deleted_count == 0
+    assert result.stopped_reason is not None
+    assert "422" in result.stopped_reason
 
 
 @pytest.mark.asyncio
@@ -126,11 +191,17 @@ async def test_the_cutoff_is_the_retention_window_back_from_now() -> None:
         retention_days=30,
         batch_size=50,
         max_deletes=100,
+        lookback_days=14,
+        slice_hours=168,
         now=now,
     )
 
-    assert result.cutoff == now - timedelta(days=30)
-    assert client.windows == [(None, now - timedelta(days=30))]
+    cutoff = now - timedelta(days=30)
+    assert result.cutoff == cutoff
+    # Two weekly slices covering exactly [cutoff - 14d, cutoff].
+    assert client.windows[0][0] == cutoff - timedelta(days=14)
+    assert client.windows[-1][1] == cutoff
+    assert len(client.windows) == 2
 
 
 @pytest.mark.asyncio
@@ -159,7 +230,7 @@ async def test_a_trace_still_listed_after_deletion_is_not_deleted_twice() -> Non
 @pytest.mark.asyncio
 async def test_traces_sharing_one_timestamp_do_not_stall_the_cursor() -> None:
     """An inclusive cursor cannot advance past a cluster on its own."""
-    same = datetime(2026, 1, 1, tzinfo=UTC)
+    same = _STORE_BASE
     traces = [(f"c{i}", same) for i in range(5)]
     traces += [("later", same + timedelta(seconds=1))]
     client = _FakeClient(traces)
@@ -188,7 +259,7 @@ async def test_it_never_skips_a_trace_whatever_the_batch_and_clustering(
     never shrinks, and nothing says which traces were missed. Clusters of
     identical timestamps are the case that breaks a naive cursor.
     """
-    base = datetime(2026, 1, 1, tzinfo=UTC)
+    base = _STORE_BASE
     traces = [(f"t{i}", base + timedelta(seconds=i // cluster)) for i in range(30)]
     client = _FakeClient(traces)
 
@@ -240,23 +311,24 @@ async def test_the_per_run_cap_bounds_a_first_run_against_a_huge_backlog() -> No
 
 
 @pytest.mark.asyncio
-async def test_a_resource_limit_stops_the_run_and_keeps_what_it_did() -> None:
-    """422 is load, not a bad request: bank the progress and say why."""
-    client = _FakeClient(_store(200), resource_limit_after=2)
+async def test_a_run_cut_short_keeps_the_traces_it_already_deleted() -> None:
+    """Deletions already submitted are real work; a later abort must not lose them."""
+    client = _FakeClient(_store(400), resource_limit_after=3)
 
     result = await prune_expired_traces(
         client,
-        retention_days=7,
-        batch_size=10,
-        max_deletes=1000,
+        retention_days=30,
+        batch_size=50,
+        max_deletes=10_000,
+        lookback_days=30,
+        slice_hours=168,
         now=datetime(2026, 6, 1, tzinfo=UTC),
     )
 
-    # 10 from the first window, 9 from the second: the inclusive cursor
-    # re-reads the boundary trace, which `requested` filters out.
-    assert result.deleted_count == 19, "work done before the limit must be kept"
+    assert result.deleted_count > 0, "work done before the abort must be kept"
     assert result.stopped_reason is not None
-    assert "422" in result.stopped_reason
+    submitted = [t for batch in client.deleted for t in batch]
+    assert len(submitted) == result.deleted_count
 
 
 @pytest.mark.asyncio

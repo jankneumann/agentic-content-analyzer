@@ -90,6 +90,10 @@ def test_gx10_prunes_its_own_trace_store() -> None:
     # A pruner that runs more often than it needs to is the freshness-probe
     # mistake again: every tick is traffic against the store it is draining.
     assert observability["langfuse_trace_retention_interval_seconds"] >= 3600
+    # Every query must name both ends: an open upper bound spanned weeks and
+    # the server aborted it with a 422 telling us to shorten the range.
+    assert observability["langfuse_trace_retention_slice_hours"] <= 24
+    assert observability["langfuse_trace_retention_lookback_days"] >= 30
 
     flat = _flatten_profile_to_settings(profile.model_dump())
     assert flat["langfuse_trace_retention_enabled"] is True

@@ -313,6 +313,17 @@ and is not one -- the first live run of this pruner died that way at a depth
 no test reached. A cursor keeps every request the same cost however deep the
 run goes.
 
+A cursor alone was still not enough. With the upper bound left at the cutoff
+each query spanned weeks, and the endpoint aborted again with the same 422 --
+this time saying what it wanted: "narrow your request by adding more specific
+filters (e.g., a shorter date range)". So the expired period is swept as a
+series of narrow slices, one day wide on this host, and a slice that still
+trips the limit is halved and retried down to five minutes. The run tunes
+itself to what the server will serve rather than to a width guessed in
+advance. Because there is no cheap way to ask where history begins,
+`langfuse_trace_retention_lookback_days` bounds how far back a sweep starts;
+a trace older than that is left alone.
+
 Two details follow from the cursor. `fromTimestamp` is inclusive, so the
 boundary trace is re-read on the next batch and filtered out by the per-run
 set: one duplicated row per batch buys never skipping one. And when a batch

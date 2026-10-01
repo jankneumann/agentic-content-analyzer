@@ -46,6 +46,16 @@ def prune_traces(
         "--max-deletes",
         help="Stop after this many traces. The next run continues where this one stopped.",
     ),
+    slice_hours: int = typer.Option(
+        None,
+        "--slice-hours",
+        help="Starting width of each query window. Narrow this if the server keeps aborting.",
+    ),
+    lookback_days: int = typer.Option(
+        None,
+        "--lookback-days",
+        help="How far back to sweep. Traces older than this are left alone.",
+    ),
     apply: bool = typer.Option(
         False,
         "--apply",
@@ -77,6 +87,8 @@ def prune_traces(
     days = older_than_days or settings.langfuse_trace_retention_days
     size = batch_size or settings.langfuse_trace_retention_batch_size
     cap = max_deletes or settings.langfuse_trace_retention_max_deletes_per_run
+    width = slice_hours or settings.langfuse_trace_retention_slice_hours
+    lookback = lookback_days or settings.langfuse_trace_retention_lookback_days
 
     async def _run() -> Any:
         async with LangfuseRetentionClient(
@@ -89,6 +101,8 @@ def prune_traces(
                 retention_days=days,
                 batch_size=size,
                 max_deletes=cap,
+                slice_hours=width,
+                lookback_days=lookback,
                 dry_run=not apply,
             )
 
@@ -105,6 +119,8 @@ def prune_traces(
         "success": True,
         "applied": apply,
         "retention_days": days,
+        "slice_hours": width,
+        "lookback_days": lookback,
         "cutoff": result.cutoff.isoformat(),
         "trace_count": result.deleted_count,
         "batch_count": result.batch_count,

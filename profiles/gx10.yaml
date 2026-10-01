@@ -58,6 +58,11 @@ settings:
     langfuse_trace_retention_interval_seconds: 86400
     langfuse_trace_retention_batch_size: 50
     langfuse_trace_retention_max_deletes_per_run: 20000
+    # One day per query, not one week. This host emits traces densely enough
+    # that a wide window exceeds what the legacy traces endpoint will serve;
+    # a slice that still trips the limit is halved at runtime.
+    langfuse_trace_retention_slice_hours: 24
+    langfuse_trace_retention_lookback_days: 400
 
   api_keys:
     anthropic_api_key: "${ANTHROPIC_API_KEY:-}"
