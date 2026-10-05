@@ -76,7 +76,7 @@ dependencies = [
     "docling>=2.123.0",  # IBM's advanced document parser with table extraction; >=2.123 drops the typer<0.20 cap
 
     # HTML to Markdown Conversion
-    "trafilatura>=2.0.0",  # Academic-quality web content extraction
+    "trafilatura>=2.0.0,<2.3",  # Academic-quality web content extraction; 2.3 returns bare text for non-HTML input
 
     # Observability (OpenTelemetry core)
     "opentelemetry-api>=1.20.0",
