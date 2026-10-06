@@ -1,0 +1,450 @@
+schema_version: 1
+
+feature:
+  id: agent-ergonomic-retrieval-surface
+  title: Agent-ergonomic retrieval surface (completeness, cursors, insight maturity, dry run, ingest collapse)
+  plan_revision: 1
+  created_by: claude-remote
+  created_at: "2026-09-05T00:00:00Z"
+
+contracts:
+  revision: 1
+  openapi:
+    primary: openspec/changes/agent-ergonomic-retrieval-surface/contracts/openapi/v1.yaml
+    files:
+      - openspec/changes/agent-ergonomic-retrieval-surface/contracts/openapi/v1.yaml
+      - openspec/changes/agent-ergonomic-retrieval-surface/contracts/db/schema.sql
+  generated:
+    pydantic_dir: src/contracts
+    typescript_dir: web/src/generated
+
+defaults:
+  priority: 5
+  lock_ttl_minutes: 180
+  timeout_minutes: 180
+  retry_budget: 1
+  verification_tier_required: B
+  min_trust_level: 2
+
+packages:
+  - package_id: wp-contracts
+    title: PipelinePlan, dry_run, search and insights contract delta
+    task_type: implement
+    description: >-
+      Merge PipelinePlan, PipelineRequest.dry_run, SearchOmission, SearchMeta, cursor fields,
+      GraphQueryResponse, and the insights envelope into the canonical contract; regenerate.
+    role: contract-engineer
+    priority: 1
+    depends_on: []
+    locks:
+      files:
+        - openspec/contracts/content-workflows/openapi/v1.yaml
+        - src/contracts/workflow_models.py
+        - web/src/generated/workflow-contracts.ts
+      keys:
+        - contract:content-workflows:pipeline-plan
+      ttl_minutes: 180
+      reason: Canonical contract and generated-model ownership.
+    scope:
+      write_allow:
+        - openspec/contracts/content-workflows/**
+        - src/contracts/**
+        - web/src/generated/**
+        - tests/contract/**
+      read_allow:
+        - src/**
+        - openspec/**
+        - tests/**
+    worktree: { name: wp-contracts, mode: isolated }
+    timeout_minutes: 120
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 260
+      complexity: medium
+      package_kind: data_model
+    context_impact:
+      surfaces: [apis]
+    inputs:
+      tasks: ["1.1", "1.2"]
+    verification:
+      tier_required: B
+      steps:
+        - name: workflow-contract-drift
+          kind: command
+          command: make workflow-contracts-check
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-contracts/contracts-check.log]
+            result_keys: [exit_code]
+        - name: contract-tests
+          kind: command
+          command: pytest tests/contract -m contract --no-cov -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-contracts/pytest.xml]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-search
+    title: Exact total, completeness, omissions, signed cursors, graph truncation
+    task_type: implement
+    description: >-
+      Implement SearchExecution, the new SearchMeta, exact total, the signed keyset cursor,
+      remove offset, update the search routes, and add graph total_hits and truncated.
+    role: backend-engineer
+    priority: 2
+    depends_on: [wp-contracts]
+    locks:
+      files:
+        - src/services/search.py
+        - src/models/search.py
+        - src/api/search_routes.py
+        - src/api/routes/graph_routes.py
+      keys:
+        - api:POST /api/v1/search
+        - api:GET /api/v1/search
+        - api:POST /api/v1/graph/query
+      ttl_minutes: 180
+      reason: Search and graph response ownership.
+    scope:
+      write_allow:
+        - src/services/search.py
+        - src/models/search.py
+        - src/api/search_routes.py
+        - src/api/routes/graph_routes.py
+        - src/api/schemas/graph.py
+        - tests/test_services/test_search_total.py
+        - tests/test_services/test_search_completeness.py
+        - tests/test_services/test_search_cursor.py
+        - tests/api/test_search_api.py
+        - tests/api/test_graph_routes.py
+      read_allow:
+        - src/**
+        - tests/**
+        - openspec/changes/agent-ergonomic-retrieval-surface/**
+    worktree: { name: wp-search, mode: isolated }
+    timeout_minutes: 240
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 620
+      complexity: high
+      package_kind: algorithm
+    context_impact:
+      surfaces: [apis, semantic_code]
+    inputs:
+      tasks: ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6", "2.7", "3.1", "3.2"]
+    verification:
+      tier_required: B
+      steps:
+        - name: search-tests
+          kind: command
+          command: pytest tests/test_services tests/api/test_search_api.py tests/api/test_graph_routes.py -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-search/pytest.xml]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-insights
+    title: Insight evidence, maturity, supersession, single store
+    task_type: implement
+    description: >-
+      Add the maturity migration and enum, the service lifecycle methods, the insights routes
+      and response model, the pointer store in the conductor, stale marking on scheduled
+      reruns, and the maturity-aware recall filter. Requires agent-runtime-correctness merged.
+    role: backend-engineer
+    priority: 2
+    depends_on: [wp-contracts]
+    locks:
+      files:
+        - src/services/agent_service.py
+        - src/api/agent_routes.py
+        - src/agents/conductor.py
+        - src/agents/memory/provider.py
+      keys:
+        - db:schema:agent_insights
+        - api:GET /api/v1/agent/insights
+        - api:PATCH /api/v1/agent/insights/{id}
+      ttl_minutes: 180
+      reason: Insight lifecycle ownership.
+    scope:
+      write_allow:
+        - src/models/agent_insight.py
+        - src/services/agent_service.py
+        - src/api/agent_routes.py
+        - src/agents/conductor.py
+        - src/agents/memory/**
+        - alembic/versions/*_add_insight_maturity.py
+        - tests/agents/**
+        - tests/integration/test_insight_maturity_migration.py
+      read_allow:
+        - src/**
+        - alembic/**
+        - tests/**
+        - openspec/changes/agent-ergonomic-retrieval-surface/**
+    worktree: { name: wp-insights, mode: isolated }
+    timeout_minutes: 240
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 540
+      complexity: high
+      package_kind: migration
+    context_impact:
+      surfaces: [apis, semantic_code]
+    inputs:
+      tasks: ["4.1", "4.2", "4.3", "4.4", "4.5", "4.6", "4.7", "4.8"]
+    verification:
+      tier_required: B
+      steps:
+        - name: insight-tests
+          kind: command
+          command: pytest tests/agents tests/integration/test_insight_maturity_migration.py -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-insights/pytest.xml]
+            result_keys: [test_count, pass_count]
+        - name: alembic-single-head
+          kind: command
+          command: alembic heads
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-insights/alembic-heads.log]
+            result_keys: [head_count]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-pipeline-plan
+    title: Pipeline dry run and cost estimate
+    task_type: implement
+    description: >-
+      Implement PipelinePlanner, wire dry_run through the HTTP route, CLI flag, and MCP
+      run_pipeline parameter. Requires ModelConfig.calculate_cost as the only pricing source
+      (agent-runtime-correctness).
+    role: backend-engineer
+    priority: 2
+    depends_on: [wp-contracts]
+    locks:
+      files:
+        - src/workflows/pipeline.py
+        - src/api/operation_routes.py
+        - src/cli/workflow_commands.py
+        - src/mcp_tools/workflows.py
+      keys:
+        - api:POST /api/v1/pipeline-runs
+      ttl_minutes: 180
+      reason: Pipeline planning ownership.
+    scope:
+      write_allow:
+        - src/workflows/pipeline.py
+        - src/workflows/pipeline_plan.py
+        - src/api/operation_routes.py
+        - src/cli/workflow_commands.py
+        - src/mcp_tools/workflows.py
+        - tests/workflows/test_pipeline_plan.py
+        - tests/api/test_operation_routes.py
+        - tests/cli/test_pipeline_dry_run.py
+      read_allow:
+        - src/**
+        - settings/**
+        - tests/**
+        - openspec/changes/agent-ergonomic-retrieval-surface/**
+    worktree: { name: wp-pipeline-plan, mode: isolated }
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 380
+      complexity: medium
+      package_kind: algorithm
+    context_impact:
+      surfaces: [apis, semantic_code]
+    inputs:
+      tasks: ["5.1", "5.2", "5.3", "5.4"]
+    verification:
+      tier_required: B
+      steps:
+        - name: pipeline-plan-tests
+          kind: command
+          command: pytest tests/workflows/test_pipeline_plan.py tests/api/test_operation_routes.py tests/cli/test_pipeline_dry_run.py -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-pipeline-plan/pytest.xml]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-mcp
+    title: Collapse ingest_* into one ingest tool; cursor on search_content
+    task_type: implement
+    description: >-
+      Implement ingest, delete the 19 ingest_* tools, shrink the manifest to 23 names,
+      rewrite the conformance tests, add cursor to search_content, append the completeness
+      line to the specialist search tool, and write MIGRATION.md.
+    role: backend-engineer
+    priority: 3
+    depends_on: [wp-search]
+    locks:
+      files:
+        - src/mcp_tools/toolsets.py
+        - src/mcp_tools/ingestion.py
+        - src/mcp_tools/content.py
+        - tests/mcp/test_workflow_conformance.py
+      keys:
+        - feature:mcp-manifest:ingest
+      ttl_minutes: 180
+      reason: MCP manifest ownership.
+    scope:
+      write_allow:
+        - src/mcp_tools/ingestion.py
+        - src/mcp_tools/toolsets.py
+        - src/mcp_tools/content.py
+        - src/mcp_tools/operations.py
+        - src/agents/specialists/tools/**
+        - tests/mcp/**
+        - tests/unit/test_mcp_reference_tools.py
+        - openspec/changes/agent-ergonomic-retrieval-surface/MIGRATION.md
+      read_allow:
+        - src/**
+        - tests/**
+        - openspec/changes/agent-ergonomic-retrieval-surface/**
+      deny:
+        - src/mcp_tools/workflows.py
+    worktree: { name: wp-mcp, mode: isolated }
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 420
+      complexity: medium
+      package_kind: integration
+    context_impact:
+      surfaces: [apis, documentation]
+    inputs:
+      tasks: ["6.1", "6.2", "6.3", "6.4"]
+    verification:
+      tier_required: B
+      steps:
+        - name: mcp-tests
+          kind: command
+          command: pytest tests/mcp tests/unit/test_mcp_reference_tools.py -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-mcp/pytest.xml]
+            result_keys: [test_count, pass_count]
+        - name: manifest-size
+          kind: command
+          command: python -c "from src.mcp_tools.toolsets import CANONICAL_TOOL_NAMES as n; assert len(n) == 23, len(n)"
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-mcp/manifest.log]
+            result_keys: [exit_code]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-frontend
+    title: Search paging and insights maturity in the web app
+    task_type: implement
+    description: >-
+      Move the search page from offset to next_cursor with a completeness notice, and read
+      the insights envelope with maturity display; E2E coverage for both.
+    role: frontend-engineer
+    priority: 3
+    depends_on: [wp-search, wp-insights]
+    locks:
+      files: []
+      keys:
+        - feature:web:search-paging:ui
+      ttl_minutes: 180
+      reason: Frontend consumer of the changed contracts.
+    scope:
+      write_allow:
+        - web/src/**
+        - web/tests/**
+      read_allow:
+        - web/**
+        - src/api/**
+        - openspec/changes/agent-ergonomic-retrieval-surface/**
+      deny:
+        - web/src/generated/**
+    worktree: { name: wp-frontend, mode: isolated }
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 360
+      complexity: medium
+      package_kind: crud
+    context_impact:
+      surfaces: [documentation]
+    inputs:
+      tasks: ["7.1", "7.2"]
+    verification:
+      tier_required: B
+      steps:
+        - name: web-e2e
+          kind: command
+          command: cd web && pnpm test:e2e -- search-paging insights-maturity
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-frontend/playwright-report]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-integration
+    title: Integration merge, gen-eval measurement, documentation
+    task_type: integrate
+    description: >-
+      Merge all worktrees, run the gen-eval retrieval scenarios and record calls, tokens, and
+      success per task, update docs, and run the full suite, E2E, and the contract drift check.
+    priority: 1
+    depends_on: [wp-pipeline-plan, wp-mcp, wp-frontend]
+    locks:
+      files: []
+      keys: []
+    scope:
+      write_allow: ["**"]
+      read_allow: ["**"]
+    worktree: { name: wp-integration, mode: shared }
+    timeout_minutes: 240
+    retry_budget: 0
+    min_trust_level: 2
+    metadata:
+      loc_estimate: 200
+      complexity: medium
+      package_kind: integration
+    context_impact:
+      surfaces: [documentation, apis]
+    inputs:
+      tasks: ["8.1", "8.2", "8.3"]
+    verification:
+      tier_required: A
+      steps:
+        - name: full-test-suite
+          kind: command
+          command: pytest --tb=short -q
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-integration/pytest.xml]
+            result_keys: [test_count]
+        - name: workflow-contract-drift
+          kind: command
+          command: make workflow-contracts-check
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-integration/contracts-check.log]
+            result_keys: [exit_code]
+        - name: gen-eval-gate
+          kind: command
+          command: make gen-eval CATEGORIES="retrieval"
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-integration/gen-eval-report.json]
+            result_keys: [scenario_count, pass_count]
+    outputs:
+      result_keys: [merge_commit, test_count]
