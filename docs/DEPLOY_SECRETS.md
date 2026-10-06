@@ -45,7 +45,7 @@ syncing, or set it directly in Railway Variables.
 
 ## Safety model
 
-Mirrors `aca curate` / `substack-sync`:
+Mirrors `aca curate` and `aca sources sync substack` (dry run unless you apply):
 
 - **Allowlist-gated** — only keys declared in
   `settings/deploy/railway_secrets.yaml` for the target service are eligible.
@@ -105,7 +105,11 @@ lists `skipped` keys (no local value) and `unmanaged` remote variables.
 
 ## Related
 
-- `aca auth gmail --deploy` pushes OAuth tokens to Railway via the same shared
-  helper (`src/cli/railway.py`).
+- `aca auth gmail --to railway` (formerly `--deploy`, now a deprecated alias)
+  pushes OAuth tokens to Railway via the same shared helper
+  (`src/cli/railway.py`), wrapped by the `RailwaySink` in `src/cli/secret_sinks.py`.
+- The allowlist also carries the browser-session credentials
+  `SUBSTACK_SESSION_COOKIE`, `X_AUTH_TOKEN`, and `X_CT0` for the interim, until
+  workers read them live from OpenBao.
 - See [docs/MOBILE_DEPLOYMENT.md](MOBILE_DEPLOYMENT.md) for the Railway
   deployment overview.

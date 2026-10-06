@@ -112,7 +112,9 @@ def test_source_overrides_migration_builds_supported_schema_without_touching_sen
         "description",
         "created_at",
         "updated_at",
+        "managed_by",  # e4b7c1a9d2f6: marks rows an automated sync created
     }
+    assert isinstance(columns["managed_by"]["type"], sa.String)
     assert isinstance(columns["id"]["type"], sa.Integer)
     assert isinstance(columns["source_key"]["type"], sa.String)
     assert columns["source_key"]["type"].length == 512
@@ -134,6 +136,7 @@ def test_source_overrides_migration_builds_supported_schema_without_touching_sen
         "description": True,
         "created_at": False,
         "updated_at": False,
+        "managed_by": True,
     }
     assert str(columns["enabled"]["default"]).lower() == "true"
     assert str(columns["version"]["default"]) == "1"

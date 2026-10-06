@@ -17,6 +17,7 @@ import pytest
 from src.models.content import Content
 from src.models.content_reference import (
     ContentReference,
+    ExpansionState,
     ExternalIdType,
     ReferenceListResponse,
     ReferenceResponse,
@@ -249,6 +250,36 @@ class TestContentReferenceValidation:
                 resolution_status="bogus",
             )
 
+    def test_valid_expansion_states_and_none(self):
+        """Every ExpansionState is accepted, and None marks a non-candidate."""
+        for state in [*ExpansionState, None]:
+            ref = ContentReference(
+                source_content_id=1,
+                reference_type="cites",
+                external_url="https://example.com",
+                expansion_state=state,
+            )
+            assert ref.expansion_state == state
+
+    def test_invalid_expansion_state(self):
+        with pytest.raises(ValueError, match="Invalid expansion_state"):
+            ContentReference(
+                source_content_id=1,
+                reference_type="cites",
+                external_url="https://example.com",
+                expansion_state="queued",
+            )
+
+
+class TestExpansionStateEnum:
+    def test_all_values_defined(self):
+        assert {state.value for state in ExpansionState} == {
+            "pending",
+            "submitted",
+            "skipped",
+            "failed",
+        }
+
 
 class TestContentReferenceRelationships:
     """Tests for ContentReference model relationships."""
@@ -319,8 +350,23 @@ class TestContentReferenceConstraints:
             "ix_content_refs_target",
             "ix_content_refs_external_id",
             "ix_content_refs_unresolved",
+            "ix_content_refs_expansion_retry",
         }
         assert expected_indexes.issubset(index_names)
+
+    def test_expansion_constraints_defined(self):
+        names = {getattr(arg, "name", None) for arg in ContentReference.__table_args__}
+        assert {
+            "chk_content_refs_expansion_state",
+            "chk_content_refs_expansion_attempts",
+        } <= names
+
+    def test_expansion_columns(self):
+        columns = ContentReference.__table__.c
+        assert columns.expansion_state.nullable is True
+        assert columns.expansion_state.type.length == 16
+        assert columns.expansion_attempts.nullable is False
+        assert columns.expansion_attempted_at.nullable is True
 
 
 class TestReferenceResponseSchema:
@@ -366,6 +412,9 @@ class TestReferenceResponseSchema:
         assert response.external_id_type is None
         assert response.source_chunk_id is None
         assert response.context_snippet is None
+        assert response.expansion_state is None
+        assert response.expansion_attempts == 0
+        assert response.expansion_attempted_at is None
 
 
 class TestReferenceListResponseSchema:

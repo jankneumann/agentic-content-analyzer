@@ -20,6 +20,7 @@ _INGEST_COMMAND: TypeAdapter[IngestCommand] = TypeAdapter(IngestCommand)
 PositiveInt = Annotated[int, Field(ge=1)]
 OptionalPositiveInt = Annotated[int | None, Field(ge=1)]
 OptionalObsidianMaxItems = Annotated[int | None, Field(ge=1, le=10_000)]
+OptionalXBookmarksMaxItems = Annotated[int | None, Field(ge=1, le=10_000)]
 OptionalNonNegativeInt = Annotated[int | None, Field(ge=0)]
 NonEmptyString = Annotated[str, Field(min_length=1)]
 NonEmptyStringList = Annotated[list[str], Field(min_length=1)]
@@ -454,6 +455,37 @@ async def ingest_obsidian_vault(
     )
 
 
+@runtime.tool_boundary
+async def ingest_x_bookmarks(
+    max_items: OptionalXBookmarksMaxItems = None,
+    full: bool = False,
+    expand_links: bool | None = None,
+    force_reprocess: bool = False,
+    retry_links: bool = False,
+    idempotency_key: str | None = None,
+) -> OperationHandle:
+    """Queue one sync of the operator's X bookmarks.
+
+    ``full`` walks every page instead of stopping at the first fully known
+    page; ``expand_links`` overrides the configured source when set.
+    ``retry_links`` skips the walk and only retries stored linked-article
+    links that are still pending or failed; it needs no X session.
+    Credentials are resolved server-side and never accepted here.
+    """
+
+    return await _submit(
+        _payload(
+            "x_bookmarks",
+            max_items=max_items,
+            full=full,
+            expand_links=expand_links,
+            force_reprocess=force_reprocess,
+            retry_links=retry_links,
+        ),
+        idempotency_key,
+    )
+
+
 INGESTION_TOOL_BY_SOURCE = {
     "gmail": ingest_gmail,
     "rss": ingest_rss,
@@ -474,6 +506,7 @@ INGESTION_TOOL_BY_SOURCE = {
     "huggingface_papers": ingest_huggingface_papers,
     "readwise": ingest_readwise,
     "obsidian_vault": ingest_obsidian_vault,
+    "x_bookmarks": ingest_x_bookmarks,
 }
 
 TOOLS = (upload_content, *INGESTION_TOOL_BY_SOURCE.values())

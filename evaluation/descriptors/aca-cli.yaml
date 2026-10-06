@@ -57,10 +57,11 @@ services:
         subcommands:
           - create
       - name: auth
-        description: 'Manage OAuth credentials for Gmail/YouTube ingestion.'
+        description: 'Manage OAuth and browser-session credentials for ingestion.'
         tags: [coverage:plumbing]
         subcommands:
           - gmail
+          - session
           - status
           - youtube
       - name: backup
@@ -153,6 +154,7 @@ services:
           - scholar-search
           - substack
           - url
+          - x-bookmarks
           - x-search
           - youtube-playlist
           - youtube-rss
@@ -270,6 +272,7 @@ services:
           - enable
           - list
           - remove
+          - sync
       - name: summarize
         description: 'Submit summarization operations.'
         tags: [coverage:plumbing, coverage:workflow-submission]

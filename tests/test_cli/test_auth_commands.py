@@ -26,6 +26,18 @@ def runner() -> CliRunner:
     return CliRunner()
 
 
+@pytest.fixture(autouse=True)
+def _no_ingestion_history_lookup(monkeypatch):
+    """Keep `aca auth status` hermetic: never query a real database or API."""
+    from src.cli import browser_session_status
+
+    monkeypatch.setattr(
+        browser_session_status,
+        "lookup_last_verified",
+        lambda keys: browser_session_status.VerificationLookup(available=False, reason="test"),
+    )
+
+
 # ─── _railway_set_env ──────────────────────────────────────────────
 
 

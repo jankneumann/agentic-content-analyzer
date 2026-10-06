@@ -1,0 +1,98 @@
+"""Typed, value-free failures for credential-gated ingestion sources.
+
+A source that authenticates with a browser session (Substack ``substack.sid``,
+X ``auth_token``/``ct0``) must fail closed when the session is unusable: the
+run persists nothing and reports a stable machine code instead of silently
+ingesting a thinner, logged-out corpus.
+
+The codes below are part of the closed public diagnostic vocabulary
+(:data:`src.ingestion.result_sanitizer.SAFE_INGESTION_DIAGNOSTIC_CODES`) and
+double as ``ConfiguredSourceReadiness.code`` values, so the readiness listing
+and the durable operation result use one word for one condition.
+
+Exceptions here carry the credential LABEL (``substack.sid``), the source key,
+and the refresh command. They never carry, format, or chain a credential value.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import ClassVar, Final
+
+from src.ingestion.result import IngestionError
+
+CREDENTIALS_MISSING: Final = "credentials_missing"
+"""The source's credential is not configured anywhere the provider looks."""
+
+SESSION_EXPIRED: Final = "session_expired"
+"""The remote site rejected the session even after one refresh from OpenBao."""
+
+CREDENTIAL_FAILURE_CODES: Final = frozenset({CREDENTIALS_MISSING, SESSION_EXPIRED})
+"""Codes an operator clears by re-capturing the browser session."""
+
+SESSION_REFRESH_COMMANDS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "substack": "aca auth session substack",
+        "x_bookmarks": "aca auth session x",
+    }
+)
+"""Ingestion ``command_key`` -> the command that re-captures its browser session.
+
+The one table for these commands: the Substack adapter's exception, the
+``aca auth status`` rows, and the terminal-event outbox's alert all read it, so
+an alert can never name a command the CLI does not have.
+"""
+
+
+def refresh_command_for(command_key: str) -> str | None:
+    """Return the refresh command for a credential-gated ingestion, if any."""
+
+    return SESSION_REFRESH_COMMANDS.get(command_key)
+
+
+class CredentialFailureError(Exception):
+    """A credential-gated source cannot run with its current credential.
+
+    Subclasses set :attr:`code`. The message names the source, the credential
+    label, and the refresh command; never the value.
+    """
+
+    code: ClassVar[str]
+    summary: ClassVar[str]
+
+    def __init__(
+        self,
+        *,
+        source: str,
+        credential_label: str,
+        refresh_command: str | None = None,
+    ) -> None:
+        self.source = source
+        self.credential_label = credential_label
+        self.refresh_command = refresh_command
+        super().__init__(self._describe())
+
+    def _describe(self) -> str:
+        message = f"{self.source} {self.credential_label} {self.summary}"
+        if self.refresh_command:
+            message += f"; refresh it with: {self.refresh_command}"
+        return message
+
+    def to_ingestion_error(self) -> IngestionError:
+        """Envelope diagnostic for a run that failed closed on this condition."""
+        return IngestionError(code=self.code, message=str(self))
+
+
+class CredentialsMissingError(CredentialFailureError):
+    """The source's credential is not configured anywhere the provider looks."""
+
+    code = CREDENTIALS_MISSING
+    summary = "is not configured"
+
+
+class SessionExpiredError(CredentialFailureError):
+    """The remote site answered an authenticated request as logged out."""
+
+    code = SESSION_EXPIRED
+    summary = "session was rejected by the remote site"

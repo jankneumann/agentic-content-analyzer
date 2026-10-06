@@ -129,7 +129,8 @@ PLUMBING_ONLY_REASONS: dict[str, str] = {
         "read path needs seeded rows."
     ),
     "sources": (
-        "`add`, `remove`, `enable`, and `disable` mutate source overrides. The read "
+        "`add`, `remove`, `enable`, and `disable` mutate source overrides, and "
+        "`sync substack` writes them from a live Substack session. The read "
         "path is already covered behaviourally through `configured-sources`, which "
         "returns the merged YAML-plus-database result."
     ),

@@ -45,6 +45,7 @@ from src.ingestion.content_references import record_content_reference
 from src.ingestion.real_ingest_evidence import (
     SourceEvidence,
     classify_source_outcome,
+    result_diagnostic_codes,
 )
 from src.ingestion.real_ingest_policy import LIVE_ADAPTER_POLICIES
 from src.ingestion.registry import (
@@ -462,6 +463,37 @@ class RealIngestionHarness:
         delta = self._content_delta_for_ids(claimed)
         return _outcome(key, operation_id, terminal, result, claimed, delta)
 
+    async def submit_with_orchestrator(
+        self,
+        key: str,
+        orchestrator: Callable[[IngestCommandBase], IngestionResponse],
+    ) -> RealIngestOutcome:
+        """Drive ``key``'s fixture command through the durable workflow with ``orchestrator``.
+
+        For adapters that fail closed (a dead browser session): the response is
+        the adapter's own, produced network-free by the caller, and everything
+        after it — handler, result projection, terminal transition — is real.
+        """
+
+        command = SOURCE_REGISTRY.parse_command(SOURCE_FIXTURES[key].command)
+        descriptor = SOURCE_REGISTRY.get(command.kind)  # type: ignore[attr-defined]
+        source_registry = SourceRegistry([replace(descriptor, orchestrator=orchestrator)])
+        operations = OperationService(connection=self._conn)
+
+        handle = await operations.submit(
+            OperationType.INGESTION_EXECUTE, dict(SOURCE_FIXTURES[key].command)
+        )
+        operation_id = int(handle.operation_id)
+        self._job_ids.append(operation_id)
+        await self._drive_job(operations, operation_id, source_registry)
+
+        terminal = await operations.get(operation_id)
+        result = terminal.result if isinstance(terminal.result, dict) else None
+        claimed = tuple(result.get("content_ids", [])) if result else ()
+        self._created_content_ids.extend(int(cid) for cid in claimed)
+        delta = self._content_delta_for_ids(claimed)
+        return _outcome(key, operation_id, terminal, result, claimed, delta)
+
     async def _drive_job(
         self,
         operations: OperationService,
@@ -529,6 +561,7 @@ class RealIngestionHarness:
             claimed=len(outcome.claimed_content_ids),
             delta=identity_delta,
             detail=outcome.problem_detail,
+            codes=result_diagnostic_codes(outcome.result),
         )
 
     def _fixture_registry(self, key: str, fixture: SourceFixture) -> SourceRegistry:

@@ -19,7 +19,8 @@ the three-tier persona-aware filter. The hook is a no-op when filtering is
 globally disabled, and adapters don't need to know about it.
 
 Sources: gmail, rss, blog, youtube, podcast, substack, xsearch, perplexity,
-url, files, scholar, arxiv, huggingface_papers, readwise
+url, files, scholar, arxiv, huggingface_papers, readwise, obsidian_vault,
+x_bookmarks
 
 """
 
@@ -440,7 +441,6 @@ def ingest_substack(
     max_entries_per_source: int = 10,
     after_date: datetime | None = None,
     force_reprocess: bool = False,
-    session_cookie: str | None = None,
 ) -> IngestionResponse:
     """Ingest posts from Substack sources.
 
@@ -450,14 +450,15 @@ def ingest_substack(
         max_entries_per_source: Maximum posts per Substack source.
         after_date: Only fetch posts after this date.
         force_reprocess: Force reprocess existing content.
-        session_cookie: Override SUBSTACK_SESSION_COOKIE value.
 
     Returns:
         Canonical IngestionResponse envelope.
     """
     from src.ingestion.substack import SubstackContentIngestionService
 
-    service = SubstackContentIngestionService(session_cookie=session_cookie)
+    # The session cookie is resolved live by the credential provider. It is
+    # never accepted as an argument: @observe() would record it in traces.
+    service = SubstackContentIngestionService()
     try:
         return service.ingest_content(
             max_entries_per_source=max_entries_per_source,
@@ -1678,6 +1679,95 @@ def ingest_obsidian_vault(
         details={
             "content_ids": list(outcome.content_ids),
         },
+    )
+
+
+@observe()
+def ingest_x_bookmarks(
+    *,
+    max_items: int | None = None,
+    full: bool = False,
+    expand_links: bool | None = None,
+    force_reprocess: bool = False,
+    retry_links: bool = False,
+) -> IngestionResponse:
+    """Sync the operator's X bookmarks incrementally into Content rows.
+
+    Walks the bookmarks newest-first and stops at the first page it already
+    knows (``full`` walks every page), reads every page before writing, and
+    fails closed with zero rows and ``credentials_missing``/``session_expired``
+    when the X session is unusable. ``max_items`` caps the rows written and
+    defaults to the source's ``max_entries``; ``expand_links=None`` defers to the
+    source's ``expand_links``. ``retry_links`` skips the walk and only retries
+    stored pending/failed linked-article links (no X session needed). The
+    ``auth_token``/``ct0`` session is resolved by
+    the client through the credential provider and is never accepted as an
+    argument here, because ``@observe()`` records inputs.
+
+    Returns:
+        Canonical IngestionResponse envelope with one ``source_outcomes`` entry
+        for the configured source, so the durable result never counts it as
+        omitted.
+    """
+    from src.config.sources import load_sources_config
+    from src.ingestion.result import ConfiguredSourceResult, public_source_key_for
+    from src.ingestion.x_bookmarks import XBookmarksIngestionService
+
+    source = None
+    try:
+        sources = load_sources_config().get_x_bookmarks_sources()
+        source = sources[0] if sources else None
+    except Exception:
+        logger.debug("Could not load x_bookmarks sources config, using defaults")
+    if expand_links is None:
+        expand_links = source.expand_links if source is not None else False
+    if max_items is None and source is not None:
+        max_items = source.max_entries
+
+    response = XBookmarksIngestionService().ingest(
+        max_items=max_items,
+        full=full,
+        expand_links=expand_links,
+        force_reprocess=force_reprocess,
+        retry_links=retry_links,
+    )
+    if source is None:
+        return response
+
+    source_public_key = public_source_key_for(source)
+    if source_public_key is None:
+        from src.config.settings import get_settings
+        from src.config.sources import configured_source_public_key
+
+        try:
+            source_public_key = configured_source_public_key(
+                source,
+                secret=get_settings().get_configured_source_key_secret(),
+            )
+        except (RuntimeError, ValueError):
+            logger.warning("x_bookmarks: no configured-source key secret; outcome not reported")
+            return response
+    return response.model_copy(
+        update={
+            "source_outcomes": [
+                ConfiguredSourceResult(
+                    source_key=source_public_key,
+                    status=response.status,
+                    items_ingested=response.items_ingested,
+                    items_failed=response.items_failed,
+                    errors=[
+                        {"code": error.code, "message": error.message[:500]}
+                        for error in response.errors[:20]
+                    ],
+                    errors_omitted=max(0, len(response.errors) - 20),
+                    warnings=[
+                        {"code": warning.code, "message": warning.message[:500]}
+                        for warning in response.warnings[:20]
+                    ],
+                    warnings_omitted=max(0, len(response.warnings) - 20),
+                )
+            ]
+        }
     )
 
 

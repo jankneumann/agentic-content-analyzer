@@ -14,9 +14,11 @@ from pydantic import TypeAdapter, ValidationError
 
 from src.config.release_identity import release_identity
 from src.contracts.workflow_alert_models import (
+    WORKFLOW_ALERT_CREDENTIAL_CODES,
     WorkflowAlertCounts,
     WorkflowAlertDiagnosticCode,
     WorkflowAlertEnvelopeV1,
+    WorkflowAlertRemediationCommand,
     WorkflowAlertResourceReference,
     WorkflowAlertSeverity,
     WorkflowReleaseRevision,
@@ -37,6 +39,7 @@ from src.telemetry.workflow_events import emit_workflow_terminal_telemetry
 
 _MAX_COUNT = 9_223_372_036_854_775_807
 _DIAGNOSTIC_CODE_ADAPTER = TypeAdapter(WorkflowAlertDiagnosticCode)
+_REMEDIATION_COMMAND_ADAPTER = TypeAdapter(WorkflowAlertRemediationCommand)
 _OPERATION_TYPES = frozenset(
     {
         "ingestion.execute",
@@ -100,6 +103,7 @@ class TerminalClassification:
     source_keys: tuple[str, ...] = ()
     counts: WorkflowAlertCounts = field(default_factory=WorkflowAlertCounts)
     codes: tuple[WorkflowAlertDiagnosticCode, ...] = ()
+    remediation_command: WorkflowAlertRemediationCommand | None = None
 
 
 @dataclass(frozen=True)
@@ -539,12 +543,21 @@ def classify_terminal_event(
     }:
         raise ValueError("persisted operation lifecycle does not match terminal intent")
     if lifecycle == "failed":
+        codes: tuple[WorkflowAlertDiagnosticCode, ...] = ("operation_failed",)
+        remediation_command = None
+        if operation_type == "ingestion.execute":
+            # A credential-gated source fails closed: the handler attaches its
+            # result (code `session_expired` / `credentials_missing`) and THEN
+            # fails the operation. Reading only the lifecycle here reduced that to
+            # a bare `operation_failed` that told nobody what to run.
+            codes, remediation_command = _failed_ingestion_codes(snapshot)
         return _apply_pipeline_routing(
             _classification(
                 workflow_type=operation_type,
                 outcome="failed",
                 source_kind=event.source_kind,
-                codes=("operation_failed",),
+                codes=codes,
+                remediation_command=remediation_command,
             ),
             snapshot,
             defer_nonterminal_root=defer_nonterminal_root,
@@ -632,6 +645,13 @@ def project_alert_envelope(
         attempt = 1
         diagnostic_url = build_diagnostic_url(trusted_origin, event_id=event.event_id)
 
+    # Passed only when present so `model_fields_set` stays the historical
+    # allowlist for every alert that is not a credential failure.
+    remediation: dict[str, WorkflowAlertRemediationCommand] = (
+        {"remediation_command": classification.remediation_command}
+        if classification.remediation_command is not None
+        else {}
+    )
     return WorkflowAlertEnvelopeV1(
         event_id=event.event_id,
         event_key=event.event_key,
@@ -652,6 +672,7 @@ def project_alert_envelope(
         source_keys=list(classification.source_keys),
         counts=classification.counts,
         codes=list(classification.codes),
+        **remediation,
     )
 
 
@@ -699,6 +720,7 @@ def _classify_ingestion(
         source_keys=source_keys,
         counts=counts,
         codes=codes,
+        remediation_command=_credential_remediation(result.command_key, codes),
     )
 
 
@@ -743,6 +765,7 @@ def _classification(
     source_keys: tuple[str, ...] = (),
     counts: WorkflowAlertCounts | None = None,
     codes: tuple[WorkflowAlertDiagnosticCode, ...] = (),
+    remediation_command: WorkflowAlertRemediationCommand | None = None,
 ) -> TerminalClassification:
     if outcome == "failed":
         severity: WorkflowAlertSeverity = "error"
@@ -763,6 +786,7 @@ def _classification(
         source_keys=source_keys,
         counts=counts or WorkflowAlertCounts(),
         codes=codes,
+        remediation_command=remediation_command if external_eligible else None,
     )
 
 
@@ -773,6 +797,13 @@ def _apply_pipeline_routing(
     defer_nonterminal_root: bool,
 ) -> TerminalClassification:
     if not classification.external_eligible or snapshot.pipeline_root_id is None:
+        return classification
+    if classification.remediation_command is not None:
+        # The pipeline root's aggregate alert carries per-source outcomes but no
+        # codes, so suppressing this child in its favour would turn "run
+        # `aca auth session substack`" into an anonymous `partial`. A dead
+        # session is the scheduled pipeline's most likely failure, so the child
+        # alert is routed on its own and never waits on the root.
         return classification
     root_status = snapshot.pipeline_root_status
     if root_status in {"queued", "in_progress"}:
@@ -928,6 +959,42 @@ def _operation_type(value: str | None) -> OperationType:
 def _safe_diagnostic_code(value: str | None) -> WorkflowAlertDiagnosticCode | None:
     try:
         return _DIAGNOSTIC_CODE_ADAPTER.validate_python(value)
+    except ValidationError:
+        return None
+
+
+def _failed_ingestion_codes(
+    snapshot: PersistedTerminalSnapshot,
+) -> tuple[tuple[WorkflowAlertDiagnosticCode, ...], WorkflowAlertRemediationCommand | None]:
+    """Codes of a failed ingestion: `operation_failed` first, then its result's."""
+
+    try:
+        result = IngestionResultV2.model_validate(snapshot.result)
+    except (TypeError, ValidationError):
+        return ("operation_failed",), None
+    result_codes, _omitted = _ingestion_codes(result)
+    failed: WorkflowAlertDiagnosticCode = "operation_failed"
+    codes = tuple(dict.fromkeys((failed, *result_codes)))[:20]
+    return codes, _credential_remediation(result.command_key, codes)
+
+
+def _credential_remediation(
+    command_key: str,
+    codes: tuple[WorkflowAlertDiagnosticCode, ...],
+) -> WorkflowAlertRemediationCommand | None:
+    """The closed refresh command for a credential failure, else None.
+
+    The command comes from the persisted `command_key` via the one table the CLI
+    and the adapters share. It is never read from a diagnostic message, so no
+    source text, URL, or credential value can reach the envelope through it.
+    """
+
+    if WORKFLOW_ALERT_CREDENTIAL_CODES.isdisjoint(codes):
+        return None
+    from src.ingestion.credential_failures import refresh_command_for
+
+    try:
+        return _REMEDIATION_COMMAND_ADAPTER.validate_python(refresh_command_for(command_key))
     except ValidationError:
         return None
 

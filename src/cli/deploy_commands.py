@@ -3,7 +3,7 @@
 Currently provides ``sync-secrets``, which pushes allowlisted secrets from the
 local ``.secrets.yaml`` (or env overrides) to a Railway service/environment.
 
-Safety model (mirrors ``aca curate`` / ``substack-sync``):
+Safety model (mirrors ``aca curate`` and ``aca sources sync substack``):
   - **Allowlist-gated**: only keys declared in ``settings/deploy/railway_secrets.yaml``
     for the target service are eligible.
   - **Dry-run by default**: writes happen only with ``--apply``.

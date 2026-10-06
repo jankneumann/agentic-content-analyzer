@@ -48,6 +48,10 @@ _FUZZ_ONLY_EXCLUSIONS: list[str] = [
     r"/api/v1/documents/upload$",
     # Requires a separately provisioned graph database.
     r"/api/v1/graph/query$",
+    # Validates cookies against substack.com / x.com, then writes OpenBao.
+    r"/api/v1/browser-sessions/",
+    # Lists subscriptions from substack.com with the live session.
+    r"/api/v1/sources/sync/",
 ]
 
 EXCLUDED_FUZZ_REGEX = "|".join(EXCLUDED_COMMON_PATHS + _FUZZ_ONLY_EXCLUSIONS)
@@ -76,7 +80,16 @@ def _call_no_transport_error(case):
         pytest.skip("Transport error (e.g., NUL byte in parameter)")
 
 
+# CI runs with ``--timeout=300`` per pytest item, but schemathesis runs every
+# endpoint of a sweep as a subtest inside ONE item. The two broad sweeps below
+# outgrew 300s as endpoints were added (the mutating sweep timed out ~40% of
+# the way through, on whichever endpoint was running), so they get a budget
+# sized for the whole sweep. Narrow sweeps keep the global 300s.
+_BROAD_SWEEP_TIMEOUT_S = 1200
+
+
 @pytest.mark.contract
+@pytest.mark.timeout(_BROAD_SWEEP_TIMEOUT_S)
 @schema.exclude(path_regex=EXCLUDED_FUZZ_REGEX).include(method="GET").parametrize()
 @hypothesis_settings(max_examples=25, deadline=None)
 def test_get_endpoints_no_500(case):
@@ -135,6 +148,7 @@ def test_search_endpoint_no_500(case):
 
 
 @pytest.mark.contract
+@pytest.mark.timeout(_BROAD_SWEEP_TIMEOUT_S)
 @schema.exclude(path_regex=EXCLUDED_MUTATING_REGEX).exclude(method="GET").parametrize()
 @hypothesis_settings(
     max_examples=15,

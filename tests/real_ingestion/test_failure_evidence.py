@@ -19,6 +19,11 @@ from src.ingestion.real_ingest_evidence import (
     SourceEvidence,
     classify_source_outcome,
     render_failure_summary,
+    result_diagnostic_codes,
+)
+from tests.real_ingestion.dead_session import (
+    DEAD_SUBSTACK_COOKIE,
+    dead_substack_session_orchestrator,
 )
 
 pytestmark = pytest.mark.real_ingest
@@ -173,3 +178,91 @@ async def test_real_completed_operation_classifies_as_success(
 
     summary = render_failure_summary([evidence])
     assert "success: 1" in summary
+
+
+# -- credential-gated sources (ri-16) ------------------------------------------
+
+
+def test_result_codes_are_read_from_every_diagnostic_list() -> None:
+    result = {
+        "errors": [{"code": "session_expired", "message": "m"}],
+        "warnings": [{"code": "fetch_error", "message": "m"}],
+        "source_outcomes": [
+            {"errors": [{"code": "session_expired", "message": "m"}], "warnings": []},
+            {"errors": [{"code": "not-a-public-code", "message": "m"}], "warnings": []},
+        ],
+    }
+
+    assert result_diagnostic_codes(result) == ("session_expired", "fetch_error")
+    assert result_diagnostic_codes(None) == ()
+    assert result_diagnostic_codes({"errors": "garbage"}) == ()
+
+
+@pytest.mark.parametrize(
+    ("key", "code", "command"),
+    [
+        ("substack", "session_expired", "aca auth session substack"),
+        ("substack", "credentials_missing", "aca auth session substack"),
+        ("x_bookmarks", "session_expired", "aca auth session x"),
+    ],
+)
+def test_summary_names_the_credential_code_and_its_refresh_command(
+    key: str, code: str, command: str
+) -> None:
+    evidence = [
+        SourceEvidence(
+            key,
+            "7",
+            FailureClass.ADAPTER,
+            claimed=0,
+            delta=0,
+            detail=f"Ingestion '{key}' failed",
+            codes=(code,),
+        )
+    ]
+
+    row = next(line for line in render_failure_summary(evidence).splitlines() if key in line)
+
+    assert code in row
+    assert f"`{command}`" in row
+
+
+def test_summary_offers_no_refresh_command_for_an_ordinary_failure() -> None:
+    evidence = [
+        SourceEvidence(
+            "substack",
+            "7",
+            FailureClass.ADAPTER,
+            0,
+            0,
+            "Ingestion 'substack' failed",
+            ("fetch_error",),
+        )
+    ]
+
+    summary = render_failure_summary(evidence)
+
+    assert "fetch_error" in summary
+    assert "aca auth session" not in summary
+
+
+@pytest.mark.asyncio
+async def test_a_dead_substack_session_is_recorded_with_its_code(
+    real_ingestion_harness,
+) -> None:
+    """The real adapter fails closed through the real durable workflow, and the
+    evidence artifact says why and what to run — never the cookie."""
+
+    outcome = await real_ingestion_harness.submit_with_orchestrator(
+        "substack", dead_substack_session_orchestrator()
+    )
+    evidence = real_ingestion_harness.evidence(outcome)
+    summary = render_failure_summary([evidence])
+
+    assert outcome.status == "failed"
+    assert outcome.content_row_delta == 0
+    assert evidence.failure_class is FailureClass.ADAPTER
+    assert evidence.codes == ("session_expired",)
+    assert "session_expired (refresh: `aca auth session substack`)" in summary
+    assert DEAD_SUBSTACK_COOKIE not in summary
+    assert DEAD_SUBSTACK_COOKIE not in repr(outcome)

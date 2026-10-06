@@ -14,6 +14,7 @@ from fastapi.routing import APIRouter
 from src.api.agent_routes import router as agent_router
 from src.api.audio_digest_routes import router as audio_digest_router
 from src.api.auth_routes import router as auth_router
+from src.api.browser_session_routes import router as browser_session_router
 from src.api.chat_routes import router as chat_router
 from src.api.connection_status_routes import router as connection_status_router
 from src.api.content_routes import router as content_router
@@ -289,6 +290,7 @@ app.include_router(
 )
 app.include_router(source_router)
 app.include_router(source_write_router)  # Source override write endpoints (add/delete/enable)
+app.include_router(browser_session_router)  # PUT /api/v1/browser-sessions/{substack,x}
 app.include_router(health_router)  # Health and readiness probes
 app.include_router(
     _without_legacy_mutations(job_router, {("/api/v1/jobs/{job_id}/retry", "POST")})

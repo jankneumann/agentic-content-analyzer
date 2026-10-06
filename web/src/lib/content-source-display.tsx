@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import {
   BookOpen,
+  Bookmark,
   FileText,
   Globe,
   GraduationCap,
@@ -34,6 +35,7 @@ const SOURCE_DISPLAY: Record<
   huggingface_papers: { label: "HF Papers", icon: <FileText className="h-3 w-3" /> },
   readwise: { label: "Readwise", icon: <BookOpen className="h-3 w-3" /> },
   obsidian: { label: "Obsidian", icon: <FileText className="h-3 w-3" /> },
+  x_bookmarks: { label: "X Bookmarks", icon: <Bookmark className="h-3 w-3" /> },
   other: { label: "Other", icon: <FileText className="h-3 w-3" /> },
 }
 

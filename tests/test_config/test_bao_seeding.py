@@ -1,11 +1,13 @@
 """Tests for OpenBao seeding script (scripts/bao_seed_newsletter.py).
 
 Covers spec scenarios openbao-secrets.9 through .13 (seeding, shared keys,
-AppRole, DB engine, dry run) plus error paths.
+AppRole, DB engine, dry run) plus error paths, and the ``--with-session-roles``
+workstation/worker policies (change ship-workstation-and-worker-approle-policies).
 """
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -15,11 +17,21 @@ import yaml
 
 # Import functions under test
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+import bao_seed_newsletter
 from bao_seed_newsletter import (
+    APP_ROLE,
+    READ_POLICY,
+    WORKER_POLICY,
+    WORKSTATION_POLICY,
+    WORKSTATION_ROLE,
+    read_policy_hcl,
     seed_approle,
     seed_db_engine,
     seed_secrets,
+    seed_session_roles,
     seed_shared_keys,
+    worker_policy_hcl,
+    workstation_policy_hcl,
 )
 
 
@@ -222,3 +234,283 @@ class TestSeedingFailures:
         mock_client.secrets.kv.v2.create_or_update_secret.assert_called_once()
         written = mock_client.secrets.kv.v2.create_or_update_secret.call_args
         assert written.kwargs["secret"] == {"KEY": "value"}
+
+
+# =========================================================================
+# Session-credential policies and AppRoles (--with-session-roles)
+# =========================================================================
+
+_BLOCK = re.compile(r'path\s+"([^"]+)"\s*\{\s*capabilities\s*=\s*\[([^\]]*)\]\s*\}')
+DATA_PATH = "secret/data/newsletter"
+
+
+def _capabilities(hcl: str) -> dict[str, set[str]]:
+    """Parse the flat ``path { capabilities = [...] }`` HCL this script emits."""
+    parsed: dict[str, set[str]] = {}
+    for path, caps in _BLOCK.findall(hcl):
+        parsed.setdefault(path, set()).update(c.strip().strip('"') for c in caps.split(",") if c)
+    # Every block must have been understood: no stray, unparsed rules.
+    assert len(_BLOCK.findall(hcl)) == hcl.count("path "), hcl
+    return parsed
+
+
+def _allowed(policies: list[str], path: str, capability: str) -> bool:
+    """OpenBao ACL check for exact (non-glob) paths: union of the policies' grants."""
+    return any(capability in _capabilities(hcl).get(path, set()) for hcl in policies)
+
+
+# KV v2 operations -> (API path, required capability).
+_KV_OPS = {
+    "read": (DATA_PATH, "read"),
+    "patch": (DATA_PATH, "patch"),
+    "overwrite": (DATA_PATH, "update"),
+    "create": (DATA_PATH, "create"),
+    "delete_latest": (DATA_PATH, "delete"),
+    "delete_versions": ("secret/delete/newsletter", "update"),
+    "destroy": ("secret/destroy/newsletter", "update"),
+    "delete_metadata": ("secret/metadata/newsletter", "delete"),
+    "list": ("secret/metadata/newsletter", "list"),
+    "read_metadata": ("secret/metadata/newsletter", "read"),
+    "read_shared": ("secret/data/shared", "read"),
+}
+
+
+class FakeBao:
+    """In-memory stand-in for the hvac client surface the seed script uses."""
+
+    class _Sys:
+        def __init__(self) -> None:
+            self.policies: dict[str, str] = {}
+            self.auth_methods: dict[str, dict] = {}
+            self.writes: list[str] = []
+
+        def read_policy(self, name: str) -> dict:
+            if name not in self.policies:
+                raise RuntimeError("InvalidPath")
+            return {"name": name, "rules": self.policies[name]}
+
+        def create_or_update_policy(self, name: str, policy: str) -> None:
+            self.writes.append(name)
+            self.policies[name] = policy
+
+        def list_auth_methods(self) -> dict:
+            return self.auth_methods
+
+        def enable_auth_method(self, method_type: str) -> None:
+            self.auth_methods[f"{method_type}/"] = {}
+
+    class _AppRole:
+        def __init__(self) -> None:
+            self.roles: dict[str, dict] = {}
+
+        def create_or_update_approle(self, role_name: str, **kwargs: object) -> None:
+            self.roles[role_name] = dict(kwargs)
+
+        def read_role(self, role_name: str) -> dict:
+            if role_name not in self.roles:
+                raise RuntimeError("InvalidPath")
+            return {"data": dict(self.roles[role_name])}
+
+        def read_role_id(self, role_name: str) -> dict:
+            return {"data": {"role_id": f"role-id-{role_name}"}}
+
+    def __init__(self) -> None:
+        self.sys = self._Sys()
+        self.auth = MagicMock()
+        self.auth.approle = self._AppRole()
+        self.secrets = MagicMock()
+
+    def role_policies(self, role: str) -> list[str]:
+        return [self.sys.policies[p] for p in self.auth.approle.roles[role]["token_policies"]]
+
+
+class TestPolicyHcl:
+    """The pure HCL builders grant exactly the documented capabilities."""
+
+    def test_workstation_is_patch_only(self) -> None:
+        caps = _capabilities(workstation_policy_hcl("secret", "newsletter"))
+        assert caps == {DATA_PATH: {"patch"}}
+
+    def test_worker_is_read_and_patch(self) -> None:
+        caps = _capabilities(worker_policy_hcl("secret", "newsletter"))
+        assert caps == {DATA_PATH: {"read", "patch"}}
+
+    def test_read_policy_unchanged(self) -> None:
+        assert read_policy_hcl("secret", "newsletter") == (
+            'path "secret/data/newsletter" {\n  capabilities = ["read"]\n}\n'
+            'path "secret/data/shared" {\n  capabilities = ["read"]\n}\n'
+        )
+
+    @pytest.mark.parametrize("builder", [workstation_policy_hcl, worker_policy_hcl])
+    def test_no_destructive_or_enumerating_capability(self, builder) -> None:  # type: ignore[no-untyped-def]
+        hcl = builder("secret", "newsletter")
+        for forbidden in ("delete", "destroy", "list", "create", "update", "sudo", "deny"):
+            assert f'"{forbidden}"' not in hcl
+        assert "*" not in hcl  # no globs: one exact path
+        assert "metadata" not in hcl
+
+    def test_honours_custom_mount_and_path(self) -> None:
+        caps = _capabilities(workstation_policy_hcl("/kv/", "/apps/news/"))
+        assert caps == {"kv/data/apps/news": {"patch"}}
+
+    def test_builders_are_deterministic(self) -> None:
+        assert workstation_policy_hcl("secret", "newsletter") == workstation_policy_hcl(
+            "secret", "newsletter"
+        )
+        assert worker_policy_hcl("secret", "newsletter") == worker_policy_hcl(
+            "secret", "newsletter"
+        )
+
+
+class TestSeedSessionRoles:
+    """``--with-session-roles`` seeds the workstation and worker roles."""
+
+    def test_workstation_role_patch_allowed_read_delete_denied(self) -> None:
+        bao = FakeBao()
+        seed_session_roles(bao, "secret", "newsletter", 3600)
+
+        policies = bao.role_policies(WORKSTATION_ROLE)
+        assert _allowed(policies, *_KV_OPS["patch"])
+        for op in _KV_OPS.keys() - {"patch"}:
+            assert not _allowed(policies, *_KV_OPS[op]), op
+
+    def test_worker_role_read_and_patch_allowed_delete_denied(self) -> None:
+        bao = FakeBao()
+        seed_session_roles(bao, "secret", "newsletter", 3600)
+
+        assert bao.auth.approle.roles[APP_ROLE]["token_policies"] == [
+            READ_POLICY,
+            WORKER_POLICY,
+        ]
+        policies = bao.role_policies(APP_ROLE)
+        for op in ("read", "patch", "read_shared"):
+            assert _allowed(policies, *_KV_OPS[op]), op
+        for op in _KV_OPS.keys() - {"read", "patch", "read_shared"}:
+            assert not _allowed(policies, *_KV_OPS[op]), op
+
+    def test_workstation_role_has_short_token_ttls(self) -> None:
+        bao = FakeBao()
+        seed_session_roles(bao, "secret", "newsletter", 3600)
+
+        role = bao.auth.approle.roles[WORKSTATION_ROLE]
+        assert role["token_policies"] == [WORKSTATION_POLICY]
+        assert role["token_ttl"] == "900s"
+        assert role["token_max_ttl"] == "3600s"
+        assert role["secret_id_ttl"] == "2160h"
+
+    def test_enables_approle_auth_when_missing(self) -> None:
+        bao = FakeBao()
+        seed_session_roles(bao, "secret", "newsletter", 3600)
+        assert "approle/" in bao.sys.auth_methods
+
+    def test_rerun_leaves_policies_unchanged(self, capsys: pytest.CaptureFixture[str]) -> None:
+        bao = FakeBao()
+        seed_session_roles(bao, "secret", "newsletter", 3600)
+        first_policies = dict(bao.sys.policies)
+        first_roles = {k: dict(v) for k, v in bao.auth.approle.roles.items()}
+        writes_after_first = len(bao.sys.writes)
+        capsys.readouterr()
+
+        seed_session_roles(bao, "secret", "newsletter", 3600)
+
+        assert bao.sys.policies == first_policies
+        assert bao.auth.approle.roles == first_roles
+        assert len(bao.sys.writes) == writes_after_first  # no policy rewritten
+        out = capsys.readouterr().out
+        for name in (WORKSTATION_POLICY, WORKER_POLICY, READ_POLICY):
+            assert f"Policy {name}: unchanged" in out
+
+    def test_plain_approle_rerun_keeps_worker_policy(self) -> None:
+        bao = FakeBao()
+        seed_session_roles(bao, "secret", "newsletter", 3600)
+
+        seed_approle(bao, "secret", "newsletter", 3600)
+
+        assert WORKER_POLICY in bao.auth.approle.roles[APP_ROLE]["token_policies"]
+
+    def test_plain_approle_does_not_add_worker_policy(self) -> None:
+        bao = FakeBao()
+        seed_approle(bao, "secret", "newsletter", 3600)
+        assert bao.auth.approle.roles[APP_ROLE]["token_policies"] == [READ_POLICY]
+        assert WORKER_POLICY not in bao.sys.policies
+
+    def test_prints_role_ids_and_commands_never_secret_ids(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        bao = FakeBao()
+        seed_session_roles(bao, "secret", "newsletter", 3600)
+        out = capsys.readouterr().out
+
+        assert f"Role ID: role-id-{WORKSTATION_ROLE}" in out
+        assert f"Role ID: role-id-{APP_ROLE}" in out
+        assert f"auth/approle/role/{WORKSTATION_ROLE}/secret-id" in out
+        assert "-wrap-ttl=" in out
+        # The script only prints commands; it never mints or reads a secret_id.
+        assert not bao.secrets.mock_calls
+
+    def test_dry_run_performs_no_client_calls(self, capsys: pytest.CaptureFixture[str]) -> None:
+        client = MagicMock()
+        seed_session_roles(client, "secret", "newsletter", 3600, dry_run=True)
+
+        assert client.mock_calls == []
+        out = capsys.readouterr().out
+        assert WORKSTATION_POLICY in out and WORKER_POLICY in out and WORKSTATION_ROLE in out
+        assert '"patch"' in out
+
+
+class TestMainSessionRolesFlag:
+    """CLI wiring for ``--with-session-roles``."""
+
+    def test_dry_run_never_builds_a_client(
+        self,
+        secrets_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        def _no_client() -> None:
+            raise AssertionError("dry run must not contact OpenBao")
+
+        monkeypatch.setattr(bao_seed_newsletter, "_get_client", _no_client)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "bao_seed_newsletter.py",
+                "--dry-run",
+                "--with-session-roles",
+                "--secrets-path",
+                str(secrets_file),
+            ],
+        )
+
+        bao_seed_newsletter.main()
+
+        out = capsys.readouterr().out
+        assert f"Would create AppRole '{WORKSTATION_ROLE}'" in out
+        assert f"Would create AppRole '{APP_ROLE}'" in out
+        # Secret values from .secrets.yaml never reach stdout.
+        assert "sk-ant-test" not in out and "neo4j-pass" not in out
+
+    def test_session_roles_replace_plain_approle_step(
+        self,
+        secrets_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        bao = FakeBao()
+        monkeypatch.setattr(bao_seed_newsletter, "_get_client", lambda: bao)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "bao_seed_newsletter.py",
+                "--with-approle",
+                "--with-session-roles",
+                "--secrets-path",
+                str(secrets_file),
+            ],
+        )
+
+        bao_seed_newsletter.main()
+
+        assert set(bao.auth.approle.roles) == {APP_ROLE, WORKSTATION_ROLE}
+        assert bao.auth.approle.roles[APP_ROLE]["token_policies"] == [READ_POLICY, WORKER_POLICY]

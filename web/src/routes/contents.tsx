@@ -275,6 +275,7 @@ function ContentsPage() {
                 <SelectItem value="manual">Manual</SelectItem>
                 <SelectItem value="readwise">Readwise</SelectItem>
                 <SelectItem value="obsidian">Obsidian</SelectItem>
+                <SelectItem value="x_bookmarks">X Bookmarks</SelectItem>
               </SelectContent>
             </Select>
           </div>

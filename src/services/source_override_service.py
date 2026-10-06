@@ -127,6 +127,7 @@ class SourceOverrideService:
                 "enabled": o.enabled,
                 "version": o.version,
                 "description": o.description,
+                "managed_by": o.managed_by,
             }
             for o in query.all()
         ]
@@ -149,11 +150,16 @@ class SourceOverrideService:
         *,
         enabled: bool | None = None,
         description: str | None = None,
+        managed_by: str | None = None,
+        commit: bool = True,
     ) -> SourceOverride:
         """Create or update a source override (union-if-new / update-if-existing).
 
         The config is validated against the Source union and the natural key is
-        derived from it. On update, ``version`` is incremented.
+        derived from it. On update, ``version`` is incremented. ``enabled``,
+        ``description`` and ``managed_by`` are left unchanged on update when
+        ``None``. ``commit=False`` flushes instead, so a caller can write several
+        rows in one transaction.
 
         Raises:
             SourceOverrideError: If the config is invalid.
@@ -179,8 +185,9 @@ class SourceOverrideService:
                 existing.enabled = enabled
             if description is not None:
                 existing.description = description
-            self.db.commit()
-            self.db.refresh(existing)
+            if managed_by is not None:
+                existing.managed_by = managed_by
+            self._finish(existing, commit=commit)
             return existing
 
         row = SourceOverride(
@@ -190,11 +197,18 @@ class SourceOverrideService:
             enabled=True if enabled is None else enabled,
             version=1,
             description=description,
+            managed_by=managed_by,
         )
         self.db.add(row)
-        self.db.commit()
-        self.db.refresh(row)
+        self._finish(row, commit=commit)
         return row
+
+    def _finish(self, row: SourceOverride, *, commit: bool) -> None:
+        if commit:
+            self.db.commit()
+            self.db.refresh(row)
+        else:
+            self.db.flush()
 
     def set_enabled(
         self,
@@ -202,6 +216,7 @@ class SourceOverrideService:
         enabled: bool,
         *,
         fallback_config: dict[str, Any] | None = None,
+        commit: bool = True,
     ) -> SourceOverride:
         """Enable or disable a source by key.
 
@@ -216,15 +231,14 @@ class SourceOverrideService:
         if existing:
             existing.enabled = enabled
             existing.version = (existing.version or 1) + 1
-            self.db.commit()
-            self.db.refresh(existing)
+            self._finish(existing, commit=commit)
             return existing
 
         if fallback_config is None:
             raise SourceOverrideError(
                 f"no source override for key {key!r} and no fallback config to create one"
             )
-        return self.upsert(fallback_config, enabled=enabled)
+        return self.upsert(fallback_config, enabled=enabled, commit=commit)
 
     def delete(self, key: str) -> str | None:
         """Delete by public key and return the authoritative public projection."""

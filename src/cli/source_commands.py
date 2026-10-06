@@ -14,6 +14,8 @@ Usage:
     aca sources remove "blog:https://www.normaltech.ai/"
     aca sources enable "blog:https://www.normaltech.ai/"
     aca sources disable "blog:https://www.normaltech.ai/"
+    aca sources sync substack            # dry run: what the sync would add
+    aca sources sync substack --apply    # write it
 """
 
 from __future__ import annotations
@@ -31,6 +33,12 @@ app = typer.Typer(
     help="Manage ingestion source overrides (DB-backed, merged over YAML).",
     no_args_is_help=True,
 )
+sync_app = typer.Typer(
+    name="sync",
+    help="Sync sources from an account you are subscribed with (dry run by default).",
+    no_args_is_help=True,
+)
+app.add_typer(sync_app, name="sync")
 
 
 # ---------------------------------------------------------------------------
@@ -299,10 +307,13 @@ def _render_source_list(rows: list[dict[str, Any]]) -> None:
     typer.echo(f"  Total: {len(rows)} source(s)")
 
 
-def _fail(message: str) -> None:
+def _fail(message: str, *, code: str | None = None) -> None:
     """Emit an error message and exit non-zero (JSON-aware)."""
     if is_json_mode():
-        output_result({"error": message}, success=False)
+        payload: dict[str, Any] = {"error": message}
+        if code:
+            payload["code"] = code
+        output_result(payload, success=False)
     else:
         typer.echo(f"Error: {message}", err=True)
     raise typer.Exit(1)
@@ -526,3 +537,127 @@ def _extract_detail(exc: httpx.HTTPStatusError) -> str:
     except Exception:
         pass
     return f"request failed with status {exc.response.status_code}"
+
+
+# ---------------------------------------------------------------------------
+# sources sync substack
+# ---------------------------------------------------------------------------
+
+_SYNC_ACTION_LABELS = {
+    "add": ("add", typer.colors.GREEN),
+    "switch": ("disable (type switch)", typer.colors.YELLOW),
+    "prune": ("disable (unsubscribed)", typer.colors.YELLOW),
+    "conflict": ("conflict", typer.colors.RED),
+    "kept_disabled": ("kept disabled", None),
+    "existing": ("already configured", None),
+}
+
+
+def _sync_substack_direct(*, apply: bool, prune: bool) -> None:
+    """Run the Substack subscription sync against the local database."""
+    guard_remote_backend("sources sync substack")
+    from src.ingestion.credential_failures import CredentialFailureError
+    from src.ingestion.substack import SubscriptionListingError
+    from src.services.substack_subscription_sync import (
+        SubstackSubscriptionSync,
+        SubstackSyncRefusedError,
+    )
+    from src.storage.database import get_db
+
+    try:
+        with get_db() as db:
+            plan = SubstackSubscriptionSync(db).run(apply=apply, prune=prune).to_dict()
+    except CredentialFailureError as exc:
+        _fail(str(exc), code=exc.code)
+        return
+    except SubscriptionListingError as exc:
+        _fail(str(exc), code="subscription_listing_failed")
+        return
+    except SubstackSyncRefusedError as exc:
+        _fail(str(exc), code="prune_refused")
+        return
+    _render_sync_plan(plan)
+
+
+def _render_sync_plan(plan: dict[str, Any]) -> None:
+    """Render a sync plan: every action, then counts and the next step."""
+    if is_json_mode():
+        output_result(plan)
+        return
+
+    mode = "applied" if plan.get("applied") else "dry run"
+    typer.echo()
+    typer.echo(typer.style(f"  Substack subscription sync ({mode})", bold=True))
+    typer.echo(f"  {plan.get('subscriptions', 0)} subscription(s)")
+    typer.echo()
+    for action in plan.get("actions", []):
+        label, color = _SYNC_ACTION_LABELS.get(action["action"], (action["action"], None))
+        badge = typer.style(f"{label:<22}", fg=color) if color else f"{label:<22}"
+        typer.echo(f"  {badge} [{action['source_type']}] {action['source_key']}")
+        if action.get("detail"):
+            typer.echo(f"  {'':<22} {typer.style(action['detail'], dim=True)}")
+    counts = plan.get("counts", {})
+    typer.echo()
+    typer.echo(
+        "  "
+        + ", ".join(
+            f"{kind.replace('_', ' ')}: {counts.get(kind, 0)}" for kind in _SYNC_ACTION_LABELS
+        )
+    )
+    if not plan.get("applied") and plan.get("changes"):
+        typer.echo("  Run again with --apply to write these changes.")
+    if counts.get("conflict"):
+        typer.echo(
+            "  Conflicts are sources you configured under the other type; "
+            "change them with aca sources add/disable."
+        )
+
+
+@sync_app.command("substack")
+def sync_substack(
+    apply: Annotated[
+        bool, typer.Option("--apply", help="Write the planned changes (default: dry run)")
+    ] = False,
+    prune: Annotated[
+        bool,
+        typer.Option(
+            "--prune",
+            help="Disable sync-managed sources for publications you no longer subscribe to",
+        ),
+    ] = False,
+) -> None:
+    """Sync your Substack subscriptions into source overrides.
+
+    Paid publications become substack sources and free ones rss /feed sources,
+    marked as sync-managed. Sources you configured yourself are never changed;
+    a paid/free mismatch is reported as a conflict. Needs the Substack session
+    (aca auth session substack).
+    """
+    if is_direct_mode():
+        return _sync_substack_direct(apply=apply, prune=prune)
+
+    try:
+        from src.cli.api_client import get_api_client
+
+        plan = get_api_client().sync_substack_sources(apply=apply, prune=prune)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code in (409, 412, 502):
+            detail = _sync_error_detail(exc)
+            _fail(detail.get("message") or _extract_detail(exc), code=detail.get("code"))
+            return
+        raise
+    except httpx.ConnectError:
+        if not is_json_mode():
+            typer.echo("Backend unavailable -- running directly...", err=True)
+        return _sync_substack_direct(apply=apply, prune=prune)
+    _render_sync_plan(plan)
+
+
+def _sync_error_detail(exc: httpx.HTTPStatusError) -> dict[str, Any]:
+    """The structured ``{code, message}`` detail of a sync error, if present."""
+    try:
+        body = exc.response.json()
+    except Exception:
+        return {}
+    detail = body.get("detail") if isinstance(body, dict) else None
+    return detail if isinstance(detail, dict) else {}
