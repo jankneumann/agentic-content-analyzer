@@ -117,7 +117,7 @@ dependencies = [
     # MCP Server
     # <2: mcp 2.0 renamed McpError -> MCPError in mcp.shared.exceptions, which
     # breaks src/mcp_tools/runtime.py at import. Lift once that migration lands.
-    "mcp[cli]>=1.0.0,<2",  # Model Context Protocol server
+    "mcp[cli]>=1.0.0,<3",  # Model Context Protocol server
 ]
 
 [project.scripts]
