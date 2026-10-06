@@ -17,7 +17,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | [Review System](docs/REVIEW_SYSTEM.md) | Digest/script review workflow, audio digests |
 | [UX Design](docs/UX_DESIGN.md) | Frontend patterns |
 | [Markdown Pipeline](docs/MARKDOWN_PIPELINE_DESIGN.md) | End-to-end markdown flow |
-| [Case Studies](docs/CASE_STUDIES.md) | Refactoring lessons, migration patterns |
+| [Case Studies](docs/CASE_STUDIES.md) | Refactoring lessons, migration patterns, **GX-10 bring-up learnings** (read before deploying anything else on that host) |
 | [Content Capture](docs/CONTENT_CAPTURE.md) | Chrome extension, bookmarklet, canonical ingestions |
 | [Mobile Capture](docs/MOBILE_CAPTURE.md) | iOS Shortcut, bookmarklet, web save page, bookmark-on-X |
 | [API consumers](docs/API_CONSUMERS.md) | Independently deployed clients and compatibility windows |

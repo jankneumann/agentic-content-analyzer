@@ -13,6 +13,7 @@ Historical documentation of major refactoring efforts and lessons learned. This 
 - [Legacy Model Cleanup & Idempotent Migrations (January 2026)](#legacy-model-cleanup--idempotent-migrations-january-2026)
 - [Git Branch Hygiene & Pre-Commit Hooks (January 2025)](#git-branch-hygiene--pre-commit-hooks-january-2025)
 - [Test Suite Bug Scrub: Module Pollution & Settings Isolation (February 2026)](#test-suite-bug-scrub-module-pollution--settings-isolation-february-2026)
+- [GX-10 Production Bring-Up (September–October 2026)](#gx-10-production-bring-up-septemberoctober-2026)
 - [General Refactoring Best Practices](#general-refactoring-best-practices)
 
 ---
@@ -1403,3 +1404,217 @@ From the above case studies and other refactorings:
 15. **Use monkeypatch for env vars** - Never modify `os.environ` directly in tests; monkeypatch provides automatic cleanup
 16. **Add autouse fixtures for isolation** - Environment and cache cleanup fixtures prevent test pollution
 17. **Audit tests after major refactors** - Delete obsolete test files that import removed code
+
+---
+
+## GX-10 Production Bring-Up (September–October 2026)
+
+Bringing the rootful-Podman stack up on `gx10-ec87` took far more rounds than the
+work warranted. Almost none of the time went on writing code; it went on
+*believing the wrong thing about a running system*. These are the patterns worth
+carrying into the next deployment on this host.
+
+> **Read this before deploying anything else on GX-10.** Every item below cost at
+> least one wasted round trip, and several cost three.
+
+### 1. Verify at the layer that acts, not the layer that declares
+
+The single most expensive mistake. Three consecutive rounds of fixes had no
+effect because the unit file in `/opt/aca/deploy/gx10/systemd/` was not the unit
+systemd had loaded from `/etc/systemd/system/`. The repo was correct the whole
+time; the installed copy was stale.
+
+The same shape recurred constantly:
+
+| Declares | Acts | Check the actor with |
+|---|---|---|
+| unit file in the repo | unit systemd loaded | `systemctl show <unit> -p ExecStart` |
+| `docker-compose.yml` | the running container | `podman inspect`, `podman ps` |
+| the published OpenAPI spec | the deployed build's contract | `curl <host>/generated/api/openapi.yml` |
+| a log line in the source | what the formatter emitted | read the journal, not the `logger.*` call |
+| an image tag in compose | the pinned `@sha256` that runs | `/etc/aca/gx10-images.env` |
+
+A read-only container with no source mount means `git pull` **cannot** change
+behaviour. If a code change seems to have done nothing, confirm the artifact
+carrying it was rebuilt before debugging the code.
+
+### 2. An error that reports status without evidence is not diagnosable
+
+`CLAUDE.md` already says *"a backup that reports success is the failure mode"*.
+The mirror image cost three wrong hypotheses here: a Langfuse client raised
+`HTTP 422` and discarded the response body. Three rounds went into reading Zod
+schemas and upstream source to guess which parameter was malformed.
+
+The body said:
+
+```
+Your query could not be completed. Please narrow your request by adding more
+specific filters (e.g., a shorter date range).
+This legacy endpoint can be slow. Please migrate to ... /api/public/v2/observations
+```
+
+No parameter was malformed. The server named the problem *and* its own
+replacement API. **Attach the evidence to the error** — bounded and collapsed to
+one line, because an error body can echo the request. One such fix retired an
+entire class of guessing.
+
+Related: `extra={...}` on a log call is dropped by this host's formatter. A
+reason put there is invisible. Put it in the message string.
+
+### 3. The cheap check passes; the deep path fails
+
+Three separate bugs shared this shape, and a smoke test caught none of them:
+
+- **Offset pagination.** `page=1` is instant. `page=400` makes ClickHouse read
+  and discard 19,950 rows, and the server aborts the query. Offset paging costs
+  roughly `N²/2P` row-reads for `N` rows at page size `P`; keyset costs `N`.
+- **A probe that tested only page 1** returned `200` for every parameter
+  combination while the real loop was dying at depth 42.
+- **A single-command Typer app** resolves differently standalone than mounted
+  via `add_typer`, so the test and the real invocation path diverged.
+
+Verify at the depth production runs at. If a loop makes N requests, test N, not
+one.
+
+### 4. Cadence is a storage decision
+
+A backup-freshness probe asked a question about the last 48 hours every five
+seconds. Each evaluation was a traced operation. Result: **251,438 spans** named
+`operation.alert.backup_freshness` against single digits for everything else,
+which filled 39 GB of ClickHouse and 4.9 GB of object storage on a host that had
+run exactly one ingest. The fix was `5s → 900s`.
+
+Before putting a periodic check on a pulse, multiply its interval by the cost of
+one observation. Alert pulses and evaluation cadences are not the same number.
+
+### 5. Config that is accepted and ignored is worse than config that errors
+
+`LANGFUSE_INIT_PROJECT_RETENTION` is parsed and discarded by open-source
+Langfuse — automated retention is an enterprise feature. Setting it looked like
+a fix and changed nothing. This repo already carries the same hazard
+deliberately documented (`railway_backup_schedule` is inert), which is why that
+note exists at all.
+
+Edition-gated features are a reliable source of this pattern. Before trusting a
+setting on a self-hosted build, confirm the *open-source* build consumes it.
+
+### 6. Coupled stores must be expired through the thing that owns them
+
+One Langfuse trace is rows in ClickHouse **plus** raw event blobs in object
+storage. A ClickHouse `TTL` would expire the rows and orphan the blobs forever:
+the UI goes quiet while the bucket grows. Only `DELETE /api/public/traces`
+clears both.
+
+Generalise: when a record spans two stores, never expire one store underneath
+the application. Delete through the owner, or accept permanent orphans.
+
+### 7. `internal: true` is outbound-only isolation
+
+Easy to misread as "unreachable". It drops the default route *inside* the
+containers so they cannot egress; the host end of the bridge keeps its
+`10.89.x.1/24` address and can reach every container on it. An unprivileged
+local shell reached both `app-postgres:5432` and `langfuse-web:3000` directly.
+
+The boundary actually protecting secrets here is filesystem permissions on
+`/run/aca/gx10/` (root-only), not the network. Know which boundary is doing the
+work.
+
+Corollary: container names only resolve *inside* the network. Host-side tooling
+needs a fixed bridge address — which is why `app-postgres` is pinned at
+`10.89.0.251`, outside the `/25` IPAM range so netavark will not hand it out.
+
+### 8. Egress proxying breaks local calls unless the bypass is explicit
+
+Every app container sets `HTTP_PROXY=http://squid:3128` so ingestion can fetch
+arbitrary URLs, and `httpx` honours proxy env vars by default. Without
+`langfuse-web` in `NO_PROXY`, a purely local call is handed to Squid — which
+denies it, because the SSRF rule denies internal destination addresses. A local
+request fails on our own security rule.
+
+Any new service on this host that is called over HTTP must be added to `NO_PROXY`
+for every role that calls it. A test pins this (`test_review_remediations.py`).
+
+### 9. Allow-lists that cannot be enumerated should be deny-lists
+
+The Squid config began as a domain allow-list. For a general content-ingestion
+system the set of reachable hosts is unknowable in advance, so the allow-list was
+pure friction. What replaced it holds regardless of destination: only an
+authenticated container may egress, only `CONNECT` on 443, and never toward
+loopback, the container networks, the LAN, or cloud metadata — checked *after*
+name resolution, because a link out of a feed is attacker-influenced input.
+
+Enumerate the invariant, not the universe.
+
+### 10. Shell expansion happens before `sudo`
+
+`sudo du -sh /srv/aca/*` expands the glob in the *unprivileged* shell, which
+cannot read the directory, so it silently reports the wrong thing. Use
+`sudo sh -c 'du -sh /srv/aca/*'`.
+
+### 11. Fail-closed gates are load-bearing; budget for them
+
+`make image` refuses a dirty worktree. `verify_image_pins.sh` requires a
+`@sha256`. `check_persistence_ownership.py` refuses to start unless every bind
+mount is owned by its container's uid. `check_unit_current.sh` refuses to run a
+stale unit. These turned several silent outages into loud refusals.
+
+They also mean **a code change costs a rebuild, a registry push, a digest pin,
+and a restart**. That is the deal: reproducibility in exchange for a slow edit
+loop. Plan deployments around it rather than discovering it mid-incident.
+
+### 12. Test fakes must fail the way production fails
+
+A resource-limit fake that raised after *N calls* could not distinguish a working
+adaptive loop from a broken one, because halving the window changes the width,
+not the call count. Re-modelling it to fail by *window width* turned a
+decorative test into a real check.
+
+When the production failure is triggered by a property (size, width, depth), the
+fake must trigger on that property.
+
+### 13. Prefer self-tuning to a guessed constant
+
+Two rounds were lost guessing how much the legacy traces endpoint would serve.
+The working answer was to stop guessing: start at a width, halve it on refusal
+down to a floor, and keep the progress made either way. Where a server's capacity
+is unknown and varies with data shape, measure at runtime.
+
+### 14. Section flatten order silently decides duplicate keys
+
+`_flatten_profile_to_settings` walks profile sections in a fixed order into one
+namespace, so a key present in two sections is resolved by order, not intent.
+`langfuse_base_url` under `api_keys` (flattened last) silently overrode the
+`observability` value in every self-hosted profile, pointing production at
+Langfuse Cloud — where the egress proxy refused the `CONNECT` and every export
+ended in a 403. A test now asserts no key appears in two sections
+(`test_profile_section_precedence.py`).
+
+### 15. `src.config.settings` is not a module
+
+`src/config/__init__.py` binds a `Settings` **instance** named `settings`, which
+shadows the submodule for attribute lookup. `import src.config.settings as m`
+yields the instance, and
+`monkeypatch.setattr("src.config.settings.get_settings", ...)` fails with
+`'Settings' object has no attribute 'get_settings'`. Reach the module through
+`sys.modules["src.config.settings"]`.
+
+### 16. Know which failures are yours
+
+This branch carried 13 pre-existing queue failures and 59 `tests/services`
+failures that need a live Postgres. Re-running the suite with changed files
+reverted to `HEAD` and comparing counts takes a minute and prevents both
+mistakes: chasing someone else's breakage, and shipping your own under cover of
+it.
+
+### Checklist for the next GX-10 service
+
+1. Fixed bridge address outside the IPAM range if the host must reach it.
+2. Added to `NO_PROXY` for every role that calls it.
+3. Data directory in the `ownership` target with the image's uid:gid.
+4. Image pinned `tag@sha256` in `/etc/aca/gx10-images.env`.
+5. Secrets rendered from OpenBao into `/run/aca/gx10/`, never baked.
+6. A readiness probe that makes no external network call. (One that fetched
+   `api.github.com` every 10 s against a 5 s timeout flapped four roles
+   unhealthy.)
+7. Any periodic check's interval multiplied by its observation cost.
+8. Retention for whatever it persists, decided before first start.
