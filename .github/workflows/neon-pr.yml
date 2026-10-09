@@ -53,7 +53,11 @@ jobs:
           version: "latest"
 
       - name: Install dependencies
-        run: uv pip install --system -e ".[dev]"
+        run: |
+          # Install exactly what uv.lock pins (the Docker image runs the same lock).
+          # --locked fails the job when uv.lock is stale against pyproject.toml.
+          uv export --locked --all-extras --no-hashes --no-emit-project --quiet -o "$RUNNER_TEMP/uv-constraints.txt"
+          uv pip install --system -c "$RUNNER_TEMP/uv-constraints.txt" -e ".[dev]"
 
       - name: Run migrations on Neon branch
         env:
