@@ -28,10 +28,12 @@ def test_crawl4ai_extra_constrains_chardet_to_requests_compatible_range() -> Non
 def test_mcp_is_capped_below_the_mcperror_rename() -> None:
     """mcp 2.0 renamed McpError -> MCPError, breaking src/mcp_tools/runtime.py.
 
-    CI installs with `uv pip install` (not --frozen), so it resolves the
-    newest allowed version. Without an upper bound, the 2.0 release turned
+    CI used to install with an unconstrained `uv pip install`, so it resolved
+    the newest allowed version. Without an upper bound, the 2.0 release turned
     every mcp import into an ImportError and took `main` red across
-    contract-test, test (cli-stack), and typecheck simultaneously.
+    contract-test, test (cli-stack), and typecheck simultaneously. CI now
+    installs uv.lock's versions, but the cap still stops a lock refresh from
+    pulling 2.0 in.
     """
     project = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
     dependencies = project["project"]["dependencies"]

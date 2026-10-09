@@ -105,7 +105,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system -e ".[dev]"
+          # Install exactly what uv.lock pins (the Docker image runs the same lock).
+          # --locked fails the job when uv.lock is stale against pyproject.toml.
+          uv export --locked --all-extras --no-hashes --no-emit-project --quiet -o "$RUNNER_TEMP/uv-constraints.txt"
+          uv pip install --system -c "$RUNNER_TEMP/uv-constraints.txt" -e ".[dev]"
 
       - name: Run mypy type checking
         run: mypy src/ --ignore-missing-imports
@@ -146,7 +149,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system -e ".[dev]"
+          # Install exactly what uv.lock pins (the Docker image runs the same lock).
+          # --locked fails the job when uv.lock is stale against pyproject.toml.
+          uv export --locked --all-extras --no-hashes --no-emit-project --quiet -o "$RUNNER_TEMP/uv-constraints.txt"
+          uv pip install --system -c "$RUNNER_TEMP/uv-constraints.txt" -e ".[dev]"
 
       # The `rest` shard includes tests/config/test_release_metadata.py, which
       # shells out to `npm run build` to assert the served frontend embeds
@@ -172,7 +178,7 @@ jobs:
       - name: Install release-smoke browser toolchain
         if: matrix.shard == 'rest'
         run: |
-          uv pip install --system -e ".[release-smoke]"
+          uv pip install --system -c "$RUNNER_TEMP/uv-constraints.txt" -e ".[release-smoke]"
           python -m playwright install --with-deps chromium
 
       - name: Run database migrations
@@ -269,12 +275,15 @@ jobs:
 
       - name: Install dependencies
         run: |
-          # Pin Hypothesis/Schemathesis to uv.lock so cached examples replay
-          # against the same shrinker. Do not derandomize: the random draw is
-          # how contract tests find new defects. Hypothesis auto-loads profile
-          # ``ci`` (derandomize=True, database=None) when CI=true; contract
-          # tests replace that in tests/contract/hypothesis_profile.py.
-          uv pip install --system -e ".[dev]" hypothesis==6.151.9 schemathesis==4.10.2
+          # Install exactly what uv.lock pins (the Docker image runs the same lock);
+          # --locked fails the job when uv.lock is stale against pyproject.toml.
+          # Hypothesis/Schemathesis come from the lock too, so cached examples
+          # replay against the same shrinker. Do not derandomize: the random draw
+          # is how contract tests find new defects. Hypothesis auto-loads profile
+          # ``ci`` (derandomize=True, database=None) when CI=true; contract tests
+          # replace that in tests/contract/hypothesis_profile.py.
+          uv export --locked --all-extras --no-hashes --no-emit-project --quiet -o "$RUNNER_TEMP/uv-constraints.txt"
+          uv pip install --system -c "$RUNNER_TEMP/uv-constraints.txt" -e ".[dev]"
 
       - name: Cache Hypothesis examples
         uses: actions/cache@v4
@@ -364,7 +373,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system -e ".[dev]"
+          # Install exactly what uv.lock pins (the Docker image runs the same lock).
+          # --locked fails the job when uv.lock is stale against pyproject.toml.
+          uv export --locked --all-extras --no-hashes --no-emit-project --quiet -o "$RUNNER_TEMP/uv-constraints.txt"
+          uv pip install --system -c "$RUNNER_TEMP/uv-constraints.txt" -e ".[dev]"
 
       # The test_engine fixture auto-creates newsletters_test and runs alembic to
       # head against it, so no separate migration step is needed here.
@@ -417,7 +429,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system -e ".[dev]"
+          # Install exactly what uv.lock pins (the Docker image runs the same lock).
+          # --locked fails the job when uv.lock is stale against pyproject.toml.
+          uv export --locked --all-extras --no-hashes --no-emit-project --quiet -o "$RUNNER_TEMP/uv-constraints.txt"
+          uv pip install --system -c "$RUNNER_TEMP/uv-constraints.txt" -e ".[dev]"
 
       - name: Run full migration chain from scratch
         env:
@@ -504,7 +519,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system -e ".[dev]"
+          # Install exactly what uv.lock pins (the Docker image runs the same lock).
+          # --locked fails the job when uv.lock is stale against pyproject.toml.
+          uv export --locked --all-extras --no-hashes --no-emit-project --quiet -o "$RUNNER_TEMP/uv-constraints.txt"
+          uv pip install --system -c "$RUNNER_TEMP/uv-constraints.txt" -e ".[dev]"
 
       - name: Validate all profiles
         env:

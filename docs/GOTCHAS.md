@@ -256,4 +256,5 @@ still work.
 | Issue | Solution |
 |-------|----------|
 | pip-audit fails in CI | Check `pip-audit --desc on` locally; known advisories may need `--ignore-vuln` flag |
+| CI fails at `uv export --locked` | CI installs exactly the versions in `uv.lock` (the Docker image runs the same lock), exporting them as constraints for `uv pip install --system`. `--locked` fails the job when `uv.lock` no longer matches `pyproject.toml`, so every dependency edit needs `uv lock` in the same commit. New upstream releases reach CI only through a lock bump (Dependabot's `uv` ecosystem opens those weekly), never overnight. `tests/test_ci_locked_installs.py` rejects any project install that skips the constraints |
 | `ruff: ignore[...]` fails CI with RUF102 | CI and pre-commit pin ruff 0.15.15, which rejects the `# ruff: ignore[...]` comments newer ruff (the venv's 0.16.x) writes. Suppress with `# noqa: CODE` on the violating line only, and lint with the pinned version: `uvx ruff@0.15.15 check <files>` or `make lint-ci` |
