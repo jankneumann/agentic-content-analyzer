@@ -286,7 +286,7 @@ jobs:
           uv pip install --system -c "$RUNNER_TEMP/uv-constraints.txt" -e ".[dev]"
 
       - name: Cache Hypothesis examples
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .hypothesis/examples
           key: hypothesis-contract-${{ matrix.suite }}-${{ hashFiles('uv.lock') }}-${{ github.sha }}
