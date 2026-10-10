@@ -26,6 +26,7 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | [Deploy Secrets](docs/DEPLOY_SECRETS.md) | `aca deploy sync-secrets`: push local secrets to Railway (allowlist, dry-run) |
 | [Desktop](docs/DESKTOP_DEPLOYMENT.md) | Tauri desktop app: build, distribute, remote backend, CORS |
 | [**ACA Agents**](docs/ACA-AGENTS.md) | Agentic analysis: personas, specialists, memory, approvals, scheduling |
+| [**GX-10 Handoff**](docs/GX10_HANDOFF.md) | Host state, coordinator install runbook, open tasks |
 | [Gotchas](docs/GOTCHAS.md) | Comprehensive list of pitfalls organized by area |
 | [OpenBao](docs/OPENBAO.md) | OpenBao secrets management: setup, AppRole, seeding, audit events |
 | [Improvement Roadmap](docs/IMPROVEMENT_ROADMAP.md) | Ingestion-reliability diagnosis + phased engineering roadmap (2026-07) |
