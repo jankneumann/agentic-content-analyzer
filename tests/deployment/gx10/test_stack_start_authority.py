@@ -64,3 +64,13 @@ def test_wipe_langfuse_names_exact_paths_and_demands_confirmation() -> None:
     assert 'CONFIRM)" == wipe-langfuse' in target
     assert target.index("systemctl stop aca-gx10.service") < target.index("refusing to delete")
     assert target.index("refusing to delete") < target.index("\trm -rf --one-file-system")
+
+
+def test_every_host_python_entrypoint_can_reach_the_database() -> None:
+    """The operational wrapper reserves an operation row first; a unit without
+    the host env file connects to 127.0.0.1:5432 and fails before any work."""
+    for unit in SYSTEMD.glob("*.service"):
+        source = unit.read_text(encoding="utf-8")
+        if re.search(r"^ExecStart=/opt/aca/\.venv/bin/python -m scripts\.", source, re.MULTILINE):
+            assert "EnvironmentFile=/run/aca/gx10/host-maintenance.env" in source, unit.name
+            assert "ProtectSystem=strict" not in source, unit.name
