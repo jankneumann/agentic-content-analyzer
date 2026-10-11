@@ -1,6 +1,6 @@
 [Unit]
 Description=GX-10 complete encrypted daily backup
-Requires=aca-gx10.service aca-gx10-backup-secrets.service
+Requires=aca-gx10-backup-secrets.service
 Requires=aca-gx10-maintenance-plans.service
 After=aca-gx10.service aca-gx10-backup-secrets.service
 After=aca-gx10-maintenance-plans.service
@@ -22,6 +22,11 @@ EnvironmentFile=/run/aca/gx10/host-maintenance.env
 EnvironmentFile=/etc/aca/gx10-images.env
 StateDirectory=aca/gx10/backups
 StateDirectoryMode=0700
+# Never start the runtime from here: Requires= would, and a timer firing
+# during a deliberate `make stop` brought the whole stack back up mid-wipe.
+# A failed ExecStartPre (not Requisite=, whose dependency failure leaves the
+# unit inactive and skips OnFailure=) makes a missed run alert.
+ExecStartPre=/usr/bin/systemctl is-active --quiet aca-gx10.service
 # A timer fires this unit directly, so a stale installed copy would run
 # old settings indefinitely with nothing to say so.
 ExecStartPre=/opt/aca/scripts/gx10/check_unit_current.sh %n

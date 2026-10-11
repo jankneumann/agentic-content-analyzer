@@ -1,6 +1,5 @@
 [Unit]
 Description=GX-10 bounded persistent storage monitor
-Requires=aca-gx10.service
 Requires=aca-gx10-maintenance-plans.service
 After=aca-gx10.service
 After=aca-gx10-maintenance-plans.service
@@ -20,6 +19,10 @@ EnvironmentFile=/run/aca/gx10/host-maintenance.env
 EnvironmentFile=/etc/aca/gx10-images.env
 StateDirectory=aca/gx10
 StateDirectoryMode=0700
+# Never start the runtime from here: Requires= did, every minute, so a
+# deliberate `make stop` lasted under 60 seconds. ExecCondition skips the
+# tick cleanly while the stack is down instead of alerting once a minute.
+ExecCondition=/usr/bin/systemctl is-active --quiet aca-gx10.service
 # A timer fires this unit directly, so a stale installed copy would run
 # old settings indefinitely with nothing to say so.
 ExecStartPre=/opt/aca/scripts/gx10/check_unit_current.sh %n

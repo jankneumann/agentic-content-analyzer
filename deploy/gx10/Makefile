@@ -25,7 +25,7 @@ GX10_UNITS := aca-gx10-image-pins aca-gx10-openbao-container aca-gx10-openbao-pr
   aca-gx10-secrets aca-gx10-proxy-policy aca-gx10-firewall aca-gx10-maintenance-plans aca-gx10
 
 .PHONY: help require-root install ownership preflight provision secrets image image-pins \
-  start stop status logs verify
+  start stop status logs verify wipe-langfuse
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | sed 's/:.*## /\t/' | sort
@@ -37,6 +37,11 @@ install: require-root ## Install reviewed units and timers, verify them, daemon-
 	install -m 0644 $(UNITS) $(UNIT_DIR)/
 	systemd-analyze verify $(UNIT_DIR)/aca-gx10*.service $(UNIT_DIR)/aca-gx10*.timer
 	systemctl daemon-reload
+
+# Exactly the Langfuse stores. Listed, never globbed: /srv/aca/postgres is the
+# APPLICATION database, one character from langfuse-postgres, and
+# `/srv/aca/*postgres*` takes both.
+LANGFUSE_DATA := /srv/aca/clickhouse /srv/aca/clickhouse-logs /srv/aca/minio /srv/aca/langfuse-postgres
 
 # The uid:gid values are the image users from docs/GX10_PODMAN_SETUP.md; a
 # deployment test cross-checks them against the compose `user:` entries.
@@ -85,6 +90,18 @@ start: require-root install ## Install units, remove every container but OpenBao
 
 stop: require-root ## Stop the runtime; its ExecStop removes every container but OpenBao
 	systemctl stop aca-gx10.service
+
+# Headless init restores the org, project and both API keys from OpenBao, so
+# Langfuse comes back with identical credentials and no history.
+wipe-langfuse: require-root ## Delete all Langfuse traces and rebuild empty (CONFIRM=wipe-langfuse)
+	@[[ "$(CONFIRM)" == wipe-langfuse ]] || { echo "destroys all Langfuse history; re-run with CONFIRM=wipe-langfuse" >&2; exit 1; }
+	systemctl stop aca-gx10.service
+	@# A live writer turns rm -rf into "Directory not empty" and a half-wiped store.
+	@live="$$(podman ps --filter label=io.podman.compose.project=$(PROJECT) --format '{{.Names}}' | grep -E 'clickhouse|minio|langfuse' || true)"; \
+	  [[ -z "$$live" ]] || { echo "still running after stop, refusing to delete: $$live" >&2; exit 1; }
+	rm -rf --one-file-system $(LANGFUSE_DATA)
+	$(MAKE) ownership
+	$(MAKE) start
 
 status: ## Unit states and containers on one screen
 	@for unit in $(GX10_UNITS); do printf '%-32s ' "$$unit"; systemctl show "$$unit.service" -p ActiveState,SubState,Result --value | paste -sd' '; done
