@@ -100,61 +100,136 @@ last 40 log lines per unhealthy service, so the failure arrives with evidence.
 
 ## Part 2 — Open tasks
 
-### 1. Wipe the Langfuse backlog — reclaims ~44 GB
+### 1–3. Langfuse wipe, sliced pruner, local generations — done 2026-10-10
 
-Not yet confirmed done. The pruner prevents recurrence but cannot clear a
-backlog of ~251k hour-old traces at a 30-day window, and grinding it through
-the legacy API is hours of ClickHouse churn against an endpoint its own authors
-call slow.
+Wiped; the stack rebuilt with identical keys; `prune-traces` authenticated
+and found 0 expired traces with no 422; the next backup pruned 15 generations
+(112 GB → 7.3 GB). A post-wipe generation is ~233 MB (ClickHouse 134 MB,
+application Postgres 99 MB). ClickHouse will regrow toward its 30-day window.
 
-```bash
-sudo make -C /opt/aca/deploy/gx10 stop
-sudo rm -rf /srv/aca/clickhouse
-sudo rm -rf /srv/aca/clickhouse-logs
-sudo rm -rf /srv/aca/minio
-sudo rm -rf /srv/aca/langfuse-postgres
-sudo make -C /opt/aca/deploy/gx10 ownership   # recreates + preflight
-sudo make -C /opt/aca/deploy/gx10 start
-```
-
-**Never glob this.** `/srv/aca/postgres` is the *application* database and sits
-one directory from `/srv/aca/langfuse-postgres`; `rm -rf /srv/aca/*postgres*`
-takes both. Keep: `postgres`, `application`, `falkordb`, `openbao`, `redis`,
-`caddy-*`, `squid-logs`.
-
-Safe because headless init restores the org, project and **both API keys** from
-OpenBao — Langfuse rebuilds with identical credentials.
-
-### 2. Verify the sliced pruner
-
-`b0a89c2c` is pulled but its result is unreported. After a rebuild:
+The first wipe attempt failed with "Directory not empty": the minutely storage
+monitor `Requires=aca-gx10.service`, so it restarted the stack within a minute
+of `make stop` and ClickHouse/MinIO wrote into the tree mid-`rm`. Fixed: no
+timer-driven unit can start the runtime (backup and restore drill fail loudly
+via `ExecStartPre`; the monitor skips quietly via `ExecCondition`), and a
+future wipe is one guarded command:
 
 ```bash
-sudo podman exec aca-gx10_maintenance_1 \
-  aca telemetry prune-traces --older-than-days 1 --slice-hours 1
+sudo make -C /opt/aca/deploy/gx10 wipe-langfuse CONFIRM=wipe-langfuse
 ```
 
-Dry run; deletes nothing. Expect a cutoff and a count. History: `page=N` died
-immediately, the keyset cursor reached 2108 traces, and slicing both ends plus
-halving on 422 is the current state. If a 422 still appears, the message now
-carries the server's own explanation.
+### 4. Off-site backup — done 2026-10-10
 
-### 3. Backup generations: 112 GB → 7
+Live on **Cloudflare R2**, bucket `aca-gx10-backups`, 30-day lock / 35-day
+expiry on `aca/gx10/`. First generation `20261011T004039Z` shipped: 7 objects,
+233,166,391 bytes, every size read back. Lock proven: a delete of a probe
+object returned `ObjectLockedByBucketPolicy`. From here the 03:00 backup ships
+each good generation via `OnSuccess=`; check the first unattended run with
+`journalctl -u aca-gx10-backup-offsite`.
 
-`/var/lib/aca/gx10/backups` holds 112 GB. The next successful `aca backup run`
-prunes to `--keep-generations 7`. No action beyond letting it run.
+How it works: after a successful local run, `OnSuccess=` on
+`aca-gx10-backup.service` starts `aca-gx10-backup-offsite.service`. That
+unit renders the bucket keys from `secret/newsletter/gx10/backup-offsite` into
+`/run/aca/gx10/backup/offsite.json` (removed on stop), then
+`scripts/gx10/backup/offsite.py`:
 
-### 4. Off-site backup does not exist — the most important gap
+- re-hashes every artifact against the local manifest, refusing anything that
+  rotted on disk or did not succeed;
+- uploads to `<prefix>/gx10/<generation>/<component>-<generation>.age`;
+- never overwrites a key (same size = resumed run, different size = error);
+- reads each object's size back, and writes `manifest.json` **last**, so a
+  generation with an off-site manifest is complete.
 
-Confirmed: `profiles/gx10.yaml` configures no backup target, and
-`BackupTargetNotConfiguredError` is what `aca backup run` raises without one.
-Artifacts are written to local disk **on the same machine as the data they
-protect**. A disk failure loses both.
+Only the newest generation ships. A missed day is not backfilled: the next
+day's generation goes instead, and the failure alerts via `OnFailure=`.
 
-Decision pending: Cloudflare R2 or AWS S3. R2 lands inside its free tier once
-generations shrink from 42 GB to a few hundred MB post-wipe. Four inputs needed
-to wire it: the account endpoint, the bucket name, an access key pair scoped to
-**write without delete**, and a retention choice in generations.
+**R2 tokens cannot be write-without-delete.** Immutability comes from a
+**bucket lock rule**: locks block delete *and* overwrite, apply to existing
+objects, and take precedence over lifecycle rules. A compromised host holding
+the token still cannot destroy history younger than the lock.
+
+#### R2 setup, step by step
+
+**A. Bucket** — Cloudflare dashboard → **R2 Object Storage** → **Create
+bucket**. Name `aca-gx10-backups`, location *Automatic* (or a hint near the
+host), default storage class **Standard** (Infrequent Access charges per read
+and has a 30-day minimum — wrong for a bucket a restore drill may read).
+Leave public access **off**; no custom domain. Note your **Account ID** from
+the R2 overview page (32 hex characters).
+
+**B. Bucket lock rule** — bucket → **Settings** → **Bucket lock rules** →
+**Add rule**: name `gx10-generations`, prefix `aca/gx10/`, retention **30
+days**. Save. *Prefix, not empty*: an unprefixed rule would also lock anything
+else you ever put in the bucket.
+
+**C. Lifecycle rule** — same **Settings** page → **Object lifecycle rules** →
+**Add rule**: name `gx10-expire`, prefix `aca/gx10/`, delete objects after
+**35 days**. Must exceed the lock: a shorter expiry is silently overridden, so
+the bill would be set by the lock, not this rule. Also enable *abort incomplete
+multipart uploads after 1 day* if offered — a killed upload otherwise leaves
+billable parts behind. Expiry runs within 24 h of the date.
+
+Cost at 35 generations: ~8 GB today (inside the 10 GB free tier); at several
+GB per generation as ClickHouse regrows, $0.015/GB-month — single dollars.
+
+**D. API token** — R2 overview → **Account Details** → **API Tokens: Manage**
+→ **Create Account API token** (account, not user: it survives your user
+account changing). Permission **Object Read & Write**; scope **Apply to
+specific buckets only** → `aca-gx10-backups`; TTL *forever* (expiry would
+silently stop backups; the lock bounds the damage of a leak instead). Create,
+then copy the **Access Key ID** and **Secret Access Key** — the secret is
+shown once. Do not paste them into chat, a ticket, or a shell command line.
+
+**E. Store in OpenBao** — prompts for the values (secret hidden), writes
+`secret/newsletter/gx10/backup-offsite`, and re-uploads the backup policy,
+which the provisioning ceremony only writes at first install:
+
+```bash
+sudo git -C /opt/aca pull
+sudo /opt/aca/deploy/gx10/openbao/seed-offsite-secret.sh
+```
+
+**F. Deploy and ship the current generation**
+
+```bash
+sudo make -C /opt/aca/deploy/gx10 install
+sudo systemctl start aca-gx10-backup-offsite.service
+sudo journalctl -u aca-gx10-backup-offsite -n 20 --no-pager
+```
+
+Expect a JSON summary: seven objects `uploaded` (six artifacts + manifest).
+Re-running reports them `present` and uploads nothing. In the dashboard the
+bucket shows `aca/gx10/<generation>/`.
+
+**G. Prove the lock** — an unlocked bucket looks identical until you need it.
+This uploads a throwaway probe object (never a real artifact) and tries to
+delete it; the delete **must** be refused:
+
+```bash
+sudo systemctl start aca-gx10-backup-secrets.service
+sudo /opt/aca/deploy/gx10/openbao/render-offsite-secrets.sh
+sudo /opt/aca/.venv/bin/python - <<'PY'
+import time; from scripts.gx10.backup.offsite import OffsiteTarget
+from pathlib import Path
+t = OffsiteTarget.from_file(Path("/run/aca/gx10/backup/offsite.json")); c = t.client()
+key = f"{t.prefix}/gx10/lock-probe-{int(time.time())}.txt"  # fresh key: rerunnable
+c.put_object(Bucket=t.bucket, Key=key, Body=b"probe")
+try:
+    c.delete_object(Bucket=t.bucket, Key=key); print("FAIL: delete succeeded -- lock is NOT active")
+except Exception as exc:
+    print("OK: delete refused --", type(exc).__name__, exc)
+PY
+sudo rm -f /run/aca/gx10/backup/offsite.json
+```
+
+(Run it from `/opt/aca` so `scripts.` imports.) The probe expires with the
+lifecycle rule. From then on the 03:00 backup ships automatically; a failure
+fires `aca-gx10-maintenance-alert@aca-gx10-backup-offsite.service`.
+
+Restore path: download a generation directory (`aws s3 cp --recursive
+--endpoint-url ...` or rclone) into an artifacts dir and point
+`aca-gx10-restore-drill` at it — the uploaded manifest is the same file the
+drill reads.
 
 ### 5. Stream the backup pipeline
 
@@ -201,7 +276,7 @@ breakage and shipping your own under cover of it.
 
 ## Open questions
 
-1. R2 or S3 for off-site, and the four inputs above.
+1. ~~R2 or S3~~ — R2, provisioned and lock-proven 2026-10-10.
 2. Does the coordinator need a LAN route through Caddy in addition to the
    tunnel, or is the tunnel the only intended path?
 3. Merge `feat/gx10-coordinator-deployment`, or hold it until after a successful
