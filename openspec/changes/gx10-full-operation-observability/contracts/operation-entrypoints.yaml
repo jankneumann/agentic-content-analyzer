@@ -48,6 +48,7 @@ operational_scripts:
   - "scripts/run_gen_eval_gate.py"
   - "scripts/validate_docling.py"
   - "scripts/gx10/reload_proxy_policy.sh"
+  - "scripts/gx10/backup/offsite.py"
 
 bootstrap_operations:
   evidence_policy: >-

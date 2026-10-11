@@ -1,0 +1,32 @@
+[Unit]
+Description=GX-10 copy the newest encrypted backup generation off-site
+# Started by OnSuccess= on aca-gx10-backup.service, so only a generation the
+# local run reported good is ever shipped. Its own unit so an off-site outage
+# alerts on its own instead of failing a local backup that worked.
+Requires=aca-gx10-backup-secrets.service
+After=aca-gx10-backup-secrets.service aca-gx10-backup.service network-online.target
+Wants=network-online.target
+OnFailure=aca-gx10-maintenance-alert@%n.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/aca
+Environment=GX10_RUNTIME_DIR=/run/aca/gx10
+Environment=GX10_BAO_ADDR=http://10.89.0.250:8200/v1
+Environment=GX10_BAO_OFFSITE_PATH=secret/newsletter/gx10/backup-offsite
+ExecStartPre=/opt/aca/scripts/gx10/check_unit_current.sh %n
+ExecStartPre=/opt/aca/deploy/gx10/openbao/render-offsite-secrets.sh
+ExecStart=/opt/aca/.venv/bin/python -m scripts.gx10.backup.offsite --artifacts /var/lib/aca/gx10/backups --credentials-file /run/aca/gx10/backup/offsite.json
+# The bucket keys live on tmpfs for exactly one run.
+ExecStopPost=/usr/bin/rm -f /run/aca/gx10/backup/offsite.json
+TimeoutStartSec=7200
+UMask=0077
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+# read-only, not yes: the venv's interpreter is a symlink under /root.
+ProtectHome=read-only
+ReadOnlyPaths=/var/lib/aca/gx10/backups
+ReadWritePaths=/run/aca/gx10/backup
+RestrictSUIDSGID=yes
+LockPersonality=yes

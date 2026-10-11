@@ -144,17 +144,59 @@ carries the server's own explanation.
 `/var/lib/aca/gx10/backups` holds 112 GB. The next successful `aca backup run`
 prunes to `--keep-generations 7`. No action beyond letting it run.
 
-### 4. Off-site backup does not exist — the most important gap
+### 4. Off-site backup — code done, R2 not yet provisioned
 
-Confirmed: `profiles/gx10.yaml` configures no backup target, and
-`BackupTargetNotConfiguredError` is what `aca backup run` raises without one.
-Artifacts are written to local disk **on the same machine as the data they
-protect**. A disk failure loses both.
+Decision made: **Cloudflare R2**. Code is on this branch; nothing is deployed.
 
-Decision pending: Cloudflare R2 or AWS S3. R2 lands inside its free tier once
-generations shrink from 42 GB to a few hundred MB post-wipe. Four inputs needed
-to wire it: the account endpoint, the bucket name, an access key pair scoped to
-**write without delete**, and a retention choice in generations.
+How it works: after a successful local run, `OnSuccess=` on
+`aca-gx10-backup.service` starts `aca-gx10-backup-offsite.service`. That
+unit renders the bucket keys from `secret/newsletter/gx10/backup-offsite` into
+`/run/aca/gx10/backup/offsite.json` (removed on stop), then
+`scripts/gx10/backup/offsite.py`:
+
+- re-hashes every artifact against the local manifest, refusing anything that
+  rotted on disk or did not succeed;
+- uploads to `<prefix>/gx10/<generation>/<component>-<generation>.age`;
+- never overwrites a key (same size = resumed run, different size = error);
+- reads each object's size back, and writes `manifest.json` **last**, so a
+  generation with an off-site manifest is complete.
+
+Only the newest generation ships. A missed day is not backfilled: the next
+day's generation goes instead, and the failure alerts via `OnFailure=`.
+
+**R2 tokens cannot be write-without-delete.** Immutability comes from a
+**bucket lock rule** instead, so a compromised host still cannot destroy
+history. Steps (dashboard or `wrangler`):
+
+1. Create bucket `aca-gx10-backups` (location hint near the host).
+2. Bucket lock rule on prefix `aca/gx10/`, retention **30 days**.
+3. Lifecycle rule on prefix `aca/gx10/`: delete objects after **35 days**
+   (must exceed the lock). ~35 generations at a few hundred MB each fits the
+   10 GB free tier only *after* task 1's Langfuse wipe — do that first.
+4. API token: **Object Read & Write**, scoped to this one bucket only.
+5. Seed OpenBao (admin token), then re-upload the backup policy, which
+   `provision-first-install.sh` only writes once:
+
+   ```bash
+   bao kv put secret/newsletter/gx10/backup-offsite \
+     endpoint=https://<account-id>.r2.cloudflarestorage.com \
+     bucket=aca-gx10-backups access_key_id=... secret_access_key=...
+   bao policy write aca-gx10-backup /opt/aca/deploy/gx10/openbao/aca-gx10-backup.hcl
+   ```
+6. Deploy and prove it:
+
+   ```bash
+   sudo git -C /opt/aca pull && sudo make -C /opt/aca/deploy/gx10 install
+   sudo systemctl start aca-gx10-backup-offsite.service   # ships the current generation
+   sudo journalctl -u aca-gx10-backup-offsite -n 20
+   ```
+   Then try to delete one uploaded object with the token: the lock rule must
+   refuse it. **Test this** — an unlocked bucket looks identical until you need it.
+
+Restore path: download a generation directory (`aws s3 cp --recursive
+--endpoint-url ...` or rclone) into an artifacts dir and point
+`aca-gx10-restore-drill` at it — the uploaded manifest is the same file the
+drill reads.
 
 ### 5. Stream the backup pipeline
 
@@ -201,7 +243,8 @@ breakage and shipping your own under cover of it.
 
 ## Open questions
 
-1. R2 or S3 for off-site, and the four inputs above.
+1. ~~R2 or S3~~ — R2 chosen. Still needed: account id, the bucket token, and
+   confirmation of the 30-day lock / 35-day expiry retention.
 2. Does the coordinator need a LAN route through Caddy in addition to the
    tunnel, or is the tunnel the only intended path?
 3. Merge `feat/gx10-coordinator-deployment`, or hold it until after a successful
