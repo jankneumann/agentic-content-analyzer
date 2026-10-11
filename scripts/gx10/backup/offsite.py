@@ -130,26 +130,18 @@ def plan_generation(artifact_dir: Path, prefix: str) -> tuple[str, list[PlannedA
         match = _ARTIFACT.match(name)
         if not match or match.group("component") != str(component.component):
             raise OffsiteError(f"manifest artifact name {name!r} is not one this backup writes")
-        generations.add(match.group("generation"))
+        generation = match.group("generation")
+        generations.add(generation)
         path = artifact_dir / name
         size, digest = _hash_artifact(path)
         if size != component.bytes or digest != component.checksum_sha256:
             raise OffsiteError(f"{name} no longer matches its manifest entry")
-        planned.append(PlannedArtifact(path=path, key="", size=size, sha256=digest))
+        key = f"{generation_prefix(prefix, generation)}/{name}"
+        planned.append(PlannedArtifact(path=path, key=key, size=size, sha256=digest))
 
     if len(generations) != 1:
         raise OffsiteError(f"manifest spans generations {sorted(generations)}")
-    generation = generations.pop()
-    base = generation_prefix(prefix, generation)
-    return generation, [
-        PlannedArtifact(
-            path=item.path,
-            key=f"{base}/{item.path.name}",
-            size=item.size,
-            sha256=item.sha256,
-        )
-        for item in planned
-    ]
+    return generations.pop(), planned
 
 
 def _hash_artifact(path: Path) -> tuple[int, str]:
