@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import stat
@@ -30,6 +31,8 @@ from src.services.backup.gx10 import (
     BackupComponent,
     BackupManifest,
     BackupQuota,
+    ComponentQuotaExceededError,
+    ComponentStreamer,
     EncryptedArtifact,
     EncryptionMaterialError,
     GX10BackupController,
@@ -68,13 +71,14 @@ def _command_evidence(stderr: bytes) -> str:
     return str(TelemetryMasker.from_environment().mask(tail))
 
 
-# A component is produced, encrypted, and stored entirely in memory, so a
-# store costs roughly twice its size in RAM. That is fine for a database dump
-# and fatal for a filesystem copy: a 39GB ClickHouse component took the whole
-# run down with the OOM killer, losing the five artifacts that had succeeded
-# beside it. Until the pipeline streams, a component larger than this fails on
-# its own and lets the rest of the run finish.
+# _safe_command buffers a command's whole output, so it costs the output's
+# size in RAM. The scheduled backup no longer uses it for components -- a
+# 39GB ClickHouse copy OOM-killed the run that way -- it streams them through
+# stream_component instead. The restore paths still buffer, and this bound
+# keeps one oversized artifact from taking a drill down with it.
 MAX_COMPONENT_BYTES = 8 * 1024**3
+
+_STREAM_CHUNK = 8 * 1024 * 1024
 
 
 def _safe_command(argv: Sequence[str], *, payload: bytes | None = None) -> bytes:
@@ -98,6 +102,97 @@ def _safe_command(argv: Sequence[str], *, payload: bytes | None = None) -> bytes
             f"exit={completed.returncode} stderr={_command_evidence(completed.stderr)}"
         )
     return completed.stdout or b""
+
+
+def _stderr_tail(handle: Any) -> bytes:
+    handle.seek(0)
+    return bytes(handle.read()[-4096:])
+
+
+def stream_component(
+    argv: Sequence[str],
+    *,
+    recipient: str,
+    destination: Path,
+    limit_bytes: int,
+) -> tuple[int, str]:
+    """Run `argv | age --encrypt` straight to `destination`, never in memory.
+
+    Memory is one chunk regardless of component size. The ciphertext is
+    hashed and counted as it passes, written to a hidden `.partial` sibling,
+    fsynced, and renamed into place only once BOTH processes exit zero -- a
+    pipeline reports its last stage, and a producer that dies halfway still
+    leaves age exiting cleanly on a truncated stream. Nothing else in the
+    directory ever sees a partial artifact: `*.age` does not match it, so
+    neither pruning nor the quota count can mistake it for a generation.
+    """
+
+    if not argv:
+        raise ValueError("component command argv must not be empty")
+    if limit_bytes <= 0:
+        raise ComponentQuotaExceededError("no backup quota remains")
+    partial = destination.with_name(f".{destination.name}.partial")
+    producer_err = tempfile.TemporaryFile()
+    age_err = tempfile.TemporaryFile()
+    producer = subprocess.Popen(
+        list(argv),
+        stdout=subprocess.PIPE,
+        stderr=producer_err,
+        env=component_environment(),
+    )
+    age = subprocess.Popen(
+        ["age", "--encrypt", "--recipient", recipient],  # noqa: S607 -- PATH as AgeCommandAdapter
+        stdin=producer.stdout,
+        stdout=subprocess.PIPE,
+        stderr=age_err,
+        env=component_environment(),
+    )
+    # Only age holds the read end now, so a dying age gives the producer
+    # SIGPIPE instead of a writer blocked forever.
+    assert producer.stdout is not None and age.stdout is not None
+    producer.stdout.close()
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        descriptor = os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "wb") as sink:
+            while chunk := age.stdout.read(_STREAM_CHUNK):
+                if size == 0 and not chunk.startswith(_AGE_ENVELOPE):
+                    raise EncryptionMaterialError("ciphertext is missing the age envelope")
+                size += len(chunk)
+                if size > limit_bytes:
+                    raise ComponentQuotaExceededError(
+                        f"{destination.name} exceeded the {limit_bytes} byte quota remaining"
+                    )
+                digest.update(chunk)
+                sink.write(chunk)
+            sink.flush()
+            os.fsync(sink.fileno())
+        age_code = age.wait()
+        producer_code = producer.wait()
+        if producer_code != 0:
+            raise RuntimeError(
+                f"component command failed: {argv[0]} exit={producer_code} "
+                f"stderr={_command_evidence(_stderr_tail(producer_err))}"
+            )
+        if age_code != 0 or size == 0:
+            raise EncryptionMaterialError(
+                f"age encryption failed exit={age_code} "
+                f"stderr={_command_evidence(_stderr_tail(age_err))}"
+            )
+        os.replace(partial, destination)
+    except BaseException:
+        for process in (producer, age):
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+        partial.unlink(missing_ok=True)
+        raise
+    finally:
+        age.stdout.close()
+        producer_err.close()
+        age_err.close()
+    return size, digest.hexdigest()
 
 
 def _component_commands(
@@ -251,13 +346,6 @@ def _command_outcome(result: int) -> Literal["succeeded", "permanent_failure"]:
     return "succeeded" if result == 0 else "permanent_failure"
 
 
-def _producer(argv: tuple[str, ...]) -> Callable[[], bytes]:
-    def produce() -> bytes:
-        return _safe_command(argv)
-
-    return produce
-
-
 def resolve_manifest_artifact_path(artifact_dir: Path, name: str) -> Path:
     artifact_name = Path(name)
     if not name or artifact_name.is_absolute() or artifact_name.name != name:
@@ -325,15 +413,19 @@ def run_scheduled_backup(
     age_adapter = age or _openbao_age_adapter()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    def store(name: str, payload: bytes) -> None:
-        if not payload.startswith(_AGE_ENVELOPE):
-            raise RuntimeError("refusing to store a non-age artifact")
-        (output_dir / name).write_bytes(payload)
+    def streamer(argv: tuple[str, ...]) -> ComponentStreamer:
+        def stream(recipient: str, artifact_name: str, remaining: int) -> tuple[int, str]:
+            return stream_component(
+                argv,
+                recipient=recipient,
+                destination=output_dir / artifact_name,
+                limit_bytes=remaining,
+            )
+
+        return stream
 
     controller = GX10BackupController(
-        producers={component: _producer(argv) for component, argv in commands.items()},
-        encrypt=age_adapter.encrypt,
-        store=store,
+        streamers={component: streamer(argv) for component, argv in commands.items()},
         clock=clock,
     )
     started_at = datetime.now(UTC)

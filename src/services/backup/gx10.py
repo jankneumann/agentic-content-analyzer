@@ -94,6 +94,16 @@ class ComponentInventoryError(RuntimeError):
     """Backup or restore activation omitted a required GX-10 component."""
 
 
+class ComponentQuotaExceededError(RuntimeError):
+    """A streamed component outgrew the quota remaining when it started."""
+
+
+#: Stream one component to its final artifact: (recipient, artifact_name,
+#: remaining_quota_bytes) -> (stored_bytes, sha256_hex). Raises
+#: ComponentQuotaExceededError when the artifact would exceed the quota.
+ComponentStreamer = Callable[[str, str, int], tuple[int, str]]
+
+
 def _require_complete_inventory(label: str, values: Mapping[BackupComponent, Any]) -> None:
     required = set(BackupComponent)
     actual = set(values)
@@ -338,15 +348,31 @@ class GX10BackupController:
     def __init__(
         self,
         *,
-        producers: Mapping[BackupComponent, Callable[[], bytes]],
-        encrypt: Callable[[bytes, str], bytes],
-        store: Callable[[str, bytes], None],
+        producers: Mapping[BackupComponent, Callable[[], bytes]] | None = None,
+        encrypt: Callable[[bytes, str], bytes] | None = None,
+        store: Callable[[str, bytes], None] | None = None,
+        streamers: Mapping[BackupComponent, ComponentStreamer] | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
-        _require_complete_inventory("backup producers", producers)
-        self._producers = dict(producers)
+        # Two ways to produce a component, never both. The buffered trio holds
+        # a whole component in memory -- fine for tests and the synthetic
+        # checkpoint, fatal for a 39GB store. Streamers pipe producer -> age
+        # -> disk and hand back only the size and digest.
+        if streamers is not None:
+            if producers is not None or encrypt is not None or store is not None:
+                raise ValueError("pass streamers or producers/encrypt/store, not both")
+            _require_complete_inventory("backup streamers", streamers)
+            components: tuple[BackupComponent, ...] = tuple(streamers)
+        else:
+            if producers is None or encrypt is None or store is None:
+                raise ValueError("buffered backup needs producers, encrypt and store")
+            _require_complete_inventory("backup producers", producers)
+            components = tuple(producers)
+        self._components = components
+        self._producers = dict(producers or {})
         self._encrypt = encrypt
         self._store = store
+        self._streamers = dict(streamers) if streamers is not None else None
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def run(
@@ -360,28 +386,33 @@ class GX10BackupController:
         recipient = recipient_catalog.validated_active()
         remaining = quota.remaining_bytes
         results: list[ComponentBackupResult] = []
-        for component, producer in self._producers.items():
+        for component in self._components:
             attributes = {
                 "backup.component": str(component),
                 "backup.operation_id": correlation.operation_id,
             }
             with operational_stage("gx10.backup.component", stage="backup", attributes=attributes):
                 try:
-                    plain = producer()
-                    if not isinstance(plain, bytes):
-                        raise TypeError("component producer must return bytes")
-                    encrypted = self._encrypt(plain, recipient)
-                    if not isinstance(encrypted, bytes) or not encrypted:
-                        raise EncryptionMaterialError("age encryption produced no artifact")
-                    _validate_age_ciphertext(encrypted, plaintext=plain)
                     artifact_name = f"{component}-{started_at:%Y%m%dT%H%M%SZ}.age"
-                    if len(encrypted) > remaining:
-                        results.append(
-                            _failed_component(component, correlation, "backup_quota_exhausted")
-                        )
-                        continue
-                    self._store(artifact_name, encrypted)
-                    remaining -= len(encrypted)
+                    if self._streamers is not None:
+                        try:
+                            size, digest = self._streamers[component](
+                                recipient, artifact_name, remaining
+                            )
+                        except ComponentQuotaExceededError:
+                            results.append(
+                                _failed_component(component, correlation, "backup_quota_exhausted")
+                            )
+                            continue
+                    else:
+                        stored = self._buffered(component, recipient, artifact_name, remaining)
+                        if stored is None:
+                            results.append(
+                                _failed_component(component, correlation, "backup_quota_exhausted")
+                            )
+                            continue
+                        size, digest = stored
+                    remaining -= size
                     results.append(
                         ComponentBackupResult(
                             component=component,
@@ -390,8 +421,8 @@ class GX10BackupController:
                             operation_id=correlation.operation_id,
                             trace_id=correlation.trace_id,
                             artifact_name=artifact_name,
-                            bytes=len(encrypted),
-                            checksum_sha256=hashlib.sha256(encrypted).hexdigest(),
+                            bytes=size,
+                            checksum_sha256=digest,
                             encryption_recipient=recipient,
                         )
                     )
@@ -426,6 +457,27 @@ class GX10BackupController:
             trace_id=correlation.trace_id,
             components=tuple(results),
         )
+
+    def _buffered(
+        self,
+        component: BackupComponent,
+        recipient: str,
+        artifact_name: str,
+        remaining: int,
+    ) -> tuple[int, str] | None:
+        """Produce, encrypt and store in memory; None when over quota."""
+        assert self._encrypt is not None and self._store is not None
+        plain = self._producers[component]()
+        if not isinstance(plain, bytes):
+            raise TypeError("component producer must return bytes")
+        encrypted = self._encrypt(plain, recipient)
+        if not isinstance(encrypted, bytes) or not encrypted:
+            raise EncryptionMaterialError("age encryption produced no artifact")
+        _validate_age_ciphertext(encrypted, plaintext=plain)
+        if len(encrypted) > remaining:
+            return None
+        self._store(artifact_name, encrypted)
+        return len(encrypted), hashlib.sha256(encrypted).hexdigest()
 
 
 def _failed_component(

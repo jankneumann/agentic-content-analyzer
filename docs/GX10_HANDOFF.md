@@ -231,12 +231,20 @@ Restore path: download a generation directory (`aws s3 cp --recursive
 `aca-gx10-restore-drill` at it — the uploaded manifest is the same file the
 drill reads.
 
-### 5. Stream the backup pipeline
+### 5. Stream the backup pipeline — backup done; restore drill still buffers
 
-Each component is currently built, encrypted and held in memory — buffered
-twice — which OOM-killed a run. The per-component 8 GiB guard
-(`MAX_COMPONENT_BYTES`) is a band-aid; the real fix is streaming tar → age →
-disk. Needed before ClickHouse grows again.
+The scheduled backup now runs `producer | age --encrypt` straight to disk
+(`stream_component` in `scripts/gx10/backup/runtime.py`): memory is one 8 MiB
+chunk whatever the component size, both exit codes are checked, the quota is
+enforced mid-stream, and an artifact appears under its real name only after
+fsync + rename. A test streams 256 MiB and asserts peak RSS grows < 64 MiB.
+
+**Still buffered: the restore drill.** `run_isolated_restore` reads each
+artifact, decrypts it in memory and pipes it to the restore command, bounded
+by `MAX_COMPONENT_BYTES` (8 GiB). Once ClickHouse regrows past that, the
+weekly drill fails that component (alone) and alerts. The fix mirrors the
+backup: `age --decrypt` (identity via `/proc/self/fd`, as `AgeCommandAdapter`
+does) piped into the restore command.
 
 ### 6. Serve the kanban frontend
 
