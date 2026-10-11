@@ -118,9 +118,14 @@ future wipe is one guarded command:
 sudo make -C /opt/aca/deploy/gx10 wipe-langfuse CONFIRM=wipe-langfuse
 ```
 
-### 4. Off-site backup — code done, R2 not yet provisioned
+### 4. Off-site backup — done 2026-10-10
 
-Decision made: **Cloudflare R2**. Code is on this branch; nothing is deployed.
+Live on **Cloudflare R2**, bucket `aca-gx10-backups`, 30-day lock / 35-day
+expiry on `aca/gx10/`. First generation `20261011T004039Z` shipped: 7 objects,
+233,166,391 bytes, every size read back. Lock proven: a delete of a probe
+object returned `ObjectLockedByBucketPolicy`. From here the 03:00 backup ships
+each good generation via `OnSuccess=`; check the first unattended run with
+`journalctl -u aca-gx10-backup-offsite`.
 
 How it works: after a successful local run, `OnSuccess=` on
 `aca-gx10-backup.service` starts `aca-gx10-backup-offsite.service`. That
@@ -271,8 +276,7 @@ breakage and shipping your own under cover of it.
 
 ## Open questions
 
-1. ~~R2 or S3~~ — R2, 30-day lock / 35-day expiry. Provisioning is steps A–G
-   of task 4.
+1. ~~R2 or S3~~ — R2, provisioned and lock-proven 2026-10-10.
 2. Does the coordinator need a LAN route through Caddy in addition to the
    tunnel, or is the tunnel the only intended path?
 3. Merge `feat/gx10-coordinator-deployment`, or hold it until after a successful
