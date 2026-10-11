@@ -231,18 +231,65 @@ Restore path: download a generation directory (`aws s3 cp --recursive
 `aca-gx10-restore-drill` at it — the uploaded manifest is the same file the
 drill reads.
 
-### 5. Stream the backup pipeline
+### 5. Stream the backup pipeline — backup done; restore drill still buffers
 
-Each component is currently built, encrypted and held in memory — buffered
-twice — which OOM-killed a run. The per-component 8 GiB guard
-(`MAX_COMPONENT_BYTES`) is a band-aid; the real fix is streaming tar → age →
-disk. Needed before ClickHouse grows again.
+The scheduled backup now runs `producer | age --encrypt` straight to disk
+(`stream_component` in `scripts/gx10/backup/runtime.py`): memory is one 8 MiB
+chunk whatever the component size, both exit codes are checked, the quota is
+enforced mid-stream, and an artifact appears under its real name only after
+fsync + rename. A test streams 256 MiB and asserts peak RSS grows < 64 MiB.
 
-### 6. Serve the kanban frontend
+**Still buffered: the restore drill.** `run_isolated_restore` reads each
+artifact, decrypts it in memory and pipes it to the restore command, bounded
+by `MAX_COMPONENT_BYTES` (8 GiB). Once ClickHouse regrows past that, the
+weekly drill fails that component (alone) and alerts. The fix mirrors the
+backup: `age --decrypt` (identity via `/proc/self/fd`, as `AgeCommandAdapter`
+does) piped into the restore command.
 
-`apps/kanban-viz` builds to `dist/` and has no Dockerfile — intentionally.
-Needs a Caddy route in the analyzer's Caddyfile serving those static files, and
-a build step producing them on the host. Not yet written.
+### 6. Serve the kanban frontend — to be built from agentic-coding-tools
+
+Owner: a session started in `agentic-coding-tools` (branch
+`feat/gx10-coordinator-deployment`). Depends on Part 1: the route proxies to
+`coordinator-api`, so nothing can be verified live before the coordinator is
+installed.
+
+**Do not bake the API key.** `apps/kanban-viz/src/App.tsx` reads
+`VITE_COORDINATOR_API_KEY` at *build* time, so it ships inside the JS bundle;
+anyone who can load the page can read it and call the coordinator API
+directly. Decided 2026-10-10: **Caddy injects the key** instead.
+
+Design:
+
+- Build with `VITE_COORDINATOR_URL=/kanban/api` and no API key. Vite also
+  needs `base: "/kanban/"` (or `--base /kanban/`), or the built `index.html`
+  requests `/assets/...` and gets the analyzer API instead.
+- Analyzer `deploy/gx10/Caddyfile`, inside the existing site block (already
+  behind `basic_auth`), ahead of the catch-all `handle`:
+  - `handle_path /kanban/api/*` → `reverse_proxy coordinator-api:<port>` with
+    `header_up X-API-Key {$KANBAN_COORDINATOR_API_KEY}` and
+    `flush_interval -1` (the board uses SSE via `/events/auth`; a buffering
+    proxy makes it hang silently).
+  - `handle_path /kanban/*` → `root` + `file_server` over the built `dist/`,
+    with `try_files {path} /index.html`.
+  - Strip any client-sent `X-API-Key` (`header_up -X-API-Key` before setting
+    it), so the browser cannot choose the identity.
+- Mount `dist/` read-only into the caddy container, and add a host build step
+  (make target) that produces it from a pinned checkout. `apps/kanban-viz`
+  intentionally has no Dockerfile.
+- Use a **dedicated kanban identity** in `coordination_api_key_identities`, so
+  it can be revoked alone. The board writes (labels, agent kicks), so it needs
+  write scope.
+
+**Open decision: where Caddy reads the key.** Caddy is in the analyzer stack,
+whose AppRole reads only `secret/newsletter/gx10/*`; the coordinator's reads
+only `secret/coordinator/gx10/*`. Either store a copy at
+`secret/newsletter/gx10/runtime` as `kanban_coordinator_api_key` (the
+analyzer's `render-secrets.sh` writes it to `caddy.env`; the AppRoles stay
+separate, at the cost of two places to rotate), or widen the analyzer policy to
+read that one field from the coordinator path.
+
+Resolves open question 2 below: yes, there will be a LAN route to the
+coordinator API, behind the site's basic auth, scoped to the kanban identity.
 
 ### 7. Pre-existing test breakage (not from this work)
 
@@ -277,7 +324,7 @@ breakage and shipping your own under cover of it.
 ## Open questions
 
 1. ~~R2 or S3~~ — R2, provisioned and lock-proven 2026-10-10.
-2. Does the coordinator need a LAN route through Caddy in addition to the
-   tunnel, or is the tunnel the only intended path?
+2. ~~LAN route through Caddy?~~ Yes, for the kanban board only (task 6), behind
+   basic auth with a dedicated key Caddy injects.
 3. Merge `feat/gx10-coordinator-deployment`, or hold it until after a successful
    install?
