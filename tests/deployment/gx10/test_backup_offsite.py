@@ -241,3 +241,49 @@ def test_renderer_refuses_a_secret_without_a_key_pair(tmp_path: Path) -> None:
     assert result.returncode != 0
     assert "key pair" in result.stderr
     assert not (tmp_path / "runtime/backup/offsite.json").exists()
+
+
+def test_seed_script_stores_a_secret_the_renderer_accepts(tmp_path: Path) -> None:
+    """Values come from stdin, never argv, and the policy is re-uploaded with them."""
+    token = tmp_path / "token"
+    token.write_text("root")
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    log = tmp_path / "calls"
+    # Record each request's URL and body; curl reads the body from @file.
+    (tools / "curl").write_text(
+        "#!/usr/bin/env bash\n"
+        'for a in "$@"; do case "$a" in @*) body="${a#@}";; http*) url="$a";; esac; done\n'
+        f'printf "%s %s\\n" "$url" "$(jq -c . "$body")" >> {log}\n'
+    )
+    (tools / "curl").chmod(0o700)
+    account = "a" * 32
+
+    result = subprocess.run(
+        [ROOT / "deploy/gx10/openbao/seed-offsite-secret.sh"],
+        input=f"{account}\n\nKEYID\nSEKRET\n",
+        env=os.environ
+        | {
+            "PATH": f"{tools}:{os.environ['PATH']}",
+            "GX10_BAO_TOKEN_FILE": str(token),
+            "GX10_BAO_ADDR": "http://openbao.test/v1",
+        },
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    calls = log.read_text().splitlines()
+    secret_url, secret_body = calls[0].split(" ", 1)
+    assert secret_url.endswith("/secret/data/newsletter/gx10/backup-offsite")
+    assert json.loads(secret_body)["data"] == {
+        "endpoint": f"https://{account}.r2.cloudflarestorage.com",
+        "bucket": "aca-gx10-backups",
+        "access_key_id": "KEYID",
+        "secret_access_key": "SEKRET",
+        "prefix": "aca",
+        "region": "auto",
+    }
+    assert calls[1].split(" ", 1)[0].endswith("/sys/policies/acl/aca-gx10-backup")
+    assert "backup-offsite" in json.loads(calls[1].split(" ", 1)[1])["policy"]
+    assert "SEKRET" not in result.stdout + result.stderr
