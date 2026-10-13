@@ -1,0 +1,508 @@
+schema_version: 1
+
+feature:
+  id: retrieval-adapter-boundary
+  title: Retrieval adapter boundary with Postgres parity, LanceDB secondary, and retrieval evaluation
+  plan_revision: 1
+  created_by: claude
+  created_at: "2026-09-08T11:00:00Z"
+
+contracts:
+  revision: 1
+  openapi:
+    primary: openspec/contracts/content-workflows/openapi/v1.yaml
+    files:
+      - openspec/contracts/content-workflows/openapi/v1.yaml
+      - openspec/changes/retrieval-adapter-boundary/contracts/openapi/search-meta.delta.yaml
+      - openspec/changes/retrieval-adapter-boundary/contracts/events/retrieval-action.schema.json
+defaults:
+  priority: 5
+  lock_ttl_minutes: 180
+  timeout_minutes: 180
+  retry_budget: 1
+  verification_tier_required: B
+  min_trust_level: 3
+
+packages:
+  - package_id: wp-contracts
+    title: Protocol, models, settings, migration, OpenAPI delta
+    task_type: implement
+    description: Define the RetrievalAdapter protocol, typed records and filters, the shared RRF function, retrieval settings with validation, the additive Alembic migration, and the SearchMeta OpenAPI delta. No behavior change.
+    role: contract-engineer
+    priority: 1
+    depends_on: []
+    locks:
+      files:
+        - src/config/settings.py
+        - src/models/evaluation.py
+      keys:
+        - contract:search-meta:v1
+        - db:schema:evaluation_datasets
+        - db:schema:evaluation_samples
+        - db:schema:retrieval_shadow_comparisons
+        - env:retrieval-adapter-settings
+      ttl_minutes: 180
+      reason: Protocol and settings boundary every other package builds on.
+    scope:
+      write_allow:
+        - openspec/changes/retrieval-adapter-boundary/contracts/**
+        - src/retrieval/__init__.py
+        - src/retrieval/protocol.py
+        - src/retrieval/models.py
+        - src/retrieval/rrf.py
+        - src/config/settings.py
+        - src/models/evaluation.py
+        - src/models/retrieval_shadow.py
+        - alembic/versions/**
+        - tests/contract/test_search_meta_contract.py
+        - tests/retrieval/test_models.py
+        - tests/retrieval/test_protocol.py
+        - tests/config/test_retrieval_settings.py
+        - tests/alembic/test_retrieval_migration.py
+      read_allow: [src/**, tests/**, openspec/**, alembic/**]
+    context_impact:
+      surfaces: [apis, capabilities, semantic_code]
+    worktree: {name: wp-contracts, mode: isolated}
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 4
+    metadata: {loc_estimate: 500, complexity: medium, package_kind: data_model}
+    inputs: {tasks: ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7"]}
+    verification:
+      tier_required: B
+      steps:
+        - name: unit-tests
+          kind: command
+          command: pytest tests/retrieval/test_models.py tests/retrieval/test_protocol.py tests/config/test_retrieval_settings.py tests/alembic/test_retrieval_migration.py tests/contract/test_search_meta_contract.py -v --no-cov
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-contracts/pytest.xml]
+            result_keys: [test_count, pass_count]
+        - name: alembic-single-head
+          kind: command
+          command: sh -c 'test "$(alembic heads | wc -l)" -eq 1'
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-contracts/alembic-heads.txt]
+            result_keys: [head_count]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-postgres
+    title: Postgres adapter extraction and composition layer with parity
+    task_type: implement
+    description: Record the parity baseline, move BM25 strategies and the pgvector query into the Postgres adapter, build RetrievalService, turn HybridSearchService into a facade, add the latency regression test.
+    role: backend-engineer
+    priority: 2
+    depends_on: [wp-contracts]
+    locks:
+      files:
+        - src/services/search.py
+        - src/services/search_strategy.py
+        - src/models/search.py
+      keys:
+        - api:GET /api/v1/search
+        - api:POST /api/v1/search
+        - feature:retrieval-adapter-boundary:postgres
+      ttl_minutes: 180
+      reason: Search read path; parity golden must pass before merge.
+    scope:
+      write_allow:
+        - src/retrieval/service.py
+        - src/retrieval/adapters/postgres/__init__.py
+        - src/retrieval/adapters/postgres/adapter.py
+        - src/retrieval/adapters/postgres/bm25.py
+        - src/retrieval/adapters/postgres/vector.py
+        - src/retrieval/adapters/postgres/filters.py
+        - src/services/search.py
+        - src/services/search_strategy.py
+        - src/models/search.py
+        - tests/retrieval/test_postgres_parity.py
+        - tests/retrieval/test_postgres_search.py
+        - tests/retrieval/test_service.py
+        - tests/retrieval/fixtures/**
+        - tests/test_services/test_search.py
+        - tests/services/test_search_strategy.py
+        - tests/regression/test_search_latency.py
+      read_allow: [src/**, tests/**, openspec/**]
+      deny:
+        - src/agents/**
+        - src/services/indexing.py
+    context_impact:
+      surfaces: [semantic_code, architecture]
+    worktree: {name: wp-postgres, mode: isolated}
+    timeout_minutes: 240
+    retry_budget: 1
+    min_trust_level: 4
+    metadata: {loc_estimate: 900, complexity: high, package_kind: algorithm}
+    inputs: {tasks: ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6", "2.7"]}
+    verification:
+      tier_required: B
+      steps:
+        - name: parity-and-search-tests
+          kind: command
+          command: pytest tests/retrieval/test_postgres_parity.py tests/retrieval/test_postgres_search.py tests/retrieval/test_service.py tests/test_services/test_search.py tests/services/test_search_strategy.py -v --no-cov
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-postgres/pytest.xml]
+            result_keys: [test_count, pass_count]
+        - name: latency-regression
+          kind: command
+          command: pytest tests/regression/test_search_latency.py -m regression -v --no-cov
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-postgres/latency.json]
+            result_keys: [p95_ms, baseline_p95_ms]
+    outputs:
+      result_keys: [files_modified, test_count, p95_ms]
+
+  - package_id: wp-writes
+    title: Write path through the Postgres adapter
+    task_type: implement
+    description: Implement write and improve for content_chunks on the Postgres adapter and route indexing, backfill, and switch-embeddings through the registry's primary adapter; add aca manage optimize-index.
+    role: backend-engineer
+    priority: 3
+    depends_on: [wp-postgres]
+    locks:
+      files:
+        - src/services/indexing.py
+        - src/scripts/backfill_chunks.py
+        - src/scripts/switch_embeddings.py
+        - src/cli/manage_commands.py
+      keys:
+        - feature:retrieval-adapter-boundary:writes
+        - db:schema:document_chunks
+      ttl_minutes: 180
+      reason: Only place embedding SQL may live after this package.
+    scope:
+      write_allow:
+        - src/retrieval/adapters/postgres/writes.py
+        - src/services/indexing.py
+        - src/scripts/backfill_chunks.py
+        - src/scripts/switch_embeddings.py
+        - src/cli/manage_commands.py
+        - tests/retrieval/test_postgres_writes.py
+        - tests/cli/test_manage_optimize_index.py
+        - tests/scripts/**
+      read_allow: [src/**, tests/**, openspec/**]
+      deny:
+        - src/agents/**
+        - src/services/search.py
+    context_impact:
+      surfaces: [semantic_code, documentation]
+    worktree: {name: wp-writes, mode: isolated}
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 4
+    metadata: {loc_estimate: 600, complexity: medium, package_kind: crud}
+    inputs: {tasks: ["3.1", "3.2", "3.3", "3.4", "3.5"]}
+    verification:
+      tier_required: B
+      steps:
+        - name: write-path-tests
+          kind: command
+          command: pytest tests/retrieval/test_postgres_writes.py tests/cli/test_manage_optimize_index.py tests/scripts/ -v --no-cov
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-writes/pytest.xml]
+            result_keys: [test_count, pass_count]
+        - name: no-raw-embedding-sql-outside-adapter
+          kind: command
+          command: sh -c '! grep -rn "SET embedding" src --include=*.py | grep -v src/retrieval/adapters/postgres/'
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-writes/grep.txt]
+            result_keys: [violations]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-memory
+    title: Agent memory as an adapter consumer
+    task_type: implement
+    description: Implement the agent_memories namespace and access tracking on the Postgres adapter, rewire the vector and keyword memory strategies and MemoryProvider fusion onto it; tests under tests/agents/memory must pass unmodified.
+    role: backend-engineer
+    priority: 3
+    depends_on: [wp-postgres]
+    locks:
+      files:
+        - src/agents/memory/provider.py
+        - src/agents/memory/strategies/vector.py
+        - src/agents/memory/strategies/keyword.py
+      keys:
+        - feature:retrieval-adapter-boundary:memory
+      ttl_minutes: 180
+      reason: Memory recall behavior is pinned by agentic-analysis scenarios 9, 22, 26.
+    scope:
+      write_allow:
+        - src/retrieval/adapters/postgres/memory.py
+        - src/retrieval/adapters/postgres/adapter.py
+        - src/agents/memory/provider.py
+        - src/agents/memory/strategies/vector.py
+        - src/agents/memory/strategies/keyword.py
+        - tests/retrieval/test_postgres_memory.py
+      read_allow: [src/**, tests/**, openspec/**]
+      deny:
+        - tests/agents/memory/**
+        - src/services/**
+    context_impact:
+      surfaces: [semantic_code]
+    worktree: {name: wp-memory, mode: isolated}
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 4
+    metadata: {loc_estimate: 450, complexity: medium, package_kind: integration}
+    inputs: {tasks: ["4.1", "4.2", "4.3"]}
+    verification:
+      tier_required: B
+      steps:
+        - name: memory-contract-tests-unmodified
+          kind: command
+          command: sh -c 'git diff --quiet origin/main -- tests/agents/memory/ && pytest tests/agents/memory/ tests/retrieval/test_postgres_memory.py -v --no-cov'
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-memory/pytest.xml]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-lancedb
+    title: LanceDB adapter and registry
+    task_type: implement
+    description: Implement the LanceDB adapter on local directory and S3-compatible object store, the lazy-import registry, and the optional lancedb extra.
+    role: backend-engineer
+    priority: 2
+    depends_on: [wp-contracts]
+    locks:
+      files:
+        - pyproject.toml
+        - uv.lock
+      keys:
+        - feature:retrieval-adapter-boundary:lancedb
+        - flag:retrieval.secondary.adapter
+      ttl_minutes: 240
+      reason: New optional dependency and adapter implementation.
+    scope:
+      write_allow:
+        - src/retrieval/adapters/lancedb/**
+        - src/retrieval/registry.py
+        - pyproject.toml
+        - uv.lock
+        - tests/retrieval/test_lancedb_adapter.py
+        - tests/retrieval/test_registry.py
+        - tests/integration/test_lancedb_object_store.py
+      read_allow: [src/**, tests/**, openspec/**]
+      deny:
+        - src/services/**
+        - src/agents/**
+    context_impact:
+      surfaces: [semantic_code, documentation]
+    worktree: {name: wp-lancedb, mode: isolated}
+    timeout_minutes: 240
+    retry_budget: 1
+    min_trust_level: 3
+    metadata: {loc_estimate: 700, complexity: high, package_kind: integration}
+    inputs: {tasks: ["5.1", "5.2", "5.3", "5.4", "5.5", "5.6"]}
+    verification:
+      tier_required: B
+      steps:
+        - name: lancedb-tests
+          kind: command
+          command: sh -c 'uv sync --extra lancedb && pytest tests/retrieval/test_lancedb_adapter.py tests/retrieval/test_registry.py -v --no-cov'
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-lancedb/pytest.xml]
+            result_keys: [test_count, pass_count]
+        - name: import-without-extra-is-inert
+          kind: command
+          command: sh -c 'python -c "import src.retrieval.registry"'
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-lancedb/import.txt]
+            result_keys: [exit_code]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-dualpath
+    title: Dual-write, shadow read, telemetry
+    task_type: implement
+    description: Implement the composite adapter with fail-safe secondary writes, post-response shadow reads persisted as comparisons, meta.shadow, and per-action structured events with failure counters exposed in operations diagnostics.
+    role: backend-engineer
+    priority: 4
+    depends_on: [wp-postgres, wp-writes, wp-lancedb]
+    locks:
+      files:
+        - src/retrieval/registry.py
+        - src/retrieval/service.py
+        - src/api/operation_routes.py
+      keys:
+        - flag:retrieval.shadow.read
+        - api:GET /api/v1/operations/diagnostics
+      ttl_minutes: 180
+      reason: Composite adapter wiring and diagnostics exposure.
+    scope:
+      write_allow:
+        - src/retrieval/dual_write.py
+        - src/retrieval/shadow.py
+        - src/retrieval/telemetry.py
+        - src/retrieval/registry.py
+        - src/retrieval/service.py
+        - src/models/search.py
+        - src/api/operation_routes.py
+        - tests/retrieval/test_dual_write.py
+        - tests/retrieval/test_shadow.py
+        - tests/retrieval/test_telemetry.py
+      read_allow: [src/**, tests/**, openspec/**]
+    context_impact:
+      surfaces: [apis, semantic_code]
+    worktree: {name: wp-dualpath, mode: isolated}
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 4
+    metadata: {loc_estimate: 550, complexity: medium, package_kind: integration}
+    inputs: {tasks: ["6.1", "6.2", "6.3", "6.4", "6.5", "6.6", "6.7"]}
+    verification:
+      tier_required: B
+      steps:
+        - name: dualpath-tests
+          kind: command
+          command: pytest tests/retrieval/test_dual_write.py tests/retrieval/test_shadow.py tests/retrieval/test_telemetry.py -v --no-cov
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-dualpath/pytest.xml]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-evaluation
+    title: Retrieval dataset kind, metrics, and retrieval-compare command
+    task_type: implement
+    description: Add recall@k, MRR, overlap, and latency metrics; the retrieval dataset kind with provisional seeding from shadow comparisons; and aca evaluate retrieval-compare.
+    role: backend-engineer
+    priority: 4
+    depends_on: [wp-contracts, wp-postgres]
+    locks:
+      files:
+        - src/services/evaluation_service.py
+        - src/cli/evaluate_commands.py
+      keys:
+        - feature:retrieval-adapter-boundary:evaluation
+      ttl_minutes: 180
+      reason: Shared with operationalize-llm-evaluation-routing; additions confined to one new method and one new module.
+    scope:
+      write_allow:
+        - src/evaluation/retrieval_metrics.py
+        - src/services/evaluation_service.py
+        - src/models/evaluation.py
+        - src/cli/evaluate_commands.py
+        - tests/evaluation/test_retrieval_metrics.py
+        - tests/evaluation/test_retrieval_datasets.py
+        - tests/cli/test_evaluate_retrieval.py
+      read_allow: [src/**, tests/**, openspec/**]
+      deny:
+        - src/retrieval/adapters/**
+    context_impact:
+      surfaces: [semantic_code, documentation]
+    worktree: {name: wp-evaluation, mode: isolated}
+    timeout_minutes: 180
+    retry_budget: 1
+    min_trust_level: 3
+    metadata: {loc_estimate: 600, complexity: medium, package_kind: algorithm}
+    inputs: {tasks: ["7.1", "7.2", "7.3", "7.4", "7.5", "7.6"]}
+    verification:
+      tier_required: B
+      steps:
+        - name: evaluation-tests
+          kind: command
+          command: pytest tests/evaluation/test_retrieval_metrics.py tests/evaluation/test_retrieval_datasets.py tests/cli/test_evaluate_retrieval.py -v --no-cov
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-evaluation/pytest.xml]
+            result_keys: [test_count, pass_count]
+    outputs:
+      result_keys: [files_modified, test_count]
+
+  - package_id: wp-docs
+    title: Documentation and ADR
+    task_type: document
+    description: Adapter matrix, future adapters (Infino, turbopuffer), settings and commands in docs; ADR, CLAUDE.md, GOTCHAS.
+    role: technical-writer
+    priority: 6
+    depends_on: [wp-dualpath, wp-evaluation, wp-memory]
+    locks:
+      files: []
+      keys:
+        - feature:retrieval-adapter-boundary:docs
+      ttl_minutes: 120
+      reason: Documentation only.
+    scope:
+      write_allow:
+        - docs/SEARCH.md
+        - docs/ACA-AGENTS.md
+        - docs/GOTCHAS.md
+        - docs/decisions/retrieval-adapter-boundary.md
+        - CLAUDE.md
+      read_allow: [src/**, docs/**, openspec/**]
+    context_impact:
+      surfaces: [documentation, decisions]
+    worktree: {name: wp-docs, mode: isolated}
+    timeout_minutes: 120
+    retry_budget: 1
+    min_trust_level: 2
+    metadata: {loc_estimate: 250, complexity: low}
+    inputs: {tasks: ["8.1", "8.2"]}
+    verification:
+      tier_required: C
+      steps:
+        - name: docs-lint
+          kind: command
+          command: sh -c 'test -f docs/decisions/retrieval-adapter-boundary.md && grep -q "retrieval_adapter" docs/SEARCH.md'
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-docs/check.txt]
+            result_keys: [exit_code]
+    outputs:
+      result_keys: [files_modified]
+
+  - package_id: wp-integration
+    title: Integration merge and full verification
+    task_type: integrate
+    description: Merge all package worktrees, run the full suite, ruff, mypy, the parity golden, the latency regression, and openspec strict validation on the merged head.
+    priority: 1
+    depends_on: [wp-contracts, wp-postgres, wp-writes, wp-memory, wp-lancedb, wp-dualpath, wp-evaluation, wp-docs]
+    locks:
+      files: []
+      keys: []
+    scope:
+      write_allow: ["**"]
+      read_allow: ["**"]
+    worktree: {name: wp-integration, mode: shared}
+    timeout_minutes: 240
+    retry_budget: 0
+    min_trust_level: 4
+    inputs: {tasks: ["9.1", "9.2"]}
+    verification:
+      tier_required: A
+      steps:
+        - name: full-test-suite
+          kind: command
+          command: pytest --tb=short
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-integration/pytest.xml]
+            result_keys: [test_count, pass_count]
+        - name: lint-and-types
+          kind: command
+          command: sh -c 'ruff check src tests && ruff format --check src tests && mypy src'
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-integration/lint.txt]
+            result_keys: [exit_code]
+        - name: openspec-strict
+          kind: command
+          command: openspec validate retrieval-adapter-boundary --strict
+          expect_exit_code: 0
+          evidence:
+            artifacts: [artifacts/wp-integration/openspec.txt]
+            result_keys: [exit_code]
+    outputs:
+      result_keys: [merge_commit, test_count]
