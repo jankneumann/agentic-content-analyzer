@@ -18,6 +18,9 @@ EnvironmentFile=/run/aca/gx10/host-maintenance.env
 # before any container is touched, which is every producer that is not a
 # plain tar.
 EnvironmentFile=/etc/aca/gx10-images.env
+# The drill refuses an isolated root that already exists, and systemd creates
+# this directory before ExecStart, so the root is a fresh child of it. systemd
+# removes the whole tree when the unit stops, so a crashed run cannot block the next.
 RuntimeDirectory=aca/gx10/restore-drill
 RuntimeDirectoryMode=0700
 StateDirectory=aca/gx10/restore-evidence
@@ -30,7 +33,7 @@ ExecStartPre=/usr/bin/systemctl is-active --quiet aca-gx10.service
 # A timer fires this unit directly, so a stale installed copy would run
 # old settings indefinitely with nothing to say so.
 ExecStartPre=/opt/aca/scripts/gx10/check_unit_current.sh %n
-ExecStart=/opt/aca/.venv/bin/python -m scripts.gx10.backup restore --plan /etc/aca/gx10/restore-plan.json --manifest /var/lib/aca/gx10/backups/manifest.json --artifacts /var/lib/aca/gx10/backups --isolated-root /run/aca/gx10/restore-drill --age-material-file /run/aca/gx10/backup/restore-age.json
+ExecStart=/opt/aca/.venv/bin/python -m scripts.gx10.backup restore --plan /etc/aca/gx10/restore-plan.json --manifest /var/lib/aca/gx10/backups/manifest.json --artifacts /var/lib/aca/gx10/backups --isolated-root /run/aca/gx10/restore-drill/isolated --age-material-file /run/aca/gx10/backup/restore-age.json
 StandardOutput=append:/var/lib/aca/gx10/restore-evidence/drills.jsonl
 TimeoutStartSec=14400
 UMask=0077

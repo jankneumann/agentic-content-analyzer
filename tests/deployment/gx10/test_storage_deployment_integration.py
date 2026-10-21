@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 import subprocess
 from pathlib import Path
@@ -364,3 +365,16 @@ def test_explicit_maintenance_identity_must_be_canonical_and_match_bound_root(
             storage_runtime._runtime_identity(operation_id, trace_id)
         with pytest.raises(ValueError):
             backup_runtime._maintenance_correlation(operation_id, trace_id)
+
+
+def test_restore_drill_isolated_root_is_fresh_under_its_runtime_directory() -> None:
+    """systemd creates RuntimeDirectory= before ExecStart; the drill rejects an existing root.
+
+    Pointing --isolated-root at the RuntimeDirectory itself failed every run with
+    "dedicated restore root must not already exist".
+    """
+    unit = (DEPLOY / "systemd/aca-gx10-restore-drill.service").read_text()
+    runtime = "/run/" + re.search(r"^RuntimeDirectory=(\S+)$", unit, re.MULTILINE).group(1)
+    root = re.search(r"--isolated-root (\S+)", unit).group(1)
+    assert root.startswith(runtime + "/"), f"{root} must be a child of {runtime}"
+    assert "RuntimeDirectoryPreserve" not in unit, "a preserved tree would block the next run"
