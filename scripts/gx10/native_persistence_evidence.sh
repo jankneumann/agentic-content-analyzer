@@ -118,7 +118,7 @@ PY
   compose exec -T -e GX10_PERSISTED_TRACE_ID="$trace_id" clickhouse sh -ec '
     for attempt in $(seq 1 60); do
       count="$(clickhouse-client --user langfuse --password "$CLICKHOUSE_PASSWORD" \
-        --query "SELECT count() FROM langfuse.traces WHERE id = '\''${GX10_PERSISTED_TRACE_ID}'\''")"
+        --query "SELECT count() FROM default.traces WHERE id = '\''${GX10_PERSISTED_TRACE_ID}'\''")"
       test "$count" -ge 1 && exit 0
       test "$attempt" -eq 60 && exit 1
       sleep 2

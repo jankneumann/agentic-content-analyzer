@@ -378,3 +378,23 @@ def test_restore_drill_isolated_root_is_fresh_under_its_runtime_directory() -> N
     root = re.search(r"--isolated-root (\S+)", unit).group(1)
     assert root.startswith(runtime + "/"), f"{root} must be a child of {runtime}"
     assert "RuntimeDirectoryPreserve" not in unit, "a preserved tree would block the next run"
+
+
+def test_clickhouse_queries_target_the_database_langfuse_writes_to() -> None:
+    """Langfuse writes to CLICKHOUSE_DB from its own env, defaulting to `default`.
+
+    The server container's CLICKHOUSE_DB=langfuse only creates an empty database,
+    so a probe on langfuse.traces hit UNKNOWN_TABLE and failed every drill.
+    """
+    renderer = (DEPLOY / "openbao/render-secrets.sh").read_text()
+    langfuse_env = next(line for line in renderer.splitlines() if "CLICKHOUSE_URL=" in line)
+    configured = re.search(r"CLICKHOUSE_DB=(\w+)", langfuse_env)
+    database = configured.group(1) if configured else "default"
+    scripts = sorted((ROOT / "scripts/gx10").rglob("*.sh"))
+    queried = {
+        (path.name, db)
+        for path in scripts
+        for db in re.findall(r"FROM (\w+)\.(?:traces|observations|scores)\b", path.read_text())
+    }
+    assert queried, "no script queries Langfuse tables; the probe moved?"
+    assert {db for _, db in queried} == {database}, sorted(queried)

@@ -107,7 +107,7 @@ probe() {
       exec "${COMPOSE[@]}" exec -T app-postgres sh -ec 'export PGPASSWORD="$POSTGRES_PASSWORD"; test "$(psql -At --dbname=newsletters --username=newsletter_user --command="SELECT count(*) FROM operation_observation_attempts")" -ge 1'
       ;;
     langfuse_trace_metadata)
-      exec "${COMPOSE[@]}" exec -T clickhouse sh -ec 'test "$(clickhouse-client --user langfuse --password "$CLICKHOUSE_PASSWORD" --query="SELECT count() FROM langfuse.traces WHERE length(toString(metadata)) > 2")" -ge 1'
+      exec "${COMPOSE[@]}" exec -T clickhouse sh -ec 'test "$(clickhouse-client --user langfuse --password "$CLICKHOUSE_PASSWORD" --query="SELECT count() FROM default.traces WHERE length(toString(metadata)) > 2")" -ge 1'
       ;;
     *) echo "unsupported metadata probe" >&2; exit 64 ;;
   esac
