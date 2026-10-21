@@ -16,11 +16,15 @@ IMAGE ?= ghcr.io/jankneumann/agentic-content-analyzer
 SINCE ?= 30 minutes ago
 STOP_TIMEOUT ?= 15
 UNIT_DIR ?= /etc/systemd/system
+TMPFILES_DIR ?= /etc/tmpfiles.d
 IMAGES_ENV ?= /etc/aca/gx10-images.env
 SHA := $(shell git -C $(ROOT) rev-parse --short HEAD 2>/dev/null)
 
 SCRIPTS := $(ROOT)/scripts/gx10
 UNITS := $(wildcard $(ROOT)/deploy/gx10/systemd/*.service $(ROOT)/deploy/gx10/systemd/*.timer)
+# Every unit with an [Install] section is meant to come back after a reboot;
+# installing without enabling them leaves a stack that only a manual start runs.
+BOOT_UNITS := $(notdir $(shell grep -l '^\[Install\]' $(UNITS)))
 GX10_UNITS := aca-gx10-image-pins aca-gx10-openbao-container aca-gx10-openbao-provision \
   aca-gx10-secrets aca-gx10-proxy-policy aca-gx10-firewall aca-gx10-maintenance-plans aca-gx10
 
@@ -33,10 +37,13 @@ help: ## List targets
 require-root:
 	@[[ "$$(id -u)" == 0 ]] || { echo "run as root: sudo make -C $(ROOT)/deploy/gx10 <target>" >&2; exit 1; }
 
-install: require-root ## Install reviewed units and timers, verify them, daemon-reload
+install: require-root ## Install units, timers and tmpfiles, verify, daemon-reload, enable for boot
+	install -m 0644 $(ROOT)/deploy/gx10/tmpfiles/aca-gx10.conf $(TMPFILES_DIR)/
+	systemd-tmpfiles --create $(TMPFILES_DIR)/aca-gx10.conf
 	install -m 0644 $(UNITS) $(UNIT_DIR)/
 	systemd-analyze verify $(UNIT_DIR)/aca-gx10*.service $(UNIT_DIR)/aca-gx10*.timer
 	systemctl daemon-reload
+	systemctl enable $(BOOT_UNITS)
 
 # Exactly the Langfuse stores. Listed, never globbed: /srv/aca/postgres is the
 # APPLICATION database, one character from langfuse-postgres, and

@@ -94,3 +94,80 @@ def test_start_keeps_openbao_and_unseals_before_the_runtime() -> None:
         recipe.index("systemctl start aca-gx10.service"),
     ]
     assert order == sorted(order)
+
+
+SYSTEMD_DIR = ROOT / "deploy/gx10/systemd"
+TMPFILES = ROOT / "deploy/gx10/tmpfiles/aca-gx10.conf"
+
+
+def _directives(unit: Path, key: str) -> list[str]:
+    values: list[str] = []
+    for line in unit.read_text(encoding="utf-8").splitlines():
+        if line.startswith(f"{key}="):
+            values.extend(line.split("=", 1)[1].split())
+    return values
+
+
+def test_every_run_path_a_unit_writes_is_recreated_at_boot() -> None:
+    """/run is a tmpfs; a missing ReadWritePaths= entry fails the unit with 226/NAMESPACE.
+
+    After the 2026-10-12 reboot /run/aca/gx10 was gone, image-pins failed before
+    ExecStart, and OpenBao (Requires= it) never started.
+    """
+    created = {
+        fields[1]
+        for line in TMPFILES.read_text(encoding="utf-8").splitlines()
+        if (fields := line.split()) and fields[0] == "d"
+    }
+    for unit in sorted(SYSTEMD_DIR.glob("*.service")):
+        runtime_dirs = {f"/run/{d}" for d in _directives(unit, "RuntimeDirectory")}
+        for path in _directives(unit, "ReadWritePaths"):
+            if path.startswith("-") or not path.startswith("/run/"):
+                continue
+            assert path in created | runtime_dirs, (
+                f"{unit.name}: {path} is not created by tmpfiles or RuntimeDirectory="
+            )
+
+
+def test_every_output_file_directory_exists_before_the_unit_starts() -> None:
+    """systemd opens StandardOutput= files before creating StateDirectory=.
+
+    The restore drill appended to a file inside its own StateDirectory=, so it
+    failed with "Failed to set up standard output" on every run from first install.
+    """
+    created = {
+        fields[1]
+        for line in TMPFILES.read_text(encoding="utf-8").splitlines()
+        if (fields := line.split()) and fields[0] == "d"
+    }
+    for unit in sorted(SYSTEMD_DIR.glob("*.service")):
+        for key in ("StandardOutput", "StandardError"):
+            for value in _directives(unit, key):
+                mode, _, path = value.partition(":")
+                if mode in {"file", "append", "truncate"}:
+                    assert str(Path(path).parent) in created, (
+                        f"{unit.name}: {key} directory {Path(path).parent} is not in tmpfiles"
+                    )
+
+
+def test_install_enables_every_unit_meant_to_survive_a_reboot() -> None:
+    """Installing without enabling left the stack down for 8 days after a reboot."""
+    boot_units = {
+        unit.name for unit in SYSTEMD_DIR.iterdir() if "\n[Install]\n" in unit.read_text()
+    }
+    assert boot_units, "no unit declares [Install]"
+    source = MAKEFILE.read_text(encoding="utf-8")
+    recipe = source.split("\ninstall:", 1)[1].split("\n\n", 1)[0]
+    assert "systemd-tmpfiles --create" in recipe
+    assert recipe.index("systemd-tmpfiles --create") < recipe.index("systemctl daemon-reload")
+    assert recipe.index("systemctl daemon-reload") < recipe.index("systemctl enable $(BOOT_UNITS)")
+
+
+@pytest.mark.skipif(MAKE is None, reason="GNU make is not installed")
+def test_install_dry_run_enables_exactly_the_installable_units() -> None:
+    result = _dry_run("install")
+    assert result.returncode == 0, result.stderr
+    enable = next(line for line in result.stdout.splitlines() if "systemctl enable" in line)
+    enabled = set(enable.split("systemctl enable", 1)[1].split())
+    expected = {u.name for u in SYSTEMD_DIR.iterdir() if "\n[Install]\n" in u.read_text()}
+    assert enabled == expected
