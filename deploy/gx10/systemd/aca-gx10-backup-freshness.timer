@@ -1,0 +1,12 @@
+[Unit]
+Description=Check hourly that the GX-10 backup is within its 36-hour limit
+
+[Timer]
+OnBootSec=15min
+OnCalendar=hourly
+RandomizedDelaySec=5m
+Persistent=true
+Unit=aca-gx10-backup-freshness.service
+
+[Install]
+WantedBy=timers.target
