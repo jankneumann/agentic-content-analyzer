@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 
 from src.cli.app import app
 from src.cli.output import _set_direct_mode, _set_json_mode
+from tests.clients.operational_runtime import install_operational_runtime
 
 
 @pytest.fixture
@@ -35,3 +36,9 @@ def reset_cli_modes():
     yield
     _set_json_mode(False)
     _set_direct_mode(False)
+
+
+@pytest.fixture(autouse=True)
+def legacy_cli_operational_adapters(monkeypatch: pytest.MonkeyPatch):
+    """Isolate only external telemetry and persistence dependencies."""
+    return install_operational_runtime(monkeypatch)

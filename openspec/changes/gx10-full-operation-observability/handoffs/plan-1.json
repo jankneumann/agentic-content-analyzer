@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-08-28T10:42:28.669949+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "external coordinator write intentionally disabled",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Planned a contract-first correlation spine for every meaningful backend operation and a production GX-10 runtime sized for a 1 TB disk. PostgreSQL remains the bounded durable operation index while Langfuse holds masked detailed traces; Railway data cutover remains a separate change.",
+    "completed_work": [
+      "Created proposal, eleven strict delta specs, design with twelve decisions, machine-readable OpenAPI/SQL/event contracts, generated type stubs, TDD task plan, and coordinated work-package DAG.",
+      "Passed strict OpenSpec, JSON syntax, work-package schema, DAG, lock canonicalization, scope-overlap, and architecture-zone validation."
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Use a dual-layer correlation spine",
+        "rationale": "PostgreSQL preserves restart-safe identifiers and outcomes while Langfuse holds detailed spans without creating a second workflow state machine.",
+        "capability": "cross-service-operation-correlation",
+        "supersedes": null
+      },
+      {
+        "title": "Key attempts by claim generation",
+        "rationale": "Stored W3C context and claim fencing preserve retry and restart topology without holding queue spans open in memory.",
+        "capability": "job-management",
+        "supersedes": null
+      },
+      {
+        "title": "Start with complete controlled traces",
+        "rationale": "One hundred percent meaningful-operation coverage plus export-time masking establishes a trustworthy baseline before any measured sampling policy.",
+        "capability": "observability",
+        "supersedes": null
+      },
+      {
+        "title": "Govern the GX-10 as production infrastructure",
+        "rationale": "Pinned services, private networks, quotas, watermarks, backups, restore drills, and environment fencing are required before local primary operation.",
+        "capability": "gx10-production-runtime",
+        "supersedes": null
+      },
+      {
+        "title": "Keep Railway cutover separate",
+        "rationale": "This change builds and validates observability plus local topology but does not broaden authority into data migration or traffic switching.",
+        "capability": "gx10-production-runtime",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Repair coordinator credentials and re-register the planned lock keys from work-packages.yaml.",
+      "At Gate 2 approval, seed coordinator implementation tasks and begin wp-contracts.",
+      "Do not migrate Railway data or switch traffic in this change."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/gx10-full-operation-observability/proposal.md",
+        "description": "approved scope and approach"
+      },
+      {
+        "path": "openspec/changes/gx10-full-operation-observability/design.md",
+        "description": "correlation and GX-10 architecture decisions"
+      },
+      {
+        "path": "openspec/changes/gx10-full-operation-observability/tasks.md",
+        "description": "test-first implementation plan"
+      },
+      {
+        "path": "openspec/changes/gx10-full-operation-observability/work-packages.yaml",
+        "description": "validated coordinated DAG"
+      },
+      {
+        "path": "openspec/changes/gx10-full-operation-observability/contracts/",
+        "description": "OpenAPI, SQL, event, and type contracts"
+      }
+    ]
+  }
+}

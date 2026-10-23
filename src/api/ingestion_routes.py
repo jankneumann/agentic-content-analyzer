@@ -14,6 +14,7 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
+    Request,
     Response,
     UploadFile,
     status,
@@ -180,6 +181,7 @@ async def create_upload(
 async def submit_ingestion(
     command: IngestCommand,
     response: Response,
+    request: Request = None,  # type: ignore[assignment]
     idempotency_key: Annotated[
         str | None, Header(alias="Idempotency-Key", min_length=8, max_length=200)
     ] = None,
@@ -234,6 +236,8 @@ async def submit_ingestion(
         payload,
         idempotency_key=idempotency_key,
     )
+    if request is not None:
+        request.state.audit_submitted_operation_id = handle.operation_id
     revision, revision_source = release_identity()
     response.headers["X-Release-Revision"] = revision
     response.headers["X-Release-Revision-Source"] = revision_source

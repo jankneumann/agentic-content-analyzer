@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.telemetry.safety import safe_metric_attributes
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -118,7 +119,7 @@ def record_llm_request(
     if not _ensure_meter():
         return
 
-    attributes = {"model": model, "provider": provider}
+    attributes = safe_metric_attributes(model=model, provider=provider)
 
     _llm_request_counter.add(1, attributes)
     _llm_token_counter.add(input_tokens, {**attributes, "direction": "input"})
@@ -134,7 +135,7 @@ def record_ingestion(*, source_type: str, count: int = 1) -> None:
     if not _ensure_meter():
         return
 
-    _ingestion_counter.add(count, {"source_type": source_type})
+    _ingestion_counter.add(count, safe_metric_attributes(source_type=source_type))
 
 
 def record_pipeline_stage_started(stage: str) -> None:
@@ -148,7 +149,7 @@ def record_pipeline_stage_started(stage: str) -> None:
     if not _ensure_meter():
         return
 
-    _pipeline_started_counter.add(1, {"stage": stage})
+    _pipeline_started_counter.add(1, safe_metric_attributes(stage=stage))
 
 
 def record_pipeline_stage_completed(stage: str, item_count: int) -> None:
@@ -163,7 +164,7 @@ def record_pipeline_stage_completed(stage: str, item_count: int) -> None:
     if not _ensure_meter():
         return
 
-    _pipeline_completed_counter.add(1, {"stage": stage, "item_count": str(item_count)})
+    _pipeline_completed_counter.add(1, safe_metric_attributes(stage=stage))
 
 
 def record_pipeline_stage_failed(stage: str, error: str) -> None:
@@ -178,7 +179,7 @@ def record_pipeline_stage_failed(stage: str, error: str) -> None:
     if not _ensure_meter():
         return
 
-    _pipeline_failed_counter.add(1, {"stage": stage, "error": error})
+    _pipeline_failed_counter.add(1, safe_metric_attributes(stage=stage))
 
 
 def reset_metrics() -> None:

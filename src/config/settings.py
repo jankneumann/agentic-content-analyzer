@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import warnings
 from functools import lru_cache
 from ipaddress import ip_address
@@ -75,6 +76,7 @@ def _flatten_profile_to_settings(profile_data: dict[str, Any]) -> dict[str, Any]
         "graphdb",
         "storage",
         "observability",
+        "gx10",
         "api_keys",
         "digest",
         "search",
@@ -87,7 +89,17 @@ def _flatten_profile_to_settings(profile_data: dict[str, Any]) -> dict[str, Any]
         if isinstance(section_data, dict):
             for key, value in section_data.items():
                 if value is not None:
-                    result[key] = value
+                    # GX-10 policy uses readable nested names in YAML while
+                    # Settings keeps an explicit prefix for collision safety.
+                    target_key = f"gx10_{key}" if section == "gx10" else key
+                    if target_key != "gx10_service_identities":
+                        # Empty inherited aliases must not erase concrete values;
+                        # absent API-only capabilities must remain absent for
+                        # non-API roles rather than failing minimum-length checks.
+                        api_capabilities = {"admin_api_key", "operator_api_key"}
+                        if value == "" and (target_key in result or target_key in api_capabilities):
+                            continue
+                        result[target_key] = value
 
     # Map providers to Settings provider fields AFTER settings flattening
     # so providers.* is authoritative over inherited settings like
@@ -382,6 +394,11 @@ class Settings(BaseSettings):
     failed_job_retention_days: int = Field(default=90, ge=1, le=3650)
     job_retention_interval_seconds: int = Field(default=3600, ge=60, le=86_400)
     job_retention_batch_size: int = Field(default=100, ge=1, le=1000)
+    # A claim outlives its worker whenever a container is killed mid-job: the
+    # row stays in_progress, and claims only ever take queued rows, so nothing
+    # reclaims it. These bound how long such an operation can sit there.
+    job_stale_claim_hours: int = Field(default=1, ge=1, le=168)
+    job_stale_claim_interval_seconds: int = Field(default=300, ge=30, le=86_400)
     content_reconciliation_stale_seconds: int = Field(default=3600, ge=60, le=604_800)
     content_reconciliation_max_retries: int = Field(default=3, ge=0, le=20)
     content_reconciliation_batch_size: int = Field(default=50, ge=1, le=100)
@@ -583,6 +600,7 @@ class Settings(BaseSettings):
     gemini_batch_enabled: bool = False  # Global kill switch; per-step modes remain in models.yaml
     tavily_api_key: str | None = None
     admin_api_key: str | None = None  # Protects sensitive endpoints
+    operator_api_key: SecretStr | None = Field(default=None, min_length=32)
 
     # Owner Authentication (Phase 1)
     app_secret_key: str | None = None  # Login password for browser/mobile access
@@ -822,6 +840,32 @@ class Settings(BaseSettings):
     # Observability Provider Configuration
     # Explicit provider selection — matches database/storage provider patterns
     observability_provider: ObservabilityProviderType = "noop"
+    observability_required: bool = False
+    telemetry_heartbeat_interval_seconds: int = Field(default=30, ge=5, le=300)
+    telemetry_buffer_capacity: int = Field(default=10_000, ge=1, le=10_000)
+    telemetry_buffer_capacity_bytes: int = Field(default=268_435_456, ge=1, le=268_435_456)
+    telemetry_flush_timeout_seconds: float = Field(default=5.0, ge=0.05, le=30.0)
+    telemetry_service_instance_id: str | None = Field(default=None, min_length=1, max_length=128)
+    telemetry_release_revision: str = Field(default="unknown", min_length=1, max_length=64)
+
+    # GX-10 production runtime. Defaults preserve all existing deployments; the
+    # stricter policy activates only for the explicit production profile.
+    gx10_runtime_enabled: bool = False
+    gx10_process_role: Literal["api", "worker", "scheduler", "maintenance"] | None = None
+    gx10_masking_policy: str | None = Field(default=None, min_length=1, max_length=100)
+    gx10_authority_fingerprint: str | None = None
+    gx10_ownership_epoch: int | None = Field(default=None, ge=0, le=9_223_372_036_854_775_807)
+    gx10_proxy_username: str | None = Field(default=None, min_length=1, max_length=128)
+    gx10_proxy_password: SecretStr | None = Field(default=None, min_length=32)
+    gx10_rotation_generation: int = Field(default=1, ge=1)
+    gx10_successful_trace_retention_days: int = Field(default=30, ge=1, le=3650)
+    gx10_failed_trace_retention_days: int = Field(default=90, ge=1, le=3650)
+    gx10_high_watermark_percent: int = Field(default=80, ge=1, le=99)
+    gx10_high_clear_percent: int = Field(default=75, ge=1, le=99)
+    gx10_critical_watermark_percent: int = Field(default=90, ge=1, le=99)
+    gx10_critical_clear_percent: int = Field(default=85, ge=1, le=99)
+    gx10_hysteresis_minutes: int = Field(default=15, ge=1, le=1440)
+    gx10_reserve_percent: int = Field(default=13, ge=13, le=100)
 
     # OpenTelemetry (infrastructure layer — used by all providers except noop)
     otel_enabled: bool = False  # Enable OTel auto-instrumentation (FastAPI, SQLAlchemy, httpx)
@@ -855,6 +899,41 @@ class Settings(BaseSettings):
     langfuse_sample_rate: float = 1.0  # Trace sampling rate (0.0-1.0, default: all)
     langfuse_debug: bool = False  # Enable Langfuse SDK debug logging
     langfuse_environment: str | None = None  # Environment tag (production, staging, etc.)
+    # Public browser origin used only for operator trace lookup links. Internal
+    # ingestion/API endpoints are deliberately never reflected to clients.
+    langfuse_public_url: str | None = None
+
+    # Open-source Langfuse has no scheduled deletion: automated retention is an
+    # enterprise feature, so a self-hosted stack grows without bound until
+    # something prunes it over the public API. These drive that pruner. It is
+    # off by default because deletion is irreversible and Langfuse Cloud
+    # enforces its own retention already.
+    langfuse_trace_retention_enabled: bool = False
+    langfuse_trace_retention_days: int = Field(default=30, ge=1, le=3650)
+    langfuse_trace_retention_interval_seconds: int = Field(
+        default=86_400,
+        ge=3600,
+        le=604_800,
+    )
+    # Deleting thousands of traces in one request times out in ClickHouse
+    # (langfuse#11440). Small batches keep each request well inside the
+    # server's own limits.
+    langfuse_trace_retention_batch_size: int = Field(default=50, ge=1, le=100)
+    # A first run against a stack that has never been pruned could otherwise
+    # delete for hours. The cap makes each run bounded; the next run continues.
+    langfuse_trace_retention_max_deletes_per_run: int = Field(
+        default=10_000,
+        ge=1,
+        le=1_000_000,
+    )
+    # Every query must be bounded at both ends: the legacy traces endpoint
+    # answers 422 when one spans too much data, and says to shorten the range.
+    # A slice that still trips the limit is halved at runtime, so this is a
+    # starting width rather than a ceiling. 168h = one week.
+    langfuse_trace_retention_slice_hours: int = Field(default=168, ge=1, le=8760)
+    # How far back a sweep starts. There is no cheap way to ask where history
+    # begins, so this bounds the search; a trace older than it is left alone.
+    langfuse_trace_retention_lookback_days: int = Field(default=400, ge=1, le=3650)
 
     # Braintrust Configuration
     braintrust_api_key: str | None = None  # Braintrust API key
@@ -1123,6 +1202,37 @@ class Settings(BaseSettings):
             )
         return self
 
+    @field_validator("langfuse_public_url")
+    @classmethod
+    def validate_langfuse_public_url(cls, value: str | None) -> str | None:
+        """Accept only a credential-free public HTTPS origin for browser links."""
+
+        if value is None:
+            return None
+        normalized = value.rstrip("/")
+        parsed = urlparse(normalized)
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if (
+            parsed.scheme != "https"
+            or not host
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("LANGFUSE_PUBLIC_URL must be a credential-free HTTPS URL")
+        if host == "localhost" or host.endswith((".localhost", ".local", ".internal")):
+            raise ValueError("LANGFUSE_PUBLIC_URL must not expose an internal host")
+        try:
+            address = ip_address(host)
+        except ValueError:
+            if "." not in host:
+                raise ValueError("LANGFUSE_PUBLIC_URL must use a public hostname")
+        else:
+            if not address.is_global:
+                raise ValueError("LANGFUSE_PUBLIC_URL must use a public address")
+        return normalized
+
     @field_validator("langfuse_sample_rate")
     @classmethod
     def validate_langfuse_sample_rate(cls, v: float) -> float:
@@ -1282,6 +1392,85 @@ class Settings(BaseSettings):
             case "local":
                 # Local provider uses local settings or legacy fallbacks
                 pass
+        return self
+
+    @model_validator(mode="after")
+    def validate_required_observability(self) -> Settings:
+        """Reject silent disablement when a deployment requires telemetry."""
+
+        if not self.observability_required:
+            return self
+        if self.observability_provider == "noop":
+            raise ValueError(
+                "observability_provider cannot be noop when observability_required is true"
+            )
+        if self.observability_provider == "otel" and not self.otel_exporter_otlp_endpoint:
+            raise ValueError(
+                "otel_exporter_otlp_endpoint is required when observability is required"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_gx10_runtime_policy(self) -> Settings:
+        """Fail GX-10 activation closed when observability or identity is incomplete."""
+
+        if not self.gx10_runtime_enabled:
+            return self
+
+        missing: list[str] = []
+        required_values = {
+            "GX10_PROCESS_ROLE": self.gx10_process_role,
+            "OTEL_EXPORTER_OTLP_ENDPOINT": self.otel_exporter_otlp_endpoint,
+            "LANGFUSE_PUBLIC_KEY": self.langfuse_public_key,
+            "LANGFUSE_SECRET_KEY": self.langfuse_secret_key,
+            "TELEMETRY_SERVICE_INSTANCE_ID": self.telemetry_service_instance_id,
+            "GX10_MASKING_POLICY": self.gx10_masking_policy,
+            "GX10_AUTHORITY_FINGERPRINT": self.gx10_authority_fingerprint,
+            "GX10_PROXY_USERNAME": self.gx10_proxy_username,
+            "GX10_PROXY_PASSWORD": self.gx10_proxy_password,
+        }
+        missing.extend(name for name, value in required_values.items() if not value)
+        if missing:
+            raise ValueError(f"GX-10 activation requires: {', '.join(missing)}")
+
+        role = self.gx10_process_role
+        if role == "api" and self.operator_api_key is None:
+            raise ValueError("GX-10 API activation requires OPERATOR_API_KEY")
+        expected_identity = f"aca-gx10-{role}"
+        if self.otel_service_name != expected_identity:
+            raise ValueError("OTEL_SERVICE_NAME must match the GX-10 process role")
+        if self.telemetry_service_instance_id != expected_identity:
+            raise ValueError("TELEMETRY_SERVICE_INSTANCE_ID must match the GX-10 process role")
+        if self.environment != "production":
+            raise ValueError("GX10_RUNTIME_ENABLED requires ENVIRONMENT=production")
+        if self.observability_provider != "langfuse" or not self.observability_required:
+            raise ValueError(
+                "GX10_RUNTIME_ENABLED requires required authenticated Langfuse observability"
+            )
+        if not self.otel_enabled:
+            raise ValueError("GX10_RUNTIME_ENABLED requires OTEL_ENABLED=true")
+        if self.langfuse_sample_rate != 1.0 or self.otel_traces_sampler_arg != 1.0:  # noqa: RUF069
+            raise ValueError("GX-10 production sampling must retain 100 percent of traces")
+        if self.otel_log_prompts:
+            raise ValueError("GX10 production masking forbids OTEL_LOG_PROMPTS")
+        if self.gx10_masking_policy != "gx10-export-mask-v1":
+            raise ValueError("GX10_MASKING_POLICY must be gx10-export-mask-v1")
+        fingerprint = self.gx10_authority_fingerprint or ""
+        if re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None:
+            raise ValueError("GX10_AUTHORITY_FINGERPRINT must be 64 lowercase hex characters")
+        if self.telemetry_release_revision == "unknown":
+            raise ValueError("GX10 runtime requires a concrete TELEMETRY_RELEASE_REVISION")
+        if self.gx10_failed_trace_retention_days < self.gx10_successful_trace_retention_days:
+            raise ValueError(
+                "GX10_FAILED_TRACE_RETENTION_DAYS cannot be shorter than successful retention"
+            )
+        if not (
+            self.gx10_high_clear_percent
+            < self.gx10_high_watermark_percent
+            < self.gx10_critical_clear_percent
+            < self.gx10_critical_watermark_percent
+        ):
+            raise ValueError("GX-10 watermarks must preserve 75 < 80 < 85 < 90 hysteresis")
         return self
 
     @model_validator(mode="after")

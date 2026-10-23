@@ -69,6 +69,7 @@ from src.cli.review_commands import app as review_app
 from src.cli.settings_commands import app as settings_app
 from src.cli.source_commands import app as sources_app
 from src.cli.sync_commands import app as sync_app
+from src.cli.telemetry_commands import app as telemetry_app
 from src.cli.worker_commands import app as worker_app
 from src.cli.workflow_commands import (
     WorkflowCliState,
@@ -85,6 +86,7 @@ from src.cli.workflow_commands import (
     summarize_app,
     theme_app,
 )
+from src.clients.operational_observability import install_cli_telemetry
 
 
 class CanonicalCommandGroup(TyperGroup):
@@ -146,6 +148,7 @@ auth_app.add_typer(importlib.import_module("src.cli.session_commands").app, name
 app.add_typer(curate_app, name="curate")
 app.add_typer(deploy_app, name="deploy")
 app.add_typer(backup_app, name="backup")
+app.add_typer(telemetry_app, name="telemetry")
 app.command("capabilities")(capabilities)
 app.command("configured-sources")(configured_sources)
 
@@ -233,3 +236,4 @@ def main_callback(
     from src.utils.logging import setup_logging
 
     setup_logging()
+    install_cli_telemetry(ctx)

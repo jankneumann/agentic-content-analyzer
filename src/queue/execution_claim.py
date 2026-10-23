@@ -12,8 +12,15 @@ from sqlalchemy import select, text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from src.config.settings import get_settings
 from src.models.content import Content, ContentStatus
 from src.queue.content_execution_lock import lock_content_transaction
+from src.services.environment_ownership import (
+    EnvironmentOwnershipUnavailable,
+    OwnershipFenceRejected,
+    OwnershipIdentity,
+    require_mutation_ownership,
+)
 
 
 class ClaimRejected(RuntimeError):  # noqa: N818 - closed typed claim outcome
@@ -42,6 +49,9 @@ class ExecutionClaim:
     job_id: int
     claim_generation: int
     claim_protocol_version: int = 2
+    environment: str | None = None
+    authority_fingerprint: str | None = None
+    ownership_epoch: int | None = None
 
 
 _CURRENT_EXECUTION_CLAIM: ContextVar[ExecutionClaim | None] = ContextVar(
@@ -98,6 +108,32 @@ def _validate_job_row(row: RowMapping | None, claim: ExecutionClaim) -> None:
         raise ClaimCancelled(f"Operation {claim.job_id} was cancelled")
 
 
+def _guard_environment_ownership(session: Session, claim: ExecutionClaim) -> None:
+    identity_values = (
+        claim.environment,
+        claim.authority_fingerprint,
+        claim.ownership_epoch,
+    )
+    if all(value is None for value in identity_values):
+        if get_settings().gx10_runtime_enabled:
+            raise ClaimSuperseded("environment ownership identity.incomplete")
+        # Legacy environments remain unchanged. GX-10 cannot silently use this
+        # path because its worker must bind the explicit authority and epoch.
+        return
+    if any(value is None for value in identity_values):
+        raise ClaimSuperseded("environment ownership identity.incomplete")
+
+    identity = OwnershipIdentity(
+        configured_environment=claim.environment,  # type: ignore[arg-type]
+        authority_fingerprint=claim.authority_fingerprint,  # type: ignore[arg-type]
+        expected_epoch=claim.ownership_epoch,
+    )
+    try:
+        require_mutation_ownership(session, identity)
+    except (OwnershipFenceRejected, EnvironmentOwnershipUnavailable) as exc:
+        raise ClaimSuperseded(str(exc)) from exc
+
+
 def _job_row(session: Session, claim: ExecutionClaim, *, locking: bool) -> RowMapping | None:
     statement = (
         text(
@@ -135,6 +171,7 @@ def check_execution_claim(session: Session) -> ExecutionClaim:
     """Fail closed at a non-locking cancellation and generation checkpoint."""
 
     claim = _require_current_claim()
+    _guard_environment_ownership(session, claim)
     _validate_job_row(_job_row(session, claim, locking=False), claim)
     return claim
 
@@ -143,11 +180,13 @@ def guard_execution_claim(session: Session) -> ExecutionClaim:
     """Lock and validate the job before acquiring domain persistence locks."""
 
     claim = _require_current_claim()
+    _guard_environment_ownership(session, claim)
     _validate_job_row(_job_row(session, claim, locking=True), claim)
     return claim
 
 
 def _lock_and_validate_job(session: Session, claim: ExecutionClaim) -> None:
+    _guard_environment_ownership(session, claim)
     _validate_job_row(_job_row(session, claim, locking=True), claim)
 
 

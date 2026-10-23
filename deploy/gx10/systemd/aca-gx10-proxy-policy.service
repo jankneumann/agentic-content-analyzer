@@ -1,0 +1,18 @@
+[Unit]
+Description=GX-10 validated CONNECT proxy policy
+Requires=aca-gx10-secrets.service
+After=aca-gx10-secrets.service
+Before=aca-gx10-firewall.service aca-gx10.service
+
+[Service]
+EnvironmentFile=/etc/aca/gx10-images.env
+Type=oneshot
+WorkingDirectory=/opt/aca
+Environment=GX10_ROOT_DIR=/opt/aca
+Environment=GX10_RUNTIME_DIR=/run/aca/gx10
+Environment=GX10_PROXY_POLICY_MAX_AGE_SECONDS=300
+ExecStartPre=/opt/aca/scripts/gx10/check_persistence_ownership.py --service squid
+ExecStartPre=/opt/aca/scripts/gx10/ensure_service.sh squid
+ExecStart=/opt/aca/scripts/gx10/reload_proxy_policy.sh
+UMask=0077
+NoNewPrivileges=yes

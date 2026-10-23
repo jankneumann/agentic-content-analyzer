@@ -146,7 +146,10 @@ def operation_service() -> AsyncMock:
     service.get.return_value = _handle()
     service.wait.return_value = _handle(status="completed")
     summary = OperationSummary.model_validate(
-        _handle().model_dump(mode="json", exclude={"resource", "result", "problem"})
+        _handle().model_dump(
+            mode="json",
+            exclude={"resource", "result", "problem", "observability"},
+        )
     )
     service.list.return_value = OperationPage(data=[summary], next_cursor="next")
     service.list_ingestion_history.return_value = _history_page()

@@ -120,6 +120,7 @@ def operation_event(
         source_kind="operation",
         operation_id=operation_id,
         claim_generation=0,
+        trace_id=None,
         terminal_status=terminal_status,
         reconciliation_action_id=None,
         reconciliation_run_id=None,
@@ -152,7 +153,7 @@ class FakeConnection:
         if "UPDATE workflow_terminal_events" in query:
             if self.status != "pending":
                 return None
-            _, self.status, envelope = args
+            _, self.status, envelope, *_ = args
             self.stored = {"classification_status": self.status, "envelope": envelope}
             return {"id": EVENT_ID}
         if "FROM pgqueuer_jobs AS job" in query:

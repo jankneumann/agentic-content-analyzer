@@ -6,6 +6,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from src.clients.operational_observability import operational_entrypoint
 from src.services.review_service import ReviewService
 from src.utils.digest_formatter import DigestFormatter
 from src.utils.logging import get_logger, setup_logging
@@ -160,7 +161,7 @@ async def interactive_revision_session(
     conversation_history: list[dict[str, Any]] = []
 
     while True:
-        user_input = input("You: ").strip()
+        user_input = input("You: ").strip()  # noqa: ASYNC250
 
         if not user_input:
             continue
@@ -223,7 +224,7 @@ async def interactive_revision_session(
         print("=" * 80)
 
         # Get approval
-        keep = input("\nKeep this change? [yes/no/edit]: ").strip().lower()
+        keep = input("\nKeep this change? [yes/no/edit]: ").strip().lower()  # noqa: ASYNC250
 
         if keep == "yes":
             # Apply revision via service
@@ -291,12 +292,12 @@ async def interactive_revision_session(
     print(f"  - Estimated Cost: ${cost:.4f}")
     print("=" * 80 + "\n")
 
-    action = input("Action [approve/save-draft/discard]: ").strip().lower()
+    action = input("Action [approve/save-draft/discard]: ").strip().lower()  # noqa: ASYNC250
 
     valid_actions = ["approve", "save-draft", "discard"]
     while action not in valid_actions:
         print(f"Invalid action. Choose: {', '.join(valid_actions)}")
-        action = input("Action [approve/save-draft/discard]: ").strip().lower()
+        action = input("Action [approve/save-draft/discard]: ").strip().lower()  # noqa: ASYNC250
 
     session["final_action"] = action
 
@@ -372,6 +373,7 @@ async def quick_review(
         return False
 
 
+@operational_entrypoint("script.review_digest", stage="deliver", service_name="aca-script")
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(

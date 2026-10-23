@@ -5,6 +5,7 @@ Provides auto-cleanup on startup and CLI-invoked cleanup for old events.
 
 from datetime import UTC, datetime, timedelta
 
+from src.clients.operational_observability import operational_entrypoint
 from src.models.notification import NotificationEvent
 from src.storage.database import get_db
 from src.utils.logging import get_logger
@@ -15,6 +16,9 @@ logger = get_logger(__name__)
 AUTO_CLEANUP_DAYS = 90
 
 
+@operational_entrypoint(
+    "maintenance.notification_cleanup", stage="cleanup", service_name="aca-maintenance"
+)
 def cleanup_notifications(older_than_days: int) -> int:
     """Delete notification events older than the specified number of days.
 

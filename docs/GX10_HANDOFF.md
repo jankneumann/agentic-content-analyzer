@@ -1,6 +1,6 @@
 # GX-10 Handoff
 
-State of the `gx10-ec87` host as of 2026-10-10, the coordinator install runbook,
+State of the `gx10-ec87` host as of 2026-10-21, the coordinator install runbook,
 and every task left open. Written to be picked up cold.
 
 Read [CASE_STUDIES.md → GX-10 Production Bring-Up](CASE_STUDIES.md#gx-10-production-bring-up-septemberoctober-2026)
@@ -13,13 +13,17 @@ deployments are shaped by it.
 
 | | |
 |---|---|
-| Analyzer repo | `openspec/gx10-full-operation-observability` @ `3210c834`, clean, pushed |
-| Deployed at `/opt/aca` | `b0a89c2c` — one commit behind (`3210c834` is docs only, no rebuild needed) |
+| Analyzer repo | `openspec/gx10-full-operation-observability`, pushed. Still **not merged to `main`** (88+ commits) |
+| Deployed at `/opt/aca` | `dbe14da8`. The backup-freshness commit after it needs `git pull` + `make install` |
 | Coordinator repo | `feat/gx10-coordinator-deployment` @ `6b0dfca5`, pushed, **not merged, not deployed** |
-| Analyzer runtime | Up. Langfuse healthy, `app-postgres` reachable at `10.89.0.251` |
+| Analyzer runtime | Up since 2026-10-20 ~21:30 EDT after an 8-day outage. All units enabled for boot |
+| Backup | Local + R2 green; catch-up generation `20261021T013318Z` (4.8 GB) |
+| Restore drill | **First ever green run 2026-10-20.** It proves decrypt + unpack only — see task 5 |
 
-The analyzer stack runs green: 15 containers healthy, backup produces six
-verified encrypted artifacts, and the Langfuse pruner is deployed and scheduled.
+The analyzer stack runs green: 15 containers healthy (OpenBao included),
+Langfuse receiving traces, and the Langfuse pruner deployed and scheduled.
+**It has not yet survived a real reboot since the fixes below** — do one in a
+quiet window and check `make status`.
 
 **Container IPs move on every restart.** Only `app-postgres` (`10.89.0.251`),
 `openbao` (`10.89.0.250`) and `caddy` (`10.89.1.250`) are fixed. Rescan rather
@@ -99,6 +103,34 @@ last 40 log lines per unhealthy service, so the failure arrives with evidence.
 ---
 
 ## Part 2 — Open tasks
+
+### 0. The 2026-10-12 reboot outage — fixed 2026-10-20, reboot not yet re-proven
+
+The host rebooted on 2026-10-12 at 14:40 and **the analyzer stayed down for
+eight days**: no ingestion, no digests, no backups, no host firewall. Nothing
+alerted. Every cause was something the manual bring-up had done by hand and
+the repo did not:
+
+| Cause | Symptom | Fix |
+|---|---|---|
+| `make install` never ran `systemctl enable` | Every unit `disabled`; nothing started at boot | `install` enables every unit with `[Install]` (`dcf2770f`) |
+| `/run/aca/gx10` made by hand once; `/run` is a tmpfs | image-pins `226/NAMESPACE` (`ReadWritePaths=`), so OpenBao (`Requires=` it) never started | `deploy/gx10/tmpfiles/aca-gx10.conf`, applied by `install` and at boot |
+| Restore drill appends stdout inside its own `StateDirectory=`; systemd opens output **before** creating state dirs | "Failed to set up standard output" — **every drill since install**, Oct 5 and 12 included | Same tmpfiles file creates `restore-evidence` |
+| Drill `--isolated-root` was its `RuntimeDirectory=`, which systemd pre-creates | "dedicated restore root must not already exist" — the drill could never pass | Root is now `.../restore-drill/isolated` (`6c910229`) |
+| Trace probe read `langfuse.traces`; Langfuse migrates into `default` (it gets no `CLICKHOUSE_DB`; the server's `CLICKHOUSE_DB=langfuse` only creates an empty DB) | `langfuse_trace_metadata_missing` with 513 traces present | Probe and `native_persistence_evidence.sh` query `default.traces` (`dbe14da8`) |
+| No check for a backup that never ran | 8 days, zero alerts: `OnFailure=` needs a run to fail | `aca-gx10-backup-freshness.timer`, hourly, 36 h limit, runtime-independent |
+
+Each has a regression test in `tests/deployment/gx10/`. Lessons:
+
+- **A fresh boot is the first time the host runs exactly what is in the repo.**
+  Anything created by hand during bring-up — a directory, a `start`, an enable —
+  is a reboot bug waiting.
+- **The bugs were stacked.** Each fix exposed the next; the drill needed three
+  before it reached the code that does the work.
+- **`aca-gx10-maintenance-alert@` only writes a syslog line** (`logger -p
+  daemon.err`). It fired for every failed drill and nobody saw it. Until it
+  delivers somewhere a person looks (task 8), *every* alert on this host,
+  including the new freshness one, is a journal entry.
 
 ### 1–3. Langfuse wipe, sliced pruner, local generations — done 2026-10-10
 
@@ -231,7 +263,7 @@ Restore path: download a generation directory (`aws s3 cp --recursive
 `aca-gx10-restore-drill` at it — the uploaded manifest is the same file the
 drill reads.
 
-### 5. Stream the backup pipeline — backup done; restore drill still buffers
+### 5. Stream the backup pipeline — backup done; restore drill still buffers, and is shallow
 
 The scheduled backup now runs `producer | age --encrypt` straight to disk
 (`stream_component` in `scripts/gx10/backup/runtime.py`): memory is one 8 MiB
@@ -245,6 +277,25 @@ by `MAX_COMPONENT_BYTES` (8 GiB). Once ClickHouse regrows past that, the
 weekly drill fails that component (alone) and alerts. The fix mirrors the
 backup: `age --decrypt` (identity via `/proc/self/fd`, as `AgeCommandAdapter`
 does) piped into the restore command.
+
+**More urgent than it looked.** ClickHouse regrew from 134 MB (Oct 10) to
+4.5 GB+ (Oct 20); the generation is 4.8 GB. Two limits are near: the 8 GiB
+in-memory decrypt bound, and the isolated root living on the **13 GB `/run`
+tmpfs** (i.e. in RAM). Move the root to disk in the same change.
+
+**The drill proves less than its name** (read `scripts/gx10/backup/component.sh`):
+
+| Component | "restore" | "validate" |
+|---|---|---|
+| Both Postgres | `pg_restore --file=…sql` — dump converted to a SQL **text file** | file non-empty |
+| ClickHouse, MinIO, FalkorDB, config | `tar -xf` into a directory | directory non-empty |
+| Metadata probes | run against **production** containers, not the restore | — |
+
+No database is ever started on restored data, so the reported 20 s RTO is
+unpack time. A green drill means "artifacts decrypt and unpack, and production
+holds data" — worth a lot, but not a restore. Do the real restore (throwaway
+`paradedb`/`clickhouse` on `$target/data`, probes pointed at them) as an
+OpenSpec change together with the streaming fix; both rewrite the same path.
 
 ### 6. Serve the kanban frontend — to be built from agentic-coding-tools
 
@@ -298,6 +349,21 @@ live PostgreSQL this host does not provide for tests). Verified identical with
 all changed files reverted to `HEAD`. Do that comparison before chasing any
 suite failure here — it takes a minute and prevents both chasing someone else's
 breakage and shipping your own under cover of it.
+
+---
+
+### 8. Deliver maintenance alerts to a person
+
+`aca-gx10-maintenance-alert@.service` runs `logger` and nothing else. Wire it to
+something that reaches a human (the app's notification channel, ntfy, mail).
+It must not depend on the runtime: the alerts that matter most fire when the
+runtime is down.
+
+### 9. Backfill the 2026-10-12 → 10-20 digest gap
+
+The scheduler resumed on restart but does not backfill missed periods. Run the
+daily pipeline for each missed day (`aca pipeline run --period daily
+--period-start … --period-end … --wait`) once ingestion has caught up.
 
 ---
 

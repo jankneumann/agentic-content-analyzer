@@ -39,6 +39,8 @@ from pathlib import Path
 
 import yaml
 
+from src.clients.operational_observability import operational_entrypoint
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -102,6 +104,7 @@ def run_contract_validation(descriptor: Path) -> int:
     return completed.returncode
 
 
+@operational_entrypoint("script.run_gen_eval_gate", stage="model", service_name="aca-script")
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--descriptor", type=Path, default=DEFAULT_DESCRIPTOR)

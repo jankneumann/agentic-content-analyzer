@@ -85,10 +85,13 @@ def setup_otel_log_bridge(resource: Resource) -> LoggerProvider | None:
 
     endpoint, headers = _build_exporter_config("/v1/logs")
 
-    log_exporter = OTLPLogExporter(
+    raw_log_exporter = OTLPLogExporter(
         endpoint=endpoint,
         headers=headers,
     )
+    from src.telemetry.safety import MaskingLogExporter
+
+    log_exporter = MaskingLogExporter(raw_log_exporter)
 
     _logger_provider = _LoggerProvider(resource=resource)
     _logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))

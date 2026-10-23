@@ -294,6 +294,9 @@ jobs:
             hypothesis-contract-${{ matrix.suite }}-${{ hashFiles('uv.lock') }}-
             hypothesis-contract-${{ matrix.suite }}-
 
+      - name: Validate durable workflow contracts
+        run: make workflow-contracts-check
+
       - name: Run database migrations
         env:
           DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters

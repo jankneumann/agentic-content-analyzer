@@ -1,0 +1,820 @@
+"""Execute complete encrypted GX-10 backups and isolated restore drills."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import asdict
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any, Literal, cast
+
+from pydantic import TypeAdapter, ValidationError
+
+from scripts.gx10.maintenance_env import component_environment
+from scripts.gx10.storage.runtime import StorageRuntime
+from src.clients.operational_observability import operational_entrypoint, operational_stage
+from src.contracts.operation_context import get_current_operation_context
+from src.contracts.workflow_models import OperationId, TraceId
+from src.services.backup.gx10 import (
+    AgeRecipientCatalog,
+    BackupComponent,
+    BackupManifest,
+    BackupQuota,
+    ComponentQuotaExceededError,
+    ComponentStreamer,
+    EncryptedArtifact,
+    EncryptionMaterialError,
+    GX10BackupController,
+    GX10RestoreDrill,
+    MaintenanceCorrelation,
+    OpenBaoAgeAdapter,
+    OpenBaoAgeMaterialProvider,
+    RestoreDrillResult,
+    RestoreValidation,
+)
+
+_AGE_ENVELOPE = b"age-encryption.org/v1\n"
+_OPERATION_ID = TypeAdapter(OperationId)
+_TRACE_ID = TypeAdapter(TraceId)
+
+
+_STDERR_EVIDENCE_LIMIT = 400
+
+
+def _command_evidence(stderr: bytes) -> str:
+    """The tail of a failed command's stderr, bounded and masked.
+
+    Without this a failed component reports `component_backup_failed` and
+    nothing else: the manifest carries a diagnostic code by design, the
+    exception named only the program, and the reason died with the subprocess.
+    Every store failing for an unknown reason is indistinguishable from every
+    store failing for six different ones.
+    """
+
+    from src.telemetry.safety import TelemetryMasker
+
+    text = stderr.decode("utf-8", errors="replace").strip()
+    if not text:
+        return "no stderr"
+    tail = text[-_STDERR_EVIDENCE_LIMIT:]
+    return str(TelemetryMasker.from_environment().mask(tail))
+
+
+# _safe_command buffers a command's whole output, so it costs the output's
+# size in RAM. The scheduled backup no longer uses it for components -- a
+# 39GB ClickHouse copy OOM-killed the run that way -- it streams them through
+# stream_component instead. The restore paths still buffer, and this bound
+# keeps one oversized artifact from taking a drill down with it.
+MAX_COMPONENT_BYTES = 8 * 1024**3
+
+_STREAM_CHUNK = 8 * 1024 * 1024
+
+
+def _safe_command(argv: Sequence[str], *, payload: bytes | None = None) -> bytes:
+    if not argv:
+        raise ValueError("component command argv must not be empty")
+    completed = subprocess.run(
+        list(argv),
+        input=payload,
+        capture_output=True,
+        check=False,
+        env=component_environment(),
+    )
+    if len(completed.stdout) > MAX_COMPONENT_BYTES:
+        raise RuntimeError(
+            f"component output {len(completed.stdout)} bytes exceeds the "
+            f"{MAX_COMPONENT_BYTES} byte in-memory limit: {argv[0]}"
+        )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"component command failed: {argv[0]} "
+            f"exit={completed.returncode} stderr={_command_evidence(completed.stderr)}"
+        )
+    return completed.stdout or b""
+
+
+def _stderr_tail(handle: Any) -> bytes:
+    handle.seek(0)
+    return bytes(handle.read()[-4096:])
+
+
+def stream_component(
+    argv: Sequence[str],
+    *,
+    recipient: str,
+    destination: Path,
+    limit_bytes: int,
+) -> tuple[int, str]:
+    """Run `argv | age --encrypt` straight to `destination`, never in memory.
+
+    Memory is one chunk regardless of component size. The ciphertext is
+    hashed and counted as it passes, written to a hidden `.partial` sibling,
+    fsynced, and renamed into place only once BOTH processes exit zero -- a
+    pipeline reports its last stage, and a producer that dies halfway still
+    leaves age exiting cleanly on a truncated stream. Nothing else in the
+    directory ever sees a partial artifact: `*.age` does not match it, so
+    neither pruning nor the quota count can mistake it for a generation.
+    """
+
+    if not argv:
+        raise ValueError("component command argv must not be empty")
+    if limit_bytes <= 0:
+        raise ComponentQuotaExceededError("no backup quota remains")
+    partial = destination.with_name(f".{destination.name}.partial")
+    producer_err = tempfile.TemporaryFile()
+    age_err = tempfile.TemporaryFile()
+    producer = subprocess.Popen(
+        list(argv),
+        stdout=subprocess.PIPE,
+        stderr=producer_err,
+        env=component_environment(),
+    )
+    age = subprocess.Popen(
+        ["age", "--encrypt", "--recipient", recipient],  # noqa: S607 -- PATH as AgeCommandAdapter
+        stdin=producer.stdout,
+        stdout=subprocess.PIPE,
+        stderr=age_err,
+        env=component_environment(),
+    )
+    # Only age holds the read end now, so a dying age gives the producer
+    # SIGPIPE instead of a writer blocked forever.
+    assert producer.stdout is not None and age.stdout is not None
+    producer.stdout.close()
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        descriptor = os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "wb") as sink:
+            while chunk := age.stdout.read(_STREAM_CHUNK):
+                if size == 0 and not chunk.startswith(_AGE_ENVELOPE):
+                    raise EncryptionMaterialError("ciphertext is missing the age envelope")
+                size += len(chunk)
+                if size > limit_bytes:
+                    raise ComponentQuotaExceededError(
+                        f"{destination.name} exceeded the {limit_bytes} byte quota remaining"
+                    )
+                digest.update(chunk)
+                sink.write(chunk)
+            sink.flush()
+            os.fsync(sink.fileno())
+        age_code = age.wait()
+        producer_code = producer.wait()
+        if producer_code != 0:
+            raise RuntimeError(
+                f"component command failed: {argv[0]} exit={producer_code} "
+                f"stderr={_command_evidence(_stderr_tail(producer_err))}"
+            )
+        if age_code != 0 or size == 0:
+            raise EncryptionMaterialError(
+                f"age encryption failed exit={age_code} "
+                f"stderr={_command_evidence(_stderr_tail(age_err))}"
+            )
+        os.replace(partial, destination)
+    except BaseException:
+        for process in (producer, age):
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+        partial.unlink(missing_ok=True)
+        raise
+    finally:
+        age.stdout.close()
+        producer_err.close()
+        age_err.close()
+    return size, digest.hexdigest()
+
+
+def _component_commands(
+    plan: Mapping[str, Any],
+    key: str,
+) -> dict[BackupComponent, tuple[str, ...]]:
+    value = plan.get(key)
+    if not isinstance(value, dict):
+        raise ValueError(f"{key} must be an object")
+    commands: dict[BackupComponent, tuple[str, ...]] = {}
+    for component in BackupComponent:
+        argv = value.get(str(component))
+        if (
+            not isinstance(argv, list)
+            or not argv
+            or not all(isinstance(part, str) and part for part in argv)
+        ):
+            raise ValueError(f"{key}.{component} must be a non-empty argv list")
+        commands[component] = tuple(argv)
+    if set(value) != {str(component) for component in BackupComponent}:
+        raise ValueError(f"{key} must contain exactly the GX-10 component inventory")
+    return commands
+
+
+def _openbao_age_adapter() -> OpenBaoAgeAdapter:
+    return OpenBaoAgeAdapter(material=OpenBaoAgeMaterialProvider())
+
+
+def age_adapter_from_material_file(
+    path: Path,
+    *,
+    require_identities: bool,
+) -> OpenBaoAgeAdapter:
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("age material must be a protected regular file")
+    metadata = path.stat()
+    if stat.S_IMODE(metadata.st_mode) != 0o600 or metadata.st_size > 65536:
+        raise ValueError("age material must be mode 0600 and bounded")
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict) or set(value) != {
+        "active_recipient",
+        "retained_recipients",
+        "identities",
+    }:
+        raise ValueError("age material has an invalid schema")
+    active = value["active_recipient"]
+    retained = value["retained_recipients"]
+    identities = value["identities"]
+    if (
+        not isinstance(active, str)
+        or not isinstance(retained, list)
+        or not all(isinstance(item, str) for item in retained)
+        or not isinstance(identities, dict)
+        or not all(
+            isinstance(key, str) and isinstance(secret, str) for key, secret in identities.items()
+        )
+    ):
+        raise ValueError("age material has invalid values")
+    catalog = AgeRecipientCatalog(active=active, retained=tuple(retained))
+    try:
+        catalog.validated_active()
+    except EncryptionMaterialError as exc:
+        raise ValueError("active age recipient is invalid") from exc
+    if require_identities and any(recipient not in identities for recipient in (active, *retained)):
+        raise ValueError("age identity is unavailable for an active or retained recipient")
+    secrets = {
+        "GX10_AGE_RECIPIENT": active,
+        "GX10_AGE_RETAINED_RECIPIENTS": json.dumps(retained),
+        "GX10_AGE_IDENTITIES": json.dumps(identities),
+    }
+    return OpenBaoAgeAdapter(material=OpenBaoAgeMaterialProvider(read_secret=secrets.get))
+
+
+def _stored_bytes(output_dir: Path) -> int:
+    """Bytes of artifacts already written under the output directory.
+
+    Passing zero here gave every run the full quota again, so the limit only
+    ever bounded a single run and nothing bounded the directory. A GX-10 run
+    writes about 42GB, mostly ClickHouse, and nothing prunes: the quota is the
+    only thing standing between a daily timer and a full disk, and it was
+    measuring the wrong thing.
+    """
+
+    if not output_dir.is_dir():
+        return 0
+    return sum(path.stat().st_size for path in output_dir.glob("*.age") if path.is_file())
+
+
+_ARTIFACT = re.compile(r"^(?P<component>[a-z_]+)-(?P<generation>\d{8}T\d{6}Z)\.age$")
+
+
+def prune_generations(output_dir: Path, *, keep: int) -> list[str]:
+    """Delete all but the newest `keep` complete-looking generations.
+
+    Nothing pruned these before, and the local directory reached 112GB in five
+    days against a 916GB disk. The quota alone would eventually stop the
+    backup, which protects the disk by ending the backups -- not the trade
+    anyone wants.
+
+    Only whole generations go, never the newest one, and only artifacts whose
+    names this module wrote. A file it does not recognise is left alone rather
+    than guessed at.
+    """
+
+    if keep < 1:
+        raise ValueError("keep must retain at least the newest generation")
+    if not output_dir.is_dir():
+        return []
+
+    generations: dict[str, list[Path]] = {}
+    for path in output_dir.glob("*.age"):
+        match = _ARTIFACT.match(path.name)
+        if match:
+            generations.setdefault(match.group("generation"), []).append(path)
+
+    removed: list[str] = []
+    for generation in sorted(generations)[:-keep]:
+        for path in generations[generation]:
+            path.unlink()
+        removed.append(generation)
+    return removed
+
+
+def _maintenance_correlation(
+    operation_id: str | None,
+    trace_id: str | None,
+) -> MaintenanceCorrelation:
+    if (operation_id is None) != (trace_id is None):
+        raise ValueError("operation-id and trace-id must be supplied together")
+    context = get_current_operation_context()
+    if operation_id is None or trace_id is None:
+        if context is None:
+            raise RuntimeError("scheduled backup operation requires a durable operation root")
+        return MaintenanceCorrelation(operation_id=context.operation_id, trace_id=context.trace_id)
+    try:
+        canonical_operation_id = _OPERATION_ID.validate_python(operation_id)
+        canonical_trace_id = _TRACE_ID.validate_python(trace_id)
+    except ValidationError as exc:
+        raise ValueError("maintenance identity is not canonical") from exc
+    if context is not None and (
+        canonical_operation_id != context.operation_id or canonical_trace_id != context.trace_id
+    ):
+        raise ValueError("explicit identity does not match the bound durable operation root")
+    return MaintenanceCorrelation(
+        operation_id=canonical_operation_id,
+        trace_id=canonical_trace_id,
+    )
+
+
+def _command_outcome(result: int) -> Literal["succeeded", "permanent_failure"]:
+    return "succeeded" if result == 0 else "permanent_failure"
+
+
+def resolve_manifest_artifact_path(artifact_dir: Path, name: str) -> Path:
+    artifact_name = Path(name)
+    if not name or artifact_name.is_absolute() or artifact_name.name != name:
+        raise ValueError("manifest artifact name must be a single relative filename")
+    root = artifact_dir.resolve()
+    resolved = (artifact_dir / artifact_name).resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError("manifest artifact name escapes the artifact directory")
+    return resolved
+
+
+def _production_source_inventory(plan: Mapping[str, Any]) -> dict[BackupComponent, Path]:
+    value = plan.get("production_sources")
+    if not isinstance(value, dict):
+        raise ValueError("production_sources must be a complete object")
+    expected = {str(component) for component in BackupComponent}
+    if set(value) != expected:
+        raise ValueError("production_sources must contain exactly the GX-10 component inventory")
+    sources: dict[BackupComponent, Path] = {}
+    for component in BackupComponent:
+        raw = value[str(component)]
+        if not isinstance(raw, str) or not raw:
+            raise ValueError(f"production_sources.{component} must be an absolute path")
+        source = Path(raw)
+        if not source.is_absolute() or not source.exists():
+            raise ValueError(f"production_sources.{component} must be an existing absolute path")
+        sources[component] = source
+    if len({source.resolve() for source in sources.values()}) != len(sources):
+        raise ValueError("production_sources must identify distinct component paths")
+    return sources
+
+
+def run_daily_backup_schedule(
+    run_once: Callable[[], int],
+    *,
+    max_runs: int | None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> int:
+    if max_runs is not None and max_runs < 1:
+        raise ValueError("max_runs must be positive or None")
+    completed = 0
+    while max_runs is None or completed < max_runs:
+        result = run_once()
+        completed += 1
+        if result != 0:
+            return result
+        if max_runs is None or completed < max_runs:
+            sleep(24 * 60 * 60)
+    return 0
+
+
+def run_scheduled_backup(
+    *,
+    plan_path: Path,
+    output_dir: Path,
+    correlation: MaintenanceCorrelation,
+    quota: BackupQuota,
+    age: OpenBaoAgeAdapter | None = None,
+    clock: Callable[[], datetime] | None = None,
+) -> BackupManifest:
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    if not isinstance(plan, dict):
+        raise ValueError("backup plan must be an object")
+    commands = _component_commands(plan, "producers")
+    age_adapter = age or _openbao_age_adapter()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    def streamer(argv: tuple[str, ...]) -> ComponentStreamer:
+        def stream(recipient: str, artifact_name: str, remaining: int) -> tuple[int, str]:
+            return stream_component(
+                argv,
+                recipient=recipient,
+                destination=output_dir / artifact_name,
+                limit_bytes=remaining,
+            )
+
+        return stream
+
+    controller = GX10BackupController(
+        streamers={component: streamer(argv) for component, argv in commands.items()},
+        clock=clock,
+    )
+    started_at = datetime.now(UTC)
+    with operational_stage(
+        "gx10.backup.scheduled",
+        stage="backup",
+        attributes={"backup.operation_id": correlation.operation_id},
+    ):
+        manifest = controller.run(
+            recipient_catalog=age_adapter.catalog(),
+            correlation=correlation,
+            quota=quota,
+            started_at=started_at,
+        )
+    (output_dir / "manifest.json").write_text(manifest.to_json(), encoding="utf-8")
+    return manifest
+
+
+def run_isolated_restore(
+    *,
+    plan_path: Path,
+    manifest_path: Path,
+    artifact_dir: Path,
+    isolated_root: Path,
+    correlation: MaintenanceCorrelation,
+    age: OpenBaoAgeAdapter | None = None,
+) -> RestoreDrillResult:
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    if not isinstance(plan, dict):
+        raise ValueError("restore plan must be an object")
+    restore_commands = _component_commands(plan, "restore")
+    validate_commands = _component_commands(plan, "validate")
+    manifest = BackupManifest.from_json(manifest_path.read_text(encoding="utf-8"))
+    successful = {
+        result.component: result for result in manifest.components if result.outcome == "succeeded"
+    }
+    if set(successful) != set(BackupComponent):
+        raise ValueError("restore manifest must contain every successful component")
+    production_sources = _production_source_inventory(plan)
+    artifacts = {
+        component: EncryptedArtifact(
+            component=component,
+            name=successful[component].artifact_name or "",
+            payload=resolve_manifest_artifact_path(
+                artifact_dir, successful[component].artifact_name or ""
+            ).read_bytes(),
+            checksum_sha256=successful[component].checksum_sha256 or "",
+            encryption_recipient=successful[component].encryption_recipient or "",
+            completed_at=manifest.completed_at,
+        )
+        for component in BackupComponent
+    }
+    age_adapter = age or _openbao_age_adapter()
+
+    def restore_handler(argv: tuple[str, ...]) -> Callable[[bytes, Path], None]:
+        def restore(payload: bytes, target: Path) -> None:
+            target.mkdir(parents=True, exist_ok=True)
+            _safe_command((*argv, str(target)), payload=payload)
+
+        return restore
+
+    def validate_handler(argv: tuple[str, ...]) -> Callable[[Path], bool]:
+        def validate(target: Path) -> bool:
+            try:
+                _safe_command((*argv, str(target)))
+            except RuntimeError:
+                return False
+            return True
+
+        return validate
+
+    drill = GX10RestoreDrill(
+        decrypt=age_adapter.decrypt,
+        restore={component: restore_handler(argv) for component, argv in restore_commands.items()},
+        validate={
+            component: validate_handler(argv) for component, argv in validate_commands.items()
+        },
+    )
+    metadata = plan.get("metadata_probe")
+    if not isinstance(metadata, dict):
+        raise ValueError("metadata_probe must be an object")
+
+    def probe() -> RestoreValidation:
+        checks: dict[str, bool] = {}
+        for name in ("application_operation_rows", "langfuse_trace_metadata"):
+            argv = metadata.get(name)
+            if not isinstance(argv, list) or not argv:
+                raise ValueError(f"metadata_probe.{name} must be an argv list")
+            try:
+                _safe_command(tuple(str(part) for part in argv))
+            except RuntimeError:
+                checks[name] = False
+            else:
+                checks[name] = True
+        return RestoreValidation(**checks)
+
+    recipient_catalog = age_adapter.catalog()
+    return drill.run_drill(
+        artifacts=artifacts,
+        targets={component: isolated_root / str(component) for component in BackupComponent},
+        isolated_root=isolated_root,
+        production_sources=production_sources,
+        available_recipients=(
+            recipient_catalog.validated_active(),
+            *recipient_catalog.retained,
+        ),
+        correlation=correlation,
+        metadata_probe=probe,
+    )
+
+
+def _synthetic_ciphertext(payload: bytes, recipient: str) -> bytes:
+    return _AGE_ENVELOPE + hashlib.sha256(recipient.encode() + payload).digest()
+
+
+def run_synthetic_checkpoint(output: Path) -> dict[str, Any]:
+    """Execute deterministic synthetic contracts and truthfully record native limits."""
+    trace_id = "c" * 32
+    correlation = MaintenanceCorrelation(operation_id="gx10-checkpoint", trace_id=trace_id)
+    start = datetime(2026, 8, 29, 12, tzinfo=UTC)
+    storage_events: list[tuple[str, dict[str, object]]] = []
+
+    def invoke_storage(action: str, payload: dict[str, object]) -> bool:
+        storage_events.append((action, payload))
+        return action != "cleanup"
+
+    storage = StorageRuntime(invoke=invoke_storage)
+    high = storage.run_cycle(
+        usage_percent=80,
+        scheduled_ingestion_concurrency=8,
+        now=start,
+        operation_id=correlation.operation_id,
+        trace_id=trace_id,
+        outcome_specific_retention=False,
+    )
+    critical = storage.run_cycle(
+        usage_percent=90,
+        scheduled_ingestion_concurrency=8,
+        now=start + timedelta(minutes=1),
+        operation_id=correlation.operation_id,
+        trace_id=trace_id,
+        outcome_specific_retention=False,
+    )
+    storage.run_cycle(
+        usage_percent=85,
+        scheduled_ingestion_concurrency=8,
+        now=start + timedelta(minutes=2),
+        operation_id=correlation.operation_id,
+        trace_id=trace_id,
+        outcome_specific_retention=False,
+    )
+    recovered = storage.run_cycle(
+        usage_percent=85,
+        scheduled_ingestion_concurrency=8,
+        now=start + timedelta(minutes=17),
+        operation_id=correlation.operation_id,
+        trace_id=trace_id,
+        outcome_specific_retention=False,
+    )
+
+    stored: dict[str, bytes] = {}
+
+    def synthetic_producer(component: BackupComponent) -> Callable[[], bytes]:
+        def produce() -> bytes:
+            return f"synthetic:{component}".encode()
+
+        return produce
+
+    controller = GX10BackupController(
+        producers={component: synthetic_producer(component) for component in BackupComponent},
+        encrypt=_synthetic_ciphertext,
+        store=stored.__setitem__,
+        clock=lambda: start + timedelta(minutes=5),
+    )
+    manifest = controller.run(
+        recipient_catalog=AgeRecipientCatalog(active="age1" + "a" * 58, retained=()),
+        correlation=correlation,
+        quota=BackupQuota(limit_bytes=1_000_000, used_bytes=0),
+        started_at=start,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="gx10-checkpoint-") as temporary:
+        root = Path(temporary)
+        production_sources = {
+            component: root / "production" / str(component) for component in BackupComponent
+        }
+        for source in production_sources.values():
+            source.mkdir(parents=True)
+        sentinel = production_sources[BackupComponent.APPLICATION_POSTGRESQL] / "sentinel"
+        sentinel.write_text("untouched", encoding="utf-8")
+        artifacts = {
+            result.component: EncryptedArtifact(
+                component=result.component,
+                name=result.artifact_name or "",
+                payload=stored[result.artifact_name or ""],
+                checksum_sha256=result.checksum_sha256 or "",
+                encryption_recipient=result.encryption_recipient or "",
+                completed_at=manifest.completed_at,
+            )
+            for result in manifest.components
+        }
+        restore_times = iter(
+            [
+                start + timedelta(hours=1),
+                *(start + timedelta(hours=1, minutes=index + 1) for index in range(6)),
+                start + timedelta(hours=2),
+            ]
+        )
+        drill = GX10RestoreDrill(
+            decrypt=lambda _payload, _recipient: b"synthetic-restored",
+            restore={
+                component: (lambda _payload, target: target.mkdir(parents=True))
+                for component in BackupComponent
+            },
+            validate={component: (lambda target: target.is_dir()) for component in BackupComponent},
+            clock=lambda: next(restore_times),
+        )
+        restore_result = drill.run_drill(
+            artifacts=artifacts,
+            targets={
+                component: root / "isolated" / str(component) for component in BackupComponent
+            },
+            isolated_root=root / "isolated",
+            production_sources=production_sources,
+            available_recipients=("age1" + "a" * 58,),
+            correlation=correlation,
+            metadata_probe=lambda: RestoreValidation(
+                application_operation_rows=True,
+                langfuse_trace_metadata=True,
+            ),
+        )
+        source_untouched = sentinel.read_text(encoding="utf-8") == "untouched"
+
+    cleanup_alert = next(
+        payload
+        for action, payload in storage_events
+        if action == "alert" and payload.get("diagnostic_code") == "supported_cleanup_failed"
+    )
+    evidence: dict[str, Any] = {
+        "schema_version": 1,
+        "evidence_status": "partial",
+        "task_8_10": {
+            "status": "incomplete",
+            "reason": "native_age_and_component_clis_unavailable",
+        },
+        "checkpoint_mode": "synthetic",
+        "native_age_drill": {
+            "status": "unavailable" if shutil.which("age") is None else "not_executed",
+            "reason": "age_cli_absent" if shutil.which("age") is None else "component_clis_absent",
+        },
+        "storage": {
+            "disk_metrics_percent": [80, 90, 85, 85],
+            "states": [str(high.state), str(critical.state), str(recovered.state)],
+            "cleanup_failure": cleanup_alert,
+        },
+        "backup": {
+            "manifest": json.loads(manifest.to_json()),
+            "checksums": {
+                str(result.component): result.checksum_sha256 for result in manifest.components
+            },
+            "trace_id": trace_id,
+        },
+        "restore": {
+            "outcome": restore_result.outcome,
+            "source_untouched": source_untouched,
+            "trace_id": restore_result.trace_id,
+            "measured_rpo_rto": asdict(restore_result.objectives),
+            "metadata_validation": asdict(restore_result.validation),
+        },
+    }
+    normalized = cast(dict[str, Any], json.loads(json.dumps(evidence, sort_keys=True)))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
+        json.dumps(normalized, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return normalized
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="gx10-backup")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    checkpoint = subparsers.add_parser("checkpoint")
+    checkpoint.add_argument("--output", type=Path, required=True)
+    backup = subparsers.add_parser("backup")
+    scheduled = subparsers.add_parser("schedule")
+    for command in (backup, scheduled):
+        command.add_argument("--plan", type=Path, required=True)
+        command.add_argument("--output", type=Path, required=True)
+        command.add_argument("--operation-id")
+        command.add_argument("--trace-id")
+        command.add_argument("--quota-bytes", type=int, required=True)
+        command.add_argument("--age-material-file", type=Path, required=True)
+        # Explicit, not defaulted: how much history to keep is a policy the
+        # unit file should state out loud.
+        command.add_argument("--keep-generations", type=int, required=True)
+    scheduled.add_argument("--max-runs", type=int, default=0)
+    restore = subparsers.add_parser("restore")
+    restore.add_argument("--plan", type=Path, required=True)
+    restore.add_argument("--manifest", type=Path, required=True)
+    restore.add_argument("--artifacts", type=Path, required=True)
+    restore.add_argument("--isolated-root", type=Path, required=True)
+    restore.add_argument("--operation-id")
+    restore.add_argument("--trace-id")
+    restore.add_argument("--age-material-file", type=Path, required=True)
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    if args.command == "checkpoint":
+        print(json.dumps(run_synthetic_checkpoint(args.output), sort_keys=True))
+        return 0
+    correlation = _maintenance_correlation(args.operation_id, args.trace_id)
+    if args.command in {"backup", "schedule"}:
+        age = age_adapter_from_material_file(args.age_material_file, require_identities=False)
+
+        def run_once() -> int:
+            manifest = run_scheduled_backup(
+                plan_path=args.plan,
+                output_dir=args.output,
+                correlation=correlation,
+                quota=BackupQuota(
+                    limit_bytes=args.quota_bytes,
+                    used_bytes=_stored_bytes(args.output),
+                ),
+                age=age,
+            )
+            print(manifest.to_json())
+            if manifest.outcome == "succeeded":
+                # Only after a good run: pruning on a failed one would trade
+                # generations that restore for one that might not.
+                for generation in prune_generations(args.output, keep=args.keep_generations):
+                    print(f"gx10 pruned backup generation {generation}", file=sys.stderr)
+                return 0
+            return 1
+
+        if args.command == "schedule":
+            return run_daily_backup_schedule(
+                run_once,
+                max_runs=None if args.max_runs == 0 else args.max_runs,
+            )
+        return run_once()
+    result = run_isolated_restore(
+        plan_path=args.plan,
+        manifest_path=args.manifest,
+        artifact_dir=args.artifacts,
+        isolated_root=args.isolated_root,
+        correlation=correlation,
+        age=age_adapter_from_material_file(args.age_material_file, require_identities=True),
+    )
+    print(
+        json.dumps(
+            {
+                "outcome": result.outcome,
+                "trace_id": result.trace_id,
+                "objectives": asdict(result.objectives),
+                "diagnostic_codes": result.diagnostic_codes,
+            },
+            sort_keys=True,
+        )
+    )
+    return 0 if result.outcome == "succeeded" else 1
+
+
+@operational_entrypoint(
+    "gx10.backup.scheduled",
+    stage="backup",
+    service_name="aca-gx10-backup",
+    result_outcome=_command_outcome,
+)
+def _scheduled_backup(argv: Sequence[str] | None = None) -> int:
+    return main(argv)
+
+
+@operational_entrypoint(
+    "gx10.restore_drill.scheduled",
+    stage="restore",
+    service_name="aca-gx10-restore",
+    result_outcome=_command_outcome,
+)
+def _scheduled_restore(argv: Sequence[str] | None = None) -> int:
+    return main(argv)
+
+
+def scheduled_main(argv: Sequence[str] | None = None) -> int:
+    command_args = list(sys.argv[1:] if argv is None else argv)
+    if any(argument in {"-h", "--help"} for argument in command_args):
+        return main(command_args)
+    if command_args and command_args[0] == "restore":
+        return _scheduled_restore(command_args)
+    return _scheduled_backup(command_args)

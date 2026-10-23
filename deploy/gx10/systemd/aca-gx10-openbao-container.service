@@ -1,0 +1,28 @@
+[Unit]
+Description=GX-10 rootful Podman OpenBao container
+Documentation=file:/opt/aca/deploy/gx10/VALIDATION.md
+Requires=aca-gx10-image-pins.service
+After=network-online.target aca-gx10-image-pins.service
+Before=aca-gx10-openbao-provision.service aca-gx10-secrets.service
+
+[Service]
+# Latched on purpose: the container's conmon lives in this unit's cgroup, and
+# systemd terminates that cgroup the moment a oneshot goes inactive (observed
+# as "OpenBao shutdown triggered" on every unlatched run). The runtime's sweep
+# may remove the container while this unit stays active, so operator flows
+# restart it explicitly (make secrets / make provision); its start is idempotent.
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/aca
+EnvironmentFile=/etc/aca/gx10-images.env
+# Recreate OpenBao when the overlay changed; this unit runs before any dependent.
+Environment=GX10_ENSURE_RECREATE_STALE=1
+ExecStartPre=/opt/aca/scripts/gx10/check_persistence_ownership.py --service openbao
+ExecStart=/opt/aca/scripts/gx10/ensure_service.sh openbao
+ExecStartPost=/opt/aca/scripts/gx10/check_openbao_container_started.sh
+UMask=0077
+NoNewPrivileges=yes
+
+# Dependency-driven only. The main GX-10 runtime owns every other container's
+# lifecycle and leaves OpenBao to this unit, so it stays unsealed across
+# runtime restarts for the secrets and backup chains.

@@ -1,45 +1,51 @@
-"""Telemetry middleware for adding trace context to HTTP responses.
-
-Adds X-Trace-Id header to all responses when OpenTelemetry is active,
-enabling correlation between frontend requests and backend traces.
-"""
+"""Telemetry middleware for stable HTTP response trace correlation."""
 
 from __future__ import annotations
+
+import secrets
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 
-from src.utils.logging import get_logger
-
-logger = get_logger(__name__)
-
 
 class TraceIdMiddleware(BaseHTTPMiddleware):
-    """Middleware that adds X-Trace-Id header from OTel span context.
-
-    When OTel is active, extracts the current trace ID from the span context
-    and adds it as an X-Trace-Id response header. This enables:
-    - Frontend to correlate requests with backend traces
-    - Error responses to reference trace IDs for debugging
-    """
+    """Continue an active trace or install a valid synthetic request context."""
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        """Process request and add trace ID to response headers."""
-        response = await call_next(request)
-
         try:
             from opentelemetry import trace
-
-            span = trace.get_current_span()
-            context = span.get_span_context()
-            if context and context.trace_id:
-                # Format as 32-char hex string
-                trace_id = format(context.trace_id, "032x")
-                response.headers["X-Trace-Id"] = trace_id
+            from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags, TraceState
         except ImportError:
-            pass  # OTel not installed — skip silently
-        except Exception:
-            pass  # Don't fail requests due to tracing errors
+            response = await call_next(request)
+            response.headers["X-Trace-Id"] = secrets.token_hex(16)
+            return response
 
+        current = trace.get_current_span().get_span_context()
+        if current.is_valid:
+            response = await call_next(request)
+            response.headers["X-Trace-Id"] = format(current.trace_id, "032x")
+            return response
+
+        trace_id = secrets.randbits(128) or 1
+        span_id = secrets.randbits(64) or 1
+        try:
+            synthetic = NonRecordingSpan(
+                SpanContext(
+                    trace_id=trace_id,
+                    span_id=span_id,
+                    is_remote=False,
+                    trace_flags=TraceFlags(TraceFlags.SAMPLED),
+                    trace_state=TraceState(),
+                )
+            )
+            span_scope = trace.use_span(synthetic, end_on_exit=False)
+        except Exception:
+            response = await call_next(request)
+            response.headers["X-Trace-Id"] = format(trace_id, "032x")
+            return response
+
+        with span_scope:
+            response = await call_next(request)
+        response.headers["X-Trace-Id"] = format(trace_id, "032x")
         return response

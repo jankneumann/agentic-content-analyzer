@@ -1,0 +1,60 @@
+[Unit]
+Description=GX-10 isolated full-stack restore drill
+Requires=aca-gx10-backup-secrets.service
+Requires=aca-gx10-maintenance-plans.service
+After=aca-gx10.service aca-gx10-backup.service aca-gx10-backup-secrets.service
+After=aca-gx10-maintenance-plans.service
+OnFailure=aca-gx10-maintenance-alert@%n.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/aca
+# This process reserves its operation in the application database before
+# doing any work, and the host cannot resolve container names. The renderer
+# writes the same credentials against the database's fixed stateful address.
+EnvironmentFile=/run/aca/gx10/host-maintenance.env
+# podman-compose parses the overlay on every call, and the overlay demands
+# GX10_APP_IMAGE and the reviewed digests. Without them the parse fails
+# before any container is touched, which is every producer that is not a
+# plain tar.
+EnvironmentFile=/etc/aca/gx10-images.env
+# The drill refuses an isolated root that already exists, and systemd creates
+# this directory before ExecStart, so the root is a fresh child of it. systemd
+# removes the whole tree when the unit stops, so a crashed run cannot block the next.
+RuntimeDirectory=aca/gx10/restore-drill
+RuntimeDirectoryMode=0700
+StateDirectory=aca/gx10/restore-evidence
+StateDirectoryMode=0700
+# Never start the runtime from here: Requires= would, and a timer firing
+# during a deliberate `make stop` brought the whole stack back up mid-wipe.
+# A failed ExecStartPre (not Requisite=, whose dependency failure leaves the
+# unit inactive and skips OnFailure=) makes a missed run alert.
+ExecStartPre=/usr/bin/systemctl is-active --quiet aca-gx10.service
+# A timer fires this unit directly, so a stale installed copy would run
+# old settings indefinitely with nothing to say so.
+ExecStartPre=/opt/aca/scripts/gx10/check_unit_current.sh %n
+ExecStart=/opt/aca/.venv/bin/python -m scripts.gx10.backup restore --plan /etc/aca/gx10/restore-plan.json --manifest /var/lib/aca/gx10/backups/manifest.json --artifacts /var/lib/aca/gx10/backups --isolated-root /run/aca/gx10/restore-drill/isolated --age-material-file /run/aca/gx10/backup/restore-age.json
+StandardOutput=append:/var/lib/aca/gx10/restore-evidence/drills.jsonl
+TimeoutStartSec=14400
+UMask=0077
+PrivateTmp=yes
+NoNewPrivileges=yes
+# full, not strict: this unit drives rootful Podman, which writes container
+# state under /var/lib/containers and /run. `strict` mounts the whole
+# hierarchy read-only, so every producer that touches a container failed
+# while the one that only tars a directory succeeded. /usr and /etc stay
+# read-only.
+ProtectSystem=full
+# Containers this unit restarts -- the stores are stopped for a consistent
+# copy -- put their conmon in this unit's cgroup. A oneshot's default kill
+# would take them down again the moment the backup finished.
+KillMode=process
+# read-only, not yes: ExecStart runs /opt/aca/.venv/bin/python, which is a
+# symlink into uv's interpreter under /root. ProtectHome=yes empties /root,
+# so the exec fails with 203/EXEC before any code runs -- the unit reports a
+# failure with nothing in the journal to explain it.
+ProtectHome=read-only
+ReadOnlyPaths=/run/aca/gx10/backup/restore-age.json /var/lib/aca/gx10/backups
+ReadWritePaths=/run/aca/gx10/restore-drill /var/lib/aca/gx10/restore-evidence
+RestrictSUIDSGID=yes
+LockPersonality=yes

@@ -22,6 +22,7 @@ import httpx
 from httpcore._backends.auto import AutoBackend
 from httpcore._backends.base import SOCKET_OPTION, AsyncNetworkBackend, AsyncNetworkStream
 
+from src.clients.operational_observability import operational_entrypoint
 from src.contracts.workflow_alert_models import WorkflowAlertEnvelopeV1
 from src.utils.logging import get_logger
 
@@ -53,6 +54,7 @@ class AlertSink(Protocol):
 class NoopAlertSink:
     """Default-off sink that performs no external work."""
 
+    @operational_entrypoint("alert.noop_delivery", stage="alert", service_name="aca-alert")
     async def deliver(
         self,
         envelope: WorkflowAlertEnvelopeV1,
@@ -193,6 +195,7 @@ class WebhookAlertSink:
         self._max_response_bytes = max_response_bytes
         self._clock = clock or (lambda: datetime.now(UTC))
 
+    @operational_entrypoint("alert.webhook_delivery", stage="alert", service_name="aca-alert")
     async def deliver(
         self,
         envelope: WorkflowAlertEnvelopeV1,

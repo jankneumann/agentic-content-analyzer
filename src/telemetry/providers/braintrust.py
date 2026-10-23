@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 
     from fastapi import FastAPI
 
+from src.telemetry.safety import TelemetryMasker
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -120,13 +121,11 @@ class BraintrustProvider:
             span = braintrust.current_span()
 
             log_data: dict[str, Any] = {
-                "input": user_prompt if self._log_prompts else f"[{len(user_prompt)} chars]",
-                "output": response_text if self._log_prompts else f"[{len(response_text)} chars]",
                 "metadata": {
                     "model": model,
                     "provider": provider,
                     "max_tokens": max_tokens,
-                    **(metadata or {}),
+                    **TelemetryMasker.from_environment().mask(metadata or {}),
                 },
                 "metrics": {
                     "input_tokens": input_tokens,

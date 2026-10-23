@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh GX-10 CONNECT proxy policy readiness before expiry
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=180s
+AccuracySec=10s
+Unit=aca-gx10-proxy-policy.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

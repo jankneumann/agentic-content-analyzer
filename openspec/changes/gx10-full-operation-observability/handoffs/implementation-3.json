@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-08-29T03:19:11.297161+00:00",
+  "coordinator_error": null,
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Completed and integrated wp-db-projection and wp-telemetry-context. Tasks 2.1-2.5 and 3.1-3.5 are committed independently, their package branches are synchronized with origin, and the verified changes are merged into the feature branch. PostgreSQL projections preserve direct-SQL negative coverage and stale-claim fencing; telemetry now enforces immutable context, export-time masking, byte ceilings, and the deterministic per-attempt observation budget.",
+    "completed_work": [
+      "Tasks 2.1-2.5: added the additive Alembic projection, queue compatibility checks, typed attempt/process-health repositories, canonical-claim fences, retention behavior, and complete direct-SQL negative fixtures.",
+      "Tasks 3.1-3.5: added immutable OperationContext propagation, W3C helpers, safe cross-provider telemetry, masking canaries, byte bounds, and a reserved final-observation budget.",
+      "Package verification passed: database 9 unit plus 23 PostgreSQL integration tests; telemetry 89 focused tests; Ruff, mypy, strict OpenSpec, and whitespace checks passed. The integrated database unit tests passed; its live rerun requires PostgreSQL and package-level disposable-Neon evidence remains authoritative."
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Fence attempt writes against the canonical queue claim",
+        "rationale": "FOR UPDATE checks ensure a stale claim can record only bounded evidence on its own attempt and cannot overwrite a newer attempt or canonical operation state.",
+        "capability": "cross-service-operation-correlation",
+        "supersedes": null
+      },
+      {
+        "title": "Reserve capacity for terminal telemetry",
+        "rationale": "The deterministic 256-observation/16-MiB envelope reserves 64 observations and 4 MiB for final evidence while shedding optional successful detail first and exposing omission counters.",
+        "capability": "operation-observability-safety",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Implement the next dependency-ready packages from work-packages.yaml without weakening direct-SQL negative fixtures or generated validator parity.",
+      "Carry the package JUnit evidence into integration validation and retain the mandatory six-hour GX-10 acceptance gate."
+    ],
+    "relevant_files": [
+      {
+        "path": "alembic/versions/e4b7c9d2a610_add_operation_observability.py",
+        "description": "Additive operation observability projection migration"
+      },
+      {
+        "path": "src/repositories/operation_observation_attempts.py",
+        "description": "Fenced attempt projection repository"
+      },
+      {
+        "path": "src/repositories/telemetry_process_health.py",
+        "description": "Bounded telemetry process-health repository"
+      },
+      {
+        "path": "src/contracts/operation_context.py",
+        "description": "Immutable context and W3C propagation helpers"
+      },
+      {
+        "path": "src/telemetry/safety.py",
+        "description": "Masking, byte ceilings, and observation budgets"
+      },
+      {
+        "path": "tests/integration/test_operation_observation_attempts.py",
+        "description": "PostgreSQL migration, fencing, retention, and direct-SQL negative coverage"
+      },
+      {
+        "path": "tests/telemetry/test_operation_safety.py",
+        "description": "Telemetry masking, bounds, budget, and canary coverage"
+      }
+    ]
+  }
+}

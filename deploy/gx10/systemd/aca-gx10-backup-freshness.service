@@ -1,0 +1,25 @@
+[Unit]
+Description=GX-10 alert when the newest successful backup is older than the RPO
+OnFailure=aca-gx10-maintenance-alert@%n.service
+# No Requires=, After= or ExecCondition on the runtime, its secrets or the
+# backup: this check exists for the outage where those are down. The 8-day gap
+# after the 2026-10-12 reboot raised no alert because nothing ran to fail.
+
+[Service]
+Type=oneshot
+# A timer fires this unit directly, so a stale installed copy would run
+# old settings indefinitely with nothing to say so.
+ExecStartPre=/opt/aca/scripts/gx10/check_unit_current.sh %n
+# System python, isolated: the script is stdlib-only, so it needs neither the
+# venv (a symlink into /root) nor anything the runtime renders.
+ExecStart=/usr/bin/python3 -I /opt/aca/scripts/gx10/backup/freshness.py --manifest /var/lib/aca/gx10/backups/manifest.json --max-age-hours 36
+TimeoutStartSec=60
+UMask=0077
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadOnlyPaths=/var/lib/aca/gx10/backups
+RestrictSUIDSGID=yes
+LockPersonality=yes

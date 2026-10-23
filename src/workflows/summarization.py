@@ -5,12 +5,14 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from src.contracts.operation_context import OperationOutcome, OperationStage
 from src.contracts.workflow_models import SummarizationRequest
 from src.models.content import ContentStatus
 from src.models.jobs import JobStatus, ResourceReference
 from src.models.query import ContentQuery
 from src.services.content_query import ContentQueryService
 from src.services.operation_service import OperationService
+from src.workflows.stage_observability import operation_stage
 
 ChildDispatcher = Callable[..., Awaitable[dict[str, Any]]]
 
@@ -75,7 +77,12 @@ class SummarizationWorkflow:
             dispatch_options["existing_child_operation_ids"] = existing_result[
                 "child_operation_ids"
             ]
-        result = await self.child_dispatcher(content_ids, **dispatch_options)
+        with operation_stage("workflow.summarization", OperationStage.MODEL) as evidence:
+            result = await self.child_dispatcher(content_ids, **dispatch_options)
+            outcome = (
+                OperationOutcome.PARTIAL if result.get("failed_ids") else OperationOutcome.SUCCEEDED
+            )
+            evidence.finish(outcome)
         normalized = {"content_ids": content_ids, **result}
         if normalized.get("deferred") is True:
             return normalized

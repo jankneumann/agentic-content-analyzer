@@ -26,6 +26,7 @@ import argparse
 import asyncio
 from pathlib import Path
 
+from src.clients.operational_observability import operational_entrypoint
 from src.config import settings
 from src.models.podcast import (
     PodcastLength,
@@ -124,7 +125,7 @@ async def interactive_script_review(review_service, script_id: int, script) -> b
         print("  [x] Reject script and exit")
         print("  [v] View script again")
 
-        choice = input("\nYour choice (a/r/x/v): ").strip().lower()
+        choice = input("\nYour choice (a/r/x/v): ").strip().lower()  # noqa: ASYNC250
 
         if choice == "a":
             # Approve script
@@ -142,7 +143,7 @@ async def interactive_script_review(review_service, script_id: int, script) -> b
             # Request revision for a section
             print(f"\nSections available: 1-{len(script.sections)}")
             try:
-                section_num = int(input("Enter section number to revise: ").strip())
+                section_num = int(input("Enter section number to revise: ").strip())  # noqa: ASYNC250
                 section_index = section_num - 1
 
                 if section_index < 0 or section_index >= len(script.sections):
@@ -151,7 +152,7 @@ async def interactive_script_review(review_service, script_id: int, script) -> b
 
                 print(f"\nRevising Section {section_num}: {script.sections[section_index].title}")
                 print("\nProvide your feedback for this section:")
-                feedback = input("> ").strip()
+                feedback = input("> ").strip()  # noqa: ASYNC250
 
                 if not feedback:
                     print("❌ Feedback cannot be empty")
@@ -193,7 +194,7 @@ async def interactive_script_review(review_service, script_id: int, script) -> b
         elif choice == "x":
             # Reject script
             confirm = (
-                input("\n⚠️  Are you sure you want to reject this script? (yes/no): ")
+                input("\n⚠️  Are you sure you want to reject this script? (yes/no): ")  # noqa: ASYNC250
                 .strip()
                 .lower()
             )
@@ -248,6 +249,7 @@ def get_voice_persona(speaker: str, gender: str) -> VoicePersona:
         return VoicePersona.SAM_MALE if gender.lower() == "male" else VoicePersona.SAM_FEMALE
 
 
+@operational_entrypoint("script.generate_podcast", stage="deliver", service_name="aca-script")
 async def generate_podcast(
     digest_id: int | None = None,
     script_id: int | None = None,

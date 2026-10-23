@@ -74,12 +74,31 @@ REQUIRED_QUEUE_COLUMNS: set[str] = {
     "retry_count",
     "claim_generation",
     "claim_protocol_version",
+    "root_job_id",
+    "submission_context",
+    "submission_traceparent",
+    "submission_tracestate",
+    "trace_id",
+    "submission_span_id",
 }
 REQUIRED_QUEUE_TABLES: set[str] = {
     "pgqueuer_jobs",
     "content_reconciliation_actions",
     "workflow_terminal_events",
     "workflow_alert_deliveries",
+    "operation_observation_attempts",
+    "telemetry_process_health",
+    "environment_ownership",
+}
+REQUIRED_CORRELATION_COLUMNS: dict[str, set[str]] = {
+    "audit_log": {
+        "trace_id",
+        "request_span_id",
+        "submitted_operation_id",
+        "service_name",
+        "release_revision",
+    },
+    "workflow_terminal_events": {"trace_id"},
 }
 REQUIRED_QUEUE_TRIGGERS: set[tuple[str, str]] = {
     ("pgqueuer_jobs", "pgqueuer_jobs_capture_terminal_event"),
@@ -523,6 +542,25 @@ async def ensure_queue_schema_compatible() -> None:
                 "Queue schema is outdated. Missing columns in 'pgqueuer_jobs': "
                 f"{missing_csv}. Run migrations first."
             )
+
+        for table_name, required_columns in REQUIRED_CORRELATION_COLUMNS.items():
+            rows = await conn.fetch(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = $1
+                """,
+                table_name,
+            )
+            actual_columns = {str(row["column_name"]) for row in rows}
+            missing_columns = sorted(required_columns - actual_columns)
+            if missing_columns:
+                missing_csv = ", ".join(missing_columns)
+                raise RuntimeError(
+                    "Queue schema is outdated. Missing columns in "
+                    f"'{table_name}': {missing_csv}. Run migrations first."
+                )
 
         trigger_rows = await conn.fetch(
             """
@@ -1207,19 +1245,29 @@ async def cleanup_old_jobs(
 
 async def mark_stale_jobs_failed(
     stale_threshold_hours: int = DEFAULT_STALE_THRESHOLD_HOURS,
+    *,
+    conn: asyncpg.Connection | None = None,
 ) -> int:
     """Mark stale in_progress jobs as failed.
 
-    Jobs stuck in 'in_progress' for longer than the threshold
-    are assumed to have crashed and are marked failed.
+    A claim outlives its worker whenever a container is killed mid-job. The row
+    keeps ``status='in_progress'`` and claims only ever take ``queued`` rows, so
+    without this the operation waits forever and its submitter never learns why.
+
+    Terminal status is the fence here: ``_complete_job`` requires the row to
+    still be ``in_progress`` with a matching claim generation, so a worker that
+    comes back from the dead cannot overwrite the failure recorded below. The
+    status change also fires the terminal-event trigger, which is what makes a
+    reaped operation alertable rather than silent.
 
     Args:
         stale_threshold_hours: Hours before a job is considered stale
+        conn: Reuse a caller's connection; the periodic tick holds one open.
 
     Returns:
         Number of jobs marked as failed
     """
-    async with _queue_connection() as conn:
+    async with _queue_connection(conn) as conn:
         cutoff = datetime.now(UTC) - timedelta(hours=stale_threshold_hours)
 
         result = await conn.execute(

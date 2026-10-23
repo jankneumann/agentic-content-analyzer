@@ -68,6 +68,7 @@ class WorkflowTerminalEvent(Base):
     source_kind = Column(String(40), nullable=False)
     operation_id = Column(BigInteger, nullable=True)
     claim_generation = Column(BigInteger, nullable=True)
+    trace_id = Column(String(32), nullable=True)
     terminal_status = Column(String(20), nullable=True)
     reconciliation_action_id = Column(BigInteger, nullable=True)
     reconciliation_run_id = Column(UUID(as_uuid=True), nullable=True)
@@ -124,6 +125,10 @@ class WorkflowTerminalEvent(Base):
         CheckConstraint(
             "claim_generation IS NULL OR claim_generation >= 0",
             name="ck_workflow_terminal_events_claim_generation",
+        ),
+        CheckConstraint(
+            "trace_id IS NULL OR (trace_id ~ '^[0-9a-f]{32}$' AND trace_id <> repeat('0',32))",
+            name="ck_workflow_terminal_events_trace_id",
         ),
         CheckConstraint(
             "reconciliation_action_id IS NULL OR reconciliation_action_id > 0",

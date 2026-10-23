@@ -11,11 +11,16 @@ progress tracking and batch reconciliation.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
-from collections.abc import Callable, Coroutine
+import os
+import secrets
+import socket
+from collections.abc import Awaitable, Callable, Coroutine, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from time import monotonic
-from typing import Any
+from typing import Any, Literal
 
 import asyncpg
 
@@ -23,6 +28,218 @@ from src.storage.database import get_queue_connection_string
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+class TelemetryLifecycle:
+    """One bounded telemetry lifecycle shared by every long/short-lived process."""
+
+    def __init__(
+        self,
+        *,
+        settings: Any,
+        service_name: str,
+        lifecycle_kind: Literal["long_running", "short_lived"],
+        service_instance_id: str | None = None,
+    ) -> None:
+        self.settings = settings
+        self.service_name = service_name[:100]
+        self.lifecycle_kind = lifecycle_kind
+        configured_instance = getattr(settings, "telemetry_service_instance_id", None)
+        self.service_instance_id = (
+            service_instance_id
+            or configured_instance
+            or os.environ.get("ACA_SERVICE_INSTANCE_ID")
+            or f"{socket.gethostname()}-{os.getpid()}-{secrets.token_hex(4)}"
+        )[:128]
+        self.release_revision = (
+            getattr(settings, "telemetry_release_revision", None)
+            or os.environ.get("RELEASE_REVISION")
+            or os.environ.get("RAILWAY_GIT_COMMIT_SHA")
+            or "unknown"
+        )[:64]
+        self.required = bool(getattr(settings, "observability_required", False))
+        self.initialized = False
+        self.status: Literal["healthy", "degraded", "disabled", "stale"] = "disabled"
+        self.last_success_at: datetime | None = None
+        self.last_error_at: datetime | None = None
+        self.last_error_code: str | None = None
+        self.buffered_count = 0
+        self.buffered_bytes = 0
+        self.buffer_capacity = min(
+            int(getattr(settings, "telemetry_buffer_capacity", 10_000)), 10_000
+        )
+        self.buffer_capacity_bytes = min(
+            int(getattr(settings, "telemetry_buffer_capacity_bytes", 268_435_456)),
+            268_435_456,
+        )
+        self.dropped_count = 0
+        self.last_flush_at: datetime | None = None
+        self.last_flush_succeeded: bool | None = None
+
+    @property
+    def export_target(self) -> Literal["local_langfuse", "remote_langfuse", "other_otlp", "none"]:
+        provider = str(getattr(self.settings, "observability_provider", "noop"))
+        if provider == "langfuse":
+            base_url = str(getattr(self.settings, "langfuse_base_url", ""))
+            return (
+                "local_langfuse"
+                if "localhost" in base_url or "127.0.0.1" in base_url
+                else "remote_langfuse"
+            )
+        if getattr(self.settings, "otel_exporter_otlp_endpoint", None):
+            return "other_otlp"
+        return "none"
+
+    def initialize(
+        self,
+        *,
+        app: Any | None = None,
+        setup: Callable[[Any | None], None] | None = None,
+    ) -> None:
+        """Initialize before instrumented clients and enforce required readiness."""
+
+        provider = str(getattr(self.settings, "observability_provider", "noop"))
+        if self.required and (provider == "noop" or self.export_target == "none"):
+            self.status = "degraded"
+            self.last_error_at = datetime.now(UTC)
+            self.last_error_code = "telemetry.required_configuration_missing"
+            raise RuntimeError("required observability has no configured export target")
+        if setup is None:
+            from src.telemetry import setup_telemetry
+
+            setup = setup_telemetry
+        setup(app)
+        self.initialized = True
+        self.status = "disabled" if self.export_target == "none" else "healthy"
+
+    def record_buffered(self, count: int, *, buffered_bytes: int = 0) -> None:
+        """Apply the bounded process buffer and expose deterministic overflow."""
+
+        if count < 0 or buffered_bytes < 0:
+            raise ValueError("buffered count and bytes must be non-negative")
+        accepted = min(count, self.buffer_capacity)
+        accepted_bytes = min(buffered_bytes, self.buffer_capacity_bytes)
+        self.buffered_count = accepted
+        self.buffered_bytes = accepted_bytes
+        overflow = count - accepted
+        byte_overflow = buffered_bytes - accepted_bytes
+        if byte_overflow and not overflow:
+            overflow = 1
+        if overflow:
+            self.dropped_count += overflow
+            self.status = "degraded"
+            self.last_error_at = datetime.now(UTC)
+            self.last_error_code = "telemetry.buffer_overflow"
+
+    def record_export_success(self, *, buffered_count: int = 0, buffered_bytes: int = 0) -> None:
+        self.buffered_count = min(max(buffered_count, 0), self.buffer_capacity)
+        self.buffered_bytes = min(max(buffered_bytes, 0), self.buffer_capacity_bytes)
+        self.last_success_at = datetime.now(UTC)
+        self.last_error_code = None
+        self.status = "healthy"
+
+    def record_export_failure(self, error_code: str) -> None:
+        self.last_error_at = datetime.now(UTC)
+        self.last_error_code = error_code[:80]
+        self.status = "degraded"
+
+    async def heartbeat(self, conn: Any) -> Any:
+        from src.repositories.telemetry_process_health import (
+            ProcessHealthHeartbeat,
+            upsert_process_health,
+        )
+
+        return await upsert_process_health(
+            conn,
+            ProcessHealthHeartbeat(
+                environment=str(self.settings.environment),
+                service_name=self.service_name,
+                service_instance_id=self.service_instance_id,
+                release_revision=self.release_revision,
+                lifecycle_kind=self.lifecycle_kind,
+                required_observability=self.required,
+                initialized=self.initialized,
+                status=self.status,
+                export_target=self.export_target,
+                last_heartbeat_at=datetime.now(UTC),
+                last_success_at=self.last_success_at,
+                last_error_at=self.last_error_at,
+                last_error_code=self.last_error_code,
+                buffered_count=self.buffered_count,
+                buffer_capacity=self.buffer_capacity,
+                dropped_count=self.dropped_count,
+                last_flush_at=self.last_flush_at,
+                last_flush_succeeded=self.last_flush_succeeded,
+            ),
+        )
+
+    async def shutdown(
+        self,
+        conn: Any | None,
+        *,
+        flush: Callable[[], Awaitable[None]] | None = None,
+    ) -> bool:
+        """Bound shutdown flush and persist terminal evidence when possible."""
+
+        if flush is None:
+            from src.telemetry import shutdown_telemetry
+
+            async def flush() -> None:
+                await asyncio.to_thread(shutdown_telemetry)
+
+        succeeded = True
+        try:
+            await asyncio.wait_for(
+                flush(),
+                timeout=float(getattr(self.settings, "telemetry_flush_timeout_seconds", 5.0)),
+            )
+        except (TimeoutError, Exception):
+            succeeded = False
+            self.record_export_failure("telemetry.flush_failed")
+        self.last_flush_at = datetime.now(UTC)
+        self.last_flush_succeeded = succeeded
+        if conn is not None:
+            await self.heartbeat(conn)
+        return succeeded
+
+
+def create_telemetry_lifecycle(
+    *, service_name: str, lifecycle_kind: Literal["long_running", "short_lived"]
+) -> TelemetryLifecycle:
+    from src.config.settings import get_settings
+
+    return TelemetryLifecycle(
+        settings=get_settings(), service_name=service_name, lifecycle_kind=lifecycle_kind
+    )
+
+
+async def run_telemetry_heartbeat(lifecycle: TelemetryLifecycle) -> None:
+    """Persist bounded process health until the owning process cancels the task."""
+
+    from src.queue.setup import _queue_connection
+
+    interval = float(getattr(lifecycle.settings, "telemetry_heartbeat_interval_seconds", 30))
+    while True:
+        try:
+            async with _queue_connection() as conn:
+                await lifecycle.heartbeat(conn)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            lifecycle.record_export_failure("telemetry.health_write_failed")
+            logger.warning("Telemetry process-health heartbeat failed", exc_info=True)
+        await asyncio.sleep(interval)
+
+
+async def shutdown_process_telemetry(lifecycle: TelemetryLifecycle) -> bool:
+    from src.queue.setup import _queue_connection
+
+    try:
+        async with _queue_connection() as conn:
+            return await lifecycle.shutdown(conn)
+    except Exception:
+        return await lifecycle.shutdown(None)
+
 
 # Registry of entrypoint → async handler functions
 _handlers: dict[str, Callable[..., Coroutine[Any, Any, None]]] = {}
@@ -33,7 +250,16 @@ _BATCH_MAINTENANCE_ADVISORY_LOCK = 2_104_711_915
 _BATCH_MAINTENANCE_INTERVAL_SECONDS = 60.0
 _RETENTION_MAINTENANCE_ADVISORY_LOCK = 2_104_711_916
 _WORKFLOW_ALERT_MAINTENANCE_ADVISORY_LOCK = 2_104_711_917
+_STALE_CLAIM_ADVISORY_LOCK = 2_104_711_918
+_LANGFUSE_RETENTION_ADVISORY_LOCK = 2_104_711_919
 _WORKFLOW_ALERT_MAINTENANCE_INTERVAL_SECONDS = 5.0
+# Backup freshness is a question about the last 48 hours, and every evaluation
+# is a traced operation. Asking it every five seconds produced 251,438 spans of
+# `operation.alert.backup_freshness` against single digits for everything else,
+# which is what filled 39GB of ClickHouse and 4.9GB of object storage on a host
+# that had run one ingest. Fifteen minutes still notices a stale backup long
+# before the staleness window closes.
+_BACKUP_FRESHNESS_INTERVAL_SECONDS = 900.0
 _WORKFLOW_ALERT_MAX_CONCURRENT_DELIVERIES = 8
 
 _WORKFLOW_ALERT_PENDING_EVENT_QUERY = """
@@ -123,7 +349,9 @@ async def _claim_jobs(
             LIMIT $1
             FOR UPDATE SKIP LOCKED
         )
-        RETURNING id, entrypoint, payload, claim_generation, claim_protocol_version
+        RETURNING id, entrypoint, payload, claim_generation, claim_protocol_version,
+                  root_job_id, submission_context, submission_traceparent,
+                  submission_tracestate, trace_id, created_at
         """,
         batch_size,
     )
@@ -286,6 +514,359 @@ async def _emit_job_notification(
         logger.debug("Failed to emit job notification", exc_info=True)
 
 
+def _queue_wait_milliseconds(job: dict[str, Any], *, now: datetime | None = None) -> int:
+    """Return a non-negative bounded queue-wait duration from durable timestamps."""
+
+    created_at = job.get("created_at")
+    if not isinstance(created_at, datetime):
+        return 0
+    elapsed = ((now or datetime.now(UTC)) - created_at).total_seconds() * 1000
+    return min(max(int(elapsed), 0), 2_147_483_647)
+
+
+def _attempt_context_from_job(job: dict[str, Any]):
+    """Reconstruct one claim attempt strictly from persisted queue context."""
+
+    from src.config.settings import get_settings
+    from src.contracts.operation_context import (
+        OperationContext,
+        OperationStage,
+        parse_operation_context,
+    )
+
+    raw = job.get("submission_context")
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+    settings = get_settings()
+    if raw is None:
+        trace_id = secrets.token_hex(16)
+        submission_span_id = secrets.token_hex(8)
+        operation_id = str(job["id"])
+        submission = OperationContext(
+            schema_version=1,
+            operation_id=operation_id,
+            root_operation_id=str(job.get("root_job_id") or operation_id),
+            parent_operation_id=None,
+            traceparent=f"00-{trace_id}-{submission_span_id}-01",
+            tracestate=None,
+            trace_id=trace_id,
+            span_id=submission_span_id,
+            claim_generation="0",
+            attempt_number=None,
+            entrypoint=str(job["entrypoint"]),
+            service_name=settings.otel_service_name[:100] or "newsletter-aggregator",
+            service_instance_id="legacy-submission",
+            environment=settings.environment,
+            release_revision="legacy",
+            authority_fingerprint=(
+                settings.gx10_authority_fingerprint if settings.gx10_runtime_enabled else None
+            ),
+            ownership_epoch=(
+                str(settings.gx10_ownership_epoch)
+                if settings.gx10_runtime_enabled and settings.gx10_ownership_epoch is not None
+                else None
+            ),
+            stage=OperationStage.SUBMIT,
+            resource_kind=None,
+            resource_key=None,
+        )
+    else:
+        submission = parse_operation_context(raw)
+        if (
+            submission.operation_id != str(job["id"])
+            or submission.root_operation_id != str(job["root_job_id"])
+            or submission.traceparent != job["submission_traceparent"]
+            or submission.tracestate != job.get("submission_tracestate")
+            or submission.trace_id != job["trace_id"]
+        ):
+            raise ValueError("queue observation context fields do not match")
+
+    claim_generation = int(job["claim_generation"])
+    span_id = secrets.token_hex(8)
+    instance = os.environ.get("ACA_SERVICE_INSTANCE_ID", socket.gethostname())[:128] or "unknown"
+    release = os.environ.get(
+        "RELEASE_REVISION", os.environ.get("RAILWAY_GIT_COMMIT_SHA", "unknown")
+    )
+    values = submission.model_dump(mode="python")
+    values.update(
+        traceparent=f"00-{submission.trace_id}-{span_id}-{submission.traceparent[-2:]}",
+        span_id=span_id,
+        claim_generation=str(claim_generation),
+        attempt_number=str(claim_generation + 1),
+        service_name=settings.otel_service_name[:100] or "newsletter-aggregator",
+        service_instance_id=instance,
+        environment=settings.environment,
+        release_revision=release[:64] or "unknown",
+        authority_fingerprint=(
+            settings.gx10_authority_fingerprint
+            if settings.gx10_runtime_enabled
+            else submission.authority_fingerprint
+        ),
+        ownership_epoch=(
+            str(settings.gx10_ownership_epoch)
+            if settings.gx10_runtime_enabled and settings.gx10_ownership_epoch is not None
+            else submission.ownership_epoch
+        ),
+        stage=OperationStage.CLAIM,
+    )
+    return OperationContext.model_validate(values)
+
+
+@contextmanager
+def _bind_submission_parent(job: dict[str, Any]) -> Iterator[None]:
+    """Install the validated persisted W3C carrier as the OTel remote parent."""
+
+    raw = job.get("submission_context")
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+    if raw is None:
+        yield
+        return
+    from src.contracts.operation_context import parse_operation_context
+
+    submission = parse_operation_context(raw)
+    carrier = {"traceparent": submission.traceparent}
+    if submission.tracestate is not None:
+        carrier["tracestate"] = submission.tracestate
+    try:
+        from opentelemetry.context import attach, detach
+        from opentelemetry.propagate import extract
+
+        token = attach(extract(carrier))
+    except Exception:
+        yield
+        return
+    try:
+        yield
+    finally:
+        detach(token)
+
+
+def _actual_attempt_context(context: Any, span: Any) -> Any:
+    """Replace provisional identifiers with the actual provider span when exposed."""
+
+    try:
+        span_context = span.get_span_context()
+        if not span_context.is_valid:
+            return context
+        trace_id = format(span_context.trace_id, "032x")
+        span_id = format(span_context.span_id, "016x")
+        trace_flags = format(int(span_context.trace_flags), "02x")
+    except (AttributeError, TypeError, ValueError):
+        return context
+    values = context.model_dump(mode="python")
+    values.update(
+        trace_id=trace_id,
+        span_id=span_id,
+        traceparent=f"00-{trace_id}-{span_id}-{trace_flags}",
+    )
+    return type(context).model_validate(values)
+
+
+@contextmanager
+def _attempt_trace(job: dict[str, Any], context: Any) -> Iterator[Any]:
+    from src.contracts.operation_context import bind_operation_context
+    from src.telemetry import get_provider
+    from src.telemetry.operation_spans import operation_span
+
+    generation = int(context.claim_generation)
+    with (
+        _bind_submission_parent(job),
+        operation_span(
+            get_provider(),
+            f"operation.{job['entrypoint']}.attempt",
+            context=context,
+            attributes={
+                "queue.retry": generation > 0,
+                "queue.retry_from_claim_generation": generation - 1 if generation > 0 else None,
+                "queue.wait_ms": _queue_wait_milliseconds(job),
+            },
+        ) as span,
+    ):
+        actual = _actual_attempt_context(context, span)
+        with bind_operation_context(actual):
+            yield actual
+
+
+async def _start_attempt_evidence(conn: asyncpg.Connection, context: Any) -> bool:
+    """Fence and append the durable attempt row before handler side effects."""
+
+    from src.repositories.operation_observation_attempts import AttemptStart, start_attempt
+
+    return await start_attempt(
+        conn,
+        AttemptStart(
+            operation_id=int(context.operation_id),
+            claim_generation=int(context.claim_generation),
+            trace_id=context.trace_id,
+            root_span_id=context.span_id,
+            langfuse_observation_id=None,
+            service_name=context.service_name,
+            service_instance_id=context.service_instance_id,
+            environment=context.environment,
+            release_revision=context.release_revision,
+            started_at=datetime.now(UTC),
+        ),
+    )
+
+
+class _AttemptFinalizationError(RuntimeError):
+    """Abort a canonical transition when matching attempt evidence cannot be fenced."""
+
+
+async def _complete_attempt_evidence(
+    conn: asyncpg.Connection,
+    context: Any,
+    *,
+    outcome: str,
+    retryable: bool,
+    diagnostic_codes: tuple[str, ...] = (),
+) -> bool:
+    """Complete evidence only when the same claim is canonically terminal."""
+
+    completed_id = await conn.fetchval(
+        """
+        WITH canonical_terminal AS (
+            SELECT id, claim_generation, status
+            FROM pgqueuer_jobs
+            WHERE id = $1
+              AND claim_generation = $2::bigint
+              AND status IN ('completed', 'failed', 'cancelled')
+            FOR UPDATE
+        )
+        UPDATE operation_observation_attempts AS attempt
+        SET completed_at = $3,
+            terminal_stage = 'claim',
+            outcome = $4,
+            retryable = $5,
+            telemetry_delivery_state = 'delivered',
+            diagnostic_codes = $6::operation_diagnostic_code[],
+            diagnostics_omitted = 0
+        FROM canonical_terminal AS job
+        WHERE attempt.operation_id = $1
+          AND attempt.claim_generation = $2
+          AND job.id = attempt.operation_id
+          AND job.status::text = CASE $4::text
+              WHEN 'succeeded' THEN 'completed'
+              WHEN 'permanent_failure' THEN 'failed'
+              WHEN 'cancelled' THEN 'cancelled'
+              ELSE ''
+          END
+        RETURNING attempt.operation_id
+        """,
+        int(context.operation_id),
+        int(context.claim_generation),
+        datetime.now(UTC),
+        outcome,
+        retryable,
+        list(diagnostic_codes),
+    )
+    return completed_id is not None
+
+
+async def _terminal_job_status(
+    conn: asyncpg.Connection,
+    job_id: int,
+    claim_generation: int,
+) -> Literal["completed", "failed", "cancelled"] | None:
+    status = await conn.fetchval(
+        """
+        SELECT status::text
+        FROM pgqueuer_jobs
+        WHERE id = $1
+          AND claim_generation = $2
+          AND status IN ('completed', 'failed', 'cancelled')
+        FOR UPDATE
+        """,
+        job_id,
+        claim_generation,
+    )
+    if status in {"completed", "failed", "cancelled"}:
+        return status
+    return None
+
+
+async def _finalize_attempt_transition(
+    conn: asyncpg.Connection,
+    context: Any,
+    *,
+    target_status: Literal["completed", "failed", "cancelled"],
+    error: str | None = None,
+    diagnostic_codes: tuple[str, ...] = (),
+) -> tuple[Literal["completed", "failed", "cancelled"] | None, bool]:
+    """Atomically resolve canonical state and matching fenced attempt evidence."""
+
+    job_id = int(context.operation_id)
+    claim_generation = int(context.claim_generation)
+    transitioned = False
+    terminal_status: Literal["completed", "failed", "cancelled"] | None = None
+    transaction: Any = conn.transaction()
+    if inspect.isawaitable(transaction):
+        transaction = await transaction
+    async with transaction:
+        if target_status == "completed":
+            transitioned = await _complete_job(conn, job_id, claim_generation)
+        elif target_status == "failed":
+            if error is None:
+                raise ValueError("failed terminal transition requires an error")
+            transitioned = await _fail_job(conn, job_id, claim_generation, error)
+        else:
+            transitioned = await _checkpoint_job_cancellation(conn, job_id, claim_generation)
+
+        if transitioned:
+            terminal_status = target_status
+        elif target_status != "cancelled" and await _checkpoint_job_cancellation(
+            conn, job_id, claim_generation
+        ):
+            terminal_status = "cancelled"
+            transitioned = True
+        else:
+            terminal_status = await _terminal_job_status(conn, job_id, claim_generation)
+
+        if terminal_status is None:
+            return None, False
+
+        outcomes = {
+            "completed": "succeeded",
+            "failed": "permanent_failure",
+            "cancelled": "cancelled",
+        }
+        completed = await _complete_attempt_evidence(
+            conn,
+            context,
+            outcome=outcomes[terminal_status],
+            retryable=False,
+            diagnostic_codes=(diagnostic_codes if terminal_status == target_status else ()),
+        )
+        if not completed:
+            raise _AttemptFinalizationError(
+                f"Attempt evidence for operation {job_id} generation "
+                f"{claim_generation} did not match canonical {terminal_status}"
+            )
+    return terminal_status, transitioned
+
+
+async def _record_stale_attempt(conn: asyncpg.Connection, context: Any) -> bool:
+    from src.repositories.operation_observation_attempts import record_stale_claim_diagnostic
+
+    return await record_stale_claim_diagnostic(
+        conn, int(context.operation_id), int(context.claim_generation)
+    )
+
+
+async def _guard_execution_claim_before_handler() -> None:
+    """Verify the bound claim against the shared authority off the event loop."""
+
+    def guard() -> None:
+        from src.queue.execution_claim import guard_execution_claim
+        from src.storage.database import get_db
+
+        with get_db() as session:
+            guard_execution_claim(session)
+
+    await asyncio.to_thread(guard)
+
+
 async def _process_job(
     conn: asyncpg.Connection,
     job: dict[str, Any],
@@ -299,19 +880,38 @@ async def _process_job(
     if isinstance(payload, str):
         payload = json.loads(payload)
 
-    from src.queue.execution_claim import ExecutionClaim, bind_execution_claim
+    try:
+        attempt_context = _attempt_context_from_job(job)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        logger.error("Job %s has invalid persisted observation context", job_id)
+        await _fail_job(conn, job_id, claim_generation, "Invalid operation observation context")
+        return
+
+    from src.config.settings import get_settings
+    from src.queue.execution_claim import ClaimSuperseded, ExecutionClaim, bind_execution_claim
     from src.queue.setup import touch_job_heartbeat
 
+    settings = get_settings()
+    gx10_enabled = settings.gx10_runtime_enabled
     claim = ExecutionClaim(
         job_id=job_id,
         claim_generation=claim_generation,
         claim_protocol_version=claim_protocol_version,
+        environment="gx10" if gx10_enabled else None,
+        authority_fingerprint=(settings.gx10_authority_fingerprint if gx10_enabled else None),
+        ownership_epoch=(settings.gx10_ownership_epoch if gx10_enabled else None),
     )
 
-    with bind_execution_claim(claim):
+    with bind_execution_claim(claim), _attempt_trace(job, attempt_context) as attempt_context:
         if await _checkpoint_job_cancellation(conn, job_id, claim_generation):
             logger.info(f"Job {job_id} ({entrypoint}) cancelled before handler invocation")
             return
+        if gx10_enabled:
+            try:
+                await _guard_execution_claim_before_handler()
+            except ClaimSuperseded:
+                logger.info(f"Job {job_id} ({entrypoint}) rejected by its ownership fence")
+                return
         if not await touch_job_heartbeat(
             job_id,
             conn=conn,
@@ -320,21 +920,38 @@ async def _process_job(
             logger.info(f"Job {job_id} ({entrypoint}) lost its execution claim")
             return
 
+        if not await _start_attempt_evidence(conn, attempt_context):
+            logger.info(f"Job {job_id} ({entrypoint}) lost its attempt start fence")
+            return
+
         handler = _handlers.get(entrypoint)
         if handler is None:
-            logger.warning(f"No handler for entrypoint '{entrypoint}', failing job {job_id}")
-            if await _fail_job(
-                conn,
-                job_id,
-                claim_generation,
-                f"Unknown entrypoint: {entrypoint}",
-            ):
+            logger.warning(f"No handler for entrypoint {entrypoint!r}, failing job {job_id}")
+            try:
+                status, transitioned = await _finalize_attempt_transition(
+                    conn,
+                    attempt_context,
+                    target_status="failed",
+                    error=f"Unknown entrypoint: {entrypoint}",
+                    diagnostic_codes=("workflow.unknown_entrypoint",),
+                )
+            except _AttemptFinalizationError:
+                logger.error(
+                    "Job %s (%s) terminal evidence could not be finalized",
+                    job_id,
+                    entrypoint,
+                    exc_info=True,
+                )
+                return
+            if status == "failed" and transitioned:
                 await _emit_job_notification(
                     job_id,
                     entrypoint,
                     payload,
                     error=f"Unknown entrypoint: {entrypoint}",
                 )
+            elif status == "cancelled":
+                logger.info(f"Job {job_id} ({entrypoint}) cancelled before failure")
             return
 
         async def _heartbeat_loop() -> None:
@@ -349,23 +966,44 @@ async def _process_job(
         heartbeat_task = asyncio.create_task(_heartbeat_loop())
         try:
             await handler(job_id, payload)
-            if await _complete_job(conn, job_id, claim_generation):
+            status, transitioned = await _finalize_attempt_transition(
+                conn,
+                attempt_context,
+                target_status="completed",
+            )
+            if status == "completed" and transitioned:
                 logger.info(f"Job {job_id} ({entrypoint}) completed")
                 await _emit_job_notification(job_id, entrypoint, payload)
-            elif await _checkpoint_job_cancellation(conn, job_id, claim_generation):
+            elif status == "cancelled":
                 logger.info(f"Job {job_id} ({entrypoint}) cancelled before completion")
+            elif status is not None:
+                logger.info(f"Job {job_id} ({entrypoint}) reached {status} in its handler")
             else:
-                logger.info(f"Job {job_id} ({entrypoint}) reached a terminal state in its handler")
+                logger.info(f"Job {job_id} ({entrypoint}) lost its completion claim")
         except Exception as e:
             from src.queue.execution_claim import ClaimCancelled, ClaimSuperseded
 
+            if isinstance(e, _AttemptFinalizationError):
+                logger.error(
+                    "Job %s (%s) terminal evidence could not be finalized",
+                    job_id,
+                    entrypoint,
+                    exc_info=True,
+                )
+                return
             if isinstance(e, ClaimCancelled):
-                if await _checkpoint_job_cancellation(conn, job_id, claim_generation):
+                status, _transitioned = await _finalize_attempt_transition(
+                    conn,
+                    attempt_context,
+                    target_status="cancelled",
+                )
+                if status == "cancelled":
                     logger.info(f"Job {job_id} ({entrypoint}) cancelled at domain commit")
                 else:
                     logger.info(f"Job {job_id} ({entrypoint}) lost cancellation claim")
                 return
             if isinstance(e, ClaimSuperseded):
+                await _record_stale_attempt(conn, attempt_context)
                 logger.info(f"Job {job_id} ({entrypoint}) dropped superseded domain result")
                 return
             logger.error(f"Job {job_id} ({entrypoint}) failed: {e}", exc_info=True)
@@ -376,15 +1014,24 @@ async def _process_job(
                 if isinstance(e, WorkflowHandlerError)
                 else "Job failed due to an internal error"
             )
-            if await _fail_job(conn, job_id, claim_generation, persisted_error):
+            status, transitioned = await _finalize_attempt_transition(
+                conn,
+                attempt_context,
+                target_status="failed",
+                error=persisted_error,
+                diagnostic_codes=("workflow.internal_error",),
+            )
+            if status == "failed" and transitioned:
                 await _emit_job_notification(
                     job_id,
                     entrypoint,
                     payload,
                     error=persisted_error,
                 )
-            elif await _checkpoint_job_cancellation(conn, job_id, claim_generation):
+            elif status == "cancelled":
                 logger.info(f"Job {job_id} ({entrypoint}) cancelled after handler failure")
+            elif status is not None:
+                logger.info(f"Job {job_id} ({entrypoint}) reached {status} in its handler")
         finally:
             heartbeat_task.cancel()
             await asyncio.gather(heartbeat_task, return_exceptions=True)
@@ -498,6 +1145,113 @@ async def _run_retention_maintenance_tick(
         await conn.execute(
             "SELECT pg_advisory_unlock($1::bigint)",
             _RETENTION_MAINTENANCE_ADVISORY_LOCK,
+        )
+
+
+async def _run_stale_claim_tick(
+    conn: asyncpg.Connection,
+    *,
+    stale_threshold_hours: int,
+) -> int:
+    """Fail claims whose worker died, when this process wins leader election.
+
+    Kill a worker mid-job and its row stays ``in_progress`` forever: claims
+    only take ``queued`` rows, so no restart recovers it and the submitter
+    waits on an operation nobody is running. The reaper existed and nothing
+    called it, which is why a container restart stranded an ingest for hours.
+
+    One process does this at a time. The sweep is a single UPDATE, but running
+    it from every worker at once would have them all report the same rows.
+    """
+
+    acquired = await conn.fetchval(
+        "SELECT pg_try_advisory_lock($1::bigint)",
+        _STALE_CLAIM_ADVISORY_LOCK,
+    )
+    if not acquired:
+        logger.debug("stale claim tick skipped; advisory lock held")
+        return 0
+
+    try:
+        from src.queue.setup import mark_stale_jobs_failed
+
+        failed_count = await mark_stale_jobs_failed(stale_threshold_hours, conn=conn)
+        if failed_count:
+            logger.warning(
+                "stale operation claims failed",
+                extra={
+                    "stale_claim_failed_count": failed_count,
+                    "stale_claim_threshold_hours": stale_threshold_hours,
+                },
+            )
+        return failed_count
+    finally:
+        await conn.execute(
+            "SELECT pg_advisory_unlock($1::bigint)",
+            _STALE_CLAIM_ADVISORY_LOCK,
+        )
+
+
+async def _run_langfuse_retention_tick(
+    conn: asyncpg.Connection,
+    *,
+    retention_settings: Any,
+) -> int:
+    """Delete expired Langfuse traces when this process wins leader election.
+
+    Open-source Langfuse deletes nothing on a schedule, so without this the
+    trace store grows for as long as the stack runs. One process prunes at a
+    time: the deletes are idempotent, but several workers paging the same
+    listing would mostly issue duplicate requests.
+
+    A failure here is logged and dropped. Housekeeping the observability store
+    must never take down the queue worker that carries the actual workload.
+    """
+
+    acquired = await conn.fetchval(
+        "SELECT pg_try_advisory_lock($1::bigint)",
+        _LANGFUSE_RETENTION_ADVISORY_LOCK,
+    )
+    if not acquired:
+        logger.debug("langfuse retention tick skipped; advisory lock held")
+        return 0
+
+    try:
+        from src.services.langfuse_retention import (
+            build_retention_client,
+            prune_expired_traces,
+        )
+
+        client = build_retention_client(retention_settings)
+        if client is None:
+            return 0
+
+        started_at = monotonic()
+        async with client:
+            result = await prune_expired_traces(
+                client,
+                retention_days=retention_settings.langfuse_trace_retention_days,
+                batch_size=retention_settings.langfuse_trace_retention_batch_size,
+                max_deletes=(retention_settings.langfuse_trace_retention_max_deletes_per_run),
+                slice_hours=retention_settings.langfuse_trace_retention_slice_hours,
+                lookback_days=(retention_settings.langfuse_trace_retention_lookback_days),
+            )
+        logger.info(
+            "langfuse trace retention completed",
+            extra={
+                **result.as_log_fields(),
+                "langfuse_retention_duration_seconds": max(monotonic() - started_at, 0.0),
+            },
+        )
+        return result.deleted_count
+    except Exception as exc:
+        # The reason goes in the message: the host log formatter drops `extra`.
+        logger.warning("langfuse trace retention failed reason=%s", exc)
+        return 0
+    finally:
+        await conn.execute(
+            "SELECT pg_advisory_unlock($1::bigint)",
+            _LANGFUSE_RETENTION_ADVISORY_LOCK,
         )
 
 
@@ -731,8 +1485,14 @@ async def _run_workflow_alert_maintenance_tick(
     conn: asyncpg.Connection,
     *,
     alert_settings: Any,
+    evaluate_freshness: bool = True,
 ) -> bool:
-    """Classify, claim, deliver, and retain one bounded alert batch."""
+    """Classify, claim, deliver, and retain one bounded alert batch.
+
+    Alert delivery wants a five-second pulse; backup freshness does not, and
+    each evaluation costs a traced operation. The caller decides when that
+    question is due.
+    """
 
     acquired = False
     async with conn.transaction():
@@ -773,10 +1533,11 @@ async def _run_workflow_alert_maintenance_tick(
             # Failure to evaluate freshness must not abort the alert tick that
             # delivers every other alert — including, in the worst case, the ones
             # explaining why the backup target is unreachable.
-            try:
-                await _emit_backup_freshness_alert(conn, alert_settings=alert_settings)
-            except Exception:
-                logger.exception("backup freshness alert emission failed")
+            if evaluate_freshness:
+                try:
+                    await _emit_backup_freshness_alert(conn, alert_settings=alert_settings)
+                except Exception:
+                    logger.exception("backup freshness alert emission failed")
 
     # Classification commits with the transaction-scoped leader lock before
     # synchronous sessions create delivery intents. The unique event/sink key
@@ -854,7 +1615,9 @@ async def run_worker(
     conn = await asyncpg.connect(asyncpg_url)
     maintenance_conn = await asyncpg.connect(asyncpg_url)
     retention_conn = await asyncpg.connect(asyncpg_url)
+    stale_claim_conn = await asyncpg.connect(asyncpg_url)
     alert_conn = await asyncpg.connect(asyncpg_url)
+    langfuse_retention_conn = await asyncpg.connect(asyncpg_url)
     from src.config.settings import get_settings
 
     retention_settings = get_settings()
@@ -875,10 +1638,15 @@ async def run_worker(
     active_tasks: set[asyncio.Task] = set()
     maintenance_task: asyncio.Task[bool] | None = None
     retention_task: asyncio.Task[bool] | None = None
+    stale_claim_task: asyncio.Task[int] | None = None
     alert_task: asyncio.Task[bool] | None = None
+    langfuse_retention_task: asyncio.Task[int] | None = None
     last_maintenance_at = float("-inf")
     last_retention_at: float | None = None
+    last_stale_claim_at: float | None = None
+    last_freshness_at: float | None = None
     last_alert_at = float("-inf")
+    last_langfuse_retention_at: float | None = None
     loop = asyncio.get_running_loop()
     logger.info(f"Embedded worker started (concurrency={concurrency})")
 
@@ -898,12 +1666,26 @@ async def run_worker(
                     logger.exception("operation retention maintenance tick failed")
                 retention_task = None
 
+            if stale_claim_task is not None and stale_claim_task.done():
+                try:
+                    stale_claim_task.result()
+                except Exception:
+                    logger.exception("stale claim tick failed")
+                stale_claim_task = None
+
             if alert_task is not None and alert_task.done():
                 try:
                     alert_task.result()
                 except Exception:
                     logger.exception("workflow alert maintenance tick failed")
                 alert_task = None
+
+            if langfuse_retention_task is not None and langfuse_retention_task.done():
+                try:
+                    langfuse_retention_task.result()
+                except Exception:
+                    logger.exception("langfuse retention tick failed")
+                langfuse_retention_task = None
 
             if (
                 maintenance_task is None
@@ -927,17 +1709,55 @@ async def run_worker(
                 )
                 last_retention_at = loop.time()
 
+            # Runs at startup too: the claims worth reaping are usually the ones
+            # this very process lost when it was killed.
+            if stale_claim_task is None and _retention_tick_due(
+                now=loop.time(),
+                last_run_at=last_stale_claim_at,
+                interval_seconds=retention_settings.job_stale_claim_interval_seconds,
+            ):
+                stale_claim_task = asyncio.create_task(
+                    _run_stale_claim_tick(
+                        stale_claim_conn,
+                        stale_threshold_hours=retention_settings.job_stale_claim_hours,
+                    )
+                )
+                last_stale_claim_at = loop.time()
+
             if (
                 alert_task is None
                 and loop.time() - last_alert_at >= _WORKFLOW_ALERT_MAINTENANCE_INTERVAL_SECONDS
             ):
+                freshness_due = _retention_tick_due(
+                    now=loop.time(),
+                    last_run_at=last_freshness_at,
+                    interval_seconds=_BACKUP_FRESHNESS_INTERVAL_SECONDS,
+                )
                 alert_task = asyncio.create_task(
                     _run_workflow_alert_maintenance_tick(
                         alert_conn,
                         alert_settings=retention_settings,
+                        evaluate_freshness=freshness_due,
                     )
                 )
                 last_alert_at = loop.time()
+                if freshness_due:
+                    last_freshness_at = loop.time()
+
+            # Runs at startup too, so a stack that was down past its interval
+            # prunes on the way back up instead of a day later.
+            if langfuse_retention_task is None and _retention_tick_due(
+                now=loop.time(),
+                last_run_at=last_langfuse_retention_at,
+                interval_seconds=(retention_settings.langfuse_trace_retention_interval_seconds),
+            ):
+                langfuse_retention_task = asyncio.create_task(
+                    _run_langfuse_retention_tick(
+                        langfuse_retention_conn,
+                        retention_settings=retention_settings,
+                    )
+                )
+                last_langfuse_retention_at = loop.time()
 
             # Clean up completed tasks
             done = {t for t in active_tasks if t.done()}
@@ -982,14 +1802,22 @@ async def run_worker(
         if retention_task is not None:
             retention_task.cancel()
             await asyncio.gather(retention_task, return_exceptions=True)
+        if stale_claim_task is not None:
+            stale_claim_task.cancel()
+            await asyncio.gather(stale_claim_task, return_exceptions=True)
         if alert_task is not None:
             alert_task.cancel()
             await asyncio.gather(alert_task, return_exceptions=True)
+        if langfuse_retention_task is not None:
+            langfuse_retention_task.cancel()
+            await asyncio.gather(langfuse_retention_task, return_exceptions=True)
         await conn.remove_listener("pgqueuer", _on_notify)
         await conn.close()
         await maintenance_conn.close()
         await retention_conn.close()
+        await stale_claim_conn.close()
         await alert_conn.close()
+        await langfuse_retention_conn.close()
 
 
 def _prepare_forced_summary(content_id: int) -> None:

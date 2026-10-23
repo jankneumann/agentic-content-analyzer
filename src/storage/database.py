@@ -12,6 +12,7 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.config import settings
+from src.contracts.operation_context import OperationStage
 from src.models.base import Base
 from src.storage.providers import get_provider
 from src.utils.logging import get_logger
@@ -20,6 +21,14 @@ if TYPE_CHECKING:
     from src.storage.providers.base import DatabaseProvider
 
 logger = get_logger(__name__)
+
+
+def operation_stage(name: str, stage: OperationStage) -> Any:
+    """Load the shared helper lazily to keep foundational storage imports acyclic."""
+    from src.workflows.stage_observability import operation_stage as shared_operation_stage
+
+    return shared_operation_stage(name, stage)
+
 
 # Global provider and engine instances
 _provider: "DatabaseProvider | None" = None
@@ -134,14 +143,16 @@ def init_db() -> None:
 def get_db() -> Generator[Session, None, None]:
     """Get database session context manager."""
     db = _get_session_factory()()
-    try:
-        yield db
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+    with operation_stage("postgresql.transaction", OperationStage.PERSIST) as evidence:
+        try:
+            yield db
+            db.commit()
+        except Exception as error:
+            db.rollback()
+            evidence.fail(error, error_code="postgresql_transaction_failed", retryable=True)
+            raise
+        finally:
+            db.close()
 
 
 def get_db_session() -> Session:

@@ -1,0 +1,151 @@
+{
+  "schema_version": 4,
+  "change_id": "gx10-full-operation-observability",
+  "current_phase": "ESCALATE",
+  "iteration": 0,
+  "total_iterations": 14,
+  "max_phase_iterations": 6,
+  "findings_trend": [
+    0,
+    0,
+    0
+  ],
+  "blocking_findings": [],
+  "vendor_availability": {},
+  "packages_status": {},
+  "package_authors": {},
+  "implementation_strategy": {},
+  "memory_ids": [],
+  "handoff_ids": [
+    "gatekeeper:gx10-full-operation-observability:review-required",
+    "plan-iteration-1-1",
+    "plan-review-1",
+    "plan-review-2",
+    "plan-review-3",
+    "plan-review-4",
+    "plan-review-5",
+    "plan-review-6",
+    "implementation-2",
+    "implementation-3",
+    "implementation-4",
+    "implementation-5",
+    "implementation-6",
+    "implementation-7",
+    "implementation-8"
+  ],
+  "phase_history": [
+    {
+      "at": "2026-08-28T21:23:06.732339+00:00",
+      "outcome": "proceed_with_review",
+      "phase": "GATEKEEPER"
+    },
+    {
+      "at": "2026-08-28T21:46:40.006119+00:00",
+      "outcome": "complete",
+      "phase": "PLAN_ITERATE"
+    },
+    {
+      "at": "2026-08-28T21:56:26.005982+00:00",
+      "outcome": "not_converged",
+      "phase": "PLAN_REVIEW"
+    },
+    {
+      "at": "2026-08-28T22:16:45.797794+00:00",
+      "outcome": "not_converged",
+      "phase": "PLAN_REVIEW"
+    },
+    {
+      "at": "2026-08-28T22:31:48.101538+00:00",
+      "outcome": "max_iter",
+      "phase": "PLAN_REVIEW"
+    },
+    {
+      "at": "2026-08-29T01:47:12.697392+00:00",
+      "outcome": "budget_reset_after_issue_514",
+      "phase": "ESCALATE"
+    },
+    {
+      "at": "2026-08-29T01:53:36.288468+00:00",
+      "outcome": "not_converged",
+      "phase": "PLAN_REVIEW"
+    },
+    {
+      "at": "2026-08-29T01:58:58.227172+00:00",
+      "outcome": "fixed",
+      "phase": "PLAN_FIX"
+    },
+    {
+      "at": "2026-08-29T02:05:03.434626+00:00",
+      "outcome": "not_converged",
+      "phase": "PLAN_REVIEW"
+    },
+    {
+      "at": "2026-08-29T02:07:08.976324+00:00",
+      "outcome": "fixed",
+      "phase": "PLAN_FIX"
+    },
+    {
+      "at": "2026-08-29T02:10:35.866356+00:00",
+      "outcome": "converged",
+      "phase": "PLAN_REVIEW"
+    },
+    {
+      "at": "2026-08-29T02:33:12.582904+00:00",
+      "outcome": "complete",
+      "phase": "IMPLEMENT"
+    },
+    {
+      "at": "2026-08-29T03:23:17.339228+00:00",
+      "outcome": "complete",
+      "phase": "IMPLEMENT"
+    },
+    {
+      "at": "2026-08-29T04:10:22.350072+00:00",
+      "outcome": "complete",
+      "phase": "IMPLEMENT"
+    },
+    {
+      "at": "2026-08-29T05:26:42.560335+00:00",
+      "outcome": "failed",
+      "phase": "IMPLEMENT"
+    },
+    {
+      "at": "2026-08-29T20:25:19.794299+00:00",
+      "outcome": "complete",
+      "phase": "IMPLEMENT"
+    },
+    {
+      "at": "2026-08-29T20:25:22.597847+00:00",
+      "outcome": "complete",
+      "phase": "IMPLEMENT"
+    },
+    {
+      "at": "2026-08-29T20:25:25.901324+00:00",
+      "outcome": "failed",
+      "phase": "IMPLEMENT"
+    }
+  ],
+  "last_handoff_id": "implementation-8",
+  "started_at": "2026-08-28T21:20:27.347960+00:00",
+  "phase_started_at": "2026-08-29T05:28:05.288168+00:00",
+  "previous_phase": "IMPLEMENT",
+  "escalation_reason": "Live GX-10 acceptance requires a capable host: user-accessible Docker/systemd/firewall, published approved Squid digest, protected OpenBao bootstrap/AppRole credentials, native age and component backup/restore CLIs, then clean-stack/cold-restart, native encrypted restore, and six-hour soak evidence",
+  "val_review_enabled": true,
+  "cli_review_enabled": true,
+  "error": null,
+  "phase_archetype": null,
+  "force": false,
+  "gate_signals": {
+    "external_dep_count": 0,
+    "has_broad_write_scope": false,
+    "has_db_migration": true,
+    "has_proposal": true,
+    "has_security_signal": true,
+    "has_specs": true,
+    "has_tasks": true,
+    "has_work_packages": true,
+    "package_count": 11,
+    "total_loc_estimate": null
+  },
+  "gate_verdict": "proceed_with_review"
+}

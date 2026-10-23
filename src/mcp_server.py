@@ -10,6 +10,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from src.clients.operational_observability import operational_entrypoint
 from src.mcp_tools import content, ingestion, knowledge, operations, review, runtime, workflows
 from src.mcp_tools.toolsets import CANONICAL_TOOL_NAMES, register_toolsets
 
@@ -212,6 +213,7 @@ class AdminKeyAuthMiddleware:
         await send({"type": "http.response.body", "body": body})
 
 
+@operational_entrypoint("mcp.server", stage="submit", service_name="aca-mcp")
 def main() -> None:
     import argparse
 

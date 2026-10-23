@@ -9,6 +9,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from src.telemetry.providers.langfuse import LangfuseProvider, _sanitize_metadata
+from src.telemetry.safety import select_trace_input, select_trace_output
 
 # ---------------------------------------------------------------------------
 # Metadata Sanitization
@@ -126,6 +127,7 @@ class TestSetup:
             host="http://localhost:3100",
             sample_rate=0.8,
             debug=True,
+            mask=provider._masker.mask,
             public_key="pk-lf-test",
             secret_key="sk-lf-test",
             environment="staging",
@@ -258,6 +260,8 @@ class TestTraceLlmCall:
             input_tokens=1,
             output_tokens=1,
             duration_ms=1.0,
+            trace_input=select_trace_input("user prompt"),
+            trace_output=select_trace_output("response text"),
         )
 
         call_kwargs = mock_client.start_as_current_observation.call_args.kwargs

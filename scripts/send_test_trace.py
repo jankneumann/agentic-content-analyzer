@@ -29,6 +29,8 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
+from src.clients.operational_observability import operational_entrypoint
+
 # Default to local Opik OTLP endpoint
 DEFAULT_ENDPOINT = "http://localhost:5174/api/v1/private/otel/v1/traces"
 DEFAULT_SERVICE = "test-trace-sender"
@@ -73,6 +75,7 @@ def send_test_trace(endpoint: str, service_name: str, basic_auth: str | None = N
         return False
 
 
+@operational_entrypoint("script.send_test_trace", stage="flush", service_name="aca-script")
 def main() -> int:
     parser = argparse.ArgumentParser(description="Send a test trace to an OTLP endpoint")
     parser.add_argument(

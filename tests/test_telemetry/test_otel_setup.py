@@ -147,3 +147,37 @@ class TestAppIntegration:
 
         assert response.status_code == 200
         assert response.json()["status"] == "healthy"
+
+
+class TestResourceOwnershipIdentity:
+    @patch("src.telemetry.otel_setup.settings")
+    def test_resource_emits_validated_release_authority_and_epoch(self, mock_settings) -> None:
+        from src.telemetry.otel_setup import _create_resource
+
+        mock_settings.otel_service_name = "aca-gx10-scheduler"
+        mock_settings.environment = "production"
+        mock_settings.telemetry_release_revision = "b" * 40
+        mock_settings.gx10_authority_fingerprint = "a" * 64
+        mock_settings.gx10_ownership_epoch = 17
+
+        attributes = dict(_create_resource().attributes)
+
+        assert attributes["service.version"] == "b" * 40
+        assert attributes["aca.authority_fingerprint"] == "a" * 64
+        assert attributes["aca.ownership_epoch"] == "17"
+
+    @patch("src.telemetry.otel_setup.settings")
+    def test_resource_omits_invalid_or_passive_ownership_identity(self, mock_settings) -> None:
+        from src.telemetry.otel_setup import _create_resource
+
+        mock_settings.otel_service_name = "aca-api"
+        mock_settings.environment = "development"
+        mock_settings.telemetry_release_revision = "x" * 65
+        mock_settings.gx10_authority_fingerprint = "not-a-fingerprint"
+        mock_settings.gx10_ownership_epoch = None
+
+        attributes = dict(_create_resource().attributes)
+
+        assert "service.version" not in attributes
+        assert "aca.authority_fingerprint" not in attributes
+        assert "aca.ownership_epoch" not in attributes

@@ -22,6 +22,8 @@ from uuid import UUID, uuid4
 import httpx
 from jsonschema import Draft202012Validator, FormatChecker
 
+from src.clients.operational_observability import operational_entrypoint
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE_SCHEMA = (
     REPO_ROOT / "openspec/changes/production-telemetry-and-out-of-band-alerting/contracts/"
@@ -503,6 +505,7 @@ def _config_from_environment(args: argparse.Namespace) -> VerificationConfig:
     )
 
 
+@operational_entrypoint("script.verify_workflow_alerting", stage="alert", service_name="aca-script")
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)

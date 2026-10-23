@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-08-28T21:43:26.329739+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "architect",
+    "session_id": null,
+    "summary": "Consolidated two independent reviews and resolved all high/medium plan findings. The revision now freezes complete correlation, pagination, process-health, persistence, security, runtime, retention, backup, coexistence, validation, and package-scope contracts while preserving a cutover-ready-only boundary.",
+    "completed_work": [
+      "Aligned explicit-null OperationContext and completed generated review stubs.",
+      "Added cursor-paginated attempt history and aggregate process health contracts.",
+      "Completed SQL boundaries for queue context, attempts, health, audit, terminal events, and inactive ownership.",
+      "Defined measurable telemetry, storage, backup, and soak thresholds.",
+      "Reconciled cutover-ready scope and shared-authority fencing.",
+      "Corrected task dependencies, real file scopes, evidence commands, and integration ownership."
+    ],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Cutover-ready scope",
+        "rationale": "Production data migration, public traffic switching, and mutation-owner activation remain in a separately approved change.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "One shared fence authority",
+        "rationale": "Any future coexistence handoff must use one authoritative PostgreSQL fingerprint and epoch; independent local epochs are rejected.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Portable GX-10 baseline",
+        "rationale": "Compose V2 under systemd, Caddy, OpenBao, and a dedicated managed filesystem match repository patterns and are testable.",
+        "capability": null,
+        "supersedes": null
+      },
+      {
+        "title": "Bounded dual-layer evidence",
+        "rationale": "PostgreSQL stores one bounded attempt summary and process health while Langfuse retains detailed stage history.",
+        "capability": null,
+        "supersedes": null
+      }
+    ],
+    "next_steps": [],
+    "relevant_files": []
+  }
+}

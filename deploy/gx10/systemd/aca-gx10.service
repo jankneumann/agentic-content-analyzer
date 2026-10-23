@@ -1,0 +1,36 @@
+[Unit]
+Description=Agentic Content Analyzer GX-10 production runtime
+Requires=aca-gx10-image-pins.service aca-gx10-secrets.service aca-gx10-proxy-policy.service aca-gx10-firewall.service
+Requires=aca-gx10-maintenance-plans.service
+Wants=aca-gx10-proxy-policy.timer aca-gx10-storage.timer aca-gx10-backup.timer aca-gx10-restore-drill.timer
+After=aca-gx10-image-pins.service aca-gx10-secrets.service aca-gx10-proxy-policy.service aca-gx10-proxy-policy.timer aca-gx10-firewall.service
+After=aca-gx10-maintenance-plans.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+EnvironmentFile=/etc/aca/gx10-images.env
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/aca
+Environment=COMPOSE_PROJECT_NAME=aca-gx10
+ExecStart=/opt/aca/scripts/gx10/podman-runtime.sh up
+ExecReload=/opt/aca/scripts/gx10/podman-runtime.sh up
+ExecStop=/opt/aca/scripts/gx10/podman-runtime.sh down
+Restart=on-failure
+RestartSec=15s
+TimeoutStartSec=360
+# A full sweep stops every container in parallel with a 30s grace, then
+# force-removes; the budget covers a slow PostgreSQL shutdown with margin.
+TimeoutStopSec=300
+# A failed ExecStart skips ExecStop for a oneshot, and the default
+# KillMode=control-group then SIGTERMs every conmon left in the cgroup and
+# waits out TimeoutStopSec for the ones that do not exit -- five minutes of
+# nothing on top of each failed start. Container lifetime is the script's job:
+# ExecStop sweeps, and a failed start leaves the stack in place for a
+# post-mortem until the next start's sweep removes it.
+KillMode=process
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

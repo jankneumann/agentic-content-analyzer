@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aca.rotkohl.ai/schemas/operation-attempt-v1.json",
+  "title": "OperationAttemptEventV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "event_type", "occurred_at", "context", "stage",
+    "outcome", "error_class", "diagnostic_code", "retryable",
+    "telemetry_delivery_state"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "event_type": {
+      "type": "string",
+      "enum": ["attempt_started", "stage_completed", "attempt_completed", "telemetry_delivery"]
+    },
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "context": {"$ref": "operation-context-v1.schema.json"},
+    "stage": {
+      "type": "string",
+      "enum": [
+        "submit", "queue_wait", "claim", "fetch", "discover", "metadata",
+        "transcript", "extract", "parse", "filter", "deduplicate", "model",
+        "fallback", "persist", "index", "graph", "deliver", "backup", "restore",
+        "alert", "cleanup", "flush"
+      ]
+    },
+    "outcome": {
+      "type": ["string", "null"],
+      "enum": [
+        null, "succeeded", "partial", "skipped_policy", "skipped_duplicate",
+        "filtered", "retryable_failure", "permanent_failure", "cancelled"
+      ]
+    },
+    "error_class": {"type": ["string", "null"], "pattern": "^[a-z][a-z0-9_.-]{0,63}$"},
+    "diagnostic_code": {"type": ["string", "null"], "pattern": "^[a-z][a-z0-9_.-]{0,99}$"},
+    "retryable": {"type": ["boolean", "null"]},
+    "telemetry_delivery_state": {
+      "type": "string",
+      "enum": ["pending", "delivered", "degraded", "dropped", "disabled"]
+    }
+  }
+}

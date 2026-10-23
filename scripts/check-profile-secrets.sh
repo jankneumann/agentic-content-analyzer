@@ -7,6 +7,33 @@
 
 set -uo pipefail
 
+# bootstrap_audit: durable pre-PostgreSQL terminal evidence (D6).
+_BOOTSTRAP_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_BOOTSTRAP_PROJECT_DIR="$(cd "$_BOOTSTRAP_SCRIPT_DIR/.." && pwd)"
+bootstrap_audit_exit() {
+    local command_status=$?
+    trap - EXIT
+    local outcome="succeeded"
+    local diagnostic_args=()
+    if [[ $command_status -ne 0 ]]; then
+        outcome="permanent_failure"
+        diagnostic_args=(--diagnostic-code bootstrap.command_failed)
+    fi
+    local python_bin="python3"
+    if [[ -x "$_BOOTSTRAP_PROJECT_DIR/.venv/bin/python" ]]; then
+        python_bin="$_BOOTSTRAP_PROJECT_DIR/.venv/bin/python"
+    fi
+    local audit_status=0
+    PYTHONPATH="$_BOOTSTRAP_PROJECT_DIR${PYTHONPATH:+:$PYTHONPATH}" \
+        "$python_bin" -m src.clients.operational_observability \
+        'bootstrap.check_profile_secrets' "$outcome" "${diagnostic_args[@]}" >/dev/null || audit_status=$?
+    if [[ $command_status -eq 0 && $audit_status -ne 0 ]]; then
+        command_status=$audit_status
+    fi
+    exit "$command_status"
+}
+trap bootstrap_audit_exit EXIT
+
 fail() {
     echo "ERROR: Hardcoded secrets detected in profile files!"
     echo "Use \${VAR} references instead of actual values."

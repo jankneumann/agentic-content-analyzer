@@ -1,0 +1,113 @@
+# Plan Findings
+
+## Iteration 1
+
+Strict baseline validation passed. Two independent reviews produced overlapping findings; duplicates were consolidated below. All high/medium findings were resolved in the plan artifacts.
+
+| # | Type | Criticality | Finding | Resolution |
+|---|---|---|---|---|
+| 1 | scope/consistency | high | The Impact section promised a new CLI/UI surface without requirements, tasks, or frontend scope. | Limited scope to diagnostic APIs consumed by the existing CLI and made a new frontend UI an explicit non-goal. |
+| 2 | security/compatibility | high | The delta modeled only `AdminKey`, conflicting with the existing session-or-admin authorization behavior and omitting 401/403 responses. | Added session-cookie-or-admin security and explicit 401/403 responses while preserving exact-read policy. |
+| 3 | completeness/performance | high | Attempt history stopped at 100 rows without a cursor or deterministic ordering. | Added limit/cursor parameters, ascending claim-generation order, continuation metadata, CORR-015, and API tasks/tests. |
+| 4 | consistency | high | Nullable OperationContext fields disagreed across JSON Schema, OpenAPI, Python, and TypeScript. | Chose required-with-explicit-null semantics, made pre-claim attempt number nullable, aligned widths, and completed both generated review stubs. |
+| 5 | consistency | high | Generated review stubs omitted page, extension, health, and problem models. | Completed both stubs and made durable workflow-registry generation plus drift validation task 1.1/1.2. |
+| 6 | completeness/architecture | high | One process-local health object could not represent every API, worker, scheduler, and short-lived process. | Added a bounded PostgreSQL process-health projection and aggregate health page with timestamps, ages, freshness, capacity, drop, and flush evidence. |
+| 7 | security/performance | high | SQL diagnostic arrays admitted unbounded/non-string values. | Contracted a bounded diagnostic-code domain/array with item regex, cardinality, and total byte limits. |
+| 8 | consistency | high | Specs implied durable intermediate-stage history while SQL stored only a terminal stage. | Explicitly limited PostgreSQL to one attempt summary and kept detailed stage history in Langfuse. |
+| 9 | correctness | high | `ON DELETE SET NULL`/cascade cleanup could destroy correlation needed by retained failed evidence. | Switched root correlation to retention-ordered restriction and specified parent/root tombstone lifetime plus JOB-004. |
+| 10 | performance/testability | high | Excerpt, buffer, trace-volume, latency, drop, soak, and storage acceptance bounds were absent. | Added concrete byte/span/buffer limits and a six-hour, 50-operations/minute acceptance gate with latency/drop/failure/storage thresholds. |
+| 11 | resilience/testability | high | Watermark actions lacked hysteresis, resume, cleanup-failure, and capability-gap behavior. | Defined 80/90 entry, 75/85 timed recovery, concurrency/pause actions, cleanup failure behavior, and failure-preserving fallback scenarios. |
+| 12 | security/testability | high | Secret rotation and mandatory backup encryption were not implementable or tested. | Selected OpenBao plus age encryption, fail-closed key behavior, rotation semantics, and GX10-014/GX10-015 tests. |
+| 13 | feasibility/parallelizability | high | Contract, queue-lifecycle, ingestion, operational, audit, and integration package scopes omitted actual owned files. | Mapped durable contracts and runtime paths to owners, split provider vs non-HTTP coverage, serialized overlaps, and revalidated the DAG. |
+| 14 | testability | high | Package commands did not produce declared JUnit/quality/acceptance evidence. | Added JUnit paths and explicit contract, static-quality, acceptance, and strict-validation steps; task 11.1 now owns integration. |
+| 15 | completeness/scope | high | Mobile ingress and GX-10-primary requirements contradicted the no-cutover non-goal. | Made the stack cutover-ready only, added synthetic authenticated/unauthorized ingress tests, and deferred traffic/data activation to an unapproved follow-up proposal. |
+| 16 | architecture/assumptions | high | Independent Railway/GX-10 databases cannot enforce one ownership epoch, and host runtime choices were unspecified. | Required one shared authority fingerprint/epoch for any later handoff, refused independent authorities, and selected Compose V2 + systemd + Caddy + OpenBao + `/srv/aca` logical storage governance. |
+| 17 | clarity/consistency | medium | Claim generation and attempt number had undefined relationship and width. | Preserved 64-bit generation width; pre-claim attempt is null and claimed attempt number equals claim generation plus one. |
+
+### Parallelizability
+
+- Independent root packages: 1 (`wp-contracts`)
+- Sequential dependency chains: 4 principal chains through the core spine
+- Maximum parallel width: 4 packages
+- Declared file-overlap conflicts: none after dependency ordering; semantic scopes now include durable contracts, workflows, storage, lifecycle, and real audit/terminal files
+- Validation: work-package schema, dependency references, DAG cycles, lock keys, scheduler scope/lock checks all pass
+
+### Residual below-threshold items
+
+- The six-hour soak is intentionally expensive; it remains an acceptance task rather than a per-package unit gate.
+- OS project quotas remain optional defense in depth; the portable requirement is the validated dedicated filesystem plus logical/native-service budgets.
+
+## Iteration 2
+
+The independent PLAN_REVIEW produced twelve blocking findings. All were fixed inline and revalidated before another review round.
+
+| # | Finding | Resolution |
+|---|---|---|
+| 1 | Nullable response members drifted across OpenAPI and generated stubs. | Made every frozen nullable response member required-with-null consistently. |
+| 2 | JavaScript `number` could corrupt 64-bit attempt identities. | Encoded claim generations, attempt numbers, epochs, and cursors as canonical decimal strings at JSON/TypeScript boundaries while retaining PostgreSQL BIGINT. |
+| 3 | Process-health SQL lacked required-observability and bounds. | Added the flag, enums/patterns, buffer-capacity invariant, freshness index, 24-hour/7-day cleanup classes, and deterministic 1,000-row cap. |
+| 4 | Audit correlation lacked checks, references, and indexes. | Added trace/span validation, retention-safe operation reference, and trace/operation indexes. |
+| 5 | Attempt span nullability and numbering conflicted. | Made root span required-with-null and attempt number a positive canonical decimal string with runtime `generation + 1` validation. |
+| 6 | Normal sessions could reach privileged diagnostics. | Added a distinct operator capability for attempt history, deployment health, ownership status, and Langfuse links; exact reads retain their current policy with privileged links nulled. |
+| 7 | Coverage inventory occurred after package scope freeze. | Added `contracts/operation-entrypoints.yaml` at contract freeze and expanded operational scope to all CLI commands, operational scripts, clients, MCP, agents, schedulers, backup, cleanup, and alerts. |
+| 8 | Contract package could not wire CI. | Added Makefile, generator, and CI workflow paths and locks to `wp-contracts`. |
+| 9 | Ownership status/dry run was not frozen. | Added operator-authorized OpenAPI schemas and conflict semantics with fingerprint redaction. |
+| 10 | Host firewall could not safely enforce hostname egress. | Selected a fail-closed authenticated CONNECT proxy; application networks have no direct Internet route and bounded DNS/NTP/bootstrap exceptions are tested. |
+| 11 | Process instances could accumulate without bound. | Added freshness index, TTL cleanup, deterministic cap, restart-churn scenario, and acceptance tests. |
+| 12 | Restore measurements had no pass/fail objectives. | Set application PostgreSQL/queue RPO <=24h, component RTO <=2h, and full-stack RTO <=4h. |
+| 13 | Submission context admitted unknown/secret-like keys. | Added a SQL key allowlist plus application serializer and direct-SQL negative test requirements. |
+
+Validation: strict OpenSpec, JSON Schema metaschema, YAML/JSON parsing, and all six work-package schema/DAG/lock/scope checks pass.
+
+## Iteration 3
+
+PLAN_REVIEW round 2 identified ten final blockers; all were fixed inline before the third review.
+
+- Signed-BIGINT decimal strings now enforce the exact maximum, claimed generation reserves `+1` headroom, and generated/JSON boundary tests cover max, max+1, and overflow.
+- SQL now constrains indexed queue correlation fields equal to the canonical context envelope.
+- Process health persists lifecycle kind and expiry; cleanup removes expired rows only and reports nonexpired rows omitted from the 1,000-row response cap.
+- The API/audit package owns the operator capability setting and negative authorization tests; GX-10 runtime depends on it and wires OpenBao rotation.
+- Every current top-level executable script is mechanically classified as instrumented/bootstrap or explicitly pure deterministic tooling; bootstrap operations use a masked hash-chained local spool imported after PostgreSQL readiness.
+- Ingestion and operational packages own every test path they execute, and integration scope is mechanically validated as a superset of every predecessor write scope.
+- The resumable soak owns its runner/validator/tests/evidence and has a 480-minute timeout/lease for the six-hour run.
+- The unenforceable distributed 2 MiB trace cap was replaced by per-observation and process-local-attempt budgets with reserved failure/security/backup evidence and deterministic omission order.
+- The runtime now freezes Squid 6.13, immutable image-digest enforcement, OpenBao credentials, syntax-validated policy reload, masked logs, readiness, and fail-closed application-network dependencies.
+- Static/contract integration steps create their declared evidence files while preserving pipeline exit status.
+
+Validation: strict OpenSpec passes; all work-package schema/reference/DAG/lock/scope checks pass; JSON Schema metaschema checks pass; all current scripts are classified; integration covers the complete predecessor union; and generated signed-BIGINT boundary tests pass.
+
+
+## Iteration 4
+
+Issue #514's five reproduced contract findings were resolved before resetting the exhausted PLAN_REVIEW budget.
+
+- `telemetry_process_health` now declares `lifecycle_kind` and `expires_at` and enforces exact 24-hour long-running and 7-day short-lived expiry. The database package explicitly owns executable DDL parse, upgrade/downgrade, and both lifecycle boundary tests.
+- Queue identity duplicates use null-safe `IS NOT DISTINCT FROM`; root self-reference is defined, every duplicate is required when canonical context exists, and only rows with null canonical context retain legacy compatibility.
+- JSON Schema, OpenAPI, Python, and TypeScript artifacts use the exact signed-BIGINT boundaries; claim-generation request/response cursors reserve `+1` headroom; runtime checks exercise max and max+1 for operation, cursor, and ownership fields.
+- Canonical version-00 traceparent syntax, non-zero trace/span identifiers, carrier-to-envelope identifier equality, and bounded tracestate validation are frozen across contracts. SQL independently rejects zero and mismatched stored carrier identifiers.
+- The named PostgreSQL claim-generation constraint explicitly caps values at `9223372036854775806`.
+
+Validation: strict OpenSpec passes; all work-package schema/reference/DAG/lock/scope checks pass; JSON Schema metaschema, OpenAPI parsing, Python model validation, TypeScript runtime guards, SQL contract assertions, signed-BIGINT max/max+1 cases, W3C malformed/zero/mismatch cases, and `git diff --check` pass.
+
+
+## Iteration 5
+
+PLAN_REVIEW round 4 confirmed the issue #514 fixes and found two final semantic-validation gaps plus one bounded-input nit; all were fixed inline before round 5.
+
+- The contract now states the deliberate boundary: JSON Schema and OpenAPI enforce structure and scalar bounds, while every ingress/deserializer must call a generated composite semantic validator. Structural-only validation and raw TypeScript assertions are forbidden.
+- The generated TypeScript artifact uses branded scalar types and a mandatory parser equivalent to Pydantic validation for exact keys, scalar/string bounds, signed-BIGINT limits, W3C carrier-to-envelope equality, non-zero identifiers, unique bounded tracestate members, stage vocabulary, and `attempt_number = claim_generation + 1`. The reproduced mismatch fixtures are frozen as drift tests.
+- PostgreSQL now requires every duplicated correlation column to be non-null when canonical context exists and validates JSON types for every required envelope member, so JSON null cannot pair with SQL NULL to bypass identity checks. Direct-SQL JSON-null cases are explicit migration tests.
+- TypeScript decimal guards reject inputs longer than 19 characters before regex or BigInt parsing; oversized inputs are required test cases.
+
+Validation: structural schemas accept the documented cross-field mismatch fixture while both generated runtime validators reject it; Python and TypeScript reject carrier, arithmetic, duplicate-tracestate, size, and signed-BIGINT boundary violations; SQL null/type assertions pass; strict OpenSpec, all work-package validation checks, and `git diff --check` pass.
+
+
+## Iteration 6
+
+PLAN_REVIEW round 5 left one schema-version concern and two consistency nits; all were resolved before the final reset-budget review.
+
+- Schema-version parity now follows actual JSON semantics: Draft 2020-12 and JavaScript both treat lexical `1` and `1.0` as the same numeric integer value. Generated Python normalizes those numeric forms to integer 1 and explicitly rejects boolean `true` and string `"1"`, matching structural JSON Schema and TypeScript. Cross-runtime fixtures freeze this rule.
+- TypeScript uses Unicode code-point counts for every free-text maxLength check, matching JSON Schema and Python at astral-character boundaries.
+- Audit-log trace/span constraints and workflow-terminal trace constraints now reject all-zero W3C identifiers, matching queue and attempt tables.
+
+Validation: Python, JSON Schema, and TypeScript agree on numeric `1`/`1.0`, boolean/string rejection, and 100/101 astral-character boundaries; every versioned StrictModel inherits the schema-version pre-validator; SQL zero-ID assertions pass; strict OpenSpec, all work-package checks, generated artifact runtime checks, and `git diff --check` pass.

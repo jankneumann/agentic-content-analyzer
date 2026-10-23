@@ -14,6 +14,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.clients.operational_observability import bootstrap_entrypoint
+
 _COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 _STAMP_RELATIVE_PATH = Path("web/release-build.json")
 
@@ -91,6 +93,7 @@ def write_release_stamp(repo_root: Path, revision: str) -> StampResult:
     )
 
 
+@bootstrap_entrypoint("bootstrap.stamp_release_revision")
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("revision", help="Expected clean detached HEAD SHA")

@@ -1,0 +1,14 @@
+{
+  "throttle": [
+    "/opt/aca/scripts/gx10/storage/action.sh",
+    "throttle"
+  ],
+  "cleanup": [
+    "/opt/aca/scripts/gx10/storage/action.sh",
+    "cleanup"
+  ],
+  "alert": [
+    "/opt/aca/scripts/gx10/storage/action.sh",
+    "alert"
+  ]
+}

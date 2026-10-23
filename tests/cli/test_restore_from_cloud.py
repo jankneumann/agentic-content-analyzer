@@ -21,12 +21,14 @@ from __future__ import annotations
 
 import json
 import subprocess
+from contextlib import contextmanager
 from typing import Any
 from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
 
+from src.cli import restore_commands
 from src.cli.app import app
 from src.cli.restore_commands import (
     DatabaseIdentity,
@@ -35,6 +37,8 @@ from src.cli.restore_commands import (
     mask_text,
     split_database_credentials,
 )
+from src.clients import operational_observability
+from src.contracts.operation_context import OperationContext, bind_operation_context
 
 runner = CliRunner()
 
@@ -517,3 +521,149 @@ class TestSubprocessFailuresPropagate:
         runs = Runs(failures={failing: 2})
         result, _ = invoke(["manage", "restore-from-cloud", "--yes"], runs=runs)
         assert result.exit_code != 0
+
+
+class _TraceSpan:
+    def __init__(self, name: str, parent: str, attributes: dict[str, Any]) -> None:
+        self.name = name
+        self.span_id = f"{len(name):016x}"
+        self.parent = parent
+        self.attributes = attributes
+
+
+class _TraceProvider:
+    def __init__(self) -> None:
+        self.stack: list[_TraceSpan] = []
+        self.spans: list[_TraceSpan] = []
+
+    @contextmanager
+    def start_span(self, name: str, attributes: dict[str, Any] | None = None):
+        parent = self.stack[-1].span_id if self.stack else "2222222222222222"
+        span = _TraceSpan(name, parent, attributes or {})
+        self.spans.append(span)
+        self.stack.append(span)
+        try:
+            yield span
+        finally:
+            self.stack.pop()
+
+
+def _restore_context() -> OperationContext:
+    return OperationContext(
+        schema_version=1,
+        operation_id="61",
+        root_operation_id="61",
+        parent_operation_id=None,
+        traceparent="00-11111111111111111111111111111111-2222222222222222-01",
+        tracestate=None,
+        trace_id="11111111111111111111111111111111",
+        span_id="2222222222222222",
+        claim_generation="0",
+        attempt_number="1",
+        entrypoint="cli.manage",
+        service_name="aca-cli",
+        service_instance_id="cli-1",
+        environment="test",
+        release_revision="revision",
+        authority_fingerprint=None,
+        ownership_epoch=None,
+        stage="restore",
+        resource_kind=None,
+        resource_key=None,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _bind_durable_cli_context():
+    """Keep subprocess unit tests isolated without weakening production roots."""
+    with bind_operation_context(_restore_context()):
+        yield
+
+
+@pytest.mark.parametrize(
+    ("failures", "expected_outcomes"),
+    [
+        ({}, ["succeeded", "succeeded", "succeeded"]),
+        ({"pg_restore": 2}, ["succeeded", "succeeded", "permanent_failure"]),
+    ],
+)
+def test_restore_real_phases_emit_masked_nested_topology(
+    monkeypatch: pytest.MonkeyPatch,
+    failures: dict[str, int],
+    expected_outcomes: list[str],
+) -> None:
+    provider = _TraceProvider()
+    monkeypatch.setattr(operational_observability, "get_provider", lambda: provider)
+    with bind_operation_context(_restore_context()):
+        result, _ = invoke(
+            ["manage", "restore-from-cloud", "--yes"],
+            runs=Runs(failures=failures),
+        )
+
+    assert result.exit_code == (1 if failures else 0)
+    phase_names = {"restore.download", "restore.decrypt", "restore.apply"}
+    phases = [span for span in provider.spans if span.name in phase_names]
+    outcomes = [span for span in provider.spans if span.name.endswith(".outcome")]
+    assert [span.name for span in phases] == [
+        "restore.download",
+        "restore.decrypt",
+        "restore.apply",
+    ]
+    assert [span.attributes["operation.outcome"] for span in outcomes] == expected_outcomes
+    assert [span.parent for span in outcomes] == [span.span_id for span in phases]
+    attributes = repr([span.attributes for span in provider.spans])
+    assert "localpass" not in attributes
+    assert "r2-secret-key" not in attributes
+    assert "/etc/aca/identity.txt" not in attributes
+
+
+def test_restore_tool_exception_emits_terminal_phase_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = _TraceProvider()
+    secret = "postgresql://admin:do-not-record@example.test/private"
+    monkeypatch.setattr(operational_observability, "get_provider", lambda: provider)
+    monkeypatch.setattr(
+        restore_commands.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(FileNotFoundError(secret)),
+    )
+
+    with (
+        bind_operation_context(_restore_context()),
+        pytest.raises(FileNotFoundError, match="do-not-record"),
+    ):
+        restore_commands._run_restore_phase("download", ["rclone", "copyto"])
+
+    phase, outcome = provider.spans
+    assert [span.name for span in provider.spans] == [
+        "restore.download",
+        "restore.download.outcome",
+    ]
+    assert outcome.parent == phase.span_id
+    assert outcome.attributes["operation.outcome"] == "permanent_failure"
+    assert secret not in repr([span.attributes for span in provider.spans])
+
+
+def test_restore_outcome_telemetry_failure_does_not_mask_tool_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = FileNotFoundError("original restore failure")
+
+    @contextmanager
+    def failing_stage(name: str, **_kwargs: Any):
+        if name.endswith(".outcome"):
+            raise RuntimeError("telemetry failure")
+        yield None
+
+    monkeypatch.setattr(restore_commands, "operational_stage", failing_stage)
+    monkeypatch.setattr(
+        restore_commands.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(original),
+    )
+
+    with pytest.raises(FileNotFoundError, match="original restore failure") as raised:
+        restore_commands._run_restore_phase("download", ["rclone", "copyto"])
+
+    assert raised.value is original

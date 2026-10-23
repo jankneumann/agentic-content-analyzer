@@ -17,12 +17,14 @@ from scripts.verify_workflow_alerting import (
     validate_evidence,
     verify_workflow_alerting,
 )
+from tests.clients.operational_runtime import install_operational_runtime
 from tests.fixtures.workflow_alert_receiver.app import _redaction_assertions, create_app
 
 EVENT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 REVISION = "a" * 40
 ADMIN_KEY = "admin-secret-value"
 RECEIVER_TOKEN = "receiver-secret-value"
+
 SIGNING_SECRET = "receiver-signing-secret-at-least-32-bytes"
 
 
@@ -677,7 +679,10 @@ def test_cli_converts_unexpected_errors_to_safe_output(
         ["verify_workflow_alerting.py", "--output", str(tmp_path / "evidence.json")],
     )
 
+    runtime = install_operational_runtime(monkeypatch)
     assert verifier.main() == 1
+    assert runtime.events == ["reserve", "activate", "finish"]
+    assert runtime.entrypoints == ["script.verify_workflow_alerting"]
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == "workflow alert staging verification: FAILED (unexpected_error)\n"

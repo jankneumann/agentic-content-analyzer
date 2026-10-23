@@ -15,6 +15,7 @@ from graphiti_core.llm_client.anthropic_client import AnthropicClient, LLMConfig
 from graphiti_core.nodes import EpisodeType
 
 from src.config import settings
+from src.contracts.operation_context import OperationStage
 from src.models.content import Content
 from src.models.summary import Summary
 from src.storage.graph_provider import (
@@ -23,6 +24,7 @@ from src.storage.graph_provider import (
     get_graph_provider,
 )
 from src.utils.logging import get_logger
+from src.workflows.stage_observability import operation_stage
 
 if TYPE_CHECKING:
     pass
@@ -143,14 +145,15 @@ class GraphitiClient:
         reference_time = content.published_date or datetime.now()
 
         source_type = content.source_type.value if content.source_type else "unknown"
-        result = await self.graphiti.add_episode(
-            name=f"{content.publication or content.author}: {content.title}",
-            episode_body=episode_content,
-            source_description=f"Content from {source_type}",
-            reference_time=reference_time,
-            source=EpisodeType.text,
-            group_id=DEFAULT_GROUP_ID,
-        )
+        with operation_stage("graph.add_episode", OperationStage.GRAPH):
+            result = await self.graphiti.add_episode(
+                name=f"{content.publication or content.author}: {content.title}",
+                episode_body=episode_content,
+                source_description=f"Content from {source_type}",
+                reference_time=reference_time,
+                source=EpisodeType.text,
+                group_id=DEFAULT_GROUP_ID,
+            )
 
         episode_uuid = result.episode.uuid
         logger.info(f"Added episode {episode_uuid} for content {content.id} ({content.title})")

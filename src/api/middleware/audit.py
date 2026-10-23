@@ -42,6 +42,9 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
+from src.config.release_identity import release_identity
+from src.config.settings import get_settings
+
 try:
     from opentelemetry import trace
 except ImportError:  # pragma: no cover - OTel is a hard dep, but be defensive
@@ -139,22 +142,41 @@ def _normalize_ip(value: str) -> str:
 
 
 def _resolve_request_id(request: Request) -> str:
-    """Return request.state.request_id when populated, else derive a fallback.
+    """Return the request identity, generating one independently of tracing."""
 
-    Fallback order: OTel trace-id (if recording) → random uuid4.
-    """
     rid = getattr(request.state, "request_id", None)
     if isinstance(rid, str) and rid:
         return rid
-    if trace is not None:
-        try:
-            span = trace.get_current_span()
-            ctx = span.get_span_context() if span is not None else None
-            if ctx and getattr(ctx, "trace_id", 0):
-                return format(ctx.trace_id, "032x")
-        except Exception:  # pragma: no cover - defensive
-            pass
     return uuid.uuid4().hex
+
+
+def _resolve_trace_ids() -> tuple[str | None, str | None]:
+    """Return actual current trace/span IDs without conflating request identity."""
+
+    if trace is None:
+        return None, None
+    try:
+        context = trace.get_current_span().get_span_context()
+        if not context or not getattr(context, "is_valid", False):
+            return None, None
+        trace_id = format(context.trace_id, "032x")
+        span_id = format(context.span_id, "016x")
+        if trace_id == "0" * 32 or span_id == "0" * 16:
+            return None, None
+        return trace_id, span_id
+    except Exception:
+        return None, None
+
+
+def _resolve_submitted_operation_id(request: Request) -> int | None:
+    raw = getattr(request.state, "audit_submitted_operation_id", None)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if str(value) != str(raw) or not 1 <= value <= 9_223_372_036_854_775_807:
+        return None
+    return value
 
 
 def _resolve_operation(request: Request) -> str | None:
@@ -199,7 +221,7 @@ def _set_span_attr(key: str, value: Any) -> None:
         pass
 
 
-def _default_writer(**kwargs: Any) -> None:
+def _default_writer(**kwargs: Any) -> int:
     """Default audit writer — INSERTs one row into ``audit_log`` via a fresh session.
 
     Uses a dedicated short-lived session so it never entangles with the route's
@@ -216,20 +238,28 @@ def _default_writer(**kwargs: Any) -> None:
         else:
             notes_json = json.dumps({})
 
-        session.execute(
+        result = session.execute(
             text(
                 """
                 INSERT INTO audit_log
-                    (request_id, method, path, operation, admin_key_fp,
-                     status_code, body_size, client_ip, notes)
+                    (request_id, trace_id, request_span_id, submitted_operation_id,
+                     service_name, release_revision, method, path, operation,
+                     admin_key_fp, status_code, body_size, client_ip, notes)
                 VALUES
-                    (:request_id, :method, :path, :operation, :admin_key_fp,
-                     :status_code, :body_size, CAST(:client_ip AS INET),
+                    (:request_id, :trace_id, :request_span_id, :submitted_operation_id,
+                     :service_name, :release_revision, :method, :path, :operation,
+                     :admin_key_fp, :status_code, :body_size, CAST(:client_ip AS INET),
                      CAST(:notes AS JSONB))
+                RETURNING id
                 """
             ),
             {
                 "request_id": kwargs.get("request_id"),
+                "trace_id": kwargs.get("trace_id"),
+                "request_span_id": kwargs.get("request_span_id"),
+                "submitted_operation_id": kwargs.get("submitted_operation_id"),
+                "service_name": kwargs.get("service_name"),
+                "release_revision": kwargs.get("release_revision"),
                 "method": kwargs.get("method"),
                 "path": kwargs.get("path"),
                 "operation": kwargs.get("operation"),
@@ -240,7 +270,9 @@ def _default_writer(**kwargs: Any) -> None:
                 "notes": notes_json,
             },
         )
+        audit_id = int(result.scalar_one())
         session.commit()
+        return audit_id
     finally:
         session.close()
 
@@ -374,6 +406,10 @@ class AuditMiddleware(BaseHTTPMiddleware):
 
         operation = _resolve_operation(request)
         request_id = _resolve_request_id(request)
+        trace_id, request_span_id = _resolve_trace_ids()
+        submitted_operation_id = _resolve_submitted_operation_id(request)
+        settings = get_settings()
+        revision, _revision_source = release_identity()
 
         # Enrich active OTel span
         _set_span_attr("audit.operation", operation if operation is not None else "")
@@ -389,8 +425,13 @@ class AuditMiddleware(BaseHTTPMiddleware):
             writer = _mod._default_writer
 
         try:
-            writer(
+            audit_id = writer(
                 request_id=request_id,
+                trace_id=trace_id,
+                request_span_id=request_span_id,
+                submitted_operation_id=submitted_operation_id,
+                service_name=settings.otel_service_name[:100],
+                release_revision=revision[:64],
                 method=request.method,
                 path=audit_path,
                 operation=operation,
@@ -400,6 +441,10 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 client_ip=client_ip,
                 notes=notes or {},
             )
+            if audit_id is not None:
+                _set_span_attr("audit.record_id", str(audit_id))
+            if submitted_operation_id is not None:
+                _set_span_attr("audit.submitted_operation_id", str(submitted_operation_id))
         except Exception as exc:
             # D4b: non-blocking. Log to stderr, mark span, return original response.
             _set_span_attr("audit.write_failure", True)

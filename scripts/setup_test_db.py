@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 
+from src.clients.operational_observability import bootstrap_entrypoint
 from tests.helpers.test_db import get_test_db_name
 
 # Test database configuration
@@ -142,6 +143,7 @@ def run_migrations(db_name: str) -> bool:
         return False
 
 
+@bootstrap_entrypoint("bootstrap.setup_test_db")
 def main():
     """Setup test database."""
     print("=" * 80)

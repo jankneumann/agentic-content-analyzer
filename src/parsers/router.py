@@ -4,7 +4,9 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Optional
 
+from src.contracts.operation_context import OperationStage
 from src.models.document import DocumentContent
+from src.workflows.stage_observability import operation_stage
 
 if TYPE_CHECKING:
     from src.parsers.base import DocumentParser
@@ -189,7 +191,8 @@ class ParserRouter:
                 ocr_needed=ocr_needed,
             )
 
-        result = await parser.parse(source, format_hint=format_hint)
+        with operation_stage("parser.parse", OperationStage.PARSE):
+            result = await parser.parse(source, format_hint=format_hint)
 
         # Shadow evaluation: fire-and-forget secondary-parser comparisons
         shadow_configs = [

@@ -1,8 +1,9 @@
 // Generated from contracts/openapi/v1.yaml; do not edit.
-export const CONTRACT_SHA256 = "c8772855f2591fc99d35946b38564f16a2851adeb75d11552847b70ca844653d" as const;
+export const CONTRACT_SHA256 = "650647824c6a206433e19cb04412fb1658982f1ee2202d8cbad1a12636806b3f" as const;
 
 export type OperationStatus = "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 export type OperationType = "ingestion.execute" | "summarization.run" | "theme_analysis.create" | "digest.create" | "pipeline.run" | "podcast_script.create" | "podcast_audio.create" | "audio_digest.create";
+type Brand<Value, Name extends string> = Value & { readonly __brand: Name };
 export type IngestionOutcome = "success" | "zero_items" | "partial" | "failed" | "cancelled" | "unknown";
 export type IngestionStatus = "ok" | "partial" | "error";
 export type TerminalOperationStatus = "completed" | "failed" | "cancelled";
@@ -15,6 +16,117 @@ export type ContentReconciliationAction = "none" | "retry_operation" | "project_
 export type ContentReconciliationReason = "summary_exists" | "extraction_completed" | "completed_output_missing" | "output_owner_mismatch" | "active_operation" | "cancellation_pending" | "execution_locked" | "cancellation_requested" | "stale_operation" | "failed_operation" | "retry_budget_exhausted" | "forced_reprocessing" | "summarization_cancelled" | "extraction_cancelled" | "missing_operation" | "ownership_conflict" | "incompatible_worker" | "revalidation_conflict" | "apply_failed";
 export type SourceManagementType = "blog" | "rss" | "substack" | "podcast" | "youtube_playlist" | "youtube_channel" | "youtube_rss" | "gmail" | "scholar" | "arxiv" | "huggingface_papers" | "websearch" | "readwise" | "obsidian_vault";
 export type PublicSourceKey = string;
+export type TraceId = Brand<string, "TraceId">;
+export type SpanId = Brand<string, "SpanId">;
+export type OperationId = Brand<string, "OperationId">;
+export type Int64NonNegativeString = Brand<string, "Int64NonNegativeString">;
+export type ClaimGenerationString = Brand<string, "ClaimGenerationString">;
+export type Int64PositiveString = Brand<string, "Int64PositiveString">;
+export type OperationStage = "submit" | "queue_wait" | "claim" | "fetch" | "discover" | "metadata" | "transcript" | "extract" | "parse" | "filter" | "deduplicate" | "model" | "fallback" | "persist" | "index" | "graph" | "deliver" | "backup" | "restore" | "alert" | "cleanup" | "flush";
+export type OperationOutcome = "succeeded" | "partial" | "skipped_policy" | "skipped_duplicate" | "filtered" | "retryable_failure" | "permanent_failure" | "cancelled";
+export type TelemetryDeliveryState = "pending" | "delivered" | "degraded" | "dropped" | "disabled";
+export const SIGNED_BIGINT_MAX = 9223372036854775807n;
+export const CLAIM_GENERATION_MAX = 9223372036854775806n;
+const CANONICAL_DECIMAL = /^(0|[1-9][0-9]*)$/;
+const TRACE_ID = /^[0-9a-f]{32}$/;
+const SPAN_ID = /^[0-9a-f]{16}$/;
+const AUTHORITY_FINGERPRINT = /^[0-9a-f]{64}$/;
+const TRACEPARENT = /^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$/;
+const TRACESTATE_KEY = /^[a-z0-9][a-z0-9_*/-]{0,255}$/;
+const OPERATION_STAGES = new Set<string>(["submit", "queue_wait", "claim", "fetch", "discover", "metadata", "transcript", "extract", "parse", "filter", "deduplicate", "model", "fallback", "persist", "index", "graph", "deliver", "backup", "restore", "alert", "cleanup", "flush"]);
+const CONTEXT_KEYS = new Set([
+  "schema_version", "operation_id", "root_operation_id", "parent_operation_id",
+  "traceparent", "tracestate", "trace_id", "span_id", "claim_generation",
+  "attempt_number", "entrypoint", "service_name", "service_instance_id",
+  "environment", "release_revision", "authority_fingerprint", "ownership_epoch",
+  "stage", "resource_kind", "resource_key",
+]);
+const codePointLength = (value: string): number => Array.from(value).length;
+
+function isBoundedDecimal(value: string, minimum: bigint, maximum: bigint): boolean {
+  return value.length <= 19 && CANONICAL_DECIMAL.test(value)
+    && BigInt(value) >= minimum && BigInt(value) <= maximum;
+}
+
+export function isOperationId(value: string): value is OperationId {
+  return isBoundedDecimal(value, 1n, SIGNED_BIGINT_MAX);
+}
+export function isClaimGenerationString(value: string): value is ClaimGenerationString {
+  return isBoundedDecimal(value, 0n, CLAIM_GENERATION_MAX);
+}
+export function isInt64PositiveString(value: string): value is Int64PositiveString {
+  return isBoundedDecimal(value, 1n, SIGNED_BIGINT_MAX);
+}
+export function isInt64NonNegativeString(value: string): value is Int64NonNegativeString {
+  return isBoundedDecimal(value, 0n, SIGNED_BIGINT_MAX);
+}
+export function isTraceId(value: string): value is TraceId {
+  return TRACE_ID.test(value) && value !== "0".repeat(32);
+}
+export function isSpanId(value: string): value is SpanId {
+  return SPAN_ID.test(value) && value !== "0".repeat(16);
+}
+
+function isValidTracestate(value: string): boolean {
+  if (value.length < 1 || value.length > 512) return false;
+  const members = value.split(",");
+  if (members.length < 1 || members.length > 32) return false;
+  const keys = new Set<string>();
+  return members.every((member) => {
+    const separator = member.indexOf("=");
+    if (separator < 1) return false;
+    const key = member.slice(0, separator);
+    const memberValue = member.slice(separator + 1);
+    if (!TRACESTATE_KEY.test(key) || keys.has(key) || memberValue.length < 1 || memberValue.length > 256) return false;
+    for (const char of memberValue) {
+      const code = char.charCodeAt(0);
+      if (code < 0x21 || code > 0x7e || char === "," || char === "=") return false;
+    }
+    keys.add(key);
+    return true;
+  });
+}
+
+/** Mandatory semantic ingress validator; structural validation alone is insufficient. */
+export function parseOperationContextEnvelope(value: unknown): OperationContextEnvelope {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new TypeError("operation context must be an object");
+  }
+  const context = value as Record<string, unknown>;
+  const keys = Object.keys(context);
+  if (keys.length !== CONTEXT_KEYS.size || keys.some((key) => !CONTEXT_KEYS.has(key))) {
+    throw new TypeError("operation context keys do not match schema version 1");
+  }
+  const boundedString = (field: string, minimum: number, maximum: number): string => {
+    const item = context[field];
+    if (typeof item !== "string" || codePointLength(item) < minimum || codePointLength(item) > maximum) {
+      throw new TypeError(`${field} is outside its string bounds`);
+    }
+    return item;
+  };
+  if (context.schema_version !== 1) throw new TypeError("schema_version must be 1");
+  if (typeof context.operation_id !== "string" || !isOperationId(context.operation_id)) throw new TypeError("invalid operation_id");
+  if (typeof context.root_operation_id !== "string" || !isOperationId(context.root_operation_id)) throw new TypeError("invalid root_operation_id");
+  if (context.parent_operation_id !== null && (typeof context.parent_operation_id !== "string" || !isOperationId(context.parent_operation_id))) throw new TypeError("invalid parent_operation_id");
+  if (typeof context.trace_id !== "string" || !isTraceId(context.trace_id)) throw new TypeError("invalid trace_id");
+  if (typeof context.span_id !== "string" || !isSpanId(context.span_id)) throw new TypeError("invalid span_id");
+  const carrier = typeof context.traceparent === "string" ? TRACEPARENT.exec(context.traceparent) : null;
+  if (carrier === null || carrier[1] !== context.trace_id || carrier[2] !== context.span_id) throw new TypeError("invalid or mismatched traceparent");
+  if (context.tracestate !== null && (typeof context.tracestate !== "string" || !isValidTracestate(context.tracestate))) throw new TypeError("invalid tracestate");
+  if (typeof context.claim_generation !== "string" || !isClaimGenerationString(context.claim_generation)) throw new TypeError("invalid claim_generation");
+  if (context.attempt_number !== null && (typeof context.attempt_number !== "string" || !isInt64PositiveString(context.attempt_number) || BigInt(context.attempt_number) !== BigInt(context.claim_generation) + 1n)) throw new TypeError("invalid attempt_number");
+  boundedString("entrypoint", 1, 160);
+  boundedString("service_name", 1, 100);
+  boundedString("service_instance_id", 1, 128);
+  boundedString("environment", 1, 32);
+  boundedString("release_revision", 1, 64);
+  if (context.authority_fingerprint !== null && (typeof context.authority_fingerprint !== "string" || !AUTHORITY_FINGERPRINT.test(context.authority_fingerprint))) throw new TypeError("invalid authority_fingerprint");
+  if (context.ownership_epoch !== null && (typeof context.ownership_epoch !== "string" || !isInt64NonNegativeString(context.ownership_epoch))) throw new TypeError("invalid ownership_epoch");
+  if (context.stage !== null && (typeof context.stage !== "string" || !OPERATION_STAGES.has(context.stage))) throw new TypeError("invalid stage");
+  if (context.resource_kind !== null && (typeof context.resource_kind !== "string" || codePointLength(context.resource_kind) > 64)) throw new TypeError("invalid resource_kind");
+  if (context.resource_key !== null && (typeof context.resource_key !== "string" || codePointLength(context.resource_key) > 128)) throw new TypeError("invalid resource_key");
+  return context as unknown as OperationContextEnvelope;
+}
 
 export interface LegacyDetailError {
   detail: string;
@@ -212,6 +324,7 @@ export interface OperationHandle {
   created_at: string;
   started_at?: string | null;
   completed_at?: string | null;
+  observability?: OperationObservabilitySummary | null;
 }
 
 export interface OperationPage {
@@ -816,6 +929,120 @@ export interface AudioDigestRequest {
   provider?: string;
   voice?: string;
   speed?: number;
+}
+
+export interface OperationContextEnvelope {
+  schema_version: 1;
+  operation_id: OperationId;
+  root_operation_id: OperationId;
+  parent_operation_id: OperationId | null;
+  traceparent: string;
+  tracestate: string | null;
+  trace_id: TraceId;
+  span_id: SpanId;
+  claim_generation: ClaimGenerationString;
+  attempt_number: Int64PositiveString | null;
+  entrypoint: string;
+  service_name: string;
+  service_instance_id: string;
+  environment: string;
+  release_revision: string;
+  authority_fingerprint: string | null;
+  ownership_epoch: Int64NonNegativeString | null;
+  stage: OperationStage | null;
+  resource_kind: string | null;
+  resource_key: string | null;
+}
+
+export interface OperationAttemptSummary {
+  claim_generation: ClaimGenerationString;
+  attempt_number: Int64PositiveString;
+  trace_id: TraceId;
+  root_span_id: SpanId | null;
+  langfuse_observation_id: string | null;
+  service_name: string;
+  service_instance_id: string;
+  environment: string;
+  release_revision: string;
+  started_at: string;
+  completed_at: string | null;
+  terminal_stage: OperationStage | null;
+  outcome: OperationOutcome | null;
+  retryable: boolean | null;
+  telemetry_delivery_state: TelemetryDeliveryState;
+  diagnostic_codes: Array<string>;
+  diagnostics_omitted: number;
+}
+
+export interface OperationObservabilitySummary {
+  root_operation_id: OperationId;
+  trace_id: TraceId;
+  attempt_count: number;
+  latest_attempt: OperationAttemptSummary | null;
+  telemetry_delivery_state: TelemetryDeliveryState;
+  langfuse_url: string | null;
+}
+
+export interface OperationAttemptPage {
+  schema_version: 1;
+  operation_id: OperationId;
+  root_operation_id: OperationId;
+  attempts: Array<OperationAttemptSummary>;
+  attempts_omitted: number;
+  next_after_claim_generation: ClaimGenerationString | null;
+}
+
+export interface ProcessObservabilityHealth {
+  schema_version: 1;
+  required: boolean;
+  initialized: boolean;
+  status: "healthy" | "degraded" | "disabled" | "stale";
+  service_name: string;
+  service_instance_id: string;
+  environment: string;
+  release_revision: string;
+  lifecycle_kind: "long_running" | "short_lived";
+  expires_at: string;
+  export_target: "local_langfuse" | "remote_langfuse" | "other_otlp" | "none";
+  last_heartbeat_at: string;
+  last_success_at: string | null;
+  last_success_age_seconds: number | null;
+  last_error_at: string | null;
+  last_error_age_seconds: number | null;
+  last_error_code: string | null;
+  buffered_count: number;
+  buffer_capacity: number;
+  dropped_count: number;
+  last_flush_at: string | null;
+  last_flush_succeeded: boolean | null;
+}
+
+export interface ObservabilityHealthPage {
+  schema_version: 1;
+  status: "healthy" | "degraded";
+  generated_at: string;
+  stale_after_seconds: number;
+  processes_omitted: number;
+  processes: Array<ProcessObservabilityHealth>;
+}
+
+export interface EnvironmentOwnershipStatus {
+  schema_version: 1;
+  configured_environment: string;
+  active_environment: string;
+  mode: "active" | "passive" | "conflict";
+  authority_matches: boolean;
+  authority_fingerprint_prefix: string;
+  epoch: Int64NonNegativeString;
+  passive_reasons: Array<string>;
+  dry_run: OwnershipDryRun | null;
+}
+
+export interface OwnershipDryRun {
+  target_environment: string;
+  allowed: boolean;
+  next_epoch: Int64NonNegativeString | null;
+  checks: Array<string>;
 }
 
 export type IngestionResult = IngestionResultV1 | IngestionResultV2;

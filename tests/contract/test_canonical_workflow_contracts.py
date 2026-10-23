@@ -18,6 +18,7 @@ ROOT = Path(__file__).parents[2]
 CONTRACTS = ROOT / "openspec/contracts/content-workflows"
 OPENAPI_PATH = CONTRACTS / "openapi/v1.yaml"
 GENERATOR = ROOT / "scripts/generate_workflow_contracts.py"
+GX10_CONTRACTS = ROOT / "openspec/changes/gx10-full-operation-observability/contracts"
 RECONCILIATION_SCHEMA_PATH = (
     ROOT
     / "openspec/changes/stuck-content-sweeper-and-requeue-cli/contracts/reconciliation-report.schema.json"
@@ -1027,6 +1028,72 @@ def test_progress_event_schema_is_valid() -> None:
     assert set(openapi_event["required"]) == set(schema["required"])
 
 
+def test_operation_observability_contract_is_in_the_durable_registry() -> None:
+    document = _openapi()
+    schemas = document["components"]["schemas"]
+
+    assert "/api/v1/operations/{operation_id}/attempts" in document["paths"]
+    assert "/api/v1/status/observability" in document["paths"]
+    assert "/api/v1/status/environment-ownership" in document["paths"]
+    assert document["components"]["securitySchemes"]["OperatorKey"]["name"] == ("X-Operator-Key")
+    assert schemas["OperationHandle"]["properties"]["observability"] == {
+        "oneOf": [
+            {"$ref": "#/components/schemas/OperationObservabilitySummary"},
+            {"type": "null"},
+        ],
+        "default": None,
+    }
+    assert schemas["OperationAttemptPage"]["properties"]["attempts"]["maxItems"] == 100
+    assert schemas["ObservabilityHealthPage"]["properties"]["processes"]["maxItems"] == 1000
+
+
+def test_operation_context_event_and_openapi_nullability_match() -> None:
+    context_schema = json.loads((CONTRACTS / "events/operation-context-v1.schema.json").read_text())
+    attempt_schema = json.loads((CONTRACTS / "events/operation-attempt-v1.schema.json").read_text())
+    openapi_context = _openapi()["components"]["schemas"]["OperationContextEnvelope"]
+
+    for schema in (context_schema, attempt_schema):
+        validator_for(schema).check_schema(schema)
+    assert set(context_schema["required"]) == set(openapi_context["required"])
+
+    nullable = {
+        "parent_operation_id",
+        "tracestate",
+        "attempt_number",
+        "authority_fingerprint",
+        "ownership_epoch",
+        "stage",
+        "resource_kind",
+        "resource_key",
+    }
+
+    def permits_null(schema: dict[str, Any]) -> bool:
+        schema_type = schema.get("type")
+        return (
+            schema_type == "null"
+            or (isinstance(schema_type, list) and "null" in schema_type)
+            or any(permits_null(part) for part in schema.get("oneOf", []))
+        )
+
+    for field in context_schema["properties"]:
+        assert permits_null(context_schema["properties"][field]) == (field in nullable)
+        assert permits_null(openapi_context["properties"][field]) == (field in nullable)
+
+
+def test_operation_entrypoint_inventory_is_closed_and_reviewable() -> None:
+    inventory = cast(
+        dict[str, Any],
+        yaml.safe_load((GX10_CONTRACTS / "operation-entrypoints.yaml").read_text()),
+    )
+
+    assert inventory["schema_version"] == 1
+    assert inventory["policy"]
+    assert inventory["shared_boundaries"]
+    assert inventory["domain_operations"]
+    assert inventory["provider_boundaries"]
+    assert inventory["explicit_exclusions"]
+
+
 def test_database_contract_declares_provenance_and_queue_payload() -> None:
     schema = (CONTRACTS / "db/schema.sql").read_text()
     for fragment in (
@@ -1046,6 +1113,81 @@ def test_database_contract_declares_provenance_and_queue_payload() -> None:
 
     assert "ALTER COLUMN summary_ids SET DEFAULT '[]'::jsonb" in schema
     assert "ALTER COLUMN selection_policy SET DEFAULT" in schema
+
+    for fragment in (
+        "operation_observation_attempts",
+        "telemetry_process_health",
+        "submission_context",
+        "ck_pgqueuer_jobs_context_identity",
+        "ck_audit_log_trace_id",
+        "ck_workflow_terminal_events_trace_id",
+        "environment_ownership",
+    ):
+        assert fragment in schema
+
+
+def _valid_operation_context() -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "operation_id": "9223372036854775807",
+        "root_operation_id": "1",
+        "parent_operation_id": None,
+        "traceparent": "00-11111111111111111111111111111111-2222222222222222-01",
+        "tracestate": "vendor=value",
+        "trace_id": "11111111111111111111111111111111",
+        "span_id": "2222222222222222",
+        "claim_generation": "9223372036854775806",
+        "attempt_number": "9223372036854775807",
+        "entrypoint": "api.submit",
+        "service_name": "api",
+        "service_instance_id": "instance-1",
+        "environment": "test",
+        "release_revision": "a" * 40,
+        "authority_fingerprint": None,
+        "ownership_epoch": None,
+        "stage": "submit",
+        "resource_kind": None,
+        "resource_key": "😀" * 128,
+    }
+
+
+def test_generated_python_operation_context_parser_enforces_composite_semantics() -> None:
+    module = _generated_models()
+    payload = _valid_operation_context()
+
+    parsed = module.parse_operation_context_envelope(payload)
+    assert parsed.operation_id == "9223372036854775807"
+    assert module.parse_operation_context_envelope({**payload, "schema_version": 1.0})
+
+    invalid_payloads = (
+        {**payload, "schema_version": True},
+        {**payload, "schema_version": "1"},
+        {**payload, "operation_id": "9223372036854775808"},
+        {**payload, "claim_generation": "9223372036854775807"},
+        {**payload, "trace_id": "0" * 32},
+        {**payload, "span_id": "0" * 16},
+        {**payload, "traceparent": "00-33333333333333333333333333333333-2222222222222222-01"},
+        {**payload, "attempt_number": "1"},
+        {**payload, "tracestate": "vendor=value,vendor=duplicate"},
+        {**payload, "resource_key": "😀" * 129},
+        {**payload, "unexpected": True},
+    )
+    for invalid in invalid_payloads:
+        with pytest.raises(ValidationError):
+            module.parse_operation_context_envelope(invalid)
+
+
+def test_generated_typescript_contract_has_brands_and_mandatory_context_parser() -> None:
+    source = (CONTRACTS / "generated/types.ts").read_text()
+    runtime = (ROOT / "web/src/generated/workflow-contracts.ts").read_text()
+
+    for generated in (source, runtime):
+        assert "type Brand<Value, Name extends string>" in generated
+        assert 'export type OperationId = Brand<string, "OperationId">;' in generated
+        assert 'export type TraceId = Brand<string, "TraceId">;' in generated
+        assert "export function parseOperationContextEnvelope(" in generated
+        assert "BigInt(context.attempt_number)" in generated
+        assert "Array.from(value).length" in generated
 
 
 def test_generated_source_requests_match_runtime_validation_and_extra_handling() -> None:
@@ -1163,3 +1305,30 @@ def test_generated_typescript_declares_named_unions_and_type_checks() -> None:
         text=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_ownership_trace_identity_is_canonical_and_change_copy_parity() -> None:
+    durable_event = json.loads((CONTRACTS / "events/operation-context-v1.schema.json").read_text())
+    change_event = json.loads(
+        (GX10_CONTRACTS / "events/operation-context-v1.schema.json").read_text()
+    )
+    durable_openapi = _openapi()["components"]["schemas"]["OperationContextEnvelope"]
+    change_openapi = yaml.safe_load((GX10_CONTRACTS / "openapi/v1.yaml").read_text())["components"][
+        "schemas"
+    ]["OperationContextEnvelope"]
+
+    for schema in (durable_event, change_event, durable_openapi, change_openapi):
+        assert {"authority_fingerprint", "ownership_epoch"} <= set(schema["required"])
+        assert schema["properties"]["authority_fingerprint"]["type"] == ["string", "null"]
+        assert schema["properties"]["authority_fingerprint"]["pattern"] == "^[0-9a-f]{64}$"
+        assert schema["properties"]["ownership_epoch"]
+
+    for path in (
+        CONTRACTS / "generated/types.ts",
+        ROOT / "web/src/generated/workflow-contracts.ts",
+        GX10_CONTRACTS / "generated/typescript/operation-observability.ts",
+    ):
+        source = path.read_text()
+        assert "authority_fingerprint" in source
+        assert "ownership_epoch" in source
+        assert "^[0-9a-f]{64}$" in source

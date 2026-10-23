@@ -6,9 +6,11 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from src.contracts.operation_context import OperationStage
 from src.contracts.workflow_models import PipelineRequest
 from src.models.jobs import OperationHandle, OperationType
 from src.services.operation_service import OperationService
+from src.workflows.stage_observability import operation_stage
 
 
 async def run_pipeline(
@@ -45,10 +47,11 @@ async def run_pipeline(
         continue_on_source_error=continue_on_source_error,
     )
     operations = operation_service or OperationService()
-    handle = await operations.submit(
-        OperationType.PIPELINE_RUN,
-        request.model_dump(mode="json"),
-    )
+    with operation_stage("pipeline.submit", OperationStage.SUBMIT):
+        handle = await operations.submit(
+            OperationType.PIPELINE_RUN,
+            request.model_dump(mode="json"),
+        )
     if on_progress is not None:
         on_progress(
             {

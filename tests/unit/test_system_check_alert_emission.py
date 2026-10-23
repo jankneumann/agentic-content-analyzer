@@ -62,6 +62,7 @@ def system_check_event(**overrides: Any) -> TerminalEventEvidence:
         "source_kind": "system_check",
         "operation_id": None,
         "claim_generation": None,
+        "trace_id": None,
         "terminal_status": None,
         "reconciliation_action_id": None,
         "reconciliation_run_id": None,
@@ -108,7 +109,7 @@ class FakeConnection:
 
     async def fetchrow(self, query: str, *args: Any) -> Any:
         if "UPDATE workflow_terminal_events" in query:
-            _, status, envelope = args
+            _, status, envelope, *_ = args
             self.stored = {"classification_status": status, "envelope": envelope}
             return {"id": self.row["id"]}
         return self.row

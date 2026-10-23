@@ -1,0 +1,670 @@
+name: aca-gx10
+x-defaults:
+  restart: on-failure:5
+  read_only: true
+  security_opt: &id001
+  - no-new-privileges:true
+  cap_drop: &id002
+  - ALL
+  deploy: &id003
+    resources:
+      limits:
+        cpus: '1.00'
+        memory: 1G
+x-stateful:
+  restart: on-failure:5
+  read_only: false
+  security_opt: *id001
+  cap_drop: *id002
+  deploy: *id003
+  networks: &id004
+  - stateful
+  tmpfs: &id005
+  - /tmp:rw,noexec,nosuid,size=128m
+x-application:
+  restart: on-failure:5
+  read_only: true
+  security_opt: *id001
+  cap_drop: *id002
+  deploy: *id003
+  image: ${GX10_APP_IMAGE:?set a reviewed application tag@sha256 digest}
+  # String entries only: podman-compose 1.0.6 crashes on the {path, required}
+  # long form. Podman itself fails closed when an --env-file is missing.
+  env_file:
+  - /run/aca/gx10/common.env
+  - /run/aca/gx10/proxy.env
+  environment:
+    PROFILE: gx10
+    GX10_RUNTIME_ENABLED: 'true'
+    NO_PROXY: localhost,127.0.0.1,.gx10.internal
+  networks: &id010
+  - application
+  - stateful
+  depends_on: &id011
+    app-postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    falkordb:
+      condition: service_healthy
+    openbao:
+      condition: service_healthy
+    squid:
+      condition: service_healthy
+    langfuse-web:
+      condition: service_healthy
+  volumes:
+  - /srv/aca/application:/srv/aca:rw
+  - ./scripts/gx10/check_role_readiness.py:/usr/local/bin/gx10-role-ready:ro
+  tmpfs: &id012
+  - /tmp:rw,noexec,nosuid,size=256m
+  stop_grace_period: 45s
+# Every image names its registry: the rootful host defines no unqualified-search
+# registries, and short-name aliases never apply to digested references.
+services:
+  app-postgres:
+    restart: on-failure:5
+    user: '999:999'
+    read_only: false
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    # A fixed stateful address, for the same reason OpenBao has one: the
+    # backup, the restore drill, and the storage monitor run on the host, and
+    # every one of them reserves its operation in this database first. The
+    # host has no container DNS, so `app-postgres:5432` is unresolvable there
+    # and nothing is published. Outside the /25 the IPAM pool hands out.
+    networks:
+      stateful:
+        ipv4_address: 10.89.0.251
+    tmpfs: *id005
+    # ParadeDB is PostgreSQL 17.11 (same server version, so the existing data
+    # directory stays compatible) with pgvector and pg_search built in. The
+    # schema creates the `vector` extension, which the stock image cannot
+    # provide, and pg_search is what BM25 search indexes with.
+    image: docker.io/paradedb/paradedb:0.25.9-pg17@sha256:8da5d202fe31875af32a49e802ce17cfbc146b0672306f4109809efee1e6f916
+    # pg_search and pg_cron must be preloaded, and the image ships that only in
+    # the postgresql.conf that initdb writes -- a cluster initialised by the
+    # stock image carries no such line and would refuse `CREATE EXTENSION
+    # pg_search`. Naming the libraries here covers both cases; the list matches
+    # the image's own sample, so a first-time init still bootstraps pg_cron.
+    command:
+    - postgres
+    - -c
+    - shared_preload_libraries=pg_search,pg_cron,pg_stat_statements
+    env_file:
+    - /run/aca/gx10/app-postgres.env
+    environment:
+      POSTGRES_DB: newsletters
+      POSTGRES_USER: newsletter_user
+    volumes:
+    - /srv/aca/postgres:/var/lib/postgresql/data:rw
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U newsletter_user -d newsletters
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+  langfuse-postgres:
+    restart: on-failure:5
+    user: '999:999'
+    read_only: false
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    networks: *id004
+    tmpfs: *id005
+    image: docker.io/library/postgres:17.11@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
+    env_file:
+    - /run/aca/gx10/langfuse-postgres.env
+    environment:
+      POSTGRES_DB: langfuse
+      POSTGRES_USER: langfuse
+    volumes:
+    - /srv/aca/langfuse-postgres:/var/lib/postgresql/data:rw
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U langfuse -d langfuse
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+  redis:
+    restart: on-failure:5
+    user: '999:1000'
+    read_only: false
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    networks: *id004
+    tmpfs: *id005
+    image: docker.io/library/redis:7.4-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    env_file:
+    - /run/aca/gx10/redis.env
+    command:
+    - sh
+    - -ec
+    - |-
+      mkdir -p /tmp/redis
+      cp /run/aca/gx10/redis/users.acl /tmp/redis/users.acl
+      chmod 0600 /tmp/redis/users.acl
+      exec redis-server /etc/redis/gx10.conf
+    volumes:
+    - /srv/aca/redis:/data:rw
+    - ./deploy/gx10/redis/gx10.conf:/etc/redis/gx10.conf:ro
+    - /run/aca/gx10/redis/users.acl:/run/aca/gx10/redis/users.acl:ro
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - redis-cli ping | grep -qx PONG
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  falkordb:
+    restart: on-failure:5
+    # The image's redis user is 999:999 (not 999:1000 as in redis:alpine).
+    user: '999:999'
+    read_only: false
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    networks: *id004
+    tmpfs: *id005
+    image: docker.io/falkordb/falkordb:v4.18.1@sha256:d6aa9598b79cd54935864d56f971f3916156399a9ca38a5fae6c029ab1f2bce9
+    # run.sh execs redis-server with $REDIS_ARGS; the ACL file is copied onto
+    # the /tmp tmpfs so the read-only rendered secret never has to be writable.
+    # No browser: BROWSER=0 skips the bundled node UI.
+    entrypoint:
+    - sh
+    - -ec
+    - |
+      mkdir -p /tmp/falkordb
+      cp /run/aca/gx10/falkordb/users.acl /tmp/falkordb/users.acl
+      chmod 0600 /tmp/falkordb/users.acl
+      exec /var/lib/falkordb/bin/run.sh
+    command: []
+    env_file:
+    - /run/aca/gx10/falkordb.env
+    environment:
+      BROWSER: '0'
+      TLS: '0'
+      REDIS_ARGS: --aclfile /tmp/falkordb/users.acl --appendonly yes
+    volumes:
+    - /srv/aca/falkordb:/var/lib/falkordb/data:rw
+    - /run/aca/gx10/falkordb/users.acl:/run/aca/gx10/falkordb/users.acl:ro
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - redis-cli ping | grep -qx PONG
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+  clickhouse:
+    restart: on-failure:5
+    user: '101:101'
+    read_only: false
+    security_opt: *id001
+    cap_drop: *id002
+    # ClickHouse serves Langfuse analytics; 1G is below its documented minimum.
+    deploy:
+      resources:
+        limits:
+          cpus: '2.00'
+          memory: 4G
+    networks: *id004
+    tmpfs: *id005
+    image: docker.io/clickhouse/clickhouse-server:25.3.6.56-alpine@sha256:157423fca52f596b62a1bf301b037b9f74bfca38089aa57d1bd36c9025f7ecef
+    env_file:
+    - /run/aca/gx10/clickhouse.env
+    environment:
+      CLICKHOUSE_DB: langfuse
+      CLICKHOUSE_USER: langfuse
+    volumes:
+    - /srv/aca/clickhouse:/var/lib/clickhouse:rw
+    - /srv/aca/clickhouse-logs:/var/log/clickhouse-server:rw
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget --spider -q http://127.0.0.1:8123/ping
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 45s
+  minio:
+    restart: on-failure:5
+    user: '60001:60001'
+    read_only: false
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    networks: *id004
+    tmpfs: *id005
+    image: docker.io/minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
+    env_file:
+    - /run/aca/gx10/minio.env
+    # Langfuse uploads every trace batch to `langfuse-events` and will not
+    # create the bucket itself: without it each export fails with NoSuchBucket
+    # and the trace is lost. MinIO serves a top-level directory of its data
+    # root as a bucket, so the server makes it on the way up, exactly as
+    # Langfuse's own compose file does. `exec` keeps MinIO at PID 1, where it
+    # receives SIGTERM; a shell there would ignore it and every stop would wait
+    # out the kill timeout.
+    entrypoint:
+    - /bin/sh
+    - -c
+    command:
+    - mkdir -p /data/langfuse-events && exec minio server --console-address :9090 /data
+    volumes:
+    - /srv/aca/minio:/data:rw
+    healthcheck:
+      test:
+      - CMD
+      - mc
+      - ready
+      - local
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  openbao:
+    restart: on-failure:5
+    read_only: false
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    # Fixed address on the internal stateful bridge. The host reaches it at
+    # http://10.89.0.250:8200/v1; peers still resolve the ``openbao`` alias.
+    networks:
+      stateful:
+        ipv4_address: 10.89.0.250
+    tmpfs: *id005
+    image: quay.io/openbao/openbao:2.2@sha256:d5d098f98f5ca7cae2e33d1e6dd9e2bea332275ad6bb7ff09032b48af3e1141e
+    command:
+    - server
+    - -config=/openbao/config/openbao.hcl
+    # The image entrypoint drops root via su-exec, which needs CAP_SETGID; with
+    # every capability dropped it dies at startup. Start as the image's own
+    # openbao user (uid 100 / gid 1000 in the pinned digest) so no drop happens.
+    # /srv/aca/openbao must be owned 100:1000 on the host.
+    user: "100:1000"
+    volumes:
+    - /srv/aca/openbao:/openbao/data:rw
+    - ./deploy/gx10/openbao/openbao.hcl:/openbao/config/openbao.hcl:ro
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - bao status -address=http://127.0.0.1:8200 >/dev/null 2>&1; test $$? -eq 0
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+  langfuse-web:
+    restart: on-failure:5
+    read_only: true
+    security_opt: *id001
+    cap_drop: *id002
+    # Langfuse web died on V8's heap limit at 1G; NODE_OPTIONS below sizes the heap to this cap.
+    deploy:
+      resources:
+        limits:
+          cpus: '2.00'
+          memory: 4G
+    image: docker.io/langfuse/langfuse:3.225.5@sha256:a921990b3cf6f62e9452eaf8ab9bea045852375a6883abd1fdbe63afa08defa0
+    env_file:
+    - /run/aca/gx10/langfuse.env
+    environment:
+      # Single ClickHouse node: without this Langfuse's migrations expect a
+      # cluster with ZooKeeper and fail with "no Zookeeper configuration".
+      CLICKHOUSE_CLUSTER_ENABLED: 'false'
+      NODE_OPTIONS: --max-old-space-size=3072
+      # Next.js standalone binds to $HOSTNAME when set, and Podman sets it to
+      # the container id, so 127.0.0.1:3000 (the healthcheck) never listened.
+      HOSTNAME: 0.0.0.0
+    networks:
+    - application
+    - stateful
+    depends_on:
+      langfuse-postgres: &id006
+        condition: service_healthy
+      clickhouse: &id007
+        condition: service_healthy
+      redis: &id008
+        condition: service_healthy
+      minio: &id009
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget --spider -q http://127.0.0.1:3000/api/public/health
+      interval: 10s
+      timeout: 5s
+      retries: 24
+      start_period: 60s
+    tmpfs:
+    - /tmp:rw,noexec,nosuid,size=256m
+  langfuse-worker:
+    restart: on-failure:5
+    read_only: true
+    security_opt: *id001
+    cap_drop: *id002
+    # Langfuse worker: same runtime, smaller working set.
+    deploy:
+      resources:
+        limits:
+          cpus: '2.00'
+          memory: 2G
+    image: docker.io/langfuse/langfuse-worker:3.225.5@sha256:${GX10_LANGFUSE_WORKER_DIGEST:?set the reviewed worker manifest digest}
+    env_file:
+    - /run/aca/gx10/langfuse.env
+    environment:
+      # Single ClickHouse node: without this Langfuse's migrations expect a
+      # cluster with ZooKeeper and fail with "no Zookeeper configuration".
+      CLICKHOUSE_CLUSTER_ENABLED: 'false'
+      NODE_OPTIONS: --max-old-space-size=1536
+      # `app.listen(env.PORT, env.HOSTNAME)`: Podman sets HOSTNAME to the
+      # container id, so the worker would bind that address alone and its own
+      # healthcheck on 127.0.0.1 would be refused forever.
+      HOSTNAME: 0.0.0.0
+    networks:
+    - stateful
+    depends_on:
+      langfuse-postgres: *id006
+      clickhouse: *id007
+      redis: *id008
+      minio: *id009
+      langfuse-web:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget --spider -q http://127.0.0.1:3030/api/health
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    tmpfs:
+    - /tmp:rw,noexec,nosuid,size=256m
+  squid:
+    restart: on-failure:5
+    user: '13:13'
+    read_only: true
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    image: docker.io/ubuntu/squid:6.6-24.04_beta@sha256:${GX10_SQUID_DIGEST:?set the reviewed
+      published manifest digest}
+    # The image entrypoint is a bash script at PID 1 that never forwards
+    # SIGTERM, so every stop ran into the kill timeout. Squid itself as PID 1
+    # shuts down cleanly within shutdown_lifetime; the grace period covers it.
+    entrypoint:
+    - /usr/sbin/squid
+    command:
+    - -f
+    - /etc/squid/squid.conf
+    - -NYC
+    stop_grace_period: 20s
+    networks:
+    - application
+    - egress
+    tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=8m
+    volumes:
+    - ./deploy/gx10/squid/squid.conf:/etc/squid/squid.conf:ro
+    - /run/aca/gx10/proxy:/run/aca/gx10/proxy:ro
+    - /srv/aca/squid-logs:/var/log/squid:rw
+    - ./scripts/gx10/check_proxy_ready.sh:/usr/local/bin/gx10-proxy-ready:ro
+    healthcheck:
+      test:
+      - CMD
+      - /usr/local/bin/gx10-proxy-ready
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    env_file:
+    - /run/aca/gx10/proxy.env
+  api:
+    restart: on-failure:5
+    read_only: true
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    image: ${GX10_APP_IMAGE:?set a reviewed application tag@sha256 digest}
+    env_file:
+    - /run/aca/gx10/common.env
+    - /run/aca/gx10/api.env
+    - /run/aca/gx10/proxy.env
+    environment:
+      PROFILE: gx10
+      GX10_RUNTIME_ENABLED: 'true'
+      NO_PROXY: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,falkordb,openbao,squid,langfuse-web,clickhouse,minio
+      TELEMETRY_SERVICE_INSTANCE_ID: aca-gx10-api
+      WORKER_ENABLED: 'false'
+      GX10_PROCESS_ROLE: api
+      OTEL_SERVICE_NAME: aca-gx10-api
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:3000/api/public/otel
+      no_proxy: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,falkordb,openbao,squid,langfuse-web,clickhouse,minio
+    networks: *id010
+    depends_on: *id011
+    volumes:
+    - /srv/aca/application:/srv/aca:rw
+    - ./scripts/gx10/check_role_readiness.py:/usr/local/bin/gx10-role-ready:ro
+    tmpfs: *id012
+    stop_grace_period: 45s
+    command:
+    - uvicorn
+    - src.api.app:app
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8000'
+    - --proxy-headers
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - /usr/local/bin/gx10-role-ready
+      - --role
+      - api
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+  worker:
+    restart: on-failure:5
+    read_only: true
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    image: ${GX10_APP_IMAGE:?set a reviewed application tag@sha256 digest}
+    env_file:
+    - /run/aca/gx10/common.env
+    - /run/aca/gx10/worker.env
+    - /run/aca/gx10/proxy.env
+    environment:
+      PROFILE: gx10
+      GX10_RUNTIME_ENABLED: 'true'
+      NO_PROXY: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,falkordb,openbao,squid,langfuse-web,clickhouse,minio
+      TELEMETRY_SERVICE_INSTANCE_ID: aca-gx10-worker
+      WORKER_CONCURRENCY: '5'
+      GX10_PROCESS_ROLE: worker
+      OTEL_SERVICE_NAME: aca-gx10-worker
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:3000/api/public/otel
+      no_proxy: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,falkordb,openbao,squid,langfuse-web,clickhouse,minio
+    networks: *id010
+    depends_on: *id011
+    volumes:
+    - /srv/aca/application:/srv/aca:rw
+    - ./scripts/gx10/check_role_readiness.py:/usr/local/bin/gx10-role-ready:ro
+    tmpfs: *id012
+    stop_grace_period: 45s
+    command:
+    - python
+    - -m
+    - src.worker
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - /usr/local/bin/gx10-role-ready
+      - --role
+      - worker
+      interval: 15s
+      timeout: 5s
+      retries: 12
+  scheduler:
+    restart: on-failure:5
+    read_only: true
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    image: ${GX10_APP_IMAGE:?set a reviewed application tag@sha256 digest}
+    env_file:
+    - /run/aca/gx10/common.env
+    - /run/aca/gx10/scheduler.env
+    - /run/aca/gx10/proxy.env
+    environment:
+      PROFILE: gx10
+      GX10_RUNTIME_ENABLED: 'true'
+      NO_PROXY: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,falkordb,openbao,squid,langfuse-web,clickhouse,minio
+      TELEMETRY_SERVICE_INSTANCE_ID: aca-gx10-scheduler
+      WORKER_CONCURRENCY: '1'
+      GX10_PROCESS_ROLE: scheduler
+      OTEL_SERVICE_NAME: aca-gx10-scheduler
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:3000/api/public/otel
+      no_proxy: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,falkordb,openbao,squid,langfuse-web,clickhouse,minio
+    networks: *id010
+    depends_on: *id011
+    volumes:
+    - /srv/aca/application:/srv/aca:rw
+    - ./scripts/gx10/check_role_readiness.py:/usr/local/bin/gx10-role-ready:ro
+    tmpfs: *id012
+    stop_grace_period: 45s
+    command:
+    - python
+    - -m
+    - src.worker
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - /usr/local/bin/gx10-role-ready
+      - --role
+      - scheduler
+      interval: 15s
+      timeout: 5s
+      retries: 12
+  maintenance:
+    restart: on-failure:5
+    read_only: true
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    image: ${GX10_APP_IMAGE:?set a reviewed application tag@sha256 digest}
+    env_file:
+    - /run/aca/gx10/common.env
+    - /run/aca/gx10/maintenance.env
+    - /run/aca/gx10/proxy.env
+    environment:
+      PROFILE: gx10
+      GX10_RUNTIME_ENABLED: 'true'
+      NO_PROXY: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,falkordb,openbao,squid,langfuse-web,clickhouse,minio
+      TELEMETRY_SERVICE_INSTANCE_ID: aca-gx10-maintenance
+      WORKER_CONCURRENCY: '1'
+      GX10_PROCESS_ROLE: maintenance
+      OTEL_SERVICE_NAME: aca-gx10-maintenance
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:3000/api/public/otel
+      no_proxy: localhost,127.0.0.1,.gx10.internal,app-postgres,langfuse-postgres,redis,falkordb,openbao,squid,langfuse-web,clickhouse,minio
+    networks: *id010
+    depends_on: *id011
+    volumes:
+    - /srv/aca/application:/srv/aca:rw
+    - ./scripts/gx10/check_role_readiness.py:/usr/local/bin/gx10-role-ready:ro
+    tmpfs: *id012
+    stop_grace_period: 45s
+    command:
+    - python
+    - -m
+    - src.worker
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - /usr/local/bin/gx10-role-ready
+      - --role
+      - maintenance
+      interval: 15s
+      timeout: 5s
+      retries: 12
+  caddy:
+    restart: on-failure:5
+    read_only: true
+    security_opt: *id001
+    cap_drop: *id002
+    deploy: *id003
+    image: docker.io/library/caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    env_file:
+    - /run/aca/gx10/caddy.env
+    # The caddy binary carries file capabilities; with every capability dropped
+    # the kernel refuses to exec it. NET_BIND_SERVICE is the single grant in
+    # the stack and is exactly what binding 443 needs.
+    cap_add:
+    - NET_BIND_SERVICE
+    # Fixed address on the internal application bridge. The host reaches the
+    # UI at https://10.89.1.250 (map GX10_PUBLIC_ORIGIN's host to it in
+    # /etc/hosts); an internal network cannot publish a host port.
+    networks:
+      application:
+        ipv4_address: 10.89.1.250
+    depends_on:
+      api:
+        condition: service_healthy
+      langfuse-web:
+        condition: service_healthy
+    volumes:
+    - ./deploy/gx10/Caddyfile:/etc/caddy/Caddyfile:ro
+    - /srv/aca/caddy-data:/data:rw
+    - /srv/aca/caddy-config:/config:rw
+    healthcheck:
+      test:
+      - CMD
+      - caddy
+      - version
+      interval: 15s
+      timeout: 5s
+      retries: 12
+networks:
+  application:
+    internal: true
+    driver: bridge
+    labels:
+      gx10.route-policy: proxy-only
+    # Declared so Caddy can hold a fixed ingress address; see the caddy service.
+    ipam:
+      config:
+      - subnet: 10.89.1.0/24
+        # Dynamic leases stay below .128; the fixed Caddy address is .250.
+        ip_range: 10.89.1.0/25
+  stateful:
+    internal: true
+    driver: bridge
+    # Declared so the OpenBao service can hold a fixed address that the
+    # host-side provisioning and secret units dial. netavark installs no port
+    # forwarding for internal networks, so a loopback publish cannot be used.
+    ipam:
+      config:
+      - subnet: 10.89.0.0/24
+        # Dynamic leases stay below .128; the fixed OpenBao address is .250.
+        ip_range: 10.89.0.0/25
+  egress:
+    internal: false
+    driver: bridge
+    labels:
+      gx10.route-owner: squid-only

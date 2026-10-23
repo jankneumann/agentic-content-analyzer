@@ -1,0 +1,12 @@
+[Unit]
+Description=Record fail-closed GX-10 maintenance unit failure for %i
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/logger -p daemon.err -t aca-gx10-maintenance-alert unit=%i outcome=permanent_failure
+TimeoutStartSec=30
+UMask=0077
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes

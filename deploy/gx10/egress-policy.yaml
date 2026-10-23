@@ -1,0 +1,26 @@
+version: 1
+default: deny
+application_direct_route: deny
+policy_max_age_seconds: 300
+bounded_exceptions:
+  dns:
+    targets: ["127.0.0.11:53/udp"]
+    timeout_seconds: 5
+  ntp:
+    targets: ["time.cloudflare.com:123/udp"]
+    timeout_seconds: 10
+  certificate_bootstrap:
+    targets: ["acme-v02.api.letsencrypt.org:443/tcp"]
+    timeout_seconds: 30
+  proxy_health:
+    targets: ["api.github.com:443/tcp"]
+    timeout_seconds: 10
+fail_closed:
+  unknown_destination: &failure
+    external_calls: deny
+    local_diagnostics: allow
+  stale_policy: *failure
+  invalid_policy: *failure
+  dns_failure: *failure
+  credential_failure: *failure
+  proxy_failure: *failure

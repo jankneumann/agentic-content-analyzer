@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-08-29T18:03:08.409000+00:00",
+  "coordinator_error": null,
+  "payload": {
+    "agent_name": "codex",
+    "session_id": null,
+    "summary": "Completed, independently reviewed, and integrated wp-operational-coverage, wp-gx10-runtime tasks 8.1-8.4, and the queue-core deployment-identity remediation. Operational coverage now provides durable non-HTTP roots, exhaustive frozen inventory enforcement, bootstrap reconciliation, and truthful backup/restore topology. GX-10 static runtime controls are verified, while task 8.5 and live clean-stack validation remain explicitly incomplete.",
+    "completed_work": [
+      "Integrated queue-core F9 so the worker process-health identity comes from the configured OTEL service name; its exact package suite passed 22/22.",
+      "Integrated the independently cleared GX-10 runtime branch; its final exact package evidence passed 327/327 and tasks 8.1-8.4 are coordinator-checked.",
+      "Integrated the independently cleared operational package with exhaustive per-file inventory ownership, exactly-once shutdown, durable CLI/MCP/agent/script roots, bootstrap spool reconciliation, and safe backup/restore failure evidence.",
+      "Closed the cross-package GX script inventory gap: the runtime proxy-policy reload emits durable pre-PostgreSQL terminal evidence and ten probe/validator/acceptance scripts have exact non-blanket exclusions with specific reasons.",
+      "Post-merge verification passed: operational exact 795/795, combined queue/GX focused 74/74, inventory/GX policy 17/17, Bash syntax, Ruff/format, mypy, strict OpenSpec, static GX validator, and whitespace checks."
+    ],
+    "in_progress": [
+      "Task 8.5 remains unchecked because the approved clean local stack cold-restart behavior has not run on a capable Docker/Caddy/OpenBao/Squid host; deploy/gx10/VALIDATION.md remains INCOMPLETE."
+    ],
+    "decisions": [
+      {
+        "title": "Keep GX live acceptance separate from verified static runtime controls",
+        "rationale": "The package provides executable live harnesses and passes all static/rendered gates, but unavailable host tooling and the unpublished frozen Squid tag prevent an honest cold-restart claim.",
+        "capability": "gx10-production-runtime",
+        "supersedes": null
+      },
+      {
+        "title": "Classify GX scripts individually in the frozen operation inventory",
+        "rationale": "The runtime proxy reload is a production maintenance entrypoint and receives durable evidence; low-level probes, pure validators, and bounded acceptance fixtures use exact reasoned exclusions rather than a blanket GX path exemption.",
+        "capability": "operation-observability-safety",
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Implement the now dependency-ready wp-storage-recovery tasks 8.6-8.10 and wp-coexistence tasks 9.1-9.2 in isolated worktrees.",
+      "Preserve direct-SQL negative fixtures, generated validator parity, exhaustive inventory enforcement, and the mandatory six-hour GX-10 acceptance gate.",
+      "Run task 8.5 only on a capable clean local stack and retain its protected evidence before checking it complete."
+    ],
+    "relevant_files": [
+      {
+        "path": "artifacts/wp-operational-coverage/pytest.xml",
+        "description": "Passing exact 795-test operational package evidence."
+      },
+      {
+        "path": "deploy/gx10/VALIDATION.md",
+        "description": "Honest incomplete live-runtime validation record; task 8.5 remains open."
+      },
+      {
+        "path": "openspec/changes/gx10-full-operation-observability/contracts/operation-entrypoints.yaml",
+        "description": "Integrated frozen operation inventory including exact GX script classifications."
+      },
+      {
+        "path": "openspec/changes/gx10-full-operation-observability/work-packages.yaml",
+        "description": "Approved DAG for storage-recovery and coexistence next."
+      }
+    ]
+  }
+}

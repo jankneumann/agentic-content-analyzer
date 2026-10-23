@@ -1,0 +1,1 @@
+"""Scoped storage observability tests."""
