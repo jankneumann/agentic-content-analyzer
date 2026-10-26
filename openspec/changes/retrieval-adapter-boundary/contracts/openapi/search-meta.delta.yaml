@@ -1,0 +1,61 @@
+# Delta to the canonical OpenAPI document. Merge into
+# openspec/contracts/content-workflows/openapi/v1.yaml under components.schemas,
+# then regenerate src/contracts and web/src/generated with the repo tooling.
+# Existing SearchMeta fields are unchanged; two are added.
+components:
+  schemas:
+    ShadowMeta:
+      type: object
+      description: Present only when a shadow read was scheduled for this response.
+      required: [adapter, recorded]
+      properties:
+        adapter:
+          type: string
+          description: Secondary adapter that ran the shadow read.
+          example: lancedb
+        recorded:
+          type: boolean
+          description: Whether the comparison row was persisted. False when the shadow read failed.
+          example: true
+    SearchMeta:
+      type: object
+      required:
+        - bm25_strategy
+        - embedding_provider
+        - embedding_model
+        - query_time_ms
+        - backend
+        - retrieval_adapter
+      properties:
+        bm25_strategy:
+          type: string
+          enum: [paradedb_bm25, postgres_native_fts]
+          example: paradedb_bm25
+        embedding_provider:
+          type: string
+          example: openai
+        embedding_model:
+          type: string
+          example: text-embedding-3-small
+        rerank_provider:
+          type: string
+          nullable: true
+          example: cohere
+        rerank_model:
+          type: string
+          nullable: true
+          example: rerank-english-v3.0
+        query_time_ms:
+          type: integer
+          example: 42
+        backend:
+          type: string
+          example: neon
+        retrieval_adapter:
+          type: string
+          description: Primary adapter that served the response.
+          enum: [postgres, lancedb]
+          example: postgres
+        shadow:
+          $ref: '#/components/schemas/ShadowMeta'
+          nullable: true
