@@ -324,6 +324,13 @@ then routed by duration relative to `long_video_threshold_seconds` (default 2700
 ### File Upload Ingestion (`FileContentIngestionService`)
 - Processes uploads via `ParserRouter` → stores as Content records
 - SHA-256 file hash for deduplication, links duplicates to canonical record
+- `published_date` is the note's authored date, not the ingest time, when one is present
+  (`src/ingestion/note_dates.py`): frontmatter `created`/`created_at`/`date_created`/
+  `creation_date`/`captured_at`/`date` (md/txt only) → a date in the title → a date in
+  the filename (`2024-03-14`, `2024_03_14`, `2024.03.14`, `20240314`) → parser metadata →
+  ingest time. Dates must fall between 1970 and now; naive values are UTC. The winning
+  source is recorded in `metadata_json.published_date_source`. This keeps bulk imports of
+  old notes (e.g. an Evernote export) in their own digest periods instead of today's.
 - API endpoint: `POST /api/v1/documents/upload` (multipart form data)
 - Size limits: `MAX_UPLOAD_SIZE_MB`, `DOCLING_MAX_FILE_SIZE_MB` settings
 

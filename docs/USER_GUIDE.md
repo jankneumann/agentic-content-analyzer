@@ -725,6 +725,13 @@ aca ingest url https://example.com/post   # Direct URL
   --force-reprocess       Reprocess content already ingested
 ```
 
+**Dated notes.** When you ingest files, a note's own date is used as its
+published date if it has one: a frontmatter `created:` (or `created_at`,
+`date_created`, `creation_date`, `captured_at`, `date`) wins, then a date in the
+title or filename such as `2024-03-14 Article title.md`. Otherwise the ingest time
+is used. This is what lets you bulk-import an old archive (for example Evernote
+notes converted to Markdown) without every note showing up in today's digest.
+
 Examples:
 
 ```bash

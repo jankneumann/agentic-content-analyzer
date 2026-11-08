@@ -16,6 +16,11 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from src.config.settings import settings
+from src.ingestion.note_dates import (
+    FRONTMATTER_FORMATS,
+    FRONTMATTER_SCAN_BYTES,
+    resolve_note_date,
+)
 from src.models.content import Content, ContentSource, ContentStatus
 from src.models.document import DocumentContent
 from src.parsers.router import ParserRouter
@@ -133,6 +138,7 @@ class FileContentIngestionService:
             file_hash=file_hash,
             publication=publication,
             title_override=title,
+            raw_head=await self._read_frontmatter_head(file_path, format_hint),
         )
 
         if existing is not None:
@@ -213,6 +219,11 @@ class FileContentIngestionService:
             file_hash=file_hash,
             publication=publication,
             title_override=title,
+            raw_head=(
+                bytes(file_bytes[:FRONTMATTER_SCAN_BYTES])  # type: ignore[index]
+                if format_hint in FRONTMATTER_FORMATS
+                else None
+            ),
         )
 
         if existing is not None:
@@ -237,6 +248,22 @@ class FileContentIngestionService:
     async def _calculate_file_hash(self, file_path: Path) -> str:
         """Calculate SHA-256 hash of file contents asynchronously."""
         return await asyncio.to_thread(calculate_file_hash_sync, file_path)
+
+    @staticmethod
+    async def _read_frontmatter_head(file_path: Path, format_hint: str | None) -> bytes | None:
+        """Read the leading bytes of a text note so its frontmatter date can be used."""
+        file_format = (format_hint or file_path.suffix.lstrip(".")).lower()
+        if file_format not in FRONTMATTER_FORMATS:
+            return None
+
+        def _read() -> bytes:
+            with open(file_path, "rb") as handle:
+                return handle.read(FRONTMATTER_SCAN_BYTES)
+
+        try:
+            return await asyncio.to_thread(_read)
+        except OSError:
+            return None
 
     def _find_duplicate(self, file_hash: str) -> Content | None:
         """Find the canonical upload with the same raw file digest."""
@@ -298,6 +325,7 @@ class FileContentIngestionService:
         file_hash: str,
         publication: str | None,
         title_override: str | None,
+        raw_head: bytes | None = None,
     ) -> Content:
         """Create a Content record from parsed document content.
 
@@ -307,6 +335,8 @@ class FileContentIngestionService:
             file_hash: SHA-256 hash of file
             publication: Optional publication name
             title_override: Optional title override
+            raw_head: Leading raw bytes of a text note, scanned for a
+                frontmatter creation date (see ``src.ingestion.note_dates``)
 
         Returns:
             Content record (not yet committed)
@@ -323,6 +353,15 @@ class FileContentIngestionService:
         # Generate content hash from markdown (for future dedup by content)
         markdown_hash = generate_markdown_hash(doc_content.markdown_content)
 
+        # A note's authored date (frontmatter > title > filename > parser),
+        # so old notes land in their own digest period instead of today's.
+        note_date = resolve_note_date(
+            raw_head=raw_head,
+            title=title,
+            filename_stem=file_path.stem,
+            parser_created=doc_content.metadata.created_date,
+        )
+
         # Extract tables if available
         tables_json = None
         if doc_content.tables:
@@ -335,7 +374,7 @@ class FileContentIngestionService:
             title=title,
             author=doc_content.metadata.author,
             publication=publication,
-            published_date=doc_content.metadata.created_date or datetime.now(UTC),
+            published_date=note_date.value,
             markdown_content=doc_content.markdown_content,
             tables_json=tables_json,
             links_json=doc_content.links,
@@ -349,6 +388,7 @@ class FileContentIngestionService:
                 "word_count": doc_content.metadata.word_count,
                 "processing_time_ms": doc_content.processing_time_ms,
                 "warnings": doc_content.warnings,
+                "published_date_source": note_date.source,
             },
             raw_content=None,  # File content not stored; original file preserved elsewhere
             raw_format=doc_content.source_format.value if doc_content.source_format else None,
