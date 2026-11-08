@@ -51,11 +51,8 @@ _MIN_DATE = datetime(1970, 1, 1, tzinfo=UTC)
 _FUTURE_TOLERANCE = timedelta(days=1)
 
 _FRONTMATTER_RE = re.compile(
-    r"\A(?:﻿)?---[ \t]*\r?\n(.*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|\Z)", re.S
+    r"\A(?:\ufeff)?---[ \t]*\r?\n(.*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|\Z)", re.S
 )
-
-# Evernote ENEX / iCalendar style: 20190314T102200Z
-_COMPACT_DATETIME_RE = re.compile(r"^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$")
 
 # Dates embedded in a title or filename. Digits on either side disqualify a
 # match so order numbers and timestamps are not misread as dates.
@@ -159,15 +156,8 @@ def _coerce_datetime(value: Any) -> datetime | None:
     raw = value.strip()
     if not raw:
         return None
-    compact = _COMPACT_DATETIME_RE.match(raw)
-    if compact:
-        year, month, day, hour, minute, second, _ = compact.groups()
-        try:
-            return datetime(
-                int(year), int(month), int(day), int(hour), int(minute), int(second), tzinfo=UTC
-            )
-        except ValueError:
-            return None
+    # fromisoformat (3.11+) reads ISO basic and extended forms, including
+    # Evernote's 20190314T102200Z, but not a lowercase "z" designator.
     normalized = raw[:-1] + "+00:00" if raw.endswith(("Z", "z")) else raw
     try:
         return _as_utc(datetime.fromisoformat(normalized))
