@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-content-analyzer/contracts/retrieval-action.schema.json",
+  "title": "retrieval.action",
+  "description": "Structured log event emitted exactly once per retrieval adapter action.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event", "adapter", "namespace", "action", "count", "duration_ms", "ok"],
+  "properties": {
+    "event": { "const": "retrieval.action" },
+    "adapter": { "type": "string", "enum": ["postgres", "lancedb", "composite"] },
+    "namespace": { "type": "string", "enum": ["content_chunks", "agent_memories"] },
+    "action": { "type": "string", "enum": ["write", "search", "read", "improve", "health_check", "touch", "shadow"] },
+    "count": { "type": "integer", "minimum": 0, "description": "Records written or read, or candidates returned." },
+    "duration_ms": { "type": "integer", "minimum": 0 },
+    "ok": { "type": "boolean" },
+    "error": { "type": "string", "description": "Exception class name when ok is false." },
+    "mode": { "type": "string", "enum": ["bm25", "vector", "hybrid"], "description": "Search actions only." },
+    "role": { "type": "string", "enum": ["primary", "secondary"], "description": "Set by the composite adapter." }
+  }
+}
