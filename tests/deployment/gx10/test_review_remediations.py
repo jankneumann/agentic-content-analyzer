@@ -35,6 +35,10 @@ case "$url" in
   */runtime) printf '{"data":{"data":%s}}\n' "$common" ;;
   */operator) printf '{"data":{"data":{"operator_api_key":"nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn","rotation_generation":"8"}}}\n' ;;
   */proxy) printf '{"data":{"data":{"username":"aca-egress","password":"proxycanaryproxycanaryproxycanary1234","rotation_generation":"9"}}}\n' ;;
+  */providers)
+    [[ "${GX10_FIXTURE_PROVIDERS:-}" != missing ]] || exit 22
+    providers='{"anthropic_api_key":"sk-ant-fixture","gemini_api_key":"gemini-fixture","youtube_api_key":"youtube-fixture"}'
+    printf '{"data":{"data":%s}}\n' "${GX10_FIXTURE_PROVIDERS:-$providers}" ;;
   *) exit 22 ;;
 esac
 """,
@@ -141,6 +145,77 @@ def test_renderer_outputs_profile_compatible_least_privilege_role_envs(tmp_path:
         assert settings.telemetry_service_instance_id == f"aca-gx10-{role}"
         assert (settings.operator_api_key is not None) is (role == "api")
         assert (settings.admin_api_key is not None) is (role == "api")
+
+
+def _render(tmp_path: Path, providers: str | None = None) -> subprocess.CompletedProcess[str]:
+    tools = _mock_secret_tools(tmp_path)
+    token = tmp_path / "token"
+    token.write_text("fixture-token", encoding="utf-8")
+    env = os.environ | {
+        "PATH": f"{tools}:{os.environ['PATH']}",
+        "GX10_RUNTIME_DIR": str(tmp_path / "runtime"),
+        "GX10_BAO_ADDR": "http://openbao.test/v1",
+        "GX10_BAO_TOKEN_FILE": str(token),
+        "GX10_OPENSSL_ARGS": str(tmp_path / "openssl.args"),
+        "GX10_OPENSSL_STDIN": str(tmp_path / "openssl.stdin"),
+        "GX10_PUBLIC_ORIGIN": "https://gx10.example.com",
+    }
+    if providers is not None:
+        env["GX10_FIXTURE_PROVIDERS"] = providers
+    return subprocess.run(
+        [RUNTIME / "openbao/render-secrets.sh"], env=env, capture_output=True, text=True
+    )
+
+
+def test_renderer_gives_provider_keys_to_api_and_worker_only(tmp_path: Path) -> None:
+    result = _render(tmp_path)
+    assert result.returncode == 0, result.stderr
+    runtime = tmp_path / "runtime"
+
+    expected = {
+        "ANTHROPIC_API_KEY": "sk-ant-fixture",
+        "GEMINI_API_KEY": "gemini-fixture",
+        "YOUTUBE_API_KEY": "youtube-fixture",
+    }
+    for role in ("api", "worker"):
+        values = _read_env(runtime / f"{role}.env")
+        assert {key: values[key] for key in expected} == expected
+        assert "OPENAI_API_KEY" not in values  # absent fields are not emitted empty
+    for name in ("common", "scheduler", "maintenance", "proxy", "host-maintenance"):
+        assert not expected.keys() & _read_env(runtime / f"{name}.env").keys(), name
+
+    # The profile resolves the rendered names into the Settings fields the app reads.
+    role_environment = (
+        _read_env(runtime / "common.env")
+        | _read_env(runtime / "worker.env")
+        | _read_env(runtime / "proxy.env")
+    )
+    profile = load_profile("gx10", profiles_dir=ROOT / "profiles", env_vars=role_environment)
+    settings = Settings(_env_file=None, **_flatten_profile_to_settings(profile.model_dump()))
+    assert settings.gemini_api_key == "gemini-fixture"
+    assert settings.anthropic_api_key == "sk-ant-fixture"
+
+
+@pytest.mark.parametrize(
+    ("providers", "message"),
+    [
+        ("missing", "provider credentials are unavailable"),
+        ('{"youtube_api_key":"youtube-fixture"}', "hold no LLM key"),
+        ('{"gemini_api_key":""}', "hold no LLM key"),
+        ('{"gemini_api_key":"g","google_api_key":"legacy"}', "not recognised: google_api_key"),
+        ('{"gemini_api_key":7}', "not a string: gemini_api_key"),
+        ('{"gemini_api_key":"line\\nbreak"}', "unsafe: gemini_api_key"),
+    ],
+)
+def test_renderer_refuses_unusable_provider_credentials(
+    tmp_path: Path, providers: str, message: str
+) -> None:
+    result = _render(tmp_path, providers)
+
+    assert result.returncode != 0
+    assert message in result.stderr
+    # A refused render publishes nothing: the role env files are never half-written.
+    assert not (tmp_path / "runtime" / "worker.env").exists()
 
 
 def test_systemd_sources_protected_pins_and_verifies_registry_provenance() -> None:

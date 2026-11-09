@@ -6,6 +6,7 @@ RUNTIME_DIR="${GX10_RUNTIME_DIR:-/run/aca/gx10}"
 RUNTIME_PATH="${GX10_BAO_RUNTIME_PATH:-secret/newsletter/gx10/runtime}"
 OPERATOR_PATH="${GX10_BAO_OPERATOR_PATH:-secret/newsletter/gx10/operator}"
 PROXY_PATH="${GX10_BAO_PROXY_PATH:-secret/newsletter/gx10/proxy}"
+PROVIDERS_PATH="${GX10_BAO_PROVIDERS_PATH:-secret/newsletter/gx10/providers}"
 BAO_ADDR="${GX10_BAO_ADDR:-http://10.89.0.250:8200/v1}"
 BAO_TOKEN_FILE="${GX10_BAO_TOKEN_FILE:-$RUNTIME_DIR/openbao-token}"
 
@@ -68,6 +69,33 @@ emit "$COMMON_TMP" GX10_AUTHORITY_FINGERPRINT "$RUNTIME_PATH" authority_fingerpr
 printf 'GX10_PUBLIC_ORIGIN=%s\nGX10_PUBLIC_LANGFUSE_URL=%s\n' "$PUBLIC_ORIGIN" "$PUBLIC_LANGFUSE_URL" >>"$COMMON_TMP"
 emit "$API_TMP" GX10_ADMIN_API_KEY "$RUNTIME_PATH" admin_api_key
 emit "$API_TMP" GX10_OPERATOR_API_KEY "$OPERATOR_PATH" operator_api_key
+
+# Third-party provider keys rotate on the provider's schedule, not ours, so they
+# live on their own path. Only the API (chat) and the worker (every operation)
+# call providers; the scheduler and maintenance roles never receive them. Every
+# field is optional except that at least one LLM key must exist, and an unknown
+# field is refused so a misspelt or legacy name (google_api_key) fails loudly.
+declare -A PROVIDER_ENV=(
+  [anthropic_api_key]=ANTHROPIC_API_KEY [openai_api_key]=OPENAI_API_KEY [gemini_api_key]=GEMINI_API_KEY
+  [youtube_api_key]=YOUTUBE_API_KEY [tavily_api_key]=TAVILY_API_KEY [perplexity_api_key]=PERPLEXITY_API_KEY
+  [xai_api_key]=XAI_API_KEY [semantic_scholar_api_key]=SEMANTIC_SCHOLAR_API_KEY
+  [elevenlabs_api_key]=ELEVENLABS_API_KEY [voyage_api_key]=VOYAGE_API_KEY
+  [cohere_api_key]=COHERE_API_KEY [jina_api_key]=JINA_API_KEY
+)
+PROVIDERS="$(curl --silent --show-error --fail --config "$CURL_CONFIG" "$(kv_endpoint "$PROVIDERS_PATH")" | jq -ec '.data.data | objects')" || {
+  echo "gx10 provider credentials are unavailable at $PROVIDERS_PATH: write at least one LLM key there (docs/GX10_HANDOFF.md)" >&2; exit 1; }
+while IFS= read -r field; do
+  [[ -n "${PROVIDER_ENV[$field]+set}" ]] || { echo "gx10 provider field is not recognised: $field" >&2; exit 1; }
+done < <(jq -r 'keys[]' <<<"$PROVIDERS")
+llm_keys=0
+for field in "${!PROVIDER_ENV[@]}"; do
+  value="$(jq -er --arg field "$field" '.[$field] // "" | strings' <<<"$PROVIDERS")" || { echo "gx10 provider field is not a string: $field" >&2; exit 1; }
+  [[ -n "$value" ]] || continue
+  [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]] || { echo "gx10 provider field is unsafe: $field" >&2; exit 1; }
+  case "$field" in anthropic_api_key|openai_api_key|gemini_api_key) llm_keys=$((llm_keys + 1)) ;; esac
+  printf '%s=%s\n' "${PROVIDER_ENV[$field]}" "$value" | tee -a "$API_TMP" >>"$WORKER_TMP"
+done
+((llm_keys > 0)) || { echo "gx10 provider credentials hold no LLM key: set anthropic_api_key, openai_api_key, or gemini_api_key at $PROVIDERS_PATH" >&2; exit 1; }
 
 OPERATOR_GENERATION="$(fetch "$OPERATOR_PATH" rotation_generation)"; PROXY_GENERATION="$(fetch "$PROXY_PATH" rotation_generation)"
 for generation in "$OPERATOR_GENERATION" "$PROXY_GENERATION"; do [[ "$generation" =~ ^[1-9][0-9]*$ ]] || { echo "gx10 rotation generation invalid" >&2; exit 1; }; done

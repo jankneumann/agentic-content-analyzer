@@ -1,5 +1,6 @@
 # Read-only AppRole policy for the GX-10 secret renderer.  Runtime, operator,
-# and proxy credentials rotate independently and never enter Compose YAML.
+# proxy, and third-party provider credentials rotate independently and never
+# enter Compose YAML.
 path "secret/data/newsletter/gx10/runtime" {
   capabilities = ["read"]
 }
@@ -9,6 +10,10 @@ path "secret/data/newsletter/gx10/operator" {
 }
 
 path "secret/data/newsletter/gx10/proxy" {
+  capabilities = ["read"]
+}
+
+path "secret/data/newsletter/gx10/providers" {
   capabilities = ["read"]
 }
 

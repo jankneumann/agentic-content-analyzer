@@ -11,6 +11,7 @@ RUNTIME_ENDPOINT="/secret/data/newsletter/gx10/runtime"
 OPERATOR_ENDPOINT="/secret/data/newsletter/gx10/operator"
 PROXY_ENDPOINT="/secret/data/newsletter/gx10/proxy"
 BACKUP_ENDPOINT="/secret/data/newsletter/gx10/backup"
+PROVIDERS_ENDPOINT="/secret/data/newsletter/gx10/providers"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf -- "$WORK_DIR"' EXIT
 
@@ -183,6 +184,9 @@ seed_path runtime "$RUNTIME_ENDPOINT"
 seed_path operator "$OPERATOR_ENDPOINT"
 seed_path proxy "$PROXY_ENDPOINT"
 seed_path backup "$BACKUP_ENDPOINT"
+# Provider keys are optional in the seed: an existing install writes them later
+# with a merge-patch, and render-secrets.sh refuses to start without an LLM key.
+if jq -e 'has("providers")' "$SEED_FILE" >/dev/null; then seed_path providers "$PROVIDERS_ENDPOINT"; fi
 
 printf 'provisioned_at=%(%s)T\n' -1 | install -m 0600 /dev/stdin "$OPERATOR_DIR/openbao-provisioned.ready.new"
 mv -f "$OPERATOR_DIR/openbao-provisioned.ready.new" "$OPERATOR_DIR/openbao-provisioned.ready"

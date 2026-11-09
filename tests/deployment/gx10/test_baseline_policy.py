@@ -32,6 +32,9 @@ def test_openbao_policy_separates_runtime_operator_and_proxy_rotation() -> None:
     assert 'path "secret/data/newsletter/gx10/runtime"' in policy
     assert 'path "secret/data/newsletter/gx10/operator"' in policy
     assert 'path "secret/data/newsletter/gx10/proxy"' in policy
+    assert 'path "secret/data/newsletter/gx10/providers"' in policy
+    # The shared path holds Gmail tokens and session cookies the renderer never needs.
+    assert 'path "secret/data/newsletter"' not in policy
     assert 'capabilities = ["read"]' in policy
     assert "umask 077" in renderer
     assert "install -m 0600" in renderer

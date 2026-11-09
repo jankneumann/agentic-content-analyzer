@@ -365,6 +365,31 @@ The scheduler resumed on restart but does not backfill missed periods. Run the
 daily pipeline for each missed day (`aca pipeline run --period daily
 --period-start … --period-end … --wait`) once ingestion has caught up.
 
+### 10. Seed the provider keys — required before the next restart
+
+Until 2026-10-21 nothing delivered LLM or ingestion-provider keys to the gx-10
+containers: they get no `BAO_ADDR`, so `Settings`' OpenBao source is inert, and
+the LLM router reads keys from the process environment only. `render-secrets.sh`
+now reads `secret/newsletter/gx10/providers` and writes the keys into `api.env`
+and `worker.env` only. **It refuses to render** if that path is missing, holds an
+unrecognised field (including the legacy `google_api_key`), or has no
+`anthropic_api_key`, `openai_api_key`, or `gemini_api_key`. Accepted fields:
+those three plus `youtube_api_key`, `tavily_api_key`, `perplexity_api_key`,
+`xai_api_key`, `semantic_scholar_api_key`, `elevenlabs_api_key`,
+`voyage_api_key`, `cohere_api_key`, `jina_api_key`.
+
+First install seeds it from an optional `providers` object in the `bao-seed`
+credential. On this already-provisioned host, after deploying this revision:
+
+```bash
+sudo /opt/aca/deploy/gx10/openbao/seed-providers-secret.sh   # hidden prompts
+sudo systemctl restart aca-gx10-secrets.service aca-gx10.service
+```
+
+The script also re-uploads the `aca-gx10` policy (provisioning writes policies
+once). Re-run it to rotate: a blank answer keeps the stored value, `-` removes
+it, and it refuses to write if the current secret cannot be read.
+
 ---
 
 ## Decisions already made (do not re-litigate without reason)
