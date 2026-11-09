@@ -13,8 +13,8 @@ deployments are shaped by it.
 
 | | |
 |---|---|
-| Analyzer repo | `openspec/gx10-full-operation-observability`, pushed. Still **not merged to `main`** (88+ commits) |
-| Deployed at `/opt/aca` | `dbe14da8`. The backup-freshness commit after it needs `git pull` + `make install` |
+| Analyzer repo | `openspec/gx10-full-operation-observability` merged to `main` (`a6f2de24`). Deploy from `main` |
+| Deployed at `/opt/aca` | `dbe14da8`. **A single-branch clone of the feature branch**: `git pull` never sees `main` until it is switched (below) |
 | Coordinator repo | `feat/gx10-coordinator-deployment` @ `6b0dfca5`, pushed, **not merged, not deployed** |
 | Analyzer runtime | Up since 2026-10-20 ~21:30 EDT after an 8-day outage. All units enabled for boot |
 | Backup | Local + R2 green; catch-up generation `20261021T013318Z` (4.8 GB) |
@@ -28,6 +28,22 @@ quiet window and check `make status`.
 **Container IPs move on every restart.** Only `app-postgres` (`10.89.0.251`),
 `openbao` (`10.89.0.250`) and `caddy` (`10.89.1.250`) are fixed. Rescan rather
 than reusing a noted address.
+
+**`/opt/aca` must track `main` before any `git pull` in this document.** It was
+cloned with `--single-branch` on `openspec/gx10-full-operation-observability`, so
+its fetch refspec names only that branch and `git pull` reports "Already up to
+date" while `main` moves on. Check with
+`git -C /opt/aca config --get-all remote.origin.fetch`; if it does not list
+`refs/heads/*` or `refs/heads/main`, switch once (the tree must be clean):
+
+```bash
+sudo git -C /opt/aca remote set-branches --add origin main
+sudo git -C /opt/aca fetch origin
+sudo git -C /opt/aca switch --track origin/main
+```
+
+Deploying a feature branch there again needs the same `set-branches --add`
+for that branch, then a switch back to `main` once it merges.
 
 ---
 
@@ -379,10 +395,18 @@ those three plus `youtube_api_key`, `tavily_api_key`, `perplexity_api_key`,
 `voyage_api_key`, `cohere_api_key`, `jina_api_key`.
 
 First install seeds it from an optional `providers` object in the `bao-seed`
-credential. On this already-provisioned host, after deploying this revision:
+credential. On this already-provisioned host, with `/opt/aca` on `main` (see
+"Where things stand"), seed straight after the pull: the pulled renderer refuses
+to run until the path exists, so a restart in between stops the stack. The
+renderer now writes `GEMINI_API_KEY`, which images built before `4f2e9fc0` do not
+read, so rebuild and pin the app image before restarting:
 
 ```bash
+sudo git -C /opt/aca pull
 sudo /opt/aca/deploy/gx10/openbao/seed-providers-secret.sh   # hidden prompts
+sudo make -C /opt/aca/deploy/gx10 image          # pin the printed line in /etc/aca/gx10-images.env
+sudo make -C /opt/aca/deploy/gx10 image-pins
+sudo make -C /opt/aca/deploy/gx10 install
 sudo systemctl restart aca-gx10-secrets.service aca-gx10.service
 ```
 
