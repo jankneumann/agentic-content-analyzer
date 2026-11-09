@@ -145,7 +145,7 @@ dev = [
 ]
 release-smoke = [
     "jsonschema[format]>=4.23.0",
-    "playwright==1.62.0",
+    "playwright==1.63.0",
 ]
 # CLI gen-eval contract layer. Deliberately jsonschema-only: the contract layer
 # validates vendored schemas and must stay installable without a browser, and
