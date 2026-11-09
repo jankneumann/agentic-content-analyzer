@@ -129,7 +129,7 @@ class TestGenerateSyncGeminiProvider:
         # (google.genai pulls in websockets, which reads int-valued settings)
         # receives the string too and fails.
         with (
-            patch.dict(os.environ, {"GOOGLE_API_KEY": "fake-api-key"}),
+            patch.dict(os.environ, {"GEMINI_API_KEY": "fake-api-key"}),
             patch("google.genai.Client", return_value=mock_client),
         ):
             result = router._generate_gemini_sync(

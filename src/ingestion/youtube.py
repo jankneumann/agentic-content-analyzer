@@ -27,6 +27,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import NoTranscriptFound, TranscriptsDisabled
 
 from src.config import settings
+from src.config.settings import get_gemini_api_key_from_env
 from src.contracts.operation_context import OperationOutcome, OperationStage
 from src.ingestion.log_redaction import adapter_log_extra
 from src.ingestion.result import (
@@ -801,9 +802,9 @@ async def _extract_video_content_with_gemini(
     from src.config.models import ModelStep, get_model_config
     from src.services.llm_router import LLMRouter
 
-    api_key = os.environ.get("GOOGLE_API_KEY")
+    api_key = get_gemini_api_key_from_env()
     if not api_key:
-        logger.debug("GOOGLE_API_KEY not set, skipping Gemini video extraction")
+        logger.debug("GEMINI_API_KEY not set, skipping Gemini video extraction")
         return None
 
     try:
@@ -850,8 +851,8 @@ async def _extract_long_video_with_grounding(
     from src.config.models import ModelStep, get_model_config
     from src.services.llm_router import LLMRouter
 
-    if not os.environ.get("GOOGLE_API_KEY"):
-        logger.debug("GOOGLE_API_KEY not set, skipping grounding extraction")
+    if not get_gemini_api_key_from_env():
+        logger.debug("GEMINI_API_KEY not set, skipping grounding extraction")
         return None
     try:
         model_config = get_model_config()
@@ -1443,7 +1444,7 @@ class YouTubeContentIngestionService:
         """Ingest content from a YouTube playlist as Content records.
 
         Supports two content extraction paths:
-        1. Gemini native video extraction (if gemini_summary=True and GOOGLE_API_KEY set)
+        1. Gemini native video extraction (if gemini_summary=True and GEMINI_API_KEY set)
         2. Transcript-based extraction via youtube-transcript-api (fallback)
 
         When using transcript path, auto-generated captions can be proofread

@@ -325,7 +325,7 @@ NEO4J_URI=bolt://localhost:7687
 
 # Optional (for framework comparison)
 OPENAI_API_KEY=sk-xxx
-GOOGLE_API_KEY=xxx
+GEMINI_API_KEY=xxx
 ```
 
 ## Next Steps

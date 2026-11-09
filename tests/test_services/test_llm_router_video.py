@@ -113,7 +113,7 @@ class TestGeminiWithVideoInternal:
         )
 
         with (
-            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client") as mock_client_class,
         ):
             mock_client = MagicMock()
@@ -136,15 +136,15 @@ class TestGeminiWithVideoInternal:
 
     @pytest.mark.asyncio
     async def test_missing_api_key_raises(self, router):
-        """Should raise RuntimeError when GOOGLE_API_KEY is not set."""
+        """Should raise RuntimeError when GEMINI_API_KEY is not set."""
         with patch.dict("os.environ", {}, clear=True):
-            # Remove GOOGLE_API_KEY from env
+            # Remove GEMINI_API_KEY from env
             import os
 
-            if "GOOGLE_API_KEY" in os.environ:
-                del os.environ["GOOGLE_API_KEY"]
+            if "GEMINI_API_KEY" in os.environ:
+                del os.environ["GEMINI_API_KEY"]
 
-            with pytest.raises(RuntimeError, match="GOOGLE_API_KEY"):
+            with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
                 await router._generate_gemini_with_video(
                     model="gemini-2.5-flash",
                     provider=Provider.GOOGLE_AI,
@@ -171,7 +171,7 @@ class TestVideoFpsAndOffsets:
     @pytest.mark.asyncio
     async def test_fps_and_offsets_in_video_metadata(self, router):
         with (
-            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client") as mock_client_class,
         ):
             client = MagicMock()
@@ -199,7 +199,7 @@ class TestVideoFpsAndOffsets:
     @pytest.mark.asyncio
     async def test_no_fps_omits_video_metadata(self, router):
         with (
-            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client") as mock_client_class,
         ):
             client = MagicMock()
@@ -236,7 +236,7 @@ class TestGenerateWithGrounding:
         resp.usage_metadata = MagicMock(prompt_token_count=80, candidates_token_count=40)
 
         with (
-            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client") as mock_client_class,
         ):
             client = MagicMock()

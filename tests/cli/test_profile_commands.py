@@ -110,7 +110,7 @@ class TestProfileInspect:
 
         mock_settings.anthropic_api_key = "sk-ant-test"
         mock_settings.openai_api_key = None
-        mock_settings.google_api_key = None
+        mock_settings.gemini_api_key = None
         mock_settings_cls.return_value = mock_settings
 
         result = runner.invoke(app, ["profile", "inspect"])
@@ -133,7 +133,7 @@ class TestProfileInspect:
 
         mock_settings.anthropic_api_key = "sk-ant-test"
         mock_settings.openai_api_key = None
-        mock_settings.google_api_key = None
+        mock_settings.gemini_api_key = None
         mock_settings_cls.return_value = mock_settings
 
         result = runner.invoke(app, ["profile", "inspect"])

@@ -596,6 +596,9 @@ class Settings(BaseSettings):
     # Agent Framework API Keys
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
+    gemini_api_key: str | None = None
+    # Deprecated: use gemini_api_key. Still mapped onto gemini_api_key when that
+    # is unset, and still the YouTube fallback in get_youtube_api_key().
     google_api_key: str | None = None
     gemini_batch_enabled: bool = False  # Global kill switch; per-step modes remain in models.yaml
     tavily_api_key: str | None = None
@@ -1800,6 +1803,17 @@ class Settings(BaseSettings):
         self._validate_graphdb_config()
         return self
 
+    @model_validator(mode="after")
+    def _apply_deprecated_google_api_key_alias(self) -> Settings:
+        """Map the deprecated google_api_key onto gemini_api_key when unset."""
+        if self.google_api_key and not self.gemini_api_key:
+            object.__setattr__(self, "gemini_api_key", self.google_api_key)
+            logger.warning(
+                "Deprecated: GOOGLE_API_KEY mapped to GEMINI_API_KEY. "
+                "Rename the secret to GEMINI_API_KEY."
+            )
+        return self
+
     def _apply_deprecated_neo4j_aliases(self) -> None:
         """Map deprecated neo4j_provider to graphdb_provider + graphdb_mode."""
         # Use model_fields_set to detect explicit assignment vs defaults
@@ -2050,11 +2064,11 @@ class Settings(BaseSettings):
             )
 
         # Add Google AI provider (primary for Gemini models)
-        if self.google_api_key:
+        if self.gemini_api_key:
             config.add_provider(
                 ProviderConfig(
                     provider=Provider.GOOGLE_AI,
-                    api_key=self.google_api_key,
+                    api_key=self.gemini_api_key,
                 )
             )
 
@@ -2154,6 +2168,19 @@ class Settings(BaseSettings):
             if provider in provider_voices:
                 return provider_voices[provider]
         return self.get_effective_voice()
+
+
+# Environment variables holding the Gemini API key, first match wins.
+# GOOGLE_API_KEY is the deprecated name, kept so existing deployments keep working.
+GEMINI_API_KEY_ENV_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
+
+
+def get_gemini_api_key_from_env() -> str | None:
+    """Return the Gemini API key from the environment, preferring GEMINI_API_KEY."""
+    for name in GEMINI_API_KEY_ENV_VARS:
+        if value := os.environ.get(name):
+            return value
+    return None
 
 
 @lru_cache

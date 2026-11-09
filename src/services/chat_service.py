@@ -34,6 +34,7 @@ from src.config.models import (
     ModelFamily,
     Provider,
 )
+from src.config.settings import get_gemini_api_key_from_env
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -269,9 +270,9 @@ class ChatService:
         from google import genai
         from google.genai import types
 
-        api_key = os.environ.get("GOOGLE_API_KEY")
+        api_key = get_gemini_api_key_from_env()
         if not api_key:
-            raise ValueError("GOOGLE_API_KEY environment variable not set")
+            raise ValueError("GEMINI_API_KEY environment variable not set")
 
         # Create client with API key
         client = genai.Client(api_key=api_key)

@@ -1,7 +1,7 @@
 """Tests for LLMRouter batch execution (submit_batch / poll_batch).
 
 Mocks the google-genai client per repo convention (``patch("google.genai.Client")``
-+ ``patch.dict("os.environ", {"GOOGLE_API_KEY": ...})``). No network, no real
++ ``patch.dict("os.environ", {"GEMINI_API_KEY": ...})``). No network, no real
 batch jobs.
 """
 
@@ -71,8 +71,8 @@ class TestSubmitBatch:
     @pytest.mark.asyncio
     async def test_missing_api_key_raises(self, router):
         with patch.dict("os.environ", {}, clear=True):
-            os.environ.pop("GOOGLE_API_KEY", None)
-            with pytest.raises(RuntimeError, match="GOOGLE_API_KEY"):
+            os.environ.pop("GEMINI_API_KEY", None)
+            with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
                 await router.submit_batch(
                     "gemini-2.5-flash-lite",
                     [BatchRequest(key="k1", contents="hi")],
@@ -83,7 +83,7 @@ class TestSubmitBatch:
         mock_client, batches = _async_client()
         batches.create.return_value = SimpleNamespace(name="batches/abc")
         with (
-            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
         ):
             job_name = await router.submit_batch(
@@ -109,7 +109,7 @@ class TestSubmitBatch:
         mock_client, batches = _async_client()
         batches.create.side_effect = RuntimeError("transport failed")
         with (
-            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
             pytest.raises(RuntimeError, match="transport failed"),
         ):
@@ -126,7 +126,7 @@ class TestSubmitBatch:
         batches.create.return_value = SimpleNamespace(name="batches/accepted")
         mock_client.aio.aclose.side_effect = RuntimeError("close failed")
         with (
-            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
         ):
             job_name = await router.submit_batch(
@@ -142,7 +142,7 @@ class TestSubmitBatch:
         big = "x" * (19 * 1024 * 1024)
         mock_client, batches = _async_client()
         with (
-            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
         ):
             with pytest.raises(ValueError, match="inline cap"):
@@ -157,7 +157,7 @@ class TestSubmitBatch:
         router.model_config._batch_config["inline_max_bytes"] = 100
         mock_client, batches = _async_client()
         with (
-            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
         ):
             with pytest.raises(ValueError, match="inline cap"):
@@ -191,7 +191,7 @@ class TestPollBatch:
             responses=[_resp("answer two", "k2"), _resp("answer one", "k1")],
         )
         with (
-            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
         ):
             result = await router.poll_batch("batches/test-123")
@@ -209,7 +209,7 @@ class TestPollBatch:
         mock_client, batches = _async_client()
         batches.get.side_effect = RuntimeError("transport failed")
         with (
-            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
             pytest.raises(RuntimeError, match="transport failed"),
         ):
@@ -225,7 +225,7 @@ class TestPollBatch:
             responses=[_resp("ok", "k1"), _err_resp("k2", "safety block")],
         )
         with (
-            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
         ):
             result = await router.poll_batch("batches/test-123")
@@ -239,7 +239,7 @@ class TestPollBatch:
         mock_client, batches = _async_client()
         batches.get.return_value = _job("JOB_STATE_FAILED", error="quota exceeded")
         with (
-            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
         ):
             result = await router.poll_batch("batches/test-123")
@@ -254,7 +254,7 @@ class TestPollBatch:
         mock_client, batches = _async_client()
         batches.get.return_value = _job("JOB_STATE_EXPIRED")
         with (
-            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
         ):
             result = await router.poll_batch("batches/test-123")
@@ -268,7 +268,7 @@ class TestPollBatch:
         mock_client, batches = _async_client()
         batches.get.return_value = _job("JOB_STATE_RUNNING")
         with (
-            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
         ):
             result = await router.poll_batch("batches/test-123")
@@ -279,8 +279,8 @@ class TestPollBatch:
     @pytest.mark.asyncio
     async def test_missing_api_key_raises(self, router):
         with patch.dict("os.environ", {}, clear=True):
-            os.environ.pop("GOOGLE_API_KEY", None)
-            with pytest.raises(RuntimeError, match="GOOGLE_API_KEY"):
+            os.environ.pop("GEMINI_API_KEY", None)
+            with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
                 await router.poll_batch("batches/test-123")
 
     @pytest.mark.asyncio
@@ -291,7 +291,7 @@ class TestPollBatch:
             responses=[_resp("first", "k1"), _resp("second", "k1")],
         )
         with (
-            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
         ):
             result = await router.poll_batch("batches/test-123", expected_request_keys={"k1"})
@@ -306,7 +306,7 @@ class TestPollBatch:
         mock_client, batches = _async_client()
         batches.get.return_value = _job("JOB_STATE_SUCCEEDED", responses=[response])
         with (
-            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
         ):
             result = await router.poll_batch("batches/test-123", expected_request_keys={"k1"})
@@ -319,7 +319,7 @@ class TestPollBatch:
         mock_client, batches = _async_client()
         batches.get.return_value = _job("JOB_STATE_SUCCEEDED", responses=[_resp("", "k1")])
         with (
-            patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=mock_client),
         ):
             result = await router.poll_batch("batches/test-123")

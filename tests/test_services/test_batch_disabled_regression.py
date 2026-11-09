@@ -51,7 +51,7 @@ async def test_sync_gemini_path_never_touches_batches():
     mock_client.models.generate_content.return_value = mock_response
 
     with (
-        patch.dict(os.environ, {"GOOGLE_API_KEY": "test-key"}),
+        patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}),
         patch("google.genai.Client", return_value=mock_client),
     ):
         resp = await router._generate_gemini(

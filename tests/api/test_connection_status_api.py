@@ -26,7 +26,7 @@ class TestGetConnectionStatus:
                     name="OpenAI", status="not_configured", details="OPENAI_API_KEY not set"
                 ),
                 ServiceStatus(
-                    name="Google AI", status="not_configured", details="GOOGLE_API_KEY not set"
+                    name="Google AI", status="not_configured", details="GEMINI_API_KEY not set"
                 ),
                 ServiceStatus(
                     name="ElevenLabs", status="not_configured", details="ELEVENLABS_API_KEY not set"

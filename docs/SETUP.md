@@ -80,7 +80,7 @@ cp .env.example .env
 
 # Edit .env with your configuration
 # Required: ANTHROPIC_API_KEY (minimum for Claude SDK)
-# Optional: OPENAI_API_KEY, GOOGLE_API_KEY (for framework comparison)
+# Optional: OPENAI_API_KEY, GEMINI_API_KEY (for framework comparison)
 ```
 
 See [Environment Configuration](#environment-configuration) below for all variables.
@@ -952,7 +952,7 @@ GRAPHDB_MODE=local                    # local, cloud, or embedded
 # Agent Framework APIs (minimum: ANTHROPIC_API_KEY)
 ANTHROPIC_API_KEY=sk-ant-...  # Required for Claude SDK
 OPENAI_API_KEY=sk-...         # Optional for framework comparison
-GOOGLE_API_KEY=...            # Optional for framework comparison
+GEMINI_API_KEY=...            # Optional for framework comparison
 
 # Environment
 ENVIRONMENT=development  # or production

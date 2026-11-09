@@ -287,6 +287,57 @@ class TestInterpolateValue:
         )
         assert result == ""
 
+    @pytest.mark.parametrize(
+        ("env", "secrets", "expected"),
+        [
+            ({"A": "a", "B": "b"}, {}, "a"),
+            ({"B": "b"}, {}, "b"),
+            ({}, {"B": "b"}, "b"),
+            ({}, {}, "c"),
+            ({"A": ""}, {}, ""),  # present-but-empty counts as set, as at one level
+        ],
+    )
+    def test_nested_default_chain(self, env: dict, secrets: dict, expected: str) -> None:
+        """${A:-${B:-${C}}} falls through each level instead of leaking braces."""
+        result = interpolate_value("${A:-${B:-c}}", env, secrets, "test")
+        assert result == expected
+
+    def test_nested_default_inside_a_larger_string(self) -> None:
+        result = interpolate_value("x=${A:-${B:-}};y=${C}", {"B": "b", "C": "c"}, {}, "test")
+        assert result == "x=b;y=c"
+
+    def test_unused_required_default_does_not_raise(self) -> None:
+        """A required ${VAR} in a default is only resolved when the default is used."""
+        assert interpolate_value("${A:-${MISSING}}", {"A": "a"}, {}, "test") == "a"
+        with pytest.raises(ProfileResolutionError) as exc_info:
+            interpolate_value("${A:-${MISSING}}", {}, {}, "test")
+        assert exc_info.value.variable == "MISSING"
+
+    def test_escaped_nested_variable_stays_literal(self) -> None:
+        result = interpolate_value("$${A:-${B}}", {"A": "a", "B": "b"}, {}, "test")
+        assert result == "${A:-${B}}"
+
+    @pytest.mark.parametrize("value", ["${UNTERMINATED", "${}", "$ {A}", "cost: $5"])
+    def test_malformed_references_stay_literal(self, value: str) -> None:
+        assert interpolate_value(value, {"A": "a", "UNTERMINATED": "u"}, {}, "test") == value
+
+    def test_every_nested_profile_default_resolves_cleanly(self) -> None:
+        """No shipped profile may resolve to leftover interpolation syntax."""
+        profiles_dir = Path(__file__).resolve().parents[2] / "profiles"
+        for profile_file in sorted(profiles_dir.glob("*.yaml")):
+            for line in profile_file.read_text().splitlines():
+                if ":-${" not in line:
+                    continue
+                raw = line.split(":", 1)[1].strip().strip('"')
+                # Nothing set: either a clean default or a named required variable,
+                # never leftover syntax (the old regex returned "${B:-" + "}").
+                try:
+                    result = interpolate_value(raw, {}, {}, profile_file.stem)
+                except ProfileResolutionError as exc:
+                    assert exc.variable.isidentifier(), (profile_file.name, line)
+                    continue
+                assert "${" not in result and "}" not in result, (profile_file.name, line)
+
 
 class TestInterpolateDict:
     """Tests for recursive dictionary interpolation."""

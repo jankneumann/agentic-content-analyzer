@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 from pathlib import Path
 from typing import Any, Literal
 
@@ -310,7 +309,8 @@ class APIKeySettings(BaseModel):
 
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
-    google_api_key: str | None = None
+    gemini_api_key: str | None = None
+    google_api_key: str | None = None  # Deprecated: use gemini_api_key
     tavily_api_key: str | None = None
     elevenlabs_api_key: str | None = None
     sendgrid_api_key: str | None = None
@@ -376,18 +376,31 @@ class Profile(BaseModel):
 # Environment Variable Interpolation
 # =============================================================================
 
-# Regex patterns for interpolation
+# Interpolation syntax
 # ${VAR} - required variable
-# ${VAR:-default} - variable with default
+# ${VAR:-default} - variable with default; the default may itself hold ${...}
 # $${VAR} - escaped (produces literal ${VAR})
-INTERPOLATION_PATTERN = re.compile(
-    r"""
-    \$\$\{([^}]+)\}      |  # Escaped: $${VAR} -> ${VAR}
-    \$\{([^}:]+):-([^}]*)\} |  # With default: ${VAR:-default}
-    \$\{([^}]+)\}           # Required: ${VAR}
-    """,
-    re.VERBOSE,
-)
+#
+# A regex cannot match nested braces: `[^}]*` stops at the first `}`, so
+# ${A:-${B:-}} used to resolve to "a}" or the literal "${B:-}". The scanner
+# below pairs each `${` with its own closing brace instead.
+
+
+def _closing_brace(value: str, start: int) -> int:
+    """Return the index of the `}` closing the `${` whose body begins at start, or -1."""
+    depth = 1
+    i = start
+    while i < len(value):
+        if value.startswith("${", i):
+            depth += 1
+            i += 2
+            continue
+        if value[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
 
 
 def interpolate_value(
@@ -404,6 +417,9 @@ def interpolate_value(
     2. Secrets from .secrets.yaml
     3. Default value (if specified with ${VAR:-default})
 
+    A variable that is present but empty counts as set. Defaults are resolved
+    only when used, so a required ${VAR} inside an unused default never raises.
+
     Args:
         value: String potentially containing ${VAR} references
         env_vars: Environment variables dict
@@ -418,33 +434,40 @@ def interpolate_value(
         ProfileResolutionError: If required variable is not found
     """
 
-    def replacer(match: re.Match[str]) -> str:
-        escaped, var_with_default, default, required_var = match.groups()
-
-        # Escaped: $${VAR} -> ${VAR}
-        if escaped:
-            return f"${{{escaped}}}"
-
-        # With default: ${VAR:-default}
-        if var_with_default:
+    def resolve(body: str) -> str:
+        name, has_default, default = body.partition(":-")
+        if has_default:
             # Check env first, then secrets, then use default
-            if var_with_default in env_vars:
-                return env_vars[var_with_default]
-            if var_with_default in secrets:
-                return secrets[var_with_default]
-            return default
+            if name in env_vars:
+                return env_vars[name]
+            if name in secrets:
+                return secrets[name]
+            return interpolate_value(default, env_vars, secrets, profile_name, path)
 
         # Required: ${VAR}
-        if required_var:
-            if required_var in env_vars:
-                return env_vars[required_var]
-            if required_var in secrets:
-                return secrets[required_var]
-            raise ProfileResolutionError(required_var, profile_name, path)
+        if body in env_vars:
+            return env_vars[body]
+        if body in secrets:
+            return secrets[body]
+        raise ProfileResolutionError(body, profile_name, path)
 
-        return match.group(0)
-
-    return INTERPOLATION_PATTERN.sub(replacer, value)
+    parts: list[str] = []
+    i = 0
+    while (start := value.find("${", i)) != -1:
+        end = _closing_brace(value, start + 2)
+        if end == -1:
+            break  # Unterminated ${: the rest stays literal
+        escaped = start > i and value[start - 1] == "$"
+        parts.append(value[i : start - 1] if escaped else value[i:start])
+        body = value[start + 2 : end]
+        if escaped or not body:
+            # Escaped: $${VAR} -> ${VAR}; an empty ${} stays literal
+            parts.append(value[start : end + 1])
+        else:
+            parts.append(resolve(body))
+        i = end + 1
+    parts.append(value[i:])
+    return "".join(parts)
 
 
 def interpolate_dict(

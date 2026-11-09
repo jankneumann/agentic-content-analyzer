@@ -301,9 +301,9 @@ def inspect_settings(
             "openai_api_key": (settings.openai_api_key or "(not set)")
             if show_secrets
             else ("***" if settings.openai_api_key else "(not set)"),
-            "google_api_key": (settings.google_api_key or "(not set)")
+            "gemini_api_key": (settings.gemini_api_key or "(not set)")
             if show_secrets
-            else ("***" if settings.google_api_key else "(not set)"),
+            else ("***" if settings.gemini_api_key else "(not set)"),
         }
 
         typer.echo(typer.style("Core Settings:", bold=True))

@@ -57,6 +57,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from src.config.models import ModelConfig, ModelFamily, Provider
+from src.config.settings import get_gemini_api_key_from_env
 from src.contracts.operation_context import OperationOutcome, OperationStage
 from src.services.batch.types import BatchPollResult, BatchRequest, BatchState
 from src.utils.logging import get_logger
@@ -1197,9 +1198,9 @@ class LLMRouter:
         from google import genai
         from google.genai import types
 
-        api_key = os.environ.get("GOOGLE_API_KEY")
+        api_key = get_gemini_api_key_from_env()
         if not api_key:
-            raise RuntimeError("GOOGLE_API_KEY environment variable not set")
+            raise RuntimeError("GEMINI_API_KEY environment variable not set")
 
         client = genai.Client(api_key=api_key)
         provider_model_id = self.get_provider_model_id(model, provider)
@@ -1567,9 +1568,9 @@ class LLMRouter:
         from google import genai
         from google.genai import types
 
-        api_key = os.environ.get("GOOGLE_API_KEY")
+        api_key = get_gemini_api_key_from_env()
         if not api_key:
-            raise RuntimeError("GOOGLE_API_KEY environment variable not set")
+            raise RuntimeError("GEMINI_API_KEY environment variable not set")
 
         client = genai.Client(api_key=api_key)
         provider_model_id = self.get_provider_model_id(model, provider)
@@ -1696,7 +1697,7 @@ class LLMRouter:
         Raises:
             ValueError: If ``requests`` is empty, the model is not a
                 ``google_ai`` model, or the inline payload exceeds the cap.
-            RuntimeError: If ``GOOGLE_API_KEY`` is unset.
+            RuntimeError: If ``GEMINI_API_KEY`` is unset.
         """
         if not requests:
             raise ValueError("submit_batch requires at least one request")
@@ -1717,9 +1718,9 @@ class LLMRouter:
         from google import genai
         from google.genai import types
 
-        api_key = os.environ.get("GOOGLE_API_KEY")
+        api_key = get_gemini_api_key_from_env()
         if not api_key:
-            raise RuntimeError("GOOGLE_API_KEY environment variable not set")
+            raise RuntimeError("GEMINI_API_KEY environment variable not set")
 
         provider_model_id = self.get_provider_model_id(model, provider)
 
@@ -1794,13 +1795,13 @@ class LLMRouter:
             A :class:`BatchPollResult` describing the job's current state.
 
         Raises:
-            RuntimeError: If ``GOOGLE_API_KEY`` is unset.
+            RuntimeError: If ``GEMINI_API_KEY`` is unset.
         """
         from google import genai
 
-        api_key = os.environ.get("GOOGLE_API_KEY")
+        api_key = get_gemini_api_key_from_env()
         if not api_key:
-            raise RuntimeError("GOOGLE_API_KEY environment variable not set")
+            raise RuntimeError("GEMINI_API_KEY environment variable not set")
 
         client = genai.Client(api_key=api_key)
         try:
@@ -1898,9 +1899,9 @@ class LLMRouter:
         from google import genai
         from google.genai import types
 
-        api_key = os.environ.get("GOOGLE_API_KEY")
+        api_key = get_gemini_api_key_from_env()
         if not api_key:
-            raise RuntimeError("GOOGLE_API_KEY environment variable not set")
+            raise RuntimeError("GEMINI_API_KEY environment variable not set")
 
         client = genai.Client(api_key=api_key)
         provider_model_id = self.get_provider_model_id(model, provider)
@@ -1975,9 +1976,9 @@ class LLMRouter:
         from google import genai
         from google.genai import types
 
-        api_key = os.environ.get("GOOGLE_API_KEY")
+        api_key = get_gemini_api_key_from_env()
         if not api_key:
-            raise RuntimeError("GOOGLE_API_KEY environment variable not set")
+            raise RuntimeError("GEMINI_API_KEY environment variable not set")
 
         client = genai.Client(api_key=api_key)
         provider_model_id = self.get_provider_model_id(model, provider)
@@ -2032,9 +2033,9 @@ class LLMRouter:
         from google import genai
         from google.genai import types
 
-        api_key = os.environ.get("GOOGLE_API_KEY")
+        api_key = get_gemini_api_key_from_env()
         if not api_key:
-            raise RuntimeError("GOOGLE_API_KEY environment variable not set")
+            raise RuntimeError("GEMINI_API_KEY environment variable not set")
 
         client = genai.Client(api_key=api_key)
         provider_model_id = self.get_provider_model_id(model, provider)

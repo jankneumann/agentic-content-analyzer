@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 
 # Provider -> environment variables that hold an API key (first match wins).
 PROVIDER_API_KEYS: dict[str, list[str]] = {
-    Provider.GOOGLE_AI.value: ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
+    Provider.GOOGLE_AI.value: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
     Provider.ANTHROPIC.value: ["ANTHROPIC_API_KEY"],
     Provider.OPENAI.value: ["OPENAI_API_KEY"],
 }

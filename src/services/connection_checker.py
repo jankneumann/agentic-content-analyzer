@@ -129,11 +129,11 @@ def _check_openai() -> ServiceStatus:
 
 def _check_google_ai() -> ServiceStatus:
     """Check Google AI API key availability."""
-    if not settings.google_api_key:
+    if not settings.gemini_api_key:
         return ServiceStatus(
             name="Google AI",
             status="not_configured",
-            details="GOOGLE_API_KEY not set",
+            details="GEMINI_API_KEY not set",
         )
     return ServiceStatus(
         name="Google AI",

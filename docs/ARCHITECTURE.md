@@ -309,7 +309,7 @@ then routed by duration relative to `long_video_threshold_seconds` (default 2700
 - Duration probe ladder: video dict → Data API `videos.list(contentDetails)` →
   `yt-dlp` → unknown (`unknown_duration_strategy`, default `short`).
 - All routing fields are per-source in `sources.d/` and apply to playlist,
-  channel, and RSS paths. Inference is AI Studio (`GOOGLE_API_KEY`) only.
+  channel, and RSS paths. Inference is AI Studio (`GEMINI_API_KEY`; the deprecated `GOOGLE_API_KEY` still works) only.
 
 ### Podcast Ingestion (`PodcastContentIngestionService`)
 - Fetches podcast RSS feeds via feedparser
