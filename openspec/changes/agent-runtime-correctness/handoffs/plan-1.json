@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-09-05T11:02:50.832046+00:00",
+  "coordinator_error": {
+    "error_type": "rpc_failed",
+    "message": "unspecified coordinator error",
+    "http_status": null
+  },
+  "payload": {
+    "agent_name": "claude_code",
+    "session_id": null,
+    "summary": "Planned the agent runtime correctness change after a design review of ACA's agent surfaces against the enterprise memory-platform specification. Gate 1 selected Approach 3 with a defer-until-event queue mechanism: agent tasks become the agent_task.execute operation type, approvals become approval.wait child operations, memory strategies are built from settings on a new async session factory, partial memory writes are reported, and cost flows from one pricing source. Tier is coordinated with six packages, three of them parallel after wp-contracts.",
+    "completed_work": [],
+    "in_progress": [],
+    "decisions": [
+      {
+        "title": "Agent tasks are a canonical operation type",
+        "rationale": "execute_agent_task was a legacy string handler with no idempotency, cancel, list, or events; registering agent_task.execute in the v2 registry gives all four and removes the ad-hoc re-enqueue.",
+        "capability": "agentic-operations",
+        "supersedes": null
+      },
+      {
+        "title": "Approvals are approval.wait child operations with a decision result",
+        "rationale": "Denial is a valid outcome, not a failure; the parent resumes from a checkpoint the way pipeline.run resumes on ingestion children.",
+        "capability": "agentic-analysis",
+        "supersedes": null
+      },
+      {
+        "title": "Defer-until-event generalizes the existing batch parent reset",
+        "rationale": "OperationService.defer re-polls every second; a human approval can take hours. A wait_on marker plus a child-terminal wake inside the same transaction reuses the summarization.run reset path instead of adding a second notification channel.",
+        "capability": "agentic-operations",
+        "supersedes": null
+      },
+      {
+        "title": "Async engine confined to memory strategies",
+        "rationale": "Vector and keyword strategies require an async session factory that did not exist; asyncpg is already a dependency. The factory is imported only under src/agents/memory and a test asserts that.",
+        "capability": "agentic-analysis",
+        "supersedes": null
+      },
+      {
+        "title": "Embedding column follows the configured model",
+        "rationale": "agent_memories.embedding was vector(1536) while the default local model is 384-dim; the migration interpolates the dimension at migration time, the documented pg_cron pattern.",
+        "capability": "agentic-analysis",
+        "supersedes": null
+      },
+      {
+        "title": "Tier: coordinated",
+        "rationale": "Coordinator reachable with lock, queue, and discover; feature spans queue, agents, storage, and contracts.",
+        "capability": null,
+        "supersedes": null
+      }
+    ],
+    "next_steps": [
+      "Start with wp-contracts (tasks 1.1 to 1.3); wp-queue-wait, wp-memory-infra, and wp-cost can run in parallel once it lands."
+    ],
+    "relevant_files": [
+      {
+        "path": "openspec/changes/agent-runtime-correctness/proposal.md",
+        "description": "approved proposal, Approach 3 with defer-until-event"
+      },
+      {
+        "path": "openspec/changes/agent-runtime-correctness/design.md",
+        "description": "decisions D1 to D10"
+      },
+      {
+        "path": "openspec/changes/agent-runtime-correctness/work-packages.yaml",
+        "description": "six-package DAG"
+      }
+    ]
+  }
+}
