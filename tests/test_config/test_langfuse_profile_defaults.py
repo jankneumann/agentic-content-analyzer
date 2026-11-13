@@ -98,11 +98,13 @@ class TestCloudConfig:
             profiles_dir=profiles_dir,
             skip_interpolation=True,
         )
-        keys = profile.settings.api_keys
-        assert "LANGFUSE_PUBLIC_KEY" in str(keys.langfuse_public_key or ""), (
+        # The keys live under observability, not api_keys: api_keys is flattened
+        # last, so a copy there would override a self-hosted instance's keys.
+        keys = profile.settings.observability
+        assert "LANGFUSE_PUBLIC_KEY" in str(getattr(keys, "langfuse_public_key", "") or ""), (
             f"{profile_name}: langfuse_public_key should reference ${{LANGFUSE_PUBLIC_KEY}}"
         )
-        assert "LANGFUSE_SECRET_KEY" in str(keys.langfuse_secret_key or ""), (
+        assert "LANGFUSE_SECRET_KEY" in str(getattr(keys, "langfuse_secret_key", "") or ""), (
             f"{profile_name}: langfuse_secret_key should reference ${{LANGFUSE_SECRET_KEY}}"
         )
 

@@ -10,13 +10,14 @@ shareable settings from secrets. Profiles support:
 
 from __future__ import annotations
 
+import copy
 import logging
 import os
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -703,7 +704,7 @@ def load_profile(
 
     # Skip interpolation if requested (useful for structural validation)
     if skip_interpolation:
-        return Profile.model_validate(data)
+        return _validate_uninterpolated(data, name)
 
     # Load secrets and env vars
     if secrets is None:
@@ -717,6 +718,42 @@ def load_profile(
     interpolated = interpolate_dict(data, env_vars, secrets, name)
 
     return Profile.model_validate(interpolated)
+
+
+def _validate_uninterpolated(data: dict[str, Any], profile_name: str) -> Profile:
+    """Validate a profile's structure while its ${...} references stay unresolved.
+
+    A reference in a non-string field (gx10.process_role, gx10.rotation_generation)
+    cannot satisfy its type until interpolation. Only fields that fail because they
+    hold a whole reference are replaced: by the reference's own default when it has
+    one, otherwise by the model default. Every other error still raises.
+    """
+    try:
+        return Profile.model_validate(data)
+    except ValidationError as exc:
+        patched = copy.deepcopy(data)
+        for error in exc.errors():
+            container: Any = patched
+            *parents, field = error["loc"]
+            for key in parents:
+                container = container.get(key) if isinstance(container, dict) else None
+            value = container.get(field) if isinstance(container, dict) else None
+            # Only a field that is exactly one reference, ${...} end to end.
+            if not (
+                isinstance(value, str)
+                and value.startswith("${")
+                and _closing_brace(value, 2) == len(value) - 1
+            ):
+                raise
+            try:
+                default = interpolate_value(
+                    value, {}, {}, profile_name, ".".join(map(str, error["loc"]))
+                )
+            except ProfileResolutionError:
+                del container[field]
+            else:
+                container[field] = default
+        return Profile.model_validate(patched)
 
 
 def determine_active_profile() -> str | None:

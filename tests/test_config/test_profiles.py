@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from src.config.profiles import (
     Profile,
@@ -671,3 +672,38 @@ class TestDetermineActiveProfile:
             name = determine_active_profile()
 
         assert name is None
+
+
+class TestStructuralValidationWithReferences:
+    """skip_interpolation keeps ${...} references, which typed fields cannot hold."""
+
+    def _write(self, directory: Path, gx10: dict[str, object]) -> None:
+        with open(directory / "typed.yaml", "w") as f:
+            yaml.dump({"name": "typed", "settings": {"gx10": gx10}}, f)
+
+    def test_typed_reference_takes_its_own_default(self, temp_profiles_dir: Path) -> None:
+        self._write(temp_profiles_dir, {"rotation_generation": "${ROTATION:-4}"})
+
+        profile = load_profile("typed", profiles_dir=temp_profiles_dir, skip_interpolation=True)
+
+        assert profile.settings.gx10.rotation_generation == 4
+
+    def test_typed_reference_without_default_takes_the_model_default(
+        self, temp_profiles_dir: Path
+    ) -> None:
+        self._write(temp_profiles_dir, {"process_role": "${ROLE}"})
+
+        profile = load_profile("typed", profiles_dir=temp_profiles_dir, skip_interpolation=True)
+
+        assert profile.settings.gx10.process_role is None
+
+    def test_a_literal_invalid_value_still_fails(self, temp_profiles_dir: Path) -> None:
+        self._write(temp_profiles_dir, {"process_role": "janitor"})
+
+        with pytest.raises(ValidationError):
+            load_profile("typed", profiles_dir=temp_profiles_dir, skip_interpolation=True)
+
+    def test_shipped_gx10_profile_validates_structurally(self) -> None:
+        profile = load_profile("gx10", skip_interpolation=True)
+
+        assert profile.settings.gx10.runtime_enabled is True
