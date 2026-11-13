@@ -70,6 +70,8 @@ def test_attempt_span_continues_stored_trace_and_submission_parent() -> None:
         "service_instance_id": "api-1",
         "environment": "test",
         "release_revision": "test",
+        "authority_fingerprint": None,
+        "ownership_epoch": None,
         "stage": "submit",
         "resource_kind": None,
         "resource_key": None,

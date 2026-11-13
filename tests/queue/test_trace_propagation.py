@@ -29,6 +29,8 @@ def _submission_context() -> dict[str, object]:
         "service_instance_id": "api-1",
         "environment": "test",
         "release_revision": "test-revision",
+        "authority_fingerprint": None,
+        "ownership_epoch": None,
         "stage": "submit",
         "resource_kind": None,
         "resource_key": None,
@@ -46,7 +48,7 @@ def test_restart_reconstructs_attempt_only_from_persisted_context() -> None:
         "submission_traceparent": stored["traceparent"],
         "submission_tracestate": None,
         "trace_id": stored["trace_id"],
-        "root_operation_id": 41,
+        "root_job_id": 41,
     }
     context = worker._attempt_context_from_job(job)
     assert context.operation_id == "41" and context.trace_id == stored["trace_id"]
@@ -100,7 +102,7 @@ async def test_handler_receives_bound_attempt_context(monkeypatch) -> None:
             "submission_traceparent": stored["traceparent"],
             "submission_tracestate": None,
             "trace_id": stored["trace_id"],
-            "root_operation_id": 41,
+            "root_job_id": 41,
         },
     )
     assert len(seen) == 1 and seen[0] is not None
@@ -120,7 +122,7 @@ def test_retry_attempt_links_prior_generation_without_flattening_trace() -> None
             "submission_traceparent": stored["traceparent"],
             "submission_tracestate": None,
             "trace_id": stored["trace_id"],
-            "root_operation_id": 41,
+            "root_job_id": 41,
         }
     )
     retry = worker._attempt_context_from_job(
@@ -133,7 +135,7 @@ def test_retry_attempt_links_prior_generation_without_flattening_trace() -> None
             "submission_traceparent": stored["traceparent"],
             "submission_tracestate": None,
             "trace_id": stored["trace_id"],
-            "root_operation_id": 41,
+            "root_job_id": 41,
         }
     )
     assert retry.trace_id == first.trace_id
@@ -175,7 +177,7 @@ async def test_stale_claim_records_only_its_attempt_diagnostic(monkeypatch) -> N
             "submission_traceparent": _submission_context()["traceparent"],
             "submission_tracestate": None,
             "trace_id": _submission_context()["trace_id"],
-            "root_operation_id": 41,
+            "root_job_id": 41,
         }
     )
     assert await worker._record_stale_attempt(object(), context) is True
@@ -194,7 +196,7 @@ def test_actual_attempt_context_preserves_unsampled_trace_flags() -> None:
             "submission_traceparent": stored["traceparent"],
             "submission_tracestate": None,
             "trace_id": stored["trace_id"],
-            "root_operation_id": 41,
+            "root_job_id": 41,
         }
     )
     span_context = SimpleNamespace(
@@ -251,7 +253,7 @@ async def test_terminal_transition_and_attempt_evidence_commit_as_one_fenced_uni
             "submission_traceparent": _submission_context()["traceparent"],
             "submission_tracestate": None,
             "trace_id": _submission_context()["trace_id"],
-            "root_operation_id": 41,
+            "root_job_id": 41,
         }
     )
 
@@ -303,7 +305,7 @@ async def test_handler_owned_terminal_state_drives_attempt_evidence(monkeypatch)
             "submission_traceparent": _submission_context()["traceparent"],
             "submission_tracestate": None,
             "trace_id": _submission_context()["trace_id"],
-            "root_operation_id": 41,
+            "root_job_id": 41,
         }
     )
 

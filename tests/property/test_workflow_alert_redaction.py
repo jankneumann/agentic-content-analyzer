@@ -67,6 +67,7 @@ def test_allowlist_projection_never_exports_hostile_diagnostics_or_extensions(
         source_kind="operation",
         operation_id=42,
         claim_generation=2,
+        trace_id=None,
         terminal_status="completed",
         reconciliation_action_id=None,
         reconciliation_run_id=None,

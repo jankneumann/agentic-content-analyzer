@@ -21,6 +21,7 @@ def test_terminal_event_model_has_closed_shape_without_authority_foreign_keys() 
         table.c.source_kind,
         table.c.operation_id,
         table.c.claim_generation,
+        table.c.trace_id,
         table.c.terminal_status,
         table.c.reconciliation_action_id,
         table.c.reconciliation_run_id,

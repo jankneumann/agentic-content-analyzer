@@ -23,6 +23,7 @@ from src.services.content_set_resolver import ContentSetResolver
 from src.services.operation_service import OperationService
 from tests.factories.content import ContentFactory
 from tests.factories.summary import SummaryFactory
+from tests.helpers.submission_db import install_fake_submission_connection
 
 START = datetime(2026, 7, 1, tzinfo=UTC)
 END = START + timedelta(days=1)
@@ -186,6 +187,7 @@ async def test_forced_ingestion_is_idempotently_submitted_and_partial_results_ar
     get_status = AsyncMock(return_value=_job())
     monkeypatch.setattr("src.services.operation_service.queue_setup.enqueue_queue_job", enqueue)
     monkeypatch.setattr("src.services.operation_service.queue_setup.get_job_status", get_status)
+    install_fake_submission_connection(monkeypatch)
     service = OperationService()
     normalized = {"command": command.model_dump(mode="json", exclude_none=True)}
 

@@ -57,6 +57,8 @@ def _context(operation_id: int, root_id: int, *, generation: int = 0) -> dict[st
         "service_instance_id": "api-1",
         "environment": "test",
         "release_revision": "abc123",
+        "authority_fingerprint": None,
+        "ownership_epoch": None,
         "stage": "submit",
         "resource_kind": None,
         "resource_key": None,

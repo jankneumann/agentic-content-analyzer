@@ -135,6 +135,7 @@ def _evidence(terminal_status: str) -> TerminalEventEvidence:
         source_kind="operation",
         operation_id=91,
         claim_generation=1,
+        trace_id=None,
         terminal_status=terminal_status,
         reconciliation_action_id=None,
         reconciliation_run_id=None,

@@ -32,6 +32,7 @@ from src.models.jobs import (
 )
 from src.queue.execution_claim import ExecutionClaim, bind_execution_claim
 from src.services.operation_service import OperationService
+from tests.helpers.submission_db import install_fake_submission_connection
 
 NOW = datetime(2026, 7, 13, 10, 0, tzinfo=UTC)
 CONTRACTS = Path(__file__).parents[2] / "openspec/contracts/content-workflows"
@@ -1045,6 +1046,7 @@ async def test_submit_child_namespaces_caller_key_by_parent(monkeypatch) -> None
     )
     monkeypatch.setattr("src.services.operation_service.queue_setup.enqueue_queue_job", enqueue)
     monkeypatch.setattr(service, "get", get_operation)
+    install_fake_submission_connection(monkeypatch)
 
     for parent_id in (10, 11):
         await service.submit_child(

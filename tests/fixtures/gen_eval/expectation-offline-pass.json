@@ -35,6 +35,7 @@
     "cli:sources",
     "cli:summarize",
     "cli:sync",
+    "cli:telemetry",
     "cli:theme",
     "cli:worker"
   ],
@@ -70,6 +71,7 @@
     "cli:sources",
     "cli:summarize",
     "cli:sync",
+    "cli:telemetry",
     "cli:theme",
     "cli:worker"
   ],

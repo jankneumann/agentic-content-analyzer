@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, Mock
@@ -96,6 +97,9 @@ async def test_worker_releases_slot_after_parent_defers(monkeypatch) -> None:
     )
     notification = AsyncMock()
     monkeypatch.setattr(worker, "_emit_job_notification", notification)
+    # Attempt evidence has its own tests; this one is about the status transition.
+    monkeypatch.setattr(worker, "_start_attempt_evidence", AsyncMock(return_value=True))
+    monkeypatch.setattr(worker, "_complete_attempt_evidence", AsyncMock(return_value=True))
     conn = AsyncMock()
     conn.fetchval.return_value = None
 
@@ -116,7 +120,14 @@ async def test_worker_releases_slot_after_parent_defers(monkeypatch) -> None:
 
     operations.defer.assert_awaited_once()
     assert operations.handle.status is JobStatus.QUEUED
-    assert "status = 'in_progress'" in conn.fetchval.await_args.args[0]
+    # Completion is fenced on in_progress, so the deferred (queued) job is left alone.
+    # Terminal-status reads now follow it, so look for the completion query itself.
+    completions = [
+        call.args[0]
+        for call in conn.fetchval.await_args_list
+        if "SET status = 'completed'" in call.args[0]
+    ]
+    assert completions and all("status = 'in_progress'" in query for query in completions)
     notification.assert_not_awaited()
 
 
@@ -650,10 +661,18 @@ async def test_worker_cancellation_wins_race_with_final_completion(monkeypatch) 
         assert "cancel_requested" in query
         return None
 
+    @asynccontextmanager
+    async def transaction():
+        yield None
+
     conn = SimpleNamespace(
         fetchval=AsyncMock(side_effect=fetchval),
         fetchrow=AsyncMock(side_effect=[None, {"id": 22}]),
+        transaction=transaction,
     )
+    # Attempt evidence has its own tests; this one is about the status transition.
+    monkeypatch.setattr(worker, "_start_attempt_evidence", AsyncMock(return_value=True))
+    monkeypatch.setattr(worker, "_complete_attempt_evidence", AsyncMock(return_value=True))
     notification = AsyncMock()
     monkeypatch.setattr(
         "src.queue.setup.touch_job_heartbeat",

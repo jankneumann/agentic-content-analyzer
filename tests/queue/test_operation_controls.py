@@ -22,6 +22,7 @@ from src.models.jobs import (
 )
 from src.queue.execution_claim import ExecutionClaim, bind_execution_claim
 from src.services.operation_service import OperationConflictError, OperationService
+from tests.helpers.submission_db import install_fake_submission_connection
 
 NOW = datetime(2026, 7, 13, 10, 0, tzinfo=UTC)
 
@@ -221,6 +222,7 @@ async def test_submission_emits_schema_v2_and_deterministic_idempotency(monkeypa
     get_status = AsyncMock(return_value=_job())
     monkeypatch.setattr("src.services.operation_service.queue_setup.enqueue_queue_job", enqueue)
     monkeypatch.setattr("src.services.operation_service.queue_setup.get_job_status", get_status)
+    install_fake_submission_connection(monkeypatch)
     service = OperationService()
 
     first = await service.submit(
@@ -611,6 +613,10 @@ class _CancellationStateConnection:
         self.fetchrow = AsyncMock(side_effect=self._fetchrow)
         self.fetchval = AsyncMock(side_effect=self._fetchval)
 
+    @asynccontextmanager
+    async def transaction(self):
+        yield self
+
     async def _fetchrow(self, query: str, *_args):
         if "SET status = 'cancelled'" not in query or not self.job.payload["cancel_requested"]:
             return None
@@ -663,6 +669,9 @@ async def test_worker_completion_preserves_checkpoint_cancellation(monkeypatch) 
     monkeypatch.setattr("src.queue.setup.touch_job_heartbeat", heartbeat)
     monkeypatch.setattr(worker, "_emit_job_notification", notification)
     monkeypatch.setitem(worker._handlers, entrypoint, handler)
+    # Attempt evidence has its own tests; this one is about the status transition.
+    monkeypatch.setattr(worker, "_start_attempt_evidence", AsyncMock(return_value=True))
+    monkeypatch.setattr(worker, "_complete_attempt_evidence", AsyncMock(return_value=True))
 
     await worker._process_job(
         conn,  # type: ignore[arg-type]

@@ -139,6 +139,10 @@ PLUMBING_ONLY_REASONS: dict[str, str] = {
         "Not safely exercisable without the mutation guard and a declared "
         "non-production target."
     ),
+    "telemetry": (
+        "`prune-traces` deletes traces from a live Langfuse store. A dry run still needs "
+        "Langfuse credentials and a reachable server, which no automated environment has."
+    ),
     "worker": (
         "`start` runs the queue worker as a long-lived process, whereas a scenario step "
         "is a bounded subprocess with a timeout."

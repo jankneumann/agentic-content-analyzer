@@ -145,6 +145,7 @@ def test_deployed_schema_has_closed_tables_indexes_and_trigger_identity(
         "source_kind",
         "operation_id",
         "claim_generation",
+        "trace_id",
         "terminal_status",
         "reconciliation_action_id",
         "reconciliation_run_id",

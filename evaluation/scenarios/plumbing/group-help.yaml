@@ -417,15 +417,16 @@
         not_empty: true
 
 - id: plumbing-help-batch-08
-  name: 'aca --help sweep, batch 8: sync, theme, worker'
+  name: 'aca --help sweep, batch 8: sync, telemetry, theme, worker'
   description: >
     Each of these commands is registered on the root application and renders its
     own help without a backend, a database, or credentials. Credits the
-    interfaces cli:sync, cli:theme, cli:worker.
+    interfaces cli:sync, cli:telemetry, cli:theme, cli:worker.
   category: plumbing
   priority: 2
   interfaces:
     - "cli:sync"
+    - "cli:telemetry"
     - "cli:theme"
     - "cli:worker"
   tags:
@@ -435,6 +436,14 @@
     - id: help-sync
       transport: cli
       command: sync
+      args:
+        - "--help"
+      expect:
+        exit_code: 0
+        not_empty: true
+    - id: help-telemetry
+      transport: cli
+      command: telemetry
       args:
         - "--help"
       expect:

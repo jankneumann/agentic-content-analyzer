@@ -104,9 +104,10 @@ class TestOpikProviderSmoke:
         assert attrs["gen_ai.usage.output_tokens"] == 80
         assert attrs["gen_ai.request.max_tokens"] == 4096
 
-        # Prompt logging (enabled via log_prompts=True)
-        assert "Summarize this article" in attrs["gen_ai.prompt"]
-        assert "AI is transforming" in attrs["gen_ai.completion"]
+        # Prompt and completion text never reach a span, even with log_prompts=True:
+        # operation telemetry is masked by construction (src/telemetry/safety.py).
+        assert "gen_ai.prompt" not in attrs
+        assert "gen_ai.completion" not in attrs
 
         # Custom metadata
         assert attrs["custom.pipeline_step"] == "summarization"
@@ -229,8 +230,8 @@ class TestOTelProviderSmoke:
         assert attrs["gen_ai.usage.input_tokens"] == 200
         assert attrs["gen_ai.usage.output_tokens"] == 150
         assert attrs["gen_ai.request.max_tokens"] == 8192
-        assert "RAG" in attrs["gen_ai.prompt"]
-        assert "Retrieval-Augmented" in attrs["gen_ai.completion"]
+        assert "gen_ai.prompt" not in attrs
+        assert "gen_ai.completion" not in attrs
 
     def test_start_span_creates_named_span(self, otel_harness):
         """OTelProvider.start_span should work identically to OpikProvider."""

@@ -31,8 +31,11 @@ shape to the `cli:batch` entry beside it. It was added to the existing batch rat
 than by reflowing the sweep alphabetically, precisely to keep this edit to the one
 interface that changed instead of moving commands between scenarios.
 
+`cli:telemetry` (`aca telemetry prune-traces`) was inserted the same way into
+`plumbing-help-batch-08`, after `help-sync`, copying that step's shape and timing.
+
 Regenerate these fixtures at the next pin bump and this note can go. Until then,
-treat `cli:backup`'s entries as derived rather than observed.
+treat the `cli:backup` and `cli:telemetry` entries as derived rather than observed.
 
 The negative cases are **not** checked in. Every one is derived in the test by mutating a
 loaded fixture, so the mutation sits next to the assertion it is supposed to trip. A

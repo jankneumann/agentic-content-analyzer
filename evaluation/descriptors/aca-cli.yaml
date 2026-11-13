@@ -286,6 +286,11 @@ services:
           - import
           - obsidian
           - push
+      - name: telemetry
+        description: 'Telemetry store housekeeping: prune expired Langfuse traces.'
+        tags: [coverage:plumbing]
+        subcommands:
+          - prune-traces
       - name: theme
         description: 'Submit theme analysis operations.'
         tags: [coverage:plumbing, coverage:workflow-submission]

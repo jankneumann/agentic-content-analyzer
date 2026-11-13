@@ -33,6 +33,7 @@ from src.mcp_tools import (
 )
 from src.models.jobs import JobRecord, JobStatus, OperationType
 from src.services.operation_service import OperationService
+from tests.helpers.submission_db import install_fake_submission_connection
 
 DIGEST_INPUT = {
     "digest_type": "daily",
@@ -178,6 +179,7 @@ async def test_completed_digest_contract_matches_every_python_interface(
 
     monkeypatch.setattr("src.services.operation_service.queue_setup.enqueue_queue_job", enqueue)
     monkeypatch.setattr("src.services.operation_service.queue_setup.get_job_status", get_job)
+    install_fake_submission_connection(monkeypatch)
     application_handle = await OperationService().submit(
         OperationType.DIGEST_CREATE,
         NORMALIZED_DIGEST_INPUT,

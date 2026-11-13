@@ -188,6 +188,11 @@
       "fail": 0,
       "pass": 1
     },
+    "cli:telemetry": {
+      "error": 0,
+      "fail": 0,
+      "pass": 1
+    },
     "cli:theme": {
       "error": 0,
       "fail": 0,
@@ -3404,11 +3409,12 @@
       "failure_summary": null,
       "interfaces_tested": [
         "cli:sync",
+        "cli:telemetry",
         "cli:theme",
         "cli:worker"
       ],
       "scenario_id": "plumbing-help-batch-08",
-      "scenario_name": "aca --help sweep, batch 8: sync, theme, worker",
+      "scenario_name": "aca --help sweep, batch 8: sync, telemetry, theme, worker",
       "status": "pass",
       "steps": [
         {
@@ -3431,6 +3437,28 @@
           "side_effect_verdicts": null,
           "status": "pass",
           "step_id": "help-sync",
+          "transport": "cli"
+        },
+        {
+          "actual": {
+            "body": {
+              "raw": "Usage: aca telemetry [OPTIONS] COMMAND [ARGS]...\n\u2026 [trimmed for fixture]"
+            },
+            "exit_code": 0
+          },
+          "captured_vars": null,
+          "diff": null,
+          "duration_ms": 559.195208013989,
+          "error_message": null,
+          "expected": {
+            "exit_code": 0,
+            "not_empty": true
+          },
+          "is_cleanup": false,
+          "semantic_verdict": null,
+          "side_effect_verdicts": null,
+          "status": "pass",
+          "step_id": "help-telemetry",
           "transport": "cli"
         },
         {

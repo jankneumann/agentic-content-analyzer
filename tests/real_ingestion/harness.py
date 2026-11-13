@@ -147,6 +147,20 @@ class _ObsidianPrivateSnapshot:
     event_attempts: int
 
 
+class _SettingsOverlay:
+    """Fixture settings first, the real settings for every attribute they lack."""
+
+    def __init__(self, overrides: Any, base: Any) -> None:
+        self._overrides = overrides
+        self._base = base
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return getattr(self._overrides, name)
+        except AttributeError:
+            return getattr(self._base, name)
+
+
 def _counter_delta(before: dict[str, int], after: dict[str, int]) -> dict[str, int]:
     return {
         key: after.get(key, 0) - before.get(key, 0)
@@ -684,9 +698,13 @@ class RealIngestionHarness:
         def _loopback_only(sock: socket.socket, address: Any) -> Any:
             return reject_external_fixture_network(original_connect, sock, address)
 
-        stack.enter_context(
-            patch("src.config.settings.get_settings", return_value=fixture_settings)
-        )
+        # The worker also reads settings for observation context (service name,
+        # environment), so the fixture overrides sit on top of the real settings
+        # rather than replacing them.
+        from src.config.settings import get_settings
+
+        overlay = _SettingsOverlay(fixture_settings, get_settings())
+        stack.enter_context(patch("src.config.settings.get_settings", return_value=overlay))
         stack.enter_context(patch("src.storage.database.get_db", _fixture_db))
         stack.enter_context(patch.object(socket.socket, "connect", _loopback_only))
 
