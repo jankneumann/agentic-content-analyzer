@@ -29,6 +29,15 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+# The long-running process (API or worker) that owns process telemetry, if any.
+# Operational entrypoints that run inside it reuse its lifecycle instead of
+# initializing and shutting down the process-wide provider themselves.
+_host_lifecycle: TelemetryLifecycle | None = None
+
+
+def get_host_lifecycle() -> TelemetryLifecycle | None:
+    return _host_lifecycle
+
 
 class TelemetryLifecycle:
     """One bounded telemetry lifecycle shared by every long/short-lived process."""
@@ -110,6 +119,9 @@ class TelemetryLifecycle:
             setup = setup_telemetry
         setup(app)
         self.initialized = True
+        if self.lifecycle_kind == "long_running":
+            global _host_lifecycle
+            _host_lifecycle = self
         self.status = "disabled" if self.export_target == "none" else "healthy"
 
     def record_buffered(self, count: int, *, buffered_bytes: int = 0) -> None:
@@ -181,6 +193,9 @@ class TelemetryLifecycle:
     ) -> bool:
         """Bound shutdown flush and persist terminal evidence when possible."""
 
+        global _host_lifecycle
+        if _host_lifecycle is self:
+            _host_lifecycle = None
         if flush is None:
             from src.telemetry import shutdown_telemetry
 

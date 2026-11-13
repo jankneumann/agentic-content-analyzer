@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -10,7 +11,9 @@ import pytest
 
 from src.models.jobs import JobRecord, JobStatus
 from src.queue.setup import (
+    REQUIRED_CORRELATION_COLUMNS,
     REQUIRED_QUEUE_COLUMNS,
+    REQUIRED_QUEUE_TABLES,
     enqueue_queue_job,
     enqueue_summarization_job,
     ensure_queue_schema_compatible,
@@ -18,6 +21,24 @@ from src.queue.setup import (
     init_queue_schema,
     update_job_progress,
 )
+
+
+def _current_schema_connection(*, triggers: list[tuple[str, str]]) -> MagicMock:
+    """Answer each compatibility query as a fully migrated schema would, except triggers."""
+
+    async def fetch(query: str, *args: object) -> list[dict[str, str]]:
+        if "information_schema.tables" in query:
+            return [{"table_name": table} for table in REQUIRED_QUEUE_TABLES]
+        if "information_schema.columns" in query:
+            columns = REQUIRED_CORRELATION_COLUMNS[args[0]] if args else REQUIRED_QUEUE_COLUMNS
+            return [{"column_name": column} for column in columns]
+        if "pg_trigger" in query:
+            return [{"table_name": table, "trigger_name": name} for table, name in triggers]
+        raise AssertionError(f"unexpected compatibility query: {query}")
+
+    connection = MagicMock()
+    connection.fetch = AsyncMock(side_effect=fetch)
+    return connection
 
 
 @pytest.fixture
@@ -154,23 +175,8 @@ class TestQueueOwnershipBootstrap:
 
     @pytest.mark.asyncio
     async def test_compatibility_requires_terminal_capture_triggers(self):
-        connection = MagicMock()
-        connection.fetch = AsyncMock(
-            side_effect=[
-                [
-                    {"table_name": "pgqueuer_jobs"},
-                    {"table_name": "content_reconciliation_actions"},
-                    {"table_name": "workflow_terminal_events"},
-                    {"table_name": "workflow_alert_deliveries"},
-                ],
-                [{"column_name": column} for column in REQUIRED_QUEUE_COLUMNS],
-                [
-                    {
-                        "table_name": "pgqueuer_jobs",
-                        "trigger_name": "pgqueuer_jobs_capture_terminal_event",
-                    }
-                ],
-            ]
+        connection = _current_schema_connection(
+            triggers=[("pgqueuer_jobs", "pgqueuer_jobs_capture_terminal_event")]
         )
         with patch("src.queue.setup._connection", connection):
             with pytest.raises(
@@ -181,26 +187,13 @@ class TestQueueOwnershipBootstrap:
 
     @pytest.mark.asyncio
     async def test_compatibility_accepts_alert_tables_and_both_capture_triggers(self):
-        connection = MagicMock()
-        connection.fetch = AsyncMock(
-            side_effect=[
-                [
-                    {"table_name": "pgqueuer_jobs"},
-                    {"table_name": "content_reconciliation_actions"},
-                    {"table_name": "workflow_terminal_events"},
-                    {"table_name": "workflow_alert_deliveries"},
-                ],
-                [{"column_name": column} for column in REQUIRED_QUEUE_COLUMNS],
-                [
-                    {
-                        "table_name": "pgqueuer_jobs",
-                        "trigger_name": "pgqueuer_jobs_capture_terminal_event",
-                    },
-                    {
-                        "table_name": "content_reconciliation_actions",
-                        "trigger_name": "content_reconciliation_actions_capture_terminal_event",
-                    },
-                ],
+        connection = _current_schema_connection(
+            triggers=[
+                ("pgqueuer_jobs", "pgqueuer_jobs_capture_terminal_event"),
+                (
+                    "content_reconciliation_actions",
+                    "content_reconciliation_actions_capture_terminal_event",
+                ),
             ]
         )
         with patch("src.queue.setup._connection", connection):
@@ -362,3 +355,35 @@ class TestQueueSetupEdgeCases:
                 result = await get_job_status(42)
             assert result is not None
             assert result.is_terminal is expected
+
+
+class TestSharedConnectionLoopAffinity:
+    """The shared connection is reused only on the loop that opened it."""
+
+    @pytest.mark.asyncio
+    async def test_reuses_the_shared_connection_on_its_own_loop(self, monkeypatch):
+        from src.queue import setup as queue_setup
+
+        shared = MagicMock()
+        monkeypatch.setattr(queue_setup, "_connection", shared)
+        monkeypatch.setattr(queue_setup, "_connection_loop", asyncio.get_running_loop())
+
+        async with queue_setup._queue_connection() as conn:
+            assert conn is shared
+
+    @pytest.mark.asyncio
+    async def test_opens_its_own_connection_from_another_loop(self, monkeypatch):
+        from src.queue import setup as queue_setup
+
+        other_loop = asyncio.new_event_loop()
+        temp = MagicMock()
+        temp.close = AsyncMock()
+        monkeypatch.setattr(queue_setup, "_connection", MagicMock())
+        monkeypatch.setattr(queue_setup, "_connection_loop", other_loop)
+        monkeypatch.setattr(queue_setup, "_open_queue_connection", AsyncMock(return_value=temp))
+        try:
+            async with queue_setup._queue_connection() as conn:
+                assert conn is temp
+        finally:
+            other_loop.close()
+        temp.close.assert_awaited_once()

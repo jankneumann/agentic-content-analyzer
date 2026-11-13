@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from time import monotonic
@@ -184,6 +185,53 @@ def test_production_cli_adapter_reserves_durable_root_before_command_body(
     context.close_callback()
     assert store.events == ["reserve", "activate", "finish"]
     assert len(lifecycles) == 1
+
+
+class _CliContextStub:
+    invoked_subcommand = "profile"
+
+    def __init__(self) -> None:
+        self.close_callback = None
+
+    def call_on_close(self, callback: Any) -> None:
+        self.close_callback = callback
+
+
+def _unreachable_store(monkeypatch: pytest.MonkeyPatch, store: _DurableStore) -> None:
+    async def refuse(**_: Any) -> int:
+        raise ConnectionRefusedError(111, "Connect call failed")
+
+    monkeypatch.setattr(store, "reserve", refuse)
+
+
+def test_cli_runs_without_a_root_when_the_store_is_unreachable_and_not_required(
+    durable_runtime, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    module, _lifecycles, _provider, store = durable_runtime
+    _unreachable_store(monkeypatch, store)
+    context = _CliContextStub()
+
+    assert module.install_cli_telemetry(context) is None
+
+    assert context.close_callback is None
+    assert get_current_operation_context() is None
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "running cli.profile without an operation root" in captured.err
+
+
+def test_cli_fails_closed_when_the_store_is_unreachable_and_observability_is_required(
+    durable_runtime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module, _lifecycles, _provider, store = durable_runtime
+    _unreachable_store(monkeypatch, store)
+    monkeypatch.setattr(_Lifecycle, "required", True, raising=False)
+    context = _CliContextStub()
+
+    with pytest.raises(ConnectionRefusedError):
+        module.install_cli_telemetry(context)
+
+    assert context.close_callback is None
 
 
 @pytest.mark.parametrize(
@@ -382,3 +430,56 @@ async def test_shutdown_flushes_exporter_once_when_heartbeat_persistence_fails(
 
     assert await module.shutdown_process_telemetry(_FailingHeartbeatLifecycle()) is True
     assert calls == {"shutdown": 1, "heartbeat": 1, "exporter": 1}
+
+
+def test_scope_inside_a_long_running_host_keeps_process_telemetry_alive(
+    durable_runtime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An entrypoint run inside the API or worker must not shut the host's telemetry down."""
+    module, lifecycles, _provider, store = durable_runtime
+    host = _Lifecycle()
+    monkeypatch.setattr(module, "get_host_lifecycle", lambda: host)
+    shutdowns: list[Any] = []
+
+    async def shutdown(lifecycle: Any) -> bool:
+        shutdowns.append(lifecycle)
+        return True
+
+    monkeypatch.setattr(module, "shutdown_process_telemetry", shutdown)
+
+    @module.operational_entrypoint(
+        "maintenance.notification_cleanup", stage="cleanup", service_name="aca-test"
+    )
+    def cleanup() -> int:
+        return 0
+
+    assert cleanup() == 0
+    assert store.events == ["reserve", "activate", "finish"]
+    assert shutdowns == []
+    assert lifecycles == []
+    assert host.initialized is False
+
+
+@pytest.mark.parametrize(("kind", "registers"), [("long_running", True), ("short_lived", False)])
+def test_only_a_long_running_lifecycle_becomes_the_host(kind: str, registers: bool) -> None:
+    from types import SimpleNamespace
+
+    from src.queue import worker
+
+    lifecycle = worker.TelemetryLifecycle(
+        settings=SimpleNamespace(
+            observability_provider="noop", telemetry_flush_timeout_seconds=0.1
+        ),
+        service_name="aca-test",
+        lifecycle_kind=kind,
+    )
+    lifecycle.initialize(setup=lambda _app: None)
+    try:
+        assert (worker.get_host_lifecycle() is lifecycle) is registers
+    finally:
+
+        async def no_flush() -> None:
+            return None
+
+        asyncio.run(lifecycle.shutdown(None, flush=no_flush))
+    assert worker.get_host_lifecycle() is None

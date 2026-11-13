@@ -118,7 +118,9 @@ async def lifespan(app: FastAPI):
     try:
         from src.services.notification_cleanup import auto_cleanup_notifications
 
-        auto_cleanup_notifications()
+        # Off the event loop: the cleanup is a synchronous operational entrypoint,
+        # and its durable-evidence bridge must not block the loop it would need.
+        await asyncio.to_thread(auto_cleanup_notifications)
     except Exception:
         logger.debug("Notification cleanup skipped", exc_info=True)
 

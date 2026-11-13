@@ -24,6 +24,7 @@ payloads remain unchanged so workers can drain them during the migration.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from collections.abc import AsyncIterator
@@ -48,6 +49,9 @@ logger = get_logger(__name__)
 # Global queue instance
 _queue: PgQueuer | None = None
 _connection: asyncpg.Connection | None = None
+# The loop _connection was opened on. An asyncpg connection only works on its own
+# loop; awaiting it from another one (a sync bridge thread) waits forever.
+_connection_loop: asyncio.AbstractEventLoop | None = None
 
 DEFAULT_STATUS_POLL_SECONDS = 1.0
 DEFAULT_STALE_THRESHOLD_HOURS = 1
@@ -394,7 +398,7 @@ async def _queue_connection(
     if conn is not None:
         yield conn
         return
-    if _connection is not None:
+    if _connection is not None and _connection_loop in (None, asyncio.get_running_loop()):
         yield _connection
         return
     temp = await _open_queue_connection()
@@ -458,7 +462,7 @@ async def get_queue() -> PgQueuer:
     Returns:
         Configured PGQueuer instance
     """
-    global _queue, _connection
+    global _queue, _connection, _connection_loop
 
     if _queue is None:
         # Get queue URL from provider (direct connection, not pooled)
@@ -469,6 +473,7 @@ async def get_queue() -> PgQueuer:
 
         # Create asyncpg connection
         _connection = await asyncpg.connect(asyncpg_url)
+        _connection_loop = asyncio.get_running_loop()
 
         # Create PGQueuer instance
         driver = AsyncpgDriver(_connection)
@@ -497,11 +502,12 @@ async def close_queue() -> None:
 
     Should be called during application shutdown.
     """
-    global _queue, _connection
+    global _queue, _connection, _connection_loop
 
     if _connection is not None:
         await _connection.close()
         _connection = None
+        _connection_loop = None
         _queue = None
         logger.info("PGQueuer connection closed")
 

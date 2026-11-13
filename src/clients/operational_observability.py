@@ -35,7 +35,7 @@ from src.contracts.operation_context import (
     bind_operation_context,
     get_current_operation_context,
 )
-from src.queue.worker import TelemetryLifecycle, create_telemetry_lifecycle
+from src.queue.worker import TelemetryLifecycle, create_telemetry_lifecycle, get_host_lifecycle
 from src.telemetry import get_provider
 from src.telemetry.operation_spans import operation_span
 from src.telemetry.safety import TelemetryMasker
@@ -56,8 +56,8 @@ _ACTIVE_PROCESS_SCOPE: ContextVar[OperationalScope | None] = ContextVar(
 _OWNED_HELPERS = "exact helper set owned by the instrumented frozen boundary"
 _INVENTORY_OWNERSHIP_SNAPSHOTS: dict[str, tuple[str, int, str]] = {
     "src/api/**": (
-        "fafc7cbcd8319128cd0879d0bcd80fae10df3a9c4fd6799472ef35a8058890c8",
-        67,
+        "b9c9208b1ef4d44434cf8ddc1780b01ca0038395c5e232687b0f3f9dc9c17f93",
+        68,
         _OWNED_HELPERS,
     ),
     "src/services/operation_service.py": (
@@ -66,8 +66,8 @@ _INVENTORY_OWNERSHIP_SNAPSHOTS: dict[str, tuple[str, int, str]] = {
         _OWNED_HELPERS,
     ),
     "src/queue/**": (
-        "3afc41311dbf6fa273d14d70da11f0ebc2eda05148088ce7d68be6807d7948f8",
-        5,
+        "2efcd53bc7ab840a8445c2f49bcd10f2a01931bac89d9c75d77f4e0a3954a1d3",
+        6,
         _OWNED_HELPERS,
     ),
     "src/cli/main.py": (
@@ -81,8 +81,8 @@ _INVENTORY_OWNERSHIP_SNAPSHOTS: dict[str, tuple[str, int, str]] = {
         _OWNED_HELPERS,
     ),
     "src/cli/*_commands.py": (
-        "bbbe2d724849f4631f9d1ad86311bd946c5a876000f6048cbd44eb67a6c3dc73",
-        28,
+        "c9a862828a93c708f3bc049392092bb54c743b4d691ca3293565b0aba9efff65",
+        30,
         _OWNED_HELPERS,
     ),
     "src/mcp_tools/**": (
@@ -96,8 +96,8 @@ _INVENTORY_OWNERSHIP_SNAPSHOTS: dict[str, tuple[str, int, str]] = {
         _OWNED_HELPERS,
     ),
     "src/tasks/**": (
-        "2ffacdcec18588eb5b404ae1ded1530adaa1c5701201635c3893ffb1b0a83de4",
-        1,
+        "aa50a88a87d9a742f74b8e07b7e991eb9b3d52a87b70621b7db0337871400721",
+        2,
         _OWNED_HELPERS,
     ),
     "src/agents/scheduler/**": (
@@ -106,8 +106,8 @@ _INVENTORY_OWNERSHIP_SNAPSHOTS: dict[str, tuple[str, int, str]] = {
         _OWNED_HELPERS,
     ),
     "src/ingestion/**": (
-        "91cb7e16089ebef0ef5667fe19c612d8f2509360dd88920101623a052b69a64f",
-        30,
+        "7fbe1d4c8d1761399207296d8a6de7eb986b4a15a198d22eec6164b9041ac0e8",
+        36,
         _OWNED_HELPERS,
     ),
     "src/parsers/**": (
@@ -474,12 +474,19 @@ class OperationalScope:
         self.lifecycle: TelemetryLifecycle | None
         self._parent_context = get_current_operation_context()
         self._process_owner = _ACTIVE_PROCESS_SCOPE.get()
+        host_lifecycle = get_host_lifecycle()
         self._borrowed_context = self._parent_context is not None and self._process_owner is None
-        self._owns_process = self._parent_context is None and self._process_owner is None
+        self._owns_process = (
+            self._parent_context is None and self._process_owner is None and host_lifecycle is None
+        )
         if self._process_owner is not None:
             self.lifecycle = self._process_owner.lifecycle
         elif self._borrowed_context:
             self.lifecycle = None
+        elif host_lifecycle is not None:
+            # Inside a long-running API or worker process: the operation still gets
+            # a durable root, but process telemetry stays owned by the host.
+            self.lifecycle = host_lifecycle
         else:
             self.lifecycle = create_telemetry_lifecycle(
                 service_name=_bounded_identifier(service_name, maximum=100, field="service_name"),
@@ -764,15 +771,35 @@ def operational_stage(
         yield span
 
 
-def install_cli_telemetry(context: Any) -> OperationalScope:
-    """Cover every Typer command through the one root callback/close boundary."""
+def install_cli_telemetry(context: Any) -> OperationalScope | None:
+    """Cover every Typer command through the one root callback/close boundary.
+
+    When observability is not required, an unreachable durable store degrades
+    to running the command without a root: local-only commands (profile
+    validation, help, credential capture) must not need PostgreSQL. Where
+    observability is required, the failure propagates and the command never runs.
+    """
+    import asyncpg
+
     command = str(getattr(context, "invoked_subcommand", None) or "root")
     scope = OperationalScope(
         f"cli.{command}",
         stage=OperationStage.SUBMIT,
         service_name="aca-cli",
     )
-    scope.open()
+    try:
+        scope.open()
+    except (OSError, asyncpg.PostgresError, asyncpg.InterfaceError) as exc:
+        if scope.lifecycle is None or getattr(scope.lifecycle, "required", False):
+            raise
+        import sys
+
+        print(
+            f"warning: durable operation store unavailable ({type(exc).__name__}); "
+            f"running cli.{command} without an operation root",
+            file=sys.stderr,
+        )
+        return None
     context.call_on_close(scope.close)
     return scope
 
