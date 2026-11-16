@@ -57,12 +57,28 @@ def _seed(
     return result, calls
 
 
+def _renderer_table(name: str) -> set[str]:
+    block = re.search(rf"declare -A {name}=\((.*?)\n\)", RENDERER.read_text(), re.DOTALL)
+    assert block is not None, name
+    return set(re.findall(r"\[([a-z_]+)\]=", block.group(1)))
+
+
+def _seed_fields(group: str) -> set[str]:
+    block = re.search(
+        rf"^\s*{group}\) FIELDS=\((.*?)\)", SEED.read_text(), re.DOTALL | re.MULTILINE
+    )
+    assert block is not None, group
+    return set(block.group(1).split())
+
+
 def test_seed_field_list_matches_what_the_renderer_accepts() -> None:
-    renderer_fields = set(re.findall(r"\[([a-z_]+_api_key)\]=", RENDERER.read_text()))
-    seed_block = re.search(r"FIELDS=\((.*?)\)", SEED.read_text(), re.DOTALL)
-    assert seed_block is not None
-    assert set(seed_block.group(1).split()) == renderer_fields
-    assert len(renderer_fields) == FIELD_COUNT
+    # Each seed group writes exactly the fields its renderer table accepts; the
+    # renderer refuses any other field, so a drift here stops the stack.
+    assert _seed_fields("providers") == _renderer_table("PROVIDER_ENV")
+    assert len(_seed_fields("providers")) == FIELD_COUNT
+    assert _seed_fields("ingestion") == _renderer_table("INGESTION_ENV")
+    assert _seed_fields("alerts") == {"ntfy_url"}
+    assert '[[ "$field" == ntfy_url ]]' in RENDERER.read_text()
 
 
 def test_first_seed_stores_typed_keys_and_reuploads_the_policy(tmp_path: Path) -> None:
