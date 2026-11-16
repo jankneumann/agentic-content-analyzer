@@ -347,9 +347,11 @@ def contract_schema(seeded_db):
         # ContentQueryService owns its context and may execute after earlier
         # fuzz requests have completed; keep that lifecycle truly isolated.
         ("src.services.content_query.get_db", isolated_get_db),
-        # The lifespan's notification cleanup runs off the event loop, so it must
-        # never share the fixture's single connection with in-flight requests.
-        ("src.services.notification_cleanup.get_db", isolated_get_db),
+        # Schemathesis restarts the app lifespan for every generated case, and the
+        # startup notification cleanup reserves a durable operation root each time:
+        # ~0.16s per case, which pushed the GET sweep past its 300s budget.
+        # Contract tests do not exercise cleanup, so the lifespan skips it.
+        ("src.services.notification_cleanup.auto_cleanup_notifications", lambda: 0),
         ("src.services.script_review_service.get_db", mock_get_db),
     )
 

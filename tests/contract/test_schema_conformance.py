@@ -53,7 +53,15 @@ def test_advertised_sse_endpoints_are_excluded_from_request_contract_tests():
     )
 
 
+# CI runs with ``--timeout=300`` per pytest item, but schemathesis runs every GET
+# endpoint as a subtest inside this ONE item. The sweep outgrew 300s once the
+# operation-observability endpoints landed, so it gets the same whole-sweep budget
+# as the broad sweeps in test_fuzz.py.
+_GET_SWEEP_TIMEOUT_S = 1200
+
+
 @pytest.mark.contract
+@pytest.mark.timeout(_GET_SWEEP_TIMEOUT_S)
 @schema.exclude(path_regex=EXCLUDED_PATH_REGEX).include(method="GET").parametrize()
 @hypothesis_settings(max_examples=25, deadline=None)
 def test_get_endpoints_conform_to_schema(case):
