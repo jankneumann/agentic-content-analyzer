@@ -1278,6 +1278,7 @@ def _build_workflow_alert_sink(alert_settings: Any) -> Any:
     if alert_settings.workflow_alert_sink == "noop":
         return NoopAlertSink()
     secret = alert_settings.workflow_alert_webhook_secret
+    proxy = getattr(alert_settings, "workflow_alert_proxy_url", None)
     return WebhookAlertSink(
         endpoint=alert_settings.workflow_alert_webhook_endpoint,
         allowed_hosts=alert_settings.get_workflow_alert_allowed_hosts(),
@@ -1285,6 +1286,8 @@ def _build_workflow_alert_sink(alert_settings: Any) -> Any:
         timeout_seconds=alert_settings.workflow_alert_timeout_seconds,
         max_retry_after_seconds=alert_settings.workflow_alert_max_retry_after_seconds,
         allow_private_addresses=alert_settings.is_development,
+        payload_format=getattr(alert_settings, "workflow_alert_webhook_format", "envelope"),
+        proxy_url=proxy.get_secret_value() if proxy is not None else None,
     )
 
 

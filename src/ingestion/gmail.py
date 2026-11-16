@@ -5,12 +5,14 @@ content model. Creates Content records with markdown as the primary format.
 """
 
 import base64
+import json
 import os.path
 import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -18,6 +20,7 @@ from googleapiclient.errors import HttpError
 from pydantic import BaseModel
 
 from src.config import settings
+from src.ingestion.credential_failures import SessionExpiredError
 from src.ingestion.result import (
     IngestionError,
     IngestionResponse,
@@ -156,6 +159,19 @@ def _html_to_markdown_markitdown(html: str) -> str:
         return html_to_text(html)
 
 
+def _write_token_file(path: str, content: str) -> None:
+    """Persist OAuth state when the filesystem allows it.
+
+    Hardened containers run with a read-only root, and the credentials are
+    already usable in memory, so a refused write is logged, never fatal.
+    """
+    try:
+        with open(path, "w") as handle:
+            handle.write(content)
+    except OSError as exc:
+        logger.warning("Gmail OAuth state not written to %s: %s", path, exc.strerror)
+
+
 class GmailClient:
     """Gmail API client for fetching newsletters."""
 
@@ -177,28 +193,38 @@ class GmailClient:
         # Hydrate token / credentials files from env when running in cloud
         if settings.gmail_oauth_token_json and not os.path.exists(settings.gmail_token_file):
             logger.info("Hydrating Gmail OAuth token file from GMAIL_OAUTH_TOKEN_JSON setting")
-            with open(settings.gmail_token_file, "w") as token:
-                token.write(settings.gmail_oauth_token_json)
+            _write_token_file(settings.gmail_token_file, settings.gmail_oauth_token_json)
         if settings.gmail_credentials_json and not os.path.exists(settings.gmail_credentials_file):
             logger.info("Hydrating Gmail credentials file from GMAIL_CREDENTIALS_JSON setting")
-            with open(settings.gmail_credentials_file, "w") as creds_file:
-                creds_file.write(settings.gmail_credentials_json)
+            _write_token_file(settings.gmail_credentials_file, settings.gmail_credentials_json)
 
         creds = None
 
-        # Load existing credentials
+        # Load existing credentials; a read-only filesystem that refused the
+        # hydration above still authenticates from the setting itself.
         if os.path.exists(settings.gmail_token_file):
             creds = Credentials.from_authorized_user_file(settings.gmail_token_file, SCOPES)
+        elif settings.gmail_oauth_token_json:
+            creds = Credentials.from_authorized_user_info(
+                json.loads(settings.gmail_oauth_token_json), SCOPES
+            )
 
         # Refresh or get new credentials. Interactive OAuth belongs only in
         # ``aca auth gmail``; a worker that opens a browser hangs the pipeline.
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 logger.info("Refreshing Gmail credentials...")
-                creds.refresh(Request())
-                with open(settings.gmail_token_file, "w") as token:
-                    token.write(creds.to_json())
-                logger.info("Gmail credentials saved")
+                try:
+                    creds.refresh(Request())
+                except RefreshError:
+                    # invalid_grant: revoked, expired (a "Testing" OAuth app
+                    # kills refresh tokens after 7 days), or password changed.
+                    raise SessionExpiredError(
+                        source="gmail",
+                        credential_label="OAuth refresh token",
+                        refresh_command="aca auth gmail",
+                    ) from None
+                _write_token_file(settings.gmail_token_file, creds.to_json())
             else:
                 raise FileNotFoundError(
                     "Gmail OAuth token is not available. Run `aca auth gmail` "
