@@ -618,6 +618,12 @@ neonctl branches delete <branch-name> --project-id $NEON_PROJECT_ID
 
 ## Railway Deployment (Single-Platform)
 
+> **Railway is retired.** It hosted production until the October 2026 security
+> incident; both Railway projects were deleted on 2026-11-15. Production runs on
+> the gx-10: see [GX-10 Handoff](GX10_HANDOFF.md) and the [update runbook](runbooks/gx10-update.md).
+> The `railway` providers and profiles still exist in code, so this section is kept
+> as reference for that configuration, not as a deployment guide.
+
 Railway provides a unified platform for deploying your entire stack - application, PostgreSQL, and MinIO storage - with simple configuration. This is ideal for teams wanting a single-platform deployment without managing multiple cloud services.
 
 ### Why Railway?
@@ -904,12 +910,12 @@ RAILWAY_MAX_OVERFLOW=1
 
 ### Deployment Platforms
 
-- **Railway / Render / Fly.io**: Application hosting
+- **Render / Fly.io**: Application hosting (Railway was used until its retirement on 2026-11-15)
 - **Supabase**: Managed PostgreSQL with connection pooling (see above)
 - **Managed PostgreSQL**: Alternative databases (AWS RDS, Google Cloud SQL, etc.)
 - **Managed Redis**: Task queue (Redis Cloud, AWS ElastiCache)
 - **Neo4j Aura**: Managed knowledge graph (or self-hosted Neo4j, or FalkorDB as alternative backend)
-- **Self-hosted gx-10 over Tailscale**: API and OpenBao on loopback behind `tailscale serve` — see [Tailnet Exposure](TAILNET.md)
+- **Self-hosted gx-10 over Tailscale** (current production): API and OpenBao on loopback behind `tailscale serve` — see [Tailnet Exposure](TAILNET.md) and the [update runbook](runbooks/gx10-update.md)
 
 ### Configuration Strategy
 
@@ -991,6 +997,12 @@ NEON_DIRECT_URL=...                      # Direct connection for migrations (opt
 See [Neon Serverless PostgreSQL](#neon-serverless-postgresql-bring-your-own) for setup instructions.
 
 ### Railway Variables (Optional Single-Platform Deployment)
+
+> **Railway is retired.** It hosted production until the October 2026 security
+> incident; both Railway projects were deleted on 2026-11-15. Production runs on
+> the gx-10: see [GX-10 Handoff](GX10_HANDOFF.md) and the [update runbook](runbooks/gx10-update.md).
+> The `railway` providers and profiles still exist in code, so this section is kept
+> as reference for that configuration, not as a deployment guide.
 
 ```bash
 # Railway PostgreSQL (custom image with extensions)
@@ -1853,6 +1865,11 @@ alembic upgrade head
 ```
 
 ### Railway Production
+
+> **Railway is retired.** It hosted production until the October 2026 security
+> incident; both Railway projects were deleted on 2026-11-15. Production runs on
+> the gx-10: see [GX-10 Handoff](GX10_HANDOFF.md) and the [update runbook](runbooks/gx10-update.md).
+> Kept for reference only; for the gx-10, follow the update runbook.
 
 1. Take and verify a backup with `aca backup run` and `aca backup verify`
 2. Push the new GHCR image (`newsletter-postgres:17-railway`)

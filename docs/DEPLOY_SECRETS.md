@@ -1,5 +1,11 @@
 # Deploy Secrets Sync
 
+> **Railway is retired.** It hosted production until the October 2026 security
+> incident; both Railway projects were deleted on 2026-11-15. Production runs on
+> the gx-10: see [GX-10 Handoff](GX10_HANDOFF.md) and the [update runbook](runbooks/gx10-update.md).
+> `aca deploy sync-secrets` has no live target. gx-10 secrets live in OpenBao;
+> see [OPENBAO.md](OPENBAO.md).
+
 `aca deploy sync-secrets` pushes selected secrets from your local
 `.secrets.yaml` (or env overrides) to a deployed **Railway** service/environment.
 

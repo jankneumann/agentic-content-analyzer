@@ -245,7 +245,7 @@ Available profiles:
 | `local-opik` | Local with Opik tracing stack |
 | `local-supabase` | Local with Supabase instead of raw PostgreSQL |
 | `staging` | Remote backends (cloud DB + Braintrust) |
-| `railway` | Production deployment on Railway |
+| `railway` | Railway deployment (retired 2026-11-15; production is `gx10`) |
 
 Migrate from an existing `.env`:
 
@@ -1036,6 +1036,12 @@ make full-down                      # Stop all Docker services
 ```
 
 ### Cloud Deployment (Railway)
+
+> **Railway is retired.** It hosted production until the October 2026 security
+> incident; both Railway projects were deleted on 2026-11-15. Production runs on
+> the gx-10: see [GX-10 Handoff](GX10_HANDOFF.md) and the [update runbook](runbooks/gx10-update.md).
+> The `railway` providers and profiles still exist in code, so this section is kept
+> as reference for that configuration, not as a deployment guide.
 
 Railway provides the simplest single-platform deployment:
 

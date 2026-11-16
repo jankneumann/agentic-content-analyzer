@@ -518,7 +518,7 @@ Staging configuration for CI/CD and pre-production validation:
 export PROFILE=staging
 ```
 
-- Uses Railway PostgreSQL + MinIO and AuraDB like production
+- Uses Railway PostgreSQL + MinIO and AuraDB (Railway is retired, so these backends no longer exist; repoint before use)
 - Sends observability to a **staging Braintrust project** (no production pollution)
 - Supports staging-specific environment variable overrides (e.g., `STAGING_RAILWAY_DATABASE_URL`)
 - Set `STAGING_BRAINTRUST_API_KEY` to keep traces isolated from production
@@ -569,6 +569,12 @@ make verify-staging
 - The `STAGING_*` prefix pattern is optional; without it, values fall back to the non-prefixed versions
 
 ### railway.yaml
+
+> **Railway is retired.** It hosted production until the October 2026 security
+> incident; both Railway projects were deleted on 2026-11-15. Production runs on
+> the gx-10: see [GX-10 Handoff](GX10_HANDOFF.md) and the [update runbook](runbooks/gx10-update.md).
+> The `railway` providers and profiles still exist in code, so this section is kept
+> as reference for that configuration, not as a deployment guide.
 
 Railway platform deployment:
 

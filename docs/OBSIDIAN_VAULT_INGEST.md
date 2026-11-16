@@ -97,7 +97,7 @@ stale location.
 |---|---|---|
 | Vault on the same host as the worker | Yes | The intended v1 deployment |
 | Vault on a volume mounted into the worker container | Yes | Mount read-only; approve the mount point as a root |
-| Vault on a laptop, backend on Railway | **No** | Railway has no access to a device path. Run a worker where the vault lives, or clip into a synced folder that a worker can read |
+| Vault on a laptop, backend on a remote host (e.g. the gx-10) | **No** | A remote backend has no access to a device path. Run a worker where the vault lives, or clip into a synced folder that a worker can read |
 | Network/remote filesystem bridge | **No** | Deferred; see below |
 
 ### Sync providers

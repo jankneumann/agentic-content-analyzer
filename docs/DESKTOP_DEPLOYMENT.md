@@ -43,18 +43,18 @@ The desktop app is a Tauri v2 shell wrapping the same React SPA used in the brow
 
 ## Connecting to a Remote Backend
 
-By default, `make tauri-dev` connects to the local backend (`http://localhost:8000`) via Vite's dev proxy. To connect to a remote backend (e.g., Railway):
+By default, `make tauri-dev` connects to the local backend (`http://localhost:8000`) via Vite's dev proxy. To connect to a remote backend (e.g., the gx-10 over Tailscale):
 
 ### Development (remote backend)
 
 ```bash
-VITE_API_URL=https://your-app.railway.app make tauri-dev
+VITE_API_URL=https://gx-10.<tailnet>.ts.net:8443 make tauri-dev
 ```
 
 ### Production build (remote backend)
 
 ```bash
-VITE_API_URL=https://your-app.railway.app make tauri-build
+VITE_API_URL=https://gx-10.<tailnet>.ts.net:8443 make tauri-build
 ```
 
 The `VITE_API_URL` is baked into the frontend at build time.
@@ -64,8 +64,8 @@ The `VITE_API_URL` is baked into the frontend at build time.
 The remote backend **must** include the Tauri origin in its CORS allowlist, or all API requests from the desktop app will fail silently.
 
 ```bash
-# On your production/staging backend (Railway, etc.)
-ALLOWED_ORIGINS=https://your-frontend.railway.app,tauri://localhost
+# On your production backend (on the gx-10: ALLOWED_ORIGINS in /etc/aca/aca.env)
+ALLOWED_ORIGINS=https://gx-10.<tailnet>.ts.net:8443,tauri://localhost
 ```
 
 **Why `tauri://localhost`?** Tauri v2 uses a custom URL scheme (`tauri://localhost`) as the webview origin for bundled assets. This is different from `http://localhost` used in dev mode. The backend CORS middleware checks the `Origin` header, and without this entry, all cross-origin requests are blocked.

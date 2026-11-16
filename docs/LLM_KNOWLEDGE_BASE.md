@@ -361,7 +361,7 @@ The official Obsidian CLI (1.12+) and `obsidian-headless` npm package enable thr
 |------|-----------|----------|--------|
 | **Mode 2: File Export** | Write `.md` files to directory | Local use, any setup | Phase 1 |
 | **Mode 1: CLI-Driven** | `obsidian create/append/property:set` | Local with Obsidian 1.12+ | Phase 2 |
-| **Mode 3: Headless Sync** | File export + `obsidian-headless sync` | Server (Railway) | Phase 3 |
+| **Mode 3: Headless Sync** | File export + `obsidian-headless sync` | Server (gx-10) | Phase 3 |
 
 ### Vault Structure: Category → Topic → Source → Extracts
 

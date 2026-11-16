@@ -251,7 +251,9 @@ After a future cutover, ordering is mandatory:
 3. enable target mutations only after verification passes.
 
 DNS, ingress, configuration, or a local epoch change alone never transfers
-ownership. The separate Railway-to-GX-10 proposal is held until the soak and
+ownership. Railway was retired on 2026-11-15 without a live cutover (its data was
+dumped first), so no Railway-to-GX-10 transfer remains. The ordering above applies
+to any future second owner. The soak and
 restore evidence exist; this change does not perform traffic or data cutover.
 
 ## Langfuse edition capabilities

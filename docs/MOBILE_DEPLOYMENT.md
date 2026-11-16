@@ -5,6 +5,12 @@
 > This document started as a proposal and now serves as architectural documentation
 > for the mobile content capture system.
 
+> **Railway is retired.** It hosted production until the October 2026 security
+> incident; both Railway projects were deleted on 2026-11-15. Production runs on
+> the gx-10: see [GX-10 Handoff](GX10_HANDOFF.md) and the [update runbook](runbooks/gx10-update.md).
+> The Railway deployment sections below are historical. The architecture
+> (queue, worker, entrypoint migrations) still applies on the gx-10.
+
 ## Implementation Status
 
 ### What Was Built

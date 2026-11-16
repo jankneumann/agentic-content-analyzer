@@ -10,9 +10,10 @@ Squid, the API, workers, schedulers, and maintenance services.
 > `skopeo` provenance checks. The stack remains unaccepted until its real
 > clean-stack, native-backup, and soak evidence gates are completed.
 
-The GX-10 stack is passive until a separately approved cutover. Do not redirect
-Railway traffic, public DNS, or shared-environment authority as part of this
-runbook.
+Railway was retired on 2026-11-15, so the GX-10 is the only production
+deployment and there is no traffic left to cut over. This runbook covers a first
+install; to update a running host, use
+[runbooks/gx10-update.md](runbooks/gx10-update.md).
 
 ## 1. Operating model
 

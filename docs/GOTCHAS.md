@@ -36,6 +36,12 @@ Things that will bite you if ignored. Organized by area.
 
 ## Railway Deployment
 
+> **Railway is retired.** It hosted production until the October 2026 security
+> incident; both Railway projects were deleted on 2026-11-15. Production runs on
+> the gx-10: see [GX-10 Handoff](GX10_HANDOFF.md) and the [update runbook](runbooks/gx10-update.md).
+> These gotchas still apply to anyone running the `railway` configuration; nothing
+> of ours is deployed there.
+
 | Issue | Solution |
 |-------|----------|
 | Railway custom image build slow | Use GHCR pre-built image; Rust extensions take ~20 min to compile |

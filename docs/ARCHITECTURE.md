@@ -477,7 +477,7 @@ WORKER_ENABLED=true       # Enable embedded worker (default: true)
 WORKER_CONCURRENCY=5      # Max concurrent tasks (default: 5, max: 20)
 ```
 
-**Standalone mode** runs the worker as a separate process via the CLI. Useful for Railway deployments where you want a dedicated worker service, or for running additional workers alongside the embedded one:
+**Standalone mode** runs the worker as a separate process via the CLI. Useful when the worker runs as its own service (the gx-10 runs `worker`, `scheduler` and `maintenance` as separate containers), or for running additional workers alongside the embedded one:
 
 ```bash
 aca worker start                    # Default concurrency (5)

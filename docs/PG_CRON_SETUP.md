@@ -204,7 +204,7 @@ LIMIT 20;
 
 ### Jobs Queued But Not Processing
 
-1. Verify the worker is running: Check Railway logs for `src/worker.py`
+1. Verify the worker is running: on the gx-10, `sudo make -C /opt/aca/deploy/gx10 status` and `sudo podman logs aca-gx10_worker_1`
 2. Check database connectivity from worker
 3. Look for errors in worker logs
 

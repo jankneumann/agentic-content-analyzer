@@ -1,7 +1,8 @@
 # GX-10 Handoff
 
-State of the `gx10-ec87` host as of 2026-10-21, the coordinator install runbook,
-and every task left open. Written to be picked up cold.
+State of the `gx10-ec87` host as of 2026-10-21 (Railway status as of 2026-11-15),
+the coordinator install runbook, and every task left open. Written to be picked
+up cold. To deploy a new commit, follow [runbooks/gx10-update.md](runbooks/gx10-update.md).
 
 Read [CASE_STUDIES.md → GX-10 Production Bring-Up](CASE_STUDIES.md#gx-10-production-bring-up-septemberoctober-2026)
 first. It lists the specific ways this host punishes assumptions, and both
@@ -14,7 +15,8 @@ deployments are shaped by it.
 | | |
 |---|---|
 | Analyzer repo | `openspec/gx10-full-operation-observability` merged to `main` (`a6f2de24`). Deploy from `main` |
-| Deployed at `/opt/aca` | `dbe14da8`. **A single-branch clone of the feature branch**: `git pull` never sees `main` until it is switched (below) |
+| Railway | **Retired.** Both projects (`aca`, `agent-coordinator`) deleted 2026-11-15 after the October compromise and key rotation. Postgres dumps (checksummed) in `/home/jankneumann/railway-final-dumps/` on the gx-10 itself, so not yet off-host; the Railway FalkorDB graph was not kept. The gx-10 is the only production deployment |
+| Deployed at `/opt/aca` | `dbe14da8`. **A single-branch clone of the feature branch**: `git pull` never sees `main` until it is switched (below). Next update: [gx10-update.md, one-time steps](runbooks/gx10-update.md#one-time-steps-for-the-update-from-dbe14da8) |
 | Coordinator repo | `feat/gx10-coordinator-deployment` @ `6b0dfca5`, pushed, **not merged, not deployed** |
 | Analyzer runtime | Up since 2026-10-20 ~21:30 EDT after an 8-day outage. All units enabled for boot |
 | Backup | Local + R2 green; catch-up generation `20261021T013318Z` (4.8 GB) |
@@ -413,6 +415,10 @@ sudo systemctl restart aca-gx10-secrets.service aca-gx10.service
 The script also re-uploads the `aca-gx10` policy (provisioning writes policies
 once). Re-run it to rotate: a blank answer keeps the stored value, `-` removes
 it, and it refuses to write if the current secret cannot be read.
+
+The full update, with the backup before it, verification and rollback, is
+[runbooks/gx10-update.md](runbooks/gx10-update.md). Seed the keys rotated after
+the Railway incident.
 
 ---
 

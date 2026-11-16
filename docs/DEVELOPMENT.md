@@ -388,10 +388,10 @@ docker build \
   -t aca-workflow-alert-receiver:staging .
 ```
 
-On Railway, configure the receiver service's Dockerfile path as
-`tests/fixtures/workflow_alert_receiver/Dockerfile`, keep it in a staging-only
-environment, set the two receiver secrets as protected service variables, and
-retain the image's fixed one-worker command.
+On a hosting platform (it ran on Railway until that was retired on 2026-11-15),
+build the receiver service from `tests/fixtures/workflow_alert_receiver/Dockerfile`,
+keep it in a staging-only environment, set the two receiver secrets as protected
+service variables, and retain the image's fixed one-worker command.
 
 Expose the receiver through the staging platform's HTTPS ingress, then set the
 API deployment's `WORKFLOW_ALERT_WEBHOOK_ENDPOINT` to its exact `/webhook`

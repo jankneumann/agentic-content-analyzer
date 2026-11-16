@@ -24,13 +24,14 @@ Quick reference for Claude Code. Detailed docs in `/docs` directory.
 | [Unified workflow cutover](docs/UNIFIED_WORKFLOW_CUTOVER.md) | July 2026 `/api/v1` contract 2.0.0 production evidence |
 | [Obsidian Vault Ingest](docs/OBSIDIAN_VAULT_INGEST.md) | Web Clipper vault ingress: allowed roots, clip contract, privacy, troubleshooting |
 | [Search](docs/SEARCH.md) | Hybrid BM25+vector search, embedding providers, chunking |
-| [Deployment](docs/MOBILE_DEPLOYMENT.md) | Railway deployment, Docker, migrations, CORS |
+| [Deployment](docs/MOBILE_DEPLOYMENT.md) | Docker, migrations, CORS; its Railway sections are historical (Railway retired 2026-11-15) |
 | [**Backup & Restore**](docs/BACKUP_RESTORE.md) | gx-10 off-site backup: `aca backup`, age encryption, key escrow, multi-store restore runbook |
 | [**Tailnet Exposure**](docs/TAILNET.md) | gx-10 over Tailscale: loopback binds, `tailscale serve` TLS, ACL sketch, workstation `BAO_ADDR`, listener check |
-| [Deploy Secrets](docs/DEPLOY_SECRETS.md) | `aca deploy sync-secrets`: push local secrets to Railway (allowlist, dry-run) |
+| [Deploy Secrets](docs/DEPLOY_SECRETS.md) | `aca deploy sync-secrets` to Railway — no live target since Railway's retirement; gx-10 secrets live in OpenBao |
 | [Desktop](docs/DESKTOP_DEPLOYMENT.md) | Tauri desktop app: build, distribute, remote backend, CORS |
 | [**ACA Agents**](docs/ACA-AGENTS.md) | Agentic analysis: personas, specialists, memory, approvals, scheduling |
 | [**GX-10 Handoff**](docs/GX10_HANDOFF.md) | Host state, coordinator install runbook, open tasks |
+| [**GX-10 Update**](docs/runbooks/gx10-update.md) | Deploy a new `main` commit to the gx-10: backup, pull, image pin, install, restart, verify, rollback |
 | [Gotchas](docs/GOTCHAS.md) | Comprehensive list of pitfalls organized by area |
 | [OpenBao](docs/OPENBAO.md) | OpenBao secrets management: setup, AppRole, seeding, audit events |
 | [Improvement Roadmap](docs/IMPROVEMENT_ROADMAP.md) | Ingestion-reliability diagnosis + phased engineering roadmap (2026-07) |
@@ -44,6 +45,7 @@ An agentic AI solution for aggregating and summarizing AI newsletters into daily
 - **Purpose**: Help technical leaders and developers stay informed on AI/Data trends
 - **Sources**: Gmail newsletters, Substack RSS feeds, YouTube playlists, X/Twitter (via Grok), Perplexity Sonar API, file uploads, direct URLs
 - **Output**: Structured digests with knowledge graph-powered historical context
+- **Production**: the gx-10 host (Podman + systemd, secrets in OpenBao). Railway was retired on 2026-11-15; the `railway` providers and profiles remain in code but nothing is deployed there
 
 ## Essential Commands
 
@@ -213,7 +215,7 @@ The full list is in [docs/GOTCHAS.md](docs/GOTCHAS.md). These are the ones that 
 - Regression: `tests/regression/` (API), `tests/cli/test_regression_daily_pipeline.py` (CLI), `web/tests/e2e/regression/` (UX)
 
 ### Deployment
-- [Railway guide](docs/MOBILE_DEPLOYMENT.md) | [Desktop/Tauri](docs/DESKTOP_DEPLOYMENT.md) | [Docker entrypoint](docs/MOBILE_DEPLOYMENT.md#docker-entrypoint-pattern)
+- [GX-10 update runbook](docs/runbooks/gx10-update.md) | [GX-10 handoff](docs/GX10_HANDOFF.md) | [Railway guide (historical)](docs/MOBILE_DEPLOYMENT.md) | [Desktop/Tauri](docs/DESKTOP_DEPLOYMENT.md) | [Docker entrypoint](docs/MOBILE_DEPLOYMENT.md#docker-entrypoint-pattern)
 
 ### Agentic Analysis
 - [ACA Agents guide](docs/ACA-AGENTS.md) | [Personas](docs/ACA-AGENTS.md#personas) | [Schedules](docs/ACA-AGENTS.md#schedules) | [Approval gates](docs/ACA-AGENTS.md#approval-gates)

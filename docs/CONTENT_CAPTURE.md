@@ -36,7 +36,7 @@ through the extension until a future URL-major command exists. See
 ### Configuration
 
 1. Right-click the extension icon → **Options**
-2. Enter your **API URL** (e.g., `https://your-app.railway.app` or `http://localhost:8000`)
+2. Enter your **API URL** (e.g., `https://gx-10.<tailnet>.ts.net:8443` or `http://localhost:8000`)
 3. Enter an **API Key** (`ADMIN_API_KEY`, sent as `X-Admin-Key`)
 4. Click **Save Settings**
 
