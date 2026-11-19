@@ -18,6 +18,7 @@ import json
 import os
 import re
 import secrets
+import threading
 from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar, Token
@@ -295,6 +296,8 @@ class DurableOperationStore(Protocol):
         diagnostic_codes: tuple[str, ...],
     ) -> None: ...
 
+    async def heartbeat(self, operation_id: int) -> bool: ...
+
 
 class PostgresDurableOperationStore:
     """Canonical queue/attempt projection for directly executed operational work."""
@@ -407,8 +410,34 @@ class PostgresDurableOperationStore:
                 int(context.operation_id),
                 status,
             )
+        if attempt.endswith(" 1") and not job.endswith(" 1"):
+            async with _queue_connection() as connection:
+                row = await connection.fetchrow(
+                    "SELECT status, error FROM pgqueuer_jobs WHERE id = $1",
+                    int(context.operation_id),
+                )
+            raise OperationNoLongerActiveError(
+                status=row["status"] if row is not None else None,
+                error=row["error"] if row is not None else None,
+            )
         if not attempt.endswith(" 1") or not job.endswith(" 1"):
             raise RuntimeError("unable to persist terminal operational evidence")
+
+    async def heartbeat(self, operation_id: int) -> bool:
+        """Refresh a running root's heartbeat; False once the row is no longer in progress."""
+        from src.queue.setup import _queue_connection
+
+        async with _queue_connection() as connection:
+            refreshed = await connection.fetchval(
+                """
+                UPDATE pgqueuer_jobs
+                SET heartbeat_at = NOW()
+                WHERE id = $1 AND status = 'in_progress' AND claim_generation = 0
+                RETURNING id
+                """,
+                operation_id,
+            )
+        return refreshed is not None
 
     async def lookup(self, operation_id: int) -> dict[str, Any] | None:
         from src.queue.setup import _queue_connection
@@ -437,6 +466,67 @@ def create_durable_operation_store() -> DurableOperationStore:
 
 class OperationalFlushError(RuntimeError):
     """A successful command could not durably flush its telemetry evidence."""
+
+
+_IDENTIFIER_ERROR = re.compile(r"[a-z][a-z0-9_.]{0,63}")
+
+
+class OperationNoLongerActiveError(RuntimeError):
+    """The operation's queue row left ``in_progress`` before the operation finished.
+
+    Usually the worker's stale-job sweep failed it (``stale_timeout``). Only the status
+    and an identifier-shaped error are kept: the error column can hold free text.
+    """
+
+    def __init__(self, *, status: str | None, error: str | None) -> None:
+        self.status = status
+        self.error = error if error and _IDENTIFIER_ERROR.fullmatch(error) else None
+        detail = f" ({self.error})" if self.error else ""
+        super().__init__(f"operation was already {status or 'missing'}{detail} when it finished")
+
+
+OPERATION_HEARTBEAT_SECONDS = 300.0
+"""How often a directly executed operation refreshes its queue row.
+
+Well inside the worker's stale-job threshold (DEFAULT_STALE_THRESHOLD_HOURS, 1 hour).
+"""
+
+
+class _OperationHeartbeat:
+    """Keep a directly executed operation's queue row fresh while its body runs.
+
+    Host commands (the gx-10 backup, off-site upload, restore drill) and operations
+    rooted inside a worker are not claimed by a worker, so nothing else refreshes
+    their row. Without this the worker's stale-job sweep failed every run longer than
+    its threshold, and the command's own terminal write then found the row failed.
+
+    A daemon thread with its own event loop, because scope bodies are often
+    synchronous. stop() does not join: a heartbeat racing finish() is harmless,
+    since it only touches rows that are still in progress.
+    """
+
+    def __init__(
+        self, store: DurableOperationStore, operation_id: int, interval_seconds: float
+    ) -> None:
+        self._stopped = threading.Event()
+        threading.Thread(
+            target=self._run,
+            args=(store, operation_id, interval_seconds),
+            name=f"operation-heartbeat-{operation_id}",
+            daemon=True,
+        ).start()
+
+    def _run(self, store: DurableOperationStore, operation_id: int, interval: float) -> None:
+        while not self._stopped.wait(interval):
+            try:
+                still_active = asyncio.run(store.heartbeat(operation_id))
+            except Exception:  # noqa: S112 - a missed beat is retried on the next tick
+                continue
+            if not still_active:
+                return
+
+    def stop(self) -> None:
+        self._stopped.set()
 
 
 async def shutdown_process_telemetry(lifecycle: TelemetryLifecycle) -> bool:
@@ -498,6 +588,7 @@ class OperationalScope:
         self._store = create_durable_operation_store()
         self._stack: ExitStack | None = None
         self._process_token: Token[OperationalScope | None] | None = None
+        self._heartbeat: _OperationHeartbeat | None = None
         self.context: OperationContext | None = None
 
     def open(self) -> OperationContext:
@@ -559,6 +650,9 @@ class OperationalScope:
             raise
         if self._owns_process:
             self._process_token = _ACTIVE_PROCESS_SCOPE.set(self)
+        self._heartbeat = _OperationHeartbeat(
+            self._store, int(context.operation_id), OPERATION_HEARTBEAT_SECONDS
+        )
         self.context = context
         self._stack = stack
         return context
@@ -596,6 +690,12 @@ class OperationalScope:
                         )
                     except (TimeoutError, asyncio.CancelledError):
                         raise
+                    except OperationNoLongerActiveError as exc:
+                        self._fallback_exit_evidence(
+                            outcome=outcome,
+                            diagnostic_code="telemetry.operation_no_longer_active",
+                        )
+                        raise OperationalFlushError(f"terminal evidence rejected: {exc}") from exc
                     except Exception as exc:
                         self._fallback_exit_evidence(
                             outcome=outcome,
@@ -628,6 +728,9 @@ class OperationalScope:
 
     def _close_stack(self) -> None:
         """Exit context bindings in the context that created their tokens."""
+        heartbeat, self._heartbeat = self._heartbeat, None
+        if heartbeat is not None:
+            heartbeat.stop()
         stack, self._stack = self._stack, None
         if stack is not None:
             stack.close()
