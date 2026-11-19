@@ -1,0 +1,67 @@
+<!--
+  Bound ClickHouse's own logging on the gx-10.
+
+  Langfuse writes only a few MB to ClickHouse, but the server's stock system
+  log tables have no TTL. By 2026-11-16 system.trace_log (CPU profiler samples)
+  held 75 GiB and system.text_log 15 GiB, while Langfuse's traces and
+  observations held about 1 MB. Every nightly backup copied all of it
+  (~100 GB per generation), and seven generations filled the disk.
+
+  - trace_log and text_log are removed: nothing reads them, and they were 99%
+    of the store.
+  - Every other system log keeps 7 days, enough to debug a recent incident.
+  - The server's log files in /var/log/clickhouse-server are capped at
+    warning level and 3 x 100M.
+
+  Changing a system log's TTL makes ClickHouse rename the old table to
+  <name>_0 on the next start and create a fresh one. The renamed tables are
+  harmless; drop them once if they are large.
+-->
+<clickhouse>
+    <logger>
+        <level>warning</level>
+        <size>100M</size>
+        <count>3</count>
+    </logger>
+
+    <trace_log remove="1"/>
+    <text_log remove="1"/>
+
+    <query_log>
+        <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+    </query_log>
+    <part_log>
+        <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+    </part_log>
+    <metric_log>
+        <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+    </metric_log>
+    <asynchronous_metric_log>
+        <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+    </asynchronous_metric_log>
+    <latency_log>
+        <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+    </latency_log>
+    <error_log>
+        <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+    </error_log>
+    <query_metric_log>
+        <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+    </query_metric_log>
+    <!--
+      The stock config gives this log its own <engine> (it has no event_date),
+      and ClickHouse refuses to start when a table with an <engine> also has
+      a <ttl>. So the TTL goes inside the stock engine definition, repeated here.
+    -->
+    <opentelemetry_span_log>
+        <engine>
+            engine MergeTree
+            partition by toYYYYMM(finish_date)
+            order by (finish_date, finish_time_us)
+            TTL finish_date + INTERVAL 7 DAY DELETE
+        </engine>
+    </opentelemetry_span_log>
+    <processors_profile_log>
+        <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+    </processors_profile_log>
+</clickhouse>
