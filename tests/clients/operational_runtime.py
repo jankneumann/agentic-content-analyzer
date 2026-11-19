@@ -64,6 +64,9 @@ class _Store:
     async def finish(self, _context: Any, **_kwargs: Any) -> None:
         self.runtime.events.append("finish")
 
+    async def heartbeat(self, _operation_id: int) -> bool:
+        return True
+
 
 @dataclass
 class OperationalRuntime:

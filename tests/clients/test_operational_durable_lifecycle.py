@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
-from time import monotonic
+from time import monotonic, sleep
 from typing import Any
 
 import pytest
@@ -67,6 +67,7 @@ class _DurableStore:
         self.next_id = 700
         self.events: list[str] = []
         self.records: dict[int, dict[str, Any]] = {}
+        self.heartbeats: list[int] = []
 
     async def reserve(self, *, entrypoint: str, parent_context: Any) -> int:
         operation_id = self.next_id
@@ -110,6 +111,10 @@ class _DurableStore:
 
     async def lookup(self, operation_id: int) -> dict[str, Any]:
         return dict(self.records[operation_id])
+
+    async def heartbeat(self, operation_id: int) -> bool:
+        self.heartbeats.append(operation_id)
+        return self.records[operation_id]["status"] == "in_progress"
 
 
 @pytest.fixture
@@ -483,3 +488,101 @@ def test_only_a_long_running_lifecycle_becomes_the_host(kind: str, registers: bo
 
         asyncio.run(lifecycle.shutdown(None, flush=no_flush))
     assert worker.get_host_lifecycle() is None
+
+
+def _beat_fast(module: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(module, "OPERATION_HEARTBEAT_SECONDS", 0.01)
+
+
+def test_a_running_root_heartbeats_until_it_closes(
+    durable_runtime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nothing else refreshes a directly executed root, and the worker's stale sweep
+    failed every gx-10 off-site upload that ran longer than an hour."""
+    module, _lifecycles, _provider, store = durable_runtime
+    _beat_fast(module, monkeypatch)
+
+    @module.operational_entrypoint("gx10.backup.offsite", stage="backup", service_name="aca-test")
+    def upload() -> None:
+        sleep(0.1)
+
+    upload()
+    beats = len(store.heartbeats)
+    assert beats >= 3
+    assert set(store.heartbeats) == {700}
+    sleep(0.05)
+    assert len(store.heartbeats) == beats
+
+
+def test_heartbeat_stops_once_the_root_is_no_longer_in_progress(
+    durable_runtime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module, _lifecycles, _provider, store = durable_runtime
+    _beat_fast(module, monkeypatch)
+
+    async def reaped(operation_id: int) -> bool:
+        store.heartbeats.append(operation_id)
+        return False
+
+    monkeypatch.setattr(store, "heartbeat", reaped)
+    scope = module.OperationalScope("gx10.backup.offsite", stage="backup", service_name="aca-test")
+    scope.open()
+    sleep(0.1)
+    assert store.heartbeats == [700]
+    scope.close()
+
+
+def test_a_failed_heartbeat_is_retried_on_the_next_tick(
+    durable_runtime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module, _lifecycles, _provider, store = durable_runtime
+    _beat_fast(module, monkeypatch)
+    attempts: list[int] = []
+
+    async def flaky(operation_id: int) -> bool:
+        attempts.append(operation_id)
+        if len(attempts) == 1:
+            raise ConnectionError("database restarting")
+        return True
+
+    monkeypatch.setattr(store, "heartbeat", flaky)
+    scope = module.OperationalScope("gx10.backup.offsite", stage="backup", service_name="aca-test")
+    scope.open()
+    sleep(0.1)
+    scope.close()
+    assert len(attempts) >= 3
+
+
+def test_finishing_a_reaped_root_says_it_was_reaped(
+    durable_runtime, monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """It used to say "terminal evidence database unavailable" while the database was fine."""
+    module, _lifecycles, _provider, store = durable_runtime
+
+    async def reaped_finish(*args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+        raise module.OperationNoLongerActiveError(status="failed", error="stale_timeout")
+
+    monkeypatch.setattr(store, "finish", reaped_finish)
+    monkeypatch.setenv("ACA_BOOTSTRAP_AUDIT_DIR", str(tmp_path))
+
+    @module.operational_entrypoint("gx10.backup.offsite", stage="backup", service_name="aca-test")
+    def upload() -> None:
+        return None
+
+    with pytest.raises(module.OperationalFlushError, match=r"already failed \(stale_timeout\)"):
+        upload()
+    records = module.BootstrapAuditSpool(tmp_path).verify(required=True)
+    assert records[-1]["diagnostic_code"] == "telemetry.operation_no_longer_active"
+    assert records[-1]["outcome"] == "succeeded"
+
+
+def test_a_free_text_job_error_never_reaches_the_message(durable_runtime) -> None:
+    module, *_ = durable_runtime
+    secret = "postgresql://admin:do-not-store@example.test/private"
+
+    error = module.OperationNoLongerActiveError(status="failed", error=f"boom: {secret}")
+
+    assert secret not in str(error)
+    assert error.error is None
+    assert str(error) == "operation was already failed when it finished"
