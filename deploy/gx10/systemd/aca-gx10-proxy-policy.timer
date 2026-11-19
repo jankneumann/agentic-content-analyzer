@@ -3,6 +3,11 @@ Description=Refresh GX-10 CONNECT proxy policy readiness before expiry
 
 [Timer]
 OnBootSec=30s
+# Persistent=true restores the last trigger from a stamp written before the
+# reboot, so OnBootSec counts as done; OnUnitActiveSec has no base until the
+# service runs, and the timer sits "elapsed" for the whole boot. OnActiveSec
+# counts from the timer's own start, which every boot provides.
+OnActiveSec=30s
 OnUnitActiveSec=180s
 AccuracySec=10s
 Unit=aca-gx10-proxy-policy.service
