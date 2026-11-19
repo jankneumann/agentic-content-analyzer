@@ -171,3 +171,32 @@ def test_install_dry_run_enables_exactly_the_installable_units() -> None:
     enabled = set(enable.split("systemctl enable", 1)[1].split())
     expected = {u.name for u in SYSTEMD_DIR.iterdir() if "\n[Install]\n" in u.read_text()}
     assert enabled == expected
+
+
+@pytest.mark.skipif(MAKE is None, reason="GNU make is not installed")
+def test_install_restarts_every_installable_timer_after_enabling() -> None:
+    """enable alone left the backup-freshness timer dead until a reboot that never came."""
+    result = _dry_run("install")
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    enable = next(i for i, line in enumerate(lines) if "systemctl enable" in line)
+    restart = next(i for i, line in enumerate(lines) if "systemctl restart" in line)
+    assert enable < restart
+    restarted = set(lines[restart].split("systemctl restart", 1)[1].split())
+    expected = {
+        u.name
+        for u in SYSTEMD_DIR.iterdir()
+        if u.suffix == ".timer" and "\n[Install]\n" in u.read_text()
+    }
+    assert restarted == expected
+
+
+def test_relative_timers_also_count_from_their_own_start() -> None:
+    """Persistent=true plus a pre-reboot stamp marks OnBootSec done; with no OnUnitActiveSec
+    base yet, the storage monitor sat "elapsed" from 2026-10-12 and never ran."""
+    for timer in SYSTEMD_DIR.glob("*.timer"):
+        directives = {
+            line.split("=", 1)[0] for line in timer.read_text().splitlines() if "=" in line
+        }
+        if "OnUnitActiveSec" in directives and "OnCalendar" not in directives:
+            assert "OnActiveSec" in directives, timer.name

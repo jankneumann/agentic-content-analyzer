@@ -25,6 +25,9 @@ UNITS := $(wildcard $(ROOT)/deploy/gx10/systemd/*.service $(ROOT)/deploy/gx10/sy
 # Every unit with an [Install] section is meant to come back after a reboot;
 # installing without enabling them leaves a stack that only a manual start runs.
 BOOT_UNITS := $(notdir $(shell grep -l '^\[Install\]' $(UNITS)))
+# enable alone starts nothing until the next boot, and starting an "elapsed"
+# timer is a no-op, so install restarts every timer to arm it now.
+BOOT_TIMERS := $(filter %.timer,$(BOOT_UNITS))
 GX10_UNITS := aca-gx10-image-pins aca-gx10-openbao-container aca-gx10-openbao-provision \
   aca-gx10-secrets aca-gx10-proxy-policy aca-gx10-firewall aca-gx10-maintenance-plans aca-gx10
 
@@ -44,6 +47,7 @@ install: require-root ## Install units, timers and tmpfiles, verify, daemon-relo
 	systemd-analyze verify $(UNIT_DIR)/aca-gx10*.service $(UNIT_DIR)/aca-gx10*.timer
 	systemctl daemon-reload
 	systemctl enable $(BOOT_UNITS)
+	systemctl restart $(BOOT_TIMERS)
 
 # Exactly the Langfuse stores. Listed, never globbed: /srv/aca/postgres is the
 # APPLICATION database, one character from langfuse-postgres, and
