@@ -1,10 +1,16 @@
 [Unit]
-Description=Record fail-closed GX-10 maintenance unit failure for %i
+Description=Record and push fail-closed GX-10 maintenance unit failure for %i
 
 [Service]
 Type=oneshot
+# The alerts that matter most fire while the runtime is down, so nothing here
+# depends on it: the ntfy URL is read from /etc (persisted by render-secrets.sh,
+# unlike /run) and posted directly from the host, which has egress. The journal
+# line comes first and always lands, whether or not the push does.
+EnvironmentFile=-/etc/aca/gx10/alert.env
 ExecStart=/usr/bin/logger -p daemon.err -t aca-gx10-maintenance-alert unit=%i outcome=permanent_failure
-TimeoutStartSec=30
+ExecStart=/bin/sh -c 'if [ -n "$${GX10_NTFY_URL:-}" ]; then exec /usr/bin/curl --silent --show-error --fail --max-time 20 --retry 3 -H "Title: gx-10: %i failed" -H "Priority: high" -H "Tags: rotating_light" -d "unit=%i outcome=permanent_failure host=%H" "$${GX10_NTFY_URL}" -o /dev/null; else /usr/bin/logger -p daemon.warning -t aca-gx10-maintenance-alert "no GX10_NTFY_URL in /etc/aca/gx10/alert.env; alert for %i was not pushed"; fi'
+TimeoutStartSec=90
 UMask=0077
 PrivateTmp=yes
 NoNewPrivileges=yes

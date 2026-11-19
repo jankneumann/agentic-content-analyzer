@@ -371,3 +371,71 @@ async def test_response_body_is_bounded_without_logging_content(
     assert result.disposition == "retry"
     assert result.error_code == "response_too_large"
     assert sentinel not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_ntfy_format_posts_a_readable_push_with_ntfy_headers() -> None:
+    requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, content=b"{}")
+
+    envelope = _envelope().model_copy(
+        update={"codes": ["operation_failed", "session_expired"], "remediation_command": None}
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        sink = WebhookAlertSink(
+            endpoint="https://alerts.example.com/aca-topic",
+            allowed_hosts=("alerts.example.com",),
+            secret=None,
+            timeout_seconds=10,
+            max_retry_after_seconds=60,
+            client=client,
+            resolver=_public_resolver,
+            payload_format="ntfy",
+        )
+        result = await sink.deliver(envelope, idempotency_key="stable-delivery-key")
+
+    assert result.disposition == "success"
+    (request,) = requests
+    assert request.headers["Content-Type"].startswith("text/plain")
+    assert request.headers["Title"] == "aca: ingestion.execute failed"
+    assert request.headers["Priority"] == "high"
+    assert request.headers["Click"] == "https://ops.example.com/api/v1/operations/42"
+    assert request.headers["Idempotency-Key"] == "stable-delivery-key"
+    body = request.content.decode()
+    assert "items failed: 1" in body
+    assert "codes: operation_failed, session_expired" in body
+    assert not body.lstrip().startswith("{")
+
+
+@pytest.mark.asyncio
+async def test_proxied_sink_keeps_the_host_allowlist_but_leaves_dns_to_the_proxy() -> None:
+    async def no_dns(host: str, port: int) -> tuple[str, ...]:
+        raise AssertionError("a proxied sink must not resolve locally")
+
+    sink = WebhookAlertSink(
+        endpoint="https://alerts.example.com/aca-topic",
+        allowed_hosts=("alerts.example.com",),
+        secret=None,
+        timeout_seconds=10,
+        max_retry_after_seconds=60,
+        resolver=no_dns,
+        proxy_url="http://user:pass@squid:3128",
+    )
+    assert await sink._validate_destination() is None
+    client = sink._new_client()  # the installed httpx accepts the proxy
+    await client.aclose()
+
+    elsewhere = WebhookAlertSink(
+        endpoint="https://evil.example.net/x",
+        allowed_hosts=("alerts.example.com",),
+        secret=None,
+        timeout_seconds=10,
+        max_retry_after_seconds=60,
+        resolver=no_dns,
+        proxy_url="http://user:pass@squid:3128",
+    )
+    result = await elsewhere.deliver(_envelope(), idempotency_key="stable-delivery-key")
+    assert (result.disposition, result.error_code) == ("permanent", "host_not_allowed")

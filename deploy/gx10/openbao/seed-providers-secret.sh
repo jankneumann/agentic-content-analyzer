@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# Operator step: store or rotate the third-party provider keys that
-# render-secrets.sh hands to the API and worker, and re-upload the aca-gx10
-# policy that grants the renderer read access to them.
+# Operator step: store or rotate one group of third-party credentials that
+# render-secrets.sh hands to the containers, and re-upload the aca-gx10 policy
+# that grants the renderer read access to them.
+#
+#   providers  (default) LLM and API keys            -> api + worker
+#   ingestion  Gmail token, Substack cookie, Readwise -> worker only
+#   alerts     ntfy topic URL for pushed alerts       -> every app role
 #
 # The provisioning ceremony writes policies once, so a policy edit after first
 # install reaches OpenBao only through a step like this one.
@@ -11,17 +15,25 @@
 # answer keeps the stored value and "-" removes it, so rotating one key never
 # drops the others.
 #
-#   sudo /opt/aca/deploy/gx10/openbao/seed-providers-secret.sh
+#   sudo /opt/aca/deploy/gx10/openbao/seed-providers-secret.sh [providers|ingestion|alerts]
 set -euo pipefail
 umask 077
 BAO_ADDR="${GX10_BAO_ADDR:-http://10.89.0.250:8200/v1}"
 TOKEN_FILE="${GX10_BAO_TOKEN_FILE:-/etc/aca/gx10/bao-bootstrap-token}"
-PROVIDERS_ENDPOINT="/secret/data/newsletter/gx10/providers"
+GROUP="${1:-providers}"
 POLICY_FILE="$(dirname "$0")/aca-gx10.hcl"
-# Keep in step with PROVIDER_ENV in render-secrets.sh, which refuses any other field.
-FIELDS=(gemini_api_key anthropic_api_key openai_api_key youtube_api_key tavily_api_key
-  perplexity_api_key xai_api_key semantic_scholar_api_key elevenlabs_api_key
-  voyage_api_key cohere_api_key jina_api_key)
+# Keep in step with the field tables in render-secrets.sh, which refuse any other field.
+case "$GROUP" in
+  providers) FIELDS=(gemini_api_key anthropic_api_key openai_api_key youtube_api_key tavily_api_key
+    perplexity_api_key xai_api_key semantic_scholar_api_key elevenlabs_api_key
+    voyage_api_key cohere_api_key jina_api_key) ;;
+  # gmail_oauth_token_json: paste token.json from `aca auth gmail` on one line.
+  ingestion) FIELDS=(gmail_oauth_token_json substack_session_cookie readwise_api_key) ;;
+  # ntfy_url: https://ntfy.sh/<long-random-topic>; anyone who knows it can read the alerts.
+  alerts) FIELDS=(ntfy_url) ;;
+  *) echo "unknown group '$GROUP': use providers, ingestion, or alerts" >&2; exit 2 ;;
+esac
+PROVIDERS_ENDPOINT="/secret/data/newsletter/gx10/$GROUP"
 [[ -s "$TOKEN_FILE" ]] || { echo "OpenBao admin token unavailable at $TOKEN_FILE" >&2; exit 1; }
 
 work="$(mktemp -d)"; trap 'rm -rf -- "$work"' EXIT
@@ -49,7 +61,7 @@ for field in "${FIELDS[@]}"; do
 done
 
 # The renderer refuses to start without an LLM key; refuse to store that state.
-jq -e 'has("anthropic_api_key") or has("openai_api_key") or has("gemini_api_key")' "$work/merged.json" >/dev/null || {
+[[ "$GROUP" != providers ]] || jq -e 'has("anthropic_api_key") or has("openai_api_key") or has("gemini_api_key")' "$work/merged.json" >/dev/null || {
   echo "refusing to store provider keys without anthropic_api_key, openai_api_key, or gemini_api_key" >&2; exit 1; }
 
 jq '{data: .}' "$work/merged.json" >"$work/secret.json"

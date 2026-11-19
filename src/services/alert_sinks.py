@@ -29,8 +29,48 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 SinkDisposition = Literal["success", "retry", "permanent"]
+WebhookPayloadFormat = Literal["envelope", "ntfy"]
 AddressResolver = Callable[[str, int], Awaitable[Sequence[str]]]
 Clock = Callable[[], datetime]
+
+_NTFY_PRIORITY = {"error": "high", "warning": "default"}
+_NTFY_TAGS = {"error": "rotating_light", "warning": "warning"}
+_NTFY_OUTCOME_TEXT = {
+    "failed": "failed",
+    "partial": "partly failed",
+    "zero_items": "ingested nothing",
+    "unknown": "ended in an unknown state",
+    "reconciled": "was reconciled",
+}
+
+
+def render_ntfy_message(envelope: WorkflowAlertEnvelopeV1) -> tuple[str, dict[str, str]]:
+    """Render an envelope as an ntfy push: a plain-text body plus ntfy headers.
+
+    ntfy shows the body verbatim on a phone, so the JSON envelope would arrive
+    as unreadable text. Only closed envelope fields are rendered, so the
+    allowlist that keeps secrets out of the envelope also bounds this message.
+    """
+
+    title = f"aca: {envelope.workflow_type} {_NTFY_OUTCOME_TEXT[envelope.outcome]}"
+    lines: list[str] = []
+    counts = envelope.counts.model_dump(exclude_none=True)
+    if counts:
+        lines.append(
+            ", ".join(f"{name.replace('_', ' ')}: {value}" for name, value in counts.items())
+        )
+    if envelope.codes:
+        lines.append("codes: " + ", ".join(envelope.codes))
+    if envelope.remediation_command:
+        lines.append(f"fix: {envelope.remediation_command}")
+    lines.append(f"at {envelope.occurred_at.isoformat()}")
+    headers = {
+        "Title": title,
+        "Priority": _NTFY_PRIORITY[envelope.severity],
+        "Tags": _NTFY_TAGS[envelope.severity],
+        "Click": str(envelope.diagnostic_url),
+    }
+    return "\n".join(lines), headers
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +217,8 @@ class WebhookAlertSink:
         allow_private_addresses: bool = False,
         max_response_bytes: int = 65_536,
         clock: Clock | None = None,
+        payload_format: WebhookPayloadFormat = "envelope",
+        proxy_url: str | None = None,
     ) -> None:
         if not 1 <= timeout_seconds <= 30:
             raise ValueError("timeout_seconds is outside the supported range")
@@ -194,6 +236,12 @@ class WebhookAlertSink:
         self._allow_private_addresses = allow_private_addresses
         self._max_response_bytes = max_response_bytes
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._payload_format = payload_format
+        # A host whose containers reach the internet only through a forward
+        # proxy cannot connect directly. The proxy then resolves the name, so
+        # the pinned-address check is the proxy's (Squid denies internal
+        # destinations); the exact-host allowlist and no-redirects still hold.
+        self._proxy_url = proxy_url
 
     @operational_entrypoint("alert.webhook_delivery", stage="alert", service_name="aca-alert")
     async def deliver(
@@ -213,33 +261,25 @@ class WebhookAlertSink:
         ):
             return SinkDeliveryResult(disposition="permanent", error_code="invalid_delivery_key")
 
-        body = json.dumps(
-            envelope.model_dump(mode="json"),
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode()
-        headers = {
-            "Content-Type": "application/json",
-            "Idempotency-Key": idempotency_key,
-            "User-Agent": "aca-workflow-alerts/1",
-        }
+        if self._payload_format == "ntfy":
+            message, headers = render_ntfy_message(envelope)
+            body = message.encode()
+            headers["Content-Type"] = "text/plain; charset=utf-8"
+        else:
+            body = json.dumps(
+                envelope.model_dump(mode="json"),
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+            headers = {"Content-Type": "application/json"}
+        headers["Idempotency-Key"] = idempotency_key
+        headers["User-Agent"] = "aca-workflow-alerts/1"
         if self._secret is not None:
             signature = hmac.new(self._secret, body, hashlib.sha256).hexdigest()
             headers["X-Workflow-Alert-Signature"] = f"sha256={signature}"
 
         owns_client = self._client is None
-        client = self._client or httpx.AsyncClient(
-            timeout=httpx.Timeout(self._timeout_seconds),
-            follow_redirects=False,
-            trust_env=False,
-            transport=_PinnedAsyncHTTPTransport(
-                _PolicyNetworkBackend(
-                    resolver=self._resolver,
-                    allowed_hosts=self._allowed_hosts,
-                    allow_private_addresses=self._allow_private_addresses,
-                )
-            ),
-        )
+        client = self._client or self._new_client()
         try:
             request = client.build_request("POST", self._endpoint, content=body, headers=headers)
             response = await client.send(request, stream=True, follow_redirects=False)
@@ -266,6 +306,27 @@ class WebhookAlertSink:
             if owns_client:
                 await client.aclose()
 
+    def _new_client(self) -> httpx.AsyncClient:
+        if self._proxy_url is not None:
+            return httpx.AsyncClient(
+                timeout=httpx.Timeout(self._timeout_seconds),
+                follow_redirects=False,
+                trust_env=False,
+                proxy=self._proxy_url,
+            )
+        return httpx.AsyncClient(
+            timeout=httpx.Timeout(self._timeout_seconds),
+            follow_redirects=False,
+            trust_env=False,
+            transport=_PinnedAsyncHTTPTransport(
+                _PolicyNetworkBackend(
+                    resolver=self._resolver,
+                    allowed_hosts=self._allowed_hosts,
+                    allow_private_addresses=self._allow_private_addresses,
+                )
+            ),
+        )
+
     async def _validate_destination(self) -> str | None:
         try:
             parsed = urlparse(self._endpoint)
@@ -285,6 +346,8 @@ class WebhookAlertSink:
         host = parsed.hostname.lower().rstrip(".")
         if host not in self._allowed_hosts:
             return "host_not_allowed"
+        if self._proxy_url is not None:
+            return None
         try:
             addresses = await self._resolver(
                 host, port or (443 if parsed.scheme == "https" else 80)

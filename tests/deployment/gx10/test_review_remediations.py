@@ -30,6 +30,21 @@ def _mock_secret_tools(tmp_path: Path) -> Path:
         """#!/usr/bin/env bash
 set -euo pipefail
 url="${!#}"
+# Optional paths are read with `-o FILE -w '%{http_code}'`: answer 200 with the
+# fixture, or 404 when the test sets none.
+out=""; writeout=""; prev=""
+for a in "$@"; do
+  case "$prev" in -o) out="$a";; -w) writeout="$a";; esac; prev="$a"
+done
+if [[ -n "$writeout" ]]; then
+  case "$url" in
+    */ingestion) body="${GX10_FIXTURE_INGESTION:-}" ;;
+    */alerts) body="${GX10_FIXTURE_ALERTS:-}" ;;
+    *) body="" ;;
+  esac
+  if [[ -n "$body" ]]; then printf '{"data":{"data":%s}}\n' "$body" >"$out"; printf 200; else printf 404; fi
+  exit 0
+fi
 common='{"database_url":"postgresql://newsletter_user:pass@app-postgres:5432/newsletters","app_secret_key":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","configured_source_key_secret":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","operation_cursor_signing_key":"cccccccccccccccccccccccccccccccccccccccccccccccc","admin_api_key":"dddddddddddddddddddddddddddddddddddddddddddddddd","langfuse_public_key":"pk-lf-fixture","langfuse_secret_key":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","langfuse_init_org_id":"aca-gx10","langfuse_init_org_name":"ACA GX-10","langfuse_init_project_id":"aca-gx10-observability","langfuse_init_project_name":"ACA GX-10 Observability","langfuse_init_user_email":"operator@example.test","langfuse_init_user_name":"GX-10 Operator","langfuse_init_user_password":"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq","falkordb_password":"ffffffffffffffffffffffffffffffffffffffffffffffff","release_revision":"1111111111111111111111111111111111111111","authority_fingerprint":"2222222222222222222222222222222222222222222222222222222222222222","app_postgres_password":"gggggggggggggggggggggggggggggggggggggggggggggggg","langfuse_postgres_password":"hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh","redis_password":"iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii","clickhouse_password":"jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj","minio_root_user":"gx10-minio","minio_root_password":"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk","langfuse_nextauth_secret":"llllllllllllllllllllllllllllllllllllllllllllllll","langfuse_salt":"mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm","langfuse_encryption_key":"3333333333333333333333333333333333333333333333333333333333333333","caddy_username":"operator","caddy_password_hash":"bcrypt-fixture"}'
 case "$url" in
   */runtime) printf '{"data":{"data":%s}}\n' "$common" ;;
