@@ -3,6 +3,11 @@ Description=Run GX-10 storage monitor every minute
 
 [Timer]
 OnBootSec=60s
+# Persistent=true restores the last trigger from a stamp written before the
+# reboot, so OnBootSec counts as done; OnUnitActiveSec has no base until the
+# service runs, and the timer sits "elapsed" for the whole boot. OnActiveSec
+# counts from the timer's own start, which every boot provides.
+OnActiveSec=60s
 OnUnitActiveSec=60s
 AccuracySec=5s
 Unit=aca-gx10-storage.service
