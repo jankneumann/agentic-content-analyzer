@@ -32,6 +32,7 @@ from src.services.backup.gx10 import (
     BackupManifest,
     BackupQuota,
     ComponentQuotaExceededError,
+    ComponentRestorer,
     ComponentStreamer,
     EncryptedArtifact,
     EncryptionMaterialError,
@@ -42,6 +43,8 @@ from src.services.backup.gx10 import (
     OpenBaoAgeMaterialProvider,
     RestoreDrillResult,
     RestoreValidation,
+    age_environment,
+    age_identity_fd,
 )
 
 _AGE_ENVELOPE = b"age-encryption.org/v1\n"
@@ -72,21 +75,21 @@ def _command_evidence(stderr: bytes) -> str:
 
 
 # _safe_command buffers a command's whole output, so it costs the output's
-# size in RAM. The scheduled backup no longer uses it for components -- a
-# 39GB ClickHouse copy OOM-killed the run that way -- it streams them through
-# stream_component instead. The restore paths still buffer, and this bound
-# keeps one oversized artifact from taking a drill down with it.
+# size in RAM. Components never go through it: a 39GB ClickHouse copy
+# OOM-killed the backup that way, and a 100GB one OOM-killed the restore drill
+# (2026-11-16, 2026-11-23). Backups stream through stream_component, restores
+# through stream_restore. Only the drill's validators and metadata probes use
+# it, and this bound keeps a runaway one from taking the drill down.
 MAX_COMPONENT_BYTES = 8 * 1024**3
 
 _STREAM_CHUNK = 8 * 1024 * 1024
 
 
-def _safe_command(argv: Sequence[str], *, payload: bytes | None = None) -> bytes:
+def _safe_command(argv: Sequence[str]) -> bytes:
     if not argv:
         raise ValueError("component command argv must not be empty")
     completed = subprocess.run(
         list(argv),
-        input=payload,
         capture_output=True,
         check=False,
         env=component_environment(),
@@ -193,6 +196,80 @@ def stream_component(
         producer_err.close()
         age_err.close()
     return size, digest.hexdigest()
+
+
+def stream_restore(
+    argv: Sequence[str],
+    *,
+    artifact: Path,
+    identity: str,
+    target: Path,
+) -> None:
+    """Run `age --decrypt artifact | argv target`, never holding the component in memory.
+
+    age reads the artifact itself and the restore command reads age's output
+    through a pipe, so this process only waits. Both must exit zero: a
+    pipeline reports its last stage, and a restore command that sees a
+    truncated stream from a failing age can still exit cleanly.
+    """
+
+    if not argv:
+        raise ValueError("component command argv must not be empty")
+    with artifact.open("rb") as handle:
+        if handle.read(len(_AGE_ENVELOPE)) != _AGE_ENVELOPE:
+            raise EncryptionMaterialError("ciphertext is missing the age envelope")
+    age_err = tempfile.TemporaryFile()
+    restore_err = tempfile.TemporaryFile()
+    processes: list[subprocess.Popen[bytes]] = []
+    try:
+        with age_identity_fd(identity) as identity_fd:
+            age = subprocess.Popen(
+                [  # noqa: S607 -- PATH as AgeCommandAdapter
+                    "age",
+                    "--decrypt",
+                    "--identity",
+                    f"/proc/self/fd/{identity_fd}",
+                    str(artifact),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=age_err,
+                env=age_environment(),
+                pass_fds=(identity_fd,),
+            )
+        processes.append(age)
+        assert age.stdout is not None
+        restorer = subprocess.Popen(
+            [*argv, str(target)],
+            stdin=age.stdout,
+            stdout=subprocess.DEVNULL,
+            stderr=restore_err,
+            env=component_environment(),
+        )
+        processes.append(restorer)
+        # Only the restore command holds the read end now, so a restore that
+        # dies early gives age SIGPIPE instead of a writer blocked forever.
+        age.stdout.close()
+        restore_code = restorer.wait()
+        age_code = age.wait()
+        if restore_code != 0:
+            raise RuntimeError(
+                f"component command failed: {argv[0]} exit={restore_code} "
+                f"stderr={_command_evidence(_stderr_tail(restore_err))}"
+            )
+        if age_code != 0:
+            raise EncryptionMaterialError(
+                f"age decryption failed exit={age_code} "
+                f"stderr={_command_evidence(_stderr_tail(age_err))}"
+            )
+    except BaseException:
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+        raise
+    finally:
+        age_err.close()
+        restore_err.close()
 
 
 def _component_commands(
@@ -465,13 +542,22 @@ def run_isolated_restore(
     if set(successful) != set(BackupComponent):
         raise ValueError("restore manifest must contain every successful component")
     production_sources = _production_source_inventory(plan)
+    artifact_paths = {
+        component: resolve_manifest_artifact_path(
+            artifact_dir, successful[component].artifact_name or ""
+        )
+        for component in BackupComponent
+    }
+    # Fail before any component restores, as reading every artifact up front
+    # used to; the drill itself now opens each file only when it gets there.
+    missing = sorted(str(path.name) for path in artifact_paths.values() if not path.is_file())
+    if missing:
+        raise FileNotFoundError(f"manifest artifacts are missing: {missing}")
     artifacts = {
         component: EncryptedArtifact(
             component=component,
             name=successful[component].artifact_name or "",
-            payload=resolve_manifest_artifact_path(
-                artifact_dir, successful[component].artifact_name or ""
-            ).read_bytes(),
+            path=artifact_paths[component],
             checksum_sha256=successful[component].checksum_sha256 or "",
             encryption_recipient=successful[component].encryption_recipient or "",
             completed_at=manifest.completed_at,
@@ -480,10 +566,15 @@ def run_isolated_restore(
     }
     age_adapter = age or _openbao_age_adapter()
 
-    def restore_handler(argv: tuple[str, ...]) -> Callable[[bytes, Path], None]:
-        def restore(payload: bytes, target: Path) -> None:
+    def restorer(argv: tuple[str, ...]) -> ComponentRestorer:
+        def restore(artifact: Path, recipient: str, target: Path) -> None:
             target.mkdir(parents=True, exist_ok=True)
-            _safe_command((*argv, str(target)), payload=payload)
+            stream_restore(
+                argv,
+                artifact=artifact,
+                identity=age_adapter.identity_for(recipient),
+                target=target,
+            )
 
         return restore
 
@@ -498,8 +589,7 @@ def run_isolated_restore(
         return validate
 
     drill = GX10RestoreDrill(
-        decrypt=age_adapter.decrypt,
-        restore={component: restore_handler(argv) for component, argv in restore_commands.items()},
+        restorers={component: restorer(argv) for component, argv in restore_commands.items()},
         validate={
             component: validate_handler(argv) for component, argv in validate_commands.items()
         },

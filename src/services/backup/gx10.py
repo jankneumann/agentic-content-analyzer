@@ -7,7 +7,8 @@ import json
 import os
 import re
 import subprocess
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -103,6 +104,13 @@ class ComponentQuotaExceededError(RuntimeError):
 #: ComponentQuotaExceededError when the artifact would exceed the quota.
 ComponentStreamer = Callable[[str, str, int], tuple[int, str]]
 
+#: Restore one component without holding it in memory: (artifact_path,
+#: encryption_recipient, target) -> None. Raises when the component did not
+#: restore; the drill turns that into a component failure.
+ComponentRestorer = Callable[[Path, str, Path], None]
+
+_HASH_CHUNK = 8 * 1024 * 1024
+
 
 def _require_complete_inventory(label: str, values: Mapping[BackupComponent, Any]) -> None:
     required = set(BackupComponent)
@@ -171,31 +179,51 @@ class AgeCommandAdapter:
 
     @staticmethod
     def _run_subprocess(request: AgeCommandRequest) -> AgeCommandResult:
-        safe_env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
         argv = list(request.argv)
-        identity_fd: int | None = None
-        pass_fds: tuple[int, ...] = ()
-        try:
-            if request.secret_identity is not None:
-                identity_fd, identity_writer = os.pipe()
-                try:
-                    os.write(identity_writer, request.secret_identity.encode())
-                finally:
-                    os.close(identity_writer)
-                argv.extend(("--identity", f"/proc/self/fd/{identity_fd}"))
-                pass_fds = (identity_fd,)
+        if request.secret_identity is None:
             completed = subprocess.run(
                 argv,
                 input=request.stdin,
                 capture_output=True,
                 check=False,
-                env=safe_env,
-                pass_fds=pass_fds,
+                env=age_environment(),
             )
-        finally:
-            if identity_fd is not None:
-                os.close(identity_fd)
+        else:
+            with age_identity_fd(request.secret_identity) as identity_fd:
+                completed = subprocess.run(
+                    [*argv, "--identity", f"/proc/self/fd/{identity_fd}"],
+                    input=request.stdin,
+                    capture_output=True,
+                    check=False,
+                    env=age_environment(),
+                    pass_fds=(identity_fd,),
+                )
         return AgeCommandResult(returncode=completed.returncode, stdout=completed.stdout or b"")
+
+
+def age_environment() -> dict[str, str]:
+    """The only environment age gets: PATH, so no secret can ride along."""
+    return {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+
+
+@contextmanager
+def age_identity_fd(identity: str) -> Iterator[int]:
+    """Yield a readable fd holding `identity`, for `age --identity /proc/self/fd/N`.
+
+    The private key never appears in argv or the environment, where any local
+    user could read it from /proc. Pass the fd to the child with `pass_fds`.
+    """
+    if not identity.startswith("AGE-SECRET-KEY-"):
+        raise EncryptionMaterialError("valid age identity required")
+    reader, writer = os.pipe()
+    try:
+        try:
+            os.write(writer, identity.encode())
+        finally:
+            os.close(writer)
+        yield reader
+    finally:
+        os.close(reader)
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,6 +274,9 @@ class OpenBaoAgeAdapter:
 
     def decrypt(self, payload: bytes, recipient: str) -> bytes:
         return self.command.decrypt(payload, self.material.identity_for(recipient))
+
+    def identity_for(self, recipient: str) -> str:
+        return self.material.identity_for(recipient)
 
 
 def _validate_age_ciphertext(payload: bytes, *, plaintext: bytes | None = None) -> None:
@@ -497,12 +528,34 @@ def _failed_component(
 
 @dataclass(frozen=True, slots=True)
 class EncryptedArtifact:
+    """One stored component: its ciphertext in memory (`payload`) or on disk (`path`).
+
+    A streaming drill needs `path` and never reads the file into memory; the
+    buffered drill (tests, the synthetic checkpoint) needs `payload`.
+    """
+
     component: BackupComponent
     name: str
-    payload: bytes
     checksum_sha256: str
     encryption_recipient: str
     completed_at: datetime
+    payload: bytes | None = None
+    path: Path | None = None
+
+    def __post_init__(self) -> None:
+        if (self.payload is None) == (self.path is None):
+            raise ValueError("an encrypted artifact needs exactly one of payload or path")
+
+    def sha256(self) -> str:
+        """Hash the ciphertext, reading a file in chunks rather than whole."""
+        if self.payload is not None:
+            return hashlib.sha256(self.payload).hexdigest()
+        assert self.path is not None
+        digest = hashlib.sha256()
+        with self.path.open("rb") as handle:
+            while chunk := handle.read(_HASH_CHUNK):
+                digest.update(chunk)
+        return digest.hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -571,15 +624,30 @@ class GX10RestoreDrill:
     def __init__(
         self,
         *,
-        decrypt: Callable[[bytes, str], bytes],
-        restore: Mapping[BackupComponent, Callable[[bytes, Path], None]],
         validate: Mapping[BackupComponent, Callable[[Path], bool]],
+        decrypt: Callable[[bytes, str], bytes] | None = None,
+        restore: Mapping[BackupComponent, Callable[[bytes, Path], None]] | None = None,
+        restorers: Mapping[BackupComponent, ComponentRestorer] | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
-        _require_complete_inventory("restore handlers", restore)
+        # Two ways to restore a component, never both, mirroring the backup
+        # controller. decrypt + restore hold the ciphertext and the plaintext
+        # in memory -- fine for tests and the synthetic checkpoint, fatal for
+        # a 100GB ClickHouse artifact on a 121GB host (OOM-killed drills on
+        # 2026-11-16 and 2026-11-23). Restorers pipe file -> age -> restore
+        # command and never hold a component.
+        if restorers is not None:
+            if decrypt is not None or restore is not None:
+                raise ValueError("pass restorers or decrypt/restore, not both")
+            _require_complete_inventory("restore handlers", restorers)
+        else:
+            if decrypt is None or restore is None:
+                raise ValueError("buffered restore needs decrypt and restore")
+            _require_complete_inventory("restore handlers", restore)
         _require_complete_inventory("restore validators", validate)
         self._decrypt = decrypt
-        self._restore = dict(restore)
+        self._restore = dict(restore or {})
+        self._restorers = dict(restorers) if restorers is not None else None
         self._validate = dict(validate)
         self._clock = clock or (lambda: datetime.now(UTC))
 
@@ -620,6 +688,10 @@ class GX10RestoreDrill:
             isolated_root=isolated_root,
             production_sources=production_sources,
         )
+        if (self._restorers is None) != (artifact.path is None):
+            raise ValueError(
+                "streaming restorers need artifacts on disk; buffered restore needs payloads"
+            )
         attributes = {
             "restore.component": str(artifact.component),
             "restore.operation_id": correlation.operation_id,
@@ -629,14 +701,22 @@ class GX10RestoreDrill:
                 return self._restore_failure_measured(
                     artifact, correlation, "restore_recipient_unavailable", restore_started_at
                 )
-            checksum = hashlib.sha256(artifact.payload).hexdigest()
-            if checksum != artifact.checksum_sha256:
+            # The file is read twice: once here, once by age. age authenticates
+            # every chunk, so a file altered in between fails decryption.
+            if artifact.sha256() != artifact.checksum_sha256:
                 return self._restore_failure_measured(
                     artifact, correlation, "artifact_checksum_mismatch", restore_started_at
                 )
             try:
-                plaintext = self._decrypt(artifact.payload, artifact.encryption_recipient)
-                self._restore[artifact.component](plaintext, target)
+                if self._restorers is not None:
+                    assert artifact.path is not None
+                    self._restorers[artifact.component](
+                        artifact.path, artifact.encryption_recipient, target
+                    )
+                else:
+                    assert self._decrypt is not None and artifact.payload is not None
+                    plaintext = self._decrypt(artifact.payload, artifact.encryption_recipient)
+                    self._restore[artifact.component](plaintext, target)
                 if not self._validate[artifact.component](target):
                     return self._restore_failure_measured(
                         artifact,
