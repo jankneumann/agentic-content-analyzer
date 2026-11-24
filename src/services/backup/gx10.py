@@ -701,8 +701,9 @@ class GX10RestoreDrill:
                 return self._restore_failure_measured(
                     artifact, correlation, "restore_recipient_unavailable", restore_started_at
                 )
-            # The file is read twice: once here, once by age. age authenticates
-            # every chunk, so a file altered in between fails decryption.
+            # A streamed file is read twice: here, then by age. In between it
+            # sits in a root-only directory the drill unit mounts read-only,
+            # and age rejects a file corrupted or truncated after this check.
             if artifact.sha256() != artifact.checksum_sha256:
                 return self._restore_failure_measured(
                     artifact, correlation, "artifact_checksum_mismatch", restore_started_at
