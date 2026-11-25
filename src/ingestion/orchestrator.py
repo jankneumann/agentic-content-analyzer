@@ -119,8 +119,18 @@ def ingest_gmail(
     query = query or "label:newsletters-ai"
     max_results = max_results or 50
 
+    from src.ingestion.credential_failures import CredentialFailureError
+
     try:
         service = GmailContentIngestionService()
+    except CredentialFailureError as exc:
+        return IngestionResponse(
+            command="ingest.gmail",
+            source="gmail",
+            status="error",
+            items_ingested=0,
+            errors=[exc.to_ingestion_error()],
+        )
     except FileNotFoundError as exc:
         return IngestionResponse(
             command="ingest.gmail",

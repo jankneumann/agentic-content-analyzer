@@ -370,18 +370,78 @@ breakage and shipping your own under cover of it.
 
 ---
 
-### 8. Deliver maintenance alerts to a person
+### 8. Deliver alerts to a person — code ready, needs an ntfy topic
 
-`aca-gx10-maintenance-alert@.service` runs `logger` and nothing else. Wire it to
-something that reaches a human (the app's notification channel, ntfy, mail).
-It must not depend on the runtime: the alerts that matter most fire when the
-runtime is down.
+Both alert paths now push to **ntfy** once a topic URL is stored:
 
-### 9. Backfill the 2026-10-12 → 10-20 digest gap
+- **Workflow alerts** (failed, partial, or empty ingestion and pipeline runs,
+  expired credentials) go out through the app's alert outbox. The renderer sets
+  `WORKFLOW_ALERT_SINK=webhook` with `WORKFLOW_ALERT_WEBHOOK_FORMAT=ntfy` in
+  `common.env`, and the sink reaches ntfy **through Squid**
+  (`WORKFLOW_ALERT_PROXY_URL`): app containers have no direct egress.
+- **Maintenance alerts** (`aca-gx10-maintenance-alert@`) still write the journal
+  line first, then `curl` the topic **from the host**, reading
+  `/etc/aca/gx10/alert.env`. That copy lives on disk, not in `/run`, so it works
+  after a reboot with the runtime down — the October case.
 
-The scheduler resumed on restart but does not backfill missed periods. Run the
-daily pipeline for each missed day (`aca pipeline run --period daily
---period-start … --period-end … --wait`) once ingestion has caught up.
+```bash
+# Pick a long random topic: anyone who knows it can read the alerts.
+#   https://ntfy.sh/aca-gx10-$(openssl rand -hex 12)   ; subscribe to it in the ntfy app
+sudo /opt/aca/deploy/gx10/openbao/seed-providers-secret.sh alerts
+sudo make -C /opt/aca/deploy/gx10 install            # new units + policy-dependent renderer
+sudo systemctl restart aca-gx10-secrets.service aca-gx10.service
+sudo systemctl start aca-gx10-maintenance-alert@test.service   # must arrive on the phone
+```
+
+Without a stored `ntfy_url` the renderer warns ("alerts reach no one") and the
+stack runs as before.
+
+### 9. Daily pipeline — code ready, needs `install` and a timer start
+
+Nothing ran ingestion on a schedule: `settings/schedule.yaml` holds agent tasks
+whose scheduler is never started, and the `scheduler` container is a second
+queue worker. `aca-gx10-daily-pipeline.timer` (06:00 UTC, `Persistent=true`)
+now runs `scripts/gx10/daily_pipeline.py`, which submits `aca pipeline run
+--period daily` for each UTC day after the last completed one (state:
+`/var/lib/aca/gx10/daily-pipeline/state.json`), oldest first, up to 14 days
+back. A day counts only when its operation is `completed`; a failure or a 3 h
+wait timeout stops the run, alerts via `OnFailure=`, and is retried next time.
+Each day's idempotency key (`daily-pipeline:<date>`) makes a retry attach to a
+still-running day instead of starting a second one.
+
+The first run does only yesterday; to catch up the last N days (N ≤ 14), seed
+the state with the day before the first one you want. Days older than 14 days —
+**including the 2026-10-12 → 10-20 gap** — need a manual `aca pipeline run
+--period daily --period-start … --period-end … --wait` each.
+
+```bash
+sudo install -d -m 0700 /var/lib/aca/gx10/daily-pipeline
+echo '{"last_completed": "<YYYY-MM-DD>"}' | sudo tee /var/lib/aca/gx10/daily-pipeline/state.json
+sudo systemctl start aca-gx10-daily-pipeline.timer     # `install` enables it for boot only
+sudo systemctl start aca-gx10-daily-pipeline.service   # first run now; watch the journal
+```
+
+### 9b. Gmail, Substack and Readwise credentials — needs seeding
+
+These never reached the worker. They now live at
+`secret/newsletter/gx10/ingestion` and render into `worker.env` only. The
+Gmail token is rehydrated into `/tmp/gmail-token.json` (the root filesystem is
+read-only), and a refused refresh is a typed `session_expired` that alerts.
+
+```bash
+# On a workstation: aca auth gmail  -> prints/saves token.json
+sudo /opt/aca/deploy/gx10/openbao/seed-providers-secret.sh ingestion
+#   gmail_oauth_token_json: paste token.json on one line
+#   substack_session_cookie, readwise_api_key: as before
+sudo systemctl restart aca-gx10-secrets.service aca-gx10.service
+```
+
+**Publish the Google OAuth consent screen to "In production"** (Google Cloud
+console → APIs & Services → OAuth consent screen). An app left in "Testing"
+has its refresh tokens revoked after **7 days**: Gmail ingestion would work for
+a week and then fail with `session_expired` every run. Unverified production
+apps with only your own account as a user keep working; re-run `aca auth gmail`
+once after publishing, because tokens minted while in Testing still expire.
 
 ### 10. Seed the provider keys — required before the next restart
 

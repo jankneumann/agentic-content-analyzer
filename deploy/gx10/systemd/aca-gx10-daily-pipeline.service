@@ -1,0 +1,32 @@
+[Unit]
+Description=GX-10 daily ingest, summarize and digest, catching up missed days
+OnFailure=aca-gx10-maintenance-alert@%n.service
+After=aca-gx10.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/aca
+StateDirectory=aca/gx10/daily-pipeline
+StateDirectoryMode=0700
+# Never start the runtime from here (see aca-gx10-backup.service). A runtime
+# that is down fails this check, which alerts; the state file is untouched, so
+# the next run catches the missed days up.
+ExecStartPre=/usr/bin/systemctl is-active --quiet aca-gx10.service
+# A timer fires this unit directly, so a stale installed copy would run
+# old settings indefinitely with nothing to say so.
+ExecStartPre=/opt/aca/scripts/gx10/check_unit_current.sh %n
+# System python, isolated: the script is stdlib-only and submits through the
+# API inside the running api container, exactly like `aca pipeline run`.
+ExecStart=/usr/bin/python3 -I /opt/aca/scripts/gx10/daily_pipeline.py --state-file /var/lib/aca/gx10/daily-pipeline/state.json
+# Each day waits up to 3 h; a long catch-up that runs out of time fails, alerts,
+# and resumes from the last completed day on the next run.
+TimeoutStartSec=12h
+UMask=0077
+PrivateTmp=yes
+NoNewPrivileges=yes
+# full, not strict: `podman exec` writes container state under /run and
+# /var/lib/containers (see aca-gx10-backup.service).
+ProtectSystem=full
+ProtectHome=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes

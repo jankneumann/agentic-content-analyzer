@@ -104,3 +104,76 @@ def test_gmail_descriptor_is_not_ready_without_token(monkeypatch, tmp_path):
     readiness = SOURCE_REGISTRY.get("gmail").resolve_readiness(GmailSource())
     assert readiness.ready is False
     assert readiness.code == "oauth_unavailable"
+
+
+_EXPIRED_TOKEN = (
+    '{"token":"ya29.old","refresh_token":"1//r","client_id":"c","client_secret":"s",'
+    '"expiry":"2020-01-01T00:00:00Z"}'
+)
+
+
+def _unwritable(tmp_path):
+    # A path under a regular file can never be opened for writing, as root or not:
+    # the same OSError a read-only container root raises.
+    (tmp_path / "file").write_text("")
+    return str(tmp_path / "file" / "token.json")
+
+
+def test_a_rejected_refresh_token_is_a_typed_session_expired(monkeypatch, tmp_path):
+    from google.auth.exceptions import RefreshError
+    from google.oauth2.credentials import Credentials
+
+    from src.config import settings as app_settings
+    from src.ingestion.credential_failures import SessionExpiredError
+    from src.ingestion.gmail import GmailClient
+
+    monkeypatch.setattr(app_settings, "gmail_oauth_token_json", _EXPIRED_TOKEN)
+    monkeypatch.setattr(app_settings, "gmail_credentials_json", None)
+    monkeypatch.setattr(app_settings, "gmail_token_file", str(tmp_path / "token.json"))
+
+    with patch.object(Credentials, "refresh", side_effect=RefreshError("invalid_grant")):
+        with pytest.raises(SessionExpiredError) as caught:
+            GmailClient()
+
+    assert caught.value.code == "session_expired"
+    assert "aca auth gmail" in str(caught.value)
+    assert "1//r" not in str(caught.value)
+    assert caught.value.__cause__ is None
+
+
+def test_a_read_only_token_path_still_authenticates(monkeypatch, tmp_path):
+    from google.oauth2.credentials import Credentials
+
+    from src.config import settings as app_settings
+    from src.ingestion.gmail import GmailClient
+
+    monkeypatch.setattr(app_settings, "gmail_oauth_token_json", _EXPIRED_TOKEN)
+    monkeypatch.setattr(app_settings, "gmail_credentials_json", None)
+    monkeypatch.setattr(app_settings, "gmail_token_file", _unwritable(tmp_path))
+
+    def refreshed(self, request):
+        self.token = "ya29.new"
+        self.expiry = None
+
+    with (
+        patch.object(Credentials, "refresh", refreshed),
+        patch("src.ingestion.gmail.build") as build,
+    ):
+        client = GmailClient()
+
+    assert client.service is build.return_value
+    assert build.call_args.kwargs["credentials"].token == "ya29.new"
+
+
+def test_orchestrator_reports_session_expired_not_a_crash(monkeypatch):
+    from src.ingestion.credential_failures import SessionExpiredError
+    from src.ingestion.orchestrator import ingest_gmail
+
+    expired = SessionExpiredError(
+        source="gmail", credential_label="OAuth refresh token", refresh_command="aca auth gmail"
+    )
+    with patch("src.ingestion.gmail.GmailContentIngestionService", side_effect=expired):
+        response = ingest_gmail(query="label:x", max_results=1)
+
+    assert response.status == "error"
+    assert [error.code for error in response.errors] == ["session_expired"]

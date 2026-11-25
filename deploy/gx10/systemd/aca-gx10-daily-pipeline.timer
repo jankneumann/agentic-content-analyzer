@@ -1,0 +1,14 @@
+[Unit]
+Description=Run the GX-10 daily pipeline for the previous UTC day
+
+[Timer]
+# After the day closes and clear of the 03:00 backup, which stops stores.
+OnCalendar=*-*-* 06:00:00 UTC
+RandomizedDelaySec=10m
+# A boot after a missed firing runs it once; the script then backfills every
+# day not yet completed, so an outage is made up without a person.
+Persistent=true
+Unit=aca-gx10-daily-pipeline.service
+
+[Install]
+WantedBy=timers.target

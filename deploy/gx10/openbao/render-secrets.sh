@@ -41,7 +41,7 @@ PROXY_TMP="$(new_env proxy.env)"; APP_POSTGRES_TMP="$(new_env app-postgres.env)"
 LANGFUSE_POSTGRES_TMP="$(new_env langfuse-postgres.env)"; REDIS_TMP="$(new_env redis.env)"
 FALKORDB_TMP="$(new_env falkordb.env)"; CLICKHOUSE_TMP="$(new_env clickhouse.env)"
 MINIO_TMP="$(new_env minio.env)"; LANGFUSE_TMP="$(new_env langfuse.env)"; CADDY_TMP="$(new_env caddy.env)"
-HOST_TMP="$(new_env host-maintenance.env)"
+HOST_TMP="$(new_env host-maintenance.env)"; ALERT_TMP="$(new_env alert.env)"
 PASSWD_TMP="$(mktemp "$RUNTIME_DIR/proxy/squid.passwd.XXXXXX")"; TEMPS+=("$PASSWD_TMP")
 REDIS_ACL_TMP="$(mktemp "$RUNTIME_DIR/redis/users.acl.XXXXXX")"; TEMPS+=("$REDIS_ACL_TMP")
 FALKORDB_ACL_TMP="$(mktemp "$RUNTIME_DIR/falkordb/users.acl.XXXXXX")"; TEMPS+=("$FALKORDB_ACL_TMP")
@@ -97,6 +97,76 @@ for field in "${!PROVIDER_ENV[@]}"; do
 done
 ((llm_keys > 0)) || { echo "gx10 provider credentials hold no LLM key: set anthropic_api_key, openai_api_key, or gemini_api_key at $PROVIDERS_PATH" >&2; exit 1; }
 
+# Optional groups: a missing path renders nothing (with a warning), any other
+# read failure stops the render, and an unknown field is refused as above.
+INGESTION_PATH="${GX10_BAO_INGESTION_PATH:-secret/newsletter/gx10/ingestion}"
+ALERTS_PATH="${GX10_BAO_ALERTS_PATH:-secret/newsletter/gx10/alerts}"
+OPTIONAL_BODY="$(mktemp "$RUNTIME_DIR/bao-optional.XXXXXX")"; TEMPS+=("$OPTIONAL_BODY")
+fetch_optional() {
+  local path="$1" body="$OPTIONAL_BODY" status
+  status="$(curl --silent --show-error --config "$CURL_CONFIG" -o "$body" -w '%{http_code}' "$(kv_endpoint "$path")")" || {
+    echo "gx10 OpenBao is unreachable reading $path" >&2; exit 1; }
+  case "$status" in
+    200) jq -ec '.data.data | objects' "$body" || { echo "gx10 secret at $path is not an object" >&2; exit 1; } ;;
+    404) printf '{}' ;;
+    *) echo "gx10 reading $path failed with HTTP $status" >&2; exit 1 ;;
+  esac
+}
+optional_field() { jq -er --arg field "$2" '.[$field] // "" | strings' <<<"$1" || { echo "gx10 field is not a string: $2" >&2; exit 1; }; }
+
+# Credential-gated ingestion sources run only in the worker. The token file
+# points into the writable /tmp tmpfs: the root filesystem is read-only, and
+# the token in the environment rehydrates it on every start.
+INGESTION="$(fetch_optional "$INGESTION_PATH")"
+declare -A INGESTION_ENV=(
+  [gmail_oauth_token_json]=GMAIL_OAUTH_TOKEN_JSON [substack_session_cookie]=SUBSTACK_SESSION_COOKIE
+  [readwise_api_key]=READWISE_API_KEY
+)
+while IFS= read -r field; do
+  [[ -n "${INGESTION_ENV[$field]+set}" ]] || { echo "gx10 ingestion field is not recognised: $field" >&2; exit 1; }
+done < <(jq -r 'keys[]' <<<"$INGESTION")
+for field in "${!INGESTION_ENV[@]}"; do
+  value="$(optional_field "$INGESTION" "$field")"
+  [[ -n "$value" ]] || continue
+  if [[ "$field" == gmail_oauth_token_json ]]; then
+    # Compact one-line JSON; it must be an authorized-user token with a refresh token.
+    value="$(jq -ec 'select(type == "object" and (.refresh_token | type) == "string")' <<<"$value")" || {
+      echo "gx10 gmail_oauth_token_json is not a token.json with a refresh_token" >&2; exit 1; }
+  fi
+  [[ "$value" != *$'\n'* && "$value" != *$'\r'* && "$value" != *'$'* ]] || { echo "gx10 ingestion field is unsafe: $field" >&2; exit 1; }
+  printf '%s=%s\n' "${INGESTION_ENV[$field]}" "$value" >>"$WORKER_TMP"
+done
+printf 'GMAIL_TOKEN_FILE=/tmp/gmail-token.json\n' >>"$WORKER_TMP"
+[[ -n "$(optional_field "$INGESTION" gmail_oauth_token_json)" ]] || echo "gx10 warning: no gmail_oauth_token_json at $INGESTION_PATH; Gmail ingestion will fail" >&2
+
+# Alerts go to a person through ntfy, from every app role (any of them can hold
+# the delivery lease). The containers have no direct egress, so the sink uses
+# Squid; the alert carries a diagnostic link to the public origin.
+ALERTS="$(fetch_optional "$ALERTS_PATH")"
+while IFS= read -r field; do
+  [[ "$field" == ntfy_url ]] || { echo "gx10 alerts field is not recognised: $field" >&2; exit 1; }
+done < <(jq -r 'keys[]' <<<"$ALERTS")
+NTFY_URL="$(optional_field "$ALERTS" ntfy_url)"
+if [[ -n "$NTFY_URL" ]]; then
+  [[ "$NTFY_URL" =~ ^https://([A-Za-z0-9.-]+)(:[0-9]{1,5})?/[A-Za-z0-9_-]{16,64}$ ]] || {
+    echo "gx10 ntfy_url must be https://<host>/<topic of 16-64 [A-Za-z0-9_-]>" >&2; exit 1; }
+  NTFY_HOST="${BASH_REMATCH[1],,}"
+  printf 'WORKFLOW_ALERT_SINK=webhook\nWORKFLOW_ALERT_WEBHOOK_FORMAT=ntfy\nWORKFLOW_ALERT_WEBHOOK_ENDPOINT=%s\nWORKFLOW_ALERT_ALLOWED_HOSTS=%s\nWORKFLOW_ALERT_DIAGNOSTIC_ORIGIN=%s\n' \
+    "$NTFY_URL" "$NTFY_HOST" "$PUBLIC_ORIGIN" >>"$COMMON_TMP"
+  # Host units (maintenance alerts) post directly; the host has egress.
+  printf 'GX10_NTFY_URL=%s\n' "$NTFY_URL" >"$ALERT_TMP"
+else
+  echo "gx10 warning: no ntfy_url at $ALERTS_PATH; workflow and maintenance alerts reach no one" >&2
+  : >"$ALERT_TMP"
+fi
+# Host units must still find the URL after a reboot, when /run is empty and this
+# renderer may never run: keep a persistent copy beside the other host config
+# (only where that directory is ours to write, so unprivileged test runs skip it).
+ALERT_PERSIST_FILE="${GX10_ALERT_PERSIST_FILE:-/etc/aca/gx10/alert.env}"
+if [[ -w "$(dirname "$ALERT_PERSIST_FILE")" ]]; then
+  install -m 0600 "$ALERT_TMP" "$ALERT_PERSIST_FILE.new"; mv -f "$ALERT_PERSIST_FILE.new" "$ALERT_PERSIST_FILE"
+fi
+
 OPERATOR_GENERATION="$(fetch "$OPERATOR_PATH" rotation_generation)"; PROXY_GENERATION="$(fetch "$PROXY_PATH" rotation_generation)"
 for generation in "$OPERATOR_GENERATION" "$PROXY_GENERATION"; do [[ "$generation" =~ ^[1-9][0-9]*$ ]] || { echo "gx10 rotation generation invalid" >&2; exit 1; }; done
 printf 'GX10_OPERATOR_ROTATION_GENERATION=%s\nGX10_PROCESS_ROLE=api\nOTEL_SERVICE_NAME=aca-gx10-api\nTELEMETRY_SERVICE_INSTANCE_ID=aca-gx10-api\n' "$OPERATOR_GENERATION" >>"$API_TMP"
@@ -109,6 +179,8 @@ PROXY_USERNAME="$(fetch "$PROXY_PATH" username)"; PROXY_PASSWORD="$(fetch "$PROX
 [[ "$PROXY_USERNAME" =~ ^[A-Za-z0-9._~-]+$ && "$PROXY_PASSWORD" =~ ^[A-Za-z0-9._~-]{32,}$ ]] || { echo "gx10 proxy credentials invalid" >&2; exit 1; }
 printf 'GX10_PROXY_USERNAME=%s\nGX10_PROXY_PASSWORD=%s\n' "$PROXY_USERNAME" "$PROXY_PASSWORD" >>"$PROXY_TMP"
 printf 'HTTP_PROXY=http://%s:%s@squid:3128\nHTTPS_PROXY=http://%s:%s@squid:3128\nALL_PROXY=http://%s:%s@squid:3128\n' "$PROXY_USERNAME" "$PROXY_PASSWORD" "$PROXY_USERNAME" "$PROXY_PASSWORD" "$PROXY_USERNAME" "$PROXY_PASSWORD" >>"$PROXY_TMP"
+# The alert sink ignores *_PROXY on purpose (no ambient proxy for an SSRF-bounded client).
+printf 'WORKFLOW_ALERT_PROXY_URL=http://%s:%s@squid:3128\n' "$PROXY_USERNAME" "$PROXY_PASSWORD" >>"$PROXY_TMP"
 PROXY_HASH="$(printf '%s\n' "$PROXY_PASSWORD" | openssl passwd -apr1 -stdin)"
 printf '%s:%s\n' "$PROXY_USERNAME" "$PROXY_HASH" >"$PASSWD_TMP"
 
@@ -147,7 +219,7 @@ HOST_DATABASE_URL="${APP_DATABASE_URL/@app-postgres:/@10.89.0.251:}"
 [[ "$HOST_DATABASE_URL" != "$APP_DATABASE_URL" ]] || { echo "gx10 application database URL does not name app-postgres; refusing to guess a host route" >&2; exit 1; }
 printf 'DATABASE_URL=%s\n' "$HOST_DATABASE_URL" >"$HOST_TMP"
 
-for pair in "$COMMON_TMP:common.env" "$API_TMP:api.env" "$WORKER_TMP:worker.env" "$SCHEDULER_TMP:scheduler.env" "$MAINTENANCE_TMP:maintenance.env" "$PROXY_TMP:proxy.env" "$APP_POSTGRES_TMP:app-postgres.env" "$LANGFUSE_POSTGRES_TMP:langfuse-postgres.env" "$REDIS_TMP:redis.env" "$FALKORDB_TMP:falkordb.env" "$CLICKHOUSE_TMP:clickhouse.env" "$MINIO_TMP:minio.env" "$LANGFUSE_TMP:langfuse.env" "$CADDY_TMP:caddy.env" "$HOST_TMP:host-maintenance.env"; do source_file="${pair%%:*}"; destination="${pair#*:}"; install -m 0600 "$source_file" "$RUNTIME_DIR/$destination.new"; mv -f "$RUNTIME_DIR/$destination.new" "$RUNTIME_DIR/$destination"; done
+for pair in "$COMMON_TMP:common.env" "$API_TMP:api.env" "$WORKER_TMP:worker.env" "$SCHEDULER_TMP:scheduler.env" "$MAINTENANCE_TMP:maintenance.env" "$PROXY_TMP:proxy.env" "$APP_POSTGRES_TMP:app-postgres.env" "$LANGFUSE_POSTGRES_TMP:langfuse-postgres.env" "$REDIS_TMP:redis.env" "$FALKORDB_TMP:falkordb.env" "$CLICKHOUSE_TMP:clickhouse.env" "$MINIO_TMP:minio.env" "$LANGFUSE_TMP:langfuse.env" "$CADDY_TMP:caddy.env" "$HOST_TMP:host-maintenance.env" "$ALERT_TMP:alert.env"; do source_file="${pair%%:*}"; destination="${pair#*:}"; install -m 0600 "$source_file" "$RUNTIME_DIR/$destination.new"; mv -f "$RUNTIME_DIR/$destination.new" "$RUNTIME_DIR/$destination"; done
 # Files the containers read directly are owned by the image user that reads
 # them (squid proxy 13:13, redis 999:1000, falkordb 999:999); mode stays 0600. Only root can
 # assign ownership; unprivileged test runs keep the invoking user.

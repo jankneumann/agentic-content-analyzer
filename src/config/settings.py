@@ -413,6 +413,10 @@ class Settings(BaseSettings):
     # Durable terminal telemetry and external alerting. Delivery is default-off.
     workflow_alert_sink: WorkflowAlertSinkType = "noop"
     workflow_alert_webhook_endpoint: str | None = Field(default=None, max_length=2048)
+    # "ntfy" posts a readable push (ntfy topic URL) instead of the JSON envelope.
+    workflow_alert_webhook_format: Literal["envelope", "ntfy"] = "envelope"
+    # Forward proxy for hosts whose app containers have no direct egress (gx-10: Squid).
+    workflow_alert_proxy_url: SecretStr | None = None
     workflow_alert_webhook_secret: SecretStr | None = Field(default=None, min_length=32)
     workflow_alert_diagnostic_origin: str | None = Field(default=None, max_length=2048)
     workflow_alert_allowed_hosts: str = Field(default="", max_length=4096)
