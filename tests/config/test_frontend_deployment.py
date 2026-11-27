@@ -1,4 +1,4 @@
-"""Regression tests for the isolated Railway frontend build boundary."""
+"""Regression tests for the frontend build boundary."""
 
 from __future__ import annotations
 
@@ -14,13 +14,6 @@ WEB_ROOT = REPO_ROOT / "web"
 
 def _read_json(path: Path) -> dict[str, Any]:
     return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
-
-
-def test_railway_frontend_build_is_isolated_and_uses_railpack() -> None:
-    railway_config = _read_json(WEB_ROOT / "railway.json")
-
-    assert railway_config["build"]["builder"] == "RAILPACK"
-    assert railway_config["build"]["watchPatterns"] == ["web/**"]
 
 
 def test_frontend_package_declares_node_22_and_a_local_build() -> None:
@@ -52,7 +45,7 @@ def test_frontend_has_an_exact_npm_dependency_graph() -> None:
     assert lock_root["devDependencies"] == package["devDependencies"]
 
 
-def test_frontend_lockfile_is_included_in_railway_uploads() -> None:
+def test_frontend_lockfile_is_not_gitignored() -> None:
     git = shutil.which("git")
     assert git is not None
     result = subprocess.run(

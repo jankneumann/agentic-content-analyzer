@@ -13,7 +13,7 @@
 #     - PROFILE=railway-supabase          Supabase (currently no sibling — extend supabase-cloud)
 #
 #   Graph DB:
-#     - PROFILE=railway-falkordb          FalkorDB (current production default)
+#     - PROFILE=railway-falkordb          FalkorDB (production default until Railway was retired on 2026-11-15; production is now the gx10 profile)
 #     - PROFILE=railway-neo4j             Neo4j AuraDB (legacy/alternative)
 #
 # Pick one overlay per axis. Profile inheritance only supports a single

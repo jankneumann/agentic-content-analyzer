@@ -75,7 +75,7 @@ aborts naming it. See [BACKUP_RESTORE.md](./BACKUP_RESTORE.md#key-escrow-procedu
 ### Restore the latest dump
 
 ```bash
-export PROFILE=railway-cli
+export PROFILE=local   # the backup_s3_* settings come from base.yaml
 export DATABASE_URL=postgresql://localhost:5432/newsletters_sync
 aca manage restore-from-cloud --yes
 ```
