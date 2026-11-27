@@ -628,6 +628,150 @@ def test_restore_activation_requires_complete_restore_and_validation_inventories
         )
 
 
+def _disk_artifact(backup, tmp_path: Path, ciphertext: bytes, checksum: str | None = None):
+    stored = tmp_path / "backups" / "minio.age"
+    stored.parent.mkdir(parents=True, exist_ok=True)
+    stored.write_bytes(ciphertext)
+    return backup.EncryptedArtifact(
+        component=backup.BackupComponent.MINIO,
+        name=stored.name,
+        path=stored,
+        checksum_sha256=checksum or hashlib.sha256(ciphertext).hexdigest(),
+        encryption_recipient=OLD_RECIPIENT,
+        completed_at=datetime(2026, 8, 29, tzinfo=UTC),
+    )
+
+
+def _streaming_drill(backup, calls: list[tuple[Path, str, Path]]):
+    def restorer(artifact: Path, recipient: str, target: Path) -> None:
+        calls.append((artifact, recipient, target))
+        target.mkdir(parents=True)
+
+    return backup.GX10RestoreDrill(
+        restorers=dict.fromkeys(backup.BackupComponent, restorer),
+        validate=_restore_validators(backup),
+    )
+
+
+def test_a_streaming_restore_hands_the_file_not_its_bytes_to_the_restorer(
+    tmp_path: Path,
+) -> None:
+    backup = _backup()
+    artifact = _disk_artifact(backup, tmp_path, b"age-encryption.org/v1\n" + b"x" * 20_000_000)
+    calls: list[tuple[Path, str, Path]] = []
+    target = tmp_path / "isolated" / "minio"
+
+    result = _streaming_drill(backup, calls).restore_component(
+        artifact=artifact,
+        target=target,
+        isolated_root=tmp_path / "isolated",
+        production_sources=(tmp_path / "production" / "minio",),
+        available_recipients=(ACTIVE_RECIPIENT, OLD_RECIPIENT),
+        correlation=_context(backup),
+    )
+
+    assert result.outcome == "succeeded"
+    assert calls == [(artifact.path, OLD_RECIPIENT, target)]
+
+
+def test_a_streaming_restore_checks_the_file_checksum_before_the_restorer_runs(
+    tmp_path: Path,
+) -> None:
+    backup = _backup()
+    artifact = _disk_artifact(backup, tmp_path, b"age-encryption.org/v1\nbody", "0" * 64)
+    calls: list[tuple[Path, str, Path]] = []
+
+    result = _streaming_drill(backup, calls).restore_component(
+        artifact=artifact,
+        target=tmp_path / "isolated" / "minio",
+        isolated_root=tmp_path / "isolated",
+        production_sources=(tmp_path / "production" / "minio",),
+        available_recipients=(OLD_RECIPIENT,),
+        correlation=_context(backup),
+    )
+
+    assert result.diagnostic_code == "artifact_checksum_mismatch"
+    assert calls == []
+
+
+def test_a_restorer_failure_is_a_component_failure(tmp_path: Path) -> None:
+    backup = _backup()
+    artifact = _disk_artifact(backup, tmp_path, b"age-encryption.org/v1\nbody")
+
+    def failing(_artifact: Path, _recipient: str, _target: Path) -> None:
+        raise RuntimeError("component command failed: pg_restore exit=1")
+
+    drill = backup.GX10RestoreDrill(
+        restorers=dict.fromkeys(backup.BackupComponent, failing),
+        validate=_restore_validators(backup),
+    )
+    result = drill.restore_component(
+        artifact=artifact,
+        target=tmp_path / "isolated" / "minio",
+        isolated_root=tmp_path / "isolated",
+        production_sources=(tmp_path / "production" / "minio",),
+        available_recipients=(OLD_RECIPIENT,),
+        correlation=_context(backup),
+    )
+
+    assert result.diagnostic_code == "component_restore_failed"
+
+
+def test_restorers_and_the_buffered_pair_are_mutually_exclusive() -> None:
+    backup = _backup()
+    restorers = dict.fromkeys(backup.BackupComponent, lambda _a, _r, _t: None)
+    with pytest.raises(ValueError, match="not both"):
+        backup.GX10RestoreDrill(
+            restorers=restorers,
+            decrypt=lambda payload, _recipient: payload,
+            validate=_restore_validators(backup),
+        )
+    with pytest.raises(ValueError, match="needs decrypt and restore"):
+        backup.GX10RestoreDrill(validate=_restore_validators(backup))
+    with pytest.raises(backup.ComponentInventoryError, match="complete"):
+        backup.GX10RestoreDrill(
+            restorers={backup.BackupComponent.MINIO: restorers[backup.BackupComponent.MINIO]},
+            validate=_restore_validators(backup),
+        )
+
+
+def test_an_artifact_is_in_memory_or_on_disk_never_both_or_neither(tmp_path: Path) -> None:
+    backup = _backup()
+    common = {
+        "component": backup.BackupComponent.MINIO,
+        "name": "minio.age",
+        "checksum_sha256": "0" * 64,
+        "encryption_recipient": ACTIVE_RECIPIENT,
+        "completed_at": datetime(2026, 8, 29, tzinfo=UTC),
+    }
+    with pytest.raises(ValueError, match="exactly one"):
+        backup.EncryptedArtifact(**common)
+    with pytest.raises(ValueError, match="exactly one"):
+        backup.EncryptedArtifact(**common, payload=b"x", path=tmp_path / "minio.age")
+
+
+def test_a_drill_refuses_artifacts_of_the_other_mode(tmp_path: Path) -> None:
+    backup = _backup()
+    in_memory = backup.EncryptedArtifact(
+        component=backup.BackupComponent.MINIO,
+        name="minio.age",
+        payload=b"age-encryption.org/v1\nbody",
+        checksum_sha256=hashlib.sha256(b"age-encryption.org/v1\nbody").hexdigest(),
+        encryption_recipient=OLD_RECIPIENT,
+        completed_at=datetime(2026, 8, 29, tzinfo=UTC),
+    )
+
+    with pytest.raises(ValueError, match="streaming restorers need artifacts on disk"):
+        _streaming_drill(backup, []).restore_component(
+            artifact=in_memory,
+            target=tmp_path / "isolated" / "minio",
+            isolated_root=tmp_path / "isolated",
+            production_sources=(tmp_path / "production" / "minio",),
+            available_recipients=(OLD_RECIPIENT,),
+            correlation=_context(backup),
+        )
+
+
 def test_age_adapter_rejects_identity_or_non_age_ciphertext() -> None:
     backup = _backup()
 
