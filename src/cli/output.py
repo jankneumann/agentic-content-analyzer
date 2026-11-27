@@ -61,7 +61,7 @@ def is_remote_backend() -> bool:
     """True when the active profile's API targets a non-localhost backend.
 
     Direct-mode commands talk to the LOCAL database. When the active profile
-    points at a remote backend (e.g. railway-cli -> api.aca.rotkohl.ai),
+    points at a remote backend (any profile whose ``api_base_url`` is not localhost),
     running a command directly would silently read/write LOCAL data while the
     user believes they are operating against prod — the "split-brain" failure.
     Commands consult this to route to HTTP or to refuse.

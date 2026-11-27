@@ -39,7 +39,7 @@ def test_every_project_install_is_constrained_to_the_lock() -> None:
                     checked += 1
                     assert CONSTRAINTS in line, f"{job}: unconstrained install: {line.strip()}"
                     assert exported, f"{job}: installs before exporting uv.lock constraints"
-    assert checked >= 10, "expected the CI, deploy, neon and scheduled jobs to install the project"
+    assert checked >= 9, "expected the CI, neon and scheduled jobs to install the project"
 
 
 def test_dependabot_updates_the_lock() -> None:

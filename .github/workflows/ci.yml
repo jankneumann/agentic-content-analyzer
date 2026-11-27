@@ -454,7 +454,7 @@ jobs:
           alembic upgrade head
           echo "✓ All migrations applied successfully"
 
-      - name: Verify app boots with production profile
+      - name: Verify app boots with production settings (railway-falkordb profile)
         env:
           DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters
           RAILWAY_DATABASE_URL: postgresql://newsletter_user:newsletter_password@localhost:5432/newsletters
@@ -468,8 +468,8 @@ jobs:
           # Settings validator requires non-empty FALKORDB_HOST when
           # graphdb_mode=cloud (the railway profile default). Cold-start only
           # hits /health which doesn't touch the graph DB, so localhost is a
-          # safe stand-in — the connection is never opened. Production Railway
-          # injects the real internal hostname here.
+          # safe stand-in — the connection is never opened. (Railway, which used
+          # this profile in production, was retired on 2026-11-15.)
           FALKORDB_HOST: localhost
           FALKORDB_PASSWORD: unused-cold-start-stub
           # See the migration step above: required in staging and production.

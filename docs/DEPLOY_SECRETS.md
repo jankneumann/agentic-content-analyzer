@@ -13,7 +13,7 @@
 
 There are two independent configuration planes:
 
-- **Local CLI plane** (`PROFILE=railway-cli`): reads `.secrets.yaml` + env on your
+- **Local CLI plane** (`PROFILE=railway-cli`, removed 2026-11-18): reads `.secrets.yaml` + env on your
   machine. Used to point the CLI at the deployed API.
 - **Deployed Railway plane**: the running container reads its **own** Railway
   Variables. It has no access to your local `.secrets.yaml`.
